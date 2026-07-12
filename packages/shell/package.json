@@ -1,0 +1,6 @@
+{
+  "name": "@underway/shell",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/bridge/webBridge.ts"
+}

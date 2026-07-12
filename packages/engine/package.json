@@ -1,0 +1,9 @@
+{
+  "name": "@underway/engine",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "dependencies": {
+    "idb-keyval": "^6.2.2"
+  }
+}

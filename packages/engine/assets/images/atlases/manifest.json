@@ -1,0 +1,5634 @@
+{
+  "angular/Caution_23_10011001": {
+    "spriteId": "angular/Caution_23_10011001",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 0,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 0,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 0,
+        "row": 0
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 0,
+        "row": 0
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 0,
+        "row": 0
+      }
+    }
+  },
+  "angular/tile_00000001": {
+    "spriteId": "angular/tile_00000001",
+    "family": "angular",
+    "connectionCount": 1,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 1,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 1,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 1,
+        "row": 0
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 1,
+        "row": 0
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 1,
+        "row": 0
+      }
+    }
+  },
+  "angular/tile_00010001": {
+    "spriteId": "angular/tile_00010001",
+    "family": "angular",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 2,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 2,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 2,
+        "row": 0
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 2,
+        "row": 0
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 2,
+        "row": 0
+      }
+    }
+  },
+  "angular/tile_00011011": {
+    "spriteId": "angular/tile_00011011",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 3,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 3,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 3,
+        "row": 0
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 3,
+        "row": 0
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 3,
+        "row": 0
+      }
+    }
+  },
+  "angular/tile_00100001": {
+    "spriteId": "angular/tile_00100001",
+    "family": "angular",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 4,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 4,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 4,
+        "row": 0
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 4,
+        "row": 0
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 4,
+        "row": 0
+      }
+    }
+  },
+  "angular/tile_00101001": {
+    "spriteId": "angular/tile_00101001",
+    "family": "angular",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 5,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 5,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 5,
+        "row": 0
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 5,
+        "row": 0
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 5,
+        "row": 0
+      }
+    }
+  },
+  "angular/tile_00101010": {
+    "spriteId": "angular/tile_00101010",
+    "family": "angular",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 6,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 6,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 6,
+        "row": 0
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 6,
+        "row": 0
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 6,
+        "row": 0
+      }
+    }
+  },
+  "angular/tile_00101101": {
+    "spriteId": "angular/tile_00101101",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 7,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 7,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 7,
+        "row": 0
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 7,
+        "row": 0
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 7,
+        "row": 0
+      }
+    }
+  },
+  "angular/tile_00101110": {
+    "spriteId": "angular/tile_00101110",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 8,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 8,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 0,
+        "row": 1
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 0,
+        "row": 1
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 0,
+        "row": 1
+      }
+    }
+  },
+  "angular/tile_00110011": {
+    "spriteId": "angular/tile_00110011",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 9,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 9,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 1,
+        "row": 1
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 1,
+        "row": 1
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 1,
+        "row": 1
+      }
+    }
+  },
+  "angular/tile_00110110": {
+    "spriteId": "angular/tile_00110110",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 10,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 10,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 2,
+        "row": 1
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 2,
+        "row": 1
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 2,
+        "row": 1
+      }
+    }
+  },
+  "angular/tile_00111011": {
+    "spriteId": "angular/tile_00111011",
+    "family": "angular",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 11,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 11,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 3,
+        "row": 1
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 3,
+        "row": 1
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 3,
+        "row": 1
+      }
+    }
+  },
+  "angular/tile_00111110": {
+    "spriteId": "angular/tile_00111110",
+    "family": "angular",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 12,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 12,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 4,
+        "row": 1
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 4,
+        "row": 1
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 4,
+        "row": 1
+      }
+    }
+  },
+  "angular/tile_00111111": {
+    "spriteId": "angular/tile_00111111",
+    "family": "angular",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 13,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 13,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 5,
+        "row": 1
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 5,
+        "row": 1
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 5,
+        "row": 1
+      }
+    }
+  },
+  "angular/tile_01000001": {
+    "spriteId": "angular/tile_01000001",
+    "family": "angular",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 14,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 14,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 6,
+        "row": 1
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 6,
+        "row": 1
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 6,
+        "row": 1
+      }
+    }
+  },
+  "angular/tile_01001001": {
+    "spriteId": "angular/tile_01001001",
+    "family": "angular",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 15,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 15,
+        "row": 0
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 7,
+        "row": 1
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 7,
+        "row": 1
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 7,
+        "row": 1
+      }
+    }
+  },
+  "angular/tile_01010001": {
+    "spriteId": "angular/tile_01010001",
+    "family": "angular",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 16,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 0,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 0,
+        "row": 2
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 0,
+        "row": 2
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 0,
+        "row": 2
+      }
+    }
+  },
+  "angular/tile_01010101": {
+    "spriteId": "angular/tile_01010101",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 17,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 1,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 1,
+        "row": 2
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 1,
+        "row": 2
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 1,
+        "row": 2
+      }
+    }
+  },
+  "angular/tile_01010111": {
+    "spriteId": "angular/tile_01010111",
+    "family": "angular",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 18,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 2,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 2,
+        "row": 2
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 2,
+        "row": 2
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 2,
+        "row": 2
+      }
+    }
+  },
+  "angular/tile_01011011": {
+    "spriteId": "angular/tile_01011011",
+    "family": "angular",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 19,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 3,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 3,
+        "row": 2
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 3,
+        "row": 2
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 3,
+        "row": 2
+      }
+    }
+  },
+  "angular/tile_01011111": {
+    "spriteId": "angular/tile_01011111",
+    "family": "angular",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 20,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 4,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 4,
+        "row": 2
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 4,
+        "row": 2
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 4,
+        "row": 2
+      }
+    }
+  },
+  "angular/tile_01100001": {
+    "spriteId": "angular/tile_01100001",
+    "family": "angular",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 21,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 5,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 5,
+        "row": 2
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 5,
+        "row": 2
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 5,
+        "row": 2
+      }
+    }
+  },
+  "angular/tile_01101011": {
+    "spriteId": "angular/tile_01101011",
+    "family": "angular",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 22,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 6,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 6,
+        "row": 2
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 6,
+        "row": 2
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 6,
+        "row": 2
+      }
+    }
+  },
+  "angular/tile_01110111": {
+    "spriteId": "angular/tile_01110111",
+    "family": "angular",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 23,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 7,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 7,
+        "row": 2
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 7,
+        "row": 2
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 7,
+        "row": 2
+      }
+    }
+  },
+  "angular/tile_01111111": {
+    "spriteId": "angular/tile_01111111",
+    "family": "angular",
+    "connectionCount": 7,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 24,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 8,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 0,
+        "row": 3
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 0,
+        "row": 3
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 0,
+        "row": 3
+      }
+    }
+  },
+  "angular/tile_10000000": {
+    "spriteId": "angular/tile_10000000",
+    "family": "angular",
+    "connectionCount": 1,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 25,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 9,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 1,
+        "row": 3
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 1,
+        "row": 3
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 1,
+        "row": 3
+      }
+    }
+  },
+  "angular/tile_10000001": {
+    "spriteId": "angular/tile_10000001",
+    "family": "angular",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 26,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 10,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 2,
+        "row": 3
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 2,
+        "row": 3
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 2,
+        "row": 3
+      }
+    }
+  },
+  "angular/tile_10000011": {
+    "spriteId": "angular/tile_10000011",
+    "family": "angular",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 27,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 11,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 3,
+        "row": 3
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 3,
+        "row": 3
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 3,
+        "row": 3
+      }
+    }
+  },
+  "angular/tile_10000101": {
+    "spriteId": "angular/tile_10000101",
+    "family": "angular",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 28,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 12,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 4,
+        "row": 3
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 4,
+        "row": 3
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 4,
+        "row": 3
+      }
+    }
+  },
+  "angular/tile_10001000": {
+    "spriteId": "angular/tile_10001000",
+    "family": "angular",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 29,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 13,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 5,
+        "row": 3
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 5,
+        "row": 3
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 5,
+        "row": 3
+      }
+    }
+  },
+  "angular/tile_10001001": {
+    "spriteId": "angular/tile_10001001",
+    "family": "angular",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 30,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 14,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 6,
+        "row": 3
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 6,
+        "row": 3
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 6,
+        "row": 3
+      }
+    }
+  },
+  "angular/tile_10010001": {
+    "spriteId": "angular/tile_10010001",
+    "family": "angular",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 31,
+        "row": 0
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 15,
+        "row": 1
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 7,
+        "row": 3
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 7,
+        "row": 3
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 7,
+        "row": 3
+      }
+    }
+  },
+  "angular/tile_10010011": {
+    "spriteId": "angular/tile_10010011",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 0,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 0,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 0,
+        "row": 4
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 0,
+        "row": 4
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 0,
+        "row": 4
+      }
+    }
+  },
+  "angular/tile_10010101": {
+    "spriteId": "angular/tile_10010101",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 1,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 1,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 1,
+        "row": 4
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 1,
+        "row": 4
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 1,
+        "row": 4
+      }
+    }
+  },
+  "angular/tile_10010111": {
+    "spriteId": "angular/tile_10010111",
+    "family": "angular",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 2,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 2,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 2,
+        "row": 4
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 2,
+        "row": 4
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 2,
+        "row": 4
+      }
+    }
+  },
+  "angular/tile_10100000": {
+    "spriteId": "angular/tile_10100000",
+    "family": "angular",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 3,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 3,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 3,
+        "row": 4
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 3,
+        "row": 4
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 3,
+        "row": 4
+      }
+    }
+  },
+  "angular/tile_10100001": {
+    "spriteId": "angular/tile_10100001",
+    "family": "angular",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 4,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 4,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 4,
+        "row": 4
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 4,
+        "row": 4
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 4,
+        "row": 4
+      }
+    }
+  },
+  "angular/tile_10101010": {
+    "spriteId": "angular/tile_10101010",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 5,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 5,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 5,
+        "row": 4
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 5,
+        "row": 4
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 5,
+        "row": 4
+      }
+    }
+  },
+  "angular/tile_10101011": {
+    "spriteId": "angular/tile_10101011",
+    "family": "angular",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 6,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 6,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 6,
+        "row": 4
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 6,
+        "row": 4
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 6,
+        "row": 4
+      }
+    }
+  },
+  "angular/tile_10101111": {
+    "spriteId": "angular/tile_10101111",
+    "family": "angular",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 7,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 7,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 7,
+        "row": 4
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 7,
+        "row": 4
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 7,
+        "row": 4
+      }
+    }
+  },
+  "angular/tile_10111111": {
+    "spriteId": "angular/tile_10111111",
+    "family": "angular",
+    "connectionCount": 7,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 8,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 8,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 0,
+        "row": 5
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 0,
+        "row": 5
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 0,
+        "row": 5
+      }
+    }
+  },
+  "angular/tile_11000001": {
+    "spriteId": "angular/tile_11000001",
+    "family": "angular",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 9,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 9,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 1,
+        "row": 5
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 1,
+        "row": 5
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 1,
+        "row": 5
+      }
+    }
+  },
+  "angular/tile_11001001": {
+    "spriteId": "angular/tile_11001001",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 10,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 10,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 2,
+        "row": 5
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 2,
+        "row": 5
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 2,
+        "row": 5
+      }
+    }
+  },
+  "angular/tile_11001010": {
+    "spriteId": "angular/tile_11001010",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 11,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 11,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 3,
+        "row": 5
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 3,
+        "row": 5
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 3,
+        "row": 5
+      }
+    }
+  },
+  "angular/tile_11001101": {
+    "spriteId": "angular/tile_11001101",
+    "family": "angular",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 12,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 12,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 4,
+        "row": 5
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 4,
+        "row": 5
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 4,
+        "row": 5
+      }
+    }
+  },
+  "angular/tile_11010001": {
+    "spriteId": "angular/tile_11010001",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 13,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 13,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 5,
+        "row": 5
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 5,
+        "row": 5
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 5,
+        "row": 5
+      }
+    }
+  },
+  "angular/tile_11100001": {
+    "spriteId": "angular/tile_11100001",
+    "family": "angular",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 14,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 14,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 6,
+        "row": 5
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 6,
+        "row": 5
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 6,
+        "row": 5
+      }
+    }
+  },
+  "angular/tile_11101001": {
+    "spriteId": "angular/tile_11101001",
+    "family": "angular",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 15,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 15,
+        "row": 2
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 7,
+        "row": 5
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 7,
+        "row": 5
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 7,
+        "row": 5
+      }
+    }
+  },
+  "angular/tile_11101110": {
+    "spriteId": "angular/tile_11101110",
+    "family": "angular",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 16,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 0,
+        "row": 3
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 0,
+        "row": 6
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 0,
+        "row": 6
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 0,
+        "row": 6
+      }
+    }
+  },
+  "angular/tile_11110001": {
+    "spriteId": "angular/tile_11110001",
+    "family": "angular",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 17,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 1,
+        "row": 3
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 1,
+        "row": 6
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 1,
+        "row": 6
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 1,
+        "row": 6
+      }
+    }
+  },
+  "angular/tile_11110110": {
+    "spriteId": "angular/tile_11110110",
+    "family": "angular",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 18,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 2,
+        "row": 3
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 2,
+        "row": 6
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 2,
+        "row": 6
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 2,
+        "row": 6
+      }
+    }
+  },
+  "angular/tile_11111111": {
+    "spriteId": "angular/tile_11111111",
+    "family": "angular",
+    "connectionCount": 8,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 19,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 3,
+        "row": 3
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 3,
+        "row": 6
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 3,
+        "row": 6
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 3,
+        "row": 6
+      }
+    }
+  },
+  "angular/tileAA_10100000": {
+    "spriteId": "angular/tileAA_10100000",
+    "family": "angular",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 20,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 4,
+        "row": 3
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 4,
+        "row": 6
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 4,
+        "row": 6
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 4,
+        "row": 6
+      }
+    }
+  },
+  "angular/tileC_00000000": {
+    "spriteId": "angular/tileC_00000000",
+    "family": "angular",
+    "connectionCount": 0,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 21,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 5,
+        "row": 3
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 5,
+        "row": 6
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 5,
+        "row": 6
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 5,
+        "row": 6
+      }
+    }
+  },
+  "angular/tileM_10001010": {
+    "spriteId": "angular/tileM_10001010",
+    "family": "angular",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 22,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 6,
+        "row": 3
+      },
+      "L2": {
+        "file": "angular_L2.png",
+        "col": 6,
+        "row": 6
+      },
+      "L3": {
+        "file": "angular_L3.png",
+        "col": 6,
+        "row": 6
+      },
+      "L4": {
+        "file": "angular_L4.png",
+        "col": 6,
+        "row": 6
+      }
+    }
+  },
+  "cloud/Caution_1_01000100": {
+    "spriteId": "cloud/Caution_1_01000100",
+    "family": "cloud",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 23,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 7,
+        "row": 3
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 0,
+        "row": 0
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 0,
+        "row": 0
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 0,
+        "row": 0
+      }
+    }
+  },
+  "cloud/Caution_11_01000100": {
+    "spriteId": "cloud/Caution_11_01000100",
+    "family": "cloud",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 24,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 8,
+        "row": 3
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 1,
+        "row": 0
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 1,
+        "row": 0
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 1,
+        "row": 0
+      }
+    }
+  },
+  "cloud/Caution_12_01100011": {
+    "spriteId": "cloud/Caution_12_01100011",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 25,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 9,
+        "row": 3
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 2,
+        "row": 0
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 2,
+        "row": 0
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 2,
+        "row": 0
+      }
+    }
+  },
+  "cloud/Caution_13_00100010": {
+    "spriteId": "cloud/Caution_13_00100010",
+    "family": "cloud",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 26,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 10,
+        "row": 3
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 3,
+        "row": 0
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 3,
+        "row": 0
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 3,
+        "row": 0
+      }
+    }
+  },
+  "cloud/Caution_15_00001010": {
+    "spriteId": "cloud/Caution_15_00001010",
+    "family": "cloud",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 27,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 11,
+        "row": 3
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 4,
+        "row": 0
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 4,
+        "row": 0
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 4,
+        "row": 0
+      }
+    }
+  },
+  "cloud/Caution_16_00101010": {
+    "spriteId": "cloud/Caution_16_00101010",
+    "family": "cloud",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 28,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 12,
+        "row": 3
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 5,
+        "row": 0
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 5,
+        "row": 0
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 5,
+        "row": 0
+      }
+    }
+  },
+  "cloud/Caution_17_01010000": {
+    "spriteId": "cloud/Caution_17_01010000",
+    "family": "cloud",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 29,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 13,
+        "row": 3
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 6,
+        "row": 0
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 6,
+        "row": 0
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 6,
+        "row": 0
+      }
+    }
+  },
+  "cloud/Caution_18_01010101": {
+    "spriteId": "cloud/Caution_18_01010101",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 30,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 14,
+        "row": 3
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 7,
+        "row": 0
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 7,
+        "row": 0
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 7,
+        "row": 0
+      }
+    }
+  },
+  "cloud/Caution_19_01001001": {
+    "spriteId": "cloud/Caution_19_01001001",
+    "family": "cloud",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 31,
+        "row": 1
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 15,
+        "row": 3
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 0,
+        "row": 1
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 0,
+        "row": 1
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 0,
+        "row": 1
+      }
+    }
+  },
+  "cloud/Caution_2_11000101": {
+    "spriteId": "cloud/Caution_2_11000101",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 0,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 0,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 1,
+        "row": 1
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 1,
+        "row": 1
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 1,
+        "row": 1
+      }
+    }
+  },
+  "cloud/Caution_20_11001100": {
+    "spriteId": "cloud/Caution_20_11001100",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 1,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 1,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 2,
+        "row": 1
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 2,
+        "row": 1
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 2,
+        "row": 1
+      }
+    }
+  },
+  "cloud/Caution_21_00101010": {
+    "spriteId": "cloud/Caution_21_00101010",
+    "family": "cloud",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 2,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 2,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 3,
+        "row": 1
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 3,
+        "row": 1
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 3,
+        "row": 1
+      }
+    }
+  },
+  "cloud/Caution_22_10101010": {
+    "spriteId": "cloud/Caution_22_10101010",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 3,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 3,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 4,
+        "row": 1
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 4,
+        "row": 1
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 4,
+        "row": 1
+      }
+    }
+  },
+  "cloud/Caution_24_00100010": {
+    "spriteId": "cloud/Caution_24_00100010",
+    "family": "cloud",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 4,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 4,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 5,
+        "row": 1
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 5,
+        "row": 1
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 5,
+        "row": 1
+      }
+    }
+  },
+  "cloud/Caution_25_01010001": {
+    "spriteId": "cloud/Caution_25_01010001",
+    "family": "cloud",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 5,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 5,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 6,
+        "row": 1
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 6,
+        "row": 1
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 6,
+        "row": 1
+      }
+    }
+  },
+  "cloud/Caution_26_01010101": {
+    "spriteId": "cloud/Caution_26_01010101",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 6,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 6,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 7,
+        "row": 1
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 7,
+        "row": 1
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 7,
+        "row": 1
+      }
+    }
+  },
+  "cloud/Caution_3_00010100": {
+    "spriteId": "cloud/Caution_3_00010100",
+    "family": "cloud",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 7,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 7,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 0,
+        "row": 2
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 0,
+        "row": 2
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 0,
+        "row": 2
+      }
+    }
+  },
+  "cloud/Caution_4_01010100": {
+    "spriteId": "cloud/Caution_4_01010100",
+    "family": "cloud",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 8,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 8,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 1,
+        "row": 2
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 1,
+        "row": 2
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 1,
+        "row": 2
+      }
+    }
+  },
+  "cloud/Caution_5_01010100": {
+    "spriteId": "cloud/Caution_5_01010100",
+    "family": "cloud",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 9,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 9,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 2,
+        "row": 2
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 2,
+        "row": 2
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 2,
+        "row": 2
+      }
+    }
+  },
+  "cloud/Caution_6_01010000": {
+    "spriteId": "cloud/Caution_6_01010000",
+    "family": "cloud",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 10,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 10,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 3,
+        "row": 2
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 3,
+        "row": 2
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 3,
+        "row": 2
+      }
+    }
+  },
+  "cloud/Caution_7_01010100": {
+    "spriteId": "cloud/Caution_7_01010100",
+    "family": "cloud",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 11,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 11,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 4,
+        "row": 2
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 4,
+        "row": 2
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 4,
+        "row": 2
+      }
+    }
+  },
+  "cloud/Caution_8_00010100": {
+    "spriteId": "cloud/Caution_8_00010100",
+    "family": "cloud",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 12,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 12,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 5,
+        "row": 2
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 5,
+        "row": 2
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 5,
+        "row": 2
+      }
+    }
+  },
+  "cloud/Caution_9_00010100": {
+    "spriteId": "cloud/Caution_9_00010100",
+    "family": "cloud",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 13,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 13,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 6,
+        "row": 2
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 6,
+        "row": 2
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 6,
+        "row": 2
+      }
+    }
+  },
+  "cloud/connectors_10_10101010": {
+    "spriteId": "cloud/connectors_10_10101010",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 14,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 14,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 7,
+        "row": 2
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 7,
+        "row": 2
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 7,
+        "row": 2
+      }
+    }
+  },
+  "cloud/connectors_11_10101010": {
+    "spriteId": "cloud/connectors_11_10101010",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 15,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 15,
+        "row": 4
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 0,
+        "row": 3
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 0,
+        "row": 3
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 0,
+        "row": 3
+      }
+    }
+  },
+  "cloud/connectors_5_10101010": {
+    "spriteId": "cloud/connectors_5_10101010",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 16,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 0,
+        "row": 5
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 1,
+        "row": 3
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 1,
+        "row": 3
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 1,
+        "row": 3
+      }
+    }
+  },
+  "cloud/connectors_6_10101010": {
+    "spriteId": "cloud/connectors_6_10101010",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 17,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 1,
+        "row": 5
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 2,
+        "row": 3
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 2,
+        "row": 3
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 2,
+        "row": 3
+      }
+    }
+  },
+  "cloud/connectors_7_01011101": {
+    "spriteId": "cloud/connectors_7_01011101",
+    "family": "cloud",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 18,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 2,
+        "row": 5
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 3,
+        "row": 3
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 3,
+        "row": 3
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 3,
+        "row": 3
+      }
+    }
+  },
+  "cloud/connectors_8_01110000": {
+    "spriteId": "cloud/connectors_8_01110000",
+    "family": "cloud",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 19,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 3,
+        "row": 5
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 4,
+        "row": 3
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 4,
+        "row": 3
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 4,
+        "row": 3
+      }
+    }
+  },
+  "cloud/curve_00110011": {
+    "spriteId": "cloud/curve_00110011",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 20,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 4,
+        "row": 5
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 5,
+        "row": 3
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 5,
+        "row": 3
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 5,
+        "row": 3
+      }
+    }
+  },
+  "cloud/curve_00110110": {
+    "spriteId": "cloud/curve_00110110",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 21,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 5,
+        "row": 5
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 6,
+        "row": 3
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 6,
+        "row": 3
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 6,
+        "row": 3
+      }
+    }
+  },
+  "cloud/curve_10001000": {
+    "spriteId": "cloud/curve_10001000",
+    "family": "cloud",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 22,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 6,
+        "row": 5
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 7,
+        "row": 3
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 7,
+        "row": 3
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 7,
+        "row": 3
+      }
+    }
+  },
+  "cloud/curve_10101011": {
+    "spriteId": "cloud/curve_10101011",
+    "family": "cloud",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 23,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 7,
+        "row": 5
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 0,
+        "row": 4
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 0,
+        "row": 4
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 0,
+        "row": 4
+      }
+    }
+  },
+  "cloud/curve_11100001": {
+    "spriteId": "cloud/curve_11100001",
+    "family": "cloud",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 24,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 8,
+        "row": 5
+      },
+      "L2": {
+        "file": "cloud_L2.png",
+        "col": 1,
+        "row": 4
+      },
+      "L3": {
+        "file": "cloud_L3.png",
+        "col": 1,
+        "row": 4
+      },
+      "L4": {
+        "file": "cloud_L4.png",
+        "col": 1,
+        "row": 4
+      }
+    }
+  },
+  "craftsman/connectors_1_10110101": {
+    "spriteId": "craftsman/connectors_1_10110101",
+    "family": "craftsman",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 25,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 9,
+        "row": 5
+      },
+      "L2": {
+        "file": "craftsman_L2.png",
+        "col": 0,
+        "row": 0
+      },
+      "L3": {
+        "file": "craftsman_L3.png",
+        "col": 0,
+        "row": 0
+      },
+      "L4": {
+        "file": "craftsman_L4.png",
+        "col": 0,
+        "row": 0
+      }
+    }
+  },
+  "craftsman/connectors_14_10000010": {
+    "spriteId": "craftsman/connectors_14_10000010",
+    "family": "craftsman",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 26,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 10,
+        "row": 5
+      },
+      "L2": {
+        "file": "craftsman_L2.png",
+        "col": 1,
+        "row": 0
+      },
+      "L3": {
+        "file": "craftsman_L3.png",
+        "col": 1,
+        "row": 0
+      },
+      "L4": {
+        "file": "craftsman_L4.png",
+        "col": 1,
+        "row": 0
+      }
+    }
+  },
+  "craftsman/connectors_2_10110001": {
+    "spriteId": "craftsman/connectors_2_10110001",
+    "family": "craftsman",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 27,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 11,
+        "row": 5
+      },
+      "L2": {
+        "file": "craftsman_L2.png",
+        "col": 2,
+        "row": 0
+      },
+      "L3": {
+        "file": "craftsman_L3.png",
+        "col": 2,
+        "row": 0
+      },
+      "L4": {
+        "file": "craftsman_L4.png",
+        "col": 2,
+        "row": 0
+      }
+    }
+  },
+  "craftsman/connectors_3_10111011": {
+    "spriteId": "craftsman/connectors_3_10111011",
+    "family": "craftsman",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 28,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 12,
+        "row": 5
+      },
+      "L2": {
+        "file": "craftsman_L2.png",
+        "col": 3,
+        "row": 0
+      },
+      "L3": {
+        "file": "craftsman_L3.png",
+        "col": 3,
+        "row": 0
+      },
+      "L4": {
+        "file": "craftsman_L4.png",
+        "col": 3,
+        "row": 0
+      }
+    }
+  },
+  "craftsman/connectors_9_10101010": {
+    "spriteId": "craftsman/connectors_9_10101010",
+    "family": "craftsman",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 29,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 13,
+        "row": 5
+      },
+      "L2": {
+        "file": "craftsman_L2.png",
+        "col": 4,
+        "row": 0
+      },
+      "L3": {
+        "file": "craftsman_L3.png",
+        "col": 4,
+        "row": 0
+      },
+      "L4": {
+        "file": "craftsman_L4.png",
+        "col": 4,
+        "row": 0
+      }
+    }
+  },
+  "craftsman/squareConnector_10000010": {
+    "spriteId": "craftsman/squareConnector_10000010",
+    "family": "craftsman",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 30,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 14,
+        "row": 5
+      },
+      "L2": {
+        "file": "craftsman_L2.png",
+        "col": 5,
+        "row": 0
+      },
+      "L3": {
+        "file": "craftsman_L3.png",
+        "col": 5,
+        "row": 0
+      },
+      "L4": {
+        "file": "craftsman_L4.png",
+        "col": 5,
+        "row": 0
+      }
+    }
+  },
+  "craftsman/squareConnector_10001000": {
+    "spriteId": "craftsman/squareConnector_10001000",
+    "family": "craftsman",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 31,
+        "row": 2
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 15,
+        "row": 5
+      },
+      "L2": {
+        "file": "craftsman_L2.png",
+        "col": 6,
+        "row": 0
+      },
+      "L3": {
+        "file": "craftsman_L3.png",
+        "col": 6,
+        "row": 0
+      },
+      "L4": {
+        "file": "craftsman_L4.png",
+        "col": 6,
+        "row": 0
+      }
+    }
+  },
+  "craftsman/squareConnector_10001010": {
+    "spriteId": "craftsman/squareConnector_10001010",
+    "family": "craftsman",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 0,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 0,
+        "row": 6
+      },
+      "L2": {
+        "file": "craftsman_L2.png",
+        "col": 7,
+        "row": 0
+      },
+      "L3": {
+        "file": "craftsman_L3.png",
+        "col": 7,
+        "row": 0
+      },
+      "L4": {
+        "file": "craftsman_L4.png",
+        "col": 7,
+        "row": 0
+      }
+    }
+  },
+  "craftsman/squareConnector_10101010": {
+    "spriteId": "craftsman/squareConnector_10101010",
+    "family": "craftsman",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 1,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 1,
+        "row": 6
+      },
+      "L2": {
+        "file": "craftsman_L2.png",
+        "col": 0,
+        "row": 1
+      },
+      "L3": {
+        "file": "craftsman_L3.png",
+        "col": 0,
+        "row": 1
+      },
+      "L4": {
+        "file": "craftsman_L4.png",
+        "col": 0,
+        "row": 1
+      }
+    }
+  },
+  "craftsman/tileA_00000000": {
+    "spriteId": "craftsman/tileA_00000000",
+    "family": "craftsman",
+    "connectionCount": 0,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 2,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 2,
+        "row": 6
+      },
+      "L2": {
+        "file": "craftsman_L2.png",
+        "col": 1,
+        "row": 1
+      },
+      "L3": {
+        "file": "craftsman_L3.png",
+        "col": 1,
+        "row": 1
+      },
+      "L4": {
+        "file": "craftsman_L4.png",
+        "col": 1,
+        "row": 1
+      }
+    }
+  },
+  "craftsman/tileB_00000000": {
+    "spriteId": "craftsman/tileB_00000000",
+    "family": "craftsman",
+    "connectionCount": 0,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 3,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 3,
+        "row": 6
+      },
+      "L2": {
+        "file": "craftsman_L2.png",
+        "col": 2,
+        "row": 1
+      },
+      "L3": {
+        "file": "craftsman_L3.png",
+        "col": 2,
+        "row": 1
+      },
+      "L4": {
+        "file": "craftsman_L4.png",
+        "col": 2,
+        "row": 1
+      }
+    }
+  },
+  "curved/connectors_12_10101010": {
+    "spriteId": "curved/connectors_12_10101010",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 4,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 4,
+        "row": 6
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 0,
+        "row": 0
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 0,
+        "row": 0
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 0,
+        "row": 0
+      }
+    }
+  },
+  "curved/connectors_4_01010101": {
+    "spriteId": "curved/connectors_4_01010101",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 5,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 5,
+        "row": 6
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 1,
+        "row": 0
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 1,
+        "row": 0
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 1,
+        "row": 0
+      }
+    }
+  },
+  "curved/curve_00000001": {
+    "spriteId": "curved/curve_00000001",
+    "family": "curved",
+    "connectionCount": 1,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 6,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 6,
+        "row": 6
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 2,
+        "row": 0
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 2,
+        "row": 0
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 2,
+        "row": 0
+      }
+    }
+  },
+  "curved/curve_00010001": {
+    "spriteId": "curved/curve_00010001",
+    "family": "curved",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 7,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 7,
+        "row": 6
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 3,
+        "row": 0
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 3,
+        "row": 0
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 3,
+        "row": 0
+      }
+    }
+  },
+  "curved/curve_00011011": {
+    "spriteId": "curved/curve_00011011",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 8,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 8,
+        "row": 6
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 4,
+        "row": 0
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 4,
+        "row": 0
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 4,
+        "row": 0
+      }
+    }
+  },
+  "curved/curve_00100001": {
+    "spriteId": "curved/curve_00100001",
+    "family": "curved",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 9,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 9,
+        "row": 6
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 5,
+        "row": 0
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 5,
+        "row": 0
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 5,
+        "row": 0
+      }
+    }
+  },
+  "curved/curve_00101001": {
+    "spriteId": "curved/curve_00101001",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 10,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 10,
+        "row": 6
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 6,
+        "row": 0
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 6,
+        "row": 0
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 6,
+        "row": 0
+      }
+    }
+  },
+  "curved/curve_00101010": {
+    "spriteId": "curved/curve_00101010",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 11,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 11,
+        "row": 6
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 7,
+        "row": 0
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 7,
+        "row": 0
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 7,
+        "row": 0
+      }
+    }
+  },
+  "curved/curve_00101101": {
+    "spriteId": "curved/curve_00101101",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 12,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 12,
+        "row": 6
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 0,
+        "row": 1
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 0,
+        "row": 1
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 0,
+        "row": 1
+      }
+    }
+  },
+  "curved/curve_00101110": {
+    "spriteId": "curved/curve_00101110",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 13,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 13,
+        "row": 6
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 1,
+        "row": 1
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 1,
+        "row": 1
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 1,
+        "row": 1
+      }
+    }
+  },
+  "curved/curve_00111011": {
+    "spriteId": "curved/curve_00111011",
+    "family": "curved",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 14,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 14,
+        "row": 6
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 2,
+        "row": 1
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 2,
+        "row": 1
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 2,
+        "row": 1
+      }
+    }
+  },
+  "curved/curve_00111110": {
+    "spriteId": "curved/curve_00111110",
+    "family": "curved",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 15,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 15,
+        "row": 6
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 3,
+        "row": 1
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 3,
+        "row": 1
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 3,
+        "row": 1
+      }
+    }
+  },
+  "curved/curve_01001001": {
+    "spriteId": "curved/curve_01001001",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 16,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 0,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 4,
+        "row": 1
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 4,
+        "row": 1
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 4,
+        "row": 1
+      }
+    }
+  },
+  "curved/curve_01010001": {
+    "spriteId": "curved/curve_01010001",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 17,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 1,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 5,
+        "row": 1
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 5,
+        "row": 1
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 5,
+        "row": 1
+      }
+    }
+  },
+  "curved/curve_01010101": {
+    "spriteId": "curved/curve_01010101",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 18,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 2,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 6,
+        "row": 1
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 6,
+        "row": 1
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 6,
+        "row": 1
+      }
+    }
+  },
+  "curved/curve_01010111": {
+    "spriteId": "curved/curve_01010111",
+    "family": "curved",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 19,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 3,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 7,
+        "row": 1
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 7,
+        "row": 1
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 7,
+        "row": 1
+      }
+    }
+  },
+  "curved/curve_01011011": {
+    "spriteId": "curved/curve_01011011",
+    "family": "curved",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 20,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 4,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 0,
+        "row": 2
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 0,
+        "row": 2
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 0,
+        "row": 2
+      }
+    }
+  },
+  "curved/curve_01011111": {
+    "spriteId": "curved/curve_01011111",
+    "family": "curved",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 21,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 5,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 1,
+        "row": 2
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 1,
+        "row": 2
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 1,
+        "row": 2
+      }
+    }
+  },
+  "curved/curve_01101011": {
+    "spriteId": "curved/curve_01101011",
+    "family": "curved",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 22,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 6,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 2,
+        "row": 2
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 2,
+        "row": 2
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 2,
+        "row": 2
+      }
+    }
+  },
+  "curved/curve_01110111": {
+    "spriteId": "curved/curve_01110111",
+    "family": "curved",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 23,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 7,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 3,
+        "row": 2
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 3,
+        "row": 2
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 3,
+        "row": 2
+      }
+    }
+  },
+  "curved/curve_01111111": {
+    "spriteId": "curved/curve_01111111",
+    "family": "curved",
+    "connectionCount": 7,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 24,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 8,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 4,
+        "row": 2
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 4,
+        "row": 2
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 4,
+        "row": 2
+      }
+    }
+  },
+  "curved/curve_10000001": {
+    "spriteId": "curved/curve_10000001",
+    "family": "curved",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 25,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 9,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 5,
+        "row": 2
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 5,
+        "row": 2
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 5,
+        "row": 2
+      }
+    }
+  },
+  "curved/curve_10000011": {
+    "spriteId": "curved/curve_10000011",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 26,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 10,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 6,
+        "row": 2
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 6,
+        "row": 2
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 6,
+        "row": 2
+      }
+    }
+  },
+  "curved/curve_10000101": {
+    "spriteId": "curved/curve_10000101",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 27,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 11,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 7,
+        "row": 2
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 7,
+        "row": 2
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 7,
+        "row": 2
+      }
+    }
+  },
+  "curved/curve_10001001": {
+    "spriteId": "curved/curve_10001001",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 28,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 12,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 0,
+        "row": 3
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 0,
+        "row": 3
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 0,
+        "row": 3
+      }
+    }
+  },
+  "curved/curve_10010001": {
+    "spriteId": "curved/curve_10010001",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 29,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 13,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 1,
+        "row": 3
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 1,
+        "row": 3
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 1,
+        "row": 3
+      }
+    }
+  },
+  "curved/curve_10010011": {
+    "spriteId": "curved/curve_10010011",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 30,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 14,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 2,
+        "row": 3
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 2,
+        "row": 3
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 2,
+        "row": 3
+      }
+    }
+  },
+  "curved/curve_10010101": {
+    "spriteId": "curved/curve_10010101",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 31,
+        "row": 3
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 15,
+        "row": 7
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 3,
+        "row": 3
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 3,
+        "row": 3
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 3,
+        "row": 3
+      }
+    }
+  },
+  "curved/curve_10010111": {
+    "spriteId": "curved/curve_10010111",
+    "family": "curved",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 0,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 0,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 4,
+        "row": 3
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 4,
+        "row": 3
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 4,
+        "row": 3
+      }
+    }
+  },
+  "curved/curve_10100000": {
+    "spriteId": "curved/curve_10100000",
+    "family": "curved",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 1,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 1,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 5,
+        "row": 3
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 5,
+        "row": 3
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 5,
+        "row": 3
+      }
+    }
+  },
+  "curved/curve_10100001": {
+    "spriteId": "curved/curve_10100001",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 2,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 2,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 6,
+        "row": 3
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 6,
+        "row": 3
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 6,
+        "row": 3
+      }
+    }
+  },
+  "curved/curve_10101010": {
+    "spriteId": "curved/curve_10101010",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 3,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 3,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 7,
+        "row": 3
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 7,
+        "row": 3
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 7,
+        "row": 3
+      }
+    }
+  },
+  "curved/curve_10101111": {
+    "spriteId": "curved/curve_10101111",
+    "family": "curved",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 4,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 4,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 0,
+        "row": 4
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 0,
+        "row": 4
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 0,
+        "row": 4
+      }
+    }
+  },
+  "curved/curve_11000001": {
+    "spriteId": "curved/curve_11000001",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 5,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 5,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 1,
+        "row": 4
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 1,
+        "row": 4
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 1,
+        "row": 4
+      }
+    }
+  },
+  "curved/curve_11001001": {
+    "spriteId": "curved/curve_11001001",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 6,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 6,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 2,
+        "row": 4
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 2,
+        "row": 4
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 2,
+        "row": 4
+      }
+    }
+  },
+  "curved/curve_11001010": {
+    "spriteId": "curved/curve_11001010",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 7,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 7,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 3,
+        "row": 4
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 3,
+        "row": 4
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 3,
+        "row": 4
+      }
+    }
+  },
+  "curved/curve_11001101": {
+    "spriteId": "curved/curve_11001101",
+    "family": "curved",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 8,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 8,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 4,
+        "row": 4
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 4,
+        "row": 4
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 4,
+        "row": 4
+      }
+    }
+  },
+  "curved/curve_11010001": {
+    "spriteId": "curved/curve_11010001",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 9,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 9,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 5,
+        "row": 4
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 5,
+        "row": 4
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 5,
+        "row": 4
+      }
+    }
+  },
+  "curved/curve_11101001": {
+    "spriteId": "curved/curve_11101001",
+    "family": "curved",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 10,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 10,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 6,
+        "row": 4
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 6,
+        "row": 4
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 6,
+        "row": 4
+      }
+    }
+  },
+  "curved/curve_11101110": {
+    "spriteId": "curved/curve_11101110",
+    "family": "curved",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 11,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 11,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 7,
+        "row": 4
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 7,
+        "row": 4
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 7,
+        "row": 4
+      }
+    }
+  },
+  "curved/curve_11110001": {
+    "spriteId": "curved/curve_11110001",
+    "family": "curved",
+    "connectionCount": 5,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 12,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 12,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 0,
+        "row": 5
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 0,
+        "row": 5
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 0,
+        "row": 5
+      }
+    }
+  },
+  "curved/curve_11110110": {
+    "spriteId": "curved/curve_11110110",
+    "family": "curved",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 13,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 13,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 1,
+        "row": 5
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 1,
+        "row": 5
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 1,
+        "row": 5
+      }
+    }
+  },
+  "curved/curve_11111111": {
+    "spriteId": "curved/curve_11111111",
+    "family": "curved",
+    "connectionCount": 8,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 14,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 14,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 2,
+        "row": 5
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 2,
+        "row": 5
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 2,
+        "row": 5
+      }
+    }
+  },
+  "curved/curveA_00010101": {
+    "spriteId": "curved/curveA_00010101",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 15,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 15,
+        "row": 8
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 3,
+        "row": 5
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 3,
+        "row": 5
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 3,
+        "row": 5
+      }
+    }
+  },
+  "curved/curveA_01001001": {
+    "spriteId": "curved/curveA_01001001",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 16,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 0,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 4,
+        "row": 5
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 4,
+        "row": 5
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 4,
+        "row": 5
+      }
+    }
+  },
+  "curved/curveA_01010101": {
+    "spriteId": "curved/curveA_01010101",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 17,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 1,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 5,
+        "row": 5
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 5,
+        "row": 5
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 5,
+        "row": 5
+      }
+    }
+  },
+  "curved/curveA_10000011": {
+    "spriteId": "curved/curveA_10000011",
+    "family": "curved",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 18,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 2,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 6,
+        "row": 5
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 6,
+        "row": 5
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 6,
+        "row": 5
+      }
+    }
+  },
+  "curved/curveA_10010011": {
+    "spriteId": "curved/curveA_10010011",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 19,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 3,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 7,
+        "row": 5
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 7,
+        "row": 5
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 7,
+        "row": 5
+      }
+    }
+  },
+  "curved/curveA_10101010": {
+    "spriteId": "curved/curveA_10101010",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 20,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 4,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 0,
+        "row": 6
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 0,
+        "row": 6
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 0,
+        "row": 6
+      }
+    }
+  },
+  "curved/curveA_10110001": {
+    "spriteId": "curved/curveA_10110001",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 21,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 5,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 1,
+        "row": 6
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 1,
+        "row": 6
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 1,
+        "row": 6
+      }
+    }
+  },
+  "curved/curveB_00010001": {
+    "spriteId": "curved/curveB_00010001",
+    "family": "curved",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 22,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 6,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 2,
+        "row": 6
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 2,
+        "row": 6
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 2,
+        "row": 6
+      }
+    }
+  },
+  "curved/curveB_10101010": {
+    "spriteId": "curved/curveB_10101010",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 23,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 7,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 3,
+        "row": 6
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 3,
+        "row": 6
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 3,
+        "row": 6
+      }
+    }
+  },
+  "curved/curveC_01000001": {
+    "spriteId": "curved/curveC_01000001",
+    "family": "curved",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 24,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 8,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 4,
+        "row": 6
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 4,
+        "row": 6
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 4,
+        "row": 6
+      }
+    }
+  },
+  "curved/curveC_10101010": {
+    "spriteId": "curved/curveC_10101010",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 25,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 9,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 5,
+        "row": 6
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 5,
+        "row": 6
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 5,
+        "row": 6
+      }
+    }
+  },
+  "curved/curveD_01010101": {
+    "spriteId": "curved/curveD_01010101",
+    "family": "curved",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 26,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 10,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 6,
+        "row": 6
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 6,
+        "row": 6
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 6,
+        "row": 6
+      }
+    }
+  },
+  "curved/testconnect_01111110": {
+    "spriteId": "curved/testconnect_01111110",
+    "family": "curved",
+    "connectionCount": 6,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 27,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 11,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 7,
+        "row": 6
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 7,
+        "row": 6
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 7,
+        "row": 6
+      }
+    }
+  },
+  "curved/tile_00000000": {
+    "spriteId": "curved/tile_00000000",
+    "family": "curved",
+    "connectionCount": 0,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 28,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 12,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 0,
+        "row": 7
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 0,
+        "row": 7
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 0,
+        "row": 7
+      }
+    }
+  },
+  "curved/tileA_00000001": {
+    "spriteId": "curved/tileA_00000001",
+    "family": "curved",
+    "connectionCount": 1,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 29,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 13,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 1,
+        "row": 7
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 1,
+        "row": 7
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 1,
+        "row": 7
+      }
+    }
+  },
+  "curved/tileA_10000000": {
+    "spriteId": "curved/tileA_10000000",
+    "family": "curved",
+    "connectionCount": 1,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 30,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 14,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 2,
+        "row": 7
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 2,
+        "row": 7
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 2,
+        "row": 7
+      }
+    }
+  },
+  "curved/tileC_00000001": {
+    "spriteId": "curved/tileC_00000001",
+    "family": "curved",
+    "connectionCount": 1,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 31,
+        "row": 4
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 15,
+        "row": 9
+      },
+      "L2": {
+        "file": "curved_L2.png",
+        "col": 3,
+        "row": 7
+      },
+      "L3": {
+        "file": "curved_L3.png",
+        "col": 3,
+        "row": 7
+      },
+      "L4": {
+        "file": "curved_L4.png",
+        "col": 3,
+        "row": 7
+      }
+    }
+  },
+  "petal/Caution_14_10001000": {
+    "spriteId": "petal/Caution_14_10001000",
+    "family": "petal",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 0,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 0,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 0,
+        "row": 0
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 0,
+        "row": 0
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 0,
+        "row": 0
+      }
+    }
+  },
+  "petal/connectors_13_10000010": {
+    "spriteId": "petal/connectors_13_10000010",
+    "family": "petal",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 1,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 1,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 1,
+        "row": 0
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 1,
+        "row": 0
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 1,
+        "row": 0
+      }
+    }
+  },
+  "petal/curve_10000000": {
+    "spriteId": "petal/curve_10000000",
+    "family": "petal",
+    "connectionCount": 1,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 2,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 2,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 2,
+        "row": 0
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 2,
+        "row": 0
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 2,
+        "row": 0
+      }
+    }
+  },
+  "petal/curveA_00010001": {
+    "spriteId": "petal/curveA_00010001",
+    "family": "petal",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 3,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 3,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 3,
+        "row": 0
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 3,
+        "row": 0
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 3,
+        "row": 0
+      }
+    }
+  },
+  "petal/curveC_00010001": {
+    "spriteId": "petal/curveC_00010001",
+    "family": "petal",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 4,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 4,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 4,
+        "row": 0
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 4,
+        "row": 0
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 4,
+        "row": 0
+      }
+    }
+  },
+  "petal/petal_00000001": {
+    "spriteId": "petal/petal_00000001",
+    "family": "petal",
+    "connectionCount": 1,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 5,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 5,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 5,
+        "row": 0
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 5,
+        "row": 0
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 5,
+        "row": 0
+      }
+    }
+  },
+  "petal/petal_01000001": {
+    "spriteId": "petal/petal_01000001",
+    "family": "petal",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 6,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 6,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 6,
+        "row": 0
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 6,
+        "row": 0
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 6,
+        "row": 0
+      }
+    }
+  },
+  "petal/petal_01001001": {
+    "spriteId": "petal/petal_01001001",
+    "family": "petal",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 7,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 7,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 7,
+        "row": 0
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 7,
+        "row": 0
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 7,
+        "row": 0
+      }
+    }
+  },
+  "petal/petal_10000000": {
+    "spriteId": "petal/petal_10000000",
+    "family": "petal",
+    "connectionCount": 1,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 8,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 8,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 0,
+        "row": 1
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 0,
+        "row": 1
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 0,
+        "row": 1
+      }
+    }
+  },
+  "petal/petal_10001000": {
+    "spriteId": "petal/petal_10001000",
+    "family": "petal",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 9,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 9,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 1,
+        "row": 1
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 1,
+        "row": 1
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 1,
+        "row": 1
+      }
+    }
+  },
+  "petal/petalD_01000001": {
+    "spriteId": "petal/petalD_01000001",
+    "family": "petal",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 10,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 10,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 2,
+        "row": 1
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 2,
+        "row": 1
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 2,
+        "row": 1
+      }
+    }
+  },
+  "petal/petalD_01010001": {
+    "spriteId": "petal/petalD_01010001",
+    "family": "petal",
+    "connectionCount": 3,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 11,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 11,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 3,
+        "row": 1
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 3,
+        "row": 1
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 3,
+        "row": 1
+      }
+    }
+  },
+  "petal/petalD_01010101": {
+    "spriteId": "petal/petalD_01010101",
+    "family": "petal",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 12,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 12,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 4,
+        "row": 1
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 4,
+        "row": 1
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 4,
+        "row": 1
+      }
+    }
+  },
+  "petal/petalE_01010101": {
+    "spriteId": "petal/petalE_01010101",
+    "family": "petal",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 13,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 13,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 5,
+        "row": 1
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 5,
+        "row": 1
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 5,
+        "row": 1
+      }
+    }
+  },
+  "petal/petalF_01010101": {
+    "spriteId": "petal/petalF_01010101",
+    "family": "petal",
+    "connectionCount": 4,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 14,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 14,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 6,
+        "row": 1
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 6,
+        "row": 1
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 6,
+        "row": 1
+      }
+    }
+  },
+  "petal/petalG_00001010": {
+    "spriteId": "petal/petalG_00001010",
+    "family": "petal",
+    "connectionCount": 2,
+    "atlases": {
+      "L0": {
+        "file": "all_L0.png",
+        "col": 15,
+        "row": 5
+      },
+      "L1": {
+        "file": "all_L1.png",
+        "col": 15,
+        "row": 10
+      },
+      "L2": {
+        "file": "petal_L2.png",
+        "col": 7,
+        "row": 1
+      },
+      "L3": {
+        "file": "petal_L3.png",
+        "col": 7,
+        "row": 1
+      },
+      "L4": {
+        "file": "petal_L4.png",
+        "col": 7,
+        "row": 1
+      }
+    }
+  }
+}

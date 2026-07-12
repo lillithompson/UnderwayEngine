@@ -1,0 +1,392 @@
+/**
+ * Boolean Garden — playable spike for the boolean-geometry-puzzles project.
+ *
+ * v0 kernel: every shape is a polygon-clipping MultiPolygon (circles sampled
+ * at 96 points). All three ops run through polygon-clipping. Exact-arc union
+ * via the engine's unionOutline is the planned v1 upgrade; this build exists
+ * to answer feel questions (see projects/boolean-geometry-puzzles/overview.md
+ * in UnderwayNotes).
+ */
+import * as polygonClipping from 'polygon-clipping';
+
+type Pair = [number, number];
+type Ring = Pair[];
+type Poly = Ring[];
+type MultiPoly = Poly[];
+
+const pc = polygonClipping as unknown as {
+  union: (a: MultiPoly, b: MultiPoly) => MultiPoly;
+  intersection: (a: MultiPoly, b: MultiPoly) => MultiPoly;
+  difference: (a: MultiPoly, b: MultiPoly) => MultiPoly;
+  xor: (a: MultiPoly, b: MultiPoly) => MultiPoly;
+};
+
+// ── Geometry helpers ─────────────────────────────────────────────────
+
+function circle(cx: number, cy: number, r: number, n = 96): MultiPoly {
+  const ring: Ring = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    ring.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+  return [[ring]];
+}
+
+function square(cx: number, cy: number, half: number, rotDeg = 0): MultiPoly {
+  const a = (rotDeg * Math.PI) / 180;
+  const c = Math.cos(a), s = Math.sin(a);
+  const pts: Pair[] = [[-half, -half], [half, -half], [half, half], [-half, half]];
+  return [[pts.map(([x, y]): Pair => [cx + x * c - y * s, cy + x * s + y * c])]];
+}
+
+function translate(mp: MultiPoly, dx: number, dy: number): MultiPoly {
+  return mp.map(poly => poly.map(ring => ring.map(([x, y]): Pair => [x + dx, y + dy])));
+}
+
+function ringArea(ring: Ring): number {
+  let sum = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [x1, y1] = ring[i];
+    const [x2, y2] = ring[(i + 1) % ring.length];
+    sum += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(sum) / 2;
+}
+
+/** Upper-bound area: holes count positive too — fine for a ~zero test. */
+function mpArea(mp: MultiPoly): number {
+  let sum = 0;
+  for (const poly of mp) for (const ring of poly) sum += ringArea(ring);
+  return sum;
+}
+
+function centroid(mp: MultiPoly): Pair {
+  let sx = 0, sy = 0, n = 0;
+  for (const poly of mp) for (const [x, y] of poly[0]) { sx += x; sy += y; n++; }
+  return n ? [sx / n, sy / n] : [0, 0];
+}
+
+function pathD(mp: MultiPoly): string {
+  let d = '';
+  for (const poly of mp) {
+    for (const ring of poly) {
+      d += `M ${ring[0][0].toFixed(2)} ${ring[0][1].toFixed(2)} `;
+      for (let i = 1; i < ring.length; i++) d += `L ${ring[i][0].toFixed(2)} ${ring[i][1].toFixed(2)} `;
+      d += 'Z ';
+    }
+  }
+  return d;
+}
+
+function pointInMp(mp: MultiPoly, px: number, py: number): boolean {
+  // Even-odd across every ring, so holes exclude correctly.
+  let inside = false;
+  for (const poly of mp) {
+    for (const ring of poly) {
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i], [xj, yj] = ring[j];
+        if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
+          inside = !inside;
+        }
+      }
+    }
+  }
+  return inside;
+}
+
+// ── Puzzles ──────────────────────────────────────────────────────────
+
+interface Shape { id: number; mp: MultiPoly; }
+interface Puzzle {
+  name: string;
+  hint: string;
+  par: number;
+  shelf: () => MultiPoly[];
+  target: () => MultiPoly;
+}
+
+const CX = 410, CY = 240; // board center (leaving room below for the shelf row)
+
+const PUZZLES: Puzzle[] = [
+  {
+    name: 'No. 1 — Moon',
+    hint: 'Select the big circle, then the small one. Take one away from the other.',
+    par: 1,
+    shelf: () => [circle(CX, CY, 110), circle(CX + 55, CY - 25, 95)],
+    target: () => pc.difference(circle(CX, CY, 110), circle(CX + 55, CY - 25, 95)),
+  },
+  {
+    name: 'No. 2 — Lens',
+    hint: 'The same two circles. This time, keep only what they share.',
+    par: 1,
+    shelf: () => [circle(CX - 55, CY, 100), circle(CX + 55, CY, 100)],
+    target: () => pc.intersection(circle(CX - 55, CY, 100), circle(CX + 55, CY, 100)),
+  },
+  {
+    name: 'No. 3 — Ring',
+    hint: 'A hole is a shape too.',
+    par: 1,
+    shelf: () => [circle(CX, CY, 115), circle(CX, CY, 65)],
+    target: () => pc.difference(circle(CX, CY, 115), circle(CX, CY, 65)),
+  },
+  {
+    name: 'No. 4 — Heart',
+    hint: 'Two circles and a tilted square. Build it in two joins.',
+    par: 2,
+    shelf: () => [
+      circle(CX - 46, CY - 46, 65),
+      circle(CX + 46, CY - 46, 65),
+      square(CX, CY, 65, 45),
+    ],
+    target: () => pc.union(
+      pc.union(circle(CX - 46, CY - 46, 65), circle(CX + 46, CY - 46, 65)),
+      square(CX, CY, 65, 45),
+    ),
+  },
+  {
+    name: 'No. 5 — Flower',
+    hint: 'Four petals, each the lens of a pair. Then gather them.',
+    par: 7,
+    shelf: () => {
+      const shapes: MultiPoly[] = [];
+      const R = 78, D = 44;
+      // Four petal pairs: N, E, S, W. Each pair overlaps along its axis.
+      const axes: Pair[] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+      for (const [ax, ay] of axes) {
+        const px = CX + ax * 72, py = CY + ay * 72;
+        // Pair offset perpendicular to petal axis so the lens points outward.
+        shapes.push(circle(px - ay * D, py - ax * D, R));
+        shapes.push(circle(px + ay * D, py + ax * D, R));
+      }
+      return shapes;
+    },
+    target: () => {
+      const R = 78, D = 44;
+      const axes: Pair[] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+      let acc: MultiPoly | null = null;
+      for (const [ax, ay] of axes) {
+        const px = CX + ax * 72, py = CY + ay * 72;
+        const petal = pc.intersection(
+          circle(px - ay * D, py - ax * D, R),
+          circle(px + ay * D, py + ax * D, R),
+        );
+        acc = acc ? pc.union(acc, petal) : petal;
+      }
+      return acc!;
+    },
+  },
+];
+
+// ── State ────────────────────────────────────────────────────────────
+
+const svg = document.getElementById('board') as unknown as SVGSVGElement;
+const statusEl = document.getElementById('status')!;
+const nameEl = document.getElementById('puzzleName')!;
+const parEl = document.getElementById('par')!;
+const galleryEl = document.getElementById('gallery')!;
+const btnUnion = document.getElementById('opUnion') as HTMLButtonElement;
+const btnSubtract = document.getElementById('opSubtract') as HTMLButtonElement;
+const btnIntersect = document.getElementById('opIntersect') as HTMLButtonElement;
+const btnUndo = document.getElementById('undo') as HTMLButtonElement;
+const btnNext = document.getElementById('next') as HTMLButtonElement;
+
+const FILLS = ['rgba(79,167,154,0.50)', 'rgba(224,112,90,0.50)', 'rgba(217,180,91,0.45)',
+               'rgba(130,150,220,0.45)', 'rgba(170,120,190,0.45)'];
+
+let puzzleIdx = 0;
+let shapes: Shape[] = [];
+let target: MultiPoly = [];
+let targetArea = 1;
+let selected: number[] = []; // shape ids, in click order
+let opsUsed = 0;
+let solved = false;
+let nextId = 1;
+let undoStack: { shapes: Shape[]; opsUsed: number }[] = [];
+
+function loadPuzzle(i: number): void {
+  const p = PUZZLES[i];
+  shapes = p.shelf().map(mp => ({ id: nextId++, mp }));
+  target = p.target();
+  targetArea = mpArea(target);
+  selected = [];
+  opsUsed = 0;
+  solved = false;
+  undoStack = [];
+  nameEl.textContent = p.name;
+  parEl.textContent = `par ${p.par}`;
+  statusEl.textContent = p.hint;
+  statusEl.classList.remove('solved');
+  btnNext.style.display = 'none';
+  render();
+}
+
+// ── Rendering ────────────────────────────────────────────────────────
+
+const NS = 'http://www.w3.org/2000/svg';
+
+function render(): void {
+  svg.innerHTML = '';
+
+  // Target ghost
+  const ghost = document.createElementNS(NS, 'path');
+  ghost.setAttribute('d', pathD(target));
+  ghost.setAttribute('fill', 'none');
+  ghost.setAttribute('stroke', 'rgba(232,226,212,0.30)');
+  ghost.setAttribute('stroke-dasharray', '5 5');
+  ghost.setAttribute('stroke-width', '1.5');
+  ghost.setAttribute('fill-rule', 'evenodd');
+  svg.appendChild(ghost);
+
+  for (const s of shapes) {
+    const sel = selected.indexOf(s.id);
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', pathD(s.mp));
+    path.setAttribute('fill', solved && shapes.length === 1
+      ? 'rgba(217,180,91,0.65)'
+      : FILLS[s.id % FILLS.length]);
+    path.setAttribute('fill-rule', 'evenodd');
+    path.setAttribute('stroke', sel >= 0 ? '#d9b45b' : 'rgba(232,226,212,0.35)');
+    path.setAttribute('stroke-width', sel >= 0 ? '2.5' : '1');
+    path.setAttribute('data-id', String(s.id));
+    path.style.cursor = 'pointer';
+    svg.appendChild(path);
+
+    if (sel >= 0) {
+      const [cx, cy] = centroid(s.mp);
+      const badge = document.createElementNS(NS, 'circle');
+      badge.setAttribute('cx', String(cx)); badge.setAttribute('cy', String(cy));
+      badge.setAttribute('r', '11');
+      badge.setAttribute('fill', '#d9b45b');
+      svg.appendChild(badge);
+      const num = document.createElementNS(NS, 'text');
+      num.setAttribute('x', String(cx)); num.setAttribute('y', String(cy + 4.5));
+      num.setAttribute('text-anchor', 'middle');
+      num.setAttribute('font-size', '13');
+      num.setAttribute('fill', '#1c2422');
+      num.textContent = String(sel + 1);
+      svg.appendChild(num);
+    }
+  }
+  updateButtons();
+}
+
+function updateButtons(): void {
+  const two = selected.length === 2 && !solved;
+  btnUnion.disabled = !two;
+  btnSubtract.disabled = !two;
+  btnIntersect.disabled = !two;
+  btnUndo.disabled = undoStack.length === 0 || solved;
+}
+
+// ── Interaction ──────────────────────────────────────────────────────
+
+let drag: { id: number; lastX: number; lastY: number; moved: boolean } | null = null;
+
+function svgPoint(ev: PointerEvent): Pair {
+  const pt = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(svg.getScreenCTM()!.inverse());
+  return [pt.x, pt.y];
+}
+
+function shapeAt(x: number, y: number): Shape | null {
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    if (pointInMp(shapes[i].mp, x, y)) return shapes[i];
+  }
+  return null;
+}
+
+svg.addEventListener('pointerdown', (ev) => {
+  if (solved) return;
+  const [x, y] = svgPoint(ev);
+  const hit = shapeAt(x, y);
+  if (!hit) return;
+  drag = { id: hit.id, lastX: x, lastY: y, moved: false };
+  svg.setPointerCapture(ev.pointerId);
+});
+
+svg.addEventListener('pointermove', (ev) => {
+  if (!drag) return;
+  const [x, y] = svgPoint(ev);
+  const dx = x - drag.lastX, dy = y - drag.lastY;
+  if (!drag.moved && Math.hypot(dx, dy) < 3) return; // click vs drag threshold
+  drag.moved = true;
+  const s = shapes.find(sh => sh.id === drag!.id);
+  if (s) { s.mp = translate(s.mp, dx, dy); drag.lastX = x; drag.lastY = y; render(); }
+});
+
+svg.addEventListener('pointerup', () => {
+  if (!drag) return;
+  if (!drag.moved) {
+    // Click: toggle selection (max two, ordered)
+    const id = drag.id;
+    const at = selected.indexOf(id);
+    if (at >= 0) selected.splice(at, 1);
+    else { selected.push(id); if (selected.length > 2) selected.shift(); }
+    render();
+  } else {
+    checkSolved(); // a drag can complete a puzzle (drop into place)
+  }
+  drag = null;
+});
+
+function applyOp(op: 'union' | 'intersection' | 'difference'): void {
+  if (selected.length !== 2 || solved) return;
+  const a = shapes.find(s => s.id === selected[0])!;
+  const b = shapes.find(s => s.id === selected[1])!;
+  const result = pc[op](a.mp, b.mp);
+  if (mpArea(result) < 1) {
+    statusEl.textContent = 'That leaves nothing — try the other order, or a different pair.';
+    return;
+  }
+  undoStack.push({ shapes: shapes.map(s => ({ ...s })), opsUsed });
+  shapes = shapes.filter(s => s.id !== a.id && s.id !== b.id);
+  shapes.push({ id: nextId++, mp: result });
+  selected = [];
+  opsUsed++;
+  statusEl.textContent = '';
+  render();
+  checkSolved();
+}
+
+function checkSolved(): void {
+  if (solved) return;
+  for (const s of shapes) {
+    const mismatch = mpArea(pc.xor(s.mp, target));
+    if (mismatch / targetArea < 0.02) {
+      solved = true;
+      statusEl.textContent = `Solved in ${opsUsed} — ${opsUsed <= PUZZLES[puzzleIdx].par ? 'par. ' : ''}It's yours now.`;
+      statusEl.classList.add('solved');
+      btnNext.style.display = puzzleIdx < PUZZLES.length - 1 ? '' : 'none';
+      if (puzzleIdx === PUZZLES.length - 1) statusEl.textContent += ' The garden is full.';
+      addToGallery(s.mp);
+      render();
+      return;
+    }
+  }
+}
+
+function addToGallery(mp: MultiPoly): void {
+  const mini = document.createElementNS(NS, 'svg');
+  mini.setAttribute('viewBox', '0 0 820 520');
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', pathD(mp));
+  p.setAttribute('fill', 'rgba(217,180,91,0.8)');
+  p.setAttribute('fill-rule', 'evenodd');
+  mini.appendChild(p);
+  galleryEl.appendChild(mini);
+}
+
+btnUnion.addEventListener('click', () => applyOp('union'));
+btnSubtract.addEventListener('click', () => applyOp('difference'));
+btnIntersect.addEventListener('click', () => applyOp('intersection'));
+btnUndo.addEventListener('click', () => {
+  const prev = undoStack.pop();
+  if (!prev) return;
+  shapes = prev.shapes;
+  opsUsed = prev.opsUsed;
+  selected = [];
+  statusEl.textContent = '';
+  render();
+});
+btnNext.addEventListener('click', () => { puzzleIdx++; loadPuzzle(puzzleIdx); });
+
+loadPuzzle(0);

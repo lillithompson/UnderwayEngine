@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["jest", "node", "react"],
+    "baseUrl": ".",
+    "paths": {
+      "@/engine/*": ["packages/engine/src/*"],
+      "@/native-shell/*": ["packages/shell/src/*"],
+      "expo-constants": ["shims/expo-constants"],
+      "expo-asset": ["shims/expo-asset"],
+      "expo-gl": ["shims/expo-gl"],
+      "react-native": ["shims/react-native"]
+    }
+  },
+  "exclude": [
+    "node_modules",
+    "packages/shell/src/app",
+    "packages/shell/src/components",
+    "packages/shell/src/server",
+    "packages/shell/modules"
+  ]
+}

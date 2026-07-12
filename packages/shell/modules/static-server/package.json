@@ -1,0 +1,8 @@
+{
+  "name": "static-server",
+  "version": "1.0.0",
+  "description": "Local HTTP server for serving bundled web assets via GCDWebServer",
+  "main": "src/StaticServerModule.ts",
+  "license": "MIT",
+  "private": true
+}

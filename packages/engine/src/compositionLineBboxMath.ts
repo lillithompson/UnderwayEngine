@@ -1,0 +1,195 @@
+import { PathSegment } from './types';
+
+export type LineDirection = 'horizontal' | 'vertical' | 'diagonal';
+
+/**
+ * Detect whether a drag produces a horizontal, vertical, or diagonal line.
+ * Uses 15-degree threshold zones: angles within 15 degrees of the
+ * horizontal axis are H, within 15 of vertical are V, and the wide
+ * 60-degree band in between is diagonal. The wider diagonal zone
+ * makes it easier to draw diagonals without frequent flipping.
+ */
+export function detectLineDirection(dx: number, dy: number): LineDirection {
+  if (dx === 0 && dy === 0) return 'horizontal';
+  const angle = Math.abs(Math.atan2(dy, dx)); // 0..PI
+  // Normalize to 0..PI/2 (first quadrant) since H/V/diag are symmetric
+  const a = angle > Math.PI / 2 ? Math.PI - angle : angle;
+  // 15 degrees in radians
+  const threshold = Math.PI / 12;
+  if (a < threshold) return 'horizontal';
+  if (a > Math.PI / 2 - threshold) return 'vertical';
+  return 'diagonal';
+}
+
+/**
+ * Constrain the drag endpoint to produce the correct bounding box shape,
+ * snapped to the grid step.
+ *
+ * - Horizontal: width snaps freely, height forced to one gridStep
+ * - Vertical: height snaps freely, width forced to one gridStep
+ * - Diagonal: constrained to a square (like arc creation)
+ *
+ * Direction is determined from the snapped grid cell counts, not
+ * angles. This avoids flicker at zone boundaries during the drag.
+ * A box wider than 2:1 is horizontal, taller than 1:2 is vertical,
+ * and anything in between is diagonal (constrained to square).
+ *
+ * In the H/V branches the perpendicular thickness is fixed at +gridStep
+ * (right of start for vertical, below start for horizontal). Letting it
+ * follow the live cursor sign would flip the bbox one cell on a hair of
+ * jitter, taking the start cell out of the bbox; this keeps the start
+ * cell as a corner of the bbox at all times.
+ */
+export function constrainLineBbox(
+  sx: number, sy: number,
+  rawEndX: number, rawEndY: number,
+  gridStep: number,
+): [number, number] {
+  const dx = rawEndX - sx;
+  const dy = rawEndY - sy;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+
+  // Snap both axes to the grid to determine cell counts.
+  const cellsW = Math.round(absDx / gridStep);
+  const cellsH = Math.round(absDy / gridStep);
+
+  if (cellsW === 0 && cellsH === 0) return [sx, sy];
+
+  // Ratio-based direction: > 2:1 → horizontal, < 1:2 → vertical, else diagonal.
+  if (cellsW > cellsH * 2) {
+    // Horizontal
+    const snappedW = Math.round(dx / gridStep) * gridStep;
+    if (snappedW === 0) return [sx, sy];
+    return [sx + snappedW, sy + gridStep];
+  }
+  if (cellsH > cellsW * 2) {
+    // Vertical
+    const snappedH = Math.round(dy / gridStep) * gridStep;
+    if (snappedH === 0) return [sx, sy];
+    return [sx + gridStep, sy + snappedH];
+  }
+  // Diagonal: constrain to square
+  const side = Math.max(1, Math.min(cellsW, cellsH)) * gridStep;
+  return [sx + side * Math.sign(dx || 1), sy + side * Math.sign(dy || 1)];
+}
+
+/**
+ * Determine direction from constrained box dimensions.
+ * Used after constrainLineBbox has shaped the box — the aspect ratio
+ * is the sole authority on direction at this point.
+ */
+export function directionFromBox(
+  sx: number, sy: number, ex: number, ey: number,
+): LineDirection {
+  const w = Math.abs(ex - sx);
+  const h = Math.abs(ey - sy);
+  if (w > h) return 'horizontal';
+  if (h > w) return 'vertical';
+  return 'diagonal';
+}
+
+/**
+ * Compute the two line vertices from the constrained bounding box corners.
+ *
+ * - Horizontal: vertices at the vertical midpoint, spanning full width
+ * - Vertical: vertices at the horizontal midpoint, spanning full height
+ * - Diagonal: vertices at opposite corners (preserving drag direction)
+ */
+export function computeLineVertices(
+  sx: number, sy: number,
+  ex: number, ey: number,
+  direction: LineDirection,
+): [[number, number], [number, number]] {
+  if (direction === 'horizontal') {
+    const midY = (sy + ey) / 2;
+    return [[Math.min(sx, ex), midY], [Math.max(sx, ex), midY]];
+  }
+  if (direction === 'vertical') {
+    const midX = (sx + ex) / 2;
+    return [[midX, Math.min(sy, ey)], [midX, Math.max(sy, ey)]];
+  }
+  // Diagonal: corner to corner, preserving drag direction
+  return [[sx, sy], [ex, ey]];
+}
+
+/**
+ * Recenter a constrained H/V box on the anchor grid line so the drawn line
+ * lands exactly on the grid instead of half a step off.
+ *
+ * `constrainLineBbox` produces a box whose perpendicular extent is one grid
+ * step with the start point on the anchor edge; `computeLineVertices` then
+ * places the line at the box's perpendicular midpoint, which sits half a step
+ * off the grid. Shifting both corners by half the perpendicular thickness
+ * moves that midpoint back onto the start grid line. The box then straddles
+ * the grid (half a cell either side), and the line stays centered in it — so
+ * every downstream box-based op (scale/rotate/snap) remains consistent.
+ *
+ * The perpendicular thickness equals one gridStep, so the shift is derived
+ * from the box dimensions — no gridStep argument needed. Diagonal boxes are
+ * already corner-to-corner on the grid and pass through unchanged.
+ */
+export function recenterLineBoxOnGrid(
+  sx: number, sy: number,
+  ex: number, ey: number,
+  direction: LineDirection,
+): [number, number, number, number] {
+  if (direction === 'horizontal') {
+    const half = Math.abs(ey - sy) / 2;
+    return [sx, sy - half, ex, ey - half];
+  }
+  if (direction === 'vertical') {
+    const half = Math.abs(ex - sx) / 2;
+    return [sx - half, sy, ex - half, ey];
+  }
+  return [sx, sy, ex, ey];
+}
+
+/**
+ * Compute the AABB creation box from two corner points.
+ */
+export function computeCreationBox(
+  sx: number, sy: number,
+  ex: number, ey: number,
+): { minX: number; minY: number; width: number; height: number } {
+  const minX = Math.min(sx, ex);
+  const minY = Math.min(sy, ey);
+  return {
+    minX,
+    minY,
+    width: Math.abs(ex - sx),
+    height: Math.abs(ey - sy),
+  };
+}
+
+/**
+ * Constrain a drag endpoint for the rectangle tool. Both axes snap
+ * independently to the grid — no H/V/diagonal forcing.
+ */
+export function constrainRectBbox(
+  sx: number, sy: number,
+  rawEndX: number, rawEndY: number,
+  gridStep: number,
+): [number, number] {
+  const snappedX = sx + Math.round((rawEndX - sx) / gridStep) * gridStep;
+  const snappedY = sy + Math.round((rawEndY - sy) / gridStep) * gridStep;
+  if (snappedX === sx && snappedY === sy) return [sx, sy];
+  return [snappedX, snappedY];
+}
+
+/**
+ * Produce 4 line segments forming a closed rectangle from two opposite
+ * corners. Winding order: top → right → bottom → left (clockwise in
+ * screen-y-down coords).
+ */
+export function computeRectSegments(
+  sx: number, sy: number,
+  ex: number, ey: number,
+): PathSegment[] {
+  return [
+    { kind: 'line', start: [sx, sy], end: [ex, sy] },
+    { kind: 'line', start: [ex, sy], end: [ex, ey] },
+    { kind: 'line', start: [ex, ey], end: [sx, ey] },
+    { kind: 'line', start: [sx, ey], end: [sx, sy] },
+  ];
+}
