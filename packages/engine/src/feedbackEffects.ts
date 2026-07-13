@@ -14,7 +14,9 @@ import storage from '@/engine/storage';
 const DEFAULT_SOUND_VOLUME = 0.01;
 const VOLUME_STORAGE_KEY = 'fxVolume';
 
-export type EffectName = 'toolPress' | 'toolLongPress' | 'levelChange' | 'destructive' | 'selection';
+export type EffectName =
+  | 'toolPress' | 'toolLongPress' | 'levelChange' | 'destructive' | 'selection'
+  | 'opApply' | 'solve' | 'gardenComplete';
 
 type HapticStyle = 'light' | 'medium' | 'heavy' | 'selection';
 type SoundId = 'click' | 'longPress' | 'swipe';
@@ -30,6 +32,11 @@ const EFFECTS: Record<EffectName, EffectConfig> = {
   levelChange:   { haptic: 'selection', sound: 'swipe'     },
   destructive:   { haptic: 'heavy',     sound: 'click'     },
   selection:     { haptic: 'selection', sound: null        },
+  // Game moments (Boolean Garden). In-canvas chimes live in the web client's
+  // audio layer; these rows carry the bridged haptic + a fallback sound.
+  opApply:        { haptic: 'light',  sound: 'click'     },
+  solve:          { haptic: 'medium', sound: 'swipe'     },
+  gardenComplete: { haptic: 'heavy',  sound: 'longPress' },
 };
 
 // Module-mutable volume. `playEffect` reads this on each call, so changing it

@@ -8,6 +8,8 @@
  * in UnderwayNotes).
  */
 import * as polygonClipping from 'polygon-clipping';
+import { tween, cubicOut, backOut, mix, TweenOpts } from '../../packages/engine/src/motion';
+import { feel, primeAudio } from './feel';
 
 type Pair = [number, number];
 type Ring = Pair[];
@@ -222,11 +224,29 @@ function loadPuzzle(i: number): void {
   btnNext.style.display = 'none';
   btnNext.textContent = 'Next puzzle →';
   render();
+  enterShapes();
 }
 
 // ── Rendering ────────────────────────────────────────────────────────
 
 const NS = 'http://www.w3.org/2000/svg';
+
+const REDUCED = typeof matchMedia === 'function'
+  && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** Tween that collapses to its end state under prefers-reduced-motion. */
+function animate(opts: TweenOpts): void {
+  if (REDUCED) { opts.onUpdate(1); opts.onComplete?.(); return; }
+  tween(opts);
+}
+
+/** Transient effect layer on top of the board; render() wipes it with the rest. */
+function fxLayer(): SVGGElement {
+  const g = document.createElementNS(NS, 'g');
+  g.setAttribute('pointer-events', 'none');
+  svg.appendChild(g);
+  return g;
+}
 
 function render(): void {
   svg.innerHTML = '';
@@ -284,6 +304,105 @@ function updateButtons(): void {
   btnRestart.disabled = undoStack.length === 0 && !solved;
 }
 
+// ── Effects (all skipped under prefers-reduced-motion) ───────────────
+
+/** Stagger the shelf in when a puzzle loads. */
+function enterShapes(): void {
+  if (REDUCED) return;
+  const paths = Array.from(svg.querySelectorAll<SVGPathElement>('path[data-id]'));
+  paths.forEach((p, i) => {
+    p.setAttribute('opacity', '0');
+    animate({
+      duration: 240, delay: i * 60, ease: cubicOut,
+      onUpdate: t => p.setAttribute('opacity', String(t)),
+    });
+  });
+}
+
+/** The op moment: operands linger as fading ghosts, the result settles in with a glint. */
+function opMoment(ghosts: { d: string; fill: string }[], created: Shape): void {
+  if (REDUCED) return;
+  const ghostLayer = fxLayer();
+  for (const ghost of ghosts) {
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', ghost.d);
+    p.setAttribute('fill', ghost.fill);
+    p.setAttribute('fill-rule', 'evenodd');
+    ghostLayer.appendChild(p);
+  }
+  animate({
+    duration: 220, ease: cubicOut,
+    onUpdate: t => ghostLayer.setAttribute('opacity', String(0.5 * (1 - t))),
+  });
+
+  const glintLayer = fxLayer();
+  const glint = document.createElementNS(NS, 'path');
+  glint.setAttribute('d', pathD(created.mp));
+  glint.setAttribute('fill', 'none');
+  glint.setAttribute('stroke', '#d9b45b');
+  glintLayer.appendChild(glint);
+  animate({
+    duration: 450, ease: cubicOut,
+    onUpdate: t => {
+      glint.setAttribute('opacity', String(0.9 * (1 - t)));
+      glint.setAttribute('stroke-width', String(mix(3, 1, t)));
+    },
+    onComplete: () => { ghostLayer.remove(); glintLayer.remove(); },
+  });
+
+  const live = svg.querySelector<SVGPathElement>(`path[data-id="${created.id}"]`);
+  if (live) {
+    const [cx, cy] = centroid(created.mp);
+    animate({
+      duration: 320, ease: backOut,
+      onUpdate: t => {
+        const s = mix(0.96, 1, t);
+        live.setAttribute('transform',
+          `translate(${cx} ${cy}) scale(${s}) translate(${-cx} ${-cy})`);
+      },
+      onComplete: () => live.removeAttribute('transform'),
+    });
+  }
+}
+
+/** Solve celebration: gold-and-teal sparks fly off the finished outline. */
+function celebrate(mp: MultiPoly, grand: boolean): void {
+  if (REDUCED) return;
+  const g = fxLayer();
+  const [cx, cy] = centroid(mp);
+  const pts: Pair[] = [];
+  for (const poly of mp) {
+    for (const ring of poly) {
+      const step = Math.max(1, Math.floor(ring.length / (grand ? 18 : 10)));
+      for (let i = 0; i < ring.length; i += step) pts.push(ring[i]);
+    }
+  }
+  const colors = ['#d9b45b', '#4fa79a', '#e8e2d4'];
+  const parts = pts.map(([x, y]) => {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('r', String(1.5 + Math.random() * 2));
+    c.setAttribute('fill', colors[Math.floor(Math.random() * colors.length)]);
+    g.appendChild(c);
+    const ang = Math.atan2(y - cy, x - cx) + (Math.random() - 0.5) * 0.6;
+    const speed = 60 + Math.random() * (grand ? 160 : 110);
+    return { x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed - 40 };
+  });
+  const life = grand ? 1100 : 850;
+  animate({
+    duration: life,
+    onUpdate: t => {
+      const s = (t * life) / 1000; // seconds of simulated flight
+      g.setAttribute('opacity', String(1 - t));
+      parts.forEach((p, i) => {
+        const el = g.childNodes[i] as SVGCircleElement;
+        el.setAttribute('cx', String(p.x + p.vx * s));
+        el.setAttribute('cy', String(p.y + p.vy * s + 90 * s * s));
+      });
+    },
+    onComplete: () => g.remove(),
+  });
+}
+
 // ── Interaction ──────────────────────────────────────────────────────
 
 let drag: { id: number; lastX: number; lastY: number; moved: boolean } | null = null;
@@ -327,7 +446,7 @@ svg.addEventListener('pointerup', () => {
     const id = drag.id;
     const at = selected.indexOf(id);
     if (at >= 0) selected.splice(at, 1);
-    else { selected.push(id); if (selected.length > 2) selected.shift(); }
+    else { selected.push(id); if (selected.length > 2) selected.shift(); feel('select'); }
     if (!solved) {
       statusEl.textContent = selected.length === 1
         ? 'One selected — pick a second shape, then choose an operation.'
@@ -359,12 +478,16 @@ function applyOp(op: 'union' | 'intersection' | 'difference' | 'xor'): void {
     return;
   }
   undoStack.push({ shapes: shapes.map(s => ({ ...s })), opsUsed });
+  const ghosts = [a, b].map(s => ({ d: pathD(s.mp), fill: FILLS[s.id % FILLS.length] }));
+  const created: Shape = { id: nextId++, mp: result };
   shapes = shapes.filter(s => s.id !== a.id && s.id !== b.id);
-  shapes.push({ id: nextId++, mp: result });
+  shapes.push(created);
   selected = [];
   opsUsed++;
   statusEl.textContent = '';
   render();
+  opMoment(ghosts, created);
+  feel(op);
   checkSolved();
 }
 
@@ -374,15 +497,18 @@ function checkSolved(): void {
     const mismatch = mpArea(pc.xor(s.mp, target));
     if (mismatch / targetArea < 0.02) {
       solved = true;
+      const grand = puzzleIdx === PUZZLES.length - 1;
       statusEl.textContent = `Solved in ${opsUsed} — ${opsUsed <= PUZZLES[puzzleIdx].par ? 'par. ' : ''}It's yours now.`;
       statusEl.classList.add('solved');
       btnNext.style.display = '';
-      if (puzzleIdx === PUZZLES.length - 1) {
+      if (grand) {
         statusEl.textContent += ' The garden is full.';
         btnNext.textContent = 'Play again ↺';
       }
       addToGallery(s.mp);
       render();
+      celebrate(s.mp, grand);
+      feel(grand ? 'gardenComplete' : 'solve');
       return;
     }
   }
@@ -413,6 +539,7 @@ btnUndo.addEventListener('click', () => {
   opsUsed = prev.opsUsed;
   selected = [];
   statusEl.textContent = '';
+  feel('undo');
   render();
 });
 btnRestart.addEventListener('click', () => loadPuzzle(puzzleIdx));
@@ -421,5 +548,8 @@ btnNext.addEventListener('click', () => {
   else puzzleIdx++;
   loadPuzzle(puzzleIdx);
 });
+
+// WebAudio needs a user gesture; prime on any pointerdown (idempotent).
+document.addEventListener('pointerdown', primeAudio);
 
 loadPuzzle(0);
