@@ -2,7 +2,7 @@
  * Boolean Garden — playable spike for the boolean-geometry-puzzles project.
  *
  * v0 kernel: every shape is a polygon-clipping MultiPolygon (circles sampled
- * at 96 points). All three ops run through polygon-clipping. Exact-arc union
+ * at 96 points). All four ops run through polygon-clipping. Exact-arc union
  * via the engine's unionOutline is the planned v1 upgrade; this build exists
  * to answer feel questions (see projects/boolean-geometry-puzzles/overview.md
  * in UnderwayNotes).
@@ -187,6 +187,7 @@ const galleryEl = document.getElementById('gallery')!;
 const btnUnion = document.getElementById('opUnion') as HTMLButtonElement;
 const btnSubtract = document.getElementById('opSubtract') as HTMLButtonElement;
 const btnIntersect = document.getElementById('opIntersect') as HTMLButtonElement;
+const btnExclude = document.getElementById('opExclude') as HTMLButtonElement;
 const btnUndo = document.getElementById('undo') as HTMLButtonElement;
 const btnRestart = document.getElementById('restart') as HTMLButtonElement;
 const btnNext = document.getElementById('next') as HTMLButtonElement;
@@ -276,7 +277,7 @@ function render(): void {
 function updateButtons(): void {
   const two = selected.length === 2 && !solved;
   // aria-disabled instead of disabled so a click can explain itself
-  for (const b of [btnUnion, btnSubtract, btnIntersect]) {
+  for (const b of [btnUnion, btnSubtract, btnIntersect, btnExclude]) {
     b.classList.toggle('inactive', !two);
   }
   btnUndo.disabled = undoStack.length === 0 || solved;
@@ -330,7 +331,7 @@ svg.addEventListener('pointerup', () => {
     if (!solved) {
       statusEl.textContent = selected.length === 1
         ? 'One selected — pick a second shape, then choose an operation.'
-        : selected.length === 2 ? 'Now choose: union, subtract, or intersect.' : '';
+        : selected.length === 2 ? 'Now choose: union, subtract, intersect, or exclude.' : '';
     }
     render();
   } else {
@@ -339,7 +340,7 @@ svg.addEventListener('pointerup', () => {
   drag = null;
 });
 
-function applyOp(op: 'union' | 'intersection' | 'difference'): void {
+function applyOp(op: 'union' | 'intersection' | 'difference' | 'xor'): void {
   if (solved) {
     statusEl.textContent = 'This one is finished — Next puzzle, or Restart to replay it.';
     return;
@@ -404,6 +405,7 @@ function addToGallery(mp: MultiPoly): void {
 btnUnion.addEventListener('click', () => applyOp('union'));
 btnSubtract.addEventListener('click', () => applyOp('difference'));
 btnIntersect.addEventListener('click', () => applyOp('intersection'));
+btnExclude.addEventListener('click', () => applyOp('xor'));
 btnUndo.addEventListener('click', () => {
   const prev = undoStack.pop();
   if (!prev) return;
