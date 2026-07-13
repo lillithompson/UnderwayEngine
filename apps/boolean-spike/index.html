@@ -30,6 +30,7 @@
   }
   button:not(:disabled):hover { background: #35443f; }
   button:disabled { opacity: 0.35; cursor: default; }
+  button.inactive { opacity: 0.35; } /* dimmed but clickable — explains itself */
   button.primary { border-color: var(--gold); }
   #status { margin-top: 10px; font-size: 15px; color: var(--muted); min-height: 22px;
             font-style: italic; text-align: center; }
@@ -52,6 +53,7 @@
     <button id="opIntersect" title="Keep only the overlap">Intersect ∩</button>
     <span style="width:18px"></span>
     <button id="undo">Undo</button>
+    <button id="restart">Restart</button>
     <button id="next" class="primary" style="display:none">Next puzzle →</button>
   </div>
   <div id="status"></div>

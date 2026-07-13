@@ -188,6 +188,7 @@ const btnUnion = document.getElementById('opUnion') as HTMLButtonElement;
 const btnSubtract = document.getElementById('opSubtract') as HTMLButtonElement;
 const btnIntersect = document.getElementById('opIntersect') as HTMLButtonElement;
 const btnUndo = document.getElementById('undo') as HTMLButtonElement;
+const btnRestart = document.getElementById('restart') as HTMLButtonElement;
 const btnNext = document.getElementById('next') as HTMLButtonElement;
 
 const FILLS = ['rgba(79,167,154,0.50)', 'rgba(224,112,90,0.50)', 'rgba(217,180,91,0.45)',
@@ -202,6 +203,7 @@ let opsUsed = 0;
 let solved = false;
 let nextId = 1;
 let undoStack: { shapes: Shape[]; opsUsed: number }[] = [];
+const galleryNodes: (SVGElement | null)[] = []; // per-puzzle, so replays replace
 
 function loadPuzzle(i: number): void {
   const p = PUZZLES[i];
@@ -217,6 +219,7 @@ function loadPuzzle(i: number): void {
   statusEl.textContent = p.hint;
   statusEl.classList.remove('solved');
   btnNext.style.display = 'none';
+  btnNext.textContent = 'Next puzzle →';
   render();
 }
 
@@ -272,10 +275,12 @@ function render(): void {
 
 function updateButtons(): void {
   const two = selected.length === 2 && !solved;
-  btnUnion.disabled = !two;
-  btnSubtract.disabled = !two;
-  btnIntersect.disabled = !two;
+  // aria-disabled instead of disabled so a click can explain itself
+  for (const b of [btnUnion, btnSubtract, btnIntersect]) {
+    b.classList.toggle('inactive', !two);
+  }
   btnUndo.disabled = undoStack.length === 0 || solved;
+  btnRestart.disabled = undoStack.length === 0 && !solved;
 }
 
 // ── Interaction ──────────────────────────────────────────────────────
@@ -307,7 +312,8 @@ svg.addEventListener('pointermove', (ev) => {
   if (!drag) return;
   const [x, y] = svgPoint(ev);
   const dx = x - drag.lastX, dy = y - drag.lastY;
-  if (!drag.moved && Math.hypot(dx, dy) < 3) return; // click vs drag threshold
+  // Generous click-vs-drag threshold: trackpad taps often jitter a few px
+  if (!drag.moved && Math.hypot(dx, dy) < 7) return;
   drag.moved = true;
   const s = shapes.find(sh => sh.id === drag!.id);
   if (s) { s.mp = translate(s.mp, dx, dy); drag.lastX = x; drag.lastY = y; render(); }
@@ -321,6 +327,11 @@ svg.addEventListener('pointerup', () => {
     const at = selected.indexOf(id);
     if (at >= 0) selected.splice(at, 1);
     else { selected.push(id); if (selected.length > 2) selected.shift(); }
+    if (!solved) {
+      statusEl.textContent = selected.length === 1
+        ? 'One selected — pick a second shape, then choose an operation.'
+        : selected.length === 2 ? 'Now choose: union, subtract, or intersect.' : '';
+    }
     render();
   } else {
     checkSolved(); // a drag can complete a puzzle (drop into place)
@@ -329,7 +340,16 @@ svg.addEventListener('pointerup', () => {
 });
 
 function applyOp(op: 'union' | 'intersection' | 'difference'): void {
-  if (selected.length !== 2 || solved) return;
+  if (solved) {
+    statusEl.textContent = 'This one is finished — Next puzzle, or Restart to replay it.';
+    return;
+  }
+  if (selected.length !== 2) {
+    statusEl.textContent = selected.length === 0
+      ? 'First click two shapes to choose them.'
+      : 'Pick one more shape — operations combine exactly two.';
+    return;
+  }
   const a = shapes.find(s => s.id === selected[0])!;
   const b = shapes.find(s => s.id === selected[1])!;
   const result = pc[op](a.mp, b.mp);
@@ -355,8 +375,11 @@ function checkSolved(): void {
       solved = true;
       statusEl.textContent = `Solved in ${opsUsed} — ${opsUsed <= PUZZLES[puzzleIdx].par ? 'par. ' : ''}It's yours now.`;
       statusEl.classList.add('solved');
-      btnNext.style.display = puzzleIdx < PUZZLES.length - 1 ? '' : 'none';
-      if (puzzleIdx === PUZZLES.length - 1) statusEl.textContent += ' The garden is full.';
+      btnNext.style.display = '';
+      if (puzzleIdx === PUZZLES.length - 1) {
+        statusEl.textContent += ' The garden is full.';
+        btnNext.textContent = 'Play again ↺';
+      }
       addToGallery(s.mp);
       render();
       return;
@@ -372,7 +395,10 @@ function addToGallery(mp: MultiPoly): void {
   p.setAttribute('fill', 'rgba(217,180,91,0.8)');
   p.setAttribute('fill-rule', 'evenodd');
   mini.appendChild(p);
-  galleryEl.appendChild(mini);
+  const existing = galleryNodes[puzzleIdx];
+  if (existing) galleryEl.replaceChild(mini, existing);
+  else galleryEl.appendChild(mini);
+  galleryNodes[puzzleIdx] = mini;
 }
 
 btnUnion.addEventListener('click', () => applyOp('union'));
@@ -387,6 +413,11 @@ btnUndo.addEventListener('click', () => {
   statusEl.textContent = '';
   render();
 });
-btnNext.addEventListener('click', () => { puzzleIdx++; loadPuzzle(puzzleIdx); });
+btnRestart.addEventListener('click', () => loadPuzzle(puzzleIdx));
+btnNext.addEventListener('click', () => {
+  if (puzzleIdx === PUZZLES.length - 1) puzzleIdx = 0; // play again from the top
+  else puzzleIdx++;
+  loadPuzzle(puzzleIdx);
+});
 
 loadPuzzle(0);
