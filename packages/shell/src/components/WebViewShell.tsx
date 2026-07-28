@@ -158,14 +158,14 @@ export default function WebViewShell() {
               // COLD-START diag — surface the full nativeEvent so we get the
               // underlying NSError code/domain when WKWebView reports a
               // navigation-level failure (e.g. -1004 socket-not-connected).
-              const ne = e.nativeEvent as Record<string, unknown>;
+              const ne = e.nativeEvent as unknown as Record<string, unknown>;
               console.error('[WebViewShell] Error:', JSON.stringify({
                 description: ne.description, code: ne.code, domain: ne.domain,
                 url: ne.url, didFailProvisionalNavigation: ne.didFailProvisionalNavigation,
               }));
             }}
             onHttpError={(e) => {
-              const ne = e.nativeEvent as Record<string, unknown>;
+              const ne = e.nativeEvent as unknown as Record<string, unknown>;
               console.error('[WebViewShell] HTTP Error:', JSON.stringify({
                 statusCode: ne.statusCode, url: ne.url, description: ne.description,
               }));
