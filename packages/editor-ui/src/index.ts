@@ -11,6 +11,7 @@ export * from './logic/outlineBlocks';
 export * from './logic/dragReorder';
 export * from './logic/rename';
 export * from './logic/toolbarBehavior';
+export * from './logic/hsv';
 
 // Components (React Native).
 export { SceneOutlinePanel } from './components/SceneOutlinePanel';
@@ -20,3 +21,4 @@ export { TopBar } from './components/TopBar';
 export { UndoRedoPanel } from './components/UndoRedoPanel';
 export { GridQuickActionPanel } from './components/GridQuickActionPanel';
 export { ObjectPropertiesPanel } from './components/ObjectPropertiesPanel';
+export { ColorPickerModal } from './components/ColorPickerModal';
