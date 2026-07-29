@@ -10,7 +10,13 @@ export * from './theme';
 export * from './logic/outlineBlocks';
 export * from './logic/dragReorder';
 export * from './logic/rename';
+export * from './logic/toolbarBehavior';
 
 // Components (React Native).
 export { SceneOutlinePanel } from './components/SceneOutlinePanel';
 export { RenameModal } from './components/RenameModal';
+export { CapsuleButton } from './components/CapsuleButton';
+export { TopBar } from './components/TopBar';
+export { UndoRedoPanel } from './components/UndoRedoPanel';
+export { GridQuickActionPanel } from './components/GridQuickActionPanel';
+export { ObjectPropertiesPanel } from './components/ObjectPropertiesPanel';
