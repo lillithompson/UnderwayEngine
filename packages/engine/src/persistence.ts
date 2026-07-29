@@ -1,5 +1,5 @@
 import storage from './storage';
-import { Layer, CellState, CellTransform, GridLevel, LAYER_PX, Pattern, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, PathSegment, RGBColor, SVGDesignTemplate, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
+import { Layer, CellState, CellTransform, GridLevel, LAYER_PX, Pattern, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, PathSegment, RGBColor, SVGDesignTemplate, TextObject, Paint, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
 import { createCellGrid, rebuildPixelData } from './cells';
 import { bakeFile } from './bake';
 import { exportToSVG } from './svgExport';
@@ -403,6 +403,11 @@ interface CompMeta {
    *  binary keys (see `imgBlobKey`) so the JSON stays small and a
    *  duplicate node doesn't multiply storage. */
   images?: ImageObject[];
+  /** Text scene nodes (v29+); absent on compositions saved before text
+   *  existed. JSON-safe as-is (no Maps / binary payloads). */
+  texts?: TextObject[];
+  /** Canvas background paint (v29+); absent = renderer default. */
+  background?: Paint;
   /** Unified back→front paint order across every scene-object kind.
    *  Absent on older saves; the loader derives it from the kind arrays in
    *  the legacy fixed paint order. */
@@ -517,9 +522,11 @@ export async function saveCompositionState(state: CompositionState): Promise<voi
     figures: state.figures,
     svgObjects: state.svgObjects,
     images,
+    texts: state.texts,
     groups: state.groups,
     gridLevel: state.gridLevel,
     strokeScale: state.strokeScale,
+    background: state.background,
   });
 
   const meta: CompMeta = {
@@ -528,6 +535,8 @@ export async function saveCompositionState(state: CompositionState): Promise<voi
     groups: normalized.groups,
     svgObjects: normalized.svgObjects.length > 0 ? normalized.svgObjects.map(serializeSVGForMeta) : undefined,
     images: normalized.images && normalized.images.length > 0 ? normalized.images : undefined,
+    texts: normalized.texts && normalized.texts.length > 0 ? normalized.texts : undefined,
+    background: normalized.background,
     sceneOrder: state.sceneOrder.length > 0 ? state.sceneOrder : undefined,
     lastChosenColor: state.lastChosenColor,
     customColors: state.customColors.length > 0 ? state.customColors : undefined,
@@ -634,13 +643,16 @@ export async function loadCompositionState(id: string): Promise<Partial<Composit
   // outside the canonical 32×32 L0 box. Normalize idempotently — content
   // already in canonical position passes through unchanged (scale=1, k=0).
   const groups = parsed.groups ?? [];
+  const texts: TextObject[] = parsed.texts ?? [];
   const r = normalizeComposition({
     figures,
     svgObjects,
     images,
+    texts,
     groups,
     gridLevel: parsed.gridLevel ?? 1,
     strokeScale: normalizeStrokeScale(parsed.strokeScale),
+    background: parsed.background,
   });
 
   return {
@@ -650,9 +662,11 @@ export async function loadCompositionState(id: string): Promise<Partial<Composit
     svgObjects: r.svgObjects,
     images: r.images ?? [],
     imageBlobs,
+    texts: r.texts ?? [],
+    background: r.background,
     sceneOrder: parsed.sceneOrder
-      ? repairSceneOrder({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], sceneOrder: parsed.sceneOrder })
-      : deriveSceneOrderFromKindArrays({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [] }),
+      ? repairSceneOrder({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [], sceneOrder: parsed.sceneOrder })
+      : deriveSceneOrderFromKindArrays({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [] }),
     lastChosenColor: parsed.lastChosenColor ?? { r: 255, g: 255, b: 255 },
     customColors: parsed.customColors ?? [],
     // Camera placeholder when content was rescaled — the editor frames
@@ -1038,6 +1052,8 @@ export async function exportCompositionBundle(compId: string): Promise<Uint8Arra
       // file is self-contained — same model as embedded figure files.
       images: partial.images ?? [],
       imageBlobs: partial.imageBlobs ?? {},
+      texts: partial.texts ?? [],
+      background: partial.background,
       sceneOrder: partial.sceneOrder,
       customColors: partial.customColors ?? [],
     },
@@ -1078,6 +1094,7 @@ export async function importCompositionBundle(data: Uint8Array, fileName?: strin
   const compId = Date.now().toString();
   const svgObjects: SVGObject[] = meta.svgObjects ?? [];
   const images = meta.images ?? [];
+  const texts = meta.texts ?? [];
   const compState: CompositionState = {
     id: compId,
     name: compName,
@@ -1085,6 +1102,8 @@ export async function importCompositionBundle(data: Uint8Array, fileName?: strin
     svgObjects,
     images,
     imageBlobs: meta.imageBlobs ?? {},
+    texts,
+    background: meta.background,
     lineDraft: null,
     arcDraft: null,
     editingLineId: null,
@@ -1098,8 +1117,8 @@ export async function importCompositionBundle(data: Uint8Array, fileName?: strin
     // a buggy version may have a partial sceneOrder — `repairSceneOrder`
     // backfills any missing ids so the loaded scene matches the data.
     sceneOrder: meta.sceneOrder
-      ? repairSceneOrder({ figures: remappedFigures, svgObjects, images, sceneOrder: meta.sceneOrder })
-      : deriveSceneOrderFromKindArrays({ figures: remappedFigures, svgObjects, images }),
+      ? repairSceneOrder({ figures: remappedFigures, svgObjects, images, texts, sceneOrder: meta.sceneOrder })
+      : deriveSceneOrderFromKindArrays({ figures: remappedFigures, svgObjects, images, texts }),
     gridLevel: meta.gridLevel,
     strokeScale: meta.strokeScale,
     gridIntensity: meta.gridIntensity ?? 0.5,

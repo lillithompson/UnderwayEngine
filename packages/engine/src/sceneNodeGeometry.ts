@@ -1,6 +1,6 @@
 /**
  * Geometry adapter layer: provides a uniform interface for transform
- * operations across the 3 scene-object kinds (figure, svg, image).
+ * operations across the scene-object kinds (figure, svg, image, text).
  *
  * Each adapter wraps existing per-type functions so the algorithm
  * (translate, rotate, mirror, rescale, hitTest) lives in one place
@@ -10,7 +10,7 @@
  * never in the per-frame render loop.
  */
 
-import { CompositionFigure, SVGObject, ImageObject, PathSegment, CompItemKind } from './types';
+import { CompositionFigure, SVGObject, ImageObject, TextObject, PathSegment, CompItemKind } from './types';
 import { lineHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
 
@@ -274,18 +274,90 @@ const imageAdapter: GeometryAdapter<ImageObject> = {
   },
 };
 
+// ── Text adapter ────────────────────────────────────────────────────
+//
+// Bbox-only geometry, same transform model as images: `cell*` is the
+// world rect, rotation/mirror are discrete flags, and translate clears
+// the identity stash. Glyph rasters are cached off-node, so none of
+// these operations touch text layout.
+
+const textAdapter: GeometryAdapter<TextObject> = {
+  kind: 'text',
+
+  computeBbox(txt) {
+    return { cellX: txt.cellX, cellY: txt.cellY, cellWidth: txt.cellWidth, cellHeight: txt.cellHeight };
+  },
+
+  translate(txt, dx, dy) {
+    const next: TextObject = {
+      ...txt,
+      cellX: txt.cellX + dx, cellY: txt.cellY + dy,
+      identityCellX: undefined, identityCellY: undefined,
+      identityCellWidth: undefined, identityCellHeight: undefined,
+      rotation: undefined, mirrorH: undefined, mirrorV: undefined,
+    };
+    if (txt.localCellX !== undefined && txt.localCellY !== undefined) {
+      next.localCellX = txt.localCellX + dx;
+      next.localCellY = txt.localCellY + dy;
+    }
+    return next;
+  },
+
+  rotate90CW(txt) {
+    const curRot = txt.rotation ?? 0;
+    const newRot = ((curRot + 90) % 360) as 0 | 90 | 180 | 270;
+    const idX = txt.identityCellX ?? txt.cellX;
+    const idY = txt.identityCellY ?? txt.cellY;
+    const idW = txt.identityCellWidth ?? txt.cellWidth;
+    const idH = txt.identityCellHeight ?? txt.cellHeight;
+    const cx = idX + idW / 2;
+    const cy = idY + idH / 2;
+    const swap = newRot === 90 || newRot === 270;
+    const newW = swap ? idH : idW;
+    const newH = swap ? idW : idH;
+    const atIdentity = newRot === 0;
+    return {
+      ...txt,
+      cellX: cx - newW / 2, cellY: cy - newH / 2,
+      cellWidth: newW, cellHeight: newH,
+      rotation: newRot,
+      identityCellX: atIdentity ? undefined : idX,
+      identityCellY: atIdentity ? undefined : idY,
+      identityCellWidth: atIdentity ? undefined : idW,
+      identityCellHeight: atIdentity ? undefined : idH,
+    };
+  },
+
+  mirror(txt, screenAxis) {
+    return { ...txt, [screenAxis === 'h' ? 'mirrorH' : 'mirrorV']: !(txt[screenAxis === 'h' ? 'mirrorH' : 'mirrorV'] ?? false) };
+  },
+
+  rescale(txt, _old, newBbox) {
+    return { ...txt, ...newBbox };
+  },
+
+  hitTest(txt, cellX, cellY, ignoreLock) {
+    if (txt.hidden) return false;
+    if (txt.locked && !ignoreLock) return false;
+    return cellX >= txt.cellX && cellX < txt.cellX + txt.cellWidth
+      && cellY >= txt.cellY && cellY < txt.cellY + txt.cellHeight;
+  },
+};
+
 // ── Registry + lookup ───────────────────────────────────────────────
 
 export const GEOMETRY_ADAPTERS: Record<CompItemKind, GeometryAdapter<any>> = {
   figure: figureAdapter,
   svg: svgAdapter,
   image: imageAdapter,
+  text: textAdapter,
 };
 
 /** Resolve the geometry adapter for a given node id. */
 export function adapterForId(id: string): GeometryAdapter<any> {
   if (id.startsWith('svg_')) return GEOMETRY_ADAPTERS.svg;
   if (id.startsWith('img_')) return GEOMETRY_ADAPTERS.image;
+  if (id.startsWith('txt_')) return GEOMETRY_ADAPTERS.text;
   return GEOMETRY_ADAPTERS.figure;
 }
 

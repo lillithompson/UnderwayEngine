@@ -4,7 +4,7 @@ export const LAYER_PX = 2048;
 /** Discriminator for scene-object kinds. Lives in types.ts so the undo
  *  op union can reference it without creating an import cycle with
  *  compositionOps.ts (which is where the per-kind adapters live). */
-export type CompItemKind = 'figure' | 'svg' | 'image';
+export type CompItemKind = 'figure' | 'svg' | 'image' | 'text';
 
 /** Grid level determines cell count: L0=32, L1=16, L2=8, L3=4, L4=2, L5=1, L6=0.5 */
 export type GridLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -829,6 +829,16 @@ export interface SVGObject {
   fillColor?: RGBColor;
   /** Fill opacity (0–1). Undefined means fully opaque. */
   fillOpacity?: number;
+  /** Gradient (or explicit solid) fill paint (v29+). When set, takes
+   *  precedence over `fillColor`/`fillOpacity` at render and export time;
+   *  the legacy fields stay populated with a representative solid so v28
+   *  readers and untouched render paths degrade gracefully. Coordinates
+   *  are in the unit bbox space of the shape (0..1). */
+  fillPaint?: Paint;
+  /** Cached-texture effects: drop shadow, glow, border (v29+). Rendered
+   *  as pre-blurred texture passes, never live SVG filters at runtime;
+   *  SVG export emits real `<filter>` defs. */
+  effects?: NodeEffects;
   /** Direction at creation time. Persists through scaling and rotation
    *  so an H/V line never becomes diagonal after creation. Stripped on
    *  join — only original creation-tool lines carry this. */
@@ -967,6 +977,12 @@ export interface ImageObject {
    *  trace-over use; default (undefined) = fully opaque so older saves
    *  and newly imported images render unchanged. */
   opacity?: number;
+  /** Shader-time recolor (v29+): applied at draw time from the original
+   *  bitmap — zero extra memory, no re-encode. Export bakes the tint
+   *  when rasterizing and emits `feColorMatrix` in SVG. */
+  tint?: ImageTint;
+  /** Cached-texture effects (v29+); see `SVGObject.effects`. */
+  effects?: NodeEffects;
   locked?: boolean;
   /** When true, the image is not rendered on the canvas and not
    *  hit-testable. Toggled via the eye icon in the Scene Outline. */
@@ -987,6 +1003,121 @@ export interface ImageObject {
   identityCellY?: number;
   identityCellWidth?: number;
   identityCellHeight?: number;
+}
+
+// ── Paint, effects, tint, text (v29 additions) ──────────────────────
+
+export interface GradientStop {
+  /** Position along the gradient in [0, 1]. */
+  offset: number;
+  color: RGBColor;
+  /** Stop alpha in [0, 1]; undefined = opaque. */
+  alpha?: number;
+}
+
+/**
+ * Fill paint for shapes and the canvas background: solid or a 2–4 stop
+ * gradient. Gradient geometry is expressed in the unit bbox space of the
+ * painted region ((0,0) top-left → (1,1) bottom-right) so paints survive
+ * move/scale without rewrites. Rendered in the fragment shader; exported
+ * as `<linearGradient>/<radialGradient>` defs.
+ */
+export type Paint =
+  | { kind: 'solid'; color: RGBColor; alpha?: number }
+  | { kind: 'linear'; stops: GradientStop[]; x1: number; y1: number; x2: number; y2: number }
+  | { kind: 'radial'; stops: GradientStop[]; cx: number; cy: number; r: number };
+
+export interface ShadowEffect { dx: number; dy: number; blur: number; color: RGBColor; alpha: number }
+export interface GlowEffect { radius: number; color: RGBColor; alpha: number }
+export interface BorderEffect { width: number; color: RGBColor; radius?: number }
+
+/**
+ * Per-node visual effects. Shadows/glows render as a pre-blurred texture
+ * pass cached per node, invalidated only when the node's raster content
+ * changes — never during move/scale (90 fps rule). Borders are stroked
+ * rounded rects drawn in the compositor.
+ */
+export interface NodeEffects {
+  shadow?: ShadowEffect;
+  glow?: GlowEffect;
+  border?: BorderEffect;
+}
+
+export type ImageTintMode = 'tint' | 'duotone' | 'wash';
+
+/** Shader-time image recolor; `amount` in [0, 1] blends toward the tinted
+ *  result. See `applyImageTint` (imageTint.ts) for the per-mode math. */
+export interface ImageTint {
+  color: RGBColor;
+  amount: number;
+  mode: ImageTintMode;
+}
+
+export type TextAlign = 'left' | 'center' | 'right';
+
+export interface TextStroke { width: number; color: RGBColor }
+
+/** Style block for a text node. Split from TextObject so `setTextStyle`
+ *  undo ops can swap the whole block atomically. */
+export interface TextStyle {
+  /** Font id from the app's registered font pack (the engine ships no
+   *  fonts; apps register them, mirroring `registerBuiltInContent`). */
+  fontId: string;
+  /** Font size in L0 cell units (world units), so text scales with the
+   *  composition like every other node. */
+  size: number;
+  bold?: boolean;
+  italic?: boolean;
+  color: RGBColor;
+  /** Extra letter spacing in em units. */
+  letterSpacing?: number;
+  /** Line height as a multiple of size (default 1.2). */
+  lineHeight?: number;
+  align?: TextAlign;
+  /** Optional outline stroke drawn behind the fill. */
+  stroke?: TextStroke;
+}
+
+/**
+ * First-class text scene node (`CompItemKind: 'text'`, id namespace
+ * `txt_…`). Same bbox/transform model as `ImageObject`: `cell*` is the
+ * world bbox, rotation/mirror are discrete, moving or rotating text is a
+ * pure transform — glyph rasters are cached and only invalidated on
+ * content/style change. Editing happens through committed `setText` /
+ * `setTextStyle` ops (a hidden DOM textarea drives input/IME app-side)
+ * so undo entries stay coarse and replayable.
+ */
+export interface TextObject {
+  id: string;
+  name?: string;
+  content: string;
+  style: TextStyle;
+  /** Word-sticker preset (magnetic poetry): padded rounded-rect
+   *  background, slight shadow, content not editable in place. A style
+   *  preset, not a separate node kind. */
+  sticker?: boolean;
+  cellX: number;
+  cellY: number;
+  cellWidth: number;
+  cellHeight: number;
+  rotation?: 0 | 90 | 180 | 270;
+  mirrorH?: boolean;
+  mirrorV?: boolean;
+  locked?: boolean;
+  hidden?: boolean;
+  groupId?: string;
+  preGroupName?: string;
+  /** Pre-group-transform bbox; only set while groupId is set. */
+  localCellX?: number;
+  localCellY?: number;
+  localCellWidth?: number;
+  localCellHeight?: number;
+  /** Bbox at identity; same stabilization pattern as `ImageObject`. */
+  identityCellX?: number;
+  identityCellY?: number;
+  identityCellWidth?: number;
+  identityCellHeight?: number;
+  effects?: NodeEffects;
 }
 
 export type CompToolType = 'place' | 'select' | 'rotate' | 'mirror' | 'create' | 'line' | 'arc' | 'color';
@@ -1020,6 +1151,16 @@ export interface CompositionState {
    * inline in the .tile file so compositions stay self-contained.
    */
   imageBlobs?: Record<string, Uint8Array>;
+  /**
+   * Text scene nodes (v29+). Optional so pre-text fixtures and loaders
+   * treat absent and empty the same, mirroring `images`.
+   */
+  texts?: TextObject[];
+  /**
+   * Canvas background paint (v29+). Undefined = the renderer's default
+   * dark clear color, preserving pre-v29 appearance.
+   */
+  background?: Paint;
   /**
    * The in-progress line currently being drawn while `compTool === 'line'`.
    * On tool toggle-off, finalized into `svgObjects` if valid.
@@ -1134,14 +1275,14 @@ export type CompUndoOp =
    *  the kind's array. When `sceneOrderIndex` is provided, the id is
    *  spliced into sceneOrder at that index (clamped); otherwise it's
    *  appended to the front of paint. Revert: filter it out. */
-  | { op: 'placeObject'; kind: CompItemKind; item: CompositionFigure | SVGObject | ImageObject;
+  | { op: 'placeObject'; kind: CompItemKind; item: CompositionFigure | SVGObject | ImageObject | TextObject;
       sceneOrderIndex?: number }
   /** Generic delete for any scene-object kind. Apply: filter the kind's
    *  array by id. `sceneOrderIndex` records the item's original position
    *  in sceneOrder so revert can splice it back at the same z-position.
    *  Revert: append the captured item back into the kind's array at the
    *  recorded sceneOrder index. */
-  | { op: 'removeObject'; kind: CompItemKind; item: CompositionFigure | SVGObject | ImageObject;
+  | { op: 'removeObject'; kind: CompItemKind; item: CompositionFigure | SVGObject | ImageObject | TextObject;
       sceneOrderIndex?: number }
   /** Generic lock toggle for any scene-object kind. Apply: set
    *  `item.locked = newValue` for the matching id in whichever array
@@ -1337,7 +1478,31 @@ export type CompUndoOp =
       oldSVGObjects: SVGObject[]; newSVGObjects: SVGObject[];
       oldImages: ImageObject[]; newImages: ImageObject[];
       oldGroups: GroupNode[]; newGroups: GroupNode[];
-      oldSceneOrder: string[]; newSceneOrder: string[] };
+      oldSceneOrder: string[]; newSceneOrder: string[];
+      // Text collections (v29+); optional so pre-text entries replay.
+      oldTexts?: TextObject[]; newTexts?: TextObject[] }
+  /**
+   * Committed text-content change (v29+). The editor's hidden textarea
+   * commits on blur/confirm; the engine never sees per-keystroke edits.
+   * Content changes re-run layout, so the bbox old/new rides along.
+   */
+  | { op: 'setText'; textId: string; oldContent: string; newContent: string;
+      oldCellWidth: number; oldCellHeight: number;
+      newCellWidth: number; newCellHeight: number }
+  /** Committed text-style change (v29+). Swaps the whole style block;
+   *  size-affecting changes carry the resulting bbox like `setText`. */
+  | { op: 'setTextStyle'; textId: string; oldStyle: TextStyle; newStyle: TextStyle;
+      oldCellWidth: number; oldCellHeight: number;
+      newCellWidth: number; newCellHeight: number }
+  /** Set/replace/clear a node's effects block (v29+). Resolved via
+   *  SCENE_ADAPTERS like lockObject — any kind that carries `effects`. */
+  | { op: 'setNodeEffects'; id: string; oldEffects?: NodeEffects; newEffects?: NodeEffects }
+  /** Set/replace/clear an SVG object's gradient fill paint (v29+). */
+  | { op: 'setFillPaint'; svgId: string; oldPaint?: Paint; newPaint?: Paint }
+  /** Set/replace/clear an image's shader-time tint (v29+). */
+  | { op: 'setImageTint'; nodeId: string; oldTint?: ImageTint; newTint?: ImageTint }
+  /** Set/replace/clear the canvas background paint (v29+). */
+  | { op: 'setBackground'; oldPaint?: Paint; newPaint?: Paint };
 
 export type CompUndoEntry = CompUndoOp[];
 

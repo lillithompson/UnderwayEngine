@@ -2,9 +2,11 @@ import {
   CompositionFigure,
   GroupNode,
   ImageObject,
+  Paint,
   PathSegment,
   SVGObject,
   SVGSubpath,
+  TextObject,
 } from './types';
 import { arcBoundingBox } from './compositionArcHitTest';
 
@@ -54,6 +56,7 @@ export function computeContentBBox(
   figures: CompositionFigure[],
   svgObjects: SVGObject[],
   images: ImageObject[] | undefined,
+  texts?: TextObject[],
 ): ContentBBox | null {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   let any = false;
@@ -98,6 +101,17 @@ export function computeContentBBox(
       if (img.cellY < minY) minY = img.cellY;
       if (img.cellX + img.cellWidth > maxX) maxX = img.cellX + img.cellWidth;
       if (img.cellY + img.cellHeight > maxY) maxY = img.cellY + img.cellHeight;
+    }
+  }
+
+  if (texts) {
+    for (const t of texts) {
+      if (t.hidden) continue;
+      any = true;
+      if (t.cellX < minX) minX = t.cellX;
+      if (t.cellY < minY) minY = t.cellY;
+      if (t.cellX + t.cellWidth > maxX) maxX = t.cellX + t.cellWidth;
+      if (t.cellY + t.cellHeight > maxY) maxY = t.cellY + t.cellHeight;
     }
   }
 
@@ -239,6 +253,36 @@ function transformImage(tr: AffineTransform, img: ImageObject): ImageObject {
   return out;
 }
 
+/** Same bbox-only shape as `transformImage` â€” text nodes carry world,
+ *  local, and identity bboxes but no free-form geometry. Style fields
+ *  (size, letterSpacing, lineHeight) are not touched here; like image
+ *  pixels, glyph rasters are laid out against the node bbox. */
+function transformText(tr: AffineTransform, text: TextObject): TextObject {
+  const [cellX, cellY] = applyTransformXY(tr, text.cellX, text.cellY);
+  const out: TextObject = {
+    ...text,
+    cellX,
+    cellY,
+    cellWidth: text.cellWidth * tr.scale,
+    cellHeight: text.cellHeight * tr.scale,
+  };
+  if (text.localCellX !== undefined && text.localCellY !== undefined) {
+    const [lx, ly] = applyTransformXY(tr, text.localCellX, text.localCellY);
+    out.localCellX = lx;
+    out.localCellY = ly;
+  }
+  if (text.localCellWidth !== undefined) out.localCellWidth = text.localCellWidth * tr.scale;
+  if (text.localCellHeight !== undefined) out.localCellHeight = text.localCellHeight * tr.scale;
+  if (text.identityCellX !== undefined && text.identityCellY !== undefined) {
+    const [ix, iy] = applyTransformXY(tr, text.identityCellX, text.identityCellY);
+    out.identityCellX = ix;
+    out.identityCellY = iy;
+  }
+  if (text.identityCellWidth !== undefined) out.identityCellWidth = text.identityCellWidth * tr.scale;
+  if (text.identityCellHeight !== undefined) out.identityCellHeight = text.identityCellHeight * tr.scale;
+  return out;
+}
+
 function transformGroup(tr: AffineTransform, group: GroupNode): GroupNode {
   // translateX/Y are world-space positions of the group origin — go
   // through the affine. scaleX/Y are dimensionless multipliers applied
@@ -257,18 +301,26 @@ export interface NormalizableInput {
   figures: CompositionFigure[];
   svgObjects: SVGObject[];
   images?: ImageObject[];
+  /** Text scene nodes (v29+). Bboxes normalize like image bboxes. */
+  texts?: TextObject[];
   groups: GroupNode[];
   gridLevel: number;
   strokeScale: number;
+  /** Canvas background paint (v29+). Unit-bbox space, so normalization
+   *  passes it through untouched; threaded here so load/save flows can
+   *  hand the whole content bundle to one call. */
+  background?: Paint;
 }
 
 export interface NormalizeResult {
   figures: CompositionFigure[];
   svgObjects: SVGObject[];
   images: ImageObject[] | undefined;
+  texts: TextObject[] | undefined;
   groups: GroupNode[];
   gridLevel: number;
   strokeScale: number;
+  background: Paint | undefined;
   /** Power-of-2 scale factor applied (2^k). 1 means no scaling. */
   scale: number;
   /** Exponent k. New gridLevel = old gridLevel + k. */
@@ -299,16 +351,18 @@ export interface NormalizeResult {
  * the viewport is known).
  */
 export function normalizeComposition(input: NormalizableInput): NormalizeResult {
-  const bbox = computeContentBBox(input.figures, input.svgObjects, input.images);
+  const bbox = computeContentBBox(input.figures, input.svgObjects, input.images, input.texts);
 
   if (!bbox) {
     return {
       figures: input.figures,
       svgObjects: input.svgObjects,
       images: input.images,
+      texts: input.texts,
       groups: input.groups,
       gridLevel: input.gridLevel,
       strokeScale: input.strokeScale,
+      background: input.background,
       scale: 1,
       k: 0,
     };
@@ -386,9 +440,11 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
     figures: input.figures.map(f => transformFigure(tr, f)),
     svgObjects: input.svgObjects.map(s => transformSVGObject(tr, s)),
     images: input.images ? input.images.map(i => transformImage(tr, i)) : input.images,
+    texts: input.texts ? input.texts.map(t => transformText(tr, t)) : input.texts,
     groups: input.groups.map(g => transformGroup(tr, g)),
     gridLevel: input.gridLevel + k,
     strokeScale: input.strokeScale * scale,
+    background: input.background,
     scale,
     k,
   };

@@ -7,6 +7,7 @@ import {
   generateCompositionSVGCore,
   type CompositionFigureLoadResult,
   type CompositionSVGInputs,
+  type SVGFontResolver,
 } from './compositionSVGCore';
 
 // Re-export the pure core + its public types so existing callers that
@@ -15,7 +16,16 @@ import {
 // kept pure so Node-side tooling can call it without dragging in
 // IndexedDB / WebGL / react-native.
 export { generateCompositionSVGCore };
-export type { CompositionFigureLoadResult, CompositionSVGInputs };
+export type { CompositionFigureLoadResult, CompositionSVGInputs, SVGFontResolver };
+
+/** Optional knobs for the storage-backed export wrappers. */
+export interface CompositionExportOptions {
+  /** Font-embedding hook for text nodes — see {@link SVGFontResolver}.
+   *  Strongly recommended for PNG export: the rasterizer loads the SVG
+   *  into a detached <img>, which cannot reach page-registered fonts,
+   *  so un-embedded families fall back to the browser default. */
+  fontResolver?: SVGFontResolver;
+}
 
 /**
  * Load a PNG data URI for a figure to use as raster fallback in SVG export.
@@ -31,13 +41,22 @@ async function loadFigurePngDataUri(fig: CompositionFigure): Promise<string | nu
  * Export a composition as a PNG data URI.
  * Generates SVG via exportCompositionSVG, then rasterizes to pixels
  * at the correct aspect ratio fitting within maxDimension.
+ *
+ * The v29 visual features (text nodes, gradient fills, shadow/glow/border
+ * filters, image feColorMatrix tints, background paint) need no special
+ * handling here: they are emitted as standard SVG by the generator and
+ * the browser's own SVG renderer rasterizes them in rasterizeSvgToPixels.
+ * The one gap is fonts — pass `options.fontResolver` so families are
+ * embedded as @font-face data URIs (a detached <img> cannot see fonts
+ * registered on the page).
  */
 export async function exportCompositionPNG(
   compId: string,
   maxDimension: number,
   strokeScale?: number,
+  options?: CompositionExportOptions,
 ): Promise<string | null> {
-  const svg = await exportCompositionSVG(compId, undefined, strokeScale);
+  const svg = await exportCompositionSVG(compId, undefined, strokeScale, options);
   if (!svg) return null;
 
   // Parse SVG width/height to preserve aspect ratio
@@ -77,6 +96,7 @@ export async function exportCompositionSVG(
   compId: string,
   cancelled?: () => boolean,
   strokeScale?: number,
+  options?: CompositionExportOptions,
 ): Promise<string | null> {
   const partial = await loadCompositionState(compId);
   if (!partial) return null;
@@ -86,6 +106,9 @@ export async function exportCompositionSVG(
     svgObjects: partial.svgObjects ?? [],
     images: partial.images ?? [],
     imageBlobs: partial.imageBlobs ?? {},
+    texts: partial.texts ?? [],
+    background: partial.background,
+    fontResolver: options?.fontResolver,
     groups: partial.groups ?? [],
     sceneOrder: partial.sceneOrder,
     strokeScale: strokeScale ?? partial.strokeScale,

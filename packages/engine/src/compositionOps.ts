@@ -1,4 +1,4 @@
-import { BlendMode, CompositionState, CompositionFigure, CompUndoEntry, CompUndoOp, FigureQuad, GroupNode, PaintStrokeDraft, RGBColor, SVGObject, SVGSubpath, PathSegment, ImageObject, CompItemKind } from './types';
+﻿import { BlendMode, CompositionState, CompositionFigure, CompUndoEntry, CompUndoOp, FigureQuad, GroupNode, PaintStrokeDraft, RGBColor, SVGObject, SVGSubpath, PathSegment, ImageObject, TextObject, CompItemKind } from './types';
 import { lineHitsCell as svgHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { GEOMETRY_ADAPTERS } from './sceneNodeGeometry';
@@ -50,7 +50,7 @@ export function computeDuplicateOffset(state: CompositionState): number {
   return screenPx / cellsToScreenPx;
 }
 
-// ── Generic item helpers ─────────────────────────────────────────────
+// â”€â”€ Generic item helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // `CompItemKind` is now defined in `./types` (so undo op shapes can use
 // it without circular imports). Re-export for any consumer that imports
@@ -62,7 +62,7 @@ export type { CompItemKind };
  * space when the figure's bbox changes. For non-rotated figures the offset
  * simply compensates for cellX/cellY movement. For rotated/mirrored figures
  * the rotation center also shifts, which changes how world positions map
- * through the inverse rotation — the formula accounts for both effects.
+ * through the inverse rotation â€” the formula accounts for both effects.
  *
  * Returns [dOffX, dOffY] to ADD to the current offset.
  */
@@ -100,13 +100,14 @@ export function tileOffsetDelta(
 export type CompItemRef =
   | { kind: 'figure'; item: CompositionFigure }
   | { kind: 'svg';    item: SVGObject }
-  | { kind: 'image';  item: ImageObject };
+  | { kind: 'image';  item: ImageObject }
+  | { kind: 'text';   item: TextObject };
 
 /**
- * Single canonical lookup across figures, svgObjects, and images.
+ * Single canonical lookup across figures, svgObjects, images, and texts.
  * Selection ids share a namespace (svg ids start with `svg_`, image ids
- * with `img_`, figures use bare timestamps), so any id resolves to
- * exactly one item.
+ * with `img_`, text ids with `txt_`, figures use bare timestamps), so
+ * any id resolves to exactly one item.
  */
 export function findItem(state: CompositionState, id: string): CompItemRef | null {
   const fig = state.figures.find(f => f.id === id);
@@ -115,6 +116,8 @@ export function findItem(state: CompositionState, id: string): CompItemRef | nul
   if (svg) return { kind: 'svg', item: svg };
   const img = (state.images ?? []).find(i => i.id === id);
   if (img) return { kind: 'image', item: img };
+  const txt = (state.texts ?? []).find(t => t.id === id);
+  if (txt) return { kind: 'text', item: txt };
   return null;
 }
 
@@ -143,7 +146,7 @@ export interface GroupLockToggle {
  * descendants that should toggle together. For grouped items the anchor
  * walks up to the root group so the toggle applies to every member of the
  * tree (including nested sub-groups). Aggregate rule: if any descendant
- * is currently locked, unlock everything; otherwise lock everything —
+ * is currently locked, unlock everything; otherwise lock everything â€”
  * matches the row-icon aggregation (which reads as locked when any
  * descendant is locked) so the affordance and the action stay in sync,
  * and ensures an unlock on a partially-locked group propagates to every
@@ -237,13 +240,13 @@ export function buildColorToolOps(state: CompositionState, newColor: RGBColor, b
       if (oldOverride && oldOverride.r === newColor.r && oldOverride.g === newColor.g && oldOverride.b === newColor.b) continue;
       ops.push({ op: 'recolorFigure', figureId: id, oldColor: oldOverride, newColor, oldBlendMode: fig.colorOverrideBlendMode, newBlendMode: effectiveBlendMode });
     }
-    // images: no color field; silently skipped.
+    // images: no color field; texts recolor via setTextStyle. Both skipped.
   }
   return ops;
 }
 
 /**
- * Blend modes whose effect is meaningful at render time — i.e. the stored
+ * Blend modes whose effect is meaningful at render time â€” i.e. the stored
  * color is applied to each SVG fill/stroke via `blendColor(fill, override,
  * mode, 1)`. Modes NOT in this set (`invert`, `rotate`, `randomize`)
  * pre-bake their result into `colorOverride` at paint time and store no
@@ -253,7 +256,7 @@ const STORED_BLEND_MODES: ReadonlySet<BlendMode> = new Set<BlendMode>([
   'normal', 'multiply', 'dodge', 'lighten', 'darken', 'burn', 'hue', 'color',
 ]);
 
-// ── Color-tool drag-paint helpers ─────────────────────────────────────
+// â”€â”€ Color-tool drag-paint helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Flatten an SVG's geometry into a single ordered list tagged with the
@@ -286,7 +289,7 @@ export function flattenSVGSegmentsWithColor(svg: SVGObject): Array<{ segment: Pa
  * Walk a flat list of (segment, color) entries in order and group contiguous
  * runs of identical color into color groups. When all entries share a
  * color the result has `subpaths: undefined` and the color in `color`/
- * `segments` — same canonical shape `buildColorToolOps` uses for
+ * `segments` â€” same canonical shape `buildColorToolOps` uses for
  * single-color objects.
  *
  * Multi-color result mirrors the invariant the existing join producer
@@ -294,7 +297,7 @@ export function flattenSVGSegmentsWithColor(svg: SVGObject): Array<{ segment: Pa
  * the FULL flat list of geometry, and `subpaths` carries every color
  * group (including the primary). The renderer's "subpaths win when
  * present" rule (`buildSVGObjectContent` in `engine/svgPathBuilder.ts`)
- * then displays each group at its own color — if we'd instead split
+ * then displays each group at its own color â€” if we'd instead split
  * primary into `segments` and the rest into `subpaths`, the renderer
  * would drop the primary group and segments would visibly disappear.
  *
@@ -397,7 +400,7 @@ export function buildPaintStrokeOps(state: CompositionState, draft: PaintStrokeD
     if (svg.groupId && snap.localSegments) {
       // Flat list of LOCAL segments in the same order as the world flat
       // list. Follow the same "subpaths win when present" invariant
-      // `flattenSVGSegmentsWithColor` and `brushHitsSegments` use —
+      // `flattenSVGSegmentsWithColor` and `brushHitsSegments` use â€”
       // walk localSubpaths-only when present, localSegments otherwise.
       // Iterating BOTH would double-count under the regroup invariant
       // (segments and subpaths describe the same geometry), causing
@@ -501,11 +504,11 @@ function sameShape(
 }
 
 
-// ── Scene object adapter registry ────────────────────────────────────
+// â”€â”€ Scene object adapter registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
-// Every scene-object kind (figure, svg, image) registers an adapter here
-// so that ordering / locking / deleting / undo loop uniformly over all
-// kinds. Adding a new kind = adding one entry here plus the field on
+// Every scene-object kind (figure, svg, image, text) registers an adapter
+// here so that ordering / locking / deleting / undo loop uniformly over
+// all kinds. Adding a new kind = adding one entry here plus the field on
 // CompositionState.
 
 export interface SceneObjectBase { id: string; locked?: boolean; hidden?: boolean; groupId?: string; name?: string; }
@@ -540,7 +543,7 @@ export function offsetPathSegment(seg: PathSegment, dx: number, dy: number): Pat
 export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
   {
     kind: 'figure',
-    matchesId: (id) => !id.startsWith('svg_') && !id.startsWith('img_'),
+    matchesId: (id) => !id.startsWith('svg_') && !id.startsWith('img_') && !id.startsWith('txt_'),
     getArray: (s) => s.figures,
     setArray: (s, arr) => ({ ...s, figures: arr as CompositionFigure[] }),
     cloneItem: (item) => {
@@ -597,7 +600,7 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         : computeSVGBbox(segs);
       // When duplicating into a different group the original creationBox
       // is in the source group's local space and cannot be offset into the
-      // new group's space with a simple translate — attempting to do so
+      // new group's space with a simple translate â€” attempting to do so
       // leaves the selection box rotated/mirrored relative to the actual
       // segments after the new group is transformed then ungrouped.  Drop
       // it so that selectedNodeBBox falls back to the segment AABB, which
@@ -646,6 +649,39 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
       } as SceneObjectBase;
     },
   },
+  {
+    kind: 'text',
+    matchesId: (id) => id.startsWith('txt_'),
+    getArray: (s) => s.texts ?? [],
+    setArray: (s, arr) => ({ ...s, texts: arr as TextObject[] }),
+    cloneItem: (item) => {
+      // Deep-clone the style block (and the stroke inside it) so undo
+      // snapshots don't alias live state when the style is later edited.
+      const txt = item as TextObject;
+      return {
+        ...txt,
+        style: { ...txt.style, ...(txt.style.stroke ? { stroke: { ...txt.style.stroke } } : null) },
+      } as SceneObjectBase;
+    },
+    mintId: () => 'txt_' + freshSuffix(),
+    cloneWithOffset: (item, dx, dy, newId, newGroupId) => {
+      const txt = item as TextObject;
+      return {
+        ...txt,
+        id: newId,
+        style: { ...txt.style, ...(txt.style.stroke ? { stroke: { ...txt.style.stroke } } : null) },
+        cellX: txt.cellX + dx,
+        cellY: txt.cellY + dy,
+        localCellX: txt.localCellX !== undefined ? txt.localCellX + dx : undefined,
+        localCellY: txt.localCellY !== undefined ? txt.localCellY + dy : undefined,
+        identityCellX: txt.identityCellX !== undefined ? txt.identityCellX + dx : undefined,
+        identityCellY: txt.identityCellY !== undefined ? txt.identityCellY + dy : undefined,
+        name: txt.name ? txt.name + ' copy' : undefined,
+        groupId: newGroupId,
+        locked: false,
+      } as SceneObjectBase;
+    },
+  },
 ];
 
 export interface BuildDuplicateOpsOptions {
@@ -663,7 +699,7 @@ export interface BuildDuplicateOpsResult {
   ops: CompUndoEntry;
   /** Ids of newly-placed leaf items, in selection-iteration order. */
   newIds: string[];
-  /** original groupId → new groupId. Includes ancestor groups walked in. */
+  /** original groupId â†’ new groupId. Includes ancestor groups walked in. */
   groupIdMap: Map<string, string>;
 }
 
@@ -675,7 +711,7 @@ export interface BuildDuplicateOpsResult {
  * Hierarchy handling: a group is duplicated when (a) it's the immediate
  * parent of a selected leaf, or (b) every leaf descendant of that group
  * is in the selection. (b) covers root groups whose direct contents are
- * only sub-groups — without it, child duplicates lose their parent and
+ * only sub-groups â€” without it, child duplicates lose their parent and
  * end up as root nodes.
  */
 export function buildDuplicateOps(
@@ -685,7 +721,7 @@ export function buildDuplicateOps(
 ): BuildDuplicateOpsResult {
   const ops: CompUndoEntry = [];
   const newIds: string[] = [];
-  // original groupId → new groupId. Multiple selected members of the
+  // original groupId â†’ new groupId. Multiple selected members of the
   // same source group land in one new group rather than each spawning
   // its own.
   const groupIdMap = new Map<string, string>();
@@ -729,7 +765,7 @@ export function buildDuplicateOps(
     ops.push({
       op: 'placeObject',
       kind: ref.kind,
-      item: adapter.cloneItem(dup) as CompositionFigure | SVGObject | ImageObject,
+      item: adapter.cloneItem(dup) as CompositionFigure | SVGObject | ImageObject | TextObject,
     });
     newIds.push(dup.id);
     if (newGroupId) {
@@ -740,7 +776,7 @@ export function buildDuplicateOps(
 
   // Walk up each mapped group's ancestor chain. An ancestor whose every
   // leaf descendant is in the selection also needs a duplicate, even
-  // though no leaf has it as an immediate groupId — otherwise its child
+  // though no leaf has it as an immediate groupId â€” otherwise its child
   // groups can't find a parent in phase 2 and become root nodes.
   const seedGroupKeys = [...groupIdMap.keys()];
   for (const seedGid of seedGroupKeys) {
@@ -759,7 +795,7 @@ export function buildDuplicateOps(
   // Emit groupFigures ops that replicate the original group hierarchy.
   // Child groups must be created before their parent so the GroupNodes
   // exist when the parent's op nests them via childGroupIds.
-  const newChildGroupIds = new Map<string, string[]>(); // newParentId → [newChildIds]
+  const newChildGroupIds = new Map<string, string[]>(); // newParentId â†’ [newChildIds]
   for (const [origGroupId, newGroupId] of groupIdMap) {
     const origGroup = state.groups.find(g => g.id === origGroupId);
     if (!origGroup?.parentGroupId) continue;
@@ -770,7 +806,7 @@ export function buildDuplicateOps(
   }
 
   // Topological emit: children before parents. Nesting is typically
-  // shallow (≤3 levels), so a simple multi-pass loop suffices.
+  // shallow (â‰¤3 levels), so a simple multi-pass loop suffices.
   const emitted = new Set<string>();
   const allNewGroupIds = [...groupIdMap.values()];
   while (emitted.size < allNewGroupIds.length) {
@@ -804,12 +840,12 @@ export function buildDuplicateOps(
  *  when the id doesn't match any scene-object kind in state.
  *
  *  Prefer `buildRemoveObjectOps` for any caller that may delete the last
- *  member of a group — this single-id form does not emit the companion
+ *  member of a group â€” this single-id form does not emit the companion
  *  `removeGroup` ops needed to clean up the orphan GroupNode. */
 export function buildRemoveObjectOp(
   state: CompositionState,
   id: string,
-): { op: 'removeObject'; kind: CompItemKind; item: CompositionFigure | SVGObject | ImageObject;
+): { op: 'removeObject'; kind: CompItemKind; item: CompositionFigure | SVGObject | ImageObject | TextObject;
      sceneOrderIndex?: number } | null {
   for (const adapter of SCENE_ADAPTERS) {
     const item = adapter.getArray(state).find((x) => x.id === id);
@@ -818,7 +854,7 @@ export function buildRemoveObjectOp(
       return {
         op: 'removeObject',
         kind: adapter.kind,
-        item: adapter.cloneItem(item) as CompositionFigure | SVGObject | ImageObject,
+        item: adapter.cloneItem(item) as CompositionFigure | SVGObject | ImageObject | TextObject,
         ...(sceneOrderIndex >= 0 ? { sceneOrderIndex } : {}),
       };
     }
@@ -834,6 +870,7 @@ export function computeAliveGroupIds(
   figures: readonly { groupId?: string }[],
   svgObjects: readonly { groupId?: string }[],
   images: readonly { groupId?: string }[],
+  texts: readonly { groupId?: string }[],
 ): Set<string> {
   const byId = new Map(groups.map((g) => [g.id, g]));
   const alive = new Set<string>();
@@ -847,12 +884,13 @@ export function computeAliveGroupIds(
   for (const f of figures) markChain(f.groupId);
   for (const s of svgObjects) markChain(s.groupId);
   for (const i of images) markChain(i.groupId);
+  for (const t of texts) markChain(t.groupId);
   return alive;
 }
 
 /** Drop GroupNodes whose subtree has no surviving leaf members. Cheap
  *  no-op when every group is still anchored. Safe to call on any
- *  CompositionState — the alive set is computed from the current member
+ *  CompositionState â€” the alive set is computed from the current member
  *  arrays, so orphans from older sessions get cleaned up incidentally. */
 export function pruneEmptyGroups(state: CompositionState): CompositionState {
   const alive = computeAliveGroupIds(
@@ -860,6 +898,7 @@ export function pruneEmptyGroups(state: CompositionState): CompositionState {
     state.figures,
     state.svgObjects,
     state.images ?? [],
+    state.texts ?? [],
   );
   if (alive.size === state.groups.length) return state;
   return { ...state, groups: state.groups.filter((g) => alive.has(g.id)) };
@@ -881,6 +920,7 @@ export function withGroupPruning(
     post.figures,
     post.svgObjects,
     post.images ?? [],
+    post.texts ?? [],
   );
   const prunes: CompUndoOp[] = [];
   for (const g of post.groups) {
@@ -915,7 +955,7 @@ export function buildRemoveObjectOps(
 
 /** Clear group-local coordinate fields from a scene object in-place.
  *  Mirrors the per-kind field clearing in the `ungroupFigures` apply path.
- *  Does NOT clear `creationBox` for SVGs — callers that need the
+ *  Does NOT clear `creationBox` for SVGs â€” callers that need the
  *  `ungroupCreationBox` snap should handle that separately. */
 export function clearGroupLocals(item: any, kind: CompItemKind): void {
   item.groupId = undefined;
@@ -944,7 +984,7 @@ export function clearGroupLocals(item: any, kind: CompItemKind): void {
     item.rotation = undefined;
     item.mirrorH = undefined;
     item.mirrorV = undefined;
-  } else if (kind === 'image') {
+  } else if (kind === 'image' || kind === 'text') {
     item.identityCellX = undefined;
     item.identityCellY = undefined;
     item.identityCellWidth = undefined;
@@ -955,26 +995,28 @@ export function clearGroupLocals(item: any, kind: CompItemKind): void {
   }
 }
 
-// ── Scene order (unified back→front paint order) ────────────────────
+// â”€â”€ Scene order (unified backâ†’front paint order) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // `state.sceneOrder` is the single source of truth for paint and hit-test
 // across every scene-object kind. The three kind arrays still hold the
-// items, but their internal order does not affect what you see — that's
+// items, but their internal order does not affect what you see â€” that's
 // driven entirely by sceneOrder.
 
-/** Build a sceneOrder list from the three kind arrays in their legacy fixed
- *  paint order: images (back) → figures → svgObjects (front). Used to
- *  initialize sceneOrder for new state and to migrate older saves that
- *  predate the field. */
+/** Build a sceneOrder list from the kind arrays in their legacy fixed
+ *  paint order: images (back) â†’ figures â†’ svgObjects â†’ texts (front).
+ *  Used to initialize sceneOrder for new state and to migrate older
+ *  saves that predate the field. */
 export function deriveSceneOrderFromKindArrays(state: {
   figures: readonly { id: string; groupId?: string }[];
   svgObjects: readonly { id: string; groupId?: string }[];
   images?: readonly { id: string; groupId?: string }[];
+  texts?: readonly { id: string; groupId?: string }[];
 }): string[] {
   const order: string[] = [];
   for (const i of state.images ?? []) order.push(i.id);
   for (const f of state.figures) order.push(f.id);
   for (const s of state.svgObjects) order.push(s.id);
+  for (const t of state.texts ?? []) order.push(t.id);
   return enforceGroupContiguity(order, gatherGroupMemberIds(state));
 }
 
@@ -987,6 +1029,7 @@ export function repairSceneOrder(state: {
   figures: readonly { id: string; groupId?: string }[];
   svgObjects: readonly { id: string; groupId?: string }[];
   images?: readonly { id: string; groupId?: string }[];
+  texts?: readonly { id: string; groupId?: string }[];
   sceneOrder: readonly string[];
 }): string[] {
   const present = new Set(state.sceneOrder);
@@ -998,6 +1041,7 @@ export function repairSceneOrder(state: {
   append(state.images);
   append(state.figures);
   append(state.svgObjects);
+  append(state.texts);
   return enforceGroupContiguity(repaired, gatherGroupMemberIds(state));
 }
 
@@ -1008,6 +1052,7 @@ function gatherGroupMemberIds(state: {
   figures: readonly { id: string; groupId?: string }[];
   svgObjects: readonly { id: string; groupId?: string }[];
   images?: readonly { id: string; groupId?: string }[];
+  texts?: readonly { id: string; groupId?: string }[];
   groups?: readonly GroupNode[];
 }): Map<string, string[]> {
   // Pre-compute root for each group.
@@ -1029,6 +1074,7 @@ function gatherGroupMemberIds(state: {
   collect(state.figures);
   collect(state.svgObjects);
   if (state.images) collect(state.images);
+  if (state.texts) collect(state.texts);
   return result;
 }
 
@@ -1057,7 +1103,7 @@ function enforceGroupContiguity(order: string[], groupMembers: Map<string, strin
   });
   decorated.sort((a, b) => {
     if (a.anchor !== b.anchor) return a.anchor - b.anchor;
-    // Same anchor → either same group (keep input order) or one item is
+    // Same anchor â†’ either same group (keep input order) or one item is
     // the group's anchor and the other a stray with the same index (can't
     // happen since indices are unique).
     return a.i - b.i;
@@ -1065,13 +1111,14 @@ function enforceGroupContiguity(order: string[], groupMembers: Map<string, strin
   return decorated.map((d) => d.id);
 }
 
-/** Iterate scene objects in paint order (back→front). Returns null entries
- *  for any sceneOrder id that no longer resolves — caller can filter. */
+/** Iterate scene objects in paint order (backâ†’front). Returns null entries
+ *  for any sceneOrder id that no longer resolves â€” caller can filter. */
 export function iterateSceneOrder(state: CompositionState): CompItemRef[] {
   const byId = new Map<string, CompItemRef>();
   for (const f of state.figures) byId.set(f.id, { kind: 'figure', item: f });
   for (const s of state.svgObjects) byId.set(s.id, { kind: 'svg', item: s });
   for (const i of state.images ?? []) byId.set(i.id, { kind: 'image', item: i });
+  for (const t of state.texts ?? []) byId.set(t.id, { kind: 'text', item: t });
   const out: CompItemRef[] = [];
   for (const id of state.sceneOrder) {
     const ref = byId.get(id);
@@ -1088,6 +1135,7 @@ export function assertSceneOrderInvariant(state: CompositionState): void {
   for (const f of state.figures) live.add(f.id);
   for (const s of state.svgObjects) live.add(s.id);
   for (const i of state.images ?? []) live.add(i.id);
+  for (const t of state.texts ?? []) live.add(t.id);
   const seen = new Set<string>();
   for (const id of state.sceneOrder) {
     if (!live.has(id)) throw new Error(`sceneOrder contains orphan id: ${id}`);
@@ -1124,8 +1172,8 @@ export function reorderSceneObjects(
 ): CompositionState {
   if (ids.size === 0) return state;
   // Expand to every descendant of the root group of any hit id (including
-  // members of nested sub-groups). Resolving to the ROOT — not just the
-  // immediate group — is what keeps a nested hierarchy contiguous in
+  // members of nested sub-groups). Resolving to the ROOT â€” not just the
+  // immediate group â€” is what keeps a nested hierarchy contiguous in
   // sceneOrder when only one branch is selected.
   const expanded = new Set(expandIdsToGroups(state, ids));
   const moved: string[] = [];
@@ -1245,7 +1293,7 @@ export function rescaleSVGToBbox(
   );
 }
 
-/** Local-bbox accessor variant — returns the same data under the
+/** Local-bbox accessor variant â€” returns the same data under the
  *  `localCell*` key names so it can be spread into a reducer update
  *  alongside `localSegments`. */
 function localBboxFromSegments(
@@ -1275,9 +1323,9 @@ export function translateNodeByDelta(
 
 /** Restore the identity / rotation / mirror fields that the forward move
  *  cleared. Per-type: figures get `identityCell*` + `transformCycleStep`;
- *  svgs get `identitySegments` + `rotation` + `mirror*`; images get
- *  `identityCell*` bbox + `rotation` + `mirror*`. Called immediately after
- *  the inverse-translate in `revertOp`'s `moveNode` case. */
+ *  svgs get `identitySegments` + `rotation` + `mirror*`; images and texts
+ *  get `identityCell*` bbox + `rotation` + `mirror*`. Called immediately
+ *  after the inverse-translate in `revertOp`'s `moveNode` case. */
 function restoreNodeIdentity(
   state: CompositionState, nodeId: string,
   op: { oldIdentityCellX?: number; oldIdentityCellY?: number; oldTransformCycleStep?: number;
@@ -1318,6 +1366,20 @@ function restoreNodeIdentity(
       mirrorV: op.oldMirrorV,
     } : i);
     return { ...state, images };
+  }
+  const txt = (state.texts ?? []).find(t => t.id === nodeId);
+  if (txt) {
+    const texts = (state.texts ?? []).map((t) => t.id === nodeId ? {
+      ...t,
+      identityCellX: op.oldIdentityCellX,
+      identityCellY: op.oldIdentityCellY,
+      identityCellWidth: op.oldIdentityCellWidth,
+      identityCellHeight: op.oldIdentityCellHeight,
+      rotation: op.oldRotation,
+      mirrorH: op.oldMirrorH,
+      mirrorV: op.oldMirrorV,
+    } : t);
+    return { ...state, texts };
   }
   return state;
 }
@@ -1364,8 +1426,8 @@ export function safeMapSegments(
 }
 
 /** Map an SVGSubpath array, applying `fn` to each subpath's segments via
- *  `safeMapSegments`. Same defensive contract: undefined in → undefined
- *  out; non-array in → undefined out (the SVG had a bad subpaths shape;
+ *  `safeMapSegments`. Same defensive contract: undefined in â†’ undefined
+ *  out; non-array in â†’ undefined out (the SVG had a bad subpaths shape;
  *  drop it rather than synthesize one). */
 export function safeMapSubpaths(
   subs: SVGSubpath[] | undefined,
@@ -1379,7 +1441,7 @@ export function safeMapSubpaths(
   return subs.map(sub => ({ ...sub, segments: safeMapSegments(sub.segments, fn) ?? [] }));
 }
 
-// ── Group membership helpers ────────────────────────────────────────
+// â”€â”€ Group membership helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Find the groupId for a node (figure, svg, or image) by its ID.
@@ -1413,7 +1475,7 @@ export function bucketMovedIds(
 
 /**
  * Find the topmost SVG stroke at `(cellX, cellY)`, walking `sceneOrder`
- * front-to-back. Skips locked nodes. Figures and images are excluded —
+ * front-to-back. Skips locked nodes. Figures and images are excluded â€”
  * they live in their own passes in the canvas pointer-down chain.
  */
 export function findStrokeAtCell(
@@ -1429,7 +1491,7 @@ export function findStrokeAtCell(
       if (svgHitsCell(svg, cellX, cellY)) {
         if (maskMap.size > 0
           && !pointPassesMasks(getAncestorMasks(maskMap, state.groups, svg.groupId), id, cellX, cellY)) {
-          continue; // clipped away — fall through to objects behind
+          continue; // clipped away â€” fall through to objects behind
         }
         return { kind: 'svg', id: svg.id };
       }
@@ -1439,7 +1501,7 @@ export function findStrokeAtCell(
   return null;
 }
 
-/** Bounding rectangle (in L0 cells) of every figure, svg, and image
+/** Bounding rectangle (in L0 cells) of every figure, svg, image, and text
  *  belonging to `groupId` (and its descendant groups when `groups` is provided).
  *  Returns Infinities if the group is empty.
  *
@@ -1449,7 +1511,7 @@ export function findStrokeAtCell(
  *  unclipped union is kept as a fallback for the degenerate case where every
  *  member is clipped away (e.g. a hidden mask leaves no visible content), so
  *  this never returns a fully-collapsed box when members exist. With no
- *  `maskMap` (or an empty one) this reduces to the plain member union — the
+ *  `maskMap` (or an empty one) this reduces to the plain member union â€” the
  *  behaviour the hit-test callers rely on. */
 export function groupBounds(
   figures: readonly CompositionFigure[],
@@ -1459,6 +1521,7 @@ export function groupBounds(
   images?: readonly ImageObject[],
   groups?: readonly GroupNode[],
   maskMap?: ReadonlyMap<string, SVGObject>,
+  texts?: readonly TextObject[],
 ): { minX: number; minY: number; maxX: number; maxY: number } {
   // Build the set of group IDs to include (self + descendants).
   const groupSet = groups
@@ -1511,7 +1574,13 @@ export function groupBounds(
       accept(i, i.cellX, i.cellY, i.cellX + i.cellWidth, i.cellY + i.cellHeight);
     }
   }
-  // Everything clipped away but members existed → fall back to the union.
+  if (texts) {
+    for (const t of texts) {
+      if (!t.groupId || !groupSet.has(t.groupId)) continue;
+      accept(t, t.cellX, t.cellY, t.cellX + t.cellWidth, t.cellY + t.cellHeight);
+    }
+  }
+  // Everything clipped away but members existed â†’ fall back to the union.
   if (minX === Infinity && uMinX !== Infinity) {
     return { minX: uMinX, minY: uMinY, maxX: uMaxX, maxY: uMaxY };
   }
@@ -1523,7 +1592,7 @@ export function groupBounds(
  *  the bounds are the mask's own bbox and no other member affects them.
  *  Otherwise it's the mask-aware union of members (a mask on a *nested* group
  *  still clips its siblings). Single source of truth for the selection box
- *  overlay, the scale anchor, the corner-handle hit-test, and the move anchor —
+ *  overlay, the scale anchor, the corner-handle hit-test, and the move anchor â€”
  *  keeping all four in agreement so there's no jump between rendering and
  *  interaction. */
 export function groupSelectionBounds(
@@ -1533,17 +1602,18 @@ export function groupSelectionBounds(
   images: readonly ImageObject[] | undefined,
   groups: readonly GroupNode[],
   maskMap: ReadonlyMap<string, SVGObject> | undefined,
+  texts?: readonly TextObject[],
 ): { minX: number; minY: number; maxX: number; maxY: number } {
   const mask = maskMap?.get(groupId);
   if (mask) {
     const bb = computeSVGBbox(mask.segments);
     return { minX: bb.cellX, minY: bb.cellY, maxX: bb.cellX + bb.cellWidth, maxY: bb.cellY + bb.cellHeight };
   }
-  return groupBounds(figures, groupId, svgObjects, svgObjects, images, groups, maskMap);
+  return groupBounds(figures, groupId, svgObjects, svgObjects, images, groups, maskMap, texts);
 }
 
 /** Root-local bounding box (in the local space of `groupId`) of every figure,
- *  svg, and image in the group and its descendants — each transformed up the
+ *  svg, and image in the group and its descendants â€” each transformed up the
  *  chain from its own group to (but excluding) `groupId`. This is the
  *  local-space twin of `groupBounds`, and its width/height are the denominator
  *  the group-scale gesture divides into the new world size to get a uniform
@@ -1552,7 +1622,7 @@ export function groupSelectionBounds(
  *  With a non-empty `maskMap`, each member's root-local rect is clipped to the
  *  root-local bbox of every mask in its ancestor chain (the node's own mask
  *  exempted), so the local extent tracks the same visible (mask-clipped) region
- *  the world bounds do — this is what keeps scaling uniform (no jump / no
+ *  the world bounds do â€” this is what keeps scaling uniform (no jump / no
  *  distortion) when a nested group is masked. Unclipped-union fallback for the
  *  all-clipped degenerate case, as in `groupBounds`.
  *
@@ -1564,6 +1634,7 @@ export function groupLocalUnionBounds(
     figures: readonly CompositionFigure[];
     svgObjects: readonly SVGObject[];
     images?: readonly ImageObject[];
+    texts?: readonly TextObject[];
     groups: readonly GroupNode[];
   },
   groupId: string,
@@ -1676,6 +1747,14 @@ export function groupLocalUnionBounds(
     });
     accept(m, lr.cellX, lr.cellY, lr.cellX + lr.cellWidth, lr.cellY + lr.cellHeight);
   }
+  for (const m of (state.texts ?? [])) {
+    if (!m.groupId || !allGids.has(m.groupId)) continue;
+    const lr = toLocalRect(m.groupId, {
+      cellX: m.localCellX ?? m.cellX, cellY: m.localCellY ?? m.cellY,
+      cellWidth: m.localCellWidth ?? m.cellWidth, cellHeight: m.localCellHeight ?? m.cellHeight,
+    });
+    accept(m, lr.cellX, lr.cellY, lr.cellX + lr.cellWidth, lr.cellY + lr.cellHeight);
+  }
 
   if (minX === Infinity && uMinX !== Infinity) {
     return { minX: uMinX, minY: uMinY, maxX: uMaxX, maxY: uMaxY, hasMembers };
@@ -1688,8 +1767,8 @@ export function groupLocalUnionBounds(
  * `(cellX, cellY)`, walking `state.sceneOrder` front-to-back so figure z-order
  * matches what the user sees in the Scene Outline panel.
  *
- * Returns the id of the figure, or — when the front-most member of a group
- * is encountered — the id of that member as a stand-in for the whole group;
+ * Returns the id of the figure, or â€” when the front-most member of a group
+ * is encountered â€” the id of that member as a stand-in for the whole group;
  * the caller expands the id to its group via `expandIdsToGroups`.
  *
  * `state.figures` array order is NOT consulted: the source of truth for
@@ -1717,7 +1796,8 @@ export function findFigureAtCell(
       if (members.some(m => m.hidden)) continue;
       if (state.svgObjects.some(s => s.groupId === f.groupId && s.hidden)) continue;
       if ((state.images ?? []).some(i => i.groupId === f.groupId && i.hidden)) continue;
-      const b = groupBounds(state.figures, f.groupId, state.svgObjects, undefined, state.images, state.groups);
+      if ((state.texts ?? []).some(t => t.groupId === f.groupId && t.hidden)) continue;
+      const b = groupBounds(state.figures, f.groupId, state.svgObjects, undefined, state.images, state.groups, undefined, state.texts);
       if (cellX >= b.minX && cellX < b.maxX && cellY >= b.minY && cellY < b.maxY) {
         if (maskMap.size > 0
           && !pointPassesMasks(getGroupMaskChain(maskMap, state.groups, f.groupId), undefined, cellX, cellY)) {
@@ -1754,7 +1834,7 @@ export function findFigureAtCell(
     checkedGroups.add(s.groupId);
     if (state.svgObjects.some(m => m.groupId === s.groupId && m.locked)) continue;
     if (state.svgObjects.some(m => m.groupId === s.groupId && m.hidden)) continue;
-    const b = groupBounds(state.figures, s.groupId, state.svgObjects, undefined, state.images, state.groups);
+    const b = groupBounds(state.figures, s.groupId, state.svgObjects, undefined, state.images, state.groups, undefined, state.texts);
     if (cellX >= b.minX && cellX < b.maxX && cellY >= b.minY && cellY < b.maxY) {
       if (maskMap.size > 0
         && !pointPassesMasks(getGroupMaskChain(maskMap, state.groups, s.groupId), undefined, cellX, cellY)) {
@@ -1769,12 +1849,12 @@ export function findFigureAtCell(
 /**
  * Image-only bbox hit-test. Lives in a separate pass from `findFigureAtCell`
  * so the pointer-down hit sequence can run line/arc stroke proximity
- * (`findStrokeAtCell`) *before* it — that way a thin line painted on top of
+ * (`findStrokeAtCell`) *before* it â€” that way a thin line painted on top of
  * an image still wins the hit, matching the visual z-order (images render
  * at the back). Without the split, the image's large bbox would always
  * swallow clicks on overlapping line strokes.
  *
- * Walks `state.sceneOrder` front-to-back — same z-order rule as the figure
+ * Walks `state.sceneOrder` front-to-back â€” same z-order rule as the figure
  * and stroke passes.
  */
 export function findImageAtCell(
@@ -1798,7 +1878,8 @@ export function findImageAtCell(
       if (stateImages.some(m => m.groupId === img.groupId && m.hidden)) continue;
       if (state.figures.some(f => f.groupId === img.groupId && f.hidden)) continue;
       if (state.svgObjects.some(s => s.groupId === img.groupId && s.hidden)) continue;
-      const b = groupBounds(state.figures, img.groupId, state.svgObjects, undefined, state.images, state.groups);
+      if ((state.texts ?? []).some(t => t.groupId === img.groupId && t.hidden)) continue;
+      const b = groupBounds(state.figures, img.groupId, state.svgObjects, undefined, state.images, state.groups, undefined, state.texts);
       if (cellX >= b.minX && cellX < b.maxX && cellY >= b.minY && cellY < b.maxY) {
         if (maskMap.size > 0
           && !pointPassesMasks(getGroupMaskChain(maskMap, state.groups, img.groupId), undefined, cellX, cellY)) {
@@ -1818,9 +1899,56 @@ export function findImageAtCell(
   return null;
 }
 
+/**
+ * Text-only bbox hit-test. Mirrors `findImageAtCell`: a separate pass so
+ * the pointer-down chain can order stroke proximity ahead of the text
+ * bbox, and walks `state.sceneOrder` front-to-back for z-order.
+ */
+export function findTextAtCell(
+  cellX: number, cellY: number, state: CompositionState,
+): string | null {
+  const stateTexts = state.texts ?? [];
+  if (stateTexts.length === 0) return null;
+  const maskMap = buildActiveMaskMap(state);
+  const txtMap = new Map<string, TextObject>();
+  for (const txt of stateTexts) txtMap.set(txt.id, txt);
+
+  const checkedGroups = new Set<string>();
+  for (let i = state.sceneOrder.length - 1; i >= 0; i--) {
+    const id = state.sceneOrder[i];
+    const txt = txtMap.get(id);
+    if (!txt) continue;
+    if (txt.groupId) {
+      if (checkedGroups.has(txt.groupId)) continue;
+      checkedGroups.add(txt.groupId);
+      if (stateTexts.some(m => m.groupId === txt.groupId && m.locked)) continue;
+      if (stateTexts.some(m => m.groupId === txt.groupId && m.hidden)) continue;
+      if (state.figures.some(f => f.groupId === txt.groupId && f.hidden)) continue;
+      if (state.svgObjects.some(s => s.groupId === txt.groupId && s.hidden)) continue;
+      if ((state.images ?? []).some(m => m.groupId === txt.groupId && m.hidden)) continue;
+      const b = groupBounds(state.figures, txt.groupId, state.svgObjects, undefined, state.images, state.groups, undefined, state.texts);
+      if (cellX >= b.minX && cellX < b.maxX && cellY >= b.minY && cellY < b.maxY) {
+        if (maskMap.size > 0
+          && !pointPassesMasks(getGroupMaskChain(maskMap, state.groups, txt.groupId), undefined, cellX, cellY)) {
+          continue; // group hit clipped by its mask chain
+        }
+        return txt.id;
+      }
+      continue;
+    }
+    if (txt.locked) continue;
+    if (txt.hidden) continue;
+    if (cellX >= txt.cellX && cellX < txt.cellX + txt.cellWidth
+      && cellY >= txt.cellY && cellY < txt.cellY + txt.cellHeight) {
+      return txt.id;
+    }
+  }
+  return null;
+}
+
 /** Topmost scene object at the given cell across every kind, walking
  *  `sceneOrder` from front to back. Locked items and items inside a group
- *  whose dominant member is locked are skipped — the existing per-kind
+ *  whose dominant member is locked are skipped â€” the existing per-kind
  *  helpers (`lineHitsCell`, `arcHitsCell`) check `locked` themselves;
  *  figures/images do their own check below.
  *
@@ -1831,11 +1959,12 @@ export function findSceneObjectAtCell(
   state: CompositionState, cellX: number, cellY: number,
   options?: { ignoreLock?: boolean },
 ): { kind: CompItemKind; id: string } | null {
-  // Build id→node+kind lookup for efficient sceneOrder walk.
+  // Build idâ†’node+kind lookup for efficient sceneOrder walk.
   const lookup = new Map<string, { kind: CompItemKind; node: any }>();
   for (const f of state.figures) lookup.set(f.id, { kind: 'figure', node: f });
   for (const s of state.svgObjects) lookup.set(s.id, { kind: 'svg', node: s });
   for (const i of state.images ?? []) lookup.set(i.id, { kind: 'image', node: i });
+  for (const t of state.texts ?? []) lookup.set(t.id, { kind: 'text', node: t });
 
   // Zoom-dependent tolerance for SVG path hit testing (squared).
   const toleranceCells = computeHitToleranceCells(state.viewport, state.camera);
@@ -1843,7 +1972,7 @@ export function findSceneObjectAtCell(
 
   const maskMap = buildActiveMaskMap(state);
 
-  // Track the first SVG whose bbox passes but whose path misses —
+  // Track the first SVG whose bbox passes but whose path misses â€”
   // returned as a fallback when nothing else is behind it.
   let svgBboxFallback: { kind: CompItemKind; id: string } | null = null;
 
@@ -1883,7 +2012,7 @@ export function findSceneObjectAtCell(
     // SVG: precise path-distance test.
     if (svgPathHitsPoint(node, cellX, cellY, toleranceSq)) return { kind, id };
 
-    // Bbox hit but path miss — record as fallback (first/topmost only).
+    // Bbox hit but path miss â€” record as fallback (first/topmost only).
     if (!svgBboxFallback) svgBboxFallback = { kind, id };
   }
 
@@ -1891,7 +2020,7 @@ export function findSceneObjectAtCell(
 }
 
 /**
- * Return all member IDs (figures + svgObjects + images) of a group.
+ * Return all member IDs (figures + svgObjects + images + texts) of a group.
  * If groupId is undefined, returns an empty array.
  */
 export function groupMemberIds(state: CompositionState, groupId: string | undefined): string[] {
@@ -1900,6 +2029,7 @@ export function groupMemberIds(state: CompositionState, groupId: string | undefi
     ...state.figures.filter(f => f.groupId === groupId).map(f => f.id),
     ...state.svgObjects.filter(s => s.groupId === groupId).map(s => s.id),
     ...(state.images ?? []).filter(i => i.groupId === groupId).map(i => i.id),
+    ...(state.texts ?? []).filter(t => t.groupId === groupId).map(t => t.id),
   ];
 }
 
@@ -1921,7 +2051,7 @@ export function expandToGroup(state: CompositionState, nodeId: string): string[]
  * without a group are kept as themselves. Returns a deduplicated array.
  *
  * Use this anywhere a selection of leaf ids needs to be expanded to "every
- * member of any group at least one id belongs to" — marquee selection,
+ * member of any group at least one id belongs to" â€” marquee selection,
  * drag-id assembly, etc. Resolving each id to its ROOT before walking
  * descendants is what makes this safe for nested-group hierarchies.
  */
@@ -1984,11 +2114,17 @@ export function groupLocalCenter(state: CompositionState, groupId: string): [num
     expand(i.localCellX ?? i.cellX, i.localCellY ?? i.cellY,
            i.localCellWidth ?? i.cellWidth, i.localCellHeight ?? i.cellHeight);
   }
+  // Direct text members
+  for (const t of (state.texts ?? [])) {
+    if (t.groupId !== groupId) continue;
+    expand(t.localCellX ?? t.cellX, t.localCellY ?? t.cellY,
+           t.localCellWidth ?? t.cellWidth, t.localCellHeight ?? t.cellHeight);
+  }
   // Child groups: inverse-transform each descendant member's world coords
   // through this group's ancestor chain to recover its position in this
   // group's local space. Direct members already store localCellX/Y in
   // this group's space, but child members' world coords include this
-  // group's transform — inverting the chain strips it off, leaving the
+  // group's transform â€” inverting the chain strips it off, leaving the
   // child-transform-applied coords we need for a stable pivot.
   const chain = groupAncestorChain(state.groups, groupId);
   for (const child of state.groups) {
@@ -2018,13 +2154,19 @@ export function groupLocalCenter(state: CompositionState, groupId: string): [num
       if (img) {
         const lc = inverseChainedGroupTransform(chain, { cellX: img.cellX, cellY: img.cellY, cellWidth: img.cellWidth, cellHeight: img.cellHeight });
         expand(lc.cellX, lc.cellY, lc.cellWidth, lc.cellHeight);
+        continue;
+      }
+      const txt = (state.texts ?? []).find(tx => tx.id === mid);
+      if (txt) {
+        const lc = inverseChainedGroupTransform(chain, { cellX: txt.cellX, cellY: txt.cellY, cellWidth: txt.cellWidth, cellHeight: txt.cellHeight });
+        expand(lc.cellX, lc.cellY, lc.cellWidth, lc.cellHeight);
       }
     }
   }
   return [(minX + maxX) / 2, (minY + maxY) / 2];
 }
 
-// ── Nested-group hierarchy helpers ───────────────────────────────────
+// â”€â”€ Nested-group hierarchy helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Walk parentGroupId from `groupId` up to the root. Returns the root group's id. */
 export function findRootGroupId(groups: readonly GroupNode[], groupId: string): string {
@@ -2062,13 +2204,14 @@ export function descendantGroupIds(groups: readonly GroupNode[], groupId: string
   return children;
 }
 
-/** Return all leaf member IDs (figures + svgs + images) that belong to `groupId` or any of its descendant groups. */
+/** Return all leaf member IDs (figures + svgs + images + texts) that belong to `groupId` or any of its descendant groups. */
 export function allDescendantMemberIds(state: CompositionState, groupId: string): string[] {
   const groupSet = new Set([groupId, ...descendantGroupIds(state.groups, groupId)]);
   return [
     ...state.figures.filter(f => f.groupId && groupSet.has(f.groupId)).map(f => f.id),
     ...state.svgObjects.filter(s => s.groupId && groupSet.has(s.groupId)).map(s => s.id),
     ...(state.images ?? []).filter(i => i.groupId && groupSet.has(i.groupId)).map(i => i.id),
+    ...(state.texts ?? []).filter(t => t.groupId && groupSet.has(t.groupId)).map(t => t.id),
   ];
 }
 
@@ -2112,8 +2255,8 @@ export function applyChainedGroupTransformPoint(
 }
 
 /** Apply a chain of group transforms to a 2D delta (a free vector, not a
- *  point). Same composition order as `applyChainedGroupTransformPoint` —
- *  mirror, rotate, scale — but translate is skipped because a delta is
+ *  point). Same composition order as `applyChainedGroupTransformPoint` â€”
+ *  mirror, rotate, scale â€” but translate is skipped because a delta is
  *  origin-invariant. Used for tile-grid offset / pattern phase, which is
  *  the displacement of the tile grid from the figure's origin and must
  *  scale with the chain so the pattern stays locked to the figure as the
@@ -2135,7 +2278,7 @@ export function applyChainedGroupTransformDelta(
   return [x, y];
 }
 
-/** Inverse of `applyChainedGroupTransformDelta` — undoes scale, rotation,
+/** Inverse of `applyChainedGroupTransformDelta` â€” undoes scale, rotation,
  *  mirror (in that order) walking the chain outermost-first. */
 export function inverseChainedGroupTransformDelta(
   chain: readonly GroupNode[],
@@ -2176,12 +2319,12 @@ function transformQuadsByGroupChain(
   return quads;
 }
 
-// ── Scene-graph transform helpers ───────────────────────────────────
+// â”€â”€ Scene-graph transform helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Apply a `GroupNode` transform to a member's local-space rect, returning
- * the world-space rect. Mirror flips first, then 90° rotation, then
- * uniform-per-axis scale, then translate. Pure float math — no rounding.
+ * the world-space rect. Mirror flips first, then 90Â° rotation, then
+ * uniform-per-axis scale, then translate. Pure float math â€” no rounding.
  */
 export function applyGroupTransform(
   group: { translateX: number; translateY: number; scaleX: number; scaleY: number; rotation: 0 | 90 | 180 | 270; mirrorH: boolean; mirrorV: boolean },
@@ -2210,7 +2353,7 @@ export function applyGroupTransform(
 
 /**
  * Apply a `GroupNode` transform to a single 2D point. Mirror flips first,
- * then 90° rotation, then per-axis scale, then translate. Used to
+ * then 90Â° rotation, then per-axis scale, then translate. Used to
  * materialize line vertices through their group.
  */
 export function applyGroupTransformPoint(
@@ -2230,7 +2373,7 @@ export function applyGroupTransformPoint(
  * Transform a line's `creationBox` through the group, then snap the
  * perpendicular (non-scaling) dimension to the composition grid so
  * H/V lines land on clean grid edges after ungrouping.  Snapping is
- * skipped when the snapped box would not keep the line centered — the
+ * skipped when the snapped box would not keep the line centered â€” the
  * vertex sits at the midpoint of the creation box, so if snapping
  * shifts that midpoint the line would be off-center.
  */
@@ -2243,17 +2386,17 @@ export function ungroupCreationBox(
 
   // For H/V lines, derive the creation box from the world segments so the
   // result is always correct regardless of how the group was rotated or
-  // mirrored — and even when creationBox was dropped during duplication
+  // mirrored â€” and even when creationBox was dropped during duplication
   // into a different group.  The thin axis gets exactly one grid cell,
   // centered on the line; the long axis spans the full segment extent.
   if (line.lineDirection === 'horizontal' || line.lineDirection === 'vertical') {
     const bb = computeSVGBbox(line.segments);
     if (bb.cellWidth < bb.cellHeight) {
-      // Visually vertical — thin axis is X.
+      // Visually vertical â€” thin axis is X.
       const cx = bb.cellX + bb.cellWidth / 2;
       return { minX: cx - step / 2, minY: bb.cellY, width: step, height: bb.cellHeight };
     } else {
-      // Visually horizontal — thin axis is Y.
+      // Visually horizontal â€” thin axis is Y.
       const cy = bb.cellY + bb.cellHeight / 2;
       return { minX: bb.cellX, minY: cy - step / 2, width: bb.cellWidth, height: step };
     }
@@ -2285,7 +2428,7 @@ export function recalcLineDirection(
 /**
  * Recompute world cell coords for every member of `groupId` from the
  * current GroupNode transform composed with each member's `localCell*`.
- * No rounding — float `cellX/Y/Width/Height` propagate to read sites,
+ * No rounding â€” float `cellX/Y/Width/Height` propagate to read sites,
  * which already operate in float (renderer uses zoom multiplier; SVG
  * accepts float; bbox uses Math.min/max). Returns a new state with the
  * affected figures updated in place; other state is untouched.
@@ -2298,7 +2441,7 @@ export function materializeGroupMembers(state: CompositionState, groupId: string
   if (!group) return state;
   // Compute the ancestor chain [self, parent, ..., root] for transform composition.
   const chain = groupAncestorChain(state.groups, groupId);
-  // Short passes — one per node array — calling the per-type materialize
+  // Short passes â€” one per node array â€” calling the per-type materialize
   // helper. The helper returns `null` when the member is unchanged.
   let changed = false;
   const figures = state.figures.map((f) => {
@@ -2320,7 +2463,14 @@ export function materializeGroupMembers(state: CompositionState, groupId: string
     changed = true;
     return next;
   });
-  let next = changed ? { ...state, figures, svgObjects, images } : state;
+  const stateTexts: TextObject[] = state.texts ?? [];
+  const texts = stateTexts.map((t) => {
+    const next = materializeTextMember(t, chain, groupId);
+    if (next === null) return t;
+    changed = true;
+    return next;
+  });
+  let next = changed ? { ...state, figures, svgObjects, images, texts } : state;
   // Recurse into child groups so their members' world coords also reflect
   // any ancestor transform change.
   for (const child of next.groups) {
@@ -2333,7 +2483,7 @@ export function materializeGroupMembers(state: CompositionState, groupId: string
 
 /**
  * Invert a single group transform on a bounding rect.
- * Undoes translate → scale → rotation → mirror (reverse of forward order).
+ * Undoes translate â†’ scale â†’ rotation â†’ mirror (reverse of forward order).
  */
 function inverseGroupTransform(
   group: { translateX: number; translateY: number; scaleX: number; scaleY: number; rotation: 0 | 90 | 180 | 270; mirrorH: boolean; mirrorV: boolean },
@@ -2344,7 +2494,7 @@ function inverseGroupTransform(
   let y = (world.cellY - group.translateY) / group.scaleY;
   let w = world.cellWidth / group.scaleX;
   let h = world.cellHeight / group.scaleY;
-  // 2. Inverse rotation (90→270, 180→180, 270→90)
+  // 2. Inverse rotation (90â†’270, 180â†’180, 270â†’90)
   if (group.rotation === 90) {
     const nx = y, ny = -(x + w), nw = h, nh = w;
     x = nx; y = ny; w = nw; h = nh;
@@ -2430,7 +2580,7 @@ function inverseChainedOrientation(
  * Inverse of `transformQuadsByGroupChain`: given world quads in a world
  * bbox, inverse-transform through the chain to produce local quads.
  * Walks the chain from root to innermost (reverse of forward), undoing
- * scale → rotation → mirror at each step.
+ * scale â†’ rotation â†’ mirror at each step.
  */
 function inverseTransformQuadsByGroupChain(
   worldQuads: ReadonlyArray<FigureQuad>,
@@ -2476,7 +2626,7 @@ function sameQuads(a: FigureQuad[] | undefined, b: FigureQuad[] | undefined): bo
  *
  * Use after loading/merging data where locals may be stale relative to
  * the current group transforms. This is the inverse of
- * `materializeGroupMembers` — instead of deriving world from local, it
+ * `materializeGroupMembers` â€” instead of deriving world from local, it
  * derives local from world.
  */
 export function reconcileGroupLocals(state: CompositionState): CompositionState {
@@ -2527,7 +2677,7 @@ function reconcileGroupLocalsForGroups(
       }
       const worldOffX = f.tileOffsetXL0 ?? 0;
       const worldOffY = f.tileOffsetYL0 ?? 0;
-      // Tile-grid offset is a free vector, not a point — invert through
+      // Tile-grid offset is a free vector, not a point â€” invert through
       // the chain's scale/rotation/mirror only, matching the forward
       // delta-transform used in materializeFigureMember.
       const [invOffX, invOffY] = inverseChainedGroupTransformDelta(chain, worldOffX, worldOffY);
@@ -2631,14 +2781,31 @@ function reconcileGroupLocalsForGroups(
       localCellWidth: local.cellWidth, localCellHeight: local.cellHeight,
     };
   });
-  return changed ? { ...state, figures, svgObjects, images } : state;
+  const stateTexts: TextObject[] = state.texts ?? [];
+  const texts = stateTexts.map((t) => {
+    if (!t.groupId) return t;
+    if (targetGroupIds && !targetGroupIds.has(t.groupId)) return t;
+    const chain = groupAncestorChain(state.groups, t.groupId);
+    if (chain.length === 0) return t;
+    const local = inverseChainedGroupTransform(chain, {
+      cellX: t.cellX, cellY: t.cellY, cellWidth: t.cellWidth, cellHeight: t.cellHeight,
+    });
+    if (t.localCellX === local.cellX && t.localCellY === local.cellY &&
+        t.localCellWidth === local.cellWidth && t.localCellHeight === local.cellHeight) return t;
+    changed = true;
+    return { ...t,
+      localCellX: local.cellX, localCellY: local.cellY,
+      localCellWidth: local.cellWidth, localCellHeight: local.cellHeight,
+    };
+  });
+  return changed ? { ...state, figures, svgObjects, images, texts } : state;
 }
 
 /** Re-derive a figure member's world `cell*` (and tile dim if it tiles)
  *  from its `localCell*` composed with the group transform. Also derives
  *  world `rotation` / `mirrorH` / `mirrorV` / `quads` from the figure's
  *  intrinsic `localRotation` / `localMirror*` / `localQuads` composed
- *  with the group's transform — without this, a figure in a rotated
+ *  with the group's transform â€” without this, a figure in a rotated
  *  group would have its bbox rotated (via `applyGroupTransform`) but its
  *  sprite would render un-rotated. Returns `null` only when the figure
  *  isn't in the group or has no local rect. */
@@ -2653,8 +2820,8 @@ function materializeFigureMember(
     cellWidth: f.localCellWidth, cellHeight: f.localCellHeight,
   });
   // Tile-mode members scale their tile dim AND tile-grid offset with the
-  // chained group transform, so a pattern inside a 2× group renders at 2×
-  // the tile pitch and 2× the offset — the repetition count stays
+  // chained group transform, so a pattern inside a 2Ã— group renders at 2Ã—
+  // the tile pitch and 2Ã— the offset â€” the repetition count stays
   // constant and the pattern stays locked to the figure's local bounds
   // as the group resizes (offset doesn't slide relative to the figure).
   let nextTileW: number | undefined = f.tileWidthL0;
@@ -2742,7 +2909,7 @@ function materializeSVGMember(
 }
 
 /** Re-derive an image member's world bbox + orientation from its
- *  `localCell*` composed with the group transform. Bbox-only — no
+ *  `localCell*` composed with the group transform. Bbox-only â€” no
  *  vertex/segment list to materialize. World rotation/mirror is the
  *  composition of the group's orientation with the image's intrinsic
  *  orientation, mirroring `materializeFigureMember` minus the
@@ -2773,6 +2940,42 @@ function materializeImageMember(
   ) return null;
   return {
     ...i,
+    cellX: w.cellX, cellY: w.cellY,
+    cellWidth: w.cellWidth, cellHeight: w.cellHeight,
+    rotation: world.rotation,
+    mirrorH: world.mirrorH,
+    mirrorV: world.mirrorV,
+  };
+}
+
+/** Re-derive a text member's world bbox + orientation from its
+ *  `localCell*` composed with the group transform. Bbox-only, exactly
+ *  the image member's model â€” text carries no vertex geometry. */
+function materializeTextMember(
+  t: TextObject, chain: readonly GroupNode[], groupId: string,
+): TextObject | null {
+  if (t.groupId !== groupId) return null;
+  if (t.localCellX === undefined || t.localCellY === undefined
+    || t.localCellWidth === undefined || t.localCellHeight === undefined) return null;
+  const w = applyChainedGroupTransform(chain, {
+    cellX: t.localCellX, cellY: t.localCellY,
+    cellWidth: t.localCellWidth, cellHeight: t.localCellHeight,
+  });
+  const local: Orientation = {
+    rotation: t.rotation ?? 0,
+    mirrorH: t.mirrorH ?? false,
+    mirrorV: t.mirrorV ?? false,
+  };
+  const world = composeChainedOrientations(chain, local);
+  if (
+    t.cellX === w.cellX && t.cellY === w.cellY &&
+    t.cellWidth === w.cellWidth && t.cellHeight === w.cellHeight &&
+    (t.rotation ?? 0) === world.rotation &&
+    (t.mirrorH ?? false) === world.mirrorH &&
+    (t.mirrorV ?? false) === world.mirrorV
+  ) return null;
+  return {
+    ...t,
     cellX: w.cellX, cellY: w.cellY,
     cellWidth: w.cellWidth, cellHeight: w.cellHeight,
     rotation: world.rotation,
@@ -2850,7 +3053,7 @@ export function backfillMissingLocals(
  * One-time migration: for every figure whose `groupId` references a group
  * that doesn't exist in `state.groups` yet, create an identity-transform
  * `GroupNode` and seed each member's `localCell*` with its current world
- * coords. Idempotent — figures that already have `localCell*` and groups
+ * coords. Idempotent â€” figures that already have `localCell*` and groups
  * that already exist are left alone.
  *
  * Run on composition load (from binary format) so older saves get the
@@ -2904,7 +3107,7 @@ export function materializeGroupHierarchy(state: CompositionState): CompositionS
   return migrated.sceneOrder ? reflowSceneOrderForGroups(migrated) : migrated;
 }
 
-// ── Transform Cycle ──────────────────────────────────────────────────
+// â”€â”€ Transform Cycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface TransformStep {
   rotation: 0 | 90 | 180 | 270;
@@ -2933,7 +3136,7 @@ export function screenToLocalFlipAxis(
   return screenAxis;
 }
 
-/** Rotate a single quad 90° CW within a bounding box of given width/height. */
+/** Rotate a single quad 90Â° CW within a bounding box of given width/height. */
 function rotateQuad90CW(q: FigureQuad, boundH: number): FigureQuad {
   return {
     offsetX: boundH - q.offsetY - q.cellHeight,
@@ -2954,10 +3157,10 @@ function mirrorQuadV(q: FigureQuad, boundH: number): FigureQuad {
 }
 
 /**
- * Rotate a single group-member figure 90° CW around a group center (gcx, gcy).
+ * Rotate a single group-member figure 90Â° CW around a group center (gcx, gcy).
  * Swaps bbox dimensions, moves position around the group center, and rotates
  * quad offsets. Mirror flags are preserved; identity anchors and transform-
- * cycle step are cleared — the figure is no longer at its cycle identity
+ * cycle step are cleared â€” the figure is no longer at its cycle identity
  * position after a group rotation.
  */
 export function rotateGroupMemberFigure90CW(
@@ -2974,7 +3177,7 @@ export function rotateGroupMemberFigure90CW(
   const fcy = fig.cellY + fig.cellHeight / 2;
   const relX = fcx - gcx;
   const relY = fcy - gcy;
-  // 90° CW in screen (y-down) coords: (x, y) -> (-y, x)
+  // 90Â° CW in screen (y-down) coords: (x, y) -> (-y, x)
   const rotCx = gcx - relY;
   const rotCy = gcy + relX;
   const newCellX = Math.round(rotCx - newW / 2);
@@ -2997,8 +3200,8 @@ export function rotateGroupMemberFigure90CW(
 }
 
 /**
- * Rotate a single figure 90° CW around its identity center.
- * Mirrors what the live ROTATE_FIGURE reducer does — extracted so the editor
+ * Rotate a single figure 90Â° CW around its identity center.
+ * Mirrors what the live ROTATE_FIGURE reducer does â€” extracted so the editor
  * can compute and capture old/new quad and identity fields for the undo entry
  * without duplicating the math (and risking divergence between what the
  * reducer applies and what the undo entry records).
@@ -3046,14 +3249,14 @@ export function mirrorFigureIndividual(fig: CompositionFigure, axis: 'h' | 'v'):
   return { ...fig, mirrorV: !(fig.mirrorV ?? false), quads };
 }
 
-// ── Orientation composition (figure rotation/mirror inside a group) ─
+// â”€â”€ Orientation composition (figure rotation/mirror inside a group) â”€
 
 type Orientation = { rotation: 0 | 90 | 180 | 270; mirrorH: boolean; mirrorV: boolean };
 
 /** Convert an `(rotation, mirrorH, mirrorV)` triple to its 2x2 matrix.
  *  Convention: apply mirror flips first (about the local origin), then
  *  rotation, then translate (translate is handled separately by
- *  applyGroupTransform). 90° CW in screen y-down coords is `(x, y) →
+ *  applyGroupTransform). 90Â° CW in screen y-down coords is `(x, y) â†’
  *  (-y, x)`; this corresponds to `[[cos, -sin], [sin, cos]]` evaluated
  *  with `(cos, sin) = (0, 1)`. */
 function orientationToMatrix(o: Orientation): [number, number, number, number] {
@@ -3061,15 +3264,15 @@ function orientationToMatrix(o: Orientation): [number, number, number, number] {
   const mv = o.mirrorV ? -1 : 1;
   const cos = o.rotation === 0 ? 1 : o.rotation === 180 ? -1 : 0;
   const sin = o.rotation === 90 ? 1 : o.rotation === 270 ? -1 : 0;
-  // R * Diag(mh, mv) — mirror then rotate, applied to a column vector.
+  // R * Diag(mh, mv) â€” mirror then rotate, applied to a column vector.
   return [cos * mh, -sin * mv, sin * mh, cos * mv];
 }
 
 /** Decompose a 2x2 dihedral-group matrix back into `(rotation, mirrorH,
  *  mirrorV)`. The 16 input triples produce only 8 distinct matrices
  *  (e.g. `mirrorH && mirrorV && rotation=0` and `rotation=180` both give
- *  the negation matrix). The lookup order — fewer mirrors first, then
- *  smaller rotation — picks the most compact canonical form: a 180°
+ *  the negation matrix). The lookup order â€” fewer mirrors first, then
+ *  smaller rotation â€” picks the most compact canonical form: a 180Â°
  *  flip decomposes as `(rotation: 180)` rather than the equivalent
  *  `(mirrorH: true, mirrorV: true)`, and a single horizontal flip stays
  *  `(rotation: 0, mirrorH: true)` rather than `(rotation: 180,
@@ -3090,7 +3293,7 @@ function matrixToOrientation(m: readonly [number, number, number, number]): Orie
 }
 
 /** Compose the `outer` orientation onto an `inner` orientation, returning
- *  the world equivalent: `world = outer ∘ inner` (apply inner first, then
+ *  the world equivalent: `world = outer âˆ˜ inner` (apply inner first, then
  *  outer). Used to derive a grouped figure's world rotation/mirror from
  *  its `localRotation`/`localMirror*` composed with the group's own
  *  `rotation`/`mirror*`. */
@@ -3128,16 +3331,16 @@ export function transformQuadsByGroup(
   return quads;
 }
 
-// ── SVG rotate + mirror geometry ────────────────────────────────────
+// â”€â”€ SVG rotate + mirror geometry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Center of a segment-derived bbox. Used as the rotation pivot for SVG
- *  rotates so 0° → 90° → 180° → 270° → 0° lands on the exact original
+ *  rotates so 0Â° â†’ 90Â° â†’ 180Â° â†’ 270Â° â†’ 0Â° lands on the exact original
  *  position regardless of bbox parity. */
 function bboxCenter(bb: { cellX: number; cellY: number; cellWidth: number; cellHeight: number }): [number, number] {
   return [bb.cellX + bb.cellWidth / 2, bb.cellY + bb.cellHeight / 2];
 }
 
-/** Rotate a 2D point 90° CW around `(cx, cy)` in screen-y-down coords. */
+/** Rotate a 2D point 90Â° CW around `(cx, cy)` in screen-y-down coords. */
 function rotatePointCW(x: number, y: number, cx: number, cy: number): [number, number] {
   const rx = x - cx, ry = y - cy;
   return [cx - ry, cy + rx];
@@ -3161,10 +3364,10 @@ function mirrorSegments(segments: ReadonlyArray<PathSegment>, axis: 'h' | 'v', c
     : { kind: 'line', start: mirrorPoint(seg.start[0], seg.start[1], axis, cx, cy), end: mirrorPoint(seg.end[0], seg.end[1], axis, cx, cy) });
 }
 
-/** Rotate a single SVGObject 90° CW around its identity-segment bbox center.
+/** Rotate a single SVGObject 90Â° CW around its identity-segment bbox center.
  *  Uses the identity-stash stabilization pattern: stashes segments on first
  *  rotation, then always rebuilds from `identity + cumulative rotation` so
- *  0° → 90° → 180° → 270° → 0° lands exactly on the original. */
+ *  0Â° â†’ 90Â° â†’ 180Â° â†’ 270Â° â†’ 0Â° lands exactly on the original. */
 export function rotateSVG90CW(svg: SVGObject): SVGObject {
   const idSegs = svg.identitySegments ?? safeMapSegments(svg.segments, clonePathSegment) ?? [];
   const [cx, cy] = bboxCenter(computeSVGBbox(idSegs));
@@ -3175,7 +3378,7 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
   // Rebuild segments from identity following `mirrorSVG`'s recipe:
   // mirror H, mirror V, then rotate. Previously only rotation was applied,
   // which silently dropped the active mirror state from the segment data
-  // — the mirrorH/V flag stayed set but the geometry no longer reflected
+  // â€” the mirrorH/V flag stayed set but the geometry no longer reflected
   // it, so rotating an imported SVG that arrived in a mirrored state
   // misaligned the contents on the very first rotation.
   let newSegs = safeMapSegments(idSegs, clonePathSegment) ?? [];
@@ -3183,7 +3386,7 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
   if (curMV) newSegs = mirrorSegments(newSegs, 'v', cx, cy);
   const steps = newRot / 90;
   for (let i = 0; i < steps; i++) newSegs = rotateSegmentsCW(newSegs, cx, cy);
-  // Identity is rotation=0 AND no mirrors — matches `mirrorSVG`'s
+  // Identity is rotation=0 AND no mirrors â€” matches `mirrorSVG`'s
   // atIdentity check. A pure-rotation cycle through a mirrored SVG must
   // keep `identitySegments` stashed so subsequent rotations still pivot
   // around the original (un-mirrored, un-rotated) bbox center.
@@ -3191,11 +3394,11 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
   const newIdSegs = atIdentity ? undefined : idSegs;
   // Transform subpaths by the SINGLE-STEP delta from current state. The
   // main path rebuilds from `identitySegments`, but subpaths aren't
-  // stashed — applying `steps` rotations from the already-rotated
+  // stashed â€” applying `steps` rotations from the already-rotated
   // current state would over-rotate by `steps - 1` per call (rotation
-  // #2 ends up at 270° instead of 180°, and so on), which is what
+  // #2 ends up at 270Â° instead of 180Â°, and so on), which is what
   // misaligned the pieces of a joined design on cumulative rotates.
-  // 90° rotation is exact integer arithmetic, so a 4× cycle around the
+  // 90Â° rotation is exact integer arithmetic, so a 4Ã— cycle around the
   // same pivot lands exactly on the original. Non-array shapes (corrupt
   // loads, imports that bypassed migration) coerce to undefined so a
   // poisoned shape can never reach a `for...of` consumer and throw
@@ -3208,7 +3411,7 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
   // carry one pattern unit, so `computeSVGBbox(newSegs)` would collapse
   // `cellX/Y/Width/Height` down to that unit. Instead, swap region W/H
   // around the current center using the same identity-stash pattern as
-  // `rotateFigureIndividual90CW` so 4×90° lands exactly on the original.
+  // `rotateFigureIndividual90CW` so 4Ã—90Â° lands exactly on the original.
   if (svg.tileMode === 'repeat') {
     const identityW = (curRot === 90 || curRot === 270) ? svg.cellHeight : svg.cellWidth;
     const identityH = (curRot === 90 || curRot === 270) ? svg.cellWidth  : svg.cellHeight;
@@ -3222,11 +3425,11 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
     const idCy = identityY + identityH / 2;
     const newCellX = Math.round(idCx - newW / 2);
     const newCellY = Math.round(idCy - newH / 2);
-    // Tile cell dimensions swap to track the rotated design — the
+    // Tile cell dimensions swap to track the rotated design â€” the
     // renderer (CompositionSVGLayer.applyTiledSVGObject) packs segments
-    // into a `tileWidthL0 × tileHeightL0` cell, so if the tile dims
-    // don't swap, a rotated 40×32 design gets crammed into the original
-    // 32×40 cell and the pattern visibly misaligns.
+    // into a `tileWidthL0 Ã— tileHeightL0` cell, so if the tile dims
+    // don't swap, a rotated 40Ã—32 design gets crammed into the original
+    // 32Ã—40 cell and the pattern visibly misaligns.
     const newTileW = svg.tileHeightL0;
     const newTileH = svg.tileWidthL0;
     // Rotate the tile-grid world origin (cellX + ox, cellY + oy) around
@@ -3234,7 +3437,7 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
     // new in-region offset. Derivation collapses to a clean swap+flip:
     //   newOx = oldCellHeight - oldOy ; newOy = oldOx.
     // 4 rotations return both back to the originals (verified by the
-    // 4×-cycle test in rotateMirrorNode.test.ts).
+    // 4Ã—-cycle test in rotateMirrorNode.test.ts).
     const oldOx = svg.tileOffsetXL0 ?? 0;
     const oldOy = svg.tileOffsetYL0 ?? 0;
     const newOx = svg.cellHeight - oldOy;
@@ -3248,7 +3451,7 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
       identityCellY: atIdentity ? undefined : identityY,
       localSegments: undefined, localCellX: undefined, localCellY: undefined, localCellWidth: undefined, localCellHeight: undefined };
     // Re-key per-copy paint: the whole pattern block rotates rigidly about the
-    // region center (invariant under 90° rotation), so map each painted copy's
+    // region center (invariant under 90Â° rotation), so map each painted copy's
     // tile-center through that rotation onto the post-rotation grid.
     if (svg.segmentOverrides && svg.segmentOverrides.size > 0) {
       const rcx = svg.cellX + svg.cellWidth / 2;
@@ -3263,7 +3466,7 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
 }
 
 /** Mirror a single SVGObject on a screen axis. Uses the identity-stash
- *  stabilization pattern and screen→local axis remapping. */
+ *  stabilization pattern and screenâ†’local axis remapping. */
 export function mirrorSVG(svg: SVGObject, screenAxis: 'h' | 'v'): SVGObject {
   const idSegs = svg.identitySegments ?? safeMapSegments(svg.segments, clonePathSegment) ?? [];
   const [cx, cy] = bboxCenter(computeSVGBbox(idSegs));
@@ -3286,8 +3489,8 @@ export function mirrorSVG(svg: SVGObject, screenAxis: 'h' | 'v'): SVGObject {
   // the already-transformed subpath state would compose toggles instead
   // of replacing them (e.g. two H-mirrors return main to identity but
   // leave subpaths still mirrored). Applying ONE mirror across the
-  // *screen* axis around the same pivot is equivalent — the conjugation
-  // identity `R ∘ M_local ∘ R⁻¹ = M_screen` means a screen-axis mirror
+  // *screen* axis around the same pivot is equivalent â€” the conjugation
+  // identity `R âˆ˜ M_local âˆ˜ Râ»Â¹ = M_screen` means a screen-axis mirror
   // applied to the rotated subpath state lands at the same place as
   // local-axis-mirror-then-rotate from identity. Mirror is exact integer
   // arithmetic, so two mirrors on the same axis return exactly to
@@ -3430,7 +3633,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       return { ...next, selectedFigureIds: newSelected };
     }
     case 'moveNode': {
-      // Translate by (dx, dy). One pass over each node array — only the
+      // Translate by (dx, dy). One pass over each node array â€” only the
       // node whose id matches gets the shift. Identity / rotation / mirror
       // are cleared here (matches the live MOVE_FIGURES_DELTA reducer);
       // revert restores them from the captured `old*` fields.
@@ -3460,7 +3663,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
     }
     case 'lockObject': {
       // Find the item via SCENE_ADAPTERS and toggle its locked field. No
-      // need to know the kind up front — we walk the adapters and apply
+      // need to know the kind up front â€” we walk the adapters and apply
       // to whichever array has the id.
       let next = state;
       for (const adapter of SCENE_ADAPTERS) {
@@ -3538,7 +3741,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
             if (dx !== 0) bboxUpdate.tileOffsetXL0 = (s.tileOffsetXL0 ?? 0) - dx;
             if (dy !== 0) bboxUpdate.tileOffsetYL0 = (s.tileOffsetYL0 ?? 0) - dy;
           }
-          // Resize resets the rotation cycle's identity stash — matches the
+          // Resize resets the rotation cycle's identity stash â€” matches the
           // figure scaleFigure branch above so the next rotation pivots
           // around the new center.
           return { ...s, ...bboxUpdate, identityCellX: undefined, identityCellY: undefined };
@@ -3579,7 +3782,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
     }
     case 'groupFigures': {
       const childGroupSet = new Set(op.childGroupIds ?? []);
-      // Items in child groups are NOT modified — only their GroupNode gets
+      // Items in child groups are NOT modified â€” only their GroupNode gets
       // a parentGroupId. figureIds contains only loose items (not in any
       // child group).
       const looseIdSet = new Set(op.figureIds);
@@ -3637,6 +3840,19 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           localCellHeight: i.cellHeight,
         };
       });
+      const texts = (state.texts ?? []).map((t) => {
+        if (!looseIdSet.has(t.id)) return t;
+        return {
+          ...t,
+          groupId: op.groupId,
+          preGroupName: t.name,
+          name: t.id === namedNodeId ? op.groupName : undefined,
+          localCellX: t.cellX,
+          localCellY: t.cellY,
+          localCellWidth: t.cellWidth,
+          localCellHeight: t.cellHeight,
+        };
+      });
       // Nest child groups by setting parentGroupId, saving their name.
       let groups: GroupNode[] = state.groups.map((g) => {
         if (!childGroupSet.has(g.id)) return g;
@@ -3651,7 +3867,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         ];
       }
       // Re-cluster members in sceneOrder so the new group is contiguous.
-      return reflowSceneOrderForGroups({ ...state, figures, svgObjects, images, groups });
+      return reflowSceneOrderForGroups({ ...state, figures, svgObjects, images, texts, groups });
     }
     case 'ungroupFigures': {
       const ungroupNode = state.groups.find(g => g.id === op.groupId);
@@ -3726,6 +3942,25 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           mirrorV: undefined,
         } : i
       );
+      const texts = (state.texts ?? []).map((t) =>
+        t.groupId === op.groupId ? {
+          ...t,
+          groupId: undefined,
+          name: t.preGroupName,
+          preGroupName: undefined,
+          localCellX: undefined,
+          localCellY: undefined,
+          localCellWidth: undefined,
+          localCellHeight: undefined,
+          identityCellX: undefined,
+          identityCellY: undefined,
+          identityCellWidth: undefined,
+          identityCellHeight: undefined,
+          rotation: undefined,
+          mirrorH: undefined,
+          mirrorV: undefined,
+        } : t
+      );
       // Detach child groups from the parent and restore their names.
       let groups = state.groups.map((g) => {
         if (!childGroupSet.has(g.id)) return g;
@@ -3739,7 +3974,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       // (e.g. on move) recomputes world from stale locals through the
       // shortened chain, producing wrong positions. We target only the
       // affected groups to avoid perturbing unrelated items.
-      const result: CompositionState = { ...state, figures, svgObjects, images, groups };
+      const result: CompositionState = { ...state, figures, svgObjects, images, texts, groups };
       if (childGroupSet.size === 0) return result;
       // Collect all group IDs that descend from the detached children.
       const affectedGroupIds = new Set<string>();
@@ -3777,14 +4012,14 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       return { ...state, svgObjects: [...state.svgObjects, op.svg] };
     case 'editSVGSegments': {
       // Bbox source: explicit op fields (tile-mode rotate/mirror) or
-      // AABB of the new segments (default — visible segments define the box).
+      // AABB of the new segments (default â€” visible segments define the box).
       const bbox = op.newCellX !== undefined
         ? { cellX: op.newCellX, cellY: op.newCellY as number,
             cellWidth: op.newCellWidth as number, cellHeight: op.newCellHeight as number }
         : computeSVGBbox(op.newSegments);
       // Orientation: preserve when the caller asks (tile-mode rotate/mirror
       // needs the rotation flag and identity stash to round-trip through
-      // undo/redo); otherwise clear (default — most segment edits create a
+      // undo/redo); otherwise clear (default â€” most segment edits create a
       // new identity).
       const orient = op.preserveOrientation
         ? { rotation: op.newRotation, mirrorH: op.newMirrorH, mirrorV: op.newMirrorV,
@@ -3853,7 +4088,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       );
       return { ...state, svgObjects };
     }
-    // ── Image ops ───────────────────────────────────────────────────────
+    // â”€â”€ Image ops â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     case 'editImage': {
       const images = (state.images ?? []).map((i) => i.id === op.imageId ? {
         ...i,
@@ -3956,8 +4191,58 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         images: op.newImages,
         groups: op.newGroups,
         sceneOrder: op.newSceneOrder,
+        // Absent = pre-text entry; leave texts untouched so old undo
+        // entries replay without wiping v29 content.
+        ...(op.newTexts !== undefined ? { texts: op.newTexts } : {}),
         renderGeneration: state.renderGeneration + 1,
       };
+    case 'setText': {
+      const texts = (state.texts ?? []).map((t) => t.id === op.textId ? {
+        ...t, content: op.newContent,
+        cellWidth: op.newCellWidth, cellHeight: op.newCellHeight,
+      } : t);
+      return { ...state, texts };
+    }
+    case 'setTextStyle': {
+      const texts = (state.texts ?? []).map((t) => t.id === op.textId ? {
+        ...t, style: op.newStyle,
+        cellWidth: op.newCellWidth, cellHeight: op.newCellHeight,
+      } : t);
+      return { ...state, texts };
+    }
+    case 'setNodeEffects': {
+      // Mirror of lockObject: resolve the id through SCENE_ADAPTERS and
+      // swap the effects block on whichever kind carries it.
+      let next = state;
+      for (const adapter of SCENE_ADAPTERS) {
+        const arr = adapter.getArray(next);
+        let touched = false;
+        const updated = arr.map((x) => {
+          if (x.id !== op.id) return x;
+          touched = true;
+          return { ...x, effects: op.newEffects };
+        });
+        if (touched) {
+          next = adapter.setArray(next, updated as SceneObjectBase[]);
+          break;
+        }
+      }
+      return next;
+    }
+    case 'setFillPaint': {
+      const svgObjects = state.svgObjects.map((s) =>
+        s.id === op.svgId ? { ...s, fillPaint: op.newPaint } : s
+      );
+      return { ...state, svgObjects };
+    }
+    case 'setImageTint': {
+      const images = (state.images ?? []).map((i) =>
+        i.id === op.nodeId ? { ...i, tint: op.newTint } : i
+      );
+      return { ...state, images };
+    }
+    case 'setBackground':
+      return { ...state, background: op.newPaint };
     case 'cleanupLibrary':
       return state;
     default:
@@ -3973,7 +4258,7 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
       return applyOp(state, { op: 'removeObject', kind: op.kind, item: op.item });
     case 'removeObject':
       // Re-insert the deleted item at the end of its kind's array (array
-      // order is not user-visible — only sceneOrder is), and splice the id
+      // order is not user-visible â€” only sceneOrder is), and splice the id
       // back into sceneOrder at its captured pre-delete index so the scene
       // outline / z-position is restored.
       return applyOp(state, {
@@ -3983,7 +4268,7 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
     case 'moveNode': {
       // Inverse translate, then restore identity / rotation / mirror that
       // the forward apply cleared. Identity-restoration is essential for
-      // figure rotation pivots and for line/arc 360°-cycle stability.
+      // figure rotation pivots and for line/arc 360Â°-cycle stability.
       const reverted = translateNodeByDelta(state, op.nodeId, -op.dx, -op.dy);
       return restoreNodeIdentity(reverted, op.nodeId, op);
     }
@@ -4283,7 +4568,7 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
       );
       return { ...state, svgObjects };
     }
-    // ── Image revert ops ────────────────────────────────────────────────
+    // â”€â”€ Image revert ops â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     case 'editImage':
       return applyOp(state, { op: 'editImage', imageId: op.imageId,
         oldCellX: op.newCellX, oldCellY: op.newCellY, oldCellWidth: op.newCellWidth, oldCellHeight: op.newCellHeight,
@@ -4370,7 +4655,26 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         oldSVGObjects: op.newSVGObjects, newSVGObjects: op.oldSVGObjects,
         oldImages: op.newImages, newImages: op.oldImages,
         oldGroups: op.newGroups, newGroups: op.oldGroups,
-        oldSceneOrder: op.newSceneOrder, newSceneOrder: op.oldSceneOrder });
+        oldSceneOrder: op.newSceneOrder, newSceneOrder: op.oldSceneOrder,
+        oldTexts: op.newTexts, newTexts: op.oldTexts });
+    case 'setText':
+      return applyOp(state, { ...op,
+        oldContent: op.newContent, newContent: op.oldContent,
+        oldCellWidth: op.newCellWidth, newCellWidth: op.oldCellWidth,
+        oldCellHeight: op.newCellHeight, newCellHeight: op.oldCellHeight });
+    case 'setTextStyle':
+      return applyOp(state, { ...op,
+        oldStyle: op.newStyle, newStyle: op.oldStyle,
+        oldCellWidth: op.newCellWidth, newCellWidth: op.oldCellWidth,
+        oldCellHeight: op.newCellHeight, newCellHeight: op.oldCellHeight });
+    case 'setNodeEffects':
+      return applyOp(state, { ...op, oldEffects: op.newEffects, newEffects: op.oldEffects });
+    case 'setFillPaint':
+      return applyOp(state, { ...op, oldPaint: op.newPaint, newPaint: op.oldPaint });
+    case 'setImageTint':
+      return applyOp(state, { ...op, oldTint: op.newTint, newTint: op.oldTint });
+    case 'setBackground':
+      return applyOp(state, { ...op, oldPaint: op.newPaint, newPaint: op.oldPaint });
     case 'cleanupLibrary':
       return state;
     default:

@@ -1,11 +1,11 @@
-import { BlendMode, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGSubpath, PathSegment, ImageObject, RGBColor } from './types';
+﻿import { BlendMode, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGSubpath, PathSegment, ImageObject, RGBColor, TextObject, TextStyle, TextAlign, Paint, GradientStop, NodeEffects, ImageTintMode } from './types';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
 import { computeAliveGroupIds } from './compositionOps';
 import { compSnapStep } from './compositionCellMath';
 
-// ── FCOMP Binary Format v28 ────────────────────────────────────────
+// â”€â”€ FCOMP Binary Format v29 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // HEADER (8 bytes)
 //   Magic:       u8[4] = "FCMP"
@@ -13,7 +13,7 @@ import { compSnapStep } from './compositionCellMath';
 //   FigureCount: u16 LE
 //
 // COMPOSITION METADATA (fields total 43 bytes; METADATA_SIZE=45 keeps
-// 2 bytes of historical slack in the allocation — writes are sequential,
+// 2 bytes of historical slack in the allocation â€” writes are sequential,
 // so the slack is just trailing zeros)
 //   nameIdx:     u16 LE        (string table index)
 //   gridLevel:   i8  (v23+; u8 in v22-, but legacy values were 0..6 so
@@ -21,7 +21,7 @@ import { compSnapStep } from './compositionCellMath';
 //   cameraX:     f64 LE
 //   cameraY:     f64 LE
 //   cameraZoom:  f64 LE
-//   strokeScale: f64 LE        (v4+; in v22- a 0–1 percentage of
+//   strokeScale: f64 LE        (v4+; in v22- a 0â€“1 percentage of
 //                               MAX_LINE_WIDTH with v>1 auto-normalized;
 //                               in v23+ values may exceed 1 because
 //                               normalization scales the stroke inversely
@@ -31,9 +31,9 @@ import { compSnapStep } from './compositionCellMath';
 //
 // NORMALIZATION (v23+)
 //   Every save scales the content's AABB by a power-of-2 factor s = 2^k,
-//   k ≥ 0 (scale-up only — content larger than 32 L0 stays large; the
+//   k â‰¥ 0 (scale-up only â€” content larger than 32 L0 stays large; the
 //   precision constraint may push the scaled bbox past 32). Content is
-//   centered in [0,32]×[0,32] when it fits, else anchored at the origin.
+//   centered in [0,32]Ã—[0,32] when it fits, else anchored at the origin.
 //   `gridLevel` is bumped by k and `strokeScale` is multiplied by s, so
 //   visual content is preserved across the normalization. v22-and-earlier
 //   files get normalized on first load.
@@ -49,7 +49,7 @@ import { compSnapStep } from './compositionCellMath';
 //                bit 0x20 in v5/v6); v6 reads still skip those bytes.
 //                v16 adds optional colorOverride via figure flags2 bit 0x80
 //                (3 uint8 r,g,b written after the quads block; presence-only
-//                — explicit white is preserved, no sentinel collapse).
+//                â€” explicit white is preserved, no sentinel collapse).
 //
 // CUSTOM COLORS SECTION (v17+)
 //   customColorCount: u16 LE
@@ -85,12 +85,13 @@ import { compSnapStep } from './compositionCellMath';
 //     flags3:       u8         (v24+)
 //                     0x01 hasFillColor (v24+), 0x02 isMask (v25+),
 //                     0x04 hidden (v26+), 0x08 isPatternFill (v27+),
-//                     0x10 hasSegmentOverrides (v28+)
-//     rotBits:      u8         (low 2 bits → 0/90/180/270, bit 0x04 tileRepeat)
+//                     0x10 hasSegmentOverrides (v28+),
+//                     0x20 hasFillPaint (v29+), 0x40 hasEffects (v29+)
+//     rotBits:      u8         (low 2 bits â†’ 0/90/180/270, bit 0x04 tileRepeat)
 //     color:        u8 r, u8 g, u8 b
 //     conditional u16 string refs (in flag order): nameIdx, groupIdIdx, preGroupNameIdx
 //     segmentCount: u16 LE
-//     segments:     segmentCount × segment-record
+//     segments:     segmentCount Ã— segment-record
 //     if hasLocalSegments:    u16 count + segments
 //     if hasIdentitySegments: u16 count + segments
 //     if tileRepeat (16 bytes): tileWidthL0 i16 + tileHeightL0 i16
@@ -108,14 +109,81 @@ import { compSnapStep } from './compositionCellMath';
 //                                 written when the SVG is grouped (mirrors the
 //                                 localSegments invariant).
 //     if hasFillColor (v24+):  r u8 + g u8 + b u8 + opacity u8 (0-255)
-//     if hasSegmentOverrides (v28+): count u16 + count × (key u32 + r u8 + g u8 + b u8)
+//     if hasSegmentOverrides (v28+): count u16 + count Ã— (key u32 + r u8 + g u8 + b u8)
+//     if hasFillPaint (v29+):  PAINT payload (see below)
+//     if hasEffects (v29+):    EFFECTS payload (see below)
 //   Segment:      kind: u8 (0=line, 1=arc)
 //                 start: i16 i16, end: i16 i16
 //                 if kind==1: center: i16 i16
 //
+// PAINT PAYLOAD (v29+, shared by SVG fillPaint and the background section)
+//   kindByte:    u8 (0 solid, 1 linear, 2 radial)
+//   solid:       r u8 + g u8 + b u8 + alpha u8 (0-255; 255 reads back as
+//                alpha undefined = opaque, mirroring fillOpacity)
+//   linear:      stopCount u8 + stops + x1 f32 + y1 f32 + x2 f32 + y2 f32
+//   radial:      stopCount u8 + stops + cx f32 + cy f32 + r f32
+//   Per stop:    offset u8 (0-255 quantized /255) + r u8 + g u8 + b u8
+//                + alpha u8 (255 reads back as undefined = opaque)
+//   Gradient geometry is unit-bbox space, stored as f32 LE.
+//
+// EFFECTS PAYLOAD (v29+, shared by SVG, image, and text records)
+//   presenceMask: u8 (0x01 shadow, 0x02 glow, 0x04 border)
+//   shadow:       dx f32 + dy f32 + blur f32 + r u8 + g u8 + b u8
+//                 + alpha u8 (0-255 quantized /255)
+//   glow:         radius f32 + r u8 + g u8 + b u8 + alpha u8 (quantized)
+//   border:       width f32 + r u8 + g u8 + b u8 + hasRadius u8
+//                 + radius f32 (only when hasRadius == 1)
+//
 // EMBEDDED FILES
 //   fileCount:   u16 LE
 //   Per file:    idIdx(u16) nameIdx(u16) widthL0(u16) heightL0(u16) dataLen(u32) data(u8[])
+//
+// IMAGES SECTION (v10+) â€” written after embedded files; see writeImage.
+//   The image rotation byte carries: 0x03 rotation, 0x04 hidden (v14+),
+//   0x08 hasTint (v29+), 0x10 hasEffects (v29+). The main image flags
+//   byte is fully consumed, so the v29 presence bits live in the spare
+//   high bits of the rotation byte (older readers mask & 0x03 / & 0x04).
+//   Tint payload (after the identity-bbox block, before effects):
+//     r u8 + g u8 + b u8 + amount u8 (0-255 quantized /255)
+//     + mode u8 (0 tint, 1 duotone, 2 wash)
+//   Effects payload (after tint): shared EFFECTS payload above.
+//
+// TEXT OBJECTS SECTION (v29+) â€” written after the images + image-bytes
+//   sections and before scene order, so the blob-heavy payloads stay
+//   last-but-one and older readers (which stop at their known sections)
+//   never see it. Absent entirely in v28- files.
+//   textCount:   u16 LE
+//   Per text:
+//     idIdx:      u16 LE      (string table)
+//     flags:      u8          0x01 mirrorH, 0x02 mirrorV, 0x04 locked,
+//                             0x08 hasName, 0x10 hasGroupId,
+//                             0x20 hasPreGroupName, 0x40 hidden, 0x80 sticker
+//     flags2:     u8          0x01 hasLocalBbox, 0x02 hasIdentityBbox,
+//                             0x04 hasEffects
+//     rotBits:    u8          (low 2 bits -> 0/90/180/270)
+//     conditional u16 string refs (flag order): nameIdx, groupIdIdx,
+//                             preGroupNameIdx
+//     contentIdx: u16 LE      (string table; text content)
+//     bbox:       cellX i16 + cellY i16 (encodeFixed quarter-cell)
+//                 + cellWidth u16 + cellHeight u16 (encodeFixed)
+//     if hasLocalBbox:    localCellX i16 + localCellY i16
+//                         + localCellWidth u16 + localCellHeight u16 (fixed)
+//     if hasIdentityBbox: identityCellX i16 + identityCellY i16
+//                         + identityCellWidth u16 + identityCellHeight u16
+//     style:      fontIdIdx u16 (string table) + size f32
+//                 + styleFlags u8 (0x01 bold, 0x02 italic, 0x04 hasStroke,
+//                   0x08 hasLetterSpacing, 0x10 hasLineHeight,
+//                   0x60 align 2 bits: 0 absent, 1 left, 2 center, 3 right)
+//                 + color r u8 + g u8 + b u8
+//     if hasLetterSpacing: letterSpacing f32
+//     if hasLineHeight:    lineHeight f32
+//     if hasStroke:        width f32 + r u8 + g u8 + b u8
+//     if hasEffects (flags2): shared EFFECTS payload above
+//
+// BACKGROUND SECTION (v29+) â€” written after the custom colors section
+//   (the final section of the file).
+//   hasBackground: u8 (0 or 1)
+//   if hasBackground: PAINT payload above
 
 const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // v20: SVG records persist `subpaths` and `localSubpaths` so per-segment
@@ -126,29 +194,37 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // so rectangles keep their orange selection border and non-uniform scaling
 // after a .tile export/import round-trip.
 // v22: colorOverride now writes 4 bytes (r, g, b, blendModeByte) instead of 3.
-// blendModeByte 0xFF = legacy luminance recolor; 0x00–0x0A = BlendMode index.
-// v23: composition content is normalized to a canonical 32×32 L0 bbox on
+// blendModeByte 0xFF = legacy luminance recolor; 0x00â€“0x0A = BlendMode index.
+// v23: composition content is normalized to a canonical 32Ã—32 L0 bbox on
 // every save (largest power-of-2 fit, aspect-preserving, centered). The
-// composition `gridLevel` field becomes a signed byte (range −128..127);
+// composition `gridLevel` field becomes a signed byte (range âˆ’128..127);
 // `strokeScale` may exceed 1 since normalization scales it inversely.
-// v24: SVG fillColor + fillOpacity — solid fill for closed shapes. SVG records
+// v24: SVG fillColor + fillOpacity â€” solid fill for closed shapes. SVG records
 // gain a flags3 byte (after flags2). flags3 bit 0x01 = hasFillColor;
 // 4 bytes (r, g, b, opacity) written after subpaths.
-// v25: SVG isMask ("Use as mask") via flags3 bit 0x02. Presence-only — no
+// v25: SVG isMask ("Use as mask") via flags3 bit 0x02. Presence-only â€” no
 // payload bytes. Older files load with isMask undefined.
 // v27: SVG isPatternFill (shape masks a tiled figure) via flags3 bit 0x08.
 // Presence-only. Older files load with isPatternFill undefined.
 // v28: SVG segmentOverrides (sparse per-copy paint on tiled objects) via
-// flags3 bit 0x10. Payload: count u16 + count × (key u32 + r u8 + g u8 + b u8).
+// flags3 bit 0x10. Payload: count u16 + count Ã— (key u32 + r u8 + g u8 + b u8).
 // Older files load with segmentOverrides undefined.
-const FORMAT_VERSION = 28;
+// v29: text scene nodes, gradient/solid Paint, node effects, image tint,
+// and canvas background. New TEXT OBJECTS section between the image-bytes
+// section and scene order; new BACKGROUND section after custom colors.
+// SVG records gain fillPaint (flags3 0x20) and effects (flags3 0x40),
+// payloads after segmentOverrides in flag-bit order. Image records gain
+// tint (rotation-byte bit 0x08) and effects (bit 0x10), payloads after
+// the identity-bbox block. Older files load with all of these undefined
+// and no texts/background.
+const FORMAT_VERSION = 29;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
-// Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + 4×float32 = 21
+// Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + 4Ã—float32 = 21
 // Optionally followed by parentGroupIdIdx(u16) and preGroupNameIdx(u16)
 const GROUP_RECORD_BASE_SIZE = 2 + 2 + 1 + 4 + 4 + 4 + 4; // 21 bytes
 
-// Blend mode ↔ byte mapping for colorOverride persistence (v22+).
+// Blend mode â†” byte mapping for colorOverride persistence (v22+).
 const BLEND_MODE_TO_BYTE: Record<BlendMode, number> = {
   normal: 0, multiply: 1, dodge: 2, lighten: 3, darken: 4,
   burn: 5, invert: 6, rotate: 7, randomize: 8, hue: 9, color: 10,
@@ -158,7 +234,7 @@ const BYTE_TO_BLEND_MODE: BlendMode[] = [
   'burn', 'invert', 'rotate', 'randomize', 'hue', 'color',
 ];
 
-// ── Types ───────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface EmbeddedFile {
   id: string;
@@ -170,7 +246,7 @@ export interface EmbeddedFile {
 
 export interface CompositionBundle {
   name: string;
-  /** Composition snap grid level — unbounded integer; see CompositionState.gridLevel. */
+  /** Composition snap grid level â€” unbounded integer; see CompositionState.gridLevel. */
   gridLevel: number;
   strokeScale: number;
   gridIntensity: number;
@@ -185,19 +261,23 @@ export interface CompositionBundle {
   /** Pixel bytes per `imageId`, deduplicated across nodes (v10+). Keys
    *  are the same `imageId` strings the `images` array references. */
   imageBlobs?: Record<string, Uint8Array>;
-  /** Unified back→front paint order across every scene-object kind (v11+).
+  /** Unified backâ†’front paint order across every scene-object kind (v11+).
    *  When absent (older bundles), the loader derives it from the kind
    *  arrays in the legacy fixed paint order. */
   sceneOrder?: string[];
-  /** Per-node Transform2D data (v14+). Maps node ID → Transform2D.
+  /** Per-node Transform2D data (v14+). Maps node ID â†’ Transform2D.
    *  When present, consumers can build a nodeMap directly instead of
-   *  deriving transforms from the legacy fields. When absent (≤v13),
+   *  deriving transforms from the legacy fields. When absent (â‰¤v13),
    *  use syncNodeMap() to derive from legacy arrays. */
   nodeTransforms?: Map<string, { transform: Transform2D; parentId?: string }>;
   /** Persisted user palette colors for this composition (v17+). Populated
    *  as the user picks non-default colors via the composer's color tool.
    *  Empty for older bundles. */
   customColors?: RGBColor[];
+  /** Text scene nodes (v29+). Empty for older bundles. */
+  texts?: TextObject[];
+  /** Canvas background paint (v29+). Undefined = renderer default. */
+  background?: Paint;
 }
 
 export interface DeserializedComposition {
@@ -205,7 +285,7 @@ export interface DeserializedComposition {
   embeddedFiles: EmbeddedFile[];
 }
 
-// ── Fixed-point encoding ────────────────────────────────────────────
+// â”€â”€ Fixed-point encoding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function encodeFixed(value: number): number {
   return Math.round(value * 4);
@@ -215,12 +295,12 @@ function decodeFixed(stored: number): number {
   return stored / 4;
 }
 
-// ── Rotation encoding ───────────────────────────────────────────────
+// â”€â”€ Rotation encoding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ROTATION_TO_BITS: Record<number, number> = { 0: 0, 90: 1, 180: 2, 270: 3 };
 const BITS_TO_ROTATION: (0 | 90 | 180 | 270)[] = [0, 90, 180, 270];
 
-// ── String table ────────────────────────────────────────────────────
+// â”€â”€ String table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildStringTable(
   bundle: CompositionBundle,
@@ -281,13 +361,26 @@ function buildStringTable(
     }
   }
 
-  // Scene order ids (v11+) — defensive; all ids should already be in the
+  // Text strings (v29+) â€” content and fontId ride the string table so
+  // duplicated stickers / shared fonts are stored once.
+  if (bundle.texts) {
+    for (const t of bundle.texts) {
+      add(t.id);
+      add(t.name);
+      add(t.groupId);
+      add(t.preGroupName);
+      add(t.content);
+      add(t.style.fontId);
+    }
+  }
+
+  // Scene order ids (v11+) â€” defensive; all ids should already be in the
   // table via the kind-array passes above, but `add` is idempotent.
   if (bundle.sceneOrder) {
     for (const id of bundle.sceneOrder) add(id);
   }
 
-  // Node transform ids (v14+) — defensive; most ids are already in the
+  // Node transform ids (v14+) â€” defensive; most ids are already in the
   // table via kind-array passes, but group-only nodes may not be.
   if (bundle.nodeTransforms) {
     for (const [id, entry] of bundle.nodeTransforms) {
@@ -305,7 +398,7 @@ function buildStringTable(
   return { strings, indexOf };
 }
 
-// ── Figure size estimation ──────────────────────────────────────────
+// â”€â”€ Figure size estimation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function figureBinarySize(fig: CompositionFigure): number {
   // idIdx(2) + figureKeyIdx(2) + flags0(1) + flags1(1) + flags2(1)
@@ -323,7 +416,7 @@ function figureBinarySize(fig: CompositionFigure): number {
   return size;
 }
 
-// ── SVG / Image flag bits (shared layout) ───────────────────────────
+// â”€â”€ SVG / Image flag bits (shared layout) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const FLAG_MIRROR_H = 0x01;
 const FLAG_MIRROR_V = 0x02;
@@ -334,7 +427,7 @@ const FLAG_HAS_PRE_GROUP_NAME = 0x20;
 const FLAG_HAS_LOCAL = 0x40;
 const FLAG_HAS_IDENTITY = 0x80;
 
-// v15+ flags2 bits — second flag byte, distinct from `flags` so the
+// v15+ flags2 bits â€” second flag byte, distinct from `flags` so the
 // existing 8 bits stay untouched.
 const FLAG2_HAS_CREATION_BOX = 0x01;
 const FLAG2_HAS_LINE_DIRECTION = 0x02;
@@ -345,7 +438,7 @@ const LINE_DIR_DIAGONAL = 2;
 // v20+ subpath flags.
 const FLAG2_HAS_SUBPATHS = 0x10;
 const FLAG2_HAS_LOCAL_SUBPATHS = 0x20;
-// v21+ rectangle presence flag. Presence-only — `'rectangle'` is the only
+// v21+ rectangle presence flag. Presence-only â€” `'rectangle'` is the only
 // legal `shapeKind` value so no extra bytes are written.
 const FLAG2_IS_RECTANGLE = 0x40;
 // v24+ SVG flags3 byte. Sits right after flags2 in the SVG record header.
@@ -358,6 +451,227 @@ const FLAG3_SVG_HIDDEN = 0x04;
 const FLAG3_SVG_PATTERN_FILL = 0x08;
 // v28+: sparse per-copy segment overrides present (payload after fillColor).
 const FLAG3_SVG_HAS_SEGMENT_OVERRIDES = 0x10;
+// v29+: gradient/solid fillPaint present (paint payload after segmentOverrides).
+const FLAG3_SVG_HAS_FILL_PAINT = 0x20;
+// v29+: node effects present (effects payload after fillPaint).
+const FLAG3_SVG_HAS_EFFECTS = 0x40;
+
+// v29+ image rotation-byte bits. The image `flags` byte is fully
+// consumed (0x01..0x80), so tint/effects presence rides the spare high
+// bits of the rotation byte: 0x03 rotation, 0x04 hidden (v14+), then:
+const IMG_ROT_HAS_TINT = 0x08;
+const IMG_ROT_HAS_EFFECTS = 0x10;
+
+// v29+ text record flag bits (first flags byte).
+const TFLAG_MIRROR_H = 0x01;
+const TFLAG_MIRROR_V = 0x02;
+const TFLAG_LOCKED = 0x04;
+const TFLAG_HAS_NAME = 0x08;
+const TFLAG_HAS_GROUP_ID = 0x10;
+const TFLAG_HAS_PRE_GROUP_NAME = 0x20;
+const TFLAG_HIDDEN = 0x40;
+const TFLAG_STICKER = 0x80;
+// v29+ text record flags2 bits (optional blocks, mirroring how figure /
+// image records gate optional bbox blocks behind their flags2 byte).
+const TFLAG2_HAS_LOCAL = 0x01;
+const TFLAG2_HAS_IDENTITY = 0x02;
+const TFLAG2_HAS_EFFECTS = 0x04;
+// v29+ text style flag bits.
+const TSTYLE_BOLD = 0x01;
+const TSTYLE_ITALIC = 0x02;
+const TSTYLE_HAS_STROKE = 0x04;
+const TSTYLE_HAS_LETTER_SPACING = 0x08;
+const TSTYLE_HAS_LINE_HEIGHT = 0x10;
+// Bits 0x60 carry the align enum: 0 = absent (undefined), 1/2/3 =
+// left/center/right, so an explicit 'left' round-trips distinct from
+// "not set" (same presence-is-the-signal rule as colorOverride).
+const ALIGN_TO_BITS: Record<TextAlign, number> = { left: 1, center: 2, right: 3 };
+const BITS_TO_ALIGN: (TextAlign | undefined)[] = [undefined, 'left', 'center', 'right'];
+
+// v29+ image tint mode byte.
+const TINT_MODE_TO_BYTE: Record<ImageTintMode, number> = { tint: 0, duotone: 1, wash: 2 };
+const BYTE_TO_TINT_MODE: ImageTintMode[] = ['tint', 'duotone', 'wash'];
+
+// v29+ effects presence mask bits.
+const EFFECT_HAS_SHADOW = 0x01;
+const EFFECT_HAS_GLOW = 0x02;
+const EFFECT_HAS_BORDER = 0x04;
+
+// v29+ paint kind byte.
+const PAINT_KIND_SOLID = 0;
+const PAINT_KIND_LINEAR = 1;
+const PAINT_KIND_RADIAL = 2;
+
+// â”€â”€ Paint / effects payload helpers (v29+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+/** Quantize a [0,1] float to a u8. */
+function quantize255(v: number): number {
+  return Math.round(Math.max(0, Math.min(1, v)) * 255) & 0xff;
+}
+
+function paintBinarySize(paint: Paint): number {
+  // kindByte(1)
+  if (paint.kind === 'solid') return 1 + 4; // r,g,b,alpha
+  // stopCount(1) + stops(5 each: offset,r,g,b,alpha) + coords (f32 each)
+  const base = 1 + 1 + paint.stops.length * 5;
+  return paint.kind === 'linear' ? base + 16 : base + 12;
+}
+
+function writeGradientStops(out: Uint8Array, pos: number, stops: GradientStop[]): number {
+  if (stops.length > 0xff) {
+    throw new Error(`Composition serialization: gradient stop count ${stops.length} exceeds u8 max (255).`);
+  }
+  out[pos++] = stops.length;
+  for (const s of stops) {
+    out[pos++] = quantize255(s.offset);
+    out[pos++] = s.color.r & 0xff;
+    out[pos++] = s.color.g & 0xff;
+    out[pos++] = s.color.b & 0xff;
+    out[pos++] = s.alpha != null ? quantize255(s.alpha) : 255;
+  }
+  return pos;
+}
+
+function readGradientStops(data: Uint8Array, pos: number): { stops: GradientStop[]; pos: number } {
+  const count = data[pos++];
+  const stops: GradientStop[] = [];
+  for (let i = 0; i < count; i++) {
+    const offset = data[pos++] / 255;
+    const r = data[pos++], g = data[pos++], b = data[pos++];
+    const alphaByte = data[pos++];
+    const stop: GradientStop = { offset, color: { r, g, b } };
+    if (alphaByte < 255) stop.alpha = alphaByte / 255;
+    stops.push(stop);
+  }
+  return { stops, pos };
+}
+
+function writePaint(view: DataView, out: Uint8Array, pos: number, paint: Paint): number {
+  if (paint.kind === 'solid') {
+    out[pos++] = PAINT_KIND_SOLID;
+    out[pos++] = paint.color.r & 0xff;
+    out[pos++] = paint.color.g & 0xff;
+    out[pos++] = paint.color.b & 0xff;
+    out[pos++] = paint.alpha != null ? quantize255(paint.alpha) : 255;
+    return pos;
+  }
+  if (paint.kind === 'linear') {
+    out[pos++] = PAINT_KIND_LINEAR;
+    pos = writeGradientStops(out, pos, paint.stops);
+    view.setFloat32(pos, paint.x1, true); pos += 4;
+    view.setFloat32(pos, paint.y1, true); pos += 4;
+    view.setFloat32(pos, paint.x2, true); pos += 4;
+    view.setFloat32(pos, paint.y2, true); pos += 4;
+    return pos;
+  }
+  out[pos++] = PAINT_KIND_RADIAL;
+  pos = writeGradientStops(out, pos, paint.stops);
+  view.setFloat32(pos, paint.cx, true); pos += 4;
+  view.setFloat32(pos, paint.cy, true); pos += 4;
+  view.setFloat32(pos, paint.r, true); pos += 4;
+  return pos;
+}
+
+function readPaint(view: DataView, data: Uint8Array, pos: number): { paint: Paint; pos: number } {
+  const kindByte = data[pos++];
+  if (kindByte === PAINT_KIND_SOLID) {
+    const r = data[pos++], g = data[pos++], b = data[pos++];
+    const alphaByte = data[pos++];
+    const paint: Paint = { kind: 'solid', color: { r, g, b } };
+    if (alphaByte < 255) paint.alpha = alphaByte / 255;
+    return { paint, pos };
+  }
+  const s = readGradientStops(data, pos);
+  pos = s.pos;
+  if (kindByte === PAINT_KIND_LINEAR) {
+    const x1 = view.getFloat32(pos, true); pos += 4;
+    const y1 = view.getFloat32(pos, true); pos += 4;
+    const x2 = view.getFloat32(pos, true); pos += 4;
+    const y2 = view.getFloat32(pos, true); pos += 4;
+    return { paint: { kind: 'linear', stops: s.stops, x1, y1, x2, y2 }, pos };
+  }
+  if (kindByte !== PAINT_KIND_RADIAL) {
+    throw new Error(`Corrupt .tile: unknown paint kind byte ${kindByte}.`);
+  }
+  const cx = view.getFloat32(pos, true); pos += 4;
+  const cy = view.getFloat32(pos, true); pos += 4;
+  const r = view.getFloat32(pos, true); pos += 4;
+  return { paint: { kind: 'radial', stops: s.stops, cx, cy, r }, pos };
+}
+
+function effectsBinarySize(fx: NodeEffects): number {
+  let size = 1; // presenceMask
+  if (fx.shadow) size += 12 + 4;            // dx,dy,blur f32 + r,g,b,alpha u8
+  if (fx.glow) size += 4 + 4;               // radius f32 + r,g,b,alpha u8
+  if (fx.border) size += 4 + 3 + 1 + (fx.border.radius != null ? 4 : 0);
+  return size;
+}
+
+function writeEffects(view: DataView, out: Uint8Array, pos: number, fx: NodeEffects): number {
+  let mask = 0;
+  if (fx.shadow) mask |= EFFECT_HAS_SHADOW;
+  if (fx.glow) mask |= EFFECT_HAS_GLOW;
+  if (fx.border) mask |= EFFECT_HAS_BORDER;
+  out[pos++] = mask;
+  if (fx.shadow) {
+    view.setFloat32(pos, fx.shadow.dx, true); pos += 4;
+    view.setFloat32(pos, fx.shadow.dy, true); pos += 4;
+    view.setFloat32(pos, fx.shadow.blur, true); pos += 4;
+    out[pos++] = fx.shadow.color.r & 0xff;
+    out[pos++] = fx.shadow.color.g & 0xff;
+    out[pos++] = fx.shadow.color.b & 0xff;
+    out[pos++] = quantize255(fx.shadow.alpha);
+  }
+  if (fx.glow) {
+    view.setFloat32(pos, fx.glow.radius, true); pos += 4;
+    out[pos++] = fx.glow.color.r & 0xff;
+    out[pos++] = fx.glow.color.g & 0xff;
+    out[pos++] = fx.glow.color.b & 0xff;
+    out[pos++] = quantize255(fx.glow.alpha);
+  }
+  if (fx.border) {
+    view.setFloat32(pos, fx.border.width, true); pos += 4;
+    out[pos++] = fx.border.color.r & 0xff;
+    out[pos++] = fx.border.color.g & 0xff;
+    out[pos++] = fx.border.color.b & 0xff;
+    if (fx.border.radius != null) {
+      out[pos++] = 1;
+      view.setFloat32(pos, fx.border.radius, true); pos += 4;
+    } else {
+      out[pos++] = 0;
+    }
+  }
+  return pos;
+}
+
+function readEffects(view: DataView, data: Uint8Array, pos: number): { effects: NodeEffects; pos: number } {
+  const mask = data[pos++];
+  const effects: NodeEffects = {};
+  if (mask & EFFECT_HAS_SHADOW) {
+    const dx = view.getFloat32(pos, true); pos += 4;
+    const dy = view.getFloat32(pos, true); pos += 4;
+    const blur = view.getFloat32(pos, true); pos += 4;
+    const r = data[pos++], g = data[pos++], b = data[pos++];
+    const alpha = data[pos++] / 255;
+    effects.shadow = { dx, dy, blur, color: { r, g, b }, alpha };
+  }
+  if (mask & EFFECT_HAS_GLOW) {
+    const radius = view.getFloat32(pos, true); pos += 4;
+    const r = data[pos++], g = data[pos++], b = data[pos++];
+    const alpha = data[pos++] / 255;
+    effects.glow = { radius, color: { r, g, b }, alpha };
+  }
+  if (mask & EFFECT_HAS_BORDER) {
+    const width = view.getFloat32(pos, true); pos += 4;
+    const r = data[pos++], g = data[pos++], b = data[pos++];
+    const hasRadius = data[pos++];
+    effects.border = { width, color: { r, g, b } };
+    if (hasRadius === 1) {
+      effects.border.radius = view.getFloat32(pos, true); pos += 4;
+    }
+  }
+  return { effects, pos };
+}
 
 function subpathArraySize(subs: ReadonlyArray<SVGSubpath>): number {
   // u16 count + per-subpath { rgb(3) + segCount(2) + segments }
@@ -390,6 +704,8 @@ function svgBinarySize(svg: SVGObject): number {
   }
   if (svg.fillColor) size += 4;
   if (svg.segmentOverrides && svg.segmentOverrides.size > 0) size += 2 + svg.segmentOverrides.size * 7;
+  if (svg.fillPaint) size += paintBinarySize(svg.fillPaint);
+  if (svg.effects) size += effectsBinarySize(svg.effects);
   return size;
 }
 
@@ -404,29 +720,31 @@ function segmentArraySize(segs: PathSegment[]): number {
   return n;
 }
 
-/** Image record size — bbox-only payload, plus optional local + identity
+/** Image record size â€” bbox-only payload, plus optional local + identity
  *  bboxes (8 bytes each) when present. Mirrors the SVG shape so the
  *  reader can use the same flag bits. */
 function imageBinarySize(img: ImageObject): number {
   // idIdx(2) + flags(1) + rotBits(1) + mimeBit(1) + opacity(1)
   // + imageIdIdx(2) + pixelWidth(2) + pixelHeight(2)
-  // + cellX/Y/W/H (i16 × 4 = 8) = 20
+  // + cellX/Y/W/H (i16 Ã— 4 = 8) = 20
   let size = 20;
   if (img.name != null) size += 2;
   if (img.groupId != null) size += 2;
   if (img.preGroupName != null) size += 2;
   if (img.localCellX != null) size += 8;
   if (img.identityCellX != null) size += 8;
+  if (img.tint) size += 5; // r,g,b + amount + mode
+  if (img.effects) size += effectsBinarySize(img.effects);
   return size;
 }
 
-// ── SVG write + read helpers ────────────────────────────────────────
+// â”€â”€ SVG write + read helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Write a u16 count field, throwing a clear error if the count would
  * silently truncate. Without this guard, a count > 65535 wraps to
  * `count & 0xffff`, the reader gets the wrong segment count, and every
- * subsequent SVG record in the file misaligns — producing a "silent
+ * subsequent SVG record in the file misaligns â€” producing a "silent
  * corruption" .tile that crashes on import with a cryptic "Offset is
  * outside the bounds of the DataView" error. Real-world cause: paint
  * strokes that double geometry on every pass (bug we've fixed
@@ -557,6 +875,8 @@ function writeSVG(
   if (svg.hidden) flags3 |= FLAG3_SVG_HIDDEN;
   if (svg.isPatternFill) flags3 |= FLAG3_SVG_PATTERN_FILL;
   if (svg.segmentOverrides && svg.segmentOverrides.size > 0) flags3 |= FLAG3_SVG_HAS_SEGMENT_OVERRIDES;
+  if (svg.fillPaint) flags3 |= FLAG3_SVG_HAS_FILL_PAINT;
+  if (svg.effects) flags3 |= FLAG3_SVG_HAS_EFFECTS;
   out[pos++] = flags3;
 
   let rotBits = ROTATION_TO_BITS[svg.rotation ?? 0] & 0x03;
@@ -597,7 +917,7 @@ function writeSVG(
   if (svg.creationBox) {
     view.setInt16(pos, encodeFixed(svg.creationBox.minX), true); pos += 2;
     view.setInt16(pos, encodeFixed(svg.creationBox.minY), true); pos += 2;
-    // width/height are non-negative; encodeFixed produces values ≤ 32767
+    // width/height are non-negative; encodeFixed produces values â‰¤ 32767
     // for any realistic L0 cell extent, so int16 is wide enough to encode
     // them as unsigned. Read side uses getUint16 to round-trip.
     view.setUint16(pos, encodeFixed(svg.creationBox.width), true); pos += 2;
@@ -628,6 +948,13 @@ function writeSVG(
       out[pos++] = c.g & 0xff;
       out[pos++] = c.b & 0xff;
     }
+  }
+  // v29+ fillPaint then effects (flag-bit order, after segmentOverrides).
+  if (svg.fillPaint) {
+    pos = writePaint(view, out, pos, svg.fillPaint);
+  }
+  if (svg.effects) {
+    pos = writeEffects(view, out, pos, svg.effects);
   }
   return pos;
 }
@@ -715,7 +1042,7 @@ function readSVG(
     }
     if (version >= 19) {
       // Persisted dragged-region bbox. Overrides the segment-AABB bbox
-      // assigned above — for tile-mode SVGs the segments are just one
+      // assigned above â€” for tile-mode SVGs the segments are just one
       // tile and the region can extend well past them.
       svg.cellX = decodeFixed(view.getInt16(pos, true)); pos += 2;
       svg.cellY = decodeFixed(view.getInt16(pos, true)); pos += 2;
@@ -783,6 +1110,18 @@ function readSVG(
     if (ov.size > 0) svg.segmentOverrides = ov;
   }
 
+  // v29+ fillPaint then effects (flag-bit order, after segmentOverrides).
+  if (version >= 29 && (flags3 & FLAG3_SVG_HAS_FILL_PAINT)) {
+    const p = readPaint(view, data, pos);
+    svg.fillPaint = p.paint;
+    pos = p.pos;
+  }
+  if (version >= 29 && (flags3 & FLAG3_SVG_HAS_EFFECTS)) {
+    const e = readEffects(view, data, pos);
+    svg.effects = e.effects;
+    pos = e.pos;
+  }
+
   // v25+ "Use as mask" flag (presence-only, no payload)
   if (version >= 25 && (flags3 & FLAG3_SVG_USE_AS_MASK)) {
     svg.isMask = true;
@@ -799,7 +1138,7 @@ function readSVG(
   }
 
   // Repair existing saved data: if the world bbox is degenerate (exactly
-  // one axis is zero — the segment AABB of an axis-aligned line) and the
+  // one axis is zero â€” the segment AABB of an axis-aligned line) and the
   // line lacks a creationBox, infer direction from the aspect ratio and
   // synthesize a creationBox by inflating the thin axis to one grid step.
   // Applies to grouped lines too: the synthesized creationBox is in the
@@ -836,7 +1175,7 @@ function readSVG(
   return { svg, pos };
 }
 
-// ── Legacy v8-v11 line / arc readers ───────────────────────────────
+// â”€â”€ Legacy v8-v11 line / arc readers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // v8-v11 stored two separate sections (lines + arcs) where v12+ has a
 // single svgObjects section. We parse both into SVGObject so older
@@ -1019,7 +1358,7 @@ function readLegacyArc(
   );
 }
 
-// ── Image write / read helpers (v10+) ──────────────────────────────
+// â”€â”€ Image write / read helpers (v10+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function writeImage(
   view: DataView,
@@ -1041,10 +1380,14 @@ function writeImage(
   if (img.identityCellX != null) flags |= FLAG_HAS_IDENTITY;
   out[pos++] = flags;
 
-  // Rotation occupies bits 0x01–0x02; bit 0x04 carries the `hidden` flag
-  // (the per-image flags byte is fully consumed at v13). Older readers
-  // mask `& 0x03`, so the extra bit is invisible to them.
-  out[pos++] = (ROTATION_TO_BITS[img.rotation ?? 0] & 0x03) | (img.hidden ? 0x04 : 0);
+  // Rotation occupies bits 0x01â€“0x02; bit 0x04 carries the `hidden` flag
+  // (the per-image flags byte is fully consumed at v13). v29 adds tint /
+  // effects presence on bits 0x08 / 0x10. Older readers mask `& 0x03`
+  // (and `& 0x04` for hidden), so the extra bits are invisible to them.
+  out[pos++] = (ROTATION_TO_BITS[img.rotation ?? 0] & 0x03)
+    | (img.hidden ? 0x04 : 0)
+    | (img.tint ? IMG_ROT_HAS_TINT : 0)
+    | (img.effects ? IMG_ROT_HAS_EFFECTS : 0);
   out[pos++] = img.mimeType === 'image/jpeg' ? 1 : 0;
   // Opacity quantized to 0..255 (default 255 = fully opaque). 256 levels
   // is well beyond what the eye can resolve and keeps the record
@@ -1086,6 +1429,18 @@ function writeImage(
     view.setInt16(pos, encodeFixed(img.identityCellHeight!), true); pos += 2;
   }
 
+  // v29+ tint then effects (flag-bit order, after the identity block).
+  if (img.tint) {
+    out[pos++] = img.tint.color.r & 0xff;
+    out[pos++] = img.tint.color.g & 0xff;
+    out[pos++] = img.tint.color.b & 0xff;
+    out[pos++] = quantize255(img.tint.amount);
+    out[pos++] = TINT_MODE_TO_BYTE[img.tint.mode] & 0xff;
+  }
+  if (img.effects) {
+    pos = writeEffects(view, out, pos, img.effects);
+  }
+
   return pos;
 }
 
@@ -1094,6 +1449,7 @@ function readImage(
   data: Uint8Array,
   pos: number,
   strings: string[],
+  version: number,
 ): { img: ImageObject; pos: number } {
   const idIdx = view.getUint16(pos, true); pos += 2;
   const flags = data[pos++];
@@ -1151,10 +1507,238 @@ function readImage(
     img.identityCellHeight = decodeFixed(view.getInt16(pos, true)); pos += 2;
   }
 
+  // v29+ tint then effects (rotation-byte bits 0x08 / 0x10, written after
+  // the identity block). Pre-v29 files never set these bits, but the read
+  // is version-gated anyway to keep the rule uniform.
+  if (version >= 29 && (rotBits & IMG_ROT_HAS_TINT)) {
+    const r2 = data[pos++], g2 = data[pos++], b2 = data[pos++];
+    const amount = data[pos++] / 255;
+    const modeByte = data[pos++];
+    img.tint = {
+      color: { r: r2, g: g2, b: b2 },
+      amount,
+      mode: BYTE_TO_TINT_MODE[modeByte] ?? 'tint',
+    };
+  }
+  if (version >= 29 && (rotBits & IMG_ROT_HAS_EFFECTS)) {
+    const e = readEffects(view, data, pos);
+    img.effects = e.effects;
+    pos = e.pos;
+  }
+
   return { img, pos };
 }
 
-// ── Serialize ───────────────────────────────────────────────────────
+// â”€â”€ Text write / read helpers (v29+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function textBinarySize(text: TextObject): number {
+  // idIdx(2) + flags(1) + flags2(1) + rotBits(1) + contentIdx(2)
+  // + bbox (i16/u16 Ã— 4 = 8)
+  // + style: fontIdIdx(2) + size f32(4) + styleFlags(1) + color(3)
+  let size = 2 + 1 + 1 + 1 + 2 + 8 + 2 + 4 + 1 + 3;
+  if (text.name != null) size += 2;
+  if (text.groupId != null) size += 2;
+  if (text.preGroupName != null) size += 2;
+  if (text.localCellX != null) size += 8;
+  if (text.identityCellX != null) size += 8;
+  if (text.style.letterSpacing != null) size += 4;
+  if (text.style.lineHeight != null) size += 4;
+  if (text.style.stroke != null) size += 7; // width f32 + r,g,b
+  if (text.effects) size += effectsBinarySize(text.effects);
+  return size;
+}
+
+function writeText(
+  view: DataView,
+  out: Uint8Array,
+  pos: number,
+  text: TextObject,
+  indexOf: Map<string, number>,
+): number {
+  view.setUint16(pos, indexOf.get(text.id) ?? 0, true); pos += 2;
+
+  let flags = 0;
+  if (text.mirrorH) flags |= TFLAG_MIRROR_H;
+  if (text.mirrorV) flags |= TFLAG_MIRROR_V;
+  if (text.locked) flags |= TFLAG_LOCKED;
+  if (text.name != null) flags |= TFLAG_HAS_NAME;
+  if (text.groupId != null) flags |= TFLAG_HAS_GROUP_ID;
+  if (text.preGroupName != null) flags |= TFLAG_HAS_PRE_GROUP_NAME;
+  if (text.hidden) flags |= TFLAG_HIDDEN;
+  if (text.sticker) flags |= TFLAG_STICKER;
+  out[pos++] = flags;
+
+  let flags2 = 0;
+  if (text.localCellX != null) flags2 |= TFLAG2_HAS_LOCAL;
+  if (text.identityCellX != null) flags2 |= TFLAG2_HAS_IDENTITY;
+  if (text.effects) flags2 |= TFLAG2_HAS_EFFECTS;
+  out[pos++] = flags2;
+
+  out[pos++] = ROTATION_TO_BITS[text.rotation ?? 0] & 0x03;
+
+  if (text.name != null) { view.setUint16(pos, indexOf.get(text.name) ?? 0, true); pos += 2; }
+  if (text.groupId != null) { view.setUint16(pos, indexOf.get(text.groupId) ?? 0, true); pos += 2; }
+  if (text.preGroupName != null) { view.setUint16(pos, indexOf.get(text.preGroupName) ?? 0, true); pos += 2; }
+
+  view.setUint16(pos, indexOf.get(text.content) ?? 0, true); pos += 2;
+
+  view.setInt16(pos, encodeFixed(text.cellX), true); pos += 2;
+  view.setInt16(pos, encodeFixed(text.cellY), true); pos += 2;
+  view.setUint16(pos, encodeFixed(text.cellWidth), true); pos += 2;
+  view.setUint16(pos, encodeFixed(text.cellHeight), true); pos += 2;
+
+  if (text.localCellX != null) {
+    view.setInt16(pos, encodeFixed(text.localCellX), true); pos += 2;
+    view.setInt16(pos, encodeFixed(text.localCellY!), true); pos += 2;
+    view.setUint16(pos, encodeFixed(text.localCellWidth!), true); pos += 2;
+    view.setUint16(pos, encodeFixed(text.localCellHeight!), true); pos += 2;
+  }
+  if (text.identityCellX != null) {
+    view.setInt16(pos, encodeFixed(text.identityCellX), true); pos += 2;
+    view.setInt16(pos, encodeFixed(text.identityCellY!), true); pos += 2;
+    view.setUint16(pos, encodeFixed(text.identityCellWidth!), true); pos += 2;
+    view.setUint16(pos, encodeFixed(text.identityCellHeight!), true); pos += 2;
+  }
+
+  // Style block.
+  const style = text.style;
+  view.setUint16(pos, indexOf.get(style.fontId) ?? 0, true); pos += 2;
+  view.setFloat32(pos, style.size, true); pos += 4;
+  let styleFlags = 0;
+  if (style.bold) styleFlags |= TSTYLE_BOLD;
+  if (style.italic) styleFlags |= TSTYLE_ITALIC;
+  if (style.stroke != null) styleFlags |= TSTYLE_HAS_STROKE;
+  if (style.letterSpacing != null) styleFlags |= TSTYLE_HAS_LETTER_SPACING;
+  if (style.lineHeight != null) styleFlags |= TSTYLE_HAS_LINE_HEIGHT;
+  if (style.align != null) styleFlags |= (ALIGN_TO_BITS[style.align] & 0x03) << 5;
+  out[pos++] = styleFlags;
+  out[pos++] = style.color.r & 0xff;
+  out[pos++] = style.color.g & 0xff;
+  out[pos++] = style.color.b & 0xff;
+
+  if (style.letterSpacing != null) { view.setFloat32(pos, style.letterSpacing, true); pos += 4; }
+  if (style.lineHeight != null) { view.setFloat32(pos, style.lineHeight, true); pos += 4; }
+  if (style.stroke != null) {
+    view.setFloat32(pos, style.stroke.width, true); pos += 4;
+    out[pos++] = style.stroke.color.r & 0xff;
+    out[pos++] = style.stroke.color.g & 0xff;
+    out[pos++] = style.stroke.color.b & 0xff;
+  }
+
+  if (text.effects) {
+    pos = writeEffects(view, out, pos, text.effects);
+  }
+
+  return pos;
+}
+
+function readText(
+  view: DataView,
+  data: Uint8Array,
+  pos: number,
+  strings: string[],
+): { text: TextObject; pos: number } {
+  const idIdx = view.getUint16(pos, true); pos += 2;
+  const flags = data[pos++];
+  const flags2 = data[pos++];
+  const rotBits = data[pos++];
+
+  let name: string | undefined;
+  let groupId: string | undefined;
+  let preGroupName: string | undefined;
+  if (flags & TFLAG_HAS_NAME) { name = strings[view.getUint16(pos, true)]; pos += 2; }
+  if (flags & TFLAG_HAS_GROUP_ID) { groupId = strings[view.getUint16(pos, true)]; pos += 2; }
+  if (flags & TFLAG_HAS_PRE_GROUP_NAME) { preGroupName = strings[view.getUint16(pos, true)]; pos += 2; }
+
+  const contentIdx = view.getUint16(pos, true); pos += 2;
+
+  const cellX = decodeFixed(view.getInt16(pos, true)); pos += 2;
+  const cellY = decodeFixed(view.getInt16(pos, true)); pos += 2;
+  const cellWidth = decodeFixed(view.getUint16(pos, true)); pos += 2;
+  const cellHeight = decodeFixed(view.getUint16(pos, true)); pos += 2;
+
+  let localCellX: number | undefined, localCellY: number | undefined;
+  let localCellWidth: number | undefined, localCellHeight: number | undefined;
+  if (flags2 & TFLAG2_HAS_LOCAL) {
+    localCellX = decodeFixed(view.getInt16(pos, true)); pos += 2;
+    localCellY = decodeFixed(view.getInt16(pos, true)); pos += 2;
+    localCellWidth = decodeFixed(view.getUint16(pos, true)); pos += 2;
+    localCellHeight = decodeFixed(view.getUint16(pos, true)); pos += 2;
+  }
+  let identityCellX: number | undefined, identityCellY: number | undefined;
+  let identityCellWidth: number | undefined, identityCellHeight: number | undefined;
+  if (flags2 & TFLAG2_HAS_IDENTITY) {
+    identityCellX = decodeFixed(view.getInt16(pos, true)); pos += 2;
+    identityCellY = decodeFixed(view.getInt16(pos, true)); pos += 2;
+    identityCellWidth = decodeFixed(view.getUint16(pos, true)); pos += 2;
+    identityCellHeight = decodeFixed(view.getUint16(pos, true)); pos += 2;
+  }
+
+  // Style block.
+  const fontIdIdx = view.getUint16(pos, true); pos += 2;
+  const size = view.getFloat32(pos, true); pos += 4;
+  const styleFlags = data[pos++];
+  const r = data[pos++], g = data[pos++], b = data[pos++];
+
+  const style: TextStyle = {
+    fontId: strings[fontIdIdx],
+    size,
+    color: { r, g, b },
+  };
+  if (styleFlags & TSTYLE_BOLD) style.bold = true;
+  if (styleFlags & TSTYLE_ITALIC) style.italic = true;
+  const align = BITS_TO_ALIGN[(styleFlags >> 5) & 0x03];
+  if (align != null) style.align = align;
+  if (styleFlags & TSTYLE_HAS_LETTER_SPACING) {
+    style.letterSpacing = view.getFloat32(pos, true); pos += 4;
+  }
+  if (styleFlags & TSTYLE_HAS_LINE_HEIGHT) {
+    style.lineHeight = view.getFloat32(pos, true); pos += 4;
+  }
+  if (styleFlags & TSTYLE_HAS_STROKE) {
+    const width = view.getFloat32(pos, true); pos += 4;
+    const sr = data[pos++], sg = data[pos++], sb = data[pos++];
+    style.stroke = { width, color: { r: sr, g: sg, b: sb } };
+  }
+
+  const text: TextObject = {
+    id: strings[idIdx],
+    content: strings[contentIdx],
+    style,
+    cellX, cellY, cellWidth, cellHeight,
+  };
+  if (name != null) text.name = name;
+  if (groupId != null) text.groupId = groupId;
+  if (preGroupName != null) text.preGroupName = preGroupName;
+  if (flags & TFLAG_MIRROR_H) text.mirrorH = true;
+  if (flags & TFLAG_MIRROR_V) text.mirrorV = true;
+  if (flags & TFLAG_LOCKED) text.locked = true;
+  if (flags & TFLAG_HIDDEN) text.hidden = true;
+  if (flags & TFLAG_STICKER) text.sticker = true;
+  const rot = BITS_TO_ROTATION[rotBits & 0x03];
+  if (rot !== 0) text.rotation = rot;
+  if (localCellX != null) {
+    text.localCellX = localCellX;
+    text.localCellY = localCellY;
+    text.localCellWidth = localCellWidth;
+    text.localCellHeight = localCellHeight;
+  }
+  if (identityCellX != null) {
+    text.identityCellX = identityCellX;
+    text.identityCellY = identityCellY;
+    text.identityCellWidth = identityCellWidth;
+    text.identityCellHeight = identityCellHeight;
+  }
+  if (flags2 & TFLAG2_HAS_EFFECTS) {
+    const e = readEffects(view, data, pos);
+    text.effects = e.effects;
+    pos = e.pos;
+  }
+
+  return { text, pos };
+}
+
+// â”€â”€ Serialize â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function serializeComposition(
   bundle: CompositionBundle,
@@ -1163,7 +1747,7 @@ export function serializeComposition(
   const { strings, indexOf } = buildStringTable(bundle, embeddedFiles);
   const encoder = new TextEncoder();
 
-  // ── Pass 1: calculate total size ──
+  // â”€â”€ Pass 1: calculate total size â”€â”€
 
   let totalSize = HEADER_SIZE + METADATA_SIZE;
 
@@ -1193,7 +1777,8 @@ export function serializeComposition(
   // so the alive computation can see them.
   const rawGroups = bundle.groups ?? [];
   const images = bundle.images ?? [];
-  const aliveGroupIds = computeAliveGroupIds(rawGroups, bundle.figures, svgObjects, images);
+  const texts = bundle.texts ?? [];
+  const aliveGroupIds = computeAliveGroupIds(rawGroups, bundle.figures, svgObjects, images, texts);
   const groups = aliveGroupIds.size === rawGroups.length
     ? rawGroups
     : rawGroups.filter((g) => aliveGroupIds.has(g.id));
@@ -1210,7 +1795,7 @@ export function serializeComposition(
     totalSize += 2 + 2 + 2 + 2 + 4 + f.data.length; // idIdx + nameIdx + w + h + dataLen + data
   }
 
-  // Images + image-bytes (v10+) — bytes are deduplicated by imageId so a
+  // Images + image-bytes (v10+) â€” bytes are deduplicated by imageId so a
   // duplicate node doesn't store the blob twice.
   const blobMap = bundle.imageBlobs ?? {};
   totalSize += 2; // imageCount
@@ -1230,12 +1815,17 @@ export function serializeComposition(
     totalSize += 7 + (blobMap[id]?.length ?? 0);
   }
 
-  // Scene order (v11+) — paint order across every scene-object kind, one
+  // Text objects (v29+) â€” written between the image-bytes section and
+  // scene order.
+  totalSize += 2; // textCount
+  for (const t of texts) totalSize += textBinarySize(t);
+
+  // Scene order (v11+) â€” paint order across every scene-object kind, one
   // u16 string-table index per id.
   const sceneOrder = bundle.sceneOrder ?? [];
   totalSize += 2 + sceneOrder.length * 2;
 
-  // Node transforms (v14+) — compact Transform2D per scene node.
+  // Node transforms (v14+) â€” compact Transform2D per scene node.
   // Per entry: idIdx(u16) + flags(u8: rotation 2bits + mirrorH 1bit + mirrorV 1bit + hasParent 1bit)
   //            + tx(f32) + ty(f32) + sx(f32) + sy(f32)
   //            + optional parentIdIdx(u16)
@@ -1252,11 +1842,14 @@ export function serializeComposition(
     totalSize += 19 + (nt.parentId != null ? 2 : 0);
   }
 
-  // Custom colors (v17+) — persisted user-palette colors for this comp.
+  // Custom colors (v17+) â€” persisted user-palette colors for this comp.
   const customColors = bundle.customColors ?? [];
   totalSize += 2 + customColors.length * 3;
 
-  // ── Pass 2: write ──
+  // Background paint (v29+) â€” hasBackground byte + optional paint payload.
+  totalSize += 1 + (bundle.background ? paintBinarySize(bundle.background) : 0);
+
+  // â”€â”€ Pass 2: write â”€â”€
 
   const out = new Uint8Array(totalSize);
   const view = new DataView(out.buffer);
@@ -1374,8 +1967,8 @@ export function serializeComposition(
       }
     }
 
-    // Color override (v16+, extended v22) — r,g,b + blendModeByte.
-    // blendModeByte 0xFF = legacy luminance recolor; 0x00–0x0A = BlendMode.
+    // Color override (v16+, extended v22) â€” r,g,b + blendModeByte.
+    // blendModeByte 0xFF = legacy luminance recolor; 0x00â€“0x0A = BlendMode.
     // Presence-only; explicit white must round-trip distinct from `undefined`.
     if (fig.colorOverride != null) {
       out[pos++] = fig.colorOverride.r;
@@ -1387,7 +1980,7 @@ export function serializeComposition(
     }
   }
 
-  // Groups (v6+, extended in v13 for nesting) — written after figures, before embedded files.
+  // Groups (v6+, extended in v13 for nesting) â€” written after figures, before embedded files.
   view.setUint16(pos, groups.length, true); pos += 2;
   for (const g of groups) {
     view.setUint16(pos, indexOf.get(g.id) ?? 0, true); pos += 2;
@@ -1424,7 +2017,7 @@ export function serializeComposition(
     out.set(f.data, pos); pos += f.data.length;
   }
 
-  // Images (v10+) — metadata + dedup'd byte payload. Two sections so
+  // Images (v10+) â€” metadata + dedup'd byte payload. Two sections so
   // older readers (theoretically up to v9) can stop after embedded files
   // and treat the rest as a forward-extension; current code branches on
   // version anyway. Bytes write last so a future "read just the
@@ -1444,6 +2037,12 @@ export function serializeComposition(
     out[pos++] = refNode.mimeType === 'image/jpeg' ? 1 : 0;
     view.setUint32(pos, bytes.length, true); pos += 4;
     out.set(bytes, pos); pos += bytes.length;
+  }
+
+  // Text objects (v29+) â€” after image bytes, before scene order.
+  pos = writeCount16(view, pos, texts.length, 'texts');
+  for (const t of texts) {
+    pos = writeText(view, out, pos, t, indexOf);
   }
 
   // Scene order (v11+). Every id is already in the string table because
@@ -1479,10 +2078,18 @@ export function serializeComposition(
     out[pos++] = c.b;
   }
 
+  // Background paint (v29+). Final section of the file.
+  if (bundle.background) {
+    out[pos++] = 1;
+    pos = writePaint(view, out, pos, bundle.background);
+  } else {
+    out[pos++] = 0;
+  }
+
   return out;
 }
 
-// ── Deserialize ─────────────────────────────────────────────────────
+// â”€â”€ Deserialize â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function deserializeComposition(data: Uint8Array): DeserializedComposition {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -1602,7 +2209,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     if (hasFileId_v2) {
       fig.fileId = strings[view.getUint16(pos, true)]; pos += 2;
     }
-    // v1 backward compat: read old fields, map sourceFileId → fileId
+    // v1 backward compat: read old fields, map sourceFileId â†’ fileId
     if (hasDetachedHash_v1) {
       pos += 2; // skip detachedHash
     }
@@ -1638,7 +2245,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     }
     if (hasLegacyGroupIdentity) {
       // v5/v6 wrote 4 i16 fixed-point values here; in v7 the field is gone.
-      // Skip the 8 bytes — current locals (if present) are now the source of truth.
+      // Skip the 8 bytes â€” current locals (if present) are now the source of truth.
       pos += 8;
     }
     if (hasLocalCell) {
@@ -1668,7 +2275,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
         if (modeByte < BYTE_TO_BLEND_MODE.length) {
           fig.colorOverrideBlendMode = BYTE_TO_BLEND_MODE[modeByte];
         }
-        // 0xFF or out-of-range → undefined → legacy luminance recolor
+        // 0xFF or out-of-range â†’ undefined â†’ legacy luminance recolor
       }
     }
 
@@ -1763,13 +2370,13 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     }
   }
 
-  // Images + image bytes (v10+) — empty for older bundles.
+  // Images + image bytes (v10+) â€” empty for older bundles.
   const images: ImageObject[] = [];
   const imageBlobs: Record<string, Uint8Array> = {};
   if (version >= 10 && pos < data.byteLength) {
     const imageCount = view.getUint16(pos, true); pos += 2;
     for (let i = 0; i < imageCount; i++) {
-      const r = readImage(view, data, pos, strings);
+      const r = readImage(view, data, pos, strings, version);
       images.push(r.img);
       pos = r.pos;
     }
@@ -1783,7 +2390,19 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     }
   }
 
-  // Scene order (v11+) — paint order across all scene-object kinds.
+  // Text objects (v29+) â€” between the image-bytes section and scene
+  // order. Absent in older files (no bytes to skip; version gate only).
+  const texts: TextObject[] = [];
+  if (version >= 29 && pos < data.byteLength) {
+    const textCount = view.getUint16(pos, true); pos += 2;
+    for (let i = 0; i < textCount; i++) {
+      const r = readText(view, data, pos, strings);
+      texts.push(r.text);
+      pos = r.pos;
+    }
+  }
+
+  // Scene order (v11+) â€” paint order across all scene-object kinds.
   // Older bundles leave `sceneOrder` undefined; the loader (createInitial-
   // CompState) derives it from the kind arrays in legacy paint order.
   let sceneOrder: string[] | undefined;
@@ -1796,7 +2415,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     }
   }
 
-  // Node transforms (v14+) — compact Transform2D per scene node.
+  // Node transforms (v14+) â€” compact Transform2D per scene node.
   let nodeTransforms: Map<string, { transform: Transform2D; parentId?: string }> | undefined;
   if (version >= 14 && pos < data.byteLength) {
     const ntCount = view.getUint16(pos, true); pos += 2;
@@ -1824,7 +2443,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     }
   }
 
-  // Custom colors (v17+) — persisted user palette for this composition.
+  // Custom colors (v17+) â€” persisted user palette for this composition.
   // Empty for older bundles.
   const customColors: RGBColor[] = [];
   if (version >= 17 && pos < data.byteLength) {
@@ -1837,11 +2456,22 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     }
   }
 
+  // Background paint (v29+) â€” final section. Undefined for older files.
+  let background: Paint | undefined;
+  if (version >= 29 && pos < data.byteLength) {
+    const hasBackground = data[pos++];
+    if (hasBackground === 1) {
+      const p = readPaint(view, data, pos);
+      background = p.paint;
+      pos = p.pos;
+    }
+  }
+
   // Drop GroupNodes whose subtree carries no surviving leaf members.
   // Older save paths could leave orphans behind when the last member of a
-  // group was deleted — filter them here so the Scene Outline count and
+  // group was deleted â€” filter them here so the Scene Outline count and
   // the dev-mode object count agree from the moment the file loads.
-  const aliveGroupIds = computeAliveGroupIds(groups, figures, svgObjects, images);
+  const aliveGroupIds = computeAliveGroupIds(groups, figures, svgObjects, images, texts);
   const prunedGroups = aliveGroupIds.size === groups.length
     ? groups
     : groups.filter((g) => aliveGroupIds.has(g.id));
@@ -1861,6 +2491,8 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       sceneOrder,
       nodeTransforms,
       customColors,
+      texts,
+      background,
     },
     embeddedFiles,
   };

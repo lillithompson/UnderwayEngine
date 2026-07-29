@@ -1,4 +1,4 @@
-import {
+﻿import {
   SCENE_ADAPTERS,
   reorderSceneObjects,
   captureSceneOrder,
@@ -72,7 +72,7 @@ function makeState(parts: Partial<CompositionState> = {}): CompositionState {
 describe('SCENE_ADAPTERS', () => {
   test('one adapter per kind', () => {
     const kinds = SCENE_ADAPTERS.map((a) => a.kind).sort();
-    expect(kinds).toEqual(['figure', 'image', 'svg']);
+    expect(kinds).toEqual(['figure', 'image', 'svg', 'text']);
   });
 
   test('matchesId routes ids by namespace', () => {
@@ -129,12 +129,12 @@ describe('reorderSceneObjects', () => {
     // sceneOrder starts as: fig+svg = [f1, f2, svg_1, svg_2, svg_3, svg_4]
     // After 'back' for {f2, svg_2, svg_4}: moved=[f2,svg_2,svg_4] (input order), rest=[f1,svg_1,svg_3]
     expect(next.sceneOrder).toEqual(['f2', 'svg_2', 'svg_4', 'f1', 'svg_1', 'svg_3']);
-    // Kind arrays themselves are not reordered — sceneOrder is the source of truth.
+    // Kind arrays themselves are not reordered â€” sceneOrder is the source of truth.
     expect(next.figures.map((f) => f.id)).toEqual(['f1', 'f2']);
     expect(next.svgObjects.map((s) => s.id)).toEqual(['svg_1', 'svg_2', 'svg_3', 'svg_4']);
   });
 
-  test('no-op when no ids match — does not bump renderGeneration', () => {
+  test('no-op when no ids match â€” does not bump renderGeneration', () => {
     const state = makeState({ figures: [makeFigure('a')], renderGeneration: 7 });
     const next = reorderSceneObjects(state, new Set(['nonexistent']), 'back');
     expect(next).toBe(state);

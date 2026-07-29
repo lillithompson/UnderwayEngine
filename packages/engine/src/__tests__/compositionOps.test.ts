@@ -1,4 +1,4 @@
-import { applyCompOps, revertCompOps, cycleTransformForFigure, TRANSFORM_CYCLE, rotateGroupMemberFigure90CW, rotateFigureIndividual90CW, mirrorFigureIndividual, screenToLocalFlipAxis, pruneEmptyGroups, buildRemoveObjectOps, withGroupPruning, computeAliveGroupIds, SCENE_ADAPTERS, computeSVGBbox } from '../compositionOps';
+﻿import { applyCompOps, revertCompOps, cycleTransformForFigure, TRANSFORM_CYCLE, rotateGroupMemberFigure90CW, rotateFigureIndividual90CW, mirrorFigureIndividual, screenToLocalFlipAxis, pruneEmptyGroups, buildRemoveObjectOps, withGroupPruning, computeAliveGroupIds, SCENE_ADAPTERS, computeSVGBbox } from '../compositionOps';
 import { CompositionState, CompositionFigure, CompUndoEntry, GroupNode, SVGObject, PathSegment, makeViewport } from '../types';
 
 function makeFigure(overrides: Partial<CompositionFigure> = {}): CompositionFigure {
@@ -42,7 +42,7 @@ function makeState(figures: CompositionFigure[]): CompositionState {
   };
 }
 
-/** Build a rotateFigure undo op from a figure (90° clockwise). */
+/** Build a rotateFigure undo op from a figure (90Â° clockwise). */
 function buildRotateOp(fig: CompositionFigure): CompUndoEntry {
   const oldRot = fig.rotation ?? 0;
   const newRot = ((oldRot + 90) % 360) as 0 | 90 | 180 | 270;
@@ -151,7 +151,7 @@ describe('compositionOps rotateFigure', () => {
 
 describe('multi-quad mesh figures', () => {
   function makeMeshFigure(): CompositionFigure {
-    // Two quads side by side: (0,0)→2x2 and (2,0)→2x2
+    // Two quads side by side: (0,0)â†’2x2 and (2,0)â†’2x2
     // Bounding box: cellX=5, cellY=5, cellWidth=4, cellHeight=2
     return makeFigure({
       id: 'mesh1',
@@ -209,7 +209,7 @@ describe('multi-quad mesh figures', () => {
     const r = moved.figures[0];
     expect(r.cellX).toBe(10);
     expect(r.cellY).toBe(15);
-    // Quads unchanged — relative offsets stay the same
+    // Quads unchanged â€” relative offsets stay the same
     expect(r.quads).toEqual(fig.quads);
   });
 
@@ -259,17 +259,17 @@ describe('cycleTransformForFigure', () => {
 
   test('dimension swap through rotation steps (non-square)', () => {
     let fig = makeFigure({ cellWidth: 4, cellHeight: 2, cellX: 10, cellY: 10, transformCycleStep: 0 });
-    // Step 1: 90° rotation swaps dimensions
+    // Step 1: 90Â° rotation swaps dimensions
     fig = cycleTransformForFigure(fig, 1);
     expect(fig.cellWidth).toBe(2);
     expect(fig.cellHeight).toBe(4);
     expect(fig.rotation).toBe(90);
-    // Step 2: 180° rotation — back to original dimensions
+    // Step 2: 180Â° rotation â€” back to original dimensions
     fig = cycleTransformForFigure(fig, 2);
     expect(fig.cellWidth).toBe(4);
     expect(fig.cellHeight).toBe(2);
     expect(fig.rotation).toBe(180);
-    // Step 3: 270° rotation swaps again
+    // Step 3: 270Â° rotation swaps again
     fig = cycleTransformForFigure(fig, 3);
     expect(fig.cellWidth).toBe(2);
     expect(fig.cellHeight).toBe(4);
@@ -300,7 +300,7 @@ describe('cycleTransformForFigure', () => {
   test('4 rotations return to same position (odd-dimension 3x4)', () => {
     const orig = makeFigure({ cellWidth: 3, cellHeight: 4, cellX: 5, cellY: 5, transformCycleStep: 0 });
     let fig = orig;
-    // Rotate through steps 1-4 (90° → 180° → 270° → 0°)
+    // Rotate through steps 1-4 (90Â° â†’ 180Â° â†’ 270Â° â†’ 0Â°)
     for (let step = 1; step <= 4; step++) {
       fig = cycleTransformForFigure(fig, step % TRANSFORM_CYCLE.length);
     }
@@ -366,7 +366,7 @@ describe('cycleTransformForFigure', () => {
     // uses the new position instead of snapping back to the old one.
     let fig = makeFigure({ cellWidth: 4, cellHeight: 2, cellX: 10, cellY: 10, transformCycleStep: 0 });
 
-    // First rotation (step 1: 90°)
+    // First rotation (step 1: 90Â°)
     fig = cycleTransformForFigure(fig, 1);
     expect(fig.identityCellX).toBe(10);
     expect(fig.identityCellY).toBe(10);
@@ -378,7 +378,7 @@ describe('cycleTransformForFigure', () => {
     fig = cycleTransformForFigure(fig, 1);
     const cx = fig.cellX + fig.cellWidth / 2;
     const cy = fig.cellY + fig.cellHeight / 2;
-    // The center should be near (20 + 2/2, 20 + 4/2) = (21, 22) — the moved position's center
+    // The center should be near (20 + 2/2, 20 + 4/2) = (21, 22) â€” the moved position's center
     expect(cx).toBe(21);
     expect(cy).toBe(22);
     // And NOT near the old center (11, 11)
@@ -403,21 +403,21 @@ describe('cycleTransformForFigure', () => {
     }
     expect(fig.quads).toEqual(quads);
 
-    // Step 1 (90° rotation): quads should be rotated
+    // Step 1 (90Â° rotation): quads should be rotated
     fig = cycleTransformForFigure(orig, 1);
     expect(fig.quads).toBeDefined();
     expect(fig.quads!.length).toBe(2);
-    // After 90° CW on 4x2 bounding box:
-    // Quad (0,0,2,2) → (0,0,2,2)
-    // Quad (2,0,2,2) → (0,2,2,2)
+    // After 90Â° CW on 4x2 bounding box:
+    // Quad (0,0,2,2) â†’ (0,0,2,2)
+    // Quad (2,0,2,2) â†’ (0,2,2,2)
     expect(fig.quads![0]).toEqual({ offsetX: 0, offsetY: 0, cellWidth: 2, cellHeight: 2 });
     expect(fig.quads![1]).toEqual({ offsetX: 0, offsetY: 2, cellWidth: 2, cellHeight: 2 });
   });
 });
 
 describe('rotateGroupMemberFigure90CW', () => {
-  // Codebase convention (see cells.test.ts:683-703): 90° CW in screen coords
-  // sends TL → TR, TR → BR, BR → BL, BL → TL.
+  // Codebase convention (see cells.test.ts:683-703): 90Â° CW in screen coords
+  // sends TL â†’ TR, TR â†’ BR, BR â†’ BL, BL â†’ TL.
 
   test('2x2 unit grid: positions rotate CW around group center', () => {
     const tl = makeFigure({ id: 'tl', cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1 });
@@ -425,28 +425,28 @@ describe('rotateGroupMemberFigure90CW', () => {
     const br = makeFigure({ id: 'br', cellX: 1, cellY: 1, cellWidth: 1, cellHeight: 1 });
     const bl = makeFigure({ id: 'bl', cellX: 0, cellY: 1, cellWidth: 1, cellHeight: 1 });
 
-    // Group bbox (0,0)-(2,2) → center (1,1)
+    // Group bbox (0,0)-(2,2) â†’ center (1,1)
     const gcx = 1, gcy = 1;
     const rTL = rotateGroupMemberFigure90CW(tl, gcx, gcy);
     const rTR = rotateGroupMemberFigure90CW(tr, gcx, gcy);
     const rBR = rotateGroupMemberFigure90CW(br, gcx, gcy);
     const rBL = rotateGroupMemberFigure90CW(bl, gcx, gcy);
 
-    // TL (0,0) → TR slot (1,0)
+    // TL (0,0) â†’ TR slot (1,0)
     expect(rTL.cellX).toBe(1);
     expect(rTL.cellY).toBe(0);
-    // TR (1,0) → BR slot (1,1)
+    // TR (1,0) â†’ BR slot (1,1)
     expect(rTR.cellX).toBe(1);
     expect(rTR.cellY).toBe(1);
-    // BR (1,1) → BL slot (0,1)
+    // BR (1,1) â†’ BL slot (0,1)
     expect(rBR.cellX).toBe(0);
     expect(rBR.cellY).toBe(1);
-    // BL (0,1) → TL slot (0,0)
+    // BL (0,1) â†’ TL slot (0,0)
     expect(rBL.cellX).toBe(0);
     expect(rBL.cellY).toBe(0);
   });
 
-  test('rotation field advances by 90°', () => {
+  test('rotation field advances by 90Â°', () => {
     const f0 = makeFigure({ rotation: 0, cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2 });
     expect(rotateGroupMemberFigure90CW(f0, 1, 1).rotation).toBe(90);
     const f90 = makeFigure({ rotation: 90, cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2 });
@@ -458,7 +458,7 @@ describe('rotateGroupMemberFigure90CW', () => {
   });
 
   test('non-square pair: side-by-side 2x1 figures become a vertical stack', () => {
-    // A at (0,0) 2x1, B at (2,0) 2x1. Group bbox (0,0)-(4,1) → center (2, 0.5)
+    // A at (0,0) 2x1, B at (2,0) 2x1. Group bbox (0,0)-(4,1) â†’ center (2, 0.5)
     const a = makeFigure({ id: 'a', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 1 });
     const b = makeFigure({ id: 'b', cellX: 2, cellY: 0, cellWidth: 2, cellHeight: 1 });
     const gcx = 2, gcy = 0.5;
@@ -470,13 +470,13 @@ describe('rotateGroupMemberFigure90CW', () => {
     expect(ra.cellHeight).toBe(2);
     expect(rb.cellWidth).toBe(1);
     expect(rb.cellHeight).toBe(2);
-    // A was on the left → after CW goes to the top. B was on the right → bottom.
-    // A center was (1, 0.5), rel (-1, 0), CW → (0, -1), new center (2, -0.5)
-    //   → cellX = 2 - 0.5 = 1.5 → round 2, cellY = -0.5 - 1 = -1.5 → round -1
+    // A was on the left â†’ after CW goes to the top. B was on the right â†’ bottom.
+    // A center was (1, 0.5), rel (-1, 0), CW â†’ (0, -1), new center (2, -0.5)
+    //   â†’ cellX = 2 - 0.5 = 1.5 â†’ round 2, cellY = -0.5 - 1 = -1.5 â†’ round -1
     expect(ra.cellX).toBe(2);
     expect(ra.cellY).toBe(-1);
-    // B center was (3, 0.5), rel (1, 0), CW → (0, 1), new center (2, 1.5)
-    //   → cellX = 1.5 → 2, cellY = 0.5 → 1 (0.5 rounds to 1 via Math.round bankers-ish; JS Math.round(0.5)=1)
+    // B center was (3, 0.5), rel (1, 0), CW â†’ (0, 1), new center (2, 1.5)
+    //   â†’ cellX = 1.5 â†’ 2, cellY = 0.5 â†’ 1 (0.5 rounds to 1 via Math.round bankers-ish; JS Math.round(0.5)=1)
     expect(rb.cellX).toBe(2);
     expect(rb.cellY).toBe(1);
   });
@@ -505,9 +505,9 @@ describe('rotateGroupMemberFigure90CW', () => {
       ],
     });
     const rotated = rotateGroupMemberFigure90CW(fig, 2, 1); // rotate around its own center
-    // After 90° CW on 4x2 bbox → 2x4:
-    // Quad (0,0,2,2) → (0, 0, 2, 2)
-    // Quad (2,0,2,2) → (0, 2, 2, 2)
+    // After 90Â° CW on 4x2 bbox â†’ 2x4:
+    // Quad (0,0,2,2) â†’ (0, 0, 2, 2)
+    // Quad (2,0,2,2) â†’ (0, 2, 2, 2)
     expect(rotated.quads).toEqual([
       { offsetX: 0, offsetY: 0, cellWidth: 2, cellHeight: 2 },
       { offsetX: 0, offsetY: 2, cellWidth: 2, cellHeight: 2 },
@@ -633,7 +633,7 @@ describe('compositionOps scaleFigure', () => {
   });
 });
 
-describe('compositionOps scaleFigure — pattern tile dims', () => {
+describe('compositionOps scaleFigure â€” pattern tile dims', () => {
   test('applies new tile dims when provided', () => {
     const fig = makeFigure({
       cellWidth: 10, cellHeight: 10, cellX: 0, cellY: 0,
@@ -719,7 +719,7 @@ describe('compositionOps scaleFigure — pattern tile dims', () => {
   });
 });
 
-describe('compositionOps scaleFigure — tile offset', () => {
+describe('compositionOps scaleFigure â€” tile offset', () => {
   test('origin-side resize updates tileOffset to keep pattern fixed', () => {
     const fig = makeFigure({
       cellX: 10, cellY: 10, cellWidth: 8, cellHeight: 8,
@@ -820,8 +820,8 @@ describe('compositionOps scaleFigure — tile offset', () => {
     expect(result.svgObjects[0].tileOffsetYL0).toBeUndefined();
   });
 
-  test('rotated (90°) figure: visual-left resize needs no offset (rotation compensates)', () => {
-    // Intrinsic 6W × 4H rotated 90° → stored as cellWidth=4, cellHeight=6
+  test('rotated (90Â°) figure: visual-left resize needs no offset (rotation compensates)', () => {
+    // Intrinsic 6W Ã— 4H rotated 90Â° â†’ stored as cellWidth=4, cellHeight=6
     const fig = makeFigure({
       cellX: 2, cellY: 3, cellWidth: 4, cellHeight: 6,
       rotation: 90,
@@ -836,13 +836,13 @@ describe('compositionOps scaleFigure — tile offset', () => {
     }];
     const result = applyCompOps(state, entry);
     const r = result.figures[0];
-    // For 90° rotation, the invRot center-shift exactly cancels the rect shift
+    // For 90Â° rotation, the invRot center-shift exactly cancels the rect shift
     // for a visual-left resize, so no offset compensation is needed.
     expect(r.tileOffsetXL0 ?? 0).toBe(0);
     expect(r.tileOffsetYL0 ?? 0).toBe(0);
   });
 
-  test('rotated (90°) figure: visual-bottom resize updates X offset', () => {
+  test('rotated (90Â°) figure: visual-bottom resize updates X offset', () => {
     const fig = makeFigure({
       cellX: 2, cellY: 3, cellWidth: 4, cellHeight: 6,
       rotation: 90,
@@ -856,8 +856,8 @@ describe('compositionOps scaleFigure — tile offset', () => {
       newCellX: 2, newCellY: 1, newCellWidth: 4, newCellHeight: 8,
     }];
     const result = applyCompOps(state, entry);
-    // dy=-2, dh=2 → dOffset = (dy+dh, -dx) = (0, 0)... let me compute:
-    // invRot 90°: ir00=0, ir01=1, ir10=-1, ir11=0
+    // dy=-2, dh=2 â†’ dOffset = (dy+dh, -dx) = (0, 0)... let me compute:
+    // invRot 90Â°: ir00=0, ir01=1, ir10=-1, ir11=0
     // dx=0, dy=-2, dw=0, dh=2, dCx=0, dCy=-1
     // dRectX = 0 + (0-2)/2 = -1, dRectY = -2 + (2-0)/2 = -1
     // cX = 1*0 - 1*(-1) = 1, cY = 1*0 + 1*(-1) = -1
@@ -866,7 +866,7 @@ describe('compositionOps scaleFigure — tile offset', () => {
     expect(result.figures[0].tileOffsetYL0 ?? 0).toBe(0);
   });
 
-  test('rotated (90°) figure: undo/redo round-trip', () => {
+  test('rotated (90Â°) figure: undo/redo round-trip', () => {
     const fig = makeFigure({
       cellX: 2, cellY: 3, cellWidth: 4, cellHeight: 6,
       rotation: 90,
@@ -886,21 +886,21 @@ describe('compositionOps scaleFigure — tile offset', () => {
     expect(undone.figures[0].tileOffsetYL0 ?? 0).toBe(0);
   });
 
-  test('180° figure: visual-right resize needs X offset', () => {
+  test('180Â° figure: visual-right resize needs X offset', () => {
     const fig = makeFigure({
       cellX: 10, cellY: 10, cellWidth: 8, cellHeight: 8,
       rotation: 180,
       tileMode: 'repeat', tileWidthL0: 2, tileHeightL0: 2,
     });
     const state = makeState([fig]);
-    // Visual right for 180° is intrinsic left, needs compensation
+    // Visual right for 180Â° is intrinsic left, needs compensation
     const entry: CompUndoEntry = [{
       op: 'scaleFigure', figureId: 'fig1',
       oldCellX: 10, oldCellY: 10, oldCellWidth: 8, oldCellHeight: 8,
       newCellX: 10, newCellY: 10, newCellWidth: 10, newCellHeight: 8,
     }];
     const result = applyCompOps(state, entry);
-    // dx=0, dw=2 → for 180°: dOffset = (dx+dw, dy+dh) = (2, 0)
+    // dx=0, dw=2 â†’ for 180Â°: dOffset = (dx+dw, dy+dh) = (2, 0)
     expect(result.figures[0].tileOffsetXL0).toBe(2);
     expect(result.figures[0].tileOffsetYL0).toBeUndefined();
   });
@@ -1271,7 +1271,7 @@ describe('compositionOps syncDimensions', () => {
     const fig2 = makeFigure({ id: 'b', fileId: 'src',
       cellWidth: 3, cellHeight: 7, resolutionX: 2, resolutionY: 2 });
     const state = makeState([fig1, fig2]);
-    // Source file scaled 4× (e.g. 8×8 L0 → 32×32 L0, so resolution 2 → 8).
+    // Source file scaled 4Ã— (e.g. 8Ã—8 L0 â†’ 32Ã—32 L0, so resolution 2 â†’ 8).
     const entry: CompUndoEntry = [
       {
         op: 'syncDimensions', figureId: 'a',
@@ -1297,7 +1297,7 @@ describe('compositionOps syncDimensions', () => {
   });
 
   test('updates cellWidth/cellHeight when op includes cell dimension fields', () => {
-    // resolutionX=4 → native cellWidth = 4*4 = 16
+    // resolutionX=4 â†’ native cellWidth = 4*4 = 16
     const fig = makeFigure({ resolutionX: 4, resolutionY: 4, cellWidth: 16, cellHeight: 16 });
     const state = makeState([fig]);
     const entry: CompUndoEntry = [{
@@ -1442,7 +1442,7 @@ describe('compositionOps toggleRepeat', () => {
 
   test('toggle off with 90-degree rotation swaps native dimensions', () => {
     // Figure with res 2x3, native size = 8x12.
-    // Rotated 90°, so native boundary becomes 12x8.
+    // Rotated 90Â°, so native boundary becomes 12x8.
     // Currently stretched to 24x4 in pattern mode.
     const fig = makeFigure({
       cellX: 0, cellY: 0, cellWidth: 24, cellHeight: 4,
@@ -1550,7 +1550,7 @@ describe('compositionOps toggleRepeat', () => {
     const result = applyCompOps(state, entry);
     expect(result.svgObjects[0].cellWidth).toBe(12);
     expect(result.svgObjects[0].cellHeight).toBe(12);
-    // Segments unchanged — tile content is fixed
+    // Segments unchanged â€” tile content is fixed
     expect(result.svgObjects[0].segments).toEqual([{kind:'line', start:[0,0], end:[4,4]}]);
     // Revert
     const reverted = revertCompOps(result, entry);
@@ -1580,7 +1580,7 @@ describe('rotateFigureIndividual90CW', () => {
     expect(r2.identityCellY).toBe(5);
   });
 
-  test('rotates quads 90° CW', () => {
+  test('rotates quads 90Â° CW', () => {
     const fig = makeFigure({
       cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 2,
       quads: [
@@ -1667,10 +1667,10 @@ describe('screenToLocalFlipAxis', () => {
   });
 });
 
-describe('undo restores full state — moveFigure', () => {
+describe('undo restores full state â€” moveFigure', () => {
   test('revert restores cellX/Y AND identity anchors set by a prior rotation', () => {
     // Simulate the buggy sequence: rotate (sets identity), then move
-    // (clears identity), then undo move — expect identity restored.
+    // (clears identity), then undo move â€” expect identity restored.
     const fig = makeFigure({
       cellX: 5, cellY: 5, cellWidth: 4, cellHeight: 2,
       identityCellX: 5, identityCellY: 5, transformCycleStep: 1,
@@ -1703,7 +1703,7 @@ describe('undo restores full state — moveFigure', () => {
   });
 });
 
-describe('undo restores full state — scaleFigure', () => {
+describe('undo restores full state â€” scaleFigure', () => {
   test('revert restores identity anchors set by a prior rotation', () => {
     const fig = makeFigure({
       cellX: 5, cellY: 5, cellWidth: 4, cellHeight: 2,
@@ -1726,7 +1726,7 @@ describe('undo restores full state — scaleFigure', () => {
   });
 });
 
-describe('undo restores full state — rotateFigure with quads', () => {
+describe('undo restores full state â€” rotateFigure with quads', () => {
   test('revert restores original quads and identity', () => {
     const origQuads = [
       { offsetX: 0, offsetY: 0, cellWidth: 2, cellHeight: 2 },
@@ -1760,7 +1760,7 @@ describe('undo restores full state — rotateFigure with quads', () => {
     expect(undone.figures[0].identityCellX).toBeUndefined();
   });
 
-  test('round-trip rotate→undo→redo→undo preserves quads exactly', () => {
+  test('round-trip rotateâ†’undoâ†’redoâ†’undo preserves quads exactly', () => {
     const origQuads = [
       { offsetX: 0, offsetY: 0, cellWidth: 2, cellHeight: 2 },
       { offsetX: 2, offsetY: 0, cellWidth: 2, cellHeight: 2 },
@@ -1787,7 +1787,7 @@ describe('undo restores full state — rotateFigure with quads', () => {
   });
 });
 
-describe('undo restores full state — mirrorFigure with quads', () => {
+describe('undo restores full state â€” mirrorFigure with quads', () => {
   test('revert restores original quads after horizontal mirror', () => {
     const origQuads = [
       { offsetX: 0, offsetY: 0, cellWidth: 2, cellHeight: 2 },
@@ -1925,12 +1925,12 @@ describe('empty group pruning', () => {
     const parent = makeGroup('p', 'P', 'gp');
     const child = makeGroup('c', 'C', 'p');
     const fig = makeFigure({ id: 'f1', groupId: 'c' });
-    const alive = computeAliveGroupIds([gp, parent, child], [fig], [], []);
+    const alive = computeAliveGroupIds([gp, parent, child], [fig], [], [], []);
     expect([...alive].sort()).toEqual(['c', 'gp', 'p']);
   });
 });
 
-describe('joinObjects → reconcileGroupLocals (Expand figure path)', () => {
+describe('joinObjects â†’ reconcileGroupLocals (Expand figure path)', () => {
   function makeGroup(id: string, name: string, translateX = 0, translateY = 0): GroupNode {
     return {
       id, name,
@@ -1942,7 +1942,7 @@ describe('joinObjects → reconcileGroupLocals (Expand figure path)', () => {
   test('result inheriting groupId gets localCell* and localSegments back-filled', () => {
     // Group translated by (5, 7). Figure at world (10, 10), so its position
     // inside the group is local (5, 3). Expand replaces the figure with an
-    // SVGObject in the same group — that SVGObject's world coords should be
+    // SVGObject in the same group â€” that SVGObject's world coords should be
     // those of the figure, with localCell* derived via the inverse group transform.
     const fig = makeFigure({ id: 'f1', groupId: 'g', cellX: 10, cellY: 10, cellWidth: 4, cellHeight: 4 });
     const state: CompositionState = {
@@ -2072,7 +2072,7 @@ describe('setMaskMode op', () => {
 });
 
 describe('editSVGSegments scale round-trip', () => {
-  // editSVGSegments captures a scaled SVG's geometry (old → new) and round-trips
+  // editSVGSegments captures a scaled SVG's geometry (old â†’ new) and round-trips
   // through undo/redo. Used by the normal scale-commit path.
   function makeMaskSvg(overrides: Partial<SVGObject> = {}): SVGObject {
     return {
@@ -2088,7 +2088,7 @@ describe('editSVGSegments scale round-trip', () => {
       ...overrides,
     };
   }
-  // The 2× scaled geometry the live state would hold after a corner drag.
+  // The 2Ã— scaled geometry the live state would hold after a corner drag.
   const scaledSegments: PathSegment[] = [
     { kind: 'line', start: [0, 0], end: [8, 0] },
     { kind: 'line', start: [8, 0], end: [8, 8] },
@@ -2171,7 +2171,7 @@ describe('editSVGSegments scale round-trip', () => {
 describe('mask-confirm replaceScene round-trip', () => {
   // handleSetMaskConfirm folds the whole interaction (mask + any other object
   // transforms, the grouping, and the mask flag) into ONE replaceScene op that
-  // swaps the scene collections snapshot ↔ final. This mirrors that op and
+  // swaps the scene collections snapshot â†” final. This mirrors that op and
   // proves transforms of NON-mask objects survive confirm and revert.
   function maskSvg(overrides: Partial<SVGObject> = {}): SVGObject {
     return {
@@ -2188,7 +2188,7 @@ describe('mask-confirm replaceScene round-trip', () => {
 
   test('preserves a non-mask object transform AND the grouping; revert restores snapshot', () => {
     const mask = maskSvg();
-    // A second loose object that the user MOVED during mask mode (cellX 20 → 25).
+    // A second loose object that the user MOVED during mask mode (cellX 20 â†’ 25).
     const other = makeFigure({ id: 'other', cellX: 20, cellY: 20 });
     const snapshot = { ...makeState([other]), svgObjects: [mask], sceneOrder: ['other', 'mask_1'] };
 
@@ -2207,14 +2207,14 @@ describe('mask-confirm replaceScene round-trip', () => {
       oldSceneOrder: snapshot.sceneOrder, newSceneOrder: finalScene.sceneOrder,
     }];
 
-    // Apply (redo from snapshot) → final: moved object preserved, mask grouped + flagged.
+    // Apply (redo from snapshot) â†’ final: moved object preserved, mask grouped + flagged.
     const applied = applyCompOps(snapshot, entry);
     expect(applied.figures.find(f => f.id === 'other')!.cellX).toBe(25);
     expect(applied.svgObjects.find(s => s.id === 'mask_1')!.isMask).toBe(true);
     expect(applied.svgObjects.find(s => s.id === 'mask_1')!.groupId).toBe('g1');
     expect(applied.groups.some(g => g.id === 'g1')).toBe(true);
 
-    // Revert → exact pre-mode snapshot (object back at 20, no group, no mask).
+    // Revert â†’ exact pre-mode snapshot (object back at 20, no group, no mask).
     const reverted = revertCompOps(applied, entry);
     expect(reverted.figures.find(f => f.id === 'other')!.cellX).toBe(20);
     expect(reverted.svgObjects.find(s => s.id === 'mask_1')!.isMask).toBeUndefined();

@@ -6,7 +6,7 @@
  * with pre-deserialized embedded files.
  */
 
-import { CompositionFigure, FileConfig, SVGObject, ImageObject, Layer, ClipBox, GroupNode } from './types';
+import { CompositionFigure, FileConfig, SVGObject, ImageObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects } from './types';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL, SVG_STROKE_WIDTH } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
@@ -18,6 +18,8 @@ import { buildMaskClipDefs, wrapWithMaskClip } from './compositionMaskSVG';
 import { effectiveStrokeMultiplier, normalizeStrokeScale } from './strokeScale';
 import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
+import { paintToSvg, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
+import { layoutText } from './textLayout';
 
 /** Layer set + dimensions returned by a figure loader. Mirrors the relevant
  *  subset of what `loadFileStateLite` provides. */
@@ -31,6 +33,15 @@ export interface CompositionFigureLoadResult {
 }
 
 /**
+ * Font-embedding hook for text-node export. Given a `TextStyle.fontId`,
+ * return WOFF2 bytes (base64) to embed as an `@font-face` data URI, or
+ * null/undefined to skip. When no resolver is provided (or it returns
+ * nothing for every used font), text elements reference the family by
+ * name only — the viewer must have the font installed/registered.
+ */
+export type SVGFontResolver = (fontId: string) => { woff2Base64?: string } | null;
+
+/**
  * Inputs for the pure SVG-generation core. Decoupled from IndexedDB so
  * Node-side tooling can call this, threading pre-deserialized figure data
  * through `loadFigure`.
@@ -42,6 +53,14 @@ export interface CompositionSVGInputs {
   svgObjects: SVGObject[];
   images: ImageObject[];
   imageBlobs: Record<string, Uint8Array>;
+  /** Text scene nodes (v29+). Optional: absent and empty behave the same. */
+  texts?: TextObject[];
+  /** Canvas background paint (v29+). When set, a full-viewBox rect is
+   *  painted behind every scene element. Absent = transparent, matching
+   *  the pre-v29 export appearance. */
+  background?: Paint;
+  /** Optional font-embedding hook — see {@link SVGFontResolver}. */
+  fontResolver?: SVGFontResolver;
   /** Group hierarchy — needed to resolve "Use as mask" clip regions.
    *  Optional: when absent, no masking is applied (back-compat). */
   groups?: GroupNode[];
@@ -61,6 +80,151 @@ export interface CompositionSVGInputs {
   loadBakedFigurePng?: (fig: CompositionFigure) => Promise<string | null>;
 }
 
+/** Escape text content / attribute values for XML. */
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * Scale a NodeEffects' world-unit geometry (shadow offset/blur, glow
+ * radius, border width/radius) into SVG units. The paintSvg builders are
+ * unit-agnostic; export space is L0 cells × SVG_UNITS_PER_L0_CELL, so the
+ * effect geometry must scale the same way node bboxes do.
+ */
+function scaleEffectsToSvgUnits(effects: NodeEffects, u: number): NodeEffects {
+  const out: NodeEffects = {};
+  if (effects.shadow) {
+    out.shadow = { ...effects.shadow, dx: effects.shadow.dx * u, dy: effects.shadow.dy * u, blur: effects.shadow.blur * u };
+  }
+  if (effects.glow) {
+    out.glow = { ...effects.glow, radius: effects.glow.radius * u };
+  }
+  if (effects.border) {
+    out.border = {
+      ...effects.border,
+      width: effects.border.width * u,
+      radius: effects.border.radius !== undefined ? effects.border.radius * u : undefined,
+    };
+  }
+  return out;
+}
+
+/**
+ * Wrap node markup with its NodeEffects: shadow/glow become a `<filter>`
+ * def referenced by a wrapping `<g>`; a border becomes a stroked rect
+ * drawn OVER the content, axis-aligned at the node's stored bbox —
+ * matching the compositor's border pass (which strokes the world bbox,
+ * not the rotated content). Def ids are prefixed with the node id so
+ * multiple effected nodes coexist in one document.
+ */
+function applyNodeEffects(
+  markup: string,
+  effects: NodeEffects | undefined,
+  nodeId: string,
+  node: { cellX: number; cellY: number; cellWidth: number; cellHeight: number },
+  u: number,
+): string {
+  if (!effects) return markup;
+  const scaled = scaleEffectsToSvgUnits(effects, u);
+  let out = markup;
+  const { defs, filterRef } = effectsToSvgFilter(scaled, `fx_${nodeId}`);
+  if (defs && filterRef) {
+    out = `<defs>${defs}</defs><g filter="${filterRef}">${out}</g>`;
+  }
+  if (scaled.border) {
+    out += borderToSvgRect(scaled.border, {
+      cellX: node.cellX * u,
+      cellY: node.cellY * u,
+      cellWidth: node.cellWidth * u,
+      cellHeight: node.cellHeight * u,
+    });
+  }
+  return out;
+}
+
+/** Sticker padding between the rounded-rect background and the text, in
+ *  em units of the text's font size. Also used as the corner radius. */
+const STICKER_PAD_EM = 0.35;
+
+/** Approximate ascent (baseline offset from the line top) in em units.
+ *  Matches the deterministic default measurer's spirit: exact metrics
+ *  come from the app's fonts; export uses a stable approximation so
+ *  output doesn't depend on platform font APIs. */
+const TEXT_ASCENT_EM = 0.8;
+
+/**
+ * Build SVG markup for a text node: one `<text>` element per layout line
+ * (via `layoutText` with the default deterministic measurer), wrapped in
+ * the same translate/rotate/mirror group images use. Layout runs in
+ * world units against the node's bbox width, then scales into SVG units.
+ * Sticker nodes get a padded rounded-rect background behind the lines.
+ */
+function buildTextSVGContent(text: TextObject, u: number): string {
+  const style = text.style;
+  const tx = text.cellX * u;
+  const ty = text.cellY * u;
+  const tw = text.cellWidth * u;
+  const th = text.cellHeight * u;
+
+  // Node transform — same pattern as image nodes: position, then rotate
+  // about the bbox center, then mirror within the bbox.
+  const parts: string[] = [`translate(${tx}, ${ty})`];
+  const rot = text.rotation ?? 0;
+  if (rot !== 0) parts.push(`rotate(${rot} ${tw / 2} ${th / 2})`);
+  if (text.mirrorH) parts.push(`translate(${tw}, 0) scale(-1, 1)`);
+  if (text.mirrorV) parts.push(`translate(0, ${th}) scale(1, -1)`);
+
+  // Sticker padding insets the text from the bbox edge; the wrap width
+  // shrinks to match so wrapped lines stay inside the rect.
+  const pad = text.sticker ? style.size * STICKER_PAD_EM : 0;
+  const wrapWidth = Math.max(text.cellWidth - 2 * pad, style.size * 0.1);
+  const layout = layoutText(text.content, style, { maxWidth: wrapWidth });
+
+  const fontSize = style.size * u;
+  const align = style.align ?? 'left';
+  // Anchor x in world units, relative to the wrap box. 'start' is the SVG
+  // default, so text-anchor is only emitted for center/right.
+  const anchorWorldX = pad + (align === 'left' ? 0 : align === 'center' ? wrapWidth / 2 : wrapWidth);
+  const anchorAttr = align === 'left' ? '' : ` text-anchor="${align === 'center' ? 'middle' : 'end'}"`;
+
+  let attrs = `font-family="${escapeXml(style.fontId)}" font-size="${fontSize}"`;
+  if (style.bold) attrs += ' font-weight="bold"';
+  if (style.italic) attrs += ' font-style="italic"';
+  attrs += ` fill="rgb(${style.color.r},${style.color.g},${style.color.b})"`;
+  if (style.letterSpacing !== undefined && style.letterSpacing !== 0) {
+    // letterSpacing is authored in em units; SVG letter-spacing is a length.
+    attrs += ` letter-spacing="${style.letterSpacing * fontSize}"`;
+  }
+  if (style.stroke) {
+    // paint-order="stroke" draws the outline behind the fill, matching
+    // the runtime glyph renderer's outline-under-fill compositing.
+    const sc = style.stroke.color;
+    attrs += ` stroke="rgb(${sc.r},${sc.g},${sc.b})" stroke-width="${style.stroke.width * u}" stroke-linejoin="round" paint-order="stroke"`;
+  }
+
+  let inner = '';
+  if (text.sticker) {
+    // Padded rounded-rect background behind the lines. Fills the node
+    // bbox (the padding lives between the rect edge and the text).
+    const r = pad * u;
+    inner += `<rect x="0" y="0" width="${tw}" height="${th}" rx="${r}" fill="#ffffff"/>`;
+  }
+  for (const line of layout.lines) {
+    if (line.text.length === 0) continue;
+    const lx = anchorWorldX * u;
+    // Baseline = line top + approximate ascent.
+    const ly = (pad + line.y + style.size * TEXT_ASCENT_EM) * u;
+    inner += `<text x="${lx}" y="${ly}" ${attrs}${anchorAttr}>${escapeXml(line.text)}</text>`;
+  }
+  if (!inner) return '';
+  return `<g transform="${parts.join(' ')}">${inner}</g>`;
+}
+
 export async function generateCompositionSVGCore(
   input: CompositionSVGInputs,
   cancelled?: () => boolean,
@@ -69,7 +233,8 @@ export async function generateCompositionSVGCore(
   const figures = input.figures.filter(f => !f.hidden);
   const svgObjects = input.svgObjects.filter(s => !s.hidden);
   const images = input.images.filter(i => !i.hidden);
-  if (figures.length === 0 && svgObjects.length === 0 && images.length === 0) return null;
+  const texts = (input.texts ?? []).filter(t => !t.hidden);
+  if (figures.length === 0 && svgObjects.length === 0 && images.length === 0 && texts.length === 0) return null;
 
   // Active masks resolve from the UNFILTERED svg objects: a hidden mask
   // still clips (invisible-mask behavior) even though it isn't drawn.
@@ -122,6 +287,9 @@ export async function generateCompositionSVGCore(
   for (const img of images) {
     accept(img, img.cellX, img.cellY, img.cellX + img.cellWidth, img.cellY + img.cellHeight);
   }
+  for (const txt of texts) {
+    accept(txt, txt.cellX, txt.cellY, txt.cellX + txt.cellWidth, txt.cellY + txt.cellHeight);
+  }
 
   // Degenerate-frame guard: if masking clipped away every drawn object, fall
   // back to the unclipped union so the thumbnail still frames something.
@@ -167,10 +335,24 @@ export async function generateCompositionSVGCore(
     const opacityAttr = img.opacity != null && img.opacity < 1
       ? ` opacity="${img.opacity}"`
       : '';
-    elementsById.set(img.id, wrapWithMaskClip(
+    // Tint is a filter on the <image> element itself; node effects wrap
+    // the outer group. Nesting (not merging) the filters keeps the order
+    // correct — the shadow/glow is cast by the already-tinted image —
+    // and both stay independently valid SVG.
+    let tintDefs = '';
+    let tintAttr = '';
+    if (img.tint) {
+      const tintId = `tint_${img.id}`;
+      tintDefs = `<defs><filter id="${tintId}" color-interpolation-filters="sRGB">` +
+        `<feColorMatrix type="matrix" values="${tintToFeColorMatrix(img.tint)}"/></filter></defs>`;
+      tintAttr = ` filter="url(#${tintId})"`;
+    }
+    const imgMarkup = tintDefs +
       `<g transform="${parts.join(' ')}"${opacityAttr}>` +
       `<image x="0" y="0" width="${iw}" height="${ih}" ` +
-      `href="${dataUri}" preserveAspectRatio="none"/></g>`,
+      `href="${dataUri}" preserveAspectRatio="none"${tintAttr}/></g>`;
+    elementsById.set(img.id, wrapWithMaskClip(
+      applyNodeEffects(imgMarkup, img.effects, img.id, img, U),
       maskMap, groups, img,
     ));
   }
@@ -244,15 +426,26 @@ export async function generateCompositionSVGCore(
     // Fill path — rendered before strokes. A pattern-fill mask renders outline
     // only: its `fillColor` is painted as the tiled figure's background below.
     let fillElement = '';
-    if (svg.fillColor && !svg.isPatternFill) {
+    if ((svg.fillPaint || svg.fillColor) && !svg.isPatternFill) {
       const chained = chainSegments(svg.segments);
       if (chained) {
         const fd = (svg.tileMode === 'repeat'
           ? buildTilePathD(chained, svg.cellX + (svg.tileOffsetXL0 ?? 0), svg.cellY + (svg.tileOffsetYL0 ?? 0))
           : buildPathD(chained)) + ' Z';
-        const { r, g, b } = svg.fillColor;
-        const oa = svg.fillOpacity != null && svg.fillOpacity < 1 ? ` fill-opacity="${svg.fillOpacity}"` : '';
-        fillElement = `<path d="${fd}" fill="rgb(${r},${g},${b})"${oa} stroke="none" fill-rule="nonzero" />`;
+        if (svg.fillPaint) {
+          // fillPaint (v29+) takes precedence over the legacy fillColor.
+          // Gradient geometry is unit-bbox space → objectBoundingBox defs
+          // resolve against this path's own bbox. Def id is node-prefixed
+          // so multiple gradient fills coexist in one document.
+          const p = paintToSvg(svg.fillPaint, `grad_${svg.id}`);
+          const oa = p.fillOpacity !== undefined ? ` fill-opacity="${p.fillOpacity}"` : '';
+          fillElement = (p.defs ? `<defs>${p.defs}</defs>` : '') +
+            `<path d="${fd}" fill="${p.fill}"${oa} stroke="none" fill-rule="nonzero" />`;
+        } else {
+          const { r, g, b } = svg.fillColor!;
+          const oa = svg.fillOpacity != null && svg.fillOpacity < 1 ? ` fill-opacity="${svg.fillOpacity}"` : '';
+          fillElement = `<path d="${fd}" fill="rgb(${r},${g},${b})"${oa} stroke="none" fill-rule="nonzero" />`;
+        }
       }
     }
 
@@ -263,11 +456,11 @@ export async function generateCompositionSVGCore(
       const regionX = svg.cellX * U, regionY = svg.cellY * U;
       const regionW = svg.cellWidth * U, regionH = svg.cellHeight * U;
       const instances = buildExpandedTileSVGObjectContent(svg, effectiveStrokeScale);
-      elementsById.set(svg.id, wrapWithMaskClip(
+      elementsById.set(svg.id, wrapWithMaskClip(applyNodeEffects(
         `<svg x="${regionX}" y="${regionY}" width="${regionW}" height="${regionH}" overflow="hidden" ` +
         `viewBox="${regionX} ${regionY} ${regionW} ${regionH}">${instances}</svg>`,
-        maskMap, groups, svg,
-      ));
+        svg.effects, svg.id, svg, U,
+      ), maskMap, groups, svg));
     } else if (svg.tileMode === 'repeat') {
       // Use the tile-grid anchor (cellX + tileOffset) so the content stays
       // at a fixed position in the pattern tile regardless of region
@@ -298,14 +491,14 @@ export async function generateCompositionSVGCore(
       const patOrgX = regionX + (svg.tileOffsetXL0 ?? 0) * U;
       const patOrgY = regionY + (svg.tileOffsetYL0 ?? 0) * U;
       const patId = `pat_svg_${svg.id}`;
-      elementsById.set(svg.id, wrapWithMaskClip(
+      elementsById.set(svg.id, wrapWithMaskClip(applyNodeEffects(
         `<defs><pattern id="${patId}" patternUnits="userSpaceOnUse" ` +
         `x="${patOrgX}" y="${patOrgY}" width="${tileW}" height="${tileH}">` +
         tileContent +
         `</pattern></defs>` +
         `<rect x="${regionX}" y="${regionY}" width="${regionW}" height="${regionH}" fill="url(#${patId})" stroke="none" />`,
-        maskMap, groups, svg,
-      ));
+        svg.effects, svg.id, svg, U,
+      ), maskMap, groups, svg));
     } else {
       let paths = fillElement;
       if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
@@ -323,8 +516,23 @@ export async function generateCompositionSVGCore(
           paths += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
         }
       }
-      if (paths) elementsById.set(svg.id, wrapWithMaskClip(paths, maskMap, groups, svg));
+      if (paths) {
+        elementsById.set(svg.id, wrapWithMaskClip(
+          applyNodeEffects(paths, svg.effects, svg.id, svg, U),
+          maskMap, groups, svg,
+        ));
+      }
     }
+  }
+
+  for (const txt of texts) {
+    if (cancelled?.()) return null;
+    const content = buildTextSVGContent(txt, U);
+    if (!content) continue;
+    elementsById.set(txt.id, wrapWithMaskClip(
+      applyNodeEffects(content, txt.effects, txt.id, txt, U),
+      maskMap, groups, txt,
+    ));
   }
 
   // Emit in scene order (back→front). Ids missing from `sceneOrder` (or the
@@ -347,12 +555,48 @@ export async function generateCompositionSVGCore(
 
   const compName = (input.name ?? 'composition').replace(/[^a-zA-Z0-9_-]/g, '_');
 
+  // Font embedding: when a resolver is provided and yields WOFF2 bytes
+  // for a used font, emit an @font-face <style> block so text renders
+  // with the right glyphs in standalone viewers (and in the <img>-based
+  // PNG rasterizer, which cannot reach page-registered fonts). Without a
+  // resolver, families are referenced by name only.
+  let fontStyleBlock = '';
+  if (input.fontResolver && texts.length > 0) {
+    const faces: string[] = [];
+    const seen = new Set<string>();
+    for (const txt of texts) {
+      const fontId = txt.style.fontId;
+      if (seen.has(fontId)) continue;
+      seen.add(fontId);
+      const resolved = input.fontResolver(fontId);
+      if (resolved?.woff2Base64) {
+        faces.push(
+          `@font-face{font-family:"${escapeXml(fontId)}";` +
+          `src:url(data:font/woff2;base64,${resolved.woff2Base64}) format("woff2");}`,
+        );
+      }
+    }
+    if (faces.length > 0) fontStyleBlock = `<style>${faces.join('')}</style>`;
+  }
+
+  // Canvas background: a full-viewBox rect painted behind everything.
+  // Gradient backgrounds emit their def alongside the rect.
+  let backgroundRect = '';
+  if (input.background) {
+    const p = paintToSvg(input.background, 'bg_paint');
+    const oa = p.fillOpacity !== undefined ? ` fill-opacity="${p.fillOpacity}"` : '';
+    backgroundRect = (p.defs ? `<defs>${p.defs}</defs>` : '') +
+      `<rect x="${vbX}" y="${vbY}" width="${bboxW}" height="${bboxH}" fill="${p.fill}"${oa} stroke="none"/>`;
+  }
+
   return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<svg id="${compName}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
     `width="${bboxW / 10}" height="${bboxH / 10}" ` +
     `viewBox="${vbX} ${vbY} ${bboxW} ${bboxH}" ` +
     `fill="none" stroke="white">`,
+    ...(fontStyleBlock ? [fontStyleBlock] : []),
+    ...(backgroundRect ? [backgroundRect] : []),
     ...(maskDefs ? [maskDefs] : []),
     ...allElements,
     `</svg>`,
