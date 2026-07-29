@@ -1,9 +1,16 @@
 // Public surface of @underway/editor-ui.
 //
-// Adapter types + theme are pure (no react-native) and safe to import from
-// anywhere. Components are React Native (react-native-web on the web
-// target) and are added per phase; pure logic helpers live under ./logic
-// and are unit-tested in a node environment.
+// Adapter types + theme + logic are pure (no react-native) and safe to
+// import from anywhere; they are unit-tested in a node environment.
+// Components are React Native (react-native-web on the web target) and are
+// added per phase — import them only from UI code.
 
 export * from './adapter';
 export * from './theme';
+export * from './logic/outlineBlocks';
+export * from './logic/dragReorder';
+export * from './logic/rename';
+
+// Components (React Native).
+export { SceneOutlinePanel } from './components/SceneOutlinePanel';
+export { RenameModal } from './components/RenameModal';
