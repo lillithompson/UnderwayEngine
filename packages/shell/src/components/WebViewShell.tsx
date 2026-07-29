@@ -9,12 +9,24 @@ import { recordTermination, resetGuard } from '../bridge/webContentRecovery';
 import { shouldProbeOnResume, WATCHDOG_MS } from '../bridge/resumeLivenessWatchdog';
 import { ACCENT_SECONDARY, BG_HEADER, BG_DARK } from '@/engine/colors';
 
+export interface WebViewShellProps {
+  /**
+   * Optional suffix appended verbatim to the loaded page URL (e.g.
+   * '?entryId=abc&format=haiku'). Lets the host app route/parameterize
+   * the web bundle at load time with no bridge round-trip. Applied to
+   * both the Metro dev-server URL and the bundled static-server URL,
+   * which are each origin-only (no path/query), so a '?…' suffix always
+   * composes into a valid URL.
+   */
+  urlSuffix?: string;
+}
+
 // The native splash overlay (logo + spinner on dark) covers the WebView until
 // the web side posts READY. READY is sent from the first screen
 // (compositions.tsx) after its first paint with real data, not on a timer, so
 // the splash hides directly onto a frame with the final UI — no skeleton, no
 // resize flash, no intermediate handoff.
-export default function WebViewShell() {
+export default function WebViewShell({ urlSuffix }: WebViewShellProps = {}) {
   const { url, ready } = useLocalServer();
   const [webReady, setWebReady] = useState(false);
   const [recoveryFailed, setRecoveryFailed] = useState(false);
@@ -151,7 +163,7 @@ export default function WebViewShell() {
         <View style={styles.container}>
           <WebView
             ref={webViewRef}
-            source={{ uri: url }}
+            source={{ uri: urlSuffix ? url + urlSuffix : url }}
             style={styles.webview}
             onMessage={onMessage}
             onError={(e) => {
