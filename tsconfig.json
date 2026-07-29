@@ -30,6 +30,7 @@
     "packages/shell/src/app",
     "packages/shell/src/components",
     "packages/shell/src/server",
-    "packages/shell/modules"
+    "packages/shell/modules",
+    "packages/editor-ui"
   ]
 }
