@@ -43,7 +43,22 @@ export function handleNativeMessage(
     case 'LOG':
       handleLog(message.payload);
       break;
+
+    case 'APP_EVENT':
+      appEventHandler?.(message.payload.kind, message.payload.data);
+      break;
   }
+}
+
+// App-defined event channel. The consuming app registers one handler
+// (module-level so WebViewShell needs no prop plumbing); events arriving
+// before registration are dropped by design — apps should re-push state
+// after mount rather than rely on delivery ordering.
+type AppEventHandler = (kind: string, data?: unknown) => void;
+let appEventHandler: AppEventHandler | null = null;
+
+export function setAppEventHandler(handler: AppEventHandler | null): void {
+  appEventHandler = handler;
 }
 
 function handleLog(payload: { level: 'log' | 'warn' | 'error'; tag: string; text: string }): void {

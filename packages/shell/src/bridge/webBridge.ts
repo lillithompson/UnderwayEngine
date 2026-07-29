@@ -413,6 +413,17 @@ export function signalReady(): void {
 }
 
 /**
+ * Post an app-defined event to the native shell (APP_EVENT). The shell is
+ * app-agnostic about `kind`/`data`; the native side handles them via
+ * `setAppEventHandler` (nativeBridge). No-op outside the WebView.
+ */
+export function postAppEvent(kind: string, data?: unknown): void {
+  if (isInWebView()) {
+    postToNative({ type: 'APP_EVENT', payload: { kind, data } });
+  }
+}
+
+/**
  * Forward a log line to the native side so it appears in the Xcode console.
  * No-op in non-WebView environments (browser's own console is already visible).
  */

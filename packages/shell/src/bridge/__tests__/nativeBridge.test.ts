@@ -79,3 +79,30 @@ describe('handleShareFile isBase64 detection', () => {
     expect(result).toEqual({ success: true });
   });
 });
+
+describe('APP_EVENT', () => {
+  // Late import so the module-level handler registry is the same instance
+  // the dispatcher uses.
+  const { setAppEventHandler } = require('../nativeBridge');
+
+  afterEach(() => setAppEventHandler(null));
+
+  test('dispatches kind/data to the registered handler', () => {
+    const handler = jest.fn();
+    setAppEventHandler(handler);
+    handleNativeMessage(
+      { type: 'APP_EVENT', payload: { kind: 'homeState', data: { entries: 3 } } },
+      () => {},
+    );
+    expect(handler).toHaveBeenCalledWith('homeState', { entries: 3 });
+  });
+
+  test('drops events with no handler registered', () => {
+    expect(() =>
+      handleNativeMessage(
+        { type: 'APP_EVENT', payload: { kind: 'navigate' } },
+        () => {},
+      ),
+    ).not.toThrow();
+  });
+});
