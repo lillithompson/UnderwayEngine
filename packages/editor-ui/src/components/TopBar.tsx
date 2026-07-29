@@ -1,8 +1,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { RGBLike, TopBarModel } from '../adapter';
+import type { TopBarModel } from '../adapter';
 import { nextToolOnPress } from '../logic/toolbarBehavior';
+import { rgbCss } from '../logic/hsv';
 import {
   HEADER_BG,
   HEADER_HEIGHT,
@@ -21,8 +22,6 @@ import {
 // receives the already-resolved tool.
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
-
-const rgbCss = (c: RGBLike) => `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`;
 
 export function TopBar({ model }: { model: TopBarModel }) {
   const toolIds = model.tools.map((t) => t.id);

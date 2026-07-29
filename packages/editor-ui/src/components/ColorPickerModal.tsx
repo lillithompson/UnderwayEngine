@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ColorPickerModel, RGBLike } from '../adapter';
-import { buildPaletteGrid } from '../logic/hsv';
+import { buildPaletteGrid, rgbCss } from '../logic/hsv';
 import {
   MODAL_BG,
   MODAL_BORDER,
@@ -18,7 +18,6 @@ import {
 // gl picker was gated on verifying expo-gl in the WKWebView bundle, which
 // isn't confirmed, so the shared package ships the dependency-free grid.
 
-const rgbCss = (c: RGBLike) => `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`;
 const sameColor = (a: RGBLike, b: RGBLike) =>
   Math.round(a.r) === Math.round(b.r) &&
   Math.round(a.g) === Math.round(b.g) &&

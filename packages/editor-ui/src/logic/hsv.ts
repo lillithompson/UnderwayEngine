@@ -9,6 +9,10 @@ export interface HSV {
   v: number;
 }
 
+/** RGBLike → a CSS `rgb(...)` string (works as a react-native color value). */
+export const rgbCss = (c: RGBLike): string =>
+  `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`;
+
 export function rgbToHsv({ r, g, b }: RGBLike): HSV {
   const rn = r / 255, gn = g / 255, bn = b / 255;
   const max = Math.max(rn, gn, bn);
