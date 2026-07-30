@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { UndoRedoModel } from '../adapter';
 import { CapsuleButton } from './CapsuleButton';
 import { CAPSULE_EDGE_MARGIN, CAPSULE_GAP, HEADER_HEIGHT, WHITE_10, WHITE_25 } from '../theme';
@@ -9,8 +10,9 @@ import { CAPSULE_EDGE_MARGIN, CAPSULE_GAP, HEADER_HEIGHT, WHITE_10, WHITE_25 } f
 // stack is empty. The container ignores touches so only the buttons capture.
 
 export function UndoRedoPanel({ model }: { model: UndoRedoModel }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.stack} pointerEvents="box-none">
+    <View style={[styles.stack, { top: HEADER_HEIGHT + insets.top }]} pointerEvents="box-none">
       <CapsuleButton
         label="Undo" icon="undo" iconSize={20} iconColor="white"
         borderColor={model.canUndo ? WHITE_25 : WHITE_10}

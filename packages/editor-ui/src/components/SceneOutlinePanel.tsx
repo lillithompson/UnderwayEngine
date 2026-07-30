@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SceneOutlineModel } from '../adapter';
 import { computeOutlineBlocks, OutlineBlock } from '../logic/outlineBlocks';
 import { dragTargetIndex, resolveDragReorder } from '../logic/dragReorder';
@@ -52,6 +53,7 @@ interface SceneOutlinePanelProps {
 }
 
 export function SceneOutlinePanel({ model }: SceneOutlinePanelProps) {
+  const insets = useSafeAreaInsets();
   const open = model.isOpen !== false;
   const slide = useRef(new Animated.Value(open ? 0 : -PANEL_WIDTH)).current;
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
@@ -154,8 +156,9 @@ export function SceneOutlinePanel({ model }: SceneOutlinePanelProps) {
         style={[styles.panel, { transform: [{ translateX: slide }] }]}
         pointerEvents={open ? 'auto' : 'none'}
       >
-        {/* Tab bar (Facet chrome): a single active Layers tab + close. */}
-        <View style={styles.tabBar}>
+        {/* Tab bar (Facet chrome): a single active Layers tab + close. Padded
+            down by the status-bar inset so the drawer clears the notch. */}
+        <View style={[styles.tabBar, { paddingTop: insets.top }]}>
           <View style={[styles.tab, styles.tabActive]}>
             <Text style={[styles.tabText, styles.tabTextActive]}>Outline</Text>
           </View>
@@ -166,7 +169,7 @@ export function SceneOutlinePanel({ model }: SceneOutlinePanelProps) {
 
         <ScrollView
           style={styles.list}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 20 + insets.bottom }]}
           scrollEnabled={dragRowIndex === null}
         >
           {blocks.length === 0 ? (

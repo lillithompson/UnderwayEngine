@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TopBarModel } from '../adapter';
 import { nextToolOnPress } from '../logic/toolbarBehavior';
@@ -24,12 +25,15 @@ import {
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 export function TopBar({ model }: { model: TopBarModel }) {
+  const insets = useSafeAreaInsets();
   const toolIds = model.tools.map((t) => t.id);
   const activeId = model.tools.find((t) => t.active)?.id ?? toolIds[0] ?? '';
   const swatchSize = ICON_SIZE - 4;
 
+  // Pad the bar down by the status-bar inset; HEADER_BG fills the notch so the
+  // header reads as one strip up to the top edge (Facet's headerRow trick).
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, { paddingTop: insets.top }]}>
       <Pressable accessibilityRole="button" accessibilityLabel="Back" style={styles.back} onPress={model.onBack}>
         <MaterialCommunityIcons name="chevron-left" size={24} color={HEADER_INK} />
       </Pressable>

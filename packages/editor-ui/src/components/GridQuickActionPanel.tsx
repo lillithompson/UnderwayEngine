@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GridViewModel } from '../adapter';
 import { CapsuleButton } from './CapsuleButton';
 import { CAPSULE_EDGE_MARGIN, HEADER_HEIGHT, WHITE_40, WHITE_60 } from '../theme';
@@ -12,8 +13,9 @@ import { CAPSULE_EDGE_MARGIN, HEADER_HEIGHT, WHITE_40, WHITE_60 } from '../theme
 // add buttons here later against GridViewModel.gridLevel / onSetGridLevel.
 
 export function GridQuickActionPanel({ model }: { model: GridViewModel }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.stack} pointerEvents="box-none">
+    <View style={[styles.stack, { top: HEADER_HEIGHT + insets.top }]} pointerEvents="box-none">
       <CapsuleButton
         label="View settings" icon="tune-variant" iconSize={20} iconColor={WHITE_60}
         borderColor={WHITE_40} onPress={model.onOpenViewSettings}

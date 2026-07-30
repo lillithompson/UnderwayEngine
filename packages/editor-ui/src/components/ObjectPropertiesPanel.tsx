@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { ObjectPropertiesModel } from '../adapter';
 import {
@@ -48,15 +49,22 @@ function Divider() {
 }
 
 export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel }) {
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const compact = width < COMPACT_MAX_WIDTH;
+  // Home-indicator inset padded into the sheet so the actions clear the
+  // curved bottom edge on iOS.
+  const safeBottom = insets.bottom;
+  // Slide the full sheet height — content + the safe-area pad — off-screen, so
+  // no sliver of the bar is left over the home indicator when deselected.
+  const hiddenOffset = PANEL_HEIGHT + safeBottom;
   const [mounted, setMounted] = useState(model.visible);
-  const translateY = useRef(new Animated.Value(model.visible ? 0 : PANEL_HEIGHT)).current;
+  const translateY = useRef(new Animated.Value(model.visible ? 0 : hiddenOffset)).current;
 
   useEffect(() => {
     if (model.visible) setMounted(true);
     const anim = Animated.timing(translateY, {
-      toValue: model.visible ? 0 : PANEL_HEIGHT,
+      toValue: model.visible ? 0 : hiddenOffset,
       duration: PANEL_ANIM_MS,
       useNativeDriver: true,
     });
@@ -64,7 +72,7 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
       if (finished && !model.visible) setMounted(false);
     });
     return () => anim.stop();
-  }, [model.visible, translateY]);
+  }, [model.visible, translateY, hiddenOffset]);
 
   if (!mounted) return null;
 
@@ -72,7 +80,7 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
 
   return (
     <View style={styles.clip} pointerEvents="box-none">
-      <Animated.View style={[styles.panel, { transform: [{ translateY }] }]}>
+      <Animated.View style={[styles.panel, { paddingBottom: safeBottom, transform: [{ translateY }] }]}>
         <View style={styles.rowInner}>
           {model.showEdit ? (
             <>
