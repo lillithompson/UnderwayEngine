@@ -38,28 +38,43 @@ export const MODAL_RAISED = '#3a3a3a'; // Facet BG_RAISED
 export const MODAL_TEXT = '#ffffff'; // Facet TEXT_PRIMARY
 export const MODAL_OVERLAY = 'rgba(0, 0, 0, 0.6)'; // Facet OVERLAY_LIGHT
 
-// ── Scene outline (Facet SceneOutlinePanel) ──
+// ── Extra Facet palette entries (engine/colors.ts) used by the rename
+//    modal + scene outline, named to match Facet. ──
+export const BG_BLACK = '#000000'; // Facet BG_BLACK (rename input well)
+export const TEXT_SECONDARY = '#e5e5e5'; // Facet TEXT_SECONDARY
+export const TEXT_DIM = '#6b7280'; // Facet TEXT_DIM
+
+// ── Scene outline (Facet SceneOutlinePanel) — values lifted verbatim ──
 export const ROW_HEIGHT = 44; // Facet ROW_HEIGHT
 export const PANEL_WIDTH = 260; // Facet PANEL_WIDTH (outline slide-in width)
 export const DRAG_THRESHOLD = 5; // px before a row press becomes a drag
 export const DOUBLE_TAP_MS = 300; // second tap within this frames the object
-export const OUTLINE_BG = MODAL_BG;
-export const OUTLINE_HEADER_BG = MODAL_HEADER_BG;
-export const OUTLINE_TEXT = MODAL_TEXT;
-export const OUTLINE_TEXT_DIM = '#9ca3af';
-export const OUTLINE_ROW_SELECTED = 'rgba(56, 189, 248, 0.18)'; // STATE_ACTIVE @ 18%
-export const OUTLINE_ROW_HAIRLINE = 'rgba(255, 255, 255, 0.06)';
-export const OUTLINE_DRAG_BG = 'rgba(56, 189, 248, 0.28)';
+export const OUTLINE_BG = '#3f3f3f'; // Facet BG_RAISED_ALT (panel surface)
+export const OUTLINE_BORDER = '#6b7280'; // Facet TEXT_DIM (panel right border)
+export const OUTLINE_HAIRLINE = '#555555'; // Facet STATE_DISABLED_TEXT (tab/row dividers)
+export const OUTLINE_TAB_ACTIVE = '#38BDF8'; // Facet ACCENT_PRIMARY (active tab underline)
+export const OUTLINE_TAB_TEXT = '#6b7280'; // Facet TEXT_DIM (inactive tab)
+export const OUTLINE_TAB_TEXT_ACTIVE = '#e5e5e5'; // Facet TEXT_SECONDARY (active tab)
+export const OUTLINE_ROW_SELECTED = 'rgba(56, 189, 248, 0.15)'; // Facet ACCENT_PRIMARY_15
+export const OUTLINE_ROW_DRAGGING = 'rgba(56, 189, 248, 0.25)'; // Facet ACCENT_PRIMARY_25
+export const OUTLINE_TEXT = '#d1d5db'; // Facet TEXT_BORDER_LIGHT (row text)
+export const OUTLINE_TEXT_SELECTED = '#38BDF8'; // Facet ACCENT_PRIMARY (selected row text)
+export const OUTLINE_ICON = '#6b7280'; // Facet TEXT_DIM (drag handle + inactive toggles)
+export const OUTLINE_ICON_ACTIVE = '#e5e5e5'; // Facet TEXT_SECONDARY (active lock/hide)
+export const OUTLINE_TEXT_DIM = '#6b7280'; // Facet TEXT_DIM (empty-state text)
+export const OUTLINE_CLOSE = '#ffffff'; // Facet TEXT_PRIMARY (close glyph)
 
-/** Default MaterialCommunityIcons glyph for a scene object kind. Apps may
- *  override via SceneOutlineModel.iconForKind. */
+/** Default MaterialCommunityIcons glyph for a scene object kind, matching
+ *  Facet's SceneOutlinePanel row icons. Apps may override per-object via
+ *  OutlineObject.icon (e.g. open vs closed svg paths) or globally via
+ *  SceneOutlineModel.iconForKind. */
 export function defaultIconForKind(kind: string): string {
   switch (kind) {
-    case 'figure': return 'shape-outline';
-    case 'svg': return 'draw';
+    case 'group': return 'group';
+    case 'svg': return 'vector-polyline';
     case 'image': return 'image-outline';
     case 'text': return 'format-text';
-    case 'group': return 'group';
-    default: return 'shape-outline';
+    case 'figure': return 'drag-horizontal-variant';
+    default: return 'drag-horizontal-variant';
   }
 }

@@ -27,6 +27,10 @@ export interface OutlineObject {
   parentGroupId?: string;
   locked: boolean;
   hidden: boolean;
+  /** Optional per-object MCI glyph, overriding iconForKind — lets the app
+   *  distinguish cases the kind alone can't (e.g. Facet's open vs closed
+   *  svg path → vector-polyline / vector-polygon). */
+  icon?: string;
 }
 
 /** Everything the Scene Outline needs, and nothing app-specific. */
@@ -46,6 +50,11 @@ export interface SceneOutlineModel {
    *  math stays app-side). */
   onFrame(id: string): void;
   onClose(): void;
+
+  /** Reorder actions surfaced in the RenameModal (Facet parity). Optional —
+   *  when unset the modal hides the Bring-to-front / Send-to-back row. */
+  onBringToFront?(id: string): void;
+  onSendToBack?(id: string): void;
 
   /** Optional presentation hooks. */
   iconForKind?(kind: string): string; // MCI glyph name

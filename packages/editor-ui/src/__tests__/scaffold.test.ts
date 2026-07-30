@@ -13,7 +13,9 @@ describe('editor-ui scaffold', () => {
   it('maps object kinds to default glyphs', () => {
     expect(defaultIconForKind('image')).toBe('image-outline');
     expect(defaultIconForKind('text')).toBe('format-text');
-    expect(defaultIconForKind('nonsense')).toBe('shape-outline');
+    expect(defaultIconForKind('group')).toBe('group');
+    expect(defaultIconForKind('svg')).toBe('vector-polyline');
+    expect(defaultIconForKind('nonsense')).toBe('drag-horizontal-variant');
   });
 
   it('adapter types are structurally usable', () => {
