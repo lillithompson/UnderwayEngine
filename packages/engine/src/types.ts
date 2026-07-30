@@ -815,6 +815,12 @@ export interface SVGObject {
   identityCellX?: number;
   identityCellY?: number;
   rotation?: 0 | 90 | 180 | 270;
+  /** Free (continuous) rotation in degrees, clockwise, applied about the
+   *  bbox center ON TOP OF the discrete `rotation`/`mirror`. Authored by the
+   *  two-finger twist gesture; undefined or 0 means no free rotation. Unlike
+   *  `rotation` the bbox is NOT swapped — the AABB stays axis-aligned and the
+   *  angle is layered at render/export/hit-test time. */
+  angleDeg?: number;
   mirrorH?: boolean;
   mirrorV?: boolean;
   /** When 'repeat', this path tiles within its bounding region. */
@@ -980,6 +986,11 @@ export interface ImageObject {
   cellWidth: number;
   cellHeight: number;
   rotation?: 0 | 90 | 180 | 270;
+  /** Free (continuous) rotation in degrees, clockwise, about the bbox
+   *  center, layered on top of the discrete `rotation`/`mirror`. Authored by
+   *  the two-finger twist gesture; undefined/0 = none. See
+   *  {@link SVGObject.angleDeg}. */
+  angleDeg?: number;
   mirrorH?: boolean;
   mirrorV?: boolean;
   /** Render opacity in [0, 1]. Reference images often want to fade for
@@ -1130,6 +1141,11 @@ export interface TextObject {
   cellWidth: number;
   cellHeight: number;
   rotation?: 0 | 90 | 180 | 270;
+  /** Free (continuous) rotation in degrees, clockwise, about the bbox
+   *  center, layered on top of the discrete `rotation`/`mirror`. Authored by
+   *  the two-finger twist gesture; undefined/0 = none. See
+   *  {@link SVGObject.angleDeg}. */
+  angleDeg?: number;
   mirrorH?: boolean;
   mirrorV?: boolean;
   locked?: boolean;
@@ -1318,6 +1334,12 @@ export type CompUndoOp =
    *  contains it (resolved via SCENE_ADAPTERS). Replaces per-kind
    *  `lockFigure` / `lockLine` / `lockArc`. */
   | { op: 'lockObject'; id: string; oldValue: boolean; newValue: boolean }
+  /** Free (continuous) rotation of any bbox/svg scene-object kind, in
+   *  degrees CW about the bbox center. Apply sets `item.angleDeg = newAngleDeg`
+   *  for the matching id in whichever array contains it (resolved via
+   *  SCENE_ADAPTERS); revert restores `oldAngleDeg`. Authored by the
+   *  two-finger twist gesture. `undefined` clears free rotation. */
+  | { op: 'setNodeRotation'; id: string; oldAngleDeg?: number; newAngleDeg?: number }
   /** Generic visibility toggle for any scene-object kind. Apply: set
    *  `item.hidden = newValue` for the matching id in whichever array
    *  contains it (resolved via SCENE_ADAPTERS). Replaces the prior

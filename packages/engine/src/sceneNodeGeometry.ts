@@ -64,6 +64,9 @@ export interface SceneNodeBase {
   cellWidth: number;
   cellHeight: number;
   rotation?: 0 | 90 | 180 | 270;
+  /** Free (continuous) rotation in degrees CW about the bbox center,
+   *  layered on top of the discrete `rotation`/`mirror`. */
+  angleDeg?: number;
   mirrorH?: boolean;
   mirrorV?: boolean;
   locked?: boolean;

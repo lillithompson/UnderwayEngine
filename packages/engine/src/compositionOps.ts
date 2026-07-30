@@ -1327,6 +1327,34 @@ export function translateNodeByDelta(
   return state;
 }
 
+/** Set a node's free (continuous) rotation `angleDeg` (degrees CW about the
+ *  bbox center), resolving the id through SCENE_ADAPTERS so it works for any
+ *  bbox/svg kind. `undefined` clears free rotation. Mirror of the
+ *  `lockObject` apply pattern; used by the `setNodeRotation` op apply/revert. */
+export function setNodeAngleDeg(
+  state: CompositionState, nodeId: string, angleDeg: number | undefined,
+): CompositionState {
+  let next = state;
+  for (const adapter of SCENE_ADAPTERS) {
+    const arr = adapter.getArray(next);
+    let touched = false;
+    const updated = arr.map((x) => {
+      if (x.id !== nodeId) return x;
+      touched = true;
+      // Normalize away no-op/near-zero angles so the field stays absent when
+      // there is no free rotation (keeps saves/exports clean and identity
+      // comparisons stable).
+      const a = angleDeg === undefined || angleDeg === 0 ? undefined : angleDeg;
+      return { ...x, angleDeg: a };
+    });
+    if (touched) {
+      next = adapter.setArray(next, updated as SceneObjectBase[]);
+      break;
+    }
+  }
+  return next;
+}
+
 /** Restore the identity / rotation / mirror fields that the forward move
  *  cleared. Per-type: figures get `identityCell*` + `transformCycleStep`;
  *  svgs get `identitySegments` + `rotation` + `mirror*`; images and texts
@@ -1961,6 +1989,28 @@ export function findTextAtCell(
  *  Figures use AABB or quad-list testing (matches the legacy figure
  *  hit-test in handleTap). Images use bbox-only. Returns the kind so
  *  callers can run kind-specific post-processing (e.g. group expansion). */
+/** Rotate a world query point back into a node's UNROTATED local frame by
+ *  `-node.angleDeg` about the node's bbox center. The forward render applies
+ *  a clockwise `rotate(angleDeg)` (CSS/SVG, y-down) about that center, so the
+ *  inverse un-rotates before the axis-aligned adapter tests. Returns the
+ *  point unchanged when the node has no free rotation. */
+export function unrotatePointForNode(
+  node: { cellX: number; cellY: number; cellWidth: number; cellHeight: number; angleDeg?: number },
+  x: number, y: number,
+): [number, number] {
+  const deg = node.angleDeg;
+  if (!deg) return [x, y];
+  const cx = node.cellX + node.cellWidth / 2;
+  const cy = node.cellY + node.cellHeight / 2;
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = x - cx;
+  const dy = y - cy;
+  // Inverse of the y-down clockwise rotation matrix R(deg).
+  return [cx + dx * cos + dy * sin, cy - dx * sin + dy * cos];
+}
+
 export function findSceneObjectAtCell(
   state: CompositionState, cellX: number, cellY: number,
   options?: { ignoreLock?: boolean },
@@ -1988,7 +2038,12 @@ export function findSceneObjectAtCell(
     const entry = lookup.get(id);
     if (!entry) continue;
     const { kind, node } = entry;
-    if (!GEOMETRY_ADAPTERS[kind].hitTest(node, cellX, cellY, options?.ignoreLock)) continue;
+    // Free (continuous) rotation is layered on top of the axis-aligned bbox:
+    // the geometry adapters test the UNROTATED shape, so rotate the query
+    // point back into the node's local frame (by -angleDeg about the bbox
+    // center) before every per-node test below. No-op when angleDeg is 0.
+    const [hx, hy] = unrotatePointForNode(node, cellX, cellY);
+    if (!GEOMETRY_ADAPTERS[kind].hitTest(node, hx, hy, options?.ignoreLock)) continue;
 
     // Mask gate: a member of a masked group is hit-testable only inside
     // its mask chain (the mask itself is exempt from its own clip). Sits
@@ -2015,8 +2070,8 @@ export function findSceneObjectAtCell(
     // grabs the original instead.
     if (state.selectedFigureIds.has(id)) return { kind, id };
 
-    // SVG: precise path-distance test.
-    if (svgPathHitsPoint(node, cellX, cellY, toleranceSq)) return { kind, id };
+    // SVG: precise path-distance test (in the node's unrotated frame).
+    if (svgPathHitsPoint(node, hx, hy, toleranceSq)) return { kind, id };
 
     // Bbox hit but path miss â€” record as fallback (first/topmost only).
     if (!svgBboxFallback) svgBboxFallback = { kind, id };
@@ -3741,6 +3796,11 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       }
       return next;
     }
+    case 'setNodeRotation':
+      // Free (continuous) rotation: mirror of lockObject — resolve the id
+      // through SCENE_ADAPTERS and write the new angle. Apply uses
+      // newAngleDeg; revert (below) restores oldAngleDeg.
+      return setNodeAngleDeg(state, op.id, op.newAngleDeg);
     case 'reorderObjects': {
       return applySceneOrder(state, op.newOrder);
     }
@@ -4359,6 +4419,8 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
       return applyOp(state, { op: 'lockObject', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
     case 'setObjectHidden':
       return applyOp(state, { op: 'setObjectHidden', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
+    case 'setNodeRotation':
+      return setNodeAngleDeg(state, op.id, op.oldAngleDeg);
     case 'reorderObjects':
       return applySceneOrder(state, op.oldOrder);
     case 'renameFigure':
