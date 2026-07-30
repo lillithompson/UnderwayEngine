@@ -49,9 +49,13 @@ const icon = (glyph: string) => glyph as MCIName;
 
 interface SceneOutlinePanelProps {
   model: SceneOutlineModel;
+  // Status-bar / notch inset (points). The panel background is full-bleed to
+  // the top edge; this only pads the active chrome (tab bar) down so the
+  // "Outline" label + close button clear the clock/wifi icons on native iOS.
+  safeTop?: number;
 }
 
-export function SceneOutlinePanel({ model }: SceneOutlinePanelProps) {
+export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps) {
   const open = model.isOpen !== false;
   const slide = useRef(new Animated.Value(open ? 0 : -PANEL_WIDTH)).current;
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
@@ -154,8 +158,10 @@ export function SceneOutlinePanel({ model }: SceneOutlinePanelProps) {
         style={[styles.panel, { transform: [{ translateX: slide }] }]}
         pointerEvents={open ? 'auto' : 'none'}
       >
-        {/* Tab bar (Facet chrome): a single active Layers tab + close. */}
-        <View style={styles.tabBar}>
+        {/* Tab bar (Facet chrome): a single active Layers tab + close.
+            paddingTop = safeTop keeps the background continuous to the top
+            edge while pushing the label/close below the status bar. */}
+        <View style={[styles.tabBar, { paddingTop: safeTop }]}>
           <View style={[styles.tab, styles.tabActive]}>
             <Text style={[styles.tabText, styles.tabTextActive]}>Outline</Text>
           </View>
