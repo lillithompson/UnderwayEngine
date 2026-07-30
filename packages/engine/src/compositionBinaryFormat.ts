@@ -217,7 +217,13 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // tint (rotation-byte bit 0x08) and effects (bit 0x10), payloads after
 // the identity-bbox block. Older files load with all of these undefined
 // and no texts/background.
-const FORMAT_VERSION = 29;
+// v30: free (continuous) rotation `angleDeg` on svg / image / text scene
+// nodes, authored by the two-finger twist gesture. Presence flag: svg
+// flags3 bit 0x80, image rotation-byte bit 0x20, text flags2 bit 0x08.
+// Payload is a single i16 of hundredths-of-a-degree (angleDeg * 100),
+// appended after each record's existing optional blocks. Older files load
+// with angleDeg undefined (no free rotation).
+const FORMAT_VERSION = 30;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + 4Ã—float32 = 21
@@ -455,12 +461,26 @@ const FLAG3_SVG_HAS_SEGMENT_OVERRIDES = 0x10;
 const FLAG3_SVG_HAS_FILL_PAINT = 0x20;
 // v29+: node effects present (effects payload after fillPaint).
 const FLAG3_SVG_HAS_EFFECTS = 0x40;
+// v30+: free rotation `angleDeg` present (i16 payload after effects).
+const FLAG3_SVG_HAS_ANGLE = 0x80;
 
 // v29+ image rotation-byte bits. The image `flags` byte is fully
 // consumed (0x01..0x80), so tint/effects presence rides the spare high
 // bits of the rotation byte: 0x03 rotation, 0x04 hidden (v14+), then:
 const IMG_ROT_HAS_TINT = 0x08;
 const IMG_ROT_HAS_EFFECTS = 0x10;
+// v30+: free rotation `angleDeg` present (i16 payload after effects).
+const IMG_ROT_HAS_ANGLE = 0x20;
+
+// v30+ free-rotation encoding: i16 hundredths of a degree (angleDeg * 100).
+// Range ±180° fits comfortably in i16 (±18000), precision 0.01°.
+const ANGLE_DEG_SCALE = 100;
+function encodeAngleDeg(deg: number): number {
+  return Math.max(-32768, Math.min(32767, Math.round(deg * ANGLE_DEG_SCALE)));
+}
+function decodeAngleDeg(raw: number): number {
+  return raw / ANGLE_DEG_SCALE;
+}
 
 // v29+ text record flag bits (first flags byte).
 const TFLAG_MIRROR_H = 0x01;
@@ -476,6 +496,8 @@ const TFLAG_STICKER = 0x80;
 const TFLAG2_HAS_LOCAL = 0x01;
 const TFLAG2_HAS_IDENTITY = 0x02;
 const TFLAG2_HAS_EFFECTS = 0x04;
+// v30+: free rotation `angleDeg` present (i16 payload after effects).
+const TFLAG2_HAS_ANGLE = 0x08;
 // v29+ text style flag bits.
 const TSTYLE_BOLD = 0x01;
 const TSTYLE_ITALIC = 0x02;
@@ -706,6 +728,7 @@ function svgBinarySize(svg: SVGObject): number {
   if (svg.segmentOverrides && svg.segmentOverrides.size > 0) size += 2 + svg.segmentOverrides.size * 7;
   if (svg.fillPaint) size += paintBinarySize(svg.fillPaint);
   if (svg.effects) size += effectsBinarySize(svg.effects);
+  if (svg.angleDeg) size += 2; // v30+ free rotation (i16)
   return size;
 }
 
@@ -735,6 +758,7 @@ function imageBinarySize(img: ImageObject): number {
   if (img.identityCellX != null) size += 8;
   if (img.tint) size += 5; // r,g,b + amount + mode
   if (img.effects) size += effectsBinarySize(img.effects);
+  if (img.angleDeg) size += 2; // v30+ free rotation (i16)
   return size;
 }
 
@@ -877,6 +901,7 @@ function writeSVG(
   if (svg.segmentOverrides && svg.segmentOverrides.size > 0) flags3 |= FLAG3_SVG_HAS_SEGMENT_OVERRIDES;
   if (svg.fillPaint) flags3 |= FLAG3_SVG_HAS_FILL_PAINT;
   if (svg.effects) flags3 |= FLAG3_SVG_HAS_EFFECTS;
+  if (svg.angleDeg) flags3 |= FLAG3_SVG_HAS_ANGLE;
   out[pos++] = flags3;
 
   let rotBits = ROTATION_TO_BITS[svg.rotation ?? 0] & 0x03;
@@ -955,6 +980,10 @@ function writeSVG(
   }
   if (svg.effects) {
     pos = writeEffects(view, out, pos, svg.effects);
+  }
+  // v30+ free rotation (i16), after effects.
+  if (svg.angleDeg) {
+    view.setInt16(pos, encodeAngleDeg(svg.angleDeg), true); pos += 2;
   }
   return pos;
 }
@@ -1120,6 +1149,10 @@ function readSVG(
     const e = readEffects(view, data, pos);
     svg.effects = e.effects;
     pos = e.pos;
+  }
+  // v30+ free rotation (i16), after effects.
+  if (version >= 30 && (flags3 & FLAG3_SVG_HAS_ANGLE)) {
+    svg.angleDeg = decodeAngleDeg(view.getInt16(pos, true)); pos += 2;
   }
 
   // v25+ "Use as mask" flag (presence-only, no payload)
@@ -1387,7 +1420,8 @@ function writeImage(
   out[pos++] = (ROTATION_TO_BITS[img.rotation ?? 0] & 0x03)
     | (img.hidden ? 0x04 : 0)
     | (img.tint ? IMG_ROT_HAS_TINT : 0)
-    | (img.effects ? IMG_ROT_HAS_EFFECTS : 0);
+    | (img.effects ? IMG_ROT_HAS_EFFECTS : 0)
+    | (img.angleDeg ? IMG_ROT_HAS_ANGLE : 0);
   out[pos++] = img.mimeType === 'image/jpeg' ? 1 : 0;
   // Opacity quantized to 0..255 (default 255 = fully opaque). 256 levels
   // is well beyond what the eye can resolve and keeps the record
@@ -1439,6 +1473,9 @@ function writeImage(
   }
   if (img.effects) {
     pos = writeEffects(view, out, pos, img.effects);
+  }
+  if (img.angleDeg) {
+    view.setInt16(pos, encodeAngleDeg(img.angleDeg), true); pos += 2;
   }
 
   return pos;
@@ -1525,6 +1562,9 @@ function readImage(
     img.effects = e.effects;
     pos = e.pos;
   }
+  if (version >= 30 && (rotBits & IMG_ROT_HAS_ANGLE)) {
+    img.angleDeg = decodeAngleDeg(view.getInt16(pos, true)); pos += 2;
+  }
 
   return { img, pos };
 }
@@ -1545,6 +1585,7 @@ function textBinarySize(text: TextObject): number {
   if (text.style.lineHeight != null) size += 4;
   if (text.style.stroke != null) size += 7; // width f32 + r,g,b
   if (text.effects) size += effectsBinarySize(text.effects);
+  if (text.angleDeg) size += 2; // v30+ free rotation (i16)
   return size;
 }
 
@@ -1572,6 +1613,7 @@ function writeText(
   if (text.localCellX != null) flags2 |= TFLAG2_HAS_LOCAL;
   if (text.identityCellX != null) flags2 |= TFLAG2_HAS_IDENTITY;
   if (text.effects) flags2 |= TFLAG2_HAS_EFFECTS;
+  if (text.angleDeg) flags2 |= TFLAG2_HAS_ANGLE;
   out[pos++] = flags2;
 
   out[pos++] = ROTATION_TO_BITS[text.rotation ?? 0] & 0x03;
@@ -1627,6 +1669,10 @@ function writeText(
 
   if (text.effects) {
     pos = writeEffects(view, out, pos, text.effects);
+  }
+  // v30+ free rotation (i16), after effects.
+  if (text.angleDeg) {
+    view.setInt16(pos, encodeAngleDeg(text.angleDeg), true); pos += 2;
   }
 
   return pos;
@@ -1733,6 +1779,11 @@ function readText(
     const e = readEffects(view, data, pos);
     text.effects = e.effects;
     pos = e.pos;
+  }
+  // v30+ free rotation (i16), after effects. The text section is v29+ only
+  // and v29 never set this flag, so the presence bit alone is a safe gate.
+  if (flags2 & TFLAG2_HAS_ANGLE) {
+    text.angleDeg = decodeAngleDeg(view.getInt16(pos, true)); pos += 2;
   }
 
   return { text, pos };

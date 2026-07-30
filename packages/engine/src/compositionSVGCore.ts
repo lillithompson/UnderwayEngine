@@ -174,6 +174,9 @@ function buildTextSVGContent(text: TextObject, u: number): string {
   // Node transform — same pattern as image nodes: position, then rotate
   // about the bbox center, then mirror within the bbox.
   const parts: string[] = [`translate(${tx}, ${ty})`];
+  // Free rotation is layered OUTERMOST (about the bbox center), matching the
+  // editor's render order, then the discrete rotation + mirror.
+  if (text.angleDeg) parts.push(`rotate(${text.angleDeg} ${tw / 2} ${th / 2})`);
   const rot = text.rotation ?? 0;
   if (rot !== 0) parts.push(`rotate(${rot} ${tw / 2} ${th / 2})`);
   if (text.mirrorH) parts.push(`translate(${tw}, 0) scale(-1, 1)`);
@@ -328,6 +331,9 @@ export async function generateCompositionSVGCore(
     const cx = iw / 2;
     const cy = ih / 2;
     const parts: string[] = [`translate(${ix}, ${iy})`];
+    // Free rotation is layered OUTERMOST (about the bbox center), matching
+    // the editor's render order, then the discrete rotation + mirror.
+    if (img.angleDeg) parts.push(`rotate(${img.angleDeg} ${cx} ${cy})`);
     const rot = img.rotation ?? 0;
     if (rot !== 0) parts.push(`rotate(${rot} ${cx} ${cy})`);
     if (img.mirrorH) parts.push(`translate(${iw}, 0) scale(-1, 1)`);
@@ -522,6 +528,17 @@ export async function generateCompositionSVGCore(
           maskMap, groups, svg,
         ));
       }
+    }
+
+    // Free rotation (v30+): wrap whatever this svg emitted in a group that
+    // rotates it about its bbox center, matching the editor render. SVG's
+    // discrete rotation is baked into the segments, so this is the only
+    // rotation transform an svg node carries.
+    const svgEl = elementsById.get(svg.id);
+    if (svgEl && svg.angleDeg) {
+      const scx = (svg.cellX + svg.cellWidth / 2) * U;
+      const scy = (svg.cellY + svg.cellHeight / 2) * U;
+      elementsById.set(svg.id, `<g transform="rotate(${svg.angleDeg} ${scx} ${scy})">${svgEl}</g>`);
     }
   }
 
