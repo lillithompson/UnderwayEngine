@@ -84,6 +84,21 @@ export interface TopBarModel {
 
 // ── Object properties ────────────────────────────────────────────────
 
+/** Editable drop-shadow, in the app's world-cell units (the panel maps these
+ *  to slider positions; the app maps them to the engine's ShadowEffect). */
+export interface ShadowModel {
+  /** Offset (position) in cells. */
+  dx: number;
+  dy: number;
+  /** Gaussian blur radius in cells. */
+  blur: number;
+  /** Dilation of the shape before blur, in cells. */
+  spread: number;
+  color: RGBLike;
+  /** 0–1. */
+  opacity: number;
+}
+
 export interface ObjectPropertiesModel {
   visible: boolean;
   mode?: 'single' | 'multi' | 'group';
@@ -100,9 +115,22 @@ export interface ObjectPropertiesModel {
   onReplaceImage?(): void;
   onTintImage?(): void;
   onCropImage?(): void;
-  onShadowImage?(): void;
   onGlowImage?(): void;
   onBorderImage?(): void;
+  /** Whether the Shadow controls are shown. App-owned so a tap-off dismisses
+   *  them before the panel (same as the Round slider). */
+  shadowOpen?: boolean;
+  onShadowOpenChange?(open: boolean): void;
+  /** The selected image's current shadow (defaults supplied by the app when
+   *  none is set yet), seeding the Shadow controls. */
+  shadow?: ShadowModel;
+  /** Shadow-controls callback: fires live while dragging (`committed=false`)
+   *  and once on release (`committed=true`, one undo step). `shadow=null`
+   *  removes the shadow. */
+  onShadow?(shadow: ShadowModel | null, committed: boolean): void;
+  /** Open the full-screen color picker for the shadow color (the same picker
+   *  the top-toolbar color tool uses). */
+  onPickShadowColor?(): void;
   /** Selected image's current corner rounding, a fraction (0–0.5) of the
    *  shorter side — seeds the Round slider's position. */
   cornerRadius?: number;

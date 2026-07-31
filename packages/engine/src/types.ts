@@ -1032,7 +1032,10 @@ export type Paint =
   | { kind: 'linear'; stops: GradientStop[]; x1: number; y1: number; x2: number; y2: number }
   | { kind: 'radial'; stops: GradientStop[]; cx: number; cy: number; r: number };
 
-export interface ShadowEffect { dx: number; dy: number; blur: number; color: RGBColor; alpha: number }
+export interface ShadowEffect { dx: number; dy: number; blur: number; color: RGBColor; alpha: number;
+  /** Dilation of the shadow shape before blur, in world cells (CSS box-shadow
+   *  "spread"). Undefined / 0 = the plain drop shadow. */
+  spread?: number }
 export interface GlowEffect { radius: number; color: RGBColor; alpha: number }
 export interface BorderEffect { width: number; color: RGBColor; radius?: number }
 

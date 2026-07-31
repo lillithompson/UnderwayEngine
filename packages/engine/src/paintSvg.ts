@@ -70,11 +70,29 @@ export function effectsToSvgFilter(
 
   const prims: string[] = [];
   if (sh) {
-    const result = gl ? ' result="withShadow"' : '';
-    prims.push(
-      `<feDropShadow dx="${fmt(sh.dx)}" dy="${fmt(sh.dy)}" stdDeviation="${fmt(sh.blur)}" ` +
-      `flood-color="${hex(sh.color)}" flood-opacity="${fmt(sh.alpha)}"${result}/>`,
-    );
+    const spread = sh.spread ?? 0;
+    if (spread !== 0) {
+      // feDropShadow has no spread, so expand it: dilate (positive) or erode
+      // (negative) SourceAlpha, blur + offset that, flood with the shadow
+      // color, then merge the source back on top. `withShadow` result feeds
+      // the glow merge below when present.
+      const merge = gl ? ' result="withShadow"' : '';
+      const op = spread > 0 ? 'dilate' : 'erode';
+      prims.push(
+        `<feMorphology in="SourceAlpha" operator="${op}" radius="${fmt(Math.abs(spread))}" result="shSpread"/>`,
+        `<feGaussianBlur in="shSpread" stdDeviation="${fmt(sh.blur)}" result="shBlur"/>`,
+        `<feOffset in="shBlur" dx="${fmt(sh.dx)}" dy="${fmt(sh.dy)}" result="shOffset"/>`,
+        `<feFlood flood-color="${hex(sh.color)}" flood-opacity="${fmt(sh.alpha)}" result="shColor"/>`,
+        `<feComposite in="shColor" in2="shOffset" operator="in" result="shShadow"/>`,
+        `<feMerge${merge}><feMergeNode in="shShadow"/><feMergeNode in="SourceGraphic"/></feMerge>`,
+      );
+    } else {
+      const result = gl ? ' result="withShadow"' : '';
+      prims.push(
+        `<feDropShadow dx="${fmt(sh.dx)}" dy="${fmt(sh.dy)}" stdDeviation="${fmt(sh.blur)}" ` +
+        `flood-color="${hex(sh.color)}" flood-opacity="${fmt(sh.alpha)}"${result}/>`,
+      );
+    }
   }
   if (gl) {
     prims.push(

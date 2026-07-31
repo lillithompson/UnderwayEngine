@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { ObjectPropertiesModel } from '../adapter';
+import type { ObjectPropertiesModel, ShadowModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
+import { Slider } from './Slider';
+import { ShadowBar } from './ShadowBar';
 import {
   HEADER_BG,
   MODAL_BG,
@@ -28,7 +30,9 @@ const COMPACT_MAX_WIDTH = 500;
 // 0.5 rounds a square all the way to a circle (mirror of editorSession's
 // MAX_CORNER_RADIUS; the app clamps commits to the same bound).
 const MAX_CORNER_RADIUS = 0.5;
-const SLIDER_THUMB = 22;
+const DEFAULT_SHADOW_MODEL: ShadowModel = {
+  dx: 0.75, dy: 0.875, blur: 1.125, spread: 0.125, color: { r: 0, g: 0, b: 0 }, opacity: 0.45,
+};
 
 function ActionButton({ label, icon, iconColor, onPress, compact }: {
   label: string;
@@ -73,53 +77,6 @@ function ImageEditButton({ label, icon, onPress }: {
   );
 }
 
-// A minimal draggable slider (0–1). Tapping or dragging the track moves the
-// thumb to the touch; `onChange` fires live and `onCommit` on release. Built
-// on PanResponder (as the sub-panel swipe is) so it needs no slider dep.
-function CornerSlider({ value, onChange, onCommit }: {
-  value: number;
-  onChange: (v: number) => void;
-  onCommit: (v: number) => void;
-}) {
-  const [trackW, setTrackW] = useState(0);
-  const trackWRef = useRef(0);
-  trackWRef.current = trackW;
-  // Latest handlers, so the once-created PanResponder always calls through.
-  const cbRef = useRef({ onChange, onCommit });
-  cbRef.current = { onChange, onCommit };
-
-  const valueFromX = (x: number) => {
-    const w = trackWRef.current;
-    if (w <= 0) return 0;
-    return Math.max(0, Math.min(1, x / w));
-  };
-
-  const pan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (e) => cbRef.current.onChange(valueFromX(e.nativeEvent.locationX)),
-      onPanResponderMove: (e) => cbRef.current.onChange(valueFromX(e.nativeEvent.locationX)),
-      onPanResponderRelease: (e) => cbRef.current.onCommit(valueFromX(e.nativeEvent.locationX)),
-      onPanResponderTerminate: (e) => cbRef.current.onCommit(valueFromX(e.nativeEvent.locationX)),
-    }),
-  ).current;
-
-  const clamped = Math.max(0, Math.min(1, value));
-  const thumbLeft = clamped * trackW;
-  return (
-    <View
-      style={styles.sliderTrackHit}
-      onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
-      {...pan.panHandlers}
-    >
-      <View style={styles.sliderTrack} />
-      <View style={[styles.sliderFill, { width: thumbLeft }]} />
-      <View style={[styles.sliderThumb, { left: thumbLeft - SLIDER_THUMB / 2 }]} />
-    </View>
-  );
-}
-
 export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel }) {
   const { width } = useWindowDimensions();
   const compact = width < COMPACT_MAX_WIDTH;
@@ -150,6 +107,16 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
   // tap-off dismisses the slider before the panel; only the thumb value is
   // local, so the live preview round-trip doesn't fight the drag.
   const [sliderVal, setSliderVal] = useState(0);
+  // Shadow-controls draft — seeded from model.shadow when the controls open,
+  // then locally owned so live previews don't fight the sliders.
+  const [shadowDraft, setShadowDraft] = useState<ShadowModel | null>(null);
+  const prevShadowOpen = useRef(false);
+  // The Drop Shadow bar slides in horizontally over the edit controls and can
+  // be swiped sideways (either way) to dismiss. Mounted through the slide-out
+  // so it animates off-screen before unmounting.
+  const [shadowMounted, setShadowMounted] = useState(false);
+  const shadowX = useRef(new Animated.Value(0)).current;
+  const shadowExitDir = useRef<1 | -1>(1); // which edge it leaves by (a swipe overrides)
   const panX = useRef(new Animated.Value(0)).current;
   // Latest committed-dismiss runner, so the once-created PanResponder always
   // throws by the current window width.
@@ -160,7 +127,11 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
       duration: PANEL_ANIM_MS,
       useNativeDriver: true,
     }).start(({ finished }) => {
-      if (finished) { setImageEditMounted(false); model.onRoundOpenChange?.(false); }
+      if (finished) {
+        setImageEditMounted(false);
+        model.onRoundOpenChange?.(false);
+        model.onShadowOpenChange?.(false);
+      }
     });
   };
 
@@ -186,12 +157,65 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
     if ((!model.visible || !model.showImageEdit) && imageEditMounted) {
       setImageEditMounted(false);
       model.onRoundOpenChange?.(false);
+      model.onShadowOpenChange?.(false);
       panX.setValue(0);
     }
-    // model.onRoundOpenChange is a stable setter; listing the whole model
-    // would re-run this every render.
+    // model.on*OpenChange are stable setters; listing the whole model would
+    // re-run this every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showImageEdit, imageEditMounted, panX]);
+
+  // Seed the shadow draft from the current shadow each time the controls open.
+  useEffect(() => {
+    if (model.shadowOpen && !prevShadowOpen.current) {
+      setShadowDraft(model.shadow ?? DEFAULT_SHADOW_MODEL);
+    }
+    prevShadowOpen.current = !!model.shadowOpen;
+  }, [model.shadowOpen, model.shadow]);
+
+  // Slide the Drop Shadow bar in from the right on open; on close slide it off
+  // the last-swiped edge (right by default), then unmount, revealing the
+  // image-specific edit controls.
+  useEffect(() => {
+    if (model.shadowOpen) {
+      setShadowMounted(true);
+      shadowExitDir.current = 1;
+      shadowX.setValue(width); // enter from the right edge
+      const anim = Animated.timing(shadowX, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true });
+      anim.start();
+      return () => anim.stop();
+    }
+    const anim = Animated.timing(shadowX, {
+      toValue: shadowExitDir.current * width,
+      duration: PANEL_ANIM_MS,
+      useNativeDriver: true,
+    });
+    anim.start(({ finished }) => { if (finished) setShadowMounted(false); });
+    return () => anim.stop();
+  }, [model.shadowOpen, shadowX, width]);
+
+  // Swipe the bar sideways past the threshold to dismiss (it then flies off
+  // that edge via the close effect); a short drag springs back. The pad and
+  // sliders claim their own touches, so this only fires on the bar's inert
+  // areas (header, labels, padding).
+  const shadowReleaseRef = useRef<(dx: number) => void>(() => {});
+  shadowReleaseRef.current = (dx) => {
+    const dir = swipeDismissDirection(dx);
+    if (dir !== 0) {
+      shadowExitDir.current = dir;
+      model.onShadowOpenChange?.(false);
+    } else {
+      Animated.spring(shadowX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+    }
+  };
+  const shadowPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderMove: (_e, g) => shadowX.setValue(g.dx),
+      onPanResponderRelease: (_e, g) => shadowReleaseRef.current(g.dx),
+      onPanResponderTerminate: () => Animated.spring(shadowX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start(),
+    }),
+  ).current;
 
   const openImageEdit = () => {
     panX.setValue(width); // start just off the right edge, then slide in
@@ -206,19 +230,23 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
     model.onRoundOpenChange?.(willOpen);
   };
 
+  const toggleShadow = () => model.onShadowOpenChange?.(!model.shadowOpen);
+
   const runImageAction = (action: ImageEditAction) => {
     if (action === 'roundCorners') { toggleRound(); return; }
+    if (action === 'shadow') { toggleShadow(); return; }
+    // Any other action closes both transient controls.
     model.onRoundOpenChange?.(false);
+    model.onShadowOpenChange?.(false);
     if (action === 'replace') model.onReplaceImage?.();
     else if (action === 'tint') model.onTintImage?.();
     else if (action === 'crop') model.onCropImage?.();
-    else if (action === 'shadow') model.onShadowImage?.();
     else if (action === 'glow') model.onGlowImage?.();
     else if (action === 'border') model.onBorderImage?.();
   };
 
-  // Slider drag → live preview; release → one undo step. Value is 0–1; the
-  // model works in the 0–MAX_CORNER_RADIUS fraction space.
+  // Round slider drag → live preview; release → one undo step. Value is 0–1;
+  // the model works in the 0–MAX_CORNER_RADIUS fraction space.
   const onSliderChange = (v: number) => {
     setSliderVal(v);
     model.onCornerRadius?.(v * MAX_CORNER_RADIUS, false);
@@ -227,9 +255,25 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
     model.onCornerRadius?.(v * MAX_CORNER_RADIUS, true);
   };
 
+  // Shadow controls → live preview / commit through the model; the draft stays
+  // in sync so the sliders keep tracking.
+  const applyShadow = (s: ShadowModel, committed: boolean) => {
+    setShadowDraft(s);
+    model.onShadow?.(s, committed);
+  };
+  const removeShadow = () => {
+    model.onShadow?.(null, true);
+    model.onShadowOpenChange?.(false);
+  };
+
   if (!mounted) return null;
 
   const hasGroupActions = !!(model.onGroup || model.onUngroup || model.onJoin || model.onUnion);
+  // Params tracked by the sliders/pad come from the local draft; color comes
+  // from the model (it's changed externally, via the full-screen picker).
+  const shadowForBar: ShadowModel = shadowDraft
+    ? { ...shadowDraft, color: model.shadow?.color ?? shadowDraft.color }
+    : (model.shadow ?? DEFAULT_SHADOW_MODEL);
 
   return (
     <>
@@ -240,9 +284,24 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
               <Text style={styles.sliderTitle}>Round corners</Text>
               <MaterialCommunityIcons name="rounded-corner" size={16} color={ICON_COLOR} />
             </View>
-            <CornerSlider value={sliderVal} onChange={onSliderChange} onCommit={onSliderCommit} />
+            <Slider value={sliderVal} onChange={onSliderChange} onCommit={onSliderCommit} />
           </View>
         </View>
+      ) : null}
+      {shadowMounted ? (
+        <Animated.View
+          style={[styles.shadowBarWrap, { transform: [{ translateX: shadowX }] }]}
+          {...shadowPan.panHandlers}
+        >
+          <ShadowBar
+            shadow={shadowForBar}
+            onChange={(s) => applyShadow(s, false)}
+            onCommit={(s) => applyShadow(s, true)}
+            onBack={() => model.onShadowOpenChange?.(false)}
+            onRemove={removeShadow}
+            onPickColor={() => model.onPickShadowColor?.()}
+          />
+        </Animated.View>
       ) : null}
       <View style={styles.clip} pointerEvents="box-none">
         <Animated.View style={[styles.panel, { transform: [{ translateY }] }]}>
@@ -391,22 +450,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sliderTitle: { color: ICON_COLOR, fontSize: 12, fontWeight: '600' },
-  sliderTrackHit: { height: SLIDER_THUMB + 12, justifyContent: 'center' },
-  sliderTrack: { height: 4, borderRadius: 2, backgroundColor: PANEL_HAIRLINE },
-  sliderFill: {
+  // Drop Shadow bar — full-width, bottom-anchored, slides up over the panel.
+  shadowBarWrap: {
     position: 'absolute',
     left: 0,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: ICON_COLOR,
-  },
-  sliderThumb: {
-    position: 'absolute',
-    width: SLIDER_THUMB,
-    height: SLIDER_THUMB,
-    borderRadius: SLIDER_THUMB / 2,
-    backgroundColor: MODAL_TEXT,
-    borderWidth: 1,
-    borderColor: PANEL_HAIRLINE,
+    right: 0,
+    bottom: 0,
+    zIndex: 205,
   },
 });

@@ -99,7 +99,13 @@ function escapeXml(s: string): string {
 function scaleEffectsToSvgUnits(effects: NodeEffects, u: number): NodeEffects {
   const out: NodeEffects = {};
   if (effects.shadow) {
-    out.shadow = { ...effects.shadow, dx: effects.shadow.dx * u, dy: effects.shadow.dy * u, blur: effects.shadow.blur * u };
+    out.shadow = {
+      ...effects.shadow,
+      dx: effects.shadow.dx * u,
+      dy: effects.shadow.dy * u,
+      blur: effects.shadow.blur * u,
+      spread: effects.shadow.spread !== undefined ? effects.shadow.spread * u : undefined,
+    };
   }
   if (effects.glow) {
     out.glow = { ...effects.glow, radius: effects.glow.radius * u };
