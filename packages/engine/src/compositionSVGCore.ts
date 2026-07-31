@@ -347,10 +347,22 @@ export async function generateCompositionSVGCore(
         `<feColorMatrix type="matrix" values="${tintToFeColorMatrix(img.tint)}"/></filter></defs>`;
       tintAttr = ` filter="url(#${tintId})"`;
     }
-    const imgMarkup = tintDefs +
+    // Rounded corners: clip the <image> to a rounded rect of its own box, so
+    // the tint (a filter on the same element) and any wrapping node effects
+    // all follow the rounded shape.
+    let clipDefs = '';
+    let clipAttr = '';
+    const cornerR = img.cornerRadius ? Math.min(0.5, img.cornerRadius) * Math.min(iw, ih) : 0;
+    if (cornerR > 0) {
+      const clipId = `round_${img.id}`;
+      clipDefs = `<defs><clipPath id="${clipId}">` +
+        `<rect x="0" y="0" width="${iw}" height="${ih}" rx="${cornerR}" ry="${cornerR}"/></clipPath></defs>`;
+      clipAttr = ` clip-path="url(#${clipId})"`;
+    }
+    const imgMarkup = tintDefs + clipDefs +
       `<g transform="${parts.join(' ')}"${opacityAttr}>` +
       `<image x="0" y="0" width="${iw}" height="${ih}" ` +
-      `href="${dataUri}" preserveAspectRatio="none"${tintAttr}/></g>`;
+      `href="${dataUri}" preserveAspectRatio="none"${tintAttr}${clipAttr}/></g>`;
     elementsById.set(img.id, wrapWithMaskClip(
       applyNodeEffects(imgMarkup, img.effects, img.id, img, U),
       maskMap, groups, img,

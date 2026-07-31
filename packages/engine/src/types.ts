@@ -983,6 +983,11 @@ export interface ImageObject {
   tint?: ImageTint;
   /** Cached-texture effects (v29+); see `SVGObject.effects`. */
   effects?: NodeEffects;
+  /** Corner rounding as a fraction (0–0.5) of the shorter side. Undefined /
+   *  0 = square corners; 0.5 = fully rounded (circle/pill). Applied as a
+   *  rounded clip on the canvas and a `clipPath` rounded rect in SVG export.
+   *  Persisted in the composition JSON. */
+  cornerRadius?: number;
   locked?: boolean;
   /** When true, the image is not rendered on the canvas and not
    *  hit-testable. Toggled via the eye icon in the Scene Outline. */

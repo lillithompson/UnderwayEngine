@@ -99,8 +99,21 @@ export interface ObjectPropertiesModel {
    *  is optional so apps can land the UI ahead of the edits themselves. */
   onReplaceImage?(): void;
   onTintImage?(): void;
-  onRoundCorners?(): void;
   onCropImage?(): void;
+  /** Selected image's current corner rounding, a fraction (0–0.5) of the
+   *  shorter side — seeds the Round slider's position. */
+  cornerRadius?: number;
+  /** Whether the Round slider is shown. App-owned so a tap-off can dismiss
+   *  the slider before the selection (one level at a time). */
+  roundOpen?: boolean;
+  /** Request the Round slider open/closed (Round button, or the panel folding
+   *  it away when the sub-panel is dismissed). */
+  onRoundOpenChange?(open: boolean): void;
+  /** Round-slider callback: `radius` is a 0–0.5 fraction of the shorter side
+   *  (0 = sharp, 0.5 = circle for a square). Fires continuously while dragging
+   *  with `committed=false` (live preview) and once on release with
+   *  `committed=true` (single undo step). */
+  onCornerRadius?(radius: number, committed: boolean): void;
   onRotate(): void;
   onMirrorH(): void;
   onMirrorV(): void;

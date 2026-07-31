@@ -24,6 +24,11 @@ type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 const ICON_COLOR = HEADER_BG; // Facet TEXT_SECONDARY
 const ICON_COLOR_STRONG = MODAL_TEXT; // Facet TEXT_PRIMARY (locked state)
 const COMPACT_MAX_WIDTH = 500;
+// Max corner radius the slider reaches, as a fraction of the shorter side —
+// 0.5 rounds a square all the way to a circle (mirror of editorSession's
+// MAX_CORNER_RADIUS; the app clamps commits to the same bound).
+const MAX_CORNER_RADIUS = 0.5;
+const SLIDER_THUMB = 22;
 
 function ActionButton({ label, icon, iconColor, onPress, compact }: {
   label: string;
@@ -68,6 +73,53 @@ function ImageEditButton({ label, icon, onPress }: {
   );
 }
 
+// A minimal draggable slider (0–1). Tapping or dragging the track moves the
+// thumb to the touch; `onChange` fires live and `onCommit` on release. Built
+// on PanResponder (as the sub-panel swipe is) so it needs no slider dep.
+function CornerSlider({ value, onChange, onCommit }: {
+  value: number;
+  onChange: (v: number) => void;
+  onCommit: (v: number) => void;
+}) {
+  const [trackW, setTrackW] = useState(0);
+  const trackWRef = useRef(0);
+  trackWRef.current = trackW;
+  // Latest handlers, so the once-created PanResponder always calls through.
+  const cbRef = useRef({ onChange, onCommit });
+  cbRef.current = { onChange, onCommit };
+
+  const valueFromX = (x: number) => {
+    const w = trackWRef.current;
+    if (w <= 0) return 0;
+    return Math.max(0, Math.min(1, x / w));
+  };
+
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => cbRef.current.onChange(valueFromX(e.nativeEvent.locationX)),
+      onPanResponderMove: (e) => cbRef.current.onChange(valueFromX(e.nativeEvent.locationX)),
+      onPanResponderRelease: (e) => cbRef.current.onCommit(valueFromX(e.nativeEvent.locationX)),
+      onPanResponderTerminate: (e) => cbRef.current.onCommit(valueFromX(e.nativeEvent.locationX)),
+    }),
+  ).current;
+
+  const clamped = Math.max(0, Math.min(1, value));
+  const thumbLeft = clamped * trackW;
+  return (
+    <View
+      style={styles.sliderTrackHit}
+      onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+      {...pan.panHandlers}
+    >
+      <View style={styles.sliderTrack} />
+      <View style={[styles.sliderFill, { width: thumbLeft }]} />
+      <View style={[styles.sliderThumb, { left: thumbLeft - SLIDER_THUMB / 2 }]} />
+    </View>
+  );
+}
+
 export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel }) {
   const { width } = useWindowDimensions();
   const compact = width < COMPACT_MAX_WIDTH;
@@ -93,6 +145,11 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
   // banner's swipe feel — the content follows the finger, then a past-
   // threshold release throws it off-screen and reveals the row beneath.
   const [imageEditMounted, setImageEditMounted] = useState(false);
+  // Round-corners slider (0–1) floating above the bar; opened from the Edit
+  // sub-panel's Round button. Open/closed is app-owned (model.roundOpen) so a
+  // tap-off dismisses the slider before the panel; only the thumb value is
+  // local, so the live preview round-trip doesn't fight the drag.
+  const [sliderVal, setSliderVal] = useState(0);
   const panX = useRef(new Animated.Value(0)).current;
   // Latest committed-dismiss runner, so the once-created PanResponder always
   // throws by the current window width.
@@ -102,7 +159,9 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
       toValue: dir * width,
       duration: PANEL_ANIM_MS,
       useNativeDriver: true,
-    }).start(({ finished }) => { if (finished) setImageEditMounted(false); });
+    }).start(({ finished }) => {
+      if (finished) { setImageEditMounted(false); model.onRoundOpenChange?.(false); }
+    });
   };
 
   const pan = useRef(
@@ -126,8 +185,12 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
   useEffect(() => {
     if ((!model.visible || !model.showImageEdit) && imageEditMounted) {
       setImageEditMounted(false);
+      model.onRoundOpenChange?.(false);
       panX.setValue(0);
     }
+    // model.onRoundOpenChange is a stable setter; listing the whole model
+    // would re-run this every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showImageEdit, imageEditMounted, panX]);
 
   const openImageEdit = () => {
@@ -136,11 +199,29 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
     Animated.timing(panX, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true }).start();
   };
 
+  const toggleRound = () => {
+    const willOpen = !model.roundOpen;
+    // Seed the thumb from the current radius each time it opens.
+    if (willOpen) setSliderVal((model.cornerRadius ?? 0) / MAX_CORNER_RADIUS);
+    model.onRoundOpenChange?.(willOpen);
+  };
+
   const runImageAction = (action: ImageEditAction) => {
+    if (action === 'roundCorners') { toggleRound(); return; }
+    model.onRoundOpenChange?.(false);
     if (action === 'replace') model.onReplaceImage?.();
     else if (action === 'tint') model.onTintImage?.();
-    else if (action === 'roundCorners') model.onRoundCorners?.();
     else if (action === 'crop') model.onCropImage?.();
+  };
+
+  // Slider drag → live preview; release → one undo step. Value is 0–1; the
+  // model works in the 0–MAX_CORNER_RADIUS fraction space.
+  const onSliderChange = (v: number) => {
+    setSliderVal(v);
+    model.onCornerRadius?.(v * MAX_CORNER_RADIUS, false);
+  };
+  const onSliderCommit = (v: number) => {
+    model.onCornerRadius?.(v * MAX_CORNER_RADIUS, true);
   };
 
   if (!mounted) return null;
@@ -148,8 +229,20 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
   const hasGroupActions = !!(model.onGroup || model.onUngroup || model.onJoin || model.onUnion);
 
   return (
-    <View style={styles.clip} pointerEvents="box-none">
-      <Animated.View style={[styles.panel, { transform: [{ translateY }] }]}>
+    <>
+      {model.roundOpen ? (
+        <View style={styles.sliderWrap} pointerEvents="box-none">
+          <View style={styles.sliderCard}>
+            <View style={styles.sliderHeaderRow}>
+              <Text style={styles.sliderTitle}>Round corners</Text>
+              <MaterialCommunityIcons name="rounded-corner" size={16} color={ICON_COLOR} />
+            </View>
+            <CornerSlider value={sliderVal} onChange={onSliderChange} onCommit={onSliderCommit} />
+          </View>
+        </View>
+      ) : null}
+      <View style={styles.clip} pointerEvents="box-none">
+        <Animated.View style={[styles.panel, { transform: [{ translateY }] }]}>
         <View style={styles.rowInner}>
           {model.showEdit || model.showImageEdit ? (
             <>
@@ -221,8 +314,9 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
             </View>
           </Animated.View>
         ) : null}
-      </Animated.View>
-    </View>
+        </Animated.View>
+      </View>
+    </>
   );
 }
 
@@ -267,4 +361,49 @@ const styles = StyleSheet.create({
   },
   imageEditButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', gap: 2 },
   imageEditLabel: { color: ICON_COLOR, fontSize: 10, fontWeight: '500' },
+  // Floating round-corners slider, above the bar (which is ~PANEL_HEIGHT tall).
+  sliderWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: PANEL_HEIGHT + 10,
+    alignItems: 'center',
+    zIndex: 201,
+  },
+  sliderCard: {
+    width: '92%',
+    maxWidth: 460,
+    backgroundColor: MODAL_BG,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: PANEL_HAIRLINE,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  sliderHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  sliderTitle: { color: ICON_COLOR, fontSize: 12, fontWeight: '600' },
+  sliderTrackHit: { height: SLIDER_THUMB + 12, justifyContent: 'center' },
+  sliderTrack: { height: 4, borderRadius: 2, backgroundColor: PANEL_HAIRLINE },
+  sliderFill: {
+    position: 'absolute',
+    left: 0,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: ICON_COLOR,
+  },
+  sliderThumb: {
+    position: 'absolute',
+    width: SLIDER_THUMB,
+    height: SLIDER_THUMB,
+    borderRadius: SLIDER_THUMB / 2,
+    backgroundColor: MODAL_TEXT,
+    borderWidth: 1,
+    borderColor: PANEL_HAIRLINE,
+  },
 });
