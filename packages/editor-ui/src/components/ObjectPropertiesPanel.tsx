@@ -47,16 +47,20 @@ function Divider() {
   return <View style={styles.divider} />;
 }
 
-export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel }) {
+export function ObjectPropertiesPanel({ model, safeBottom = 0 }: { model: ObjectPropertiesModel; safeBottom?: number }) {
   const { width } = useWindowDimensions();
   const compact = width < COMPACT_MAX_WIDTH;
   const [mounted, setMounted] = useState(model.visible);
-  const translateY = useRef(new Animated.Value(model.visible ? 0 : PANEL_HEIGHT)).current;
+  // The panel rests against the bottom edge but pads its content up by the
+  // device safe-area inset (home indicator / screen curve on iOS native), so
+  // the hidden position must clear the full padded height to slide fully off.
+  const hiddenY = PANEL_HEIGHT + safeBottom;
+  const translateY = useRef(new Animated.Value(model.visible ? 0 : hiddenY)).current;
 
   useEffect(() => {
     if (model.visible) setMounted(true);
     const anim = Animated.timing(translateY, {
-      toValue: model.visible ? 0 : PANEL_HEIGHT,
+      toValue: model.visible ? 0 : hiddenY,
       duration: PANEL_ANIM_MS,
       useNativeDriver: true,
     });
@@ -64,7 +68,7 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
       if (finished && !model.visible) setMounted(false);
     });
     return () => anim.stop();
-  }, [model.visible, translateY]);
+  }, [model.visible, translateY, hiddenY]);
 
   if (!mounted) return null;
 
@@ -72,7 +76,7 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
 
   return (
     <View style={styles.clip} pointerEvents="box-none">
-      <Animated.View style={[styles.panel, { transform: [{ translateY }] }]}>
+      <Animated.View style={[styles.panel, { paddingBottom: safeBottom, transform: [{ translateY }] }]}>
         <View style={styles.rowInner}>
           {model.showEdit ? (
             <>
