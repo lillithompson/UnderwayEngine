@@ -6,7 +6,14 @@
 
 /** The image-specific editing actions, in display order. Replace swaps the
  *  image inside the same container; the rest are visual adjustments. */
-export type ImageEditAction = 'replace' | 'tint' | 'roundCorners' | 'crop';
+export type ImageEditAction =
+  | 'replace'
+  | 'tint'
+  | 'roundCorners'
+  | 'crop'
+  | 'shadow'
+  | 'glow'
+  | 'border';
 
 export interface ImageEditOption {
   action: ImageEditAction;
@@ -21,6 +28,9 @@ export const IMAGE_EDIT_OPTIONS: readonly ImageEditOption[] = [
   { action: 'tint', label: 'Tint', icon: 'palette-outline' },
   { action: 'roundCorners', label: 'Round', icon: 'rounded-corner' },
   { action: 'crop', label: 'Crop', icon: 'crop' },
+  { action: 'shadow', label: 'Shadow', icon: 'box-shadow' },
+  { action: 'glow', label: 'Glow', icon: 'flare' },
+  { action: 'border', label: 'Border', icon: 'border-outside' },
 ];
 
 /** Horizontal travel (px, either direction) that commits a dismiss. Matched

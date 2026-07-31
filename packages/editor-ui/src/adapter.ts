@@ -100,6 +100,9 @@ export interface ObjectPropertiesModel {
   onReplaceImage?(): void;
   onTintImage?(): void;
   onCropImage?(): void;
+  onShadowImage?(): void;
+  onGlowImage?(): void;
+  onBorderImage?(): void;
   /** Selected image's current corner rounding, a fraction (0–0.5) of the
    *  shorter side — seeds the Round slider's position. */
   cornerRadius?: number;

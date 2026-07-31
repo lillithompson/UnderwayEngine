@@ -212,6 +212,9 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
     if (action === 'replace') model.onReplaceImage?.();
     else if (action === 'tint') model.onTintImage?.();
     else if (action === 'crop') model.onCropImage?.();
+    else if (action === 'shadow') model.onShadowImage?.();
+    else if (action === 'glow') model.onGlowImage?.();
+    else if (action === 'border') model.onBorderImage?.();
   };
 
   // Slider drag → live preview; release → one undo step. Value is 0–1; the
