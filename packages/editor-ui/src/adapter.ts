@@ -89,8 +89,18 @@ export interface ObjectPropertiesModel {
   mode?: 'single' | 'multi' | 'group';
   /** Show the Edit action (editable text selected). */
   showEdit: boolean;
+  /** Show the Edit action for an image: pressing it slides the image-edit
+   *  sub-panel (replace / tint / round / crop) in over the bar instead of
+   *  invoking onEdit. Text vs image are mutually exclusive per selection. */
+  showImageEdit?: boolean;
   locked: boolean;
   onEdit(): void;
+  /** Image-edit sub-panel actions (surfaced only when showImageEdit). Each
+   *  is optional so apps can land the UI ahead of the edits themselves. */
+  onReplaceImage?(): void;
+  onTintImage?(): void;
+  onRoundCorners?(): void;
+  onCropImage?(): void;
   onRotate(): void;
   onMirrorH(): void;
   onMirrorV(): void;

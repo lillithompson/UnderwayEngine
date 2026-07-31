@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { ObjectPropertiesModel } from '../adapter';
+import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
 import {
   HEADER_BG,
   MODAL_BG,
@@ -47,6 +48,26 @@ function Divider() {
   return <View style={styles.divider} />;
 }
 
+// Image-edit sub-panel button: an icon over a short caption, weighted to
+// share the row evenly with its siblings.
+function ImageEditButton({ label, icon, onPress }: {
+  label: string;
+  icon: string;
+  onPress?: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={styles.imageEditButton}
+    >
+      <MaterialCommunityIcons name={icon as MCIName} size={24} color={ICON_COLOR} />
+      <Text style={styles.imageEditLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel }) {
   const { width } = useWindowDimensions();
   const compact = width < COMPACT_MAX_WIDTH;
@@ -66,6 +87,62 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
     return () => anim.stop();
   }, [model.visible, translateY]);
 
+  // ── Image-edit sub-panel ────────────────────────────────────────────
+  // Pressing Edit on an image slides this layer in over the action row; it
+  // is dismissed by swiping it sideways (either way), mirroring the title
+  // banner's swipe feel — the content follows the finger, then a past-
+  // threshold release throws it off-screen and reveals the row beneath.
+  const [imageEditMounted, setImageEditMounted] = useState(false);
+  const panX = useRef(new Animated.Value(0)).current;
+  // Latest committed-dismiss runner, so the once-created PanResponder always
+  // throws by the current window width.
+  const dismissRef = useRef<(dir: -1 | 1) => void>(() => {});
+  dismissRef.current = (dir) => {
+    Animated.timing(panX, {
+      toValue: dir * width,
+      duration: PANEL_ANIM_MS,
+      useNativeDriver: true,
+    }).start(({ finished }) => { if (finished) setImageEditMounted(false); });
+  };
+
+  const pan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) =>
+        Math.abs(g.dx) > 5 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderMove: (_e, g) => panX.setValue(g.dx),
+      onPanResponderRelease: (_e, g) => {
+        const dir = swipeDismissDirection(g.dx);
+        if (dir !== 0) dismissRef.current(dir);
+        else Animated.spring(panX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+      },
+      onPanResponderTerminate: () =>
+        Animated.spring(panX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start(),
+    }),
+  ).current;
+
+  // Fold the sub-panel away the moment the selection is no longer an
+  // editable image (or the whole bar hides) so it never lingers over the
+  // next object's actions.
+  useEffect(() => {
+    if ((!model.visible || !model.showImageEdit) && imageEditMounted) {
+      setImageEditMounted(false);
+      panX.setValue(0);
+    }
+  }, [model.visible, model.showImageEdit, imageEditMounted, panX]);
+
+  const openImageEdit = () => {
+    panX.setValue(width); // start just off the right edge, then slide in
+    setImageEditMounted(true);
+    Animated.timing(panX, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true }).start();
+  };
+
+  const runImageAction = (action: ImageEditAction) => {
+    if (action === 'replace') model.onReplaceImage?.();
+    else if (action === 'tint') model.onTintImage?.();
+    else if (action === 'roundCorners') model.onRoundCorners?.();
+    else if (action === 'crop') model.onCropImage?.();
+  };
+
   if (!mounted) return null;
 
   const hasGroupActions = !!(model.onGroup || model.onUngroup || model.onJoin || model.onUnion);
@@ -74,10 +151,15 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
     <View style={styles.clip} pointerEvents="box-none">
       <Animated.View style={[styles.panel, { transform: [{ translateY }] }]}>
         <View style={styles.rowInner}>
-          {model.showEdit ? (
+          {model.showEdit || model.showImageEdit ? (
             <>
               <View style={compact ? styles.groupCompact1 : styles.group}>
-                <ActionButton label="Edit" icon="image-edit-outline" onPress={model.onEdit} compact={compact} />
+                <ActionButton
+                  label="Edit"
+                  icon="image-edit-outline"
+                  onPress={model.showImageEdit ? openImageEdit : model.onEdit}
+                  compact={compact}
+                />
               </View>
               <Divider />
             </>
@@ -114,6 +196,31 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
             </>
           ) : null}
         </View>
+
+        {imageEditMounted ? (
+          <Animated.View
+            style={[styles.imageEditOverlay, {
+              transform: [{ translateX: panX }],
+              opacity: panX.interpolate({
+                inputRange: [-120, 0, 120],
+                outputRange: [0.5, 1, 0.5],
+                extrapolate: 'clamp',
+              }),
+            }]}
+            {...pan.panHandlers}
+          >
+            <View style={styles.rowInner}>
+              {IMAGE_EDIT_OPTIONS.map((opt) => (
+                <ImageEditButton
+                  key={opt.action}
+                  label={opt.label}
+                  icon={opt.icon}
+                  onPress={() => runImageAction(opt.action)}
+                />
+              ))}
+            </View>
+          </Animated.View>
+        ) : null}
       </Animated.View>
     </View>
   );
@@ -147,4 +254,17 @@ const styles = StyleSheet.create({
   button: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   buttonCompact: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
   divider: { width: 1, alignSelf: 'stretch', backgroundColor: PANEL_HAIRLINE, marginVertical: 6, marginHorizontal: 10 },
+  // Opaque cover over the action row — same surface as the panel, so the
+  // row is fully hidden until the sub-panel is swiped away.
+  imageEditOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: MODAL_BG,
+    justifyContent: 'center',
+  },
+  imageEditButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  imageEditLabel: { color: ICON_COLOR, fontSize: 10, fontWeight: '500' },
 });
