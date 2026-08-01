@@ -141,4 +141,6 @@ const styles = StyleSheet.create({
   segmentActive: { backgroundColor: SEG_ACTIVE },
   segmentText: { color: SEG_TEXT, fontSize: 11.5, fontWeight: '600' },
   segmentTextActive: { color: '#FFFFFF' },
+  // Hint line: indented to the control column (50pt label + 10pt gap), dim.
+  hint: { marginLeft: 60, marginTop: 2, paddingBottom: 2, color: 'rgba(255,255,255,0.42)', fontSize: 11 },
 });
