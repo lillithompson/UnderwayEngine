@@ -6,7 +6,7 @@
  * representation.
  */
 
-import { Paint, GradientStop, NodeEffects, BorderEffect, ImageTint, RGBColor } from './types';
+import { Paint, GradientStop, NodeEffects, BorderEffect, BorderPosition, ImageTint, RGBColor } from './types';
 import { rgbToHex } from './colorConvert';
 import { blendColor } from './colorBlend';
 import type { Bbox } from './sceneNodeGeometry';
@@ -70,11 +70,29 @@ export function effectsToSvgFilter(
 
   const prims: string[] = [];
   if (sh) {
-    const result = gl ? ' result="withShadow"' : '';
-    prims.push(
-      `<feDropShadow dx="${fmt(sh.dx)}" dy="${fmt(sh.dy)}" stdDeviation="${fmt(sh.blur)}" ` +
-      `flood-color="${hex(sh.color)}" flood-opacity="${fmt(sh.alpha)}"${result}/>`,
-    );
+    const spread = sh.spread ?? 0;
+    if (spread !== 0) {
+      // feDropShadow has no spread, so expand it: dilate (positive) or erode
+      // (negative) SourceAlpha, blur + offset that, flood with the shadow
+      // color, then merge the source back on top. `withShadow` result feeds
+      // the glow merge below when present.
+      const merge = gl ? ' result="withShadow"' : '';
+      const op = spread > 0 ? 'dilate' : 'erode';
+      prims.push(
+        `<feMorphology in="SourceAlpha" operator="${op}" radius="${fmt(Math.abs(spread))}" result="shSpread"/>`,
+        `<feGaussianBlur in="shSpread" stdDeviation="${fmt(sh.blur)}" result="shBlur"/>`,
+        `<feOffset in="shBlur" dx="${fmt(sh.dx)}" dy="${fmt(sh.dy)}" result="shOffset"/>`,
+        `<feFlood flood-color="${hex(sh.color)}" flood-opacity="${fmt(sh.alpha)}" result="shColor"/>`,
+        `<feComposite in="shColor" in2="shOffset" operator="in" result="shShadow"/>`,
+        `<feMerge${merge}><feMergeNode in="shShadow"/><feMergeNode in="SourceGraphic"/></feMerge>`,
+      );
+    } else {
+      const result = gl ? ' result="withShadow"' : '';
+      prims.push(
+        `<feDropShadow dx="${fmt(sh.dx)}" dy="${fmt(sh.dy)}" stdDeviation="${fmt(sh.blur)}" ` +
+        `flood-color="${hex(sh.color)}" flood-opacity="${fmt(sh.alpha)}"${result}/>`,
+      );
+    }
   }
   if (gl) {
     prims.push(
@@ -123,12 +141,68 @@ export function tintToFeColorMatrix(tint: ImageTint): string {
   return rows.map(row => row.map(fmt).join(' ')).join(' ');
 }
 
-/** Stroked (optionally rounded) rect markup for a border effect around a
- *  world-cell bbox. Stroke is centered on the bbox edge, matching the
- *  compositor's border pass. */
-export function borderToSvgRect(border: BorderEffect, bbox: Bbox): string {
-  const rx = border.radius !== undefined && border.radius > 0 ? ` rx="${fmt(border.radius)}"` : '';
-  return `<rect x="${fmt(bbox.cellX)}" y="${fmt(bbox.cellY)}" ` +
-    `width="${fmt(bbox.cellWidth)}" height="${fmt(bbox.cellHeight)}"${rx} ` +
-    `fill="none" stroke="${hex(border.color)}" stroke-width="${fmt(border.width)}"/>`;
+/** Design points per world cell (BASE_CELL_PX in the app). The border dash
+ *  ranges are authored in iOS points; dividing maps them to world cells so
+ *  they scale with the composition like every other length. */
+const BORDER_PT_PER_CELL = 16;
+
+/** Dash `[dashLength, gap]` in world cells for a 1–10 dash index, or null for
+ *  a solid stroke (`dash` ≤ 0 / undefined). Mirrors the design mapping: dash 1
+ *  ≈ long dashes, dash 10 ≈ tight dots. Callers scale the returned lengths to
+ *  their own unit (× SVG units-per-cell, or × px). */
+export function borderDashPattern(dash: number | undefined): [number, number] | null {
+  if (!dash || dash <= 0) return null;
+  const d = Math.max(1, Math.min(10, dash));
+  const t = (d - 1) / 9;
+  const dashLenPt = Math.max(1.5, 24 - 22.5 * t);
+  const gapPt = dashLenPt <= 3 ? dashLenPt * 1.9 : dashLenPt * 0.65;
+  return [dashLenPt / BORDER_PT_PER_CELL, gapPt / BORDER_PT_PER_CELL];
+}
+
+/** True once a dash length (in world cells) is short enough that round caps
+ *  read as dots rather than clipped dashes (design: ≤ 3pt). */
+export function borderDashIsDotted(dashLenCells: number): boolean {
+  return dashLenCells <= 3 / BORDER_PT_PER_CELL;
+}
+
+/** Geometry of a border stroke rect for a bbox, given the stroke `width`,
+ *  alignment `position`, and node corner `radius`. All inputs share one unit
+ *  (SVG units or px) and the output is in that unit. The rect is inset (for
+ *  'inside') or outset (for 'outside') by half the stroke so the visible edge
+ *  aligns with the bbox; 'center' straddles it. The corner radius stays
+ *  concentric with the node's rounding. */
+export function borderRectGeometry(
+  width: number,
+  position: BorderPosition | undefined,
+  radius: number,
+  bbox: Bbox,
+): { x: number; y: number; w: number; h: number; rx: number } {
+  const half = width / 2;
+  const inset = position === 'inside' ? half : position === 'outside' ? -half : 0;
+  return {
+    x: bbox.cellX + inset,
+    y: bbox.cellY + inset,
+    w: Math.max(0, bbox.cellWidth - inset * 2),
+    h: Math.max(0, bbox.cellHeight - inset * 2),
+    rx: radius > 0 ? Math.max(0, radius - inset) : 0,
+  };
+}
+
+/** Stroked (optionally rounded / dashed / offset) rect markup for a border
+ *  effect around a bbox. `border.width`, `border.radius` and `bbox` are in SVG
+ *  units; `u` (SVG units per world cell) scales only the unitless dash index
+ *  into matching lengths. Matches the compositor's border pass. */
+export function borderToSvgRect(border: BorderEffect, bbox: Bbox, u = 1): string {
+  const geo = borderRectGeometry(border.width, border.position, border.radius ?? 0, bbox);
+  const rx = geo.rx > 0 ? ` rx="${fmt(geo.rx)}" ry="${fmt(geo.rx)}"` : '';
+  const pattern = borderDashPattern(border.dash);
+  let dashAttr = '';
+  if (pattern) {
+    const [dLen, gap] = pattern;
+    const cap = borderDashIsDotted(dLen) ? ' stroke-linecap="round"' : '';
+    dashAttr = ` stroke-dasharray="${fmt(dLen * u)} ${fmt(gap * u)}"${cap}`;
+  }
+  return `<rect x="${fmt(geo.x)}" y="${fmt(geo.y)}" ` +
+    `width="${fmt(geo.w)}" height="${fmt(geo.h)}"${rx} ` +
+    `fill="none" stroke="${hex(border.color)}" stroke-width="${fmt(border.width)}"${dashAttr}/>`;
 }

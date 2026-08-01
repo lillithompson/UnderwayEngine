@@ -99,7 +99,13 @@ function escapeXml(s: string): string {
 function scaleEffectsToSvgUnits(effects: NodeEffects, u: number): NodeEffects {
   const out: NodeEffects = {};
   if (effects.shadow) {
-    out.shadow = { ...effects.shadow, dx: effects.shadow.dx * u, dy: effects.shadow.dy * u, blur: effects.shadow.blur * u };
+    out.shadow = {
+      ...effects.shadow,
+      dx: effects.shadow.dx * u,
+      dy: effects.shadow.dy * u,
+      blur: effects.shadow.blur * u,
+      spread: effects.shadow.spread !== undefined ? effects.shadow.spread * u : undefined,
+    };
   }
   if (effects.glow) {
     out.glow = { ...effects.glow, radius: effects.glow.radius * u };
@@ -126,7 +132,7 @@ function applyNodeEffects(
   markup: string,
   effects: NodeEffects | undefined,
   nodeId: string,
-  node: { cellX: number; cellY: number; cellWidth: number; cellHeight: number },
+  node: { cellX: number; cellY: number; cellWidth: number; cellHeight: number; cornerRadius?: number },
   u: number,
 ): string {
   if (!effects) return markup;
@@ -137,12 +143,18 @@ function applyNodeEffects(
     out = `<defs>${defs}</defs><g filter="${filterRef}">${out}</g>`;
   }
   if (scaled.border) {
-    out += borderToSvgRect(scaled.border, {
+    // Round the stroke to the node's own corner rounding when it has one
+    // (images carry cornerRadius as a fraction of the shorter side) so the
+    // border hugs the rounded image; otherwise use the border's own radius.
+    const cornerR = node.cornerRadius
+      ? Math.min(0.5, node.cornerRadius) * Math.min(node.cellWidth, node.cellHeight) * u
+      : (scaled.border.radius ?? 0);
+    out += borderToSvgRect({ ...scaled.border, radius: cornerR }, {
       cellX: node.cellX * u,
       cellY: node.cellY * u,
       cellWidth: node.cellWidth * u,
       cellHeight: node.cellHeight * u,
-    });
+    }, u);
   }
   return out;
 }
@@ -367,10 +379,22 @@ export async function generateCompositionSVGCore(
         `<feColorMatrix type="matrix" values="${tintToFeColorMatrix(img.tint)}"/></filter></defs>`;
       tintAttr = ` filter="url(#${tintId})"`;
     }
-    const imgMarkup = tintDefs +
+    // Rounded corners: clip the <image> to a rounded rect of its own box, so
+    // the tint (a filter on the same element) and any wrapping node effects
+    // all follow the rounded shape.
+    let clipDefs = '';
+    let clipAttr = '';
+    const cornerR = img.cornerRadius ? Math.min(0.5, img.cornerRadius) * Math.min(iw, ih) : 0;
+    if (cornerR > 0) {
+      const clipId = `round_${img.id}`;
+      clipDefs = `<defs><clipPath id="${clipId}">` +
+        `<rect x="0" y="0" width="${iw}" height="${ih}" rx="${cornerR}" ry="${cornerR}"/></clipPath></defs>`;
+      clipAttr = ` clip-path="url(#${clipId})"`;
+    }
+    const imgMarkup = tintDefs + clipDefs +
       `<g transform="${parts.join(' ')}"${opacityAttr}>` +
       `<image x="0" y="0" width="${iw}" height="${ih}" ` +
-      `href="${dataUri}" preserveAspectRatio="none"${tintAttr}/></g>`;
+      `href="${dataUri}" preserveAspectRatio="none"${tintAttr}${clipAttr}/></g>`;
     elementsById.set(img.id, wrapWithMaskClip(
       applyNodeEffects(imgMarkup, img.effects, img.id, img, U),
       maskMap, groups, img,

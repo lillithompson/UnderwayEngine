@@ -97,13 +97,91 @@ export interface TopBarModel {
 
 // ── Object properties ────────────────────────────────────────────────
 
+/** Editable drop-shadow, in the app's world-cell units (the panel maps these
+ *  to slider positions; the app maps them to the engine's ShadowEffect). */
+export interface ShadowModel {
+  /** Offset (position) in cells. */
+  dx: number;
+  dy: number;
+  /** Gaussian blur radius in cells. */
+  blur: number;
+  /** Dilation of the shape before blur, in cells. */
+  spread: number;
+  color: RGBLike;
+  /** 0–1. */
+  opacity: number;
+}
+
+/** Stroke alignment relative to the node bbox edge. */
+export type BorderPosition = 'inside' | 'center' | 'outside';
+
+/** Editable border/stroke, in the app's world-cell units (the panel maps
+ *  these to slider positions; the app maps them to the engine's
+ *  BorderEffect). Corner rounding is NOT here — it rides the shared
+ *  `cornerRadius` / `onCornerRadius` fields (the Border panel's Radius slider
+ *  rounds the object itself, folding in the former Round control). */
+export interface BorderModel {
+  /** Stroke width in cells (0 = no border). */
+  width: number;
+  /** Stroke alignment vs. the bbox edge. */
+  position: BorderPosition;
+  /** Dash density 0–10 (0 = solid). */
+  dash: number;
+  color: RGBLike;
+}
+
 export interface ObjectPropertiesModel {
   visible: boolean;
   mode?: 'single' | 'multi' | 'group';
   /** Show the Edit action (editable text selected). */
   showEdit: boolean;
+  /** Show the Edit action for an image: pressing it slides the image-edit
+   *  sub-panel (replace / tint / round / crop) in over the bar instead of
+   *  invoking onEdit. Text vs image are mutually exclusive per selection. */
+  showImageEdit?: boolean;
   locked: boolean;
   onEdit(): void;
+  /** Image-edit sub-panel actions (surfaced only when showImageEdit). Each
+   *  is optional so apps can land the UI ahead of the edits themselves. */
+  onReplaceImage?(): void;
+  onTintImage?(): void;
+  onCropImage?(): void;
+  /** Whether the Shadow controls are shown. App-owned so a tap-off dismisses
+   *  them before the panel (same as the Border bar). */
+  shadowOpen?: boolean;
+  onShadowOpenChange?(open: boolean): void;
+  /** The selected image's current shadow (defaults supplied by the app when
+   *  none is set yet), seeding the Shadow controls. */
+  shadow?: ShadowModel;
+  /** Shadow-controls callback: fires live while dragging (`committed=false`)
+   *  and once on release (`committed=true`, one undo step). `shadow=null`
+   *  removes the shadow. */
+  onShadow?(shadow: ShadowModel | null, committed: boolean): void;
+  /** Open the full-screen color picker for the shadow color (the same picker
+   *  the top-toolbar color tool uses). */
+  onPickShadowColor?(): void;
+  /** Whether the Border controls are shown. App-owned so a tap-off dismisses
+   *  them before the panel (same as the Shadow bar). */
+  borderOpen?: boolean;
+  onBorderOpenChange?(open: boolean): void;
+  /** The selected image's current border (defaults supplied by the app when
+   *  none is set yet), seeding the Border controls. */
+  border?: BorderModel;
+  /** Border-controls callback: fires live while dragging (`committed=false`)
+   *  and once on release (`committed=true`, one undo step). `border=null`
+   *  removes the border. */
+  onBorder?(border: BorderModel | null, committed: boolean): void;
+  /** Open the full-screen color picker for the border color. */
+  onPickBorderColor?(): void;
+  /** Selected image's current corner rounding, a fraction (0–0.5) of the
+   *  shorter side — seeds the Border panel's Radius slider. */
+  cornerRadius?: number;
+  /** Radius-slider callback: `radius` is a 0–0.5 fraction of the shorter side
+   *  (0 = sharp, 0.5 = circle for a square). Fires continuously while dragging
+   *  with `committed=false` (live preview) and once on release with
+   *  `committed=true` (single undo step). Drives the object's own corner
+   *  rounding — the Radius row of the Border panel. */
+  onCornerRadius?(radius: number, committed: boolean): void;
   onRotate(): void;
   onMirrorH(): void;
   onMirrorV(): void;

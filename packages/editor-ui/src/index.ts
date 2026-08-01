@@ -12,6 +12,7 @@ export * from './logic/dragReorder';
 export * from './logic/rename';
 export * from './logic/toolbarBehavior';
 export * from './logic/hsv';
+export * from './logic/imageEdit';
 
 // Components (React Native).
 export { SceneOutlinePanel } from './components/SceneOutlinePanel';
