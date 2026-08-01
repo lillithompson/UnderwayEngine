@@ -5,11 +5,12 @@
 // component only owns the animation.
 
 /** The image-specific editing actions, in display order. Replace swaps the
- *  image inside the same container; the rest are visual adjustments. */
+ *  image inside the same container; the rest are visual adjustments. Corner
+ *  rounding lives inside the Border panel (its Radius slider), so there is no
+ *  standalone Round action. */
 export type ImageEditAction =
   | 'replace'
   | 'tint'
-  | 'roundCorners'
   | 'crop'
   | 'shadow'
   | 'glow'
@@ -26,7 +27,6 @@ export interface ImageEditOption {
 export const IMAGE_EDIT_OPTIONS: readonly ImageEditOption[] = [
   { action: 'replace', label: 'Replace', icon: 'image-refresh-outline' },
   { action: 'tint', label: 'Tint', icon: 'palette-outline' },
-  { action: 'roundCorners', label: 'Round', icon: 'rounded-corner' },
   { action: 'crop', label: 'Crop', icon: 'crop' },
   { action: 'shadow', label: 'Shadow', icon: 'box-shadow' },
   { action: 'glow', label: 'Glow', icon: 'flare' },

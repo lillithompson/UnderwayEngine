@@ -99,6 +99,24 @@ export interface ShadowModel {
   opacity: number;
 }
 
+/** Stroke alignment relative to the node bbox edge. */
+export type BorderPosition = 'inside' | 'center' | 'outside';
+
+/** Editable border/stroke, in the app's world-cell units (the panel maps
+ *  these to slider positions; the app maps them to the engine's
+ *  BorderEffect). Corner rounding is NOT here — it rides the shared
+ *  `cornerRadius` / `onCornerRadius` fields (the Border panel's Radius slider
+ *  rounds the object itself, folding in the former Round control). */
+export interface BorderModel {
+  /** Stroke width in cells (0 = no border). */
+  width: number;
+  /** Stroke alignment vs. the bbox edge. */
+  position: BorderPosition;
+  /** Dash density 0–10 (0 = solid). */
+  dash: number;
+  color: RGBLike;
+}
+
 export interface ObjectPropertiesModel {
   visible: boolean;
   mode?: 'single' | 'multi' | 'group';
@@ -116,9 +134,8 @@ export interface ObjectPropertiesModel {
   onTintImage?(): void;
   onCropImage?(): void;
   onGlowImage?(): void;
-  onBorderImage?(): void;
   /** Whether the Shadow controls are shown. App-owned so a tap-off dismisses
-   *  them before the panel (same as the Round slider). */
+   *  them before the panel (same as the Border bar). */
   shadowOpen?: boolean;
   onShadowOpenChange?(open: boolean): void;
   /** The selected image's current shadow (defaults supplied by the app when
@@ -131,19 +148,27 @@ export interface ObjectPropertiesModel {
   /** Open the full-screen color picker for the shadow color (the same picker
    *  the top-toolbar color tool uses). */
   onPickShadowColor?(): void;
+  /** Whether the Border controls are shown. App-owned so a tap-off dismisses
+   *  them before the panel (same as the Shadow bar). */
+  borderOpen?: boolean;
+  onBorderOpenChange?(open: boolean): void;
+  /** The selected image's current border (defaults supplied by the app when
+   *  none is set yet), seeding the Border controls. */
+  border?: BorderModel;
+  /** Border-controls callback: fires live while dragging (`committed=false`)
+   *  and once on release (`committed=true`, one undo step). `border=null`
+   *  removes the border. */
+  onBorder?(border: BorderModel | null, committed: boolean): void;
+  /** Open the full-screen color picker for the border color. */
+  onPickBorderColor?(): void;
   /** Selected image's current corner rounding, a fraction (0–0.5) of the
-   *  shorter side — seeds the Round slider's position. */
+   *  shorter side — seeds the Border panel's Radius slider. */
   cornerRadius?: number;
-  /** Whether the Round slider is shown. App-owned so a tap-off can dismiss
-   *  the slider before the selection (one level at a time). */
-  roundOpen?: boolean;
-  /** Request the Round slider open/closed (Round button, or the panel folding
-   *  it away when the sub-panel is dismissed). */
-  onRoundOpenChange?(open: boolean): void;
-  /** Round-slider callback: `radius` is a 0–0.5 fraction of the shorter side
+  /** Radius-slider callback: `radius` is a 0–0.5 fraction of the shorter side
    *  (0 = sharp, 0.5 = circle for a square). Fires continuously while dragging
    *  with `committed=false` (live preview) and once on release with
-   *  `committed=true` (single undo step). */
+   *  `committed=true` (single undo step). Drives the object's own corner
+   *  rounding — the Radius row of the Border panel. */
   onCornerRadius?(radius: number, committed: boolean): void;
   onRotate(): void;
   onMirrorH(): void;

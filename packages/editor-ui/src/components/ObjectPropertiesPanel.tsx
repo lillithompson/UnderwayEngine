@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { ObjectPropertiesModel, ShadowModel } from '../adapter';
+import type { BorderModel, ObjectPropertiesModel, ShadowModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
-import { Slider } from './Slider';
 import { ShadowBar } from './ShadowBar';
+import { BorderBar } from './BorderBar';
+import { BAR_BG } from './effectBar';
+import { useSlideSwipeBar } from './useSlideSwipeBar';
 import {
   HEADER_BG,
   MODAL_BG,
@@ -26,12 +28,12 @@ type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 const ICON_COLOR = HEADER_BG; // Facet TEXT_SECONDARY
 const ICON_COLOR_STRONG = MODAL_TEXT; // Facet TEXT_PRIMARY (locked state)
 const COMPACT_MAX_WIDTH = 500;
-// Max corner radius the slider reaches, as a fraction of the shorter side —
-// 0.5 rounds a square all the way to a circle (mirror of editorSession's
-// MAX_CORNER_RADIUS; the app clamps commits to the same bound).
-const MAX_CORNER_RADIUS = 0.5;
 const DEFAULT_SHADOW_MODEL: ShadowModel = {
   dx: 0.75, dy: 0.875, blur: 1.125, spread: 0.125, color: { r: 0, g: 0, b: 0 }, opacity: 0.45,
+};
+// Design default border: 6pt (0.375 cell) centered solid stroke.
+const DEFAULT_BORDER_MODEL: BorderModel = {
+  width: 0.375, position: 'center', dash: 0, color: { r: 58, g: 53, b: 50 },
 };
 
 function ActionButton({ label, icon, iconColor, onPress, compact }: {
@@ -77,7 +79,12 @@ function ImageEditButton({ label, icon, onPress }: {
   );
 }
 
-export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel }) {
+export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
+  model: ObjectPropertiesModel;
+  /** Bottom safe-area inset (home indicator). Padded under the bottom-anchored
+   *  effect bars so their controls clear it; 0 on non-notched / web. */
+  safeBottom?: number;
+}) {
   const { width } = useWindowDimensions();
   const compact = width < COMPACT_MAX_WIDTH;
   const [mounted, setMounted] = useState(model.visible);
@@ -102,21 +109,19 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
   // banner's swipe feel — the content follows the finger, then a past-
   // threshold release throws it off-screen and reveals the row beneath.
   const [imageEditMounted, setImageEditMounted] = useState(false);
-  // Round-corners slider (0–1) floating above the bar; opened from the Edit
-  // sub-panel's Round button. Open/closed is app-owned (model.roundOpen) so a
-  // tap-off dismisses the slider before the panel; only the thumb value is
-  // local, so the live preview round-trip doesn't fight the drag.
-  const [sliderVal, setSliderVal] = useState(0);
-  // Shadow-controls draft — seeded from model.shadow when the controls open,
-  // then locally owned so live previews don't fight the sliders.
+  // Shadow / Border controls each seed a local draft from model.shadow /
+  // model.border when they open, then own the tracked params so live previews
+  // don't fight the sliders (color still comes from the model — it's changed
+  // externally via the full-screen picker).
   const [shadowDraft, setShadowDraft] = useState<ShadowModel | null>(null);
   const prevShadowOpen = useRef(false);
-  // The Drop Shadow bar slides in horizontally over the edit controls and can
-  // be swiped sideways (either way) to dismiss. Mounted through the slide-out
-  // so it animates off-screen before unmounting.
-  const [shadowMounted, setShadowMounted] = useState(false);
-  const shadowX = useRef(new Animated.Value(0)).current;
-  const shadowExitDir = useRef<1 | -1>(1); // which edge it leaves by (a swipe overrides)
+  const [borderDraft, setBorderDraft] = useState<BorderModel | null>(null);
+  const prevBorderOpen = useRef(false);
+  // The Drop Shadow and Border bars each slide in horizontally over the edit
+  // controls and can be swiped sideways to dismiss (shared chrome).
+  const shadowBar = useSlideSwipeBar(!!model.shadowOpen, width, () => model.onShadowOpenChange?.(false));
+  const borderBar = useSlideSwipeBar(!!model.borderOpen, width, () => model.onBorderOpenChange?.(false));
+
   const panX = useRef(new Animated.Value(0)).current;
   // Latest committed-dismiss runner, so the once-created PanResponder always
   // throws by the current window width.
@@ -129,8 +134,8 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
     }).start(({ finished }) => {
       if (finished) {
         setImageEditMounted(false);
-        model.onRoundOpenChange?.(false);
         model.onShadowOpenChange?.(false);
+        model.onBorderOpenChange?.(false);
       }
     });
   };
@@ -156,8 +161,8 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
   useEffect(() => {
     if ((!model.visible || !model.showImageEdit) && imageEditMounted) {
       setImageEditMounted(false);
-      model.onRoundOpenChange?.(false);
       model.onShadowOpenChange?.(false);
+      model.onBorderOpenChange?.(false);
       panX.setValue(0);
     }
     // model.on*OpenChange are stable setters; listing the whole model would
@@ -165,57 +170,20 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showImageEdit, imageEditMounted, panX]);
 
-  // Seed the shadow draft from the current shadow each time the controls open.
+  // Seed the shadow / border drafts from the current effect each time the
+  // controls open.
   useEffect(() => {
     if (model.shadowOpen && !prevShadowOpen.current) {
       setShadowDraft(model.shadow ?? DEFAULT_SHADOW_MODEL);
     }
     prevShadowOpen.current = !!model.shadowOpen;
   }, [model.shadowOpen, model.shadow]);
-
-  // Slide the Drop Shadow bar in from the right on open; on close slide it off
-  // the last-swiped edge (right by default), then unmount, revealing the
-  // image-specific edit controls.
   useEffect(() => {
-    if (model.shadowOpen) {
-      setShadowMounted(true);
-      shadowExitDir.current = 1;
-      shadowX.setValue(width); // enter from the right edge
-      const anim = Animated.timing(shadowX, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true });
-      anim.start();
-      return () => anim.stop();
+    if (model.borderOpen && !prevBorderOpen.current) {
+      setBorderDraft(model.border ?? DEFAULT_BORDER_MODEL);
     }
-    const anim = Animated.timing(shadowX, {
-      toValue: shadowExitDir.current * width,
-      duration: PANEL_ANIM_MS,
-      useNativeDriver: true,
-    });
-    anim.start(({ finished }) => { if (finished) setShadowMounted(false); });
-    return () => anim.stop();
-  }, [model.shadowOpen, shadowX, width]);
-
-  // Swipe the bar sideways past the threshold to dismiss (it then flies off
-  // that edge via the close effect); a short drag springs back. The pad and
-  // sliders claim their own touches, so this only fires on the bar's inert
-  // areas (header, labels, padding).
-  const shadowReleaseRef = useRef<(dx: number) => void>(() => {});
-  shadowReleaseRef.current = (dx) => {
-    const dir = swipeDismissDirection(dx);
-    if (dir !== 0) {
-      shadowExitDir.current = dir;
-      model.onShadowOpenChange?.(false);
-    } else {
-      Animated.spring(shadowX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
-    }
-  };
-  const shadowPan = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
-      onPanResponderMove: (_e, g) => shadowX.setValue(g.dx),
-      onPanResponderRelease: (_e, g) => shadowReleaseRef.current(g.dx),
-      onPanResponderTerminate: () => Animated.spring(shadowX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start(),
-    }),
-  ).current;
+    prevBorderOpen.current = !!model.borderOpen;
+  }, [model.borderOpen, model.border]);
 
   const openImageEdit = () => {
     panX.setValue(width); // start just off the right edge, then slide in
@@ -223,36 +191,19 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
     Animated.timing(panX, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true }).start();
   };
 
-  const toggleRound = () => {
-    const willOpen = !model.roundOpen;
-    // Seed the thumb from the current radius each time it opens.
-    if (willOpen) setSliderVal((model.cornerRadius ?? 0) / MAX_CORNER_RADIUS);
-    model.onRoundOpenChange?.(willOpen);
-  };
-
   const toggleShadow = () => model.onShadowOpenChange?.(!model.shadowOpen);
+  const toggleBorder = () => model.onBorderOpenChange?.(!model.borderOpen);
 
   const runImageAction = (action: ImageEditAction) => {
-    if (action === 'roundCorners') { toggleRound(); return; }
     if (action === 'shadow') { toggleShadow(); return; }
-    // Any other action closes both transient controls.
-    model.onRoundOpenChange?.(false);
+    if (action === 'border') { toggleBorder(); return; }
+    // Any other action closes both transient bars.
     model.onShadowOpenChange?.(false);
+    model.onBorderOpenChange?.(false);
     if (action === 'replace') model.onReplaceImage?.();
     else if (action === 'tint') model.onTintImage?.();
     else if (action === 'crop') model.onCropImage?.();
     else if (action === 'glow') model.onGlowImage?.();
-    else if (action === 'border') model.onBorderImage?.();
-  };
-
-  // Round slider drag → live preview; release → one undo step. Value is 0–1;
-  // the model works in the 0–MAX_CORNER_RADIUS fraction space.
-  const onSliderChange = (v: number) => {
-    setSliderVal(v);
-    model.onCornerRadius?.(v * MAX_CORNER_RADIUS, false);
-  };
-  const onSliderCommit = (v: number) => {
-    model.onCornerRadius?.(v * MAX_CORNER_RADIUS, true);
   };
 
   // Shadow controls → live preview / commit through the model; the draft stays
@@ -266,6 +217,16 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
     model.onShadowOpenChange?.(false);
   };
 
+  // Border controls → live preview / commit through the model; same pattern.
+  const applyBorder = (b: BorderModel, committed: boolean) => {
+    setBorderDraft(b);
+    model.onBorder?.(b, committed);
+  };
+  const removeBorder = () => {
+    model.onBorder?.(null, true);
+    model.onBorderOpenChange?.(false);
+  };
+
   if (!mounted) return null;
 
   const hasGroupActions = !!(model.onGroup || model.onUngroup || model.onJoin || model.onUnion);
@@ -274,24 +235,16 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
   const shadowForBar: ShadowModel = shadowDraft
     ? { ...shadowDraft, color: model.shadow?.color ?? shadowDraft.color }
     : (model.shadow ?? DEFAULT_SHADOW_MODEL);
+  const borderForBar: BorderModel = borderDraft
+    ? { ...borderDraft, color: model.border?.color ?? borderDraft.color }
+    : (model.border ?? DEFAULT_BORDER_MODEL);
 
   return (
     <>
-      {model.roundOpen ? (
-        <View style={styles.sliderWrap} pointerEvents="box-none">
-          <View style={styles.sliderCard}>
-            <View style={styles.sliderHeaderRow}>
-              <Text style={styles.sliderTitle}>Round corners</Text>
-              <MaterialCommunityIcons name="rounded-corner" size={16} color={ICON_COLOR} />
-            </View>
-            <Slider value={sliderVal} onChange={onSliderChange} onCommit={onSliderCommit} />
-          </View>
-        </View>
-      ) : null}
-      {shadowMounted ? (
+      {shadowBar.mounted ? (
         <Animated.View
-          style={[styles.shadowBarWrap, { transform: [{ translateX: shadowX }] }]}
-          {...shadowPan.panHandlers}
+          style={[styles.effectBarWrap, { paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: shadowBar.translateX }] }]}
+          {...shadowBar.panHandlers}
         >
           <ShadowBar
             shadow={shadowForBar}
@@ -300,6 +253,23 @@ export function ObjectPropertiesPanel({ model }: { model: ObjectPropertiesModel 
             onBack={() => model.onShadowOpenChange?.(false)}
             onRemove={removeShadow}
             onPickColor={() => model.onPickShadowColor?.()}
+          />
+        </Animated.View>
+      ) : null}
+      {borderBar.mounted ? (
+        <Animated.View
+          style={[styles.effectBarWrap, { paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: borderBar.translateX }] }]}
+          {...borderBar.panHandlers}
+        >
+          <BorderBar
+            border={borderForBar}
+            cornerRadius={model.cornerRadius ?? 0}
+            onChange={(b) => applyBorder(b, false)}
+            onCommit={(b) => applyBorder(b, true)}
+            onCornerRadius={(r, committed) => model.onCornerRadius?.(r, committed)}
+            onBack={() => model.onBorderOpenChange?.(false)}
+            onRemove={removeBorder}
+            onPickColor={() => model.onPickBorderColor?.()}
           />
         </Animated.View>
       ) : null}
@@ -423,35 +393,9 @@ const styles = StyleSheet.create({
   },
   imageEditButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', gap: 2 },
   imageEditLabel: { color: ICON_COLOR, fontSize: 10, fontWeight: '500' },
-  // Floating round-corners slider, above the bar (which is ~PANEL_HEIGHT tall).
-  sliderWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: PANEL_HEIGHT + 10,
-    alignItems: 'center',
-    zIndex: 201,
-  },
-  sliderCard: {
-    width: '92%',
-    maxWidth: 460,
-    backgroundColor: MODAL_BG,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: PANEL_HAIRLINE,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
-  },
-  sliderHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  sliderTitle: { color: ICON_COLOR, fontSize: 12, fontWeight: '600' },
-  // Drop Shadow bar — full-width, bottom-anchored, slides up over the panel.
-  shadowBarWrap: {
+  // Full-width, bottom-anchored effect bar (Drop Shadow / Border) that slides
+  // in over the panel.
+  effectBarWrap: {
     position: 'absolute',
     left: 0,
     right: 0,

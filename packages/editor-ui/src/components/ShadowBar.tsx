@@ -1,34 +1,24 @@
 import React, { useRef } from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { PanResponder, StyleSheet, View } from 'react-native';
 import type { ShadowModel } from '../adapter';
-import { rgbCss } from '../logic/hsv';
-import { Slider } from './Slider';
+import { ACCENT, BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
 
 // The Drop Shadow editing bar (design "2a"): a full-width dark bar with a
-// header (back · color swatch · trash), an XY offset pad, and Blur / Spread /
+// header (title · color swatch · trash), an XY offset pad, and Blur / Spread /
 // Opacity sliders. Values are the app's world-cell units (see the ranges
-// below, mapped from the design's iOS-point ranges at 16px/cell).
-
-// ── Design tokens ────────────────────────────────────────────────────
-const BAR_BG = '#4B4B4D';
-const HAIRLINE = 'rgba(255,255,255,0.09)';
-const LABEL_DIM = 'rgba(255,255,255,0.55)';
-const LABEL = 'rgba(255,255,255,0.75)';
-const TRASH = 'rgba(255,255,255,0.62)';
-const PAD_FILL = 'rgba(0,0,0,0.26)';
-const PAD_BORDER = 'rgba(255,255,255,0.15)';
-const CROSSHAIR = 'rgba(255,255,255,0.18)';
-const CENTER_DOT = 'rgba(255,255,255,0.40)';
-const TRACK = 'rgba(0,0,0,0.34)';
-const ACCENT = '#0A84FF';
-const SWATCH_BORDER = 'rgba(255,255,255,0.75)';
+// below, mapped from the design's iOS-point ranges at 16px/cell). Header and
+// slider rows come from the shared effect-bar chrome (see effectBar.tsx).
 
 // ── Ranges (world cells; design pt ÷ 16) ─────────────────────────────
 const MAX_OFFSET = 1.5; // ±  (≈ ±24pt)
 const MAX_BLUR = 3.75; // 0…60pt
 const MIN_SPREAD = -0.75; // −12pt
 const MAX_SPREAD = 1.5; // 24pt
+
+const PAD_FILL = 'rgba(0,0,0,0.26)';
+const PAD_BORDER = 'rgba(255,255,255,0.15)';
+const CROSSHAIR = 'rgba(255,255,255,0.18)';
+const CENTER_DOT = 'rgba(255,255,255,0.40)';
 
 const PAD_SIZE = 106;
 const PAD_HANDLE = 26;
@@ -54,6 +44,9 @@ function XYPad({ dx, dy, onChange, onCommit }: {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
+      // Keep the touch once the pad is grabbed so the bar's swipe-to-dismiss
+      // can't steal it mid-drag (see Slider for the same guard).
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => { const [x, y] = fromTouch(e.nativeEvent.locationX, e.nativeEvent.locationY); cbRef.current.onChange(x, y); },
       onPanResponderMove: (e) => { const [x, y] = fromTouch(e.nativeEvent.locationX, e.nativeEvent.locationY); cbRef.current.onChange(x, y); },
       onPanResponderRelease: (e) => { const [x, y] = fromTouch(e.nativeEvent.locationX, e.nativeEvent.locationY); cbRef.current.onCommit(x, y); },
@@ -73,21 +66,6 @@ function XYPad({ dx, dy, onChange, onCommit }: {
   );
 }
 
-function SliderRow({ label, value, apply }: {
-  label: string;
-  value: number;
-  apply: (t: number, committed: boolean) => void;
-}) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <View style={styles.rowSlider}>
-        <Slider value={value} accent={ACCENT} trackColor={TRACK} onChange={(v) => apply(v, false)} onCommit={(v) => apply(v, true)} />
-      </View>
-    </View>
-  );
-}
-
 export function ShadowBar({ shadow, onChange, onCommit, onBack, onRemove, onPickColor }: {
   shadow: ShadowModel;
   onChange: (s: ShadowModel) => void;
@@ -100,23 +78,14 @@ export function ShadowBar({ shadow, onChange, onCommit, onBack, onRemove, onPick
     (committed ? onCommit : onChange)({ ...shadow, ...patch });
   return (
     <View style={styles.bar}>
-      <View style={styles.header}>
-        <Pressable style={styles.back} onPress={onBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to edit options">
-          <Text style={styles.title}>DROP SHADOW</Text>
-        </Pressable>
-        <View style={styles.headerRight}>
-          <Pressable
-            onPress={onPickColor}
-            accessibilityRole="button"
-            accessibilityLabel="Shadow color"
-            style={[styles.swatch, { backgroundColor: rgbCss(shadow.color) }]}
-          />
-          <Pressable onPress={onRemove} hitSlop={10} accessibilityRole="button" accessibilityLabel="Remove shadow">
-            <MaterialCommunityIcons name="trash-can-outline" size={22} color={TRASH} />
-          </Pressable>
-        </View>
-      </View>
-
+      <EffectBarHeader
+        title="DROP SHADOW"
+        color={shadow.color}
+        align="top"
+        onBack={onBack}
+        onRemove={onRemove}
+        onPickColor={onPickColor}
+      />
       <View style={styles.controls}>
         <XYPad
           dx={shadow.dx}
@@ -143,27 +112,12 @@ const styles = StyleSheet.create({
     backgroundColor: BAR_BG,
     borderTopWidth: 1,
     borderTopColor: HAIRLINE,
-    paddingTop: 6,
+    // 6 bar padding + 6 header nudge (the header no longer carries its own
+    // marginTop); the controls' marginTop absorbs the difference so the
+    // overall bar height is unchanged from the tuned design.
+    paddingTop: 12,
     paddingHorizontal: 16,
     paddingBottom: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    // Align to the top so the color swatch's top edge lines up with the top
-    // of the DROP SHADOW label rather than centering the taller swatch.
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    minHeight: 22,
-    // Nudge the header down; the controls' marginTop absorbs the difference so
-    // the overall bar height is unchanged.
-    marginTop: 6,
-  },
-  back: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  title: { color: LABEL_DIM, fontSize: 11, lineHeight: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  swatch: {
-    width: 22, height: 22, borderRadius: 11, borderWidth: 1.8, borderColor: SWATCH_BORDER,
-    shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
   },
   controls: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 4 },
   pad: {
@@ -182,7 +136,4 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 4,
   },
   sliders: { flex: 1 },
-  row: { flexDirection: 'row', alignItems: 'center', height: 32 },
-  rowLabel: { width: 50, color: LABEL, fontSize: 12 },
-  rowSlider: { flex: 1 },
 });

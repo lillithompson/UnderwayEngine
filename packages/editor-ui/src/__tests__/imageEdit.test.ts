@@ -5,9 +5,9 @@ import {
 } from '../logic/imageEdit';
 
 describe('IMAGE_EDIT_OPTIONS', () => {
-  test('lists replace, tint, round, crop, shadow, glow, border in order', () => {
+  test('lists replace, tint, crop, shadow, glow, border in order', () => {
     expect(IMAGE_EDIT_OPTIONS.map((o) => o.action)).toEqual([
-      'replace', 'tint', 'roundCorners', 'crop', 'shadow', 'glow', 'border',
+      'replace', 'tint', 'crop', 'shadow', 'glow', 'border',
     ]);
   });
   test('every option carries a label and a glyph', () => {

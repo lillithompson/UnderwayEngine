@@ -132,7 +132,7 @@ function applyNodeEffects(
   markup: string,
   effects: NodeEffects | undefined,
   nodeId: string,
-  node: { cellX: number; cellY: number; cellWidth: number; cellHeight: number },
+  node: { cellX: number; cellY: number; cellWidth: number; cellHeight: number; cornerRadius?: number },
   u: number,
 ): string {
   if (!effects) return markup;
@@ -143,12 +143,18 @@ function applyNodeEffects(
     out = `<defs>${defs}</defs><g filter="${filterRef}">${out}</g>`;
   }
   if (scaled.border) {
-    out += borderToSvgRect(scaled.border, {
+    // Round the stroke to the node's own corner rounding when it has one
+    // (images carry cornerRadius as a fraction of the shorter side) so the
+    // border hugs the rounded image; otherwise use the border's own radius.
+    const cornerR = node.cornerRadius
+      ? Math.min(0.5, node.cornerRadius) * Math.min(node.cellWidth, node.cellHeight) * u
+      : (scaled.border.radius ?? 0);
+    out += borderToSvgRect({ ...scaled.border, radius: cornerR }, {
       cellX: node.cellX * u,
       cellY: node.cellY * u,
       cellWidth: node.cellWidth * u,
       cellHeight: node.cellHeight * u,
-    });
+    }, u);
   }
   return out;
 }

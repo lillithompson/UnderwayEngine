@@ -34,6 +34,11 @@ export function Slider({ value, onChange, onCommit, accent = DEFAULT_ACCENT, tra
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
+      // Once the thumb is grabbed, keep the touch: the enclosing effect bar's
+      // swipe-to-dismiss PanResponder would otherwise request termination on
+      // the first horizontal move and slide the whole panel away instead of
+      // moving the slider.
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => cbRef.current.onChange(valueFromX(e.nativeEvent.locationX)),
       onPanResponderMove: (e) => cbRef.current.onChange(valueFromX(e.nativeEvent.locationX)),
       onPanResponderRelease: (e) => cbRef.current.onCommit(valueFromX(e.nativeEvent.locationX)),

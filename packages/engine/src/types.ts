@@ -1037,7 +1037,16 @@ export interface ShadowEffect { dx: number; dy: number; blur: number; color: RGB
    *  "spread"). Undefined / 0 = the plain drop shadow. */
   spread?: number }
 export interface GlowEffect { radius: number; color: RGBColor; alpha: number }
-export interface BorderEffect { width: number; color: RGBColor; radius?: number }
+/** Stroke alignment relative to the node's bbox edge. */
+export type BorderPosition = 'inside' | 'center' | 'outside';
+export interface BorderEffect { width: number; color: RGBColor; radius?: number;
+  /** Stroke alignment vs. the bbox edge. Undefined = 'center' (stroke
+   *  straddles the edge). 'inside' sits fully within the bbox, 'outside'
+   *  fully outside. */
+  position?: BorderPosition;
+  /** Dash density 0–10; 0 / undefined = solid. Higher = shorter dashes,
+   *  ending at dots at 10 (see `borderDashPattern`). */
+  dash?: number }
 
 /**
  * Per-node visual effects. Shadows/glows render as a pre-blurred texture
