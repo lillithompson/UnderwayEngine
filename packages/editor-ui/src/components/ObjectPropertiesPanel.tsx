@@ -36,6 +36,11 @@ const DEFAULT_SHADOW_MODEL: ShadowModel = {
 const DEFAULT_BORDER_MODEL: BorderModel = {
   width: 0.375, position: 'center', dash: 0, color: { r: 58, g: 53, b: 50 },
 };
+// Design default framing (Zoom 130%, Margin 14pt, Ratio 1:1, Straighten 0°,
+// Size 46, Spacing 6pt). Lengths in world cells (pt ÷ 16).
+const DEFAULT_FRAMING_MODEL: FramingModel = {
+  mode: 'fill', zoom: 1.3, margin: 0.875, ratio: 'square', angle: 0, tileScale: 0.46, tileGap: 0.375,
+};
 
 function ActionButton({ label, icon, iconColor, onPress, compact }: {
   label: string;
@@ -118,10 +123,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const prevShadowOpen = useRef(false);
   const [borderDraft, setBorderDraft] = useState<BorderModel | null>(null);
   const prevBorderOpen = useRef(false);
-  // The Drop Shadow and Border bars each slide in horizontally over the edit
-  // controls and can be swiped sideways to dismiss (shared chrome).
+  const [cropDraft, setCropDraft] = useState<FramingModel | null>(null);
+  const prevCropOpen = useRef(false);
+  // The Drop Shadow, Border and Crop bars each slide in horizontally over the
+  // edit controls and can be swiped sideways to dismiss (shared chrome).
   const shadowBar = useSlideSwipeBar(!!model.shadowOpen, width, () => model.onShadowOpenChange?.(false));
   const borderBar = useSlideSwipeBar(!!model.borderOpen, width, () => model.onBorderOpenChange?.(false));
+  const cropBar = useSlideSwipeBar(!!model.cropOpen, width, () => model.onCropOpenChange?.(false));
 
   const panX = useRef(new Animated.Value(0)).current;
   // Latest committed-dismiss runner, so the once-created PanResponder always
@@ -137,6 +145,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         setImageEditMounted(false);
         model.onShadowOpenChange?.(false);
         model.onBorderOpenChange?.(false);
+        model.onCropOpenChange?.(false);
       }
     });
   };
