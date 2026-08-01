@@ -20,6 +20,7 @@ import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
 import { paintToSvg, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { layoutText } from './textLayout';
+import { resolveFraming, coverRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
 
 /** Layer set + dimensions returned by a figure loader. Mirrors the relevant
  *  subset of what `loadFileStateLite` provides. */
@@ -237,6 +238,67 @@ function buildTextSVGContent(text: TextObject, u: number): string {
   return `<g transform="${parts.join(' ')}">${inner}</g>`;
 }
 
+/**
+ * Framing-aware inner markup for an image, in the node's local frame space
+ * [0,0,iw,ih] (the caller's `<g transform>` handles translate/rotate/mirror).
+ * `fu` is the resolved framing already scaled to SVG units (margin/tileGap/
+ * offset × U). Fill/Crop draw a cover viewport clipped to the frame; Fit uses
+ * `meet` inside a margin inset; Tile fills a `<pattern>`. `tintAttr` (the tint
+ * filter ref) rides each `<image>`; `cornerR` (SVG units, 0 = square) rounds
+ * the frame clip. Mirrors {@link framedImageStyle} in the DOM preview.
+ */
+function framedImageSVG(
+  fu: ResolvedFraming,
+  dataUri: string,
+  iw: number,
+  ih: number,
+  imageAspect: number,
+  tintAttr: string,
+  cornerR: number,
+  idPrefix: string,
+): string {
+  const round = cornerR > 0;
+  const clipId = `frame_${idPrefix}`;
+  const clipDef = round
+    ? `<defs><clipPath id="${clipId}">` +
+      `<rect x="0" y="0" width="${iw}" height="${ih}" rx="${cornerR}" ry="${cornerR}"/></clipPath></defs>`
+    : '';
+  const clipAttr = round ? ` clip-path="url(#${clipId})"` : '';
+
+  if (fu.mode === 'fit') {
+    const m = Math.min(Math.max(0, fu.margin), Math.min(iw, ih) / 2);
+    const w = Math.max(0, iw - 2 * m);
+    const h = Math.max(0, ih - 2 * m);
+    return clipDef +
+      `<g${clipAttr}><image x="${m}" y="${m}" width="${w}" height="${h}" ` +
+      `href="${dataUri}" preserveAspectRatio="xMidYMid meet"${tintAttr}/></g>`;
+  }
+
+  if (fu.mode === 'tile') {
+    const g = tileGeometry(iw, ih, imageAspect, fu.tileScale, fu.tileGap);
+    const patId = `tilepat_${idPrefix}`;
+    return clipDef +
+      `<defs><pattern id="${patId}" patternUnits="userSpaceOnUse" ` +
+      `x="0" y="0" width="${g.stepX}" height="${g.stepY}">` +
+      `<image x="0" y="0" width="${g.tileW}" height="${g.tileH}" href="${dataUri}" ` +
+      `preserveAspectRatio="xMidYMid slice"${tintAttr}/></pattern></defs>` +
+      `<g${clipAttr}><rect x="0" y="0" width="${iw}" height="${ih}" fill="url(#${patId})"/></g>`;
+  }
+
+  // Fill + Crop: a cover viewport, scaled (zoom / straighten) about the frame
+  // centre and — for Crop — rotated, clipped to the frame.
+  const scale = fu.mode === 'crop' ? straightenCoverScale(fu.angle, iw, ih) : fu.zoom;
+  const r = coverRect(iw, ih, scale, fu.offsetX, fu.offsetY);
+  const image = `<image x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" ` +
+    `href="${dataUri}" preserveAspectRatio="xMidYMid slice"${tintAttr}/>`;
+  const inner = fu.mode === 'crop' && fu.angle !== 0
+    ? `<g transform="rotate(${fu.angle} ${iw / 2} ${ih / 2})">${image}</g>`
+    : image;
+  if (round) return clipDef + `<g${clipAttr}>${inner}</g>`;
+  // Square frame: a nested <svg> viewport clips the overflow to the frame rect.
+  return `<svg x="0" y="0" width="${iw}" height="${ih}" overflow="hidden" viewBox="0 0 ${iw} ${ih}">${inner}</svg>`;
+}
+
 export async function generateCompositionSVGCore(
   input: CompositionSVGInputs,
   cancelled?: () => boolean,
@@ -371,10 +433,28 @@ export async function generateCompositionSVGCore(
         `<rect x="0" y="0" width="${iw}" height="${ih}" rx="${cornerR}" ry="${cornerR}"/></clipPath></defs>`;
       clipAttr = ` clip-path="url(#${clipId})"`;
     }
-    const imgMarkup = tintDefs + clipDefs +
-      `<g transform="${parts.join(' ')}"${opacityAttr}>` +
-      `<image x="0" y="0" width="${iw}" height="${ih}" ` +
-      `href="${dataUri}" preserveAspectRatio="none"${tintAttr}${clipAttr}/></g>`;
+    // Framing (Crop bar) replaces the legacy stretch: Fill/Fit/Crop/Tile lay
+    // the bitmap out inside the frame (see framedImageSVG). Untouched images
+    // keep the exact `preserveAspectRatio="none"` stretch for back-compat.
+    let framedContent: string;
+    if (img.framing) {
+      const rf = resolveFraming(img.framing);
+      const fu: ResolvedFraming = {
+        ...rf,
+        margin: rf.margin * U,
+        tileGap: rf.tileGap * U,
+        offsetX: rf.offsetX * U,
+        offsetY: rf.offsetY * U,
+      };
+      const imageAspect = img.pixelHeight > 0 ? img.pixelWidth / img.pixelHeight : 1;
+      framedContent = framedImageSVG(fu, dataUri, iw, ih, imageAspect, tintAttr, cornerR, img.id);
+    } else {
+      framedContent = clipDefs +
+        `<image x="0" y="0" width="${iw}" height="${ih}" ` +
+        `href="${dataUri}" preserveAspectRatio="none"${tintAttr}${clipAttr}/>`;
+    }
+    const imgMarkup = tintDefs +
+      `<g transform="${parts.join(' ')}"${opacityAttr}>${framedContent}</g>`;
     elementsById.set(img.id, wrapWithMaskClip(
       applyNodeEffects(imgMarkup, img.effects, img.id, img, U),
       maskMap, groups, img,

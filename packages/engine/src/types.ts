@@ -1,3 +1,6 @@
+import type { ImageFraming } from './imageFraming';
+export type { ImageFraming, ImageFramingMode, ImageCropRatio } from './imageFraming';
+
 /** Pixel resolution of every layer texture */
 export const LAYER_PX = 2048;
 
@@ -988,6 +991,9 @@ export interface ImageObject {
    *  rounded clip on the canvas and a `clipPath` rounded rect in SVG export.
    *  Persisted in the composition JSON. */
   cornerRadius?: number;
+  /** How the bitmap fills the frame (bbox) — the "Crop" bar. Undefined = the
+   *  legacy stretch-to-fill (`object-fit: fill`). See {@link ImageFraming}. */
+  framing?: ImageFraming;
   locked?: boolean;
   /** When true, the image is not rendered on the canvas and not
    *  hit-testable. Toggled via the eye icon in the Scene Outline. */
