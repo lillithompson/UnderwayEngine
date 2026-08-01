@@ -240,7 +240,7 @@ describe('generateCompositionSVGCore — node effects', () => {
     }));
     // 32-cell bbox × 256, stroke width 0.5 × 256, radius 1 × 256.
     expect(svg).toContain(
-      `<rect x="0" y="0" width="${32 * U}" height="${32 * U}" rx="${U}" ` +
+      `<rect x="0" y="0" width="${32 * U}" height="${32 * U}" rx="${U}" ry="${U}" ` +
       `fill="none" stroke="#00FF00" stroke-width="${0.5 * U}"/>`,
     );
     // Border alone needs no filter.
