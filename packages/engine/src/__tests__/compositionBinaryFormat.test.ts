@@ -1042,6 +1042,21 @@ describe('compositionBinaryFormat', () => {
       expect((result.meta.groups ?? []).map((g) => g.id).sort()).toEqual(['gp', 'p']);
     });
 
+    test('round-trips the isFrame flag (v30)', () => {
+      const frame = { ...makeGroup('frm', 'Frame'), isFrame: true as const };
+      const plain = makeGroup('plain', 'Plain');
+      const fFrame = makeFigure({ id: 'f1', figureKey: 'k', groupId: 'frm' });
+      const fPlain = makeFigure({ id: 'f2', figureKey: 'k', groupId: 'plain' });
+      const bytes = serializeComposition(
+        makeBundle({ figures: [fFrame, fPlain], groups: [frame, plain] }),
+        [],
+      );
+      const groups = deserializeComposition(bytes).meta.groups ?? [];
+      expect(groups.find((g) => g.id === 'frm')?.isFrame).toBe(true);
+      // Absent flag stays undefined (true/undefined convention, never false).
+      expect(groups.find((g) => g.id === 'plain')?.isFrame).toBeUndefined();
+    });
+
     test('regression: 2objsbug.tile loads with zero scene objects and no orphan groups', () => {
       // This file was authored before the fix: 2 GroupNodes ("Group 1"
       // and "Group 1 copy") with zero figure/svg/image members.  The dev

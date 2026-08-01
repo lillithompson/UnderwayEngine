@@ -63,7 +63,8 @@ import { compSnapStep } from './compositionCellMath';
 //   Per group:
 //     idIdx:        u16 LE     (string table index, group id)
 //     nameIdx:      u16 LE     (string table index, group name)
-//     flags:        u8         (0x01 mirrorH, 0x02 mirrorV, 0x0C rotation 2 bits)
+//     flags:        u8         (0x01 mirrorH, 0x02 mirrorV, 0x0C rotation 2 bits,
+//                               0x10 hasParent, 0x20 hasPreGroupName, 0x40 isFrame v30+)
 //     translateX:   f32 LE
 //     translateY:   f32 LE
 //     scaleX:       f32 LE
@@ -217,7 +218,9 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // tint (rotation-byte bit 0x08) and effects (bit 0x10), payloads after
 // the identity-bbox block. Older files load with all of these undefined
 // and no texts/background.
-const FORMAT_VERSION = 29;
+// v30: GroupNode isFrame (Figma-style frame group) via group-flags bit 0x40.
+// Presence-only â€” no payload bytes. Older files load with isFrame undefined.
+const FORMAT_VERSION = 30;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + 4Ã—float32 = 21
@@ -1991,6 +1994,7 @@ export function serializeComposition(
     gflags |= (ROTATION_TO_BITS[g.rotation] & 0x03) << 2;
     if (g.parentGroupId != null) gflags |= 0x10;
     if (g.preGroupName != null) gflags |= 0x20;
+    if (g.isFrame) gflags |= 0x40;
     out[pos++] = gflags;
     view.setFloat32(pos, g.translateX, true); pos += 4;
     view.setFloat32(pos, g.translateY, true); pos += 4;
@@ -2312,6 +2316,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
         rotation: BITS_TO_ROTATION[(gflags >> 2) & 0x03],
         mirrorH: (gflags & 0x01) !== 0,
         mirrorV: (gflags & 0x02) !== 0,
+        ...(version >= 30 && (gflags & 0x40) !== 0 ? { isFrame: true as const } : null),
       });
     }
   }

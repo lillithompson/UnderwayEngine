@@ -40,9 +40,6 @@ export function TopBar({ model }: { model: TopBarModel }) {
         accessibilityRole={model.onLabelPress ? 'button' : 'text'}
       >
         <Text style={styles.label} numberOfLines={1}>{model.label}</Text>
-        {model.onLabelPress ? (
-          <MaterialCommunityIcons name="chevron-down" size={18} color={HEADER_INK} />
-        ) : null}
       </Pressable>
       <View style={styles.tools}>
         {model.tools.map((tool) => (

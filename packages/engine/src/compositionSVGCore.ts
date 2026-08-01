@@ -371,6 +371,26 @@ export async function generateCompositionSVGCore(
     minCX = uMinCX; minCY = uMinCY; maxCX = uMaxCX; maxCY = uMaxCY;
   }
 
+  // Frame override: when the scene contains Figma-style frames, the export
+  // region is exactly the union of the frames' rects (each frame's active
+  // rect mask bbox) — fixed page dims including empty areas inside the frame —
+  // rather than the tight bounds of the (clipped) content. Content outside the
+  // frame is already excluded by the per-node clip (buildMaskClipDefs +
+  // wrapWithMaskClip), so this only pins the outer viewBox.
+  let fMinCX = Infinity, fMinCY = Infinity, fMaxCX = -Infinity, fMaxCY = -Infinity;
+  for (const g of groups) {
+    if (!g.isFrame) continue;
+    const mask = maskMap.get(g.id);
+    if (!mask) continue;
+    if (mask.cellX < fMinCX) fMinCX = mask.cellX;
+    if (mask.cellY < fMinCY) fMinCY = mask.cellY;
+    if (mask.cellX + mask.cellWidth > fMaxCX) fMaxCX = mask.cellX + mask.cellWidth;
+    if (mask.cellY + mask.cellHeight > fMaxCY) fMaxCY = mask.cellY + mask.cellHeight;
+  }
+  if (fMinCX !== Infinity) {
+    minCX = fMinCX; minCY = fMinCY; maxCX = fMaxCX; maxCY = fMaxCY;
+  }
+
   if (maxCX === minCX) { minCX -= 0.5; maxCX += 0.5; }
   if (maxCY === minCY) { minCY -= 0.5; maxCY += 0.5; }
 

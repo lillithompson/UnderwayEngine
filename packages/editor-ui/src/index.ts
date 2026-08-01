@@ -7,7 +7,7 @@
 
 export * from './adapter';
 export * from './theme';
-export * from './logic/outlineBlocks';
+export * from './logic/outlineTree';
 export * from './logic/dragReorder';
 export * from './logic/rename';
 export * from './logic/toolbarBehavior';

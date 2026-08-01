@@ -193,6 +193,12 @@ export default function WebViewShell({ urlSuffix }: WebViewShellProps = {}) {
             scrollEnabled={false}
             allowsBackForwardNavigationGestures={false}
             keyboardDisplayRequiresUserAction={false}
+            // Suppress iOS's native keyboard accessory bar (the ‹ › + Done
+            // toolbar WKWebView adds above the keyboard for form fields). The
+            // in-WebView editor supplies its own Done control on the text-edit
+            // bar, so the accessory view is redundant chrome — and it steals
+            // vertical space the editor already lifts its input above.
+            hideKeyboardAccessoryView
             injectedJavaScriptBeforeContentLoaded={`
               window.__FACET_NATIVE_SHELL = true;
               window.__onNativeMessage = function(msg) {

@@ -31,6 +31,10 @@ export interface OutlineObject {
    *  distinguish cases the kind alone can't (e.g. Facet's open vs closed
    *  svg path → vector-polyline / vector-polygon). */
   icon?: string;
+  /** Container chrome (e.g. a frame's internal clip-rect boundary): kept in
+   *  the model so it stays in `sceneOrder` on reorder/reparent commits, but
+   *  NOT shown as its own outline row. */
+  chrome?: boolean;
 }
 
 /** Everything the Scene Outline needs, and nothing app-specific. */
@@ -39,10 +43,19 @@ export interface SceneOutlineModel {
   /** Back→front paint order (engine `sceneOrder` semantics). */
   sceneOrder: readonly string[];
   selectedIds: ReadonlySet<string>;
+  /** Optional display name per group id (e.g. a Figma-style frame's name).
+   *  When a collapsed group block's id has an entry here, the row shows that
+   *  name instead of the generic "Group (N)". Absent → generic label. */
+  groupNames?: ReadonlyMap<string, string>;
 
   onSelect(id: string): void;
   /** Commit a drag-reorder. Receives the full rewritten back→front order. */
   onReorder(newSceneOrder: string[]): void;
+  /** Commit a drag-REPARENT: `nodeId` (leaf or group) moves under
+   *  `newParentGroupId` (null = top level); `newSceneOrder` is the recomputed
+   *  back→front leaf order. Optional — when unset the outline reorders only
+   *  (no reparenting). */
+  onReparent?(nodeId: string, newParentGroupId: string | null, newSceneOrder: string[]): void;
   onRename(id: string, newName: string): void;
   onToggleLock(id: string): void;
   onToggleHidden(id: string): void;
