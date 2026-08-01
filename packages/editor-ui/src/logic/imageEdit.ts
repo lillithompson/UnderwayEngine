@@ -13,7 +13,6 @@ export type ImageEditAction =
   | 'tint'
   | 'crop'
   | 'shadow'
-  | 'glow'
   | 'border';
 
 export interface ImageEditOption {
@@ -29,7 +28,6 @@ export const IMAGE_EDIT_OPTIONS: readonly ImageEditOption[] = [
   { action: 'tint', label: 'Tint', icon: 'palette-outline' },
   { action: 'crop', label: 'Crop', icon: 'crop' },
   { action: 'shadow', label: 'Shadow', icon: 'box-shadow' },
-  { action: 'glow', label: 'Glow', icon: 'flare' },
   { action: 'border', label: 'Border', icon: 'border-outside' },
 ];
 

@@ -203,7 +203,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     if (action === 'replace') model.onReplaceImage?.();
     else if (action === 'tint') model.onTintImage?.();
     else if (action === 'crop') model.onCropImage?.();
-    else if (action === 'glow') model.onGlowImage?.();
   };
 
   // Shadow controls → live preview / commit through the model; the draft stays

@@ -133,7 +133,6 @@ export interface ObjectPropertiesModel {
   onReplaceImage?(): void;
   onTintImage?(): void;
   onCropImage?(): void;
-  onGlowImage?(): void;
   /** Whether the Shadow controls are shown. App-owned so a tap-off dismisses
    *  them before the panel (same as the Border bar). */
   shadowOpen?: boolean;
