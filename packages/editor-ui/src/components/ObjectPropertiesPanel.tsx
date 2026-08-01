@@ -173,6 +173,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
       setImageEditMounted(false);
       model.onShadowOpenChange?.(false);
       model.onBorderOpenChange?.(false);
+      model.onCropOpenChange?.(false);
       panX.setValue(0);
     }
     // model.on*OpenChange are stable setters; listing the whole model would
@@ -194,6 +195,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     }
     prevBorderOpen.current = !!model.borderOpen;
   }, [model.borderOpen, model.border]);
+  useEffect(() => {
+    if (model.cropOpen && !prevCropOpen.current) {
+      setCropDraft(model.framing ?? DEFAULT_FRAMING_MODEL);
+    }
+    prevCropOpen.current = !!model.cropOpen;
+  }, [model.cropOpen, model.framing]);
 
   const openImageEdit = () => {
     panX.setValue(width); // start just off the right edge, then slide in
@@ -203,16 +210,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
 
   const toggleShadow = () => model.onShadowOpenChange?.(!model.shadowOpen);
   const toggleBorder = () => model.onBorderOpenChange?.(!model.borderOpen);
+  const toggleCrop = () => model.onCropOpenChange?.(!model.cropOpen);
 
   const runImageAction = (action: ImageEditAction) => {
     if (action === 'shadow') { toggleShadow(); return; }
     if (action === 'border') { toggleBorder(); return; }
-    // Any other action closes both transient bars.
+    if (action === 'crop') { toggleCrop(); return; }
+    // Any other action closes the transient bars.
     model.onShadowOpenChange?.(false);
     model.onBorderOpenChange?.(false);
+    model.onCropOpenChange?.(false);
     if (action === 'replace') model.onReplaceImage?.();
     else if (action === 'tint') model.onTintImage?.();
-    else if (action === 'crop') model.onCropImage?.();
   };
 
   // Shadow controls → live preview / commit through the model; the draft stays
@@ -236,6 +245,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     model.onBorderOpenChange?.(false);
   };
 
+  // Crop controls → live preview / commit; the draft owns the tracked params
+  // (there's no external color). Reset re-seeds the draft to the defaults so
+  // the sliders/segments snap back with the bar staying open.
+  const applyFraming = (f: FramingModel, committed: boolean) => {
+    setCropDraft(f);
+    model.onFraming?.(f, committed);
+  };
+  const resetFraming = () => {
+    model.onResetFraming?.();
+    setCropDraft(DEFAULT_FRAMING_MODEL);
+  };
+
   if (!mounted) return null;
 
   const hasGroupActions = !!(model.onGroup || model.onUngroup || model.onJoin || model.onUnion);
@@ -247,6 +268,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const borderForBar: BorderModel = borderDraft
     ? { ...borderDraft, color: model.border?.color ?? borderDraft.color }
     : (model.border ?? DEFAULT_BORDER_MODEL);
+  const framingForBar: FramingModel = cropDraft ?? model.framing ?? DEFAULT_FRAMING_MODEL;
 
   return (
     <>
@@ -279,6 +301,20 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
             onBack={() => model.onBorderOpenChange?.(false)}
             onRemove={removeBorder}
             onPickColor={() => model.onPickBorderColor?.()}
+          />
+        </Animated.View>
+      ) : null}
+      {cropBar.mounted ? (
+        <Animated.View
+          style={[styles.effectBarWrap, { paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: cropBar.translateX }] }]}
+          {...cropBar.panHandlers}
+        >
+          <CropBar
+            framing={framingForBar}
+            onChange={(f) => applyFraming(f, false)}
+            onCommit={(f) => applyFraming(f, true)}
+            onBack={() => model.onCropOpenChange?.(false)}
+            onReset={resetFraming}
           />
         </Animated.View>
       ) : null}
