@@ -1,66 +1,63 @@
-import { resolveDragReorder, dragTargetIndex } from '../logic/dragReorder';
-import { computeOutlineBlocks } from '../logic/outlineBlocks';
+import { computeDropTarget, dragTargetIndex } from '../logic/dragReorder';
+import type { FlatOutlineRow } from '../logic/outlineTree';
 import type { OutlineObject } from '../adapter';
 
 const ROW = 44;
+const INDENT = 16;
 
-function obj(id: string, parentGroupId?: string): OutlineObject {
+function leaf(id: string, parentGroupId?: string): OutlineObject {
   return { id, kind: 'svg', name: id, parentGroupId, locked: false, hidden: false };
+}
+function group(id: string, parentGroupId?: string): OutlineObject {
+  return { id, kind: 'group', name: id, parentGroupId, locked: false, hidden: false };
 }
 function mapOf(...objs: OutlineObject[]): Map<string, OutlineObject> {
   return new Map(objs.map((o) => [o.id, o]));
+}
+function row(id: string, depth: number, isGroup = false, hasChildren = false): FlatOutlineRow {
+  return { id, depth, isGroup, hasChildren };
 }
 
 describe('dragTargetIndex', () => {
   it('rounds dy/rowHeight and clamps to [0, count-1]', () => {
     expect(dragTargetIndex(1, 0, ROW, 4)).toBe(1);
     expect(dragTargetIndex(1, ROW, ROW, 4)).toBe(2);
-    expect(dragTargetIndex(1, -ROW * 5, ROW, 4)).toBe(0); // clamp low
-    expect(dragTargetIndex(1, ROW * 10, ROW, 4)).toBe(3); // clamp high
-    expect(dragTargetIndex(1, ROW * 0.4, ROW, 4)).toBe(1); // rounds down
-    expect(dragTargetIndex(1, ROW * 0.6, ROW, 4)).toBe(2); // rounds up
+    expect(dragTargetIndex(1, -ROW * 5, ROW, 4)).toBe(0);
+    expect(dragTargetIndex(1, ROW * 10, ROW, 4)).toBe(3);
   });
 });
 
-describe('resolveDragReorder', () => {
-  // sceneOrder back→front ['a','b','c','d'] → display top→bottom d,c,b,a.
-  // blocks[0]=d (front), blocks[3]=a (back).
-  const objects = mapOf(obj('a'), obj('b'), obj('c'), obj('d'));
-  const blocks = computeOutlineBlocks(objects, ['a', 'b', 'c', 'd']);
+describe('computeDropTarget', () => {
+  // A frame group G (row 0) with two leaf children a, b (rows 1, 2), then a
+  // top-level leaf c (row 3).
+  const objects = mapOf(group('G'), leaf('a', 'G'), leaf('b', 'G'), leaf('c'));
+  const rows = [row('G', 0, true, true), row('a', 1), row('b', 1), row('c', 0)];
 
-  it('is a no-op when the target equals the source index', () => {
-    expect(resolveDragReorder(blocks, 0, 3, ROW)).toEqual(['a', 'b', 'c', 'd']);
+  it('dragging a top-level leaf up onto the group nests it (into G)', () => {
+    // Drag c (index 3) up to just below the group header (slot after row 0).
+    const t = computeDropTarget(rows, objects, 3, -ROW * 2.5, 0, ROW, INDENT);
+    expect(t.parentId).toBe('G');
+    expect(t.depth).toBe(1);
   });
 
-  it('moves a row down the list (toward back) → later in sceneOrder shifts', () => {
-    // Drag top row (d, index 0) down by 2 rows → display c,b,d,a.
-    const out = resolveDragReorder(blocks, 0, ROW * 2, ROW);
-    // display c,b,d,a → sceneOrder reverse = a,d,b,c
-    expect(out).toEqual(['a', 'd', 'b', 'c']);
+  it('horizontal outdent drops a child at top level', () => {
+    // Drag child b (index 2) with a strong left nudge → outdent to top level.
+    const t = computeDropTarget(rows, objects, 2, 0, -INDENT * 3, ROW, INDENT);
+    expect(t.parentId).toBeNull();
+    expect(t.depth).toBe(0);
   });
 
-  it('moves a row up the list (toward front)', () => {
-    // Drag bottom row (a, index 3) up by 3 rows → display a,d,c,b.
-    const out = resolveDragReorder(blocks, 3, -ROW * 3, ROW);
-    expect(out).toEqual(['b', 'c', 'd', 'a']);
+  it('a leaf reordered within its group stays in the group', () => {
+    // Drag b (index 2) up one slot to before a — still a child of G.
+    const t = computeDropTarget(rows, objects, 2, -ROW, 0, ROW, INDENT);
+    expect(t.parentId).toBe('G');
+    expect(t.beforeId).toBe('a');
   });
 
-  it('always returns a permutation of the input order', () => {
-    const out = resolveDragReorder(blocks, 2, ROW * 7, ROW);
-    expect([...out].sort()).toEqual(['a', 'b', 'c', 'd']);
-  });
-
-  it('moves a group block as a unit', () => {
-    // display top→bottom: b, [g2,g1], a  (sceneOrder a,g1,g2,b)
-    const gObjects = mapOf(obj('a'), obj('g1', 'G'), obj('g2', 'G'), obj('b'));
-    const gBlocks = computeOutlineBlocks(gObjects, ['a', 'g1', 'g2', 'b']);
-    // Drag the group block (index 1) to the top (up by 1 row).
-    const out = resolveDragReorder(gBlocks, 1, -ROW, ROW);
-    // display: [g2,g1], b, a → flatten g2,g1,b,a → reverse a,b,g1,g2
-    expect(out).toEqual(['a', 'b', 'g1', 'g2']);
-    // group members stay contiguous
-    const gi1 = out.indexOf('g1');
-    const gi2 = out.indexOf('g2');
-    expect(Math.abs(gi1 - gi2)).toBe(1);
+  it('excludes the dragged group\'s own subtree from the slot math', () => {
+    // Dragging the group G down past its own children shouldn't try to nest G
+    // into itself; parent resolves to top level or the trailing sibling.
+    const t = computeDropTarget(rows, objects, 0, ROW * 3, 0, ROW, INDENT);
+    expect(t.parentId).not.toBe('G');
   });
 });

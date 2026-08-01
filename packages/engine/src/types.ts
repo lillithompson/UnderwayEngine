@@ -668,6 +668,12 @@ export interface GroupNode {
   rotation: 0 | 90 | 180 | 270;
   mirrorH: boolean;
   mirrorV: boolean;
+  /** When true, this group is a Figma-style frame: its back-most rect
+   *  `isMask` member clips the group's children (rendering + hit testing)
+   *  and the group's rect defines the exported region exactly (fixed page
+   *  dims), rather than the tight bounds of visible content. Stored as
+   *  true/undefined, never false (mirrors the `isMask` convention). */
+  isFrame?: boolean;
 }
 
 export interface CompositionEntry {
@@ -1320,7 +1326,7 @@ export type CompUndoOp =
       newResolutionX: number; newResolutionY: number;
       oldCellWidth?: number; oldCellHeight?: number;
       newCellWidth?: number; newCellHeight?: number }
-  | { op: 'groupFigures'; figureIds: string[]; groupId: string; groupName: string; oldNames: (string | undefined)[]; childGroupIds?: string[] }
+  | { op: 'groupFigures'; figureIds: string[]; groupId: string; groupName: string; oldNames: (string | undefined)[]; childGroupIds?: string[]; isFrame?: boolean }
   | { op: 'ungroupFigures'; figureIds: string[]; groupId: string; groupName: string; childGroupIds?: string[];
       /** Saved transform so undo can restore the group at its pre-ungroup state
        *  instead of recreating it at identity. */
@@ -1331,6 +1337,16 @@ export type CompUndoOp =
       savedParentGroupId?: string;
       /** Direct svg members that were masks before ungroup, so undo restores isMask. */
       maskedSvgIds?: string[] }
+  /** Reparent a node (leaf or group) into `newParentGroupId` (undefined =
+   *  top level) and set the new back→front `newSceneOrder`. Forward changes
+   *  membership + reconciles the moved subtree's local coords from its
+   *  (unchanged) world coords, so nothing jumps. Undo restores the exact prior
+   *  records + `oldSceneOrder`. `prev*` snapshot every record the forward pass
+   *  may touch (the moved node, and for a group its whole subtree). */
+  | { op: 'reparentNode'; nodeId: string; newParentGroupId?: string;
+      newSceneOrder: string[]; oldSceneOrder: string[];
+      prevFigures?: CompositionFigure[]; prevSVGs?: SVGObject[];
+      prevImages?: ImageObject[]; prevTexts?: TextObject[]; prevGroups?: GroupNode[] }
   | { op: 'renameGroup'; groupId: string; oldName: string; newName: string }
   /** Drop a GroupNode whose member set went empty. Emitted alongside
    *  removeObject ops by `buildRemoveObjectOps` so undo can restore the

@@ -47,6 +47,9 @@ export const TEXT_DIM = '#6b7280'; // Facet TEXT_DIM
 // ── Scene outline (Facet SceneOutlinePanel) — values lifted verbatim ──
 export const ROW_HEIGHT = 44; // Facet ROW_HEIGHT
 export const PANEL_WIDTH = 260; // Facet PANEL_WIDTH (outline slide-in width)
+export const OUTLINE_INDENT = 16; // px of left indent per nesting depth
+export const OUTLINE_CHEVRON_EXPANDED = 'chevron-down'; // group with visible children
+export const OUTLINE_CHEVRON_COLLAPSED = 'chevron-right'; // group with hidden children
 export const DRAG_THRESHOLD = 5; // px before a row press becomes a drag
 export const DOUBLE_TAP_MS = 300; // second tap within this frames the object
 export const OUTLINE_BG = '#3f3f3f'; // Facet BG_RAISED_ALT (panel surface)

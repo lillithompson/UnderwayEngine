@@ -403,6 +403,7 @@ describe('exportCompositionSVG — lines', () => {
     expect(svg).toMatch(/viewBox="0 0 8192 8192"/);
   });
 
+
   it('returns null for an empty composition (no figures, no svgObjects)', async () => {
     storage['comp_meta_empty'] = JSON.stringify({
       name: 'Empty',

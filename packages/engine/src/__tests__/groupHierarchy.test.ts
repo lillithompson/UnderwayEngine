@@ -152,6 +152,19 @@ describe('groupFigures op creates a GroupNode and seeds locals', () => {
     expect(out.figures[1]).toMatchObject({ localCellX: 3, localCellY: 0, localCellWidth: 2, localCellHeight: 2 });
   });
 
+  test('isFrame flag creates a frame group; omitted leaves it undefined', () => {
+    const figs = [makeFigure({ id: 'a', cellX: 0, cellY: 0, name: 'A' }), makeFigure({ id: 'b', cellX: 3, cellY: 0, name: 'B' })];
+    const framed = applyCompOps(makeState(figs), [{
+      op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'gf', groupName: 'Frame', oldNames: ['A', 'B'], isFrame: true,
+    }]);
+    expect(framed.groups[0].isFrame).toBe(true);
+
+    const plain = applyCompOps(makeState(figs), [{
+      op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'gp', groupName: 'Group', oldNames: ['A', 'B'],
+    }]);
+    expect(plain.groups[0].isFrame).toBeUndefined();
+  });
+
   test('revert removes the GroupNode and clears locals', () => {
     const figs = [
       makeFigure({ id: 'a', cellX: 0, cellY: 0, name: 'A' }),

@@ -11,16 +11,19 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { SceneOutlineModel } from '../adapter';
-import { computeOutlineBlocks, OutlineBlock } from '../logic/outlineBlocks';
-import { dragTargetIndex, resolveDragReorder } from '../logic/dragReorder';
+import { computeOutlineTree, flattenTree, reparentToSceneOrder, FlatOutlineRow } from '../logic/outlineTree';
+import { computeDropTarget } from '../logic/dragReorder';
 import {
   DOUBLE_TAP_MS,
   OUTLINE_BG,
   OUTLINE_BORDER,
+  OUTLINE_CHEVRON_COLLAPSED,
+  OUTLINE_CHEVRON_EXPANDED,
   OUTLINE_CLOSE,
   OUTLINE_HAIRLINE,
   OUTLINE_ICON,
   OUTLINE_ICON_ACTIVE,
+  OUTLINE_INDENT,
   OUTLINE_ROW_DRAGGING,
   OUTLINE_ROW_SELECTED,
   OUTLINE_TAB_ACTIVE,
@@ -35,14 +38,14 @@ import {
 } from '../theme';
 import { RenameModal } from './RenameModal';
 
-// Facet's SceneOutlinePanel, outline-only: a left slide-in list of scene
-// objects in front→back (top→bottom) order. Rows drag to reorder (the
-// dragged row follows the finger while the rows it passes shift by one row;
-// the order commits only on release — 90 fps drag contract), long-press to
-// rename, double-tap to frame, with lock/hide toggles. Row chrome (icons,
-// colors, drag-shift math) matches Facet exactly; the library/palette half
-// of Facet's panel is intentionally dropped and everything is wired through
-// the SceneOutlineModel adapter (no engine dependency).
+// The SceneOutlinePanel: a left slide-in Figma-style TREE of scene objects in
+// front→back (top→bottom) order. Containers (groups/frames) are their own rows
+// with their contents shown indented below; a chevron expands/collapses each
+// container (expanded by default). Rows drag to reorder AND reparent (drag
+// right to nest into the group above, left to outdent); the change commits only
+// on release (90 fps drag contract). Long-press renames, double-tap frames,
+// with per-row lock/hide toggles. Everything is wired through the
+// SceneOutlineModel adapter (no engine dependency).
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 const icon = (glyph: string) => glyph as MCIName;
@@ -76,35 +79,56 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
 
   const iconFor = model.iconForKind ?? defaultIconForKind;
 
-  // Local back→front order for immediate drag feedback; synced from the
-  // committed sceneOrder whenever it changes externally.
-  const [localOrder, setLocalOrder] = useState<string[]>([...model.sceneOrder]);
-  const localOrderRef = useRef(localOrder);
-  useEffect(() => {
-    setLocalOrder((prev) => {
-      if (prev.length === model.sceneOrder.length && prev.every((id, i) => id === model.sceneOrder[i])) {
-        return prev;
-      }
-      return [...model.sceneOrder];
+  // Expand/collapse: the set of COLLAPSED group ids. Default empty ⇒ everything
+  // expanded (the point is to reveal contents). Panel-local, id-keyed like
+  // `renaming`, so it survives the shell rebuilding the model each render.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const toggleCollapse = useCallback((id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
     });
-  }, [model.sceneOrder]);
-  useEffect(() => { localOrderRef.current = localOrder; }, [localOrder]);
+  }, []);
 
-  const blocks = useMemo(
-    () => computeOutlineBlocks(model.objects, localOrder),
-    [model.objects, localOrder],
+  const tree = useMemo(
+    () => computeOutlineTree(model.objects, model.sceneOrder),
+    [model.objects, model.sceneOrder],
   );
+  const rows = useMemo(() => flattenTree(tree, collapsed), [tree, collapsed]);
 
-  // ── Drag-to-reorder ────────────────────────────────────────────────
+  // ── Drag-to-reparent ───────────────────────────────────────────────
   const [dragRowIndex, setDragRowIndex] = useState<number | null>(null);
   const [dragDy, setDragDy] = useState(0);
-  const dragBlocksRef = useRef<OutlineBlock[]>([]);
+  const [dragDx, setDragDx] = useState(0);
   const dragDyRef = useRef(0);
+  const dragDxRef = useRef(0);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const treeRef = useRef(tree);
+  treeRef.current = tree;
   const respondersRef = useRef<Map<number, ReturnType<typeof PanResponder.create>>>(new Map());
 
-  const dragTargetRow = dragRowIndex === null
-    ? null
-    : dragTargetIndex(dragRowIndex, dragDy, ROW_HEIGHT, blocks.length);
+  // While dragging, the dragged row (+ its visible subtree) follows the finger
+  // and every OTHER row shifts to close the vacated slot and open the drop slot
+  // — so there's no blank gap and release doesn't jump. `newIndexOf` maps each
+  // row's original index to its live reordered index; the delta drives the
+  // shift. `dropTarget`/`dropTop` drive the depth-aware drop indicator.
+  const dragLayout = (() => {
+    if (dragRowIndex === null) return null;
+    const depth = rows[dragRowIndex]?.depth ?? 0;
+    let end = dragRowIndex + 1;
+    while (end < rows.length && rows[end].depth > depth) end++; // include subtree
+    const blockLen = end - dragRowIndex;
+    const dropTop = Math.max(0, Math.min(rows.length - blockLen, Math.round(dragRowIndex + dragDy / ROW_HEIGHT)));
+    const order = rows.map((_, i) => i);
+    const block = order.splice(dragRowIndex, blockLen);
+    order.splice(Math.min(dropTop, order.length), 0, ...block);
+    const newIndexOf = new Map<number, number>();
+    order.forEach((oi, k) => newIndexOf.set(oi, k));
+    const dropTarget = computeDropTarget(rows, model.objects, dragRowIndex, dragDy, dragDx, ROW_HEIGHT, OUTLINE_INDENT);
+    return { blockStart: dragRowIndex, blockEnd: end, newIndexOf, dropTop, depth: dropTarget.depth };
+  })();
 
   const createDragResponder = useCallback(
     (index: number) =>
@@ -112,30 +136,45 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: () => {
-          dragBlocksRef.current = computeOutlineBlocks(modelRef.current.objects, localOrderRef.current);
           dragDyRef.current = 0;
+          dragDxRef.current = 0;
           setDragRowIndex(index);
           setDragDy(0);
+          setDragDx(0);
         },
         onPanResponderMove: (_e, g) => {
           dragDyRef.current = g.dy;
+          dragDxRef.current = g.dx;
           setDragDy(g.dy);
+          setDragDx(g.dx);
         },
         onPanResponderRelease: () => {
-          const next = resolveDragReorder(dragBlocksRef.current, index, dragDyRef.current, ROW_HEIGHT);
-          const prev = localOrderRef.current;
-          const changed = next.length !== prev.length || next.some((id, i) => id !== prev[i]);
-          if (changed) {
-            setLocalOrder(next);
-            modelRef.current.onReorder(next);
+          const m = modelRef.current;
+          const liveRows = rowsRef.current;
+          const dragged = liveRows[index];
+          if (dragged) {
+            const target = computeDropTarget(
+              liveRows, m.objects, index, dragDyRef.current, dragDxRef.current, ROW_HEIGHT, OUTLINE_INDENT,
+            );
+            const next = reparentToSceneOrder(treeRef.current, dragged.id, target.parentId, target.beforeId);
+            const curParent = m.objects.get(dragged.id)?.parentGroupId ?? null;
+            const orderChanged = next.length !== m.sceneOrder.length
+              || next.some((id, i) => id !== m.sceneOrder[i]);
+            if (target.parentId !== curParent && m.onReparent) {
+              m.onReparent(dragged.id, target.parentId, next);
+            } else if (orderChanged) {
+              m.onReorder(next);
+            }
           }
           setDragRowIndex(null);
           setDragDy(0);
+          setDragDx(0);
           respondersRef.current.clear();
         },
         onPanResponderTerminate: () => {
           setDragRowIndex(null);
           setDragDy(0);
+          setDragDx(0);
           respondersRef.current.clear();
         },
       }),
@@ -148,7 +187,7 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
     return cache.get(index)!;
   }, [createDragResponder]);
 
-  useEffect(() => { respondersRef.current.clear(); }, [blocks.length]);
+  useEffect(() => { respondersRef.current.clear(); }, [rows.length]);
 
   const lastTapRef = useRef<{ id: string; time: number } | null>(null);
 
@@ -175,104 +214,125 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
           contentContainerStyle={styles.listContent}
           scrollEnabled={dragRowIndex === null}
         >
-          {blocks.length === 0 ? (
+          {rows.length === 0 ? (
             <Text style={styles.emptyText}>No objects placed</Text>
           ) : (
-            blocks.map((block, index) => {
-              const anchorId = block.ids[0];
-              const anchor = model.objects.get(anchorId);
-              const isGroup = !!block.groupId;
-              const isDragging = dragRowIndex === index;
+            <>
+              {rows.map((row, index) => {
+                const obj = model.objects.get(row.id);
+                const inBlock = !!dragLayout && index >= dragLayout.blockStart && index < dragLayout.blockEnd;
+                // Dragged block follows the finger; other rows shift to fill/open.
+                const shiftY = dragLayout
+                  ? (inBlock ? dragDy : (dragLayout.newIndexOf.get(index)! - index) * ROW_HEIGHT)
+                  : 0;
+                const webShift = Platform.OS === 'web' && dragLayout && !inBlock
+                  ? ({ transition: 'transform 150ms ease' } as unknown as object)
+                  : undefined;
+                const selected = model.selectedIds.has(row.id);
+                const locked = !!obj?.locked;
+                const hidden = !!obj?.hidden;
+                const glyph = row.isGroup
+                  ? iconFor('group')
+                  : obj?.icon ?? iconFor(obj?.kind ?? 'svg');
+                const displayName = row.isGroup
+                  ? obj?.name ?? model.groupNames?.get(row.id) ?? 'Group'
+                  : obj?.name ?? 'Object';
 
-              // Facet drag-shift: the dragged row follows the finger; rows it
-              // passes shift up/down by one row height.
-              let rowTranslateY = 0;
-              if (isDragging) {
-                rowTranslateY = dragDy;
-              } else if (dragRowIndex !== null && dragTargetRow !== null && dragTargetRow !== dragRowIndex) {
-                if (dragRowIndex < dragTargetRow && index > dragRowIndex && index <= dragTargetRow) {
-                  rowTranslateY = -ROW_HEIGHT;
-                } else if (dragRowIndex > dragTargetRow && index >= dragTargetRow && index < dragRowIndex) {
-                  rowTranslateY = ROW_HEIGHT;
-                }
-              }
+                const handlePress = () => {
+                  model.onSelect(row.id);
+                  const now = Date.now();
+                  const last = lastTapRef.current;
+                  if (last && last.id === row.id && now - last.time < DOUBLE_TAP_MS) {
+                    lastTapRef.current = null;
+                    model.onFrame(row.id);
+                  } else {
+                    lastTapRef.current = { id: row.id, time: now };
+                  }
+                };
 
-              const selected = block.ids.some((id) => model.selectedIds.has(id));
-              const locked = block.ids.some((id) => model.objects.get(id)?.locked);
-              const hidden = block.ids.every((id) => model.objects.get(id)?.hidden);
-              const glyph = isGroup
-                ? iconFor('group')
-                : anchor?.icon ?? iconFor(anchor?.kind ?? 'svg');
-              const displayName = isGroup ? `Group (${block.ids.length})` : anchor?.name ?? 'Object';
-
-              const handlePress = () => {
-                model.onSelect(anchorId);
-                const now = Date.now();
-                const last = lastTapRef.current;
-                if (last && last.id === anchorId && now - last.time < DOUBLE_TAP_MS) {
-                  lastTapRef.current = null;
-                  model.onFrame(anchorId);
-                } else {
-                  lastTapRef.current = { id: anchorId, time: now };
-                }
-              };
-
-              const webShift = Platform.OS === 'web' && !isDragging && dragRowIndex !== null
-                ? ({ transition: 'transform 150ms ease' } as unknown as object)
-                : undefined;
-
-              return (
-                <Animated.View
-                  key={block.groupId ?? anchorId}
-                  style={[
-                    styles.row,
-                    selected && styles.rowSelected,
-                    isDragging && styles.rowDragging,
-                    { transform: [{ translateY: rowTranslateY }], zIndex: isDragging ? 10 : 0 },
-                    webShift,
-                  ]}
-                >
-                  <View style={styles.dragHandle} {...getResponder(index).panHandlers}>
-                    <MaterialCommunityIcons name={icon(glyph)} size={18} color={OUTLINE_ICON} />
-                  </View>
-                  <Pressable
-                    style={styles.rowContent}
-                    onPress={handlePress}
-                    onLongPress={locked ? undefined : () => setRenaming({ id: anchorId, name: displayName })}
-                    delayLongPress={400}
+                return (
+                  <Animated.View
+                    key={row.id}
+                    style={[
+                      styles.row,
+                      selected && styles.rowSelected,
+                      inBlock && styles.rowDragging,
+                      shiftY !== 0 || inBlock ? { transform: [{ translateY: shiftY }] } : null,
+                      inBlock ? { zIndex: 10, opacity: 0.95 } : null,
+                      webShift,
+                    ]}
                   >
-                    <Text
-                      style={[styles.rowText, selected && styles.rowTextSelected]}
-                      numberOfLines={1}
-                    >
-                      {displayName}
-                    </Text>
+                    {/* Indent + chevron: groups toggle collapse; leaves get a
+                        chevron-width spacer so names align. */}
+                    <View style={{ width: row.depth * OUTLINE_INDENT }} />
+                    {row.isGroup && row.hasChildren ? (
+                      <Pressable
+                        style={styles.chevron}
+                        onPress={() => toggleCollapse(row.id)}
+                        accessibilityLabel={collapsed.has(row.id) ? 'Expand' : 'Collapse'}
+                      >
+                        <MaterialCommunityIcons
+                          name={icon(collapsed.has(row.id) ? OUTLINE_CHEVRON_COLLAPSED : OUTLINE_CHEVRON_EXPANDED)}
+                          size={16}
+                          color={OUTLINE_ICON}
+                        />
+                      </Pressable>
+                    ) : (
+                      <View style={styles.chevron} />
+                    )}
+                    <View style={styles.dragHandle} {...getResponder(index).panHandlers}>
+                      <MaterialCommunityIcons name={icon(glyph)} size={18} color={OUTLINE_ICON} />
+                    </View>
                     <Pressable
-                      style={styles.iconButton}
-                      onPress={() => model.onToggleHidden(anchorId)}
-                      accessibilityLabel={hidden ? 'Show' : 'Hide'}
+                      style={styles.rowContent}
+                      onPress={handlePress}
+                      onLongPress={locked ? undefined : () => setRenaming({ id: row.id, name: displayName })}
+                      delayLongPress={400}
                     >
-                      <MaterialCommunityIcons
-                        name={icon(hidden ? 'eye-off-outline' : 'eye-outline')}
-                        size={14}
-                        color={hidden ? OUTLINE_ICON_ACTIVE : OUTLINE_ICON}
-                      />
+                      <Text
+                        style={[styles.rowText, selected && styles.rowTextSelected]}
+                        numberOfLines={1}
+                      >
+                        {displayName}
+                      </Text>
+                      <Pressable
+                        style={styles.iconButton}
+                        onPress={() => model.onToggleHidden(row.id)}
+                        accessibilityLabel={hidden ? 'Show' : 'Hide'}
+                      >
+                        <MaterialCommunityIcons
+                          name={icon(hidden ? 'eye-off-outline' : 'eye-outline')}
+                          size={14}
+                          color={hidden ? OUTLINE_ICON_ACTIVE : OUTLINE_ICON}
+                        />
+                      </Pressable>
+                      <Pressable
+                        style={styles.iconButton}
+                        onPress={() => model.onToggleLock(row.id)}
+                        accessibilityLabel={locked ? 'Unlock' : 'Lock'}
+                      >
+                        <MaterialCommunityIcons
+                          name={icon(locked ? 'lock' : 'lock-open-outline')}
+                          size={14}
+                          color={locked ? OUTLINE_ICON_ACTIVE : OUTLINE_ICON}
+                        />
+                      </Pressable>
                     </Pressable>
-                    <Pressable
-                      style={styles.iconButton}
-                      onPress={() => model.onToggleLock(anchorId)}
-                      accessibilityLabel={locked ? 'Unlock' : 'Lock'}
-                    >
-                      <MaterialCommunityIcons
-                        name={icon(locked ? 'lock' : 'lock-open-outline')}
-                        size={14}
-                        color={locked ? OUTLINE_ICON_ACTIVE : OUTLINE_ICON}
-                      />
-                    </Pressable>
-                  </Pressable>
-                </Animated.View>
-              );
-            })
+                  </Animated.View>
+                );
+              })}
+              {/* Drop indicator: a line at the opened slot, indented to the
+                  resolved drop depth (Figma-style parenting affordance). */}
+              {dragLayout ? (
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.dropIndicator,
+                    { top: dragLayout.dropTop * ROW_HEIGHT, left: 8 + dragLayout.depth * OUTLINE_INDENT },
+                  ]}
+                />
+              ) : null}
+            </>
           )}
         </ScrollView>
       </Animated.View>
@@ -319,8 +379,17 @@ const styles = StyleSheet.create({
   tabTextActive: { color: OUTLINE_TAB_TEXT_ACTIVE },
   closeButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   list: { flex: 1 },
-  listContent: { paddingBottom: 20 },
+  listContent: { paddingBottom: 20, position: 'relative' },
   emptyText: { color: OUTLINE_TEXT_DIM, fontSize: 13, textAlign: 'center', marginTop: 20 },
+  chevron: { width: 20, height: ROW_HEIGHT, alignItems: 'center', justifyContent: 'center' },
+  dropIndicator: {
+    position: 'absolute',
+    right: 12,
+    height: 2,
+    backgroundColor: OUTLINE_TAB_ACTIVE,
+    borderRadius: 1,
+    zIndex: 20,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

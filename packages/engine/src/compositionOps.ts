@@ -152,17 +152,28 @@ export interface GroupLockToggle {
  * and ensures an unlock on a partially-locked group propagates to every
  * child rather than re-locking the unlocked ones.
  */
+/**
+ * Resolve a lock/hide-toggle anchor to the member ids that toggle together.
+ * The anchor may be a GROUP id (→ all descendant leaves) or a leaf id (→ its
+ * whole root group when grouped, else just itself). Null when the anchor
+ * resolves to nothing.
+ */
+function resolveGroupToggleIds(state: CompositionState, anchorId: string): string[] | null {
+  if (state.groups.some((g) => g.id === anchorId)) {
+    return allDescendantMemberIds(state, anchorId);
+  }
+  const anchor = findItem(state, anchorId);
+  if (!anchor) return null;
+  const gid = anchor.item.groupId;
+  return gid ? allDescendantMemberIds(state, findRootGroupId(state.groups, gid)) : [anchorId];
+}
+
 export function computeGroupLockToggle(
   state: CompositionState,
   anchorId: string,
 ): GroupLockToggle | null {
-  const anchor = findItem(state, anchorId);
-  if (!anchor) return null;
-  const gid = anchor.item.groupId;
-  const ids = gid
-    ? allDescendantMemberIds(state, findRootGroupId(state.groups, gid))
-    : [anchorId];
-  if (ids.length === 0) return null;
+  const ids = resolveGroupToggleIds(state, anchorId);
+  if (ids === null || ids.length === 0) return null;
   const newLocked = !ids.some((id) => isItemLocked(state, id));
   const undoOps: CompUndoEntry = ids.map((id) => ({
     op: 'lockObject',
@@ -189,13 +200,8 @@ export function computeGroupHiddenToggle(
   state: CompositionState,
   anchorId: string,
 ): GroupHiddenToggle | null {
-  const anchor = findItem(state, anchorId);
-  if (!anchor) return null;
-  const gid = anchor.item.groupId;
-  const ids = gid
-    ? allDescendantMemberIds(state, findRootGroupId(state.groups, gid))
-    : [anchorId];
-  if (ids.length === 0) return null;
+  const ids = resolveGroupToggleIds(state, anchorId);
+  if (ids === null || ids.length === 0) return null;
   const newHidden = !ids.every((id) => isItemHidden(state, id));
   const undoOps: CompUndoEntry = ids.map((id) => ({
     op: 'setObjectHidden',
@@ -2634,6 +2640,41 @@ export function reconcileGroupLocals(state: CompositionState): CompositionState 
 }
 
 /**
+ * Set a leaf node's group membership for a reparent, preserving its WORLD
+ * coords/orientation. Into a group (`groupId` set): only stamps `groupId` — the
+ * caller reconciles `local*` from world. To top level (`groupId` undefined):
+ * clears `groupId` + all group-relative local caches (world fields, which the
+ * loose node renders from directly, are untouched). No-op if `id` isn't a leaf.
+ */
+function setLeafGroupId(
+  state: CompositionState,
+  id: string,
+  groupId: string | undefined,
+): CompositionState {
+  const clearFig = {
+    groupId: undefined, localCellX: undefined, localCellY: undefined,
+    localCellWidth: undefined, localCellHeight: undefined,
+    localTileWidthL0: undefined, localTileHeightL0: undefined,
+    localTileOffsetXL0: undefined, localTileOffsetYL0: undefined,
+    localRotation: undefined, localMirrorH: undefined, localMirrorV: undefined,
+    localQuads: undefined,
+  } as const;
+  const clearBbox = {
+    groupId: undefined, localCellX: undefined, localCellY: undefined,
+    localCellWidth: undefined, localCellHeight: undefined,
+  } as const;
+  const clearSvg = { ...clearBbox, localSegments: undefined, localSubpaths: undefined } as const;
+  const toTop = groupId === undefined;
+  return {
+    ...state,
+    figures: state.figures.map((f) => (f.id !== id ? f : toTop ? { ...f, ...clearFig } : { ...f, groupId })),
+    svgObjects: state.svgObjects.map((s) => (s.id !== id ? s : toTop ? { ...s, ...clearSvg } : { ...s, groupId })),
+    images: (state.images ?? []).map((i) => (i.id !== id ? i : toTop ? { ...i, ...clearBbox } : { ...i, groupId })),
+    texts: (state.texts ?? []).map((t) => (t.id !== id ? t : toTop ? { ...t, ...clearBbox } : { ...t, groupId })),
+  };
+}
+
+/**
  * Like `reconcileGroupLocals`, but only recomputes locals for items whose
  * `groupId` is in `targetGroupIds`.  Pass `null` to reconcile all groups.
  * Used after detaching child groups during ungroup to avoid perturbing
@@ -3863,7 +3904,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       if (!existing) {
         groups = [
           ...groups,
-          { id: op.groupId, name: op.groupName, translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },
+          { id: op.groupId, name: op.groupName, translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false, ...(op.isFrame ? { isFrame: true as const } : null) },
         ];
       }
       // Re-cluster members in sceneOrder so the new group is contiguous.
@@ -3983,6 +4024,32 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         for (const d of descendantGroupIds(groups, cid)) affectedGroupIds.add(d);
       }
       return reconcileGroupLocalsForGroups(result, affectedGroupIds, ungroupNode);
+    }
+    case 'reparentNode': {
+      const isGroup = state.groups.some((g) => g.id === op.nodeId);
+      const newParent = op.newParentGroupId;
+      let next: CompositionState;
+      if (isGroup) {
+        // Move a whole group subtree: repoint its parentGroupId.
+        const groups = state.groups.map((g) =>
+          g.id === op.nodeId ? { ...g, parentGroupId: newParent } : g,
+        );
+        next = { ...state, groups };
+        // Reconcile the moved group + all its descendants against the new chain.
+        const affected = new Set<string>([op.nodeId, ...descendantGroupIds(groups, op.nodeId)]);
+        next = reconcileGroupLocalsForGroups(next, affected);
+      } else if (newParent) {
+        // Leaf into a group: set groupId, then reconcile that group's members
+        // so the moved leaf's local coords match the new chain (world kept).
+        next = setLeafGroupId(state, op.nodeId, newParent);
+        next = reconcileGroupLocalsForGroups(next, new Set([newParent]));
+      } else {
+        // Leaf out to top level: clear membership + local coords.
+        next = setLeafGroupId(state, op.nodeId, undefined);
+      }
+      // Apply the caller's contiguous order, then reflow as a safety net.
+      next = applySceneOrder(next, [...op.newSceneOrder]);
+      return reflowSceneOrderForGroups(next);
     }
     case 'renameGroup': {
       const groups = state.groups.map(g =>
@@ -4491,6 +4558,24 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         for (const d of descendantGroupIds(regrouped.groups, cid)) affected.add(d);
       }
       return restoreMasks(reconcileGroupLocalsForGroups(regrouped, affected));
+    }
+    case 'reparentNode': {
+      // Restore the exact prior records (membership + local caches) and order.
+      // The snapshots carry correct world coords, so no re-materialization.
+      const byId = <T extends { id: string }>(arr: readonly T[], prev: readonly T[] | undefined): T[] => {
+        if (!prev || prev.length === 0) return arr as T[];
+        const m = new Map(prev.map((p) => [p.id, p]));
+        return arr.map((x) => m.get(x.id) ?? x);
+      };
+      return {
+        ...state,
+        figures: byId(state.figures, op.prevFigures),
+        svgObjects: byId(state.svgObjects, op.prevSVGs),
+        images: byId(state.images ?? [], op.prevImages),
+        texts: byId(state.texts ?? [], op.prevTexts),
+        groups: byId(state.groups, op.prevGroups),
+        sceneOrder: [...op.oldSceneOrder],
+      };
     }
     case 'renameGroup':
       return applyOp(state, { op: 'renameGroup', groupId: op.groupId, oldName: op.newName, newName: op.oldName });
