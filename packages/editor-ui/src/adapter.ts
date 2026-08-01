@@ -117,6 +117,31 @@ export interface BorderModel {
   color: RGBLike;
 }
 
+/** How an image's bitmap fills its frame (the Crop bar). Mirrors the engine's
+ *  ImageFraming without importing it (package stays engine-agnostic). */
+export type ImageFramingMode = 'fill' | 'fit' | 'crop' | 'tile';
+export type ImageCropRatio = 'free' | 'square' | 'fourFive' | 'sixteenNine';
+
+/** Editable image framing, in the app's world-cell units where lengths apply.
+ *  The bar maps its pt/percent slider ranges onto these fields; the app maps
+ *  them to the engine's ImageFraming. Per-mode values are remembered together
+ *  so switching Mode back restores them. */
+export interface FramingModel {
+  mode: ImageFramingMode;
+  /** Fill zoom: cover-relative scale, 1 (100%) … 3 (300%). */
+  zoom: number;
+  /** Fit letterbox inset between artwork and frame, in world cells. */
+  margin: number;
+  /** Crop aspect ratio. */
+  ratio: ImageCropRatio;
+  /** Crop straighten angle in degrees, −45 … 45. */
+  angle: number;
+  /** Tile relative size, 0 … 1. */
+  tileScale: number;
+  /** Tile gap between tiles, in world cells. */
+  tileGap: number;
+}
+
 export interface ObjectPropertiesModel {
   visible: boolean;
   mode?: 'single' | 'multi' | 'group';
@@ -132,7 +157,6 @@ export interface ObjectPropertiesModel {
    *  is optional so apps can land the UI ahead of the edits themselves. */
   onReplaceImage?(): void;
   onTintImage?(): void;
-  onCropImage?(): void;
   /** Whether the Shadow controls are shown. App-owned so a tap-off dismisses
    *  them before the panel (same as the Border bar). */
   shadowOpen?: boolean;
@@ -160,6 +184,19 @@ export interface ObjectPropertiesModel {
   onBorder?(border: BorderModel | null, committed: boolean): void;
   /** Open the full-screen color picker for the border color. */
   onPickBorderColor?(): void;
+  /** Whether the Crop / framing controls are shown. App-owned so a tap-off
+   *  dismisses them before the panel (same as the Shadow / Border bars). */
+  cropOpen?: boolean;
+  onCropOpenChange?(open: boolean): void;
+  /** The selected image's current framing (defaults supplied by the app when
+   *  none is set yet), seeding the Crop controls. */
+  framing?: FramingModel;
+  /** Framing callback: fires live while dragging (`committed=false`) and once
+   *  on release (`committed=true`, one undo step). */
+  onFraming?(framing: FramingModel, committed: boolean): void;
+  /** Reset framing to its defaults + original mode (the Crop bar's trash). One
+   *  undo step; the bar stays open. */
+  onResetFraming?(): void;
   /** Selected image's current corner rounding, a fraction (0–0.5) of the
    *  shorter side — seeds the Border panel's Radius slider. */
   cornerRadius?: number;

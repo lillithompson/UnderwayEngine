@@ -28,18 +28,22 @@ const SEG_ACTIVE = 'rgba(255,255,255,0.22)';
 const SEG_TEXT = 'rgba(255,255,255,0.6)';
 
 /** Bar header: a back-Pressable (title, with an optional chevron) on the
- *  left, and a color swatch + trash on the right. */
-export function EffectBarHeader({ title, color, chevron, align = 'center', onBack, onRemove, onPickColor }: {
+ *  left, and — when a color is supplied — a color swatch, then the trash, on
+ *  the right. The Crop bar omits the swatch (no color). */
+export function EffectBarHeader({ title, color, chevron, align = 'center', removeLabel, onBack, onRemove, onPickColor }: {
   title: string;
-  color: RGBLike;
-  /** Show a leading chevron before the title (Border does; Shadow doesn't). */
+  /** Swatch color; omit (with onPickColor) for a bar without a color control. */
+  color?: RGBLike;
+  /** Show a leading chevron before the title (Border/Crop do; Shadow doesn't). */
   chevron?: boolean;
   /** 'top' aligns the swatch's top with the title's top (Shadow's tweak);
    *  'center' vertically centers the cluster (Border's default). */
   align?: 'top' | 'center';
+  /** Accessibility label for the trash (defaults to `Remove <title>`). */
+  removeLabel?: string;
   onBack: () => void;
   onRemove: () => void;
-  onPickColor: () => void;
+  onPickColor?: () => void;
 }) {
   return (
     <View style={[styles.header, { alignItems: align === 'top' ? 'flex-start' : 'center' }]}>
@@ -48,18 +52,26 @@ export function EffectBarHeader({ title, color, chevron, align = 'center', onBac
         <Text style={styles.title}>{title}</Text>
       </Pressable>
       <View style={styles.headerRight}>
-        <Pressable
-          onPress={onPickColor}
-          accessibilityRole="button"
-          accessibilityLabel={`${title} color`}
-          style={[styles.swatch, { backgroundColor: rgbCss(color) }]}
-        />
-        <Pressable onPress={onRemove} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Remove ${title.toLowerCase()}`}>
+        {color && onPickColor ? (
+          <Pressable
+            onPress={onPickColor}
+            accessibilityRole="button"
+            accessibilityLabel={`${title} color`}
+            style={[styles.swatch, { backgroundColor: rgbCss(color) }]}
+          />
+        ) : null}
+        <Pressable onPress={onRemove} hitSlop={10} accessibilityRole="button" accessibilityLabel={removeLabel ?? `Remove ${title.toLowerCase()}`}>
           <MaterialCommunityIcons name={'trash-can-outline' as MCIName} size={22} color={TRASH} />
         </Pressable>
       </View>
     </View>
   );
+}
+
+/** A dim hint line under a control, indented to the control column (label
+ *  column + gap = 60pt). Used by the Crop bar's Fill / Fit modes. */
+export function Hint({ children }: { children: React.ReactNode }) {
+  return <Text style={styles.hint}>{children}</Text>;
 }
 
 /** One slider row: a 50pt label column + a 0–1 slider filling the rest.
