@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { BorderModel, ObjectPropertiesModel, ShadowModel } from '../adapter';
+import type { BorderModel, FramingModel, ObjectPropertiesModel, ShadowModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
+import { CropBar } from './CropBar';
 import { BAR_BG } from './effectBar';
 import { useSlideSwipeBar } from './useSlideSwipeBar';
 import {
