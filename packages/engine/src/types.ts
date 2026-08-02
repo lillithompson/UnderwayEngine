@@ -1390,7 +1390,10 @@ export type CompUndoOp =
       savedMirrorH?: boolean; savedMirrorV?: boolean;
       savedParentGroupId?: string;
       /** Direct svg members that were masks before ungroup, so undo restores isMask. */
-      maskedSvgIds?: string[] }
+      maskedSvgIds?: string[];
+      /** Whether the ungrouped group was a Figma-style frame, so undo restores
+       *  the `isFrame` flag (the regroup path defaults to a plain group). */
+      savedIsFrame?: boolean }
   /** Reparent a node (leaf or group) into `newParentGroupId` (undefined =
    *  top level) and set the new back→front `newSceneOrder`. Forward changes
    *  membership + reconciles the moved subtree's local coords from its

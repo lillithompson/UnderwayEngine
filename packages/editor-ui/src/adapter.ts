@@ -201,6 +201,17 @@ export interface ObjectPropertiesModel {
    *  slides the Text bar (font / weight / size / character / line / align) in
    *  over the panel. Sits beside the Edit button (which edits the content). */
   showTextStyle?: boolean;
+  /** Selection is a Figma-style frame: the panel's second row shows the frame
+   *  options (background / shadow / border / ungroup), with Shadow / Border
+   *  reusing the image effect bars (frame submenu carousel = shadow, border).
+   *  Mutually exclusive with the image / text type-options. */
+  showFrameOptions?: boolean;
+  /** The frame's current background color (its boundary rect fill), shown as a
+   *  circular swatch on the Background button. */
+  frameBackgroundColor?: RGBLike;
+  /** Open the full-screen color picker for the frame background (the same
+   *  picker the toolbar color tool uses). */
+  onPickFrameBackground?(): void;
   locked: boolean;
   onEdit(): void;
   /** Image-edit sub-panel actions (surfaced only when showImageEdit). Each

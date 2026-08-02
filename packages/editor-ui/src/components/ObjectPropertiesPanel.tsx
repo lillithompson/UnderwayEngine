@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { BorderModel, FramingModel, ObjectPropertiesModel, ShadowModel, TextStyleModel } from '../adapter';
+import type { BorderModel, FramingModel, ObjectPropertiesModel, RGBLike, ShadowModel, TextStyleModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
+import { rgbCss } from '../logic/hsv';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
 import { CropBar } from './CropBar';
@@ -77,16 +78,20 @@ type SubmenuKey = 'crop' | 'shadow' | 'border' | 'text';
 // One grid cell: an icon over a short caption, weighted (flex) so every button
 // shares the same column width whichever set is showing. `caption` is the
 // visible label; `label` is the (often longer) accessibility name.
-function GridButton({ label, caption, icon, iconColor, onPress, compact, iconOnly }: {
+function GridButton({ label, caption, icon, iconColor, swatchColor, onPress, compact, iconOnly }: {
   label: string;
   caption?: string;
   icon: string;
   iconColor?: string;
+  /** When set, the button renders a circular color swatch (of this color) in
+   *  place of the icon — used by the frame Background button. */
+  swatchColor?: RGBLike;
   onPress?: () => void;
   compact: boolean;
   /** Render just the icon (no caption) — used by the swap arrow. */
   iconOnly?: boolean;
 }) {
+  const glyphSize = compact ? 24 : 28;
   return (
     <Pressable
       accessibilityRole="button"
@@ -94,7 +99,11 @@ function GridButton({ label, caption, icon, iconColor, onPress, compact, iconOnl
       onPress={onPress}
       style={styles.gridButton}
     >
-      <MaterialCommunityIcons name={icon as MCIName} size={compact ? 24 : 28} color={iconColor ?? ICON_COLOR} />
+      {swatchColor ? (
+        <View style={[styles.swatch, { width: glyphSize, height: glyphSize, borderRadius: glyphSize / 2, backgroundColor: rgbCss(swatchColor) }]} />
+      ) : (
+        <MaterialCommunityIcons name={icon as MCIName} size={glyphSize} color={iconColor ?? ICON_COLOR} />
+      )}
       {iconOnly ? null : <Text style={styles.gridLabel} numberOfLines={1}>{caption ?? label}</Text>}
     </Pressable>
   );
@@ -174,7 +183,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
 
   // Fall back to the common actions whenever the selection has no type options,
   // so a stale swap doesn't leave an empty row.
-  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions;
   useEffect(() => {
     if (!hasTypeOptions && showTypeRow) setShowTypeRow(false);
   }, [hasTypeOptions, showTypeRow]);
@@ -202,6 +211,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const submenuSlide = OBJECT_MENU_HEIGHT + safeBottom;
   const submenuOrder: SubmenuKey[] =
     model.showImageEdit ? ['crop', 'shadow', 'border']
+    : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['text']
     : [];
   const activeSub: SubmenuKey | null =
@@ -314,19 +324,23 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     }),
   ).current;
 
-  // Fold the image effect bars away the moment the selection is no longer an
-  // editable image (or the whole panel hides) so none lingers over the next
-  // object's actions.
+  // Fold the effect bars away the moment the selection can no longer use them
+  // (or the whole panel hides) so none lingers over the next object's actions.
+  // Frames reuse the Shadow / Border bars (but never Crop), so keep those open
+  // while a frame is selected.
   useEffect(() => {
-    if (!model.visible || !model.showImageEdit) {
+    const canEffect = model.showImageEdit || model.showFrameOptions;
+    if (!model.visible || !canEffect) {
       model.onShadowOpenChange?.(false);
       model.onBorderOpenChange?.(false);
+    }
+    if (!model.visible || !model.showImageEdit) {
       model.onCropOpenChange?.(false);
     }
     // model.on*OpenChange are stable setters; listing the whole model would
     // re-run this every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showImageEdit]);
+  }, [model.visible, model.showImageEdit, model.showFrameOptions]);
 
   // Seed the shadow / border drafts from the current effect each time the
   // controls open.
@@ -458,7 +472,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     <GridButton key="delete" label="Delete" caption="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
   ];
   if (model.onGroup) row1.push(<GridButton key="group" label="Group" caption="Group" icon="group" onPress={model.onGroup} compact={compact} />);
-  if (model.onUngroup) row1.push(<GridButton key="ungroup" label="Ungroup" caption="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
+  // Frames surface Ungroup in their own type-options row (not the common row),
+  // so skip it here when the frame options are showing.
+  if (model.onUngroup && !model.showFrameOptions) row1.push(<GridButton key="ungroup" label="Ungroup" caption="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
   if (model.onJoin) row1.push(<GridButton key="join" label="Join" caption="Join" icon="vector-combine" onPress={model.onJoin} compact={compact} />);
   if (model.onUnion) row1.push(<GridButton key="union" label="Union" caption="Union" icon="vector-union" onPress={model.onUnion} compact={compact} />);
 
@@ -469,6 +485,26 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     typeOptions = IMAGE_EDIT_OPTIONS.map((opt) => (
       <GridButton key={opt.action} label={opt.label} icon={opt.icon} onPress={() => runImageAction(opt.action)} compact={compact} />
     ));
+  } else if (model.showFrameOptions) {
+    // Frame options: Background (circular color swatch) · Shadow · Border ·
+    // Ungroup. Shadow / Border reuse the image effect bars (the frame submenu
+    // carousel). Background opens the shared full-screen color picker.
+    typeOptions = [
+      <GridButton
+        key="background"
+        label="Background color"
+        caption="Fill"
+        icon="palette"
+        swatchColor={model.frameBackgroundColor}
+        onPress={model.onPickFrameBackground}
+        compact={compact}
+      />,
+      <GridButton key="shadow" label="Shadow" caption="Shadow" icon="box-shadow" onPress={toggleShadow} compact={compact} />,
+      <GridButton key="border" label="Border" caption="Border" icon="border-outside" onPress={toggleBorder} compact={compact} />,
+    ];
+    if (model.onUngroup) {
+      typeOptions.push(<GridButton key="ungroup" label="Ungroup" caption="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
+    }
   } else if (model.showEdit || model.showTextStyle) {
     typeOptions = [];
     if (model.showEdit) typeOptions.push(<GridButton key="edit" label="Edit" caption="Edit" icon="pencil-outline" onPress={model.onEdit} compact={compact} />);
@@ -650,6 +686,9 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   gridButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  // Circular color swatch (frame Background button), a hairline ring so a
+  // near-background fill still reads as a control.
+  swatch: { borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.55)' },
   gridSpacer: { flex: 1 },
   gridLabel: { color: ICON_COLOR, fontSize: 10, fontWeight: '500' },
   // Full-width, bottom-anchored effect bar (Drop Shadow / Border) that slides

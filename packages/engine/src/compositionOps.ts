@@ -832,6 +832,9 @@ export function buildDuplicateOps(
         groupName,
         oldNames: newGroupOldNames.get(newGroupId)!,
         ...(children.length > 0 ? { childGroupIds: children } : null),
+        // Preserve Figma-style frame-ness so a duplicated frame stays a frame
+        // (clips + fixed export region), not a plain group.
+        ...(origGroup?.isFrame ? { isFrame: true as const } : null),
       });
       emitted.add(newGroupId);
       progress = true;
@@ -4584,6 +4587,7 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
           mirrorH: op.savedMirrorH!,
           mirrorV: op.savedMirrorV!,
           parentGroupId: op.savedParentGroupId,
+          ...(op.savedIsFrame ? { isFrame: true as const } : null),
         };
         base = { ...state, groups: [...state.groups, restoredGroup] };
       }
@@ -4598,6 +4602,7 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
           return state.svgObjects.find(s => s.id === id)?.name;
         }),
         childGroupIds: op.childGroupIds,
+        ...(op.savedIsFrame ? { isFrame: true } : null),
       });
       // Apply restored the group; re-set isMask on members that were masks
       // before the original ungroup cleared the flag (see apply handler).
