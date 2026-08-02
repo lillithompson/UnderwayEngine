@@ -281,6 +281,43 @@ describe('generateCompositionSVGCore — node effects', () => {
   });
 });
 
+describe('generateCompositionSVGCore — image effects rotate with the bitmap', () => {
+  const imageBlobs = { blob1: new Uint8Array([137, 80, 78, 71]) };
+
+  it("a rotated image's border rides inside the transform group (local frame)", async () => {
+    const svg = (await generateCompositionSVGCore(makeInputs({
+      images: [makeImage({
+        cellX: 2, cellY: 2, cellWidth: 8, cellHeight: 8, angleDeg: 30,
+        effects: { border: { width: 0.5, color: { r: 0, g: 255, b: 0 } } },
+      })],
+      imageBlobs,
+    })))!;
+    // Translate to origin, then rotate about the bbox center (4 cells × 256).
+    expect(svg).toContain(`transform="translate(${2 * U}, ${2 * U}) rotate(30 ${4 * U} ${4 * U})"`);
+    // The border rect is emitted in the LOCAL frame (x/y = 0) so the enclosing
+    // transform group rotates it. Before the fix it sat at the world bbox
+    // (x = 2 × 256 = 512), unrotated.
+    expect(svg).toMatch(/<rect x="0" y="0"[^>]*stroke="#00FF00"/);
+    expect(svg).not.toMatch(new RegExp(`<rect x="${2 * U}"[^>]*stroke="#00FF00"`));
+  });
+
+  it("a rotated image's shadow filter nests inside the rotation (offset turns too)", async () => {
+    const svg = (await generateCompositionSVGCore(makeInputs({
+      images: [makeImage({
+        cellX: 2, cellY: 2, cellWidth: 8, cellHeight: 8, angleDeg: 30,
+        effects: { shadow: { dx: 0.5, dy: 0, blur: 0.3, color: { r: 0, g: 0, b: 0 }, alpha: 0.5 } },
+      })],
+      imageBlobs,
+    })))!;
+    const rotIdx = svg.indexOf('rotate(30');
+    const filterRefIdx = svg.indexOf('filter="url(#fx_img_a)"');
+    expect(rotIdx).toBeGreaterThanOrEqual(0);
+    // The filtered group is nested within the rotation transform, so the
+    // shadow offset is cast in the rotated user space rather than world space.
+    expect(filterRefIdx).toBeGreaterThan(rotIdx);
+  });
+});
+
 describe('generateCompositionSVGCore — image tint', () => {
   const imageBlobs = { blob1: new Uint8Array([137, 80, 78, 71]) };
 

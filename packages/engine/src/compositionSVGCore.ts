@@ -124,10 +124,12 @@ function scaleEffectsToSvgUnits(effects: NodeEffects, u: number): NodeEffects {
 
 /**
  * Wrap node markup with its NodeEffects: shadow/glow become a `<filter>`
- * def referenced by a wrapping `<g>`; a border becomes a stroked rect
- * drawn OVER the content, axis-aligned at the node's stored bbox —
- * matching the compositor's border pass (which strokes the world bbox,
- * not the rotated content). Def ids are prefixed with the node id so
+ * def referenced by a wrapping `<g>`; a border becomes a stroked rect drawn
+ * OVER the content at the `node` bbox passed in. The caller picks that frame:
+ * svg/text pass their world bbox (effects sit in world space, then any node
+ * rotation wraps the whole result); images pass a LOCAL frame [0,0,iw,ih] and
+ * wrap this output in their transform group, so the filter offset and border
+ * rotate/mirror with the bitmap. Def ids are prefixed with the node id so
  * multiple effected nodes coexist in one document.
  */
 function applyNodeEffects(
@@ -481,12 +483,22 @@ export async function generateCompositionSVGCore(
         `<image x="0" y="0" width="${iw}" height="${ih}" ` +
         `href="${dataUri}" preserveAspectRatio="none"${tintAttr}${clipAttr}/>`;
     }
-    const imgMarkup = tintDefs +
-      `<g transform="${parts.join(' ')}"${opacityAttr}>${framedContent}</g>`;
-    elementsById.set(img.id, wrapWithMaskClip(
-      applyNodeEffects(imgMarkup, img.effects, img.id, img, U),
-      maskMap, groups, img,
-    ));
+    // Node effects (shadow/glow filter + border) are applied in the image's
+    // LOCAL frame [0,0,iw,ih] and then wrapped by the transform group below,
+    // so they rotate/mirror with the bitmap — matching the editor preview and
+    // the svg-object path (whose effects also sit inside the rotation). The
+    // filter therefore operates in the rotated user space (offset turns with
+    // the image) and the border rect rides along instead of staying axis-
+    // aligned. Opacity stays on the image content so the border/shadow aren't
+    // dimmed with it.
+    const localContent = opacityAttr ? `<g${opacityAttr}>${framedContent}</g>` : framedContent;
+    const effected = applyNodeEffects(
+      localContent, img.effects, img.id,
+      { cellX: 0, cellY: 0, cellWidth: img.cellWidth, cellHeight: img.cellHeight, cornerRadius: img.cornerRadius },
+      U,
+    );
+    const imgMarkup = tintDefs + `<g transform="${parts.join(' ')}">${effected}</g>`;
+    elementsById.set(img.id, wrapWithMaskClip(imgMarkup, maskMap, groups, img));
   }
 
   for (const fig of figures) {
