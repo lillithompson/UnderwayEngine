@@ -181,12 +181,22 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     }),
   ).current;
 
-  // Fall back to the common actions whenever the selection has no type options,
-  // so a stale swap doesn't leave an empty row.
   const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions;
+  // Signature of the current selection's type-option set. It changes when the
+  // panel first appears for a selection or the selected object's type changes
+  // (image → frame → text …), and empties when the panel hides.
+  const typeSig = model.visible
+    ? `${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}`
+    : '';
+  const prevTypeSig = useRef('');
   useEffect(() => {
-    if (!hasTypeOptions && showTypeRow) setShowTypeRow(false);
-  }, [hasTypeOptions, showTypeRow]);
+    if (typeSig === prevTypeSig.current) return;
+    prevTypeSig.current = typeSig;
+    // On each new selection, land on the type-specific options first so they're
+    // front-and-centre; fall back to the common actions when the selection has
+    // none (also keeps a stale swap from leaving an empty row).
+    setShowTypeRow(hasTypeOptions);
+  }, [typeSig, hasTypeOptions]);
 
   // Shadow / Border controls each seed a local draft from model.shadow /
   // model.border when they open, then own the tracked params so live previews
