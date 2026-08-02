@@ -179,36 +179,10 @@ export function placementBbox(
   };
 }
 
-/**
- * Center-crop rectangle (in source pixels) that makes a `srcW`×`srcH` bitmap
- * match `targetAspect` (width ÷ height) by COVER: the largest centered
- * sub-rect of that aspect. Used when replacing an image's pixels so the
- * incoming bitmap fills the existing node's box exactly, cropping the
- * overflow rather than letterboxing it. Pure — unit-tested.
- */
-export function coverCropRect(
-  srcW: number,
-  srcH: number,
-  targetAspect: number,
-): { sx: number; sy: number; sw: number; sh: number } {
-  // Degenerate inputs → no crop (caller guards, but stay total).
-  if (!(targetAspect > 0) || srcW <= 0 || srcH <= 0) {
-    return { sx: 0, sy: 0, sw: Math.max(1, srcW), sh: Math.max(1, srcH) };
-  }
-  const srcAspect = srcW / srcH;
-  if (srcAspect > targetAspect) {
-    // Source is too wide for the box → crop the left/right margins.
-    const sw = Math.max(1, Math.round(srcH * targetAspect));
-    return { sx: Math.round((srcW - sw) / 2), sy: 0, sw, sh: srcH };
-  }
-  // Source is too tall (or an exact match) → crop the top/bottom margins.
-  const sh = Math.max(1, Math.round(srcW / targetAspect));
-  return { sx: 0, sy: Math.round((srcH - sh) / 2), sw: srcW, sh };
-}
-
-/** Result of {@link prepareImageReplacement}: a fresh blob key + the
- *  cover-cropped, downsampled bytes and their intrinsic dimensions. Carries
- *  no bbox — replacement keeps the target node's existing box. */
+/** Result of {@link prepareImageReplacement}: a fresh blob key + the full,
+ *  downsampled bytes and their intrinsic dimensions. Carries no bbox —
+ *  replacement keeps the target node's existing box and cover-fits the whole
+ *  bitmap into it (via the node's Fill framing), so nothing is discarded. */
 export interface ImageReplacementResult {
   imageId: string;
   bytes: Uint8Array;
@@ -218,39 +192,26 @@ export interface ImageReplacementResult {
 }
 
 /**
- * Replacement import pipeline: decode the picked file, cover-crop it to
- * `targetAspect` (the box being replaced), downsample the crop so its
- * longest edge is at most {@link MAX_EDGE_PX}, and re-encode. Because the
- * result already matches the box aspect, the caller keeps the node's bbox
- * unchanged and the new image fills it with the overflow cropped away.
+ * Replacement import pipeline: decode the picked file, downsample its longest
+ * edge to at most {@link MAX_EDGE_PX}, and re-encode — the SAME decode path as
+ * a fresh import, minus the bbox. The FULL bitmap is kept (no crop baked into
+ * the bytes); the caller keeps the node's box and sets a Fill framing so the
+ * whole image cover-fits it, with the overflow clipped non-destructively. That
+ * way Crop mode's Fit/Fill can still reach the pixels outside the visible box —
+ * the bug where a landscape photo dropped into a portrait slot lost the sides.
  *
  * Throws if decoding fails (corrupt / unsupported file).
  */
 export async function prepareImageReplacement(
   rawBytes: Uint8Array,
   sourceMimeType: string,
-  targetAspect: number,
 ): Promise<ImageReplacementResult> {
   const sourceBlob = new Blob([rawBytes as BlobPart], { type: sourceMimeType });
-  const native = await createImageBitmap(sourceBlob);
-  const crop = coverCropRect(native.width, native.height, targetAspect);
-  // Downsample the CROP (not the full source) so the longest cropped edge
-  // lands within the memory budget.
-  const longest = Math.max(crop.sw, crop.sh);
-  const scale = longest > MAX_EDGE_PX ? MAX_EDGE_PX / longest : 1;
-  const dw = Math.max(1, Math.round(crop.sw * scale));
-  const dh = Math.max(1, Math.round(crop.sh * scale));
-  const canvas = new OffscreenCanvas(dw, dh);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('OffscreenCanvas 2d context unavailable');
-  // Crop + downsample in one draw: source sub-rect → full dest canvas.
-  ctx.drawImage(native, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, dw, dh);
-  native.close?.();
-  const cropped = await createImageBitmap(canvas);
-  const hasAlpha = bitmapHasAlpha(cropped);
-  const { bytes, mimeType } = await reencodeBitmap(cropped, dw, dh, hasAlpha);
-  cropped.close?.();
-  return { imageId: mintImageId(), bytes, mimeType, pixelWidth: dw, pixelHeight: dh };
+  const { bitmap, width, height } = await decodeAndDownsample(sourceBlob);
+  const hasAlpha = bitmapHasAlpha(bitmap);
+  const { bytes, mimeType } = await reencodeBitmap(bitmap, width, height, hasAlpha);
+  bitmap.close?.();
+  return { imageId: mintImageId(), bytes, mimeType, pixelWidth: width, pixelHeight: height };
 }
 
 /**

@@ -54,6 +54,13 @@ const DEFAULT_BORDER_MODEL: BorderModel = {
 const DEFAULT_FRAMING_MODEL: FramingModel = {
   mode: 'fill', zoom: 1.3, margin: 0.875, ratio: 'square', angle: 0, tileScale: 0.46, tileGap: 0.375,
 };
+/** Value-equality for the Crop bar's tracked params. A slider's own live edit
+ *  round-trips to an equal model.framing, so this lets the draft ignore its own
+ *  echo while still following genuinely external changes (e.g. the two-finger
+ *  pinch-zoom on the canvas). */
+const sameFramingModel = (a: FramingModel, b: FramingModel): boolean =>
+  a.mode === b.mode && a.zoom === b.zoom && a.margin === b.margin && a.ratio === b.ratio &&
+  a.angle === b.angle && a.tileScale === b.tileScale && a.tileGap === b.tileGap;
 // Fallback seed for the Text bar when the app hasn't supplied a style yet
 // (it always does while a text is selected — this only guards the transient
 // frame before model.textStyle lands).
@@ -337,7 +344,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   }, [model.borderOpen, model.border]);
   useEffect(() => {
     if (model.cropOpen && !prevCropOpen.current) {
+      // Just opened: seed the draft from the current framing.
       setCropDraft(model.framing ?? DEFAULT_FRAMING_MODEL);
+    } else if (model.cropOpen && model.framing) {
+      // Already open: follow external framing changes (the two-finger pinch-zoom
+      // on the canvas) so the sliders track them. A slider's own live edit
+      // round-trips to an equal model.framing, so `sameFramingModel` no-ops it —
+      // returning the same draft reference lets React skip the re-render.
+      setCropDraft((d) => (d && sameFramingModel(d, model.framing!) ? d : model.framing!));
     }
     prevCropOpen.current = !!model.cropOpen;
   }, [model.cropOpen, model.framing]);

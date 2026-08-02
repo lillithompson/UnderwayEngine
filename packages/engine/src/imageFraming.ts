@@ -81,23 +81,65 @@ export function resolveFraming(f: ImageFraming): ResolvedFraming {
   };
 }
 
-/** The cover rectangle for Fill/Crop: the box the (cover-fit) bitmap is drawn
- *  into, scaled by `scale` about the frame center and panned by the offset.
- *  Callers clip it to the frame [0,0,frameW,frameH] and draw the bitmap with
- *  cover semantics (CSS `object-fit: cover` / SVG `preserveAspectRatio slice`).
- *  At scale 1, offset 0 this is exactly the frame. */
-export function coverRect(
+/** Size (in frame units) of the FULL bitmap when cover-scaled to fill a
+ *  `frameW×frameH` frame and then enlarged by `scale` (≥1, from zoom or the
+ *  straighten cover factor). The result overflows the frame on its loose axis —
+ *  that overflow is exactly the slack a pan can travel into. */
+export function coverDrawSize(
   frameW: number,
   frameH: number,
+  imageAspect: number,
+  scale: number,
+): { w: number; h: number } {
+  const aspect = imageAspect > 0 ? imageAspect : (frameH > 0 ? frameW / frameH : 1);
+  // Cover: the smallest uniform scale of the bitmap (natural size aspect×1)
+  // that still covers the frame, times the requested extra `scale`.
+  const coverS = Math.max(frameW / aspect, frameH) * Math.max(scale, 0);
+  return { w: aspect * coverS, h: coverS };
+}
+
+/** Clamp a Fill/Crop pan offset so the cover-scaled bitmap still fully covers
+ *  the frame — the offset can never drag an empty edge into view. Range per
+ *  axis is ±half the overflow, so a tight axis (no overflow) can't pan at all.
+ *  Same units as `frameW`/`offsetX`. Used by both the render and the commit so
+ *  the stored offset and the drawn one agree. */
+export function clampPanOffset(
+  frameW: number,
+  frameH: number,
+  imageAspect: number,
+  scale: number,
+  offsetX: number,
+  offsetY: number,
+): { offsetX: number; offsetY: number } {
+  const { w, h } = coverDrawSize(frameW, frameH, imageAspect, scale);
+  const rx = Math.max(0, (w - frameW) / 2);
+  const ry = Math.max(0, (h - frameH) / 2);
+  // `|| 0` folds a clamped -0 (from a tight axis) back to +0 so callers store a
+  // clean zero, not negative zero.
+  return { offsetX: clamp(offsetX, -rx, rx) || 0, offsetY: clamp(offsetY, -ry, ry) || 0 };
+}
+
+/** The rectangle (in frame-local units) the FULL bitmap is drawn into for
+ *  Fill/Crop, sized to the cover-scaled bitmap (so it overflows the frame) and
+ *  positioned centered + panned by the offset (clamped so the frame stays
+ *  covered). Callers clip it to the frame [0,0,frameW,frameH] and draw the
+ *  bitmap at this exact aspect (no further crop). At offset 0 the visible region
+ *  is the centered cover crop — identical to the old frame-sized cover box, so
+ *  existing offset-0 framings render byte-for-byte the same; a nonzero offset
+ *  slides the crop across the bitmap to reveal any part of it. */
+export function coverImageRect(
+  frameW: number,
+  frameH: number,
+  imageAspect: number,
   scale: number,
   offsetX = 0,
   offsetY = 0,
 ): { x: number; y: number; w: number; h: number } {
-  const w = frameW * scale;
-  const h = frameH * scale;
+  const { w, h } = coverDrawSize(frameW, frameH, imageAspect, scale);
+  const off = clampPanOffset(frameW, frameH, imageAspect, scale, offsetX, offsetY);
   return {
-    x: (frameW - w) / 2 + offsetX,
-    y: (frameH - h) / 2 + offsetY,
+    x: (frameW - w) / 2 + off.offsetX,
+    y: (frameH - h) / 2 + off.offsetY,
     w,
     h,
   };

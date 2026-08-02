@@ -21,7 +21,7 @@ import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
 import { paintToSvg, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { layoutText } from './textLayout';
-import { resolveFraming, coverRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
+import { resolveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
 
 /** Layer set + dimensions returned by a figure loader. Mirrors the relevant
  *  subset of what `loadFileStateLite` provides. */
@@ -290,10 +290,10 @@ function framedImageSVG(
       `<g${clipAttr}><rect x="0" y="0" width="${iw}" height="${ih}" fill="url(#${patId})"/></g>`;
   }
 
-  // Fill + Crop: a cover viewport, scaled (zoom / straighten) about the frame
-  // centre and — for Crop — rotated, clipped to the frame.
+  // Fill + Crop: the full bitmap drawn at its cover size (scaled by zoom /
+  // straighten) and panned by the offset, clipped to the frame; Crop rotates.
   const scale = fu.mode === 'crop' ? straightenCoverScale(fu.angle, iw, ih) : fu.zoom;
-  const r = coverRect(iw, ih, scale, fu.offsetX, fu.offsetY);
+  const r = coverImageRect(iw, ih, imageAspect, scale, fu.offsetX, fu.offsetY);
   const image = `<image x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" ` +
     `href="${dataUri}" preserveAspectRatio="xMidYMid slice"${tintAttr}/>`;
   const inner = fu.mode === 'crop' && fu.angle !== 0
