@@ -7,13 +7,13 @@ import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
 import { CropBar } from './CropBar';
 import { TextBar } from './TextBar';
-import { BAR_BG, LABEL_DIM } from './effectBar';
-import { useSlideSwipeBar } from './useSlideSwipeBar';
+import { BAR_BG } from './effectBar';
 import {
   HEADER_BG,
   MODAL_BG,
   MODAL_TEXT,
   OBJECT_MENU_HEIGHT,
+  OBJECT_PANEL_HEIGHT,
   PANEL_ANIM_MS,
   PANEL_HAIRLINE,
 } from '../theme';
@@ -25,14 +25,17 @@ import {
 // join/union) render only when the app supplies them (Facet superset;
 // CozyJournal leaves them unset).
 //
-// The panel is a fixed height (OBJECT_MENU_HEIGHT) so it never jumps as menus
-// change. It shows one row of icon+caption buttons at a time: the common
-// actions (rotate / flip / copy / lock / delete) or — when the selection has
-// them — the type-specific options (images: replace / tint / crop / shadow /
-// border; text: edit / type). A leading `<` cell swaps between the two, sliding
-// the row leftward; a horizontal swipe (either direction) swaps too. Crop /
-// Shadow / Border / Text open their full editing bar, which slides in over the
-// panel at the same fixed height.
+// The panel is a compact fixed height (OBJECT_PANEL_HEIGHT) — just one row of
+// buttons and the carousel dots. It shows one row of icon+caption
+// buttons at a time: the common actions (rotate / flip / copy / lock / delete)
+// or — when the selection has them — the type-specific options (images: replace
+// / tint / crop / shadow / border; text: edit / type). A leading `<` cell swaps
+// between the two, sliding the row leftward; a horizontal swipe (either
+// direction) swaps too. Crop / Shadow / Border / Text open their full editing
+// bar (the taller OBJECT_MENU_HEIGHT), which slides up over the panel as a
+// carousel: a left/right swipe cycles forward/back through the available
+// submenus (dots at the bottom track the position) and a downward swipe
+// dismisses.
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -57,6 +60,12 @@ const DEFAULT_FRAMING_MODEL: FramingModel = {
 const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
   fontId: 'system', weight: 'regular', size: 2, letterSpacing: 0, lineHeight: 1.2, align: 'left', color: { r: 58, g: 53, b: 50 },
 };
+
+// The slide-up submenus, in carousel order. Image selections cycle through
+// crop / shadow / border (matching their type-option order); text has only the
+// one. Kept in this order so a left swipe advances the same way the type-option
+// row reads.
+type SubmenuKey = 'crop' | 'shadow' | 'border' | 'text';
 
 // One grid cell: an icon over a short caption, weighted (flex) so every button
 // shares the same column width whichever set is showing. `caption` is the
@@ -100,7 +109,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // The panel rests against the bottom edge but pads its content up by the
   // device safe-area inset (home indicator / screen curve on iOS native), so
   // the hidden position must clear the full padded height to slide fully off.
-  const hiddenY = OBJECT_MENU_HEIGHT + safeBottom;
+  const hiddenY = OBJECT_PANEL_HEIGHT + safeBottom;
   const translateY = useRef(new Animated.Value(model.visible ? 0 : hiddenY)).current;
 
   useEffect(() => {
@@ -177,12 +186,126 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // — it's changed externally via the full-screen picker).
   const [textDraft, setTextDraft] = useState<TextStyleModel | null>(null);
   const prevTextOpen = useRef(false);
-  // The Drop Shadow, Border, Crop and Text bars each slide in horizontally over
-  // the edit controls and can be swiped sideways to dismiss (shared chrome).
-  const shadowBar = useSlideSwipeBar(!!model.shadowOpen, width, () => model.onShadowOpenChange?.(false));
-  const borderBar = useSlideSwipeBar(!!model.borderOpen, width, () => model.onBorderOpenChange?.(false));
-  const cropBar = useSlideSwipeBar(!!model.cropOpen, width, () => model.onCropOpenChange?.(false));
-  const textBar = useSlideSwipeBar(!!model.textStyleOpen, width, () => model.onTextStyleOpenChange?.(false));
+  // ── Submenu carousel (Crop / Shadow / Border / Text) ────────────────
+  // The open submenu slides up over the panel; a left/right swipe cycles
+  // forward/back through the available submenus, and a downward swipe dismisses.
+  // Carousel dots at the bottom track the position. The submenus are separate
+  // bars but only one shows at a time, so this drives a single layer: `layerY`
+  // for the vertical open/dismiss, `navX` for the horizontal carousel slide.
+  const submenuSlide = OBJECT_MENU_HEIGHT + safeBottom;
+  const submenuOrder: SubmenuKey[] =
+    model.showImageEdit ? ['crop', 'shadow', 'border']
+    : model.showTextStyle ? ['text']
+    : [];
+  const activeSub: SubmenuKey | null =
+    model.cropOpen ? 'crop'
+    : model.shadowOpen ? 'shadow'
+    : model.borderOpen ? 'border'
+    : model.textStyleOpen ? 'text'
+    : null;
+  const submenuOpen = activeSub != null;
+  // Keep rendering the last-open bar through the dismiss slide (activeSub goes
+  // null the instant it closes, but the bar should stay visible sliding down).
+  const lastSubRef = useRef<SubmenuKey | null>(null);
+  if (activeSub) lastSubRef.current = activeSub;
+  const displaySub = activeSub ?? lastSubRef.current;
+  const activeIndex = displaySub ? submenuOrder.indexOf(displaySub) : -1;
+
+  const openSubmenu = (key: SubmenuKey) => {
+    if (key === 'crop') model.onCropOpenChange?.(true);
+    else if (key === 'shadow') model.onShadowOpenChange?.(true);
+    else if (key === 'border') model.onBorderOpenChange?.(true);
+    else if (key === 'text') model.onTextStyleOpenChange?.(true);
+  };
+  const dismissSubmenu = () => {
+    model.onShadowOpenChange?.(false);
+    model.onBorderOpenChange?.(false);
+    model.onCropOpenChange?.(false);
+    model.onTextStyleOpenChange?.(false);
+  };
+
+  const [submenuMounted, setSubmenuMounted] = useState(false);
+  const layerY = useRef(new Animated.Value(0)).current;
+  const navX = useRef(new Animated.Value(0)).current;
+  const prevSubmenuOpen = useRef(false);
+  const navigating = useRef(false);
+
+  // Vertical open / dismiss. Skipped while merely navigating between submenus
+  // (submenuOpen stays true), so switching bars is a purely horizontal slide.
+  useEffect(() => {
+    if (submenuOpen && !prevSubmenuOpen.current) {
+      prevSubmenuOpen.current = true;
+      setSubmenuMounted(true);
+      navX.setValue(0);
+      layerY.setValue(submenuSlide);
+      const anim = Animated.timing(layerY, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true });
+      anim.start();
+      return () => anim.stop();
+    }
+    if (!submenuOpen && prevSubmenuOpen.current) {
+      prevSubmenuOpen.current = false;
+      const anim = Animated.timing(layerY, { toValue: submenuSlide, duration: PANEL_ANIM_MS, useNativeDriver: true });
+      anim.start(({ finished }) => { if (finished) setSubmenuMounted(false); });
+      return () => anim.stop();
+    }
+  }, [submenuOpen, layerY, navX, submenuSlide]);
+
+  // Carousel navigation. dir −1 = swipe left → forward (next submenu); +1 =
+  // swipe right → back. The current bar slides off in the swipe direction, the
+  // set switches, and the next bar slides in from the opposite edge.
+  const runNavRef = useRef<(dir: -1 | 1) => void>(() => {});
+  runNavRef.current = (dir) => {
+    if (navigating.current || submenuOrder.length < 2 || activeIndex < 0) return;
+    navigating.current = true;
+    const len = submenuOrder.length;
+    const nextIndex = (activeIndex - dir + len) % len;
+    Animated.timing(navX, { toValue: dir * width, duration: PANEL_ANIM_MS, useNativeDriver: true }).start(({ finished }) => {
+      if (!finished) { navigating.current = false; return; }
+      openSubmenu(submenuOrder[nextIndex]);
+      navX.setValue(dir * -width);
+      Animated.timing(navX, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true }).start(() => {
+        navigating.current = false;
+      });
+    });
+  };
+  // Latest dismiss + nav-eligibility for the once-created PanResponder.
+  const dismissRef = useRef<() => void>(() => {});
+  dismissRef.current = dismissSubmenu;
+  const canNavRef = useRef(false);
+  canNavRef.current = submenuOrder.length > 1;
+
+  const submenuPan = useRef(
+    PanResponder.create({
+      // Claim a clearly-horizontal fling (carousel) or a clearly-downward drag
+      // (dismiss).
+      onMoveShouldSetPanResponder: (_e, g) =>
+        (Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5) ||
+        (g.dy > 10 && g.dy > Math.abs(g.dx) * 1.5),
+      onPanResponderMove: (_e, g) => {
+        if (navigating.current) return;
+        if (Math.abs(g.dx) > Math.abs(g.dy)) { if (canNavRef.current) navX.setValue(g.dx); }
+        else if (g.dy > 0) layerY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_e, g) => {
+        if (navigating.current) return;
+        const horiz = swipeDismissDirection(g.dx);
+        const down = swipeDismissDirection(g.dy) === 1 && Math.abs(g.dy) >= Math.abs(g.dx);
+        if (down) {
+          dismissRef.current();
+          Animated.spring(navX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+        } else if (horiz !== 0 && canNavRef.current) {
+          runNavRef.current(horiz);
+        } else {
+          Animated.spring(navX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+          Animated.spring(layerY, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(navX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+        Animated.spring(layerY, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+      },
+    }),
+  ).current;
 
   // Fold the image effect bars away the moment the selection is no longer an
   // editable image (or the whole panel hides) so none lingers over the next
@@ -345,12 +468,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   canSwapRef.current = canSwap;
   const showType = canSwap && showTypeRow;
   const activeButtons = showType ? typeOptions! : row1;
-  // Heading (shadow-menu style): "OBJECT" for the common actions, the type's
-  // name for its options.
-  const typeTitle = model.showImageEdit ? 'Image' : (model.showEdit || model.showTextStyle) ? 'Text' : 'Object';
-  const activeTitle = showType ? typeTitle : 'Object';
   const columns = Math.max(row1.length, typeOptions ? typeOptions.length : 0) + (canSwap ? 1 : 0);
-  const spacerCount = Math.max(0, columns - activeButtons.length - (canSwap ? 1 : 0));
+  // Empty cells keep each button one grid column wide (so the buttons never
+  // resize); split them either side of the button group to centre it, with the
+  // arrow always in the last column.
+  const totalPad = Math.max(0, columns - activeButtons.length - (canSwap ? 1 : 0));
+  const padLeft = Math.min(totalPad, Math.floor((columns - activeButtons.length) / 2));
+  const padRight = totalPad - padLeft;
   const swapArrow = canSwap ? (
     <GridButton
       key="swap"
@@ -377,81 +501,88 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     ? { ...textDraft, color: model.textStyle?.color ?? textDraft.color }
     : (model.textStyle ?? DEFAULT_TEXT_STYLE_MODEL);
 
+  // The currently-shown submenu bar (retained through the dismiss slide). onBack
+  // (the down chevron) dismisses the whole submenu layer.
+  let activeBarEl: React.ReactNode = null;
+  if (displaySub === 'shadow') {
+    activeBarEl = (
+      <ShadowBar
+        shadow={shadowForBar}
+        onChange={(s) => applyShadow(s, false)}
+        onCommit={(s) => applyShadow(s, true)}
+        onBack={dismissSubmenu}
+        onRemove={removeShadow}
+        onPickColor={() => model.onPickShadowColor?.()}
+      />
+    );
+  } else if (displaySub === 'border') {
+    activeBarEl = (
+      <BorderBar
+        border={borderForBar}
+        cornerRadius={model.cornerRadius ?? 0}
+        onChange={(b) => applyBorder(b, false)}
+        onCommit={(b) => applyBorder(b, true)}
+        onCornerRadius={(r, committed) => model.onCornerRadius?.(r, committed)}
+        onBack={dismissSubmenu}
+        onRemove={removeBorder}
+        onPickColor={() => model.onPickBorderColor?.()}
+      />
+    );
+  } else if (displaySub === 'crop') {
+    activeBarEl = (
+      <CropBar
+        framing={framingForBar}
+        onChange={(f) => applyFraming(f, false)}
+        onCommit={(f) => applyFraming(f, true)}
+        onBack={dismissSubmenu}
+        onReset={resetFraming}
+      />
+    );
+  } else if (displaySub === 'text') {
+    activeBarEl = (
+      <TextBar
+        style={textForBar}
+        fonts={model.fonts ?? []}
+        onChange={(s) => applyTextStyle(s, false)}
+        onCommit={(s) => applyTextStyle(s, true)}
+        onBack={dismissSubmenu}
+        onReset={resetTextStyle}
+        onPickColor={() => model.onPickTextColor?.()}
+      />
+    );
+  }
+
   return (
     <>
-      {shadowBar.mounted ? (
+      {submenuMounted ? (
         <Animated.View
-          style={[styles.effectBarWrap, { height: OBJECT_MENU_HEIGHT + safeBottom, paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: shadowBar.translateX }] }]}
-          {...shadowBar.panHandlers}
+          style={[styles.effectBarWrap, { height: submenuSlide, paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateY: layerY }] }]}
+          {...submenuPan.panHandlers}
         >
-          <ShadowBar
-            shadow={shadowForBar}
-            onChange={(s) => applyShadow(s, false)}
-            onCommit={(s) => applyShadow(s, true)}
-            onBack={() => shadowBar.closeTo(-1)}
-            onRemove={removeShadow}
-            onPickColor={() => model.onPickShadowColor?.()}
-          />
-        </Animated.View>
-      ) : null}
-      {borderBar.mounted ? (
-        <Animated.View
-          style={[styles.effectBarWrap, { height: OBJECT_MENU_HEIGHT + safeBottom, paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: borderBar.translateX }] }]}
-          {...borderBar.panHandlers}
-        >
-          <BorderBar
-            border={borderForBar}
-            cornerRadius={model.cornerRadius ?? 0}
-            onChange={(b) => applyBorder(b, false)}
-            onCommit={(b) => applyBorder(b, true)}
-            onCornerRadius={(r, committed) => model.onCornerRadius?.(r, committed)}
-            onBack={() => borderBar.closeTo(-1)}
-            onRemove={removeBorder}
-            onPickColor={() => model.onPickBorderColor?.()}
-          />
-        </Animated.View>
-      ) : null}
-      {cropBar.mounted ? (
-        <Animated.View
-          style={[styles.effectBarWrap, { height: OBJECT_MENU_HEIGHT + safeBottom, paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: cropBar.translateX }] }]}
-          {...cropBar.panHandlers}
-        >
-          <CropBar
-            framing={framingForBar}
-            onChange={(f) => applyFraming(f, false)}
-            onCommit={(f) => applyFraming(f, true)}
-            onBack={() => cropBar.closeTo(-1)}
-            onReset={resetFraming}
-          />
-        </Animated.View>
-      ) : null}
-      {textBar.mounted ? (
-        <Animated.View
-          style={[styles.effectBarWrap, { height: OBJECT_MENU_HEIGHT + safeBottom, paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: textBar.translateX }] }]}
-          {...textBar.panHandlers}
-        >
-          <TextBar
-            style={textForBar}
-            fonts={model.fonts ?? []}
-            onChange={(s) => applyTextStyle(s, false)}
-            onCommit={(s) => applyTextStyle(s, true)}
-            onBack={() => textBar.closeTo(-1)}
-            onReset={resetTextStyle}
-            onPickColor={() => model.onPickTextColor?.()}
-          />
+          <Animated.View style={{ transform: [{ translateX: navX }] }}>
+            {activeBarEl}
+          </Animated.View>
+          {submenuOrder.length > 1 ? (
+            <View style={[styles.submenuDots, { bottom: safeBottom + 8 }]} pointerEvents="none">
+              {submenuOrder.map((k, i) => (
+                <View key={k} style={[styles.dot, i === activeIndex && styles.dotActive]} />
+              ))}
+            </View>
+          ) : null}
         </Animated.View>
       ) : null}
       <View style={styles.clip} pointerEvents="box-none">
-        <Animated.View style={[styles.panel, { height: OBJECT_MENU_HEIGHT + safeBottom, paddingBottom: safeBottom, transform: [{ translateY }] }]}>
-        {/* A single page — title + one row of buttons (common actions or
-            type-specific options) — that the `<` cell / a horizontal swipe
-            slides between. Carousel dots below track which page is showing. */}
+        <Animated.View style={[styles.panel, { height: OBJECT_PANEL_HEIGHT + safeBottom, paddingBottom: safeBottom, transform: [{ translateY }] }]}>
+        {/* A single row of buttons (common actions or type-specific options)
+            that the `<` cell / a horizontal swipe slides between. Empty cells
+            flank the buttons to centre the group; the arrow stays last.
+            Carousel dots below track which page is showing. */}
         <View style={styles.swapArea} {...(canSwap ? swapPan.panHandlers : {})}>
           <Animated.View style={{ transform: [{ translateX: swapX }] }}>
-            <Text style={styles.title}>{activeTitle}</Text>
             <View style={styles.gridRow}>
+              {Array.from({ length: padLeft }).map((_, i) => <View key={`padL${i}`} style={styles.gridSpacer} />)}
               {activeButtons}
-              {Array.from({ length: spacerCount }).map((_, i) => <View key={`pad${i}`} style={styles.gridSpacer} />)}
+              {Array.from({ length: padRight }).map((_, i) => <View key={`padR${i}`} style={styles.gridSpacer} />)}
               {swapArrow}
             </View>
           </Animated.View>
@@ -488,26 +619,12 @@ const styles = StyleSheet.create({
   // Fills the panel so a horizontal swipe anywhere over it (not just on the
   // buttons) swaps the row.
   swapArea: { flex: 1 },
-  // Page heading — matches the effect bars' header style (e.g. "DROP SHADOW")
-  // and left-aligns so every page's title starts at the same x. marginTop makes
-  // up the ~6px the effect-bar titles gain from being vertically centered in
-  // their taller header, so the heading sits at the same height in both.
-  title: {
-    color: LABEL_DIM,
-    fontSize: 11,
-    lineHeight: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    textAlign: 'left',
-    marginTop: 6,
-    paddingTop: 10,
-    paddingBottom: 4,
-  },
   // Carousel dots (bottom): one filled for the current page, the other empty.
   dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingTop: 4, paddingBottom: 8 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.28)' },
   dotActive: { backgroundColor: ICON_COLOR },
+  // Submenu carousel dots, pinned to the bottom of the slide-up layer.
+  submenuDots: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
   // A grid row: equal-width cells (the buttons) plus any right-side padding
   // cells, so the common-actions and type-options sets share the same columns
   // (stable cell width across a swap). Cell gap matches the transform spacing.

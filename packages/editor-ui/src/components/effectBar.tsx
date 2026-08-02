@@ -37,7 +37,7 @@ export function EffectBarHeader({ title, color, chevron, align = 'center', remov
   title: string;
   /** Swatch color; omit (with onPickColor) for a bar without a color control. */
   color?: RGBLike;
-  /** Show a leading chevron before the title (Border/Crop do; Shadow doesn't). */
+  /** Show a leading down-chevron before the title (the bar dismisses downward). */
   chevron?: boolean;
   /** 'top' aligns the swatch's top with the title's top (Shadow's tweak);
    *  'center' vertically centers the cluster (Border's default). */
@@ -51,7 +51,7 @@ export function EffectBarHeader({ title, color, chevron, align = 'center', remov
   return (
     <View style={[styles.header, { alignItems: align === 'top' ? 'flex-start' : 'center' }]}>
       <Pressable style={styles.back} onPress={onBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to edit options">
-        {chevron ? <MaterialCommunityIcons name="chevron-left" size={19} color={LABEL_DIM} /> : null}
+        {chevron ? <MaterialCommunityIcons name="chevron-down" size={19} color={LABEL_DIM} /> : null}
         <Text style={styles.title}>{title}</Text>
       </Pressable>
       <View style={styles.headerRight}>

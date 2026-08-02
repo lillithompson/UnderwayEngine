@@ -37,6 +37,11 @@ export const PANEL_HAIRLINE = '#6b7280'; // Facet TEXT_DIM — top border + divi
 //   1 border + 10 top + 22 header + 10 gap + 180 rows + 14 bottom = 237,
 // plus a 3px cushion so font metrics can't clip its last row.
 export const OBJECT_MENU_HEIGHT = 240;
+// The main object-properties panel is shorter than the submenus — it holds only
+// one row of options and the carousel dots (the taller submenus slide in over
+// it):
+//   1 border + 60 row + 18 dots = 79.
+export const OBJECT_PANEL_HEIGHT = 79;
 
 // ── Modal surfaces (Facet AppModal / ViewModal) ──
 export const MODAL_BG = '#3f3f3f'; // Facet BG_RAISED_ALT
