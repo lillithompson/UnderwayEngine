@@ -1095,6 +1095,11 @@ export interface ImageTint {
 
 export type TextAlign = 'left' | 'center' | 'right';
 
+/** Named font weights, mapped to the closest available face of the family
+ *  by the renderer (see `effectiveFontWeight`). Supersedes the legacy `bold`
+ *  boolean when present; `bold` is kept for back-compat reads. */
+export type FontWeight = 'light' | 'regular' | 'semibold' | 'bold';
+
 export interface TextStroke { width: number; color: RGBColor }
 
 /** Style block for a text node. Split from TextObject so `setTextStyle`
@@ -1106,6 +1111,10 @@ export interface TextStyle {
   /** Font size in L0 cell units (world units), so text scales with the
    *  composition like every other node. */
   size: number;
+  /** Named weight (light/regular/semibold/bold). When set it supersedes
+   *  `bold`; absent falls back to `bold` for compositions saved before the
+   *  weight control existed. See {@link effectiveFontWeight}. */
+  weight?: FontWeight;
   bold?: boolean;
   italic?: boolean;
   color: RGBColor;

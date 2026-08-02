@@ -1,4 +1,4 @@
-﻿import { BlendMode, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGSubpath, PathSegment, ImageObject, RGBColor, TextObject, TextStyle, TextAlign, Paint, GradientStop, NodeEffects, ImageTintMode } from './types';
+﻿import { BlendMode, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGSubpath, PathSegment, ImageObject, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode } from './types';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
@@ -174,11 +174,13 @@ import { compSnapStep } from './compositionCellMath';
 //     style:      fontIdIdx u16 (string table) + size f32
 //                 + styleFlags u8 (0x01 bold, 0x02 italic, 0x04 hasStroke,
 //                   0x08 hasLetterSpacing, 0x10 hasLineHeight,
-//                   0x60 align 2 bits: 0 absent, 1 left, 2 center, 3 right)
+//                   0x60 align 2 bits: 0 absent, 1 left, 2 center, 3 right,
+//                   0x80 hasWeight)
 //                 + color r u8 + g u8 + b u8
 //     if hasLetterSpacing: letterSpacing f32
 //     if hasLineHeight:    lineHeight f32
 //     if hasStroke:        width f32 + r u8 + g u8 + b u8
+//     if hasWeight:        weight u8 (0 light, 1 regular, 2 semibold, 3 bold)
 //     if hasEffects (flags2): shared EFFECTS payload above
 //
 // BACKGROUND SECTION (v29+) â€” written after the custom colors section
@@ -512,6 +514,12 @@ const TSTYLE_HAS_LINE_HEIGHT = 0x10;
 // "not set" (same presence-is-the-signal rule as colorOverride).
 const ALIGN_TO_BITS: Record<TextAlign, number> = { left: 1, center: 2, right: 3 };
 const BITS_TO_ALIGN: (TextAlign | undefined)[] = [undefined, 'left', 'center', 'right'];
+// Bit 0x80 flags a trailing weight byte (appended after the stroke block).
+// Purely presence-gated — files written before the weight control never set
+// it, so older saves read back unchanged.
+const TSTYLE_HAS_WEIGHT = 0x80;
+const WEIGHT_TO_BITS: Record<FontWeight, number> = { light: 0, regular: 1, semibold: 2, bold: 3 };
+const BITS_TO_WEIGHT: FontWeight[] = ['light', 'regular', 'semibold', 'bold'];
 
 // v29+ image tint mode byte.
 const TINT_MODE_TO_BYTE: Record<ImageTintMode, number> = { tint: 0, duotone: 1, wash: 2 };
@@ -1587,6 +1595,7 @@ function textBinarySize(text: TextObject): number {
   if (text.style.letterSpacing != null) size += 4;
   if (text.style.lineHeight != null) size += 4;
   if (text.style.stroke != null) size += 7; // width f32 + r,g,b
+  if (text.style.weight != null) size += 1; // weight u8
   if (text.effects) size += effectsBinarySize(text.effects);
   if (text.angleDeg) size += 2; // v31+ free rotation (i16)
   return size;
@@ -1656,6 +1665,7 @@ function writeText(
   if (style.letterSpacing != null) styleFlags |= TSTYLE_HAS_LETTER_SPACING;
   if (style.lineHeight != null) styleFlags |= TSTYLE_HAS_LINE_HEIGHT;
   if (style.align != null) styleFlags |= (ALIGN_TO_BITS[style.align] & 0x03) << 5;
+  if (style.weight != null) styleFlags |= TSTYLE_HAS_WEIGHT;
   out[pos++] = styleFlags;
   out[pos++] = style.color.r & 0xff;
   out[pos++] = style.color.g & 0xff;
@@ -1669,6 +1679,7 @@ function writeText(
     out[pos++] = style.stroke.color.g & 0xff;
     out[pos++] = style.stroke.color.b & 0xff;
   }
+  if (style.weight != null) { out[pos++] = WEIGHT_TO_BITS[style.weight] & 0xff; }
 
   if (text.effects) {
     pos = writeEffects(view, out, pos, text.effects);
@@ -1748,6 +1759,9 @@ function readText(
     const width = view.getFloat32(pos, true); pos += 4;
     const sr = data[pos++], sg = data[pos++], sb = data[pos++];
     style.stroke = { width, color: { r: sr, g: sg, b: sb } };
+  }
+  if (styleFlags & TSTYLE_HAS_WEIGHT) {
+    style.weight = BITS_TO_WEIGHT[data[pos++] & 0x03];
   }
 
   const text: TextObject = {

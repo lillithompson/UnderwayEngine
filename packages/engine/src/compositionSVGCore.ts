@@ -7,6 +7,7 @@
  */
 
 import { CompositionFigure, FileConfig, SVGObject, ImageObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects } from './types';
+import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL, SVG_STROKE_WIDTH } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
@@ -209,7 +210,8 @@ function buildTextSVGContent(text: TextObject, u: number): string {
   const anchorAttr = align === 'left' ? '' : ` text-anchor="${align === 'center' ? 'middle' : 'end'}"`;
 
   let attrs = `font-family="${escapeXml(style.fontId)}" font-size="${fontSize}"`;
-  if (style.bold) attrs += ' font-weight="bold"';
+  const weight = effectiveFontWeight(style);
+  if (weight !== 400) attrs += ` font-weight="${weight}"`;
   if (style.italic) attrs += ' font-style="italic"';
   attrs += ` fill="rgb(${style.color.r},${style.color.g},${style.color.b})"`;
   if (style.letterSpacing !== undefined && style.letterSpacing !== 0) {

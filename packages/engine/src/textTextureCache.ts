@@ -49,7 +49,7 @@ function styleKey(text: TextObject): string {
   return [
     s.fontId,
     s.size,
-    s.bold ? 1 : 0,
+    s.weight ?? (s.bold ? 'bold' : 'regular'),
     s.italic ? 1 : 0,
     `${s.color.r},${s.color.g},${s.color.b}`,
     s.letterSpacing ?? 0,

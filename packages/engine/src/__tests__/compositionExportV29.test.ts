@@ -105,7 +105,9 @@ describe('generateCompositionSVGCore — text nodes', () => {
         },
       })],
     }));
-    expect(svg).toContain('font-weight="bold"');
+    // Weight is emitted numerically (the renderer resolves named/legacy
+    // weights to a face via effectiveFontWeight); legacy `bold` → 700.
+    expect(svg).toContain('font-weight="700"');
     expect(svg).toContain('font-style="italic"');
     // letterSpacing (em) × font-size (512) = 51.2 SVG units.
     expect(svg).toContain(`letter-spacing="${0.1 * 2 * U}"`);
@@ -114,6 +116,26 @@ describe('generateCompositionSVGCore — text nodes', () => {
     expect(svg).toContain('stroke="rgb(255,0,0)"');
     expect(svg).toContain(`stroke-width="${0.05 * U}"`);
     expect(svg).toContain('paint-order="stroke"');
+  });
+
+  it('exports a named weight as its numeric face (semibold → 600)', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      texts: [makeText({
+        content: 'semi',
+        style: { fontId: 'CozySans', size: 2, color: { r: 0, g: 0, b: 0 }, weight: 'semibold' },
+      })],
+    }));
+    expect(svg).toContain('font-weight="600"');
+  });
+
+  it('omits font-weight for a regular-weight text', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      texts: [makeText({
+        content: 'plain',
+        style: { fontId: 'CozySans', size: 2, color: { r: 0, g: 0, b: 0 }, weight: 'regular' },
+      })],
+    }));
+    expect(svg).not.toContain('font-weight');
   });
 
   it('applies rotation and mirror like image nodes', async () => {

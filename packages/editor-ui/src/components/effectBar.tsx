@@ -92,10 +92,12 @@ export function SliderRow({ label, value, apply }: {
 }
 
 /** One segmented row: a 50pt label column + an equal-width segmented control.
- *  Selection applies immediately. */
+ *  Selection applies immediately. An option may carry an `icon` (MCI glyph)
+ *  to render in place of its text label (the align row), keeping its `label`
+ *  for accessibility. */
 export function SegmentedRow<T extends string>({ label, options, value, onChange }: {
   label: string;
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: string; icon?: MCIName }[];
   value: T;
   onChange: (v: T) => void;
 }) {
@@ -114,7 +116,11 @@ export function SegmentedRow<T extends string>({ label, options, value, onChange
               accessibilityState={{ selected: active }}
               accessibilityLabel={o.label}
             >
-              <Text style={[styles.segmentText, active && styles.segmentTextActive]} numberOfLines={1}>{o.label}</Text>
+              {o.icon ? (
+                <MaterialCommunityIcons name={o.icon} size={18} color={active ? '#FFFFFF' : SEG_TEXT} />
+              ) : (
+                <Text style={[styles.segmentText, active && styles.segmentTextActive]} numberOfLines={1}>{o.label}</Text>
+              )}
             </Pressable>
           );
         })}

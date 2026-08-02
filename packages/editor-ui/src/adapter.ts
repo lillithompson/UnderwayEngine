@@ -155,6 +155,38 @@ export interface FramingModel {
   tileGap: number;
 }
 
+/** Named font weight (mirrors the engine's FontWeight without importing it —
+ *  the package stays engine-agnostic). */
+export type TextWeight = 'light' | 'regular' | 'semibold' | 'bold';
+/** Horizontal text alignment (mirrors the engine's TextAlign). */
+export type TextHAlign = 'left' | 'center' | 'right';
+
+/** One selectable font family for the Text bar's font sheet. */
+export interface TextFontOption {
+  /** App-owned font id stored on the text node. */
+  fontId: string;
+  /** Human-facing family name shown in the sheet + pill. */
+  label: string;
+  /** CSS font-family stack, so the sheet renders each row in its own face. */
+  fontFamily?: string;
+}
+
+/** Editable text typography, seeding the Text bar. Lengths are the app's
+ *  world-cell units; the bar maps its pt/percent slider ranges onto these,
+ *  and the app maps them to the engine's TextStyle. */
+export interface TextStyleModel {
+  fontId: string;
+  weight: TextWeight;
+  /** Font size in world cells. */
+  size: number;
+  /** Letter spacing (tracking) in em units. */
+  letterSpacing: number;
+  /** Line height as a multiple of the font size. */
+  lineHeight: number;
+  align: TextHAlign;
+  color: RGBLike;
+}
+
 export interface ObjectPropertiesModel {
   visible: boolean;
   mode?: 'single' | 'multi' | 'group';
@@ -164,6 +196,11 @@ export interface ObjectPropertiesModel {
    *  sub-panel (replace / tint / round / crop) in over the bar instead of
    *  invoking onEdit. Text vs image are mutually exclusive per selection. */
   showImageEdit?: boolean;
+  /** Show the Text action (editable text selected): pressing it slides the
+   *  Text bar (font / weight / size / character / line / align) in over the
+   *  bar. A sibling of the image-edit bars; sits beside onEdit (which edits
+   *  the text content). */
+  showTextStyle?: boolean;
   locked: boolean;
   onEdit(): void;
   /** Image-edit sub-panel actions (surfaced only when showImageEdit). Each
@@ -219,6 +256,24 @@ export interface ObjectPropertiesModel {
    *  `committed=true` (single undo step). Drives the object's own corner
    *  rounding — the Radius row of the Border panel. */
   onCornerRadius?(radius: number, committed: boolean): void;
+  /** Whether the Text styling bar is shown. App-owned so a tap-off dismisses
+   *  it before the panel (same as the image effect bars). */
+  textStyleOpen?: boolean;
+  onTextStyleOpenChange?(open: boolean): void;
+  /** The selected text's current typography, seeding the Text bar. */
+  textStyle?: TextStyleModel;
+  /** Font families offered by the Text bar's font sheet (app-owned). */
+  fonts?: readonly TextFontOption[];
+  /** Text-style callback: fires live while dragging (`committed=false`) and
+   *  once on release / segment change (`committed=true`, one undo step). */
+  onTextStyle?(style: TextStyleModel, committed: boolean): void;
+  /** Open the full-screen color picker for the text color (same picker the
+   *  toolbar color tool uses). */
+  onPickTextColor?(): void;
+  /** Reset type settings (size / character / line / weight) to defaults,
+   *  keeping the font family and color. One undo step; the bar stays open
+   *  (the Text bar's trash). */
+  onResetTextStyle?(): void;
   onRotate(): void;
   onMirrorH(): void;
   onMirrorV(): void;

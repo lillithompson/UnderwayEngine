@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { BorderModel, FramingModel, ObjectPropertiesModel, ShadowModel } from '../adapter';
+import type { BorderModel, FramingModel, ObjectPropertiesModel, ShadowModel, TextStyleModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
 import { CropBar } from './CropBar';
+import { TextBar } from './TextBar';
 import { BAR_BG } from './effectBar';
 import { useSlideSwipeBar } from './useSlideSwipeBar';
 import {
@@ -40,6 +41,12 @@ const DEFAULT_BORDER_MODEL: BorderModel = {
 // Size 46, Spacing 6pt). Lengths in world cells (pt ÷ 16).
 const DEFAULT_FRAMING_MODEL: FramingModel = {
   mode: 'fill', zoom: 1.3, margin: 0.875, ratio: 'square', angle: 0, tileScale: 0.46, tileGap: 0.375,
+};
+// Fallback seed for the Text bar when the app hasn't supplied a style yet
+// (it always does while a text is selected — this only guards the transient
+// frame before model.textStyle lands).
+const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
+  fontId: 'system', weight: 'regular', size: 2, letterSpacing: 0, lineHeight: 1.2, align: 'left', color: { r: 58, g: 53, b: 50 },
 };
 
 function ActionButton({ label, icon, iconColor, onPress, compact }: {
@@ -129,11 +136,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const prevBorderOpen = useRef(false);
   const [cropDraft, setCropDraft] = useState<FramingModel | null>(null);
   const prevCropOpen = useRef(false);
-  // The Drop Shadow, Border and Crop bars each slide in horizontally over the
-  // edit controls and can be swiped sideways to dismiss (shared chrome).
+  // The Text bar owns its tracked params too (color still comes from the model
+  // — it's changed externally via the full-screen picker).
+  const [textDraft, setTextDraft] = useState<TextStyleModel | null>(null);
+  const prevTextOpen = useRef(false);
+  // The Drop Shadow, Border, Crop and Text bars each slide in horizontally over
+  // the edit controls and can be swiped sideways to dismiss (shared chrome).
   const shadowBar = useSlideSwipeBar(!!model.shadowOpen, width, () => model.onShadowOpenChange?.(false));
   const borderBar = useSlideSwipeBar(!!model.borderOpen, width, () => model.onBorderOpenChange?.(false));
   const cropBar = useSlideSwipeBar(!!model.cropOpen, width, () => model.onCropOpenChange?.(false));
+  const textBar = useSlideSwipeBar(!!model.textStyleOpen, width, () => model.onTextStyleOpenChange?.(false));
 
   const panX = useRef(new Animated.Value(0)).current;
   // Latest committed-dismiss runner, so the once-created PanResponder always
@@ -205,6 +217,22 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     }
     prevCropOpen.current = !!model.cropOpen;
   }, [model.cropOpen, model.framing]);
+  useEffect(() => {
+    if (model.textStyleOpen && !prevTextOpen.current) {
+      setTextDraft(model.textStyle ?? DEFAULT_TEXT_STYLE_MODEL);
+    }
+    prevTextOpen.current = !!model.textStyleOpen;
+  }, [model.textStyleOpen, model.textStyle]);
+  // Fold the Text bar away the moment the selection is no longer editable text
+  // (or the whole bar hides), so it never lingers over the next object.
+  useEffect(() => {
+    if ((!model.visible || !model.showTextStyle) && model.textStyleOpen) {
+      model.onTextStyleOpenChange?.(false);
+    }
+    // model.on* are stable setters; listing the whole model would re-run this
+    // every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model.visible, model.showTextStyle, model.textStyleOpen]);
 
   const openImageEdit = () => {
     panX.setValue(width); // start just off the right edge, then slide in
@@ -261,6 +289,21 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     setCropDraft(DEFAULT_FRAMING_MODEL);
   };
 
+  // Text style → live preview / commit; the draft owns the tracked params, so
+  // the sliders keep tracking (color comes from the model). Reset re-seeds the
+  // draft from the model's post-reset style (font + color kept).
+  const applyTextStyle = (s: TextStyleModel, committed: boolean) => {
+    setTextDraft(s);
+    model.onTextStyle?.(s, committed);
+  };
+  const resetTextStyle = () => {
+    model.onResetTextStyle?.();
+    // Re-seed on the next open from the model; clear the draft so the freshly
+    // reset style flows in.
+    setTextDraft(null);
+    prevTextOpen.current = false;
+  };
+
   if (!mounted) return null;
 
   const hasGroupActions = !!(model.onGroup || model.onUngroup || model.onJoin || model.onUnion);
@@ -273,6 +316,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     ? { ...borderDraft, color: model.border?.color ?? borderDraft.color }
     : (model.border ?? DEFAULT_BORDER_MODEL);
   const framingForBar: FramingModel = cropDraft ?? model.framing ?? DEFAULT_FRAMING_MODEL;
+  // Tracked type params come from the draft; color comes from the model (the
+  // full-screen picker changes it externally, like the effect bars' colors).
+  const textForBar: TextStyleModel = textDraft
+    ? { ...textDraft, color: model.textStyle?.color ?? textDraft.color }
+    : (model.textStyle ?? DEFAULT_TEXT_STYLE_MODEL);
 
   return (
     <>
@@ -322,18 +370,42 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
           />
         </Animated.View>
       ) : null}
+      {textBar.mounted ? (
+        <Animated.View
+          style={[styles.effectBarWrap, { paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: textBar.translateX }] }]}
+          {...textBar.panHandlers}
+        >
+          <TextBar
+            style={textForBar}
+            fonts={model.fonts ?? []}
+            onChange={(s) => applyTextStyle(s, false)}
+            onCommit={(s) => applyTextStyle(s, true)}
+            onBack={() => model.onTextStyleOpenChange?.(false)}
+            onReset={resetTextStyle}
+            onPickColor={() => model.onPickTextColor?.()}
+          />
+        </Animated.View>
+      ) : null}
       <View style={styles.clip} pointerEvents="box-none">
         <Animated.View style={[styles.panel, { paddingBottom: safeBottom, transform: [{ translateY }] }]}>
         <View style={styles.rowInner}>
-          {model.showEdit || model.showImageEdit ? (
+          {model.showEdit || model.showImageEdit || model.showTextStyle ? (
             <>
-              <View style={compact ? styles.groupCompact1 : styles.group}>
+              <View style={compact ? (model.showTextStyle ? styles.groupCompact2 : styles.groupCompact1) : styles.group}>
                 <ActionButton
                   label="Edit"
                   icon="image-edit-outline"
                   onPress={model.showImageEdit ? openImageEdit : model.onEdit}
                   compact={compact}
                 />
+                {model.showTextStyle ? (
+                  <ActionButton
+                    label="Text"
+                    icon="format-font"
+                    onPress={() => model.onTextStyleOpenChange?.(true)}
+                    compact={compact}
+                  />
+                ) : null}
               </View>
               <Divider />
             </>
@@ -425,6 +497,7 @@ const styles = StyleSheet.create({
   },
   group: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   groupCompact1: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  groupCompact2: { flex: 2, flexDirection: 'row', alignItems: 'center' },
   groupCompact3: { flex: 3, flexDirection: 'row', alignItems: 'center' },
   button: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   buttonCompact: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
