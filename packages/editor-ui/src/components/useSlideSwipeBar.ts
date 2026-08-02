@@ -9,8 +9,9 @@ import { PANEL_ANIM_MS } from '../theme';
 // short drags spring back. The pad / sliders inside a bar claim their own
 // touches, so the swipe only fires on the bar's inert areas (header, labels,
 // padding). Returns `mounted` (kept true through the slide-out so the bar
-// animates off before unmounting), the animated translateX, and the pan
-// handlers to spread onto the bar wrapper.
+// animates off before unmounting), the animated translateX, the pan handlers
+// to spread onto the bar wrapper, and `closeTo(dir)` to close toward a chosen
+// edge (the back chevron uses −1 to reverse the usual retract).
 export function useSlideSwipeBar(open: boolean, width: number, onRequestClose: () => void) {
   const [mounted, setMounted] = useState(false);
   const x = useRef(new Animated.Value(0)).current;
@@ -44,6 +45,13 @@ export function useSlideSwipeBar(open: boolean, width: number, onRequestClose: (
     else Animated.spring(x, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
   };
 
+  // Close programmatically toward a chosen edge (−1 = left, +1 = right),
+  // overriding the default exit direction. The back chevron uses this to slide
+  // the bar off the opposite edge from the usual retract.
+  const closeToRef = useRef<(dir: 1 | -1) => void>(() => {});
+  closeToRef.current = (dir) => { exitDir.current = dir; onRequestClose(); };
+  const closeTo = useRef((dir: 1 | -1) => closeToRef.current(dir)).current;
+
   const pan = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
@@ -53,5 +61,5 @@ export function useSlideSwipeBar(open: boolean, width: number, onRequestClose: (
     }),
   ).current;
 
-  return { mounted, translateX: x, panHandlers: pan.panHandlers };
+  return { mounted, translateX: x, panHandlers: pan.panHandlers, closeTo };
 }

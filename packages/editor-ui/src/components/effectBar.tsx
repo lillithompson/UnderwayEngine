@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { RGBLike } from '../adapter';
 import { rgbCss } from '../logic/hsv';
+import { MODAL_BG } from '../theme';
 import { Slider } from './Slider';
 
 // Shared chrome for the image-effect editing bars (Drop Shadow, Border): the
@@ -15,7 +16,9 @@ import { Slider } from './Slider';
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 // ── Design tokens (shared by every effect bar) ───────────────────────
-export const BAR_BG = '#4B4B4D';
+// Submenu (effect bar) surface — matches the object-properties panel's grey so
+// the two read as one continuous surface.
+export const BAR_BG = MODAL_BG;
 export const HAIRLINE = 'rgba(255,255,255,0.09)';
 export const LABEL_DIM = 'rgba(255,255,255,0.55)';
 export const LABEL = 'rgba(255,255,255,0.75)';
@@ -91,6 +94,37 @@ export function SliderRow({ label, value, apply }: {
   );
 }
 
+/** Two sliders sharing one row: a compact label + slider per half, split down
+ *  the middle. Lets a bar pack two related controls (e.g. the Text bar's
+ *  Character + Line spacing) into a single 32pt row instead of two, shaving a
+ *  row's height off the bar. Each half's `apply(t, committed)` fires live
+ *  (false) and once on release (true), same as SliderRow. */
+export function DualSliderRow({ leftLabel, leftValue, leftApply, rightLabel, rightValue, rightApply }: {
+  leftLabel: string;
+  leftValue: number;
+  leftApply: (t: number, committed: boolean) => void;
+  rightLabel: string;
+  rightValue: number;
+  rightApply: (t: number, committed: boolean) => void;
+}) {
+  return (
+    <View style={styles.dualRow}>
+      <View style={styles.dualHalf}>
+        <Text style={styles.dualLabel}>{leftLabel}</Text>
+        <View style={styles.rowSlider}>
+          <Slider value={leftValue} accent={ACCENT} trackColor={TRACK} onChange={(v) => leftApply(v, false)} onCommit={(v) => leftApply(v, true)} />
+        </View>
+      </View>
+      <View style={styles.dualHalf}>
+        <Text style={styles.dualLabel}>{rightLabel}</Text>
+        <View style={styles.rowSlider}>
+          <Slider value={rightValue} accent={ACCENT} trackColor={TRACK} onChange={(v) => rightApply(v, false)} onCommit={(v) => rightApply(v, true)} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 /** One segmented row: a 50pt label column + an equal-width segmented control.
  *  Selection applies immediately. An option may carry an `icon` (MCI glyph)
  *  to render in place of its text label (the align row), keeping its `label`
@@ -141,6 +175,10 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', height: 32 },
   rowLabel: { width: 50, color: LABEL, fontSize: 12 },
   rowSlider: { flex: 1 },
+  // Dual-slider row: two label+slider halves split evenly with a gap between.
+  dualRow: { flexDirection: 'row', alignItems: 'center', height: 32, gap: 16 },
+  dualHalf: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  dualLabel: { width: 34, color: LABEL, fontSize: 12 },
   segmentedRow: { flexDirection: 'row', alignItems: 'center', height: 36 },
   segmented: { flex: 1, flexDirection: 'row', backgroundColor: SEG_TRACK, borderRadius: 9, padding: 2, gap: 2 },
   segment: { flex: 1, paddingVertical: 6, alignItems: 'center', justifyContent: 'center', borderRadius: 7 },

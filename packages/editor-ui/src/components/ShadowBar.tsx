@@ -81,6 +81,7 @@ export function ShadowBar({ shadow, onChange, onCommit, onBack, onRemove, onPick
       <EffectBarHeader
         title="DROP SHADOW"
         color={shadow.color}
+        chevron
         align="top"
         onBack={onBack}
         onRemove={onRemove}

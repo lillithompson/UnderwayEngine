@@ -29,6 +29,14 @@ export const WHITE_60 = 'rgba(255, 255, 255, 0.6)';
 export const PANEL_HEIGHT = 61; // Facet PANEL_HEIGHT (48 button + 4/8 padding + 1 border)
 export const PANEL_ANIM_MS = 150; // Facet ANIM_DURATION
 export const PANEL_HAIRLINE = '#6b7280'; // Facet TEXT_DIM — top border + dividers
+// Every object-property menu — the two-row default panel (actions + type-
+// specific options) and each slide-in effect bar (Shadow/Border/Crop/Text) —
+// shares this one fixed height so the bottom sheet never jumps as you switch
+// between them. Sized to the tallest menu, the Text bar (Font + Weight + Size +
+// Character/Line + Align, the last two now sharing a row):
+//   1 border + 10 top + 22 header + 10 gap + 180 rows + 14 bottom = 237,
+// plus a 3px cushion so font metrics can't clip its last row.
+export const OBJECT_MENU_HEIGHT = 240;
 
 // ── Modal surfaces (Facet AppModal / ViewModal) ──
 export const MODAL_BG = '#3f3f3f'; // Facet BG_RAISED_ALT

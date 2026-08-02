@@ -190,16 +190,16 @@ export interface TextStyleModel {
 export interface ObjectPropertiesModel {
   visible: boolean;
   mode?: 'single' | 'multi' | 'group';
-  /** Show the Edit action (editable text selected). */
+  /** Show the Edit action (editable text selected): a second-row button that
+   *  invokes onEdit to edit the text content. */
   showEdit: boolean;
-  /** Show the Edit action for an image: pressing it slides the image-edit
-   *  sub-panel (replace / tint / round / crop) in over the bar instead of
-   *  invoking onEdit. Text vs image are mutually exclusive per selection. */
+  /** Selection is an editable image: the panel's second row shows the image-
+   *  edit options (replace / tint / crop / shadow / border), Crop/Shadow/Border
+   *  opening their effect bar. Text vs image are mutually exclusive. */
   showImageEdit?: boolean;
-  /** Show the Text action (editable text selected): pressing it slides the
-   *  Text bar (font / weight / size / character / line / align) in over the
-   *  bar. A sibling of the image-edit bars; sits beside onEdit (which edits
-   *  the text content). */
+  /** Show the Type action (editable text selected): a second-row button that
+   *  slides the Text bar (font / weight / size / character / line / align) in
+   *  over the panel. Sits beside the Edit button (which edits the content). */
   showTextStyle?: boolean;
   locked: boolean;
   onEdit(): void;

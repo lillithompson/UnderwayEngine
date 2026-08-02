@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TextFontOption, TextHAlign, TextStyleModel, TextWeight } from '../adapter';
-import { ACCENT, BAR_BG, EffectBarHeader, HAIRLINE, LABEL, SegmentedRow, SliderRow } from './effectBar';
+import { ACCENT, BAR_BG, DualSliderRow, EffectBarHeader, HAIRLINE, LABEL, SegmentedRow, SliderRow } from './effectBar';
 
 // The Text typography bar (design "5a"): a full-width dark bar with a header
 // (chevron · TEXT · color swatch · trash) and the type rows — Font (a pill
@@ -139,15 +139,15 @@ export function TextBar({ style, fonts, onChange, onCommit, onBack, onReset, onP
           value={(style.size - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)}
           apply={(t, c) => set({ size: SIZE_MIN + t * (SIZE_MAX - SIZE_MIN) }, c)}
         />
-        <SliderRow
-          label="Character"
-          value={(style.letterSpacing - LS_MIN) / (LS_MAX - LS_MIN)}
-          apply={(t, c) => set({ letterSpacing: LS_MIN + t * (LS_MAX - LS_MIN) }, c)}
-        />
-        <SliderRow
-          label="Line"
-          value={(style.lineHeight - LH_MIN) / (LH_MAX - LH_MIN)}
-          apply={(t, c) => set({ lineHeight: LH_MIN + t * (LH_MAX - LH_MIN) }, c)}
+        {/* Character (letter spacing) + Line (line height) share one row to
+            keep the Text bar within the shared object-menu height. */}
+        <DualSliderRow
+          leftLabel="Char"
+          leftValue={(style.letterSpacing - LS_MIN) / (LS_MAX - LS_MIN)}
+          leftApply={(t, c) => set({ letterSpacing: LS_MIN + t * (LS_MAX - LS_MIN) }, c)}
+          rightLabel="Line"
+          rightValue={(style.lineHeight - LH_MIN) / (LH_MAX - LH_MIN)}
+          rightApply={(t, c) => set({ lineHeight: LH_MIN + t * (LH_MAX - LH_MIN) }, c)}
         />
         <SegmentedRow
           label="Align"

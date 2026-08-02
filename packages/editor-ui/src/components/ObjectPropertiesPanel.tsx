@@ -7,15 +7,15 @@ import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
 import { CropBar } from './CropBar';
 import { TextBar } from './TextBar';
-import { BAR_BG } from './effectBar';
+import { BAR_BG, LABEL_DIM } from './effectBar';
 import { useSlideSwipeBar } from './useSlideSwipeBar';
 import {
   HEADER_BG,
   MODAL_BG,
   MODAL_TEXT,
+  OBJECT_MENU_HEIGHT,
   PANEL_ANIM_MS,
   PANEL_HAIRLINE,
-  PANEL_HEIGHT,
 } from '../theme';
 
 // Facet's ObjectPropertiesPanel: a bottom sheet that slides up (150ms) when
@@ -24,6 +24,15 @@ import {
 // compact (24px icons, flex-weighted groups). Group actions (group/ungroup/
 // join/union) render only when the app supplies them (Facet superset;
 // CozyJournal leaves them unset).
+//
+// The panel is a fixed height (OBJECT_MENU_HEIGHT) so it never jumps as menus
+// change. It shows one row of icon+caption buttons at a time: the common
+// actions (rotate / flip / copy / lock / delete) or — when the selection has
+// them — the type-specific options (images: replace / tint / crop / shadow /
+// border; text: edit / type). A leading `<` cell swaps between the two, sliding
+// the row leftward; a horizontal swipe (either direction) swaps too. Crop /
+// Shadow / Border / Text open their full editing bar, which slides in over the
+// panel at the same fixed height.
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -49,45 +58,28 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
   fontId: 'system', weight: 'regular', size: 2, letterSpacing: 0, lineHeight: 1.2, align: 'left', color: { r: 58, g: 53, b: 50 },
 };
 
-function ActionButton({ label, icon, iconColor, onPress, compact }: {
+// One grid cell: an icon over a short caption, weighted (flex) so every button
+// shares the same column width whichever set is showing. `caption` is the
+// visible label; `label` is the (often longer) accessibility name.
+function GridButton({ label, caption, icon, iconColor, onPress, compact, iconOnly }: {
   label: string;
+  caption?: string;
   icon: string;
   iconColor?: string;
-  onPress: () => void;
-  compact: boolean;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={compact ? styles.buttonCompact : styles.button}
-    >
-      <MaterialCommunityIcons name={icon as MCIName} size={compact ? 24 : 30} color={iconColor ?? ICON_COLOR} />
-    </Pressable>
-  );
-}
-
-function Divider() {
-  return <View style={styles.divider} />;
-}
-
-// Image-edit sub-panel button: an icon over a short caption, weighted to
-// share the row evenly with its siblings.
-function ImageEditButton({ label, icon, onPress }: {
-  label: string;
-  icon: string;
   onPress?: () => void;
+  compact: boolean;
+  /** Render just the icon (no caption) — used by the swap arrow. */
+  iconOnly?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      style={styles.imageEditButton}
+      style={styles.gridButton}
     >
-      <MaterialCommunityIcons name={icon as MCIName} size={24} color={ICON_COLOR} />
-      <Text style={styles.imageEditLabel}>{label}</Text>
+      <MaterialCommunityIcons name={icon as MCIName} size={compact ? 24 : 28} color={iconColor ?? ICON_COLOR} />
+      {iconOnly ? null : <Text style={styles.gridLabel} numberOfLines={1}>{caption ?? label}</Text>}
     </Pressable>
   );
 }
@@ -101,10 +93,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const { width } = useWindowDimensions();
   const compact = width < COMPACT_MAX_WIDTH;
   const [mounted, setMounted] = useState(model.visible);
+  // Which set the single row shows: false = common actions, true = the
+  // type-specific options. The leading `<` cell (and a horizontal swipe) flip
+  // it; showTypeRow is ignored when the selection has no type options.
+  const [showTypeRow, setShowTypeRow] = useState(false);
   // The panel rests against the bottom edge but pads its content up by the
   // device safe-area inset (home indicator / screen curve on iOS native), so
   // the hidden position must clear the full padded height to slide fully off.
-  const hiddenY = PANEL_HEIGHT + safeBottom;
+  const hiddenY = OBJECT_MENU_HEIGHT + safeBottom;
   const translateY = useRef(new Animated.Value(model.visible ? 0 : hiddenY)).current;
 
   useEffect(() => {
@@ -120,12 +116,53 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     return () => anim.stop();
   }, [model.visible, translateY, hiddenY]);
 
-  // ── Image-edit sub-panel ────────────────────────────────────────────
-  // Pressing Edit on an image slides this layer in over the action row; it
-  // is dismissed by swiping it sideways (either way), mirroring the title
-  // banner's swipe feel — the content follows the finger, then a past-
-  // threshold release throws it off-screen and reveals the row beneath.
-  const [imageEditMounted, setImageEditMounted] = useState(false);
+  // ── Row swap (common ⇄ type-specific) ───────────────────────────────
+  // The visible row slides on a shared translateX. `dir` is the direction the
+  // content travels: −1 = leftward (out the left edge, new row in from the
+  // right), +1 = rightward. A swap throws the current row off one edge, flips
+  // the set, then brings the new row in from the opposite edge; a drag lets the
+  // row follow the finger first, then completes in the drag direction.
+  const swapX = useRef(new Animated.Value(0)).current;
+  const swapping = useRef(false);
+  // Latest runner + swipe-eligibility, so the once-created PanResponder always
+  // uses the current window width and set availability.
+  const runSwapRef = useRef<(dir: -1 | 1) => void>(() => {});
+  runSwapRef.current = (dir) => {
+    if (swapping.current) return;
+    swapping.current = true;
+    Animated.timing(swapX, { toValue: dir * width, duration: PANEL_ANIM_MS, useNativeDriver: true }).start(({ finished }) => {
+      if (!finished) { swapping.current = false; return; }
+      setShowTypeRow((v) => !v);
+      swapX.setValue(dir * -width); // place the incoming row just off the opposite edge
+      Animated.timing(swapX, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true }).start(() => {
+        swapping.current = false;
+      });
+    });
+  };
+  const canSwapRef = useRef(false);
+
+  const swapPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) =>
+        canSwapRef.current && Math.abs(g.dx) > 5 && Math.abs(g.dx) > Math.abs(g.dy),
+      onPanResponderMove: (_e, g) => { if (!swapping.current) swapX.setValue(g.dx); },
+      onPanResponderRelease: (_e, g) => {
+        const dir = swipeDismissDirection(g.dx); // −1 left, +1 right, 0 = too short
+        if (dir !== 0 && canSwapRef.current) runSwapRef.current(dir);
+        else Animated.spring(swapX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+      },
+      onPanResponderTerminate: () =>
+        Animated.spring(swapX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start(),
+    }),
+  ).current;
+
+  // Fall back to the common actions whenever the selection has no type options,
+  // so a stale swap doesn't leave an empty row.
+  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle;
+  useEffect(() => {
+    if (!hasTypeOptions && showTypeRow) setShowTypeRow(false);
+  }, [hasTypeOptions, showTypeRow]);
+
   // Shadow / Border controls each seed a local draft from model.shadow /
   // model.border when they open, then own the tracked params so live previews
   // don't fight the sliders (color still comes from the model — it's changed
@@ -147,55 +184,19 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const cropBar = useSlideSwipeBar(!!model.cropOpen, width, () => model.onCropOpenChange?.(false));
   const textBar = useSlideSwipeBar(!!model.textStyleOpen, width, () => model.onTextStyleOpenChange?.(false));
 
-  const panX = useRef(new Animated.Value(0)).current;
-  // Latest committed-dismiss runner, so the once-created PanResponder always
-  // throws by the current window width.
-  const dismissRef = useRef<(dir: -1 | 1) => void>(() => {});
-  dismissRef.current = (dir) => {
-    Animated.timing(panX, {
-      toValue: dir * width,
-      duration: PANEL_ANIM_MS,
-      useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (finished) {
-        setImageEditMounted(false);
-        model.onShadowOpenChange?.(false);
-        model.onBorderOpenChange?.(false);
-        model.onCropOpenChange?.(false);
-      }
-    });
-  };
-
-  const pan = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_e, g) =>
-        Math.abs(g.dx) > 5 && Math.abs(g.dx) > Math.abs(g.dy),
-      onPanResponderMove: (_e, g) => panX.setValue(g.dx),
-      onPanResponderRelease: (_e, g) => {
-        const dir = swipeDismissDirection(g.dx);
-        if (dir !== 0) dismissRef.current(dir);
-        else Animated.spring(panX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
-      },
-      onPanResponderTerminate: () =>
-        Animated.spring(panX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start(),
-    }),
-  ).current;
-
-  // Fold the sub-panel away the moment the selection is no longer an
-  // editable image (or the whole bar hides) so it never lingers over the
-  // next object's actions.
+  // Fold the image effect bars away the moment the selection is no longer an
+  // editable image (or the whole panel hides) so none lingers over the next
+  // object's actions.
   useEffect(() => {
-    if ((!model.visible || !model.showImageEdit) && imageEditMounted) {
-      setImageEditMounted(false);
+    if (!model.visible || !model.showImageEdit) {
       model.onShadowOpenChange?.(false);
       model.onBorderOpenChange?.(false);
       model.onCropOpenChange?.(false);
-      panX.setValue(0);
     }
     // model.on*OpenChange are stable setters; listing the whole model would
     // re-run this every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showImageEdit, imageEditMounted, panX]);
+  }, [model.visible, model.showImageEdit]);
 
   // Seed the shadow / border drafts from the current effect each time the
   // controls open.
@@ -233,12 +234,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showTextStyle, model.textStyleOpen]);
-
-  const openImageEdit = () => {
-    panX.setValue(width); // start just off the right edge, then slide in
-    setImageEditMounted(true);
-    Animated.timing(panX, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true }).start();
-  };
 
   const toggleShadow = () => model.onShadowOpenChange?.(!model.shadowOpen);
   const toggleBorder = () => model.onBorderOpenChange?.(!model.borderOpen);
@@ -306,7 +301,67 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
 
   if (!mounted) return null;
 
-  const hasGroupActions = !!(model.onGroup || model.onUngroup || model.onJoin || model.onUnion);
+  // Common actions (rotate / flip / copy / lock / delete, plus the optional
+  // group actions). Built as an array so it and the type-options set share a
+  // column count and the row keeps a stable cell width across a swap.
+  const row1: React.ReactNode[] = [
+    <GridButton key="rotate" label="Rotate" icon="rotate-right" onPress={model.onRotate} compact={compact} />,
+    <GridButton key="flipH" label="Mirror H" caption="Flip H" icon="arrow-left-right" onPress={model.onMirrorH} compact={compact} />,
+    <GridButton key="flipV" label="Mirror V" caption="Flip V" icon="arrow-up-down" onPress={model.onMirrorV} compact={compact} />,
+    <GridButton key="copy" label="Duplicate" caption="Copy" icon="content-copy" onPress={model.onDuplicate} compact={compact} />,
+    <GridButton
+      key="lock"
+      label={model.locked ? 'Locked' : 'Lock'}
+      caption={model.locked ? 'Locked' : 'Lock'}
+      icon={model.locked ? 'lock' : 'lock-open-outline'}
+      iconColor={model.locked ? ICON_COLOR_STRONG : ICON_COLOR}
+      onPress={model.onToggleLock}
+      compact={compact}
+    />,
+    <GridButton key="delete" label="Delete" caption="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
+  ];
+  if (model.onGroup) row1.push(<GridButton key="group" label="Group" caption="Group" icon="group" onPress={model.onGroup} compact={compact} />);
+  if (model.onUngroup) row1.push(<GridButton key="ungroup" label="Ungroup" caption="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
+  if (model.onJoin) row1.push(<GridButton key="join" label="Join" caption="Join" icon="vector-combine" onPress={model.onJoin} compact={compact} />);
+  if (model.onUnion) row1.push(<GridButton key="union" label="Union" caption="Union" icon="vector-union" onPress={model.onUnion} compact={compact} />);
+
+  // Type-specific options (images: the image-edit set; text: Edit + Type),
+  // null when the selection has none.
+  let typeOptions: React.ReactNode[] | null = null;
+  if (model.showImageEdit) {
+    typeOptions = IMAGE_EDIT_OPTIONS.map((opt) => (
+      <GridButton key={opt.action} label={opt.label} icon={opt.icon} onPress={() => runImageAction(opt.action)} compact={compact} />
+    ));
+  } else if (model.showEdit || model.showTextStyle) {
+    typeOptions = [];
+    if (model.showEdit) typeOptions.push(<GridButton key="edit" label="Edit" caption="Edit" icon="pencil-outline" onPress={model.onEdit} compact={compact} />);
+    if (model.showTextStyle) typeOptions.push(<GridButton key="type" label="Type" caption="Type" icon="format-font" onPress={() => model.onTextStyleOpenChange?.(true)} compact={compact} />);
+  }
+
+  // Only one set shows at a time; the `<` cell (far right) swaps between them.
+  // Columns stay fixed (the larger set + the arrow) so the cells don't resize
+  // on swap; empty cells sit between the buttons and the right-aligned arrow.
+  const canSwap = !!typeOptions;
+  canSwapRef.current = canSwap;
+  const showType = canSwap && showTypeRow;
+  const activeButtons = showType ? typeOptions! : row1;
+  // Heading (shadow-menu style): "OBJECT" for the common actions, the type's
+  // name for its options.
+  const typeTitle = model.showImageEdit ? 'Image' : (model.showEdit || model.showTextStyle) ? 'Text' : 'Object';
+  const activeTitle = showType ? typeTitle : 'Object';
+  const columns = Math.max(row1.length, typeOptions ? typeOptions.length : 0) + (canSwap ? 1 : 0);
+  const spacerCount = Math.max(0, columns - activeButtons.length - (canSwap ? 1 : 0));
+  const swapArrow = canSwap ? (
+    <GridButton
+      key="swap"
+      label={showType ? 'Back to common actions' : 'Show edit options'}
+      icon="chevron-left"
+      iconOnly
+      onPress={() => runSwapRef.current(-1)}
+      compact={compact}
+    />
+  ) : null;
+
   // Params tracked by the sliders/pad come from the local draft; color comes
   // from the model (it's changed externally, via the full-screen picker).
   const shadowForBar: ShadowModel = shadowDraft
@@ -326,14 +381,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     <>
       {shadowBar.mounted ? (
         <Animated.View
-          style={[styles.effectBarWrap, { paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: shadowBar.translateX }] }]}
+          style={[styles.effectBarWrap, { height: OBJECT_MENU_HEIGHT + safeBottom, paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: shadowBar.translateX }] }]}
           {...shadowBar.panHandlers}
         >
           <ShadowBar
             shadow={shadowForBar}
             onChange={(s) => applyShadow(s, false)}
             onCommit={(s) => applyShadow(s, true)}
-            onBack={() => model.onShadowOpenChange?.(false)}
+            onBack={() => shadowBar.closeTo(-1)}
             onRemove={removeShadow}
             onPickColor={() => model.onPickShadowColor?.()}
           />
@@ -341,7 +396,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
       ) : null}
       {borderBar.mounted ? (
         <Animated.View
-          style={[styles.effectBarWrap, { paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: borderBar.translateX }] }]}
+          style={[styles.effectBarWrap, { height: OBJECT_MENU_HEIGHT + safeBottom, paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: borderBar.translateX }] }]}
           {...borderBar.panHandlers}
         >
           <BorderBar
@@ -350,7 +405,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
             onChange={(b) => applyBorder(b, false)}
             onCommit={(b) => applyBorder(b, true)}
             onCornerRadius={(r, committed) => model.onCornerRadius?.(r, committed)}
-            onBack={() => model.onBorderOpenChange?.(false)}
+            onBack={() => borderBar.closeTo(-1)}
             onRemove={removeBorder}
             onPickColor={() => model.onPickBorderColor?.()}
           />
@@ -358,21 +413,21 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
       ) : null}
       {cropBar.mounted ? (
         <Animated.View
-          style={[styles.effectBarWrap, { paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: cropBar.translateX }] }]}
+          style={[styles.effectBarWrap, { height: OBJECT_MENU_HEIGHT + safeBottom, paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: cropBar.translateX }] }]}
           {...cropBar.panHandlers}
         >
           <CropBar
             framing={framingForBar}
             onChange={(f) => applyFraming(f, false)}
             onCommit={(f) => applyFraming(f, true)}
-            onBack={() => model.onCropOpenChange?.(false)}
+            onBack={() => cropBar.closeTo(-1)}
             onReset={resetFraming}
           />
         </Animated.View>
       ) : null}
       {textBar.mounted ? (
         <Animated.View
-          style={[styles.effectBarWrap, { paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: textBar.translateX }] }]}
+          style={[styles.effectBarWrap, { height: OBJECT_MENU_HEIGHT + safeBottom, paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateX: textBar.translateX }] }]}
           {...textBar.panHandlers}
         >
           <TextBar
@@ -380,92 +435,32 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
             fonts={model.fonts ?? []}
             onChange={(s) => applyTextStyle(s, false)}
             onCommit={(s) => applyTextStyle(s, true)}
-            onBack={() => model.onTextStyleOpenChange?.(false)}
+            onBack={() => textBar.closeTo(-1)}
             onReset={resetTextStyle}
             onPickColor={() => model.onPickTextColor?.()}
           />
         </Animated.View>
       ) : null}
       <View style={styles.clip} pointerEvents="box-none">
-        <Animated.View style={[styles.panel, { paddingBottom: safeBottom, transform: [{ translateY }] }]}>
-        <View style={styles.rowInner}>
-          {model.showEdit || model.showImageEdit || model.showTextStyle ? (
-            <>
-              <View style={compact ? (model.showTextStyle ? styles.groupCompact2 : styles.groupCompact1) : styles.group}>
-                <ActionButton
-                  label="Edit"
-                  icon="image-edit-outline"
-                  onPress={model.showImageEdit ? openImageEdit : model.onEdit}
-                  compact={compact}
-                />
-                {model.showTextStyle ? (
-                  <ActionButton
-                    label="Text"
-                    icon="format-font"
-                    onPress={() => model.onTextStyleOpenChange?.(true)}
-                    compact={compact}
-                  />
-                ) : null}
-              </View>
-              <Divider />
-            </>
-          ) : null}
-
-          <View style={compact ? styles.groupCompact3 : styles.group}>
-            <ActionButton label="Rotate" icon="rotate-right" onPress={model.onRotate} compact={compact} />
-            <ActionButton label="Mirror H" icon="arrow-left-right" onPress={model.onMirrorH} compact={compact} />
-            <ActionButton label="Mirror V" icon="arrow-up-down" onPress={model.onMirrorV} compact={compact} />
-          </View>
-          <Divider />
-
-          <View style={compact ? styles.groupCompact3 : styles.group}>
-            <ActionButton label="Duplicate" icon="content-copy" onPress={model.onDuplicate} compact={compact} />
-            <ActionButton
-              label={model.locked ? 'Locked' : 'Lock'}
-              icon={model.locked ? 'lock' : 'lock-open-outline'}
-              iconColor={model.locked ? ICON_COLOR_STRONG : ICON_COLOR}
-              onPress={model.onToggleLock}
-              compact={compact}
-            />
-            <ActionButton label="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />
-          </View>
-
-          {hasGroupActions ? (
-            <>
-              <Divider />
-              <View style={compact ? styles.groupCompact3 : styles.group}>
-                {model.onGroup ? <ActionButton label="Group" icon="group" onPress={model.onGroup} compact={compact} /> : null}
-                {model.onUngroup ? <ActionButton label="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} /> : null}
-                {model.onJoin ? <ActionButton label="Join" icon="vector-combine" onPress={model.onJoin} compact={compact} /> : null}
-                {model.onUnion ? <ActionButton label="Union" icon="vector-union" onPress={model.onUnion} compact={compact} /> : null}
-              </View>
-            </>
-          ) : null}
-        </View>
-
-        {imageEditMounted ? (
-          <Animated.View
-            style={[styles.imageEditOverlay, {
-              transform: [{ translateX: panX }],
-              opacity: panX.interpolate({
-                inputRange: [-120, 0, 120],
-                outputRange: [0.5, 1, 0.5],
-                extrapolate: 'clamp',
-              }),
-            }]}
-            {...pan.panHandlers}
-          >
-            <View style={styles.rowInner}>
-              {IMAGE_EDIT_OPTIONS.map((opt) => (
-                <ImageEditButton
-                  key={opt.action}
-                  label={opt.label}
-                  icon={opt.icon}
-                  onPress={() => runImageAction(opt.action)}
-                />
-              ))}
+        <Animated.View style={[styles.panel, { height: OBJECT_MENU_HEIGHT + safeBottom, paddingBottom: safeBottom, transform: [{ translateY }] }]}>
+        {/* A single page — title + one row of buttons (common actions or
+            type-specific options) — that the `<` cell / a horizontal swipe
+            slides between. Carousel dots below track which page is showing. */}
+        <View style={styles.swapArea} {...(canSwap ? swapPan.panHandlers : {})}>
+          <Animated.View style={{ transform: [{ translateX: swapX }] }}>
+            <Text style={styles.title}>{activeTitle}</Text>
+            <View style={styles.gridRow}>
+              {activeButtons}
+              {Array.from({ length: spacerCount }).map((_, i) => <View key={`pad${i}`} style={styles.gridSpacer} />)}
+              {swapArrow}
             </View>
           </Animated.View>
+        </View>
+        {canSwap ? (
+          <View style={styles.dotsRow}>
+            <View style={[styles.dot, !showType && styles.dotActive]} />
+            <View style={[styles.dot, showType && styles.dotActive]} />
+          </View>
         ) : null}
         </Animated.View>
       </View>
@@ -486,35 +481,46 @@ const styles = StyleSheet.create({
     backgroundColor: MODAL_BG,
     borderTopWidth: 1,
     borderTopColor: PANEL_HAIRLINE,
-    paddingHorizontal: 12,
+    // 16 to match the effect bars' content inset, so the title lands in the
+    // same place whether the panel or an effect bar is showing.
+    paddingHorizontal: 16,
   },
-  rowInner: {
+  // Fills the panel so a horizontal swipe anywhere over it (not just on the
+  // buttons) swaps the row.
+  swapArea: { flex: 1 },
+  // Page heading — matches the effect bars' header style (e.g. "DROP SHADOW")
+  // and left-aligns so every page's title starts at the same x. marginTop makes
+  // up the ~6px the effect-bar titles gain from being vertically centered in
+  // their taller header, so the heading sits at the same height in both.
+  title: {
+    color: LABEL_DIM,
+    fontSize: 11,
+    lineHeight: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    textAlign: 'left',
+    marginTop: 6,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  // Carousel dots (bottom): one filled for the current page, the other empty.
+  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingTop: 4, paddingBottom: 8 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.28)' },
+  dotActive: { backgroundColor: ICON_COLOR },
+  // A grid row: equal-width cells (the buttons) plus any right-side padding
+  // cells, so the common-actions and type-options sets share the same columns
+  // (stable cell width across a swap). Cell gap matches the transform spacing.
+  gridRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'flex-start',
+    gap: 2,
     paddingTop: 4,
     paddingBottom: 8,
   },
-  group: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  groupCompact1: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  groupCompact2: { flex: 2, flexDirection: 'row', alignItems: 'center' },
-  groupCompact3: { flex: 3, flexDirection: 'row', alignItems: 'center' },
-  button: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-  buttonCompact: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
-  divider: { width: 1, alignSelf: 'stretch', backgroundColor: PANEL_HAIRLINE, marginVertical: 6, marginHorizontal: 10 },
-  // Opaque cover over the action row — same surface as the panel, so the
-  // row is fully hidden until the sub-panel is swiped away.
-  imageEditOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: MODAL_BG,
-    justifyContent: 'center',
-  },
-  imageEditButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', gap: 2 },
-  imageEditLabel: { color: ICON_COLOR, fontSize: 10, fontWeight: '500' },
+  gridButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  gridSpacer: { flex: 1 },
+  gridLabel: { color: ICON_COLOR, fontSize: 10, fontWeight: '500' },
   // Full-width, bottom-anchored effect bar (Drop Shadow / Border) that slides
   // in over the panel.
   effectBarWrap: {
