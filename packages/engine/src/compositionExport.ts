@@ -2,7 +2,7 @@ import { CompositionFigure } from './types';
 import { loadCompositionState, loadFileStateLite, loadClipBox } from './persistence';
 import { loadBakedFigurePng } from './bake';
 import { encodePNG, toBase64 } from './pngcodec';
-import { rasterizeSvgToPixels } from './svgRasterize';
+import { rasterizeSvgToPixels, rasterizeSvgToJpegDataUri } from './svgRasterize';
 import {
   generateCompositionSVGCore,
   type CompositionFigureLoadResult,
@@ -25,6 +25,10 @@ export interface CompositionExportOptions {
    *  into a detached <img>, which cannot reach page-registered fonts,
    *  so un-embedded families fall back to the browser default. */
   fontResolver?: SVGFontResolver;
+  /** Emit images from their full-resolution `originalImageId` copy. Set for
+   *  real file exports; leave off for thumbnails/previews (see
+   *  {@link CompositionSVGInputs.preferOriginalImages}). */
+  preferOriginalImages?: boolean;
 }
 
 /**
@@ -50,12 +54,17 @@ async function loadFigurePngDataUri(fig: CompositionFigure): Promise<string | nu
  * embedded as @font-face data URIs (a detached <img> cannot see fonts
  * registered on the page).
  */
-export async function exportCompositionPNG(
+/**
+ * Export the composition's SVG and compute the output raster dimensions that
+ * fit within `maxDimension` while preserving the SVG's aspect ratio. Shared
+ * by the PNG and JPEG exporters. Returns null when there's nothing to draw.
+ */
+async function exportCompositionRasterTarget(
   compId: string,
   maxDimension: number,
   strokeScale?: number,
   options?: CompositionExportOptions,
-): Promise<string | null> {
+): Promise<{ svg: string; width: number; height: number } | null> {
   const svg = await exportCompositionSVG(compId, undefined, strokeScale, options);
   if (!svg) return null;
 
@@ -75,13 +84,43 @@ export async function exportCompositionPNG(
     height = Math.round(maxDimension);
     width = Math.round(maxDimension * (svgW / svgH));
   }
+  return { svg, width, height };
+}
 
-  const pixels = await rasterizeSvgToPixels(svg, width, height);
+export async function exportCompositionPNG(
+  compId: string,
+  maxDimension: number,
+  strokeScale?: number,
+  options?: CompositionExportOptions,
+): Promise<string | null> {
+  const target = await exportCompositionRasterTarget(compId, maxDimension, strokeScale, options);
+  if (!target) return null;
+
+  const pixels = await rasterizeSvgToPixels(target.svg, target.width, target.height);
   if (!pixels) return null;
 
-  const pngBytes = encodePNG(pixels, width, height);
+  const pngBytes = encodePNG(pixels, target.width, target.height);
   const base64 = toBase64(pngBytes);
   return `data:image/png;base64,${base64}`;
+}
+
+/**
+ * Export the composition as a JPEG data URI at up to `maxDimension` px on the
+ * long edge. JPEG (no alpha, white backdrop) is far smaller than PNG for the
+ * journal's photographic/paper artifacts, which matters because these images
+ * ride the WebView bridge. `quality` is 0..1 (default 0.82). Pair with
+ * `options.preferOriginalImages` so embedded photos sample the full-res copy.
+ */
+export async function exportCompositionJPEG(
+  compId: string,
+  maxDimension: number,
+  quality: number = 0.82,
+  strokeScale?: number,
+  options?: CompositionExportOptions,
+): Promise<string | null> {
+  const target = await exportCompositionRasterTarget(compId, maxDimension, strokeScale, options);
+  if (!target) return null;
+  return rasterizeSvgToJpegDataUri(target.svg, target.width, target.height, quality);
 }
 
 /**
@@ -109,6 +148,7 @@ export async function exportCompositionSVG(
     texts: partial.texts ?? [],
     background: partial.background,
     fontResolver: options?.fontResolver,
+    preferOriginalImages: options?.preferOriginalImages,
     groups: partial.groups ?? [],
     sceneOrder: partial.sceneOrder,
     strokeScale: strokeScale ?? partial.strokeScale,

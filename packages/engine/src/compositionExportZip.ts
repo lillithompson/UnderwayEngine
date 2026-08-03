@@ -40,7 +40,9 @@ async function payloadFor(
   if (format === 'png') {
     const compState = await loadCompositionState(id);
     const strokeScale = compState?.strokeScale ?? DEFAULT_STROKE_SCALE;
-    const dataUri = await exportCompositionPNG(id, opts.pngMaxDimension, strokeScale);
+    const dataUri = await exportCompositionPNG(id, opts.pngMaxDimension, strokeScale, {
+      preferOriginalImages: true,
+    });
     if (!dataUri) return null;
     const b64 = dataUri.replace(/^data:image\/png;base64,/, '');
     return base64ToBytes(b64);
@@ -48,7 +50,9 @@ async function payloadFor(
   if (format === 'svg') {
     const compState = await loadCompositionState(id);
     const strokeScale = compState?.strokeScale ?? DEFAULT_STROKE_SCALE;
-    const svg = await exportCompositionSVG(id, undefined, strokeScale);
+    const svg = await exportCompositionSVG(id, undefined, strokeScale, {
+      preferOriginalImages: true,
+    });
     if (!svg) return null;
     return utf8.encode(svg);
   }

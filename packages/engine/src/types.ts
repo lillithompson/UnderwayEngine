@@ -979,8 +979,17 @@ export interface ImageObject {
   id: string;
   name?: string;
   /** Stable key into `CompositionState.imageBlobs`; shared across
-   *  duplicates so cloning an image doesn't double the bytes. */
+   *  duplicates so cloning an image doesn't double the bytes. Addresses the
+   *  *display* bitmap (downsampled to keep the canvas within the iOS bitmap
+   *  budget). */
   imageId: string;
+  /** Optional key into the same `CompositionState.imageBlobs` map addressing
+   *  a higher-resolution *original* copy (bounded at import), kept solely so
+   *  export/rasterization can emit full detail while the canvas keeps using
+   *  the smaller `imageId` bitmap. Absent when the source already fit the
+   *  display cap (then `imageId` is already full resolution) and on saves
+   *  made before this field existed — export falls back to `imageId`. */
+  originalImageId?: string;
   mimeType: 'image/png' | 'image/jpeg';
   /** Intrinsic pixel dimensions of the *stored* (post-downsample)
    *  bitmap. Used for aspect ratio; not changed by scale handles. */
@@ -1214,7 +1223,9 @@ export interface CompositionState {
   /**
    * Pixel-byte registry for `images`. Keyed by `imageId` (which can be
    * shared across multiple `ImageObject` instances when one is
-   * duplicated). Populated on import and on .tile load. Persisted
+   * duplicated). Also holds each image's optional higher-resolution
+   * `originalImageId` copy under its own key — same map, distinct id, used
+   * only at export time. Populated on import and on .tile load. Persisted
    * inline in the .tile file so compositions stay self-contained.
    */
   imageBlobs?: Record<string, Uint8Array>;

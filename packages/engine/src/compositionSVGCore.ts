@@ -71,6 +71,11 @@ export interface CompositionSVGInputs {
   sceneOrder?: string[];
   /** Raw composition-level stroke scale (0–1). Normalized internally. */
   strokeScale?: number;
+  /** When true, emit each image from its higher-resolution `originalImageId`
+   *  blob (falling back to `imageId` when absent). Off by default so cheap
+   *  consumers — thumbnails, previews — keep rasterizing the small display
+   *  blob; real file exports (SVG/PNG/zip) turn it on for full fidelity. */
+  preferOriginalImages?: boolean;
   /** Resolves a figure's layer/dimension/clipBox data by `fileId`. May be
    *  async (browser path threads through IndexedDB) or effectively sync
    *  (a Node caller can pre-deserialize embedded files into memory and
@@ -422,7 +427,12 @@ export async function generateCompositionSVGCore(
 
   for (const img of images) {
     if (cancelled?.()) return null;
-    const bytes = imageBlobs[img.imageId];
+    // Real exports prefer the higher-res original; thumbnails/previews keep
+    // the small display blob. Fall back to the display blob whenever the
+    // original is absent (old saves, or a source that already fit the cap).
+    const bytes = (input.preferOriginalImages && img.originalImageId
+      ? imageBlobs[img.originalImageId]
+      : undefined) ?? imageBlobs[img.imageId];
     if (!bytes) continue;
     const dataUri = `data:${img.mimeType};base64,${toBase64(bytes)}`;
     const ix = img.cellX * U;

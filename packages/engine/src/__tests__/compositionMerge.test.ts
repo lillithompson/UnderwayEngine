@@ -231,6 +231,26 @@ describe('prepareTileMerge', () => {
     expect(result.imageBlobs[newBlobKey].length).toBe(3);
   });
 
+  test('remaps the original-resolution blob and copies its bytes', async () => {
+    const display = new Uint8Array([1, 2, 3]);
+    const original = new Uint8Array([9, 9, 9, 9, 9]);
+    const img = { ...makeImage('img_old1', 'blob_d'), originalImageId: 'blob_o' };
+    const tile = await buildTileBytes({
+      images: [img],
+      imageBlobs: { blob_d: display, blob_o: original },
+    });
+    const result = await prepareTileMerge(tile, 'Test.tile');
+    const r = result.images[0];
+    // Both ids are remapped to fresh keys, distinct from each other and the source.
+    expect(r.imageId).not.toBe('blob_d');
+    expect(r.originalImageId).toBeDefined();
+    expect(r.originalImageId).not.toBe('blob_o');
+    expect(r.originalImageId).not.toBe(r.imageId);
+    // Both blobs are copied under their new keys.
+    expect(result.imageBlobs[r.imageId!]).toEqual(display);
+    expect(result.imageBlobs[r.originalImageId!]).toEqual(original);
+  });
+
   test('deduplicates imageId across shared blobs', async () => {
     const blobData = new Uint8Array([1, 2, 3]);
     const tile = await buildTileBytes({

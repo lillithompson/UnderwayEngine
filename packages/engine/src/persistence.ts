@@ -500,14 +500,19 @@ export async function saveCompositionState(state: CompositionState): Promise<voi
   const blobs = state.imageBlobs ?? {};
   if (images.length > 0) {
     const seen = new Set<string>();
+    // Persist the display blob and, when present, the higher-res original —
+    // both live in `imageBlobs` under distinct ids and each gets its own
+    // binary key so the original survives reload and export stays full-res.
     for (const img of images) {
-      if (seen.has(img.imageId)) continue;
-      seen.add(img.imageId);
-      const bytes = blobs[img.imageId];
-      if (!bytes) continue;
-      const existing = await storage.getBinary(imgBlobKey(img.imageId));
-      if (!existing || existing.length !== bytes.length) {
-        await storage.setBinary(imgBlobKey(img.imageId), bytes);
+      for (const id of [img.imageId, img.originalImageId]) {
+        if (id == null || seen.has(id)) continue;
+        seen.add(id);
+        const bytes = blobs[id];
+        if (!bytes) continue;
+        const existing = await storage.getBinary(imgBlobKey(id));
+        if (!existing || existing.length !== bytes.length) {
+          await storage.setBinary(imgBlobKey(id), bytes);
+        }
       }
     }
   }
@@ -631,11 +636,15 @@ export async function loadCompositionState(id: string): Promise<Partial<Composit
   const imageBlobs: Record<string, Uint8Array> = {};
   if (images.length > 0) {
     const fetched = new Set<string>();
+    // Rehydrate both the display blob and the original (when the node
+    // references one) so export can reach full resolution after a reload.
     for (const img of images) {
-      if (fetched.has(img.imageId)) continue;
-      fetched.add(img.imageId);
-      const bytes = await storage.getBinary(imgBlobKey(img.imageId));
-      if (bytes) imageBlobs[img.imageId] = bytes;
+      for (const id of [img.imageId, img.originalImageId]) {
+        if (id == null || fetched.has(id)) continue;
+        fetched.add(id);
+        const bytes = await storage.getBinary(imgBlobKey(id));
+        if (bytes) imageBlobs[id] = bytes;
+      }
     }
   }
 

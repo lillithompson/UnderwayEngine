@@ -91,9 +91,10 @@ describe('exportCompositionsAsZip', () => {
     expect(eocdEntryCount(zip!)).toBe(2);
     expect(readCentralDirectoryNames(zip!)).toEqual(['Alpha.png', 'Beta.png']);
 
-    // Per-comp strokeScale: 0.5 for "a", 0.2 default for "b".
-    expect(mockExportCompositionPNG).toHaveBeenCalledWith('a', 1024, 0.5);
-    expect(mockExportCompositionPNG).toHaveBeenCalledWith('b', 1024, 0.2);
+    // Per-comp strokeScale: 0.5 for "a", 0.2 default for "b". Real exports
+    // request the full-resolution originals.
+    expect(mockExportCompositionPNG).toHaveBeenCalledWith('a', 1024, 0.5, { preferOriginalImages: true });
+    expect(mockExportCompositionPNG).toHaveBeenCalledWith('b', 1024, 0.2, { preferOriginalImages: true });
 
     // Decoded payloads.
     const payloads = localEntryPayloads(zip!);
@@ -115,7 +116,7 @@ describe('exportCompositionsAsZip', () => {
 
     expect(zip).not.toBeNull();
     expect(readCentralDirectoryNames(zip!)).toEqual(['Alpha.svg']);
-    expect(mockExportCompositionSVG).toHaveBeenCalledWith('a', undefined, 0.75);
+    expect(mockExportCompositionSVG).toHaveBeenCalledWith('a', undefined, 0.75, { preferOriginalImages: true });
 
     const payloads = localEntryPayloads(zip!);
     expect(new TextDecoder().decode(payloads.get('Alpha.svg')!)).toBe('<svg id="a"/>');

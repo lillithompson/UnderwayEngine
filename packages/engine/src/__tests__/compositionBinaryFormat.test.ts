@@ -934,6 +934,65 @@ describe('compositionBinaryFormat', () => {
     expect(result.meta.imageBlobs!.blob_x).toEqual(bytes);
   });
 
+  test('round-trips an image with a separate full-res original blob', () => {
+    const display = new Uint8Array([1, 1, 1, 1]);
+    const original = new Uint8Array([2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
+    const img = {
+      id: 'img_a', imageId: 'blob_display', originalImageId: 'blob_orig',
+      mimeType: 'image/jpeg' as const,
+      pixelWidth: 1024, pixelHeight: 768,
+      cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 6,
+    };
+    const out = serializeComposition(
+      makeBundle({ images: [img], imageBlobs: { blob_display: display, blob_orig: original } }),
+      [],
+    );
+    const result = deserializeComposition(out);
+    const r = result.meta.images![0];
+    expect(r.imageId).toBe('blob_display');
+    expect(r.originalImageId).toBe('blob_orig');
+    // Both blobs survive under their own keys.
+    expect(result.meta.imageBlobs!.blob_display).toEqual(display);
+    expect(result.meta.imageBlobs!.blob_orig).toEqual(original);
+  });
+
+  test('image without an original reads originalImageId back as undefined', () => {
+    const img = {
+      id: 'img_a', imageId: 'blob_x', mimeType: 'image/png' as const,
+      pixelWidth: 64, pixelHeight: 64,
+      cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
+    };
+    const out = serializeComposition(
+      makeBundle({ images: [img], imageBlobs: { blob_x: new Uint8Array([1]) } }),
+      [],
+    );
+    const result = deserializeComposition(out);
+    expect(result.meta.images![0].originalImageId).toBeUndefined();
+    // No stray blob written for an absent original.
+    expect(Object.keys(result.meta.imageBlobs!)).toEqual(['blob_x']);
+  });
+
+  test('original blob survives alongside rotation and effects bits', () => {
+    const img = {
+      id: 'img_a', imageId: 'blob_d', originalImageId: 'blob_o',
+      mimeType: 'image/png' as const,
+      pixelWidth: 2000, pixelHeight: 1000,
+      cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 4,
+      rotation: 90 as const,
+      tint: { color: { r: 10, g: 20, b: 30 }, amount: 0.5, mode: 'tint' as const },
+    };
+    const out = serializeComposition(
+      makeBundle({ images: [img], imageBlobs: { blob_d: new Uint8Array([1]), blob_o: new Uint8Array([9, 9]) } }),
+      [],
+    );
+    const result = deserializeComposition(out);
+    const r = result.meta.images![0];
+    expect(r.rotation).toBe(90);
+    expect(r.tint?.amount).toBeCloseTo(0.5, 2);
+    expect(r.originalImageId).toBe('blob_o');
+    expect(result.meta.imageBlobs!.blob_o).toEqual(new Uint8Array([9, 9]));
+  });
+
   test('image bytes are deduplicated by imageId across nodes', () => {
     const bytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
     const a = { id: 'img_a', imageId: 'blob_x', mimeType: 'image/jpeg' as const,

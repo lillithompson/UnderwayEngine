@@ -38,45 +38,12 @@ export function rasterizeSvgToObjectURL(
   width: number,
   height: number,
 ): Promise<string | null> {
-  const job = _queue.then(() => _rasterizeSvgToObjectURLInner(svg, width, height));
+  const job = _queue.then(() => _rasterizeInner(svg, width, height, false, async (canvas) => {
+    const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    return blob ? URL.createObjectURL(blob) : null;
+  }));
   _queue = job.catch(() => {});
   return job;
-}
-
-async function _rasterizeSvgToObjectURLInner(
-  svg: string,
-  width: number,
-  height: number,
-): Promise<string | null> {
-  const canvas = getPooledCanvas();
-  const img = getPooledImage();
-
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('SVG image load timed out')), 15000);
-      img.onload = () => { clearTimeout(timer); resolve(); };
-      img.onerror = () => { clearTimeout(timer); reject(new Error('Failed to load SVG as image')); };
-      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-    });
-
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return null;
-
-    ctx.drawImage(img, 0, 0, width, height);
-    const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-    if (!blob) return null;
-    return URL.createObjectURL(blob);
-  } catch {
-    return null;
-  } finally {
-    canvas.width = 0;
-    canvas.height = 0;
-    img.onload = null;
-    img.onerror = null;
-    img.src = '';
-  }
 }
 
 export function rasterizeSvgToPixels(
@@ -84,18 +51,51 @@ export function rasterizeSvgToPixels(
   width: number,
   height: number,
 ): Promise<Uint8Array | null> {
-  const job = _queue.then(() => _rasterizeSvgToPixelsInner(svg, width, height));
+  const job = _queue.then(() => _rasterizeInner(svg, width, height, false, (_canvas, ctx) => {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    return new Uint8Array(imageData.data.buffer);
+  }));
   // Advance the queue with .catch so a failure in one call doesn't
   // prevent subsequent calls from running.
   _queue = job.catch(() => {});
   return job;
 }
 
-async function _rasterizeSvgToPixelsInner(
+/**
+ * Rasterize an SVG to a JPEG data URI. JPEG has no alpha channel, so the
+ * canvas is flood-filled opaque white before the SVG is drawn — a
+ * transparent composition would otherwise composite over black. `quality`
+ * is 0..1. Used for the journal's card + full-view images, where JPEG's far
+ * smaller bytes (vs PNG) keep the WebView-bridge payload bounded.
+ */
+export function rasterizeSvgToJpegDataUri(
   svg: string,
   width: number,
   height: number,
-): Promise<Uint8Array | null> {
+  quality: number,
+): Promise<string | null> {
+  const job = _queue.then(() => _rasterizeInner(svg, width, height, true, (canvas) =>
+    canvas.toDataURL('image/jpeg', quality)));
+  _queue = job.catch(() => {});
+  return job;
+}
+
+/**
+ * Shared pooled-canvas rasterization core: load the SVG into the pooled
+ * <img>, size the pooled <canvas>, optionally paint an opaque white
+ * backdrop (for the alpha-less JPEG encoder), draw, then hand the
+ * canvas/context to `encode`. The pooled backing store is released in
+ * `finally` regardless. See the module doc for the pooling/serialization
+ * rationale — all callers funnel through the `_queue` so only one uses the
+ * shared canvas at a time.
+ */
+async function _rasterizeInner<T>(
+  svg: string,
+  width: number,
+  height: number,
+  opaqueBackground: boolean,
+  encode: (canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) => T | null | Promise<T | null>,
+): Promise<T | null> {
   const canvas = getPooledCanvas();
   const img = getPooledImage();
 
@@ -112,9 +112,12 @@ async function _rasterizeSvgToPixelsInner(
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
 
+    if (opaqueBackground) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+    }
     ctx.drawImage(img, 0, 0, width, height);
-    const imageData = ctx.getImageData(0, 0, width, height);
-    return new Uint8Array(imageData.data.buffer);
+    return await encode(canvas, ctx);
   } catch {
     return null;
   } finally {

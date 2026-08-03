@@ -248,7 +248,16 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // the image falls back to legacy stretch-fill with square corners. Fixes the
 // binary round-trip silently dropping a photo's crop/pan/zoom (it reverted to
 // the default cover crop on reopen — "clipped in a different place").
-const FORMAT_VERSION = 33;
+// v34: ImageObject `originalImageId` — a second, higher-resolution copy kept
+// for export, addressed in the same imageBlobs map as `imageId`. The image
+// rotation byte is fully consumed (v33 took its last two bits), so v34 adds a
+// new per-image `flags2` byte, written after the v33 framing/cornerRadius
+// blocks; bit 0x01 marks an originalImageId, whose u16 string-table index
+// follows. The bytes ride the existing image-blob section (the id is added to
+// the dedup'd blob list). Gated on version>=34 so v33 files — which have no
+// flags2 byte — are never misread; originalImageId loads undefined there
+// (export falls back to imageId).
+const FORMAT_VERSION = 34;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + 4Ã—float32 = 21
@@ -386,6 +395,7 @@ function buildStringTable(
     for (const i of bundle.images) {
       add(i.id);
       add(i.imageId);
+      add(i.originalImageId);
       add(i.name);
       add(i.groupId);
       add(i.preGroupName);
@@ -577,6 +587,10 @@ function readFraming(view: DataView, data: Uint8Array, pos: number): { framing: 
   if (sub & FRAMING_HAS_OFFSET_Y) { framing.offsetY = view.getFloat64(pos, true); pos += 8; }
   return { framing, pos };
 }
+
+// v34+ per-image `flags2` byte (the rotation byte is full after v33). Bit 0x01
+// marks an `originalImageId`, whose u16 string-table index follows the byte.
+const IMG_FLAGS2_HAS_ORIGINAL = 0x01;
 
 // v31+ free-rotation encoding: i16 hundredths of a degree (angleDeg * 100).
 // Range ±180° fits comfortably in i16 (±18000), precision 0.01°.
@@ -873,6 +887,8 @@ function imageBinarySize(img: ImageObject): number {
   if (img.angleDeg) size += 2; // v31+ free rotation (i16)
   if (img.framing) size += framingBinarySize(img.framing); // v33+
   if (img.cornerRadius) size += 8; // v33+ (f64)
+  size += 1; // v34+ image flags2 byte (always written by the current writer)
+  if (img.originalImageId != null) size += 2; // v34+ originalImageId index
   return size;
 }
 
@@ -1601,6 +1617,15 @@ function writeImage(
   if (img.cornerRadius) {
     view.setFloat64(pos, img.cornerRadius, true); pos += 8;
   }
+  // v34+ image flags2 byte, then the originalImageId string index when present.
+  // Written after the v33 blocks; bytes ride the existing image-blob section.
+  {
+    const flags2 = img.originalImageId != null ? IMG_FLAGS2_HAS_ORIGINAL : 0;
+    out[pos++] = flags2;
+    if (img.originalImageId != null) {
+      view.setUint16(pos, indexOf.get(img.originalImageId) ?? 0, true); pos += 2;
+    }
+  }
 
   return pos;
 }
@@ -1698,6 +1723,14 @@ function readImage(
   }
   if (version >= 33 && (rotBits & IMG_ROT_HAS_CORNER)) {
     img.cornerRadius = view.getFloat64(pos, true); pos += 8;
+  }
+  // v34+ image flags2 byte, then originalImageId when its bit is set. v33 files
+  // have no flags2 byte, so the read is gated on version>=34 (never their data).
+  if (version >= 34) {
+    const flags2 = data[pos++];
+    if (flags2 & IMG_FLAGS2_HAS_ORIGINAL) {
+      img.originalImageId = strings[view.getUint16(pos, true)]; pos += 2;
+    }
   }
 
   return { img, pos };
@@ -1996,9 +2029,13 @@ export function serializeComposition(
   const usedBlobIds: string[] = [];
   const seenBlobIds = new Set<string>();
   for (const i of images) {
-    if (seenBlobIds.has(i.imageId)) continue;
-    seenBlobIds.add(i.imageId);
-    if (blobMap[i.imageId]) usedBlobIds.push(i.imageId);
+    // Display blob then, if present, the higher-res original — both live in
+    // the same blobMap under distinct ids and are deduplicated together.
+    for (const id of [i.imageId, i.originalImageId]) {
+      if (id == null || seenBlobIds.has(id)) continue;
+      seenBlobIds.add(id);
+      if (blobMap[id]) usedBlobIds.push(id);
+    }
   }
   totalSize += 2; // blobCount
   for (const id of usedBlobIds) {
@@ -2223,10 +2260,11 @@ export function serializeComposition(
   for (const id of usedBlobIds) {
     const bytes = blobMap[id]!;
     view.setUint16(pos, indexOf.get(id) ?? 0, true); pos += 2;
-    // Per-blob mime: pulled from any node carrying this imageId. We
-    // checked that blobMap[id] exists above; the corresponding node
-    // exists too because the blobMap key was harvested from images.
-    const refNode = images.find(i => i.imageId === id)!;
+    // Per-blob mime: pulled from any node carrying this id as either its
+    // display or original blob. We checked that blobMap[id] exists above;
+    // the corresponding node exists too because the blobMap key was
+    // harvested from images. Display and original share one mime per node.
+    const refNode = images.find(i => i.imageId === id || i.originalImageId === id)!;
     out[pos++] = refNode.mimeType === 'image/jpeg' ? 1 : 0;
     view.setUint32(pos, bytes.length, true); pos += 4;
     out.set(bytes, pos); pos += bytes.length;

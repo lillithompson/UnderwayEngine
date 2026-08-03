@@ -79,14 +79,16 @@ function remapImages(
     const newId = 'img_' + freshId();
     idRemap.set(img.id, newId);
 
-    // Deduplicate: multiple ImageObjects can share one imageId
-    if (!imageIdRemap.has(img.imageId)) {
-      // Storage keys get the imgblob_ prefix via imgBlobKey, so an img_
-      // id here stays out of the blob-key namespace.
-      const newImageId = 'img_' + freshId();
-      imageIdRemap.set(img.imageId, newImageId);
-      if (sourceBlobs[img.imageId]) {
-        blobs[newImageId] = sourceBlobs[img.imageId];
+    // Deduplicate: multiple ImageObjects can share one imageId (and,
+    // independently, one originalImageId). Remap and copy both blobs.
+    // Storage keys get the imgblob_ prefix via imgBlobKey, so an img_
+    // id here stays out of the blob-key namespace.
+    for (const srcId of [img.imageId, img.originalImageId]) {
+      if (srcId == null || imageIdRemap.has(srcId)) continue;
+      const newBlobId = 'img_' + freshId();
+      imageIdRemap.set(srcId, newBlobId);
+      if (sourceBlobs[srcId]) {
+        blobs[newBlobId] = sourceBlobs[srcId];
       }
     }
 
@@ -96,6 +98,9 @@ function remapImages(
       imageId: imageIdRemap.get(img.imageId)!,
       locked: undefined,
     };
+    if (img.originalImageId != null) {
+      updated.originalImageId = imageIdRemap.get(img.originalImageId)!;
+    }
 
     if (updated.groupId && groupIdRemap.has(updated.groupId)) {
       updated.groupId = groupIdRemap.get(updated.groupId)!;

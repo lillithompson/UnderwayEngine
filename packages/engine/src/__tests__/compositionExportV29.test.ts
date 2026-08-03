@@ -347,6 +347,40 @@ describe('generateCompositionSVGCore — image tint', () => {
   });
 });
 
+describe('generateCompositionSVGCore — prefers the original blob on export', () => {
+  const display = new Uint8Array([1, 2, 3, 4]);
+  const original = new Uint8Array([9, 8, 7, 6, 5, 4, 3, 2]);
+  const displayB64 = Buffer.from(display).toString('base64');
+  const originalB64 = Buffer.from(original).toString('base64');
+  const image = makeImage({ imageId: 'blob_d', originalImageId: 'blob_o' });
+  const imageBlobs = { blob_d: display, blob_o: original };
+
+  it('emits the original bytes when preferOriginalImages is set', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      images: [image], imageBlobs, preferOriginalImages: true,
+    }));
+    expect(svg).toContain(originalB64);
+    expect(svg).not.toContain(displayB64);
+  });
+
+  it('emits the display bytes by default (thumbnails/previews)', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      images: [image], imageBlobs,
+    }));
+    expect(svg).toContain(displayB64);
+    expect(svg).not.toContain(originalB64);
+  });
+
+  it('falls back to the display blob when no original exists', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      images: [makeImage({ imageId: 'blob_d' })],
+      imageBlobs: { blob_d: display },
+      preferOriginalImages: true,
+    }));
+    expect(svg).toContain(displayB64);
+  });
+});
+
 describe('generateCompositionSVGCore — canvas background', () => {
   it('paints a solid background rect covering the viewBox behind everything', async () => {
     const svg = await generateCompositionSVGCore(makeInputs({

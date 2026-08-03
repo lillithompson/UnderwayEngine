@@ -12,9 +12,25 @@ import { compSnapStep } from './compositionCellMath';
  * The cap exists because the editor's WebView decodes one bitmap per
  * unique data URI and we want each decoded bitmap to stay well under
  * the 16 MB IOSurface budget on iOS (1024² × 4 bytes = ~4 MB). Tuning
- * this number is the only knob users get for image quality vs. memory.
+ * this number is the only knob users get for on-screen quality vs. memory.
+ *
+ * Export quality is decoupled from this cap: a second, higher-resolution
+ * copy (bounded to {@link ORIGINAL_MAX_EDGE_PX}) is stored alongside the
+ * display bitmap and preferred when rasterizing/exporting, so shrinking
+ * this display cap never costs export fidelity.
  */
 export const MAX_EDGE_PX = 1024;
+
+/**
+ * Longest-edge cap for the *original* copy kept for export. Larger than
+ * {@link MAX_EDGE_PX} so exports stay sharp for real phone/camera photos,
+ * but still bounded so a single import can't balloon the saved file (or a
+ * decode) without limit — 4096² × 4 ≈ 64 MB decoded, which only ever
+ * happens transiently during export, never on the canvas hot path. When
+ * the source already fits {@link MAX_EDGE_PX} no separate original is
+ * stored (display bytes are already full resolution).
+ */
+export const ORIGINAL_MAX_EDGE_PX = 4096;
 
 /** Default placement size (in grid-level cells) along the image's longest
  *  edge. Converted to L0 cells at import time via the active grid level.
@@ -31,7 +47,13 @@ const JPEG_QUALITY = 0.9;
  *  `state.imageBlobs` and an `ImageObject` ready for `state.images`. */
 export interface ImageImportResult {
   image: ImageObject;
+  /** Display bytes, keyed by `image.imageId`. */
   bytes: Uint8Array;
+  /** Full-resolution (≤{@link ORIGINAL_MAX_EDGE_PX}) bytes, keyed by
+   *  `image.originalImageId`. Present only when the source was larger than
+   *  the display cap — otherwise `bytes` is already full resolution and no
+   *  separate original is stored. */
+  originalBytes?: Uint8Array;
 }
 
 /** Mint a fresh imageId. Random suffix is enough — collisions across a
@@ -88,6 +110,7 @@ function bitmapHasAlpha(bitmap: ImageBitmap): boolean {
  */
 async function decodeAndDownsample(
   blob: Blob,
+  maxEdge: number = MAX_EDGE_PX,
 ): Promise<{ bitmap: ImageBitmap; width: number; height: number }> {
   // First decode at native resolution so we can read intrinsic dims
   // and decide the resize ratio. Skipping this step (decoding directly
@@ -95,10 +118,10 @@ async function decodeAndDownsample(
   // dimensions in advance, which we don't.
   const native = await createImageBitmap(blob);
   const longest = Math.max(native.width, native.height);
-  if (longest <= MAX_EDGE_PX) {
+  if (longest <= maxEdge) {
     return { bitmap: native, width: native.width, height: native.height };
   }
-  const scale = MAX_EDGE_PX / longest;
+  const scale = maxEdge / longest;
   const targetW = Math.max(1, Math.round(native.width * scale));
   const targetH = Math.max(1, Math.round(native.height * scale));
   // Re-decode (or copy) at the target size. We use createImageBitmap on
@@ -152,6 +175,25 @@ async function reencodeBitmap(
   return { bytes: new Uint8Array(buf), mimeType };
 }
 
+/** One full decode → (optional) downsample → alpha-detect → re-encode pass.
+ *  Shared by the fresh-import and replacement pipelines (and called twice by
+ *  each — once for the display copy, once for the original) so the encode
+ *  logic lives in exactly one place. `forceAlpha`, when given, skips the
+ *  per-scale alpha sample and pins the output format so a node's display and
+ *  original copies never disagree on mime (which would mislabel the data URI
+ *  at export). */
+async function prepareScaledEncoding(
+  sourceBlob: Blob,
+  maxEdge: number,
+  forceAlpha?: boolean,
+): Promise<{ bytes: Uint8Array; mimeType: 'image/png' | 'image/jpeg'; width: number; height: number; hasAlpha: boolean }> {
+  const { bitmap, width, height } = await decodeAndDownsample(sourceBlob, maxEdge);
+  const hasAlpha = forceAlpha ?? bitmapHasAlpha(bitmap);
+  const { bytes, mimeType } = await reencodeBitmap(bitmap, width, height, hasAlpha);
+  bitmap.close?.();
+  return { bytes, mimeType, width, height, hasAlpha };
+}
+
 /**
  * Compute the placement bbox for a freshly imported image so its
  * longest edge spans {@link DEFAULT_LONGEST_EDGE_CELLS} cells at the given
@@ -189,6 +231,10 @@ export interface ImageReplacementResult {
   mimeType: 'image/png' | 'image/jpeg';
   pixelWidth: number;
   pixelHeight: number;
+  /** Full-resolution copy for export; present only when the source exceeded
+   *  the display cap. Register under `originalImageId` in `imageBlobs`. */
+  originalImageId?: string;
+  originalBytes?: Uint8Array;
 }
 
 /**
@@ -207,11 +253,24 @@ export async function prepareImageReplacement(
   sourceMimeType: string,
 ): Promise<ImageReplacementResult> {
   const sourceBlob = new Blob([rawBytes as BlobPart], { type: sourceMimeType });
-  const { bitmap, width, height } = await decodeAndDownsample(sourceBlob);
-  const hasAlpha = bitmapHasAlpha(bitmap);
-  const { bytes, mimeType } = await reencodeBitmap(bitmap, width, height, hasAlpha);
-  bitmap.close?.();
-  return { imageId: mintImageId(), bytes, mimeType, pixelWidth: width, pixelHeight: height };
+  const original = await prepareScaledEncoding(sourceBlob, ORIGINAL_MAX_EDGE_PX);
+  const needsSeparateOriginal =
+    Math.max(original.width, original.height) > MAX_EDGE_PX;
+  const display = needsSeparateOriginal
+    ? await prepareScaledEncoding(sourceBlob, MAX_EDGE_PX, original.hasAlpha)
+    : original;
+  const result: ImageReplacementResult = {
+    imageId: mintImageId(),
+    bytes: display.bytes,
+    mimeType: display.mimeType,
+    pixelWidth: display.width,
+    pixelHeight: display.height,
+  };
+  if (needsSeparateOriginal) {
+    result.originalImageId = mintImageId();
+    result.originalBytes = original.bytes;
+  }
+  return result;
 }
 
 /**
@@ -236,24 +295,35 @@ export async function prepareImageImport(
   gridLevel?: number,
 ): Promise<ImageImportResult> {
   const sourceBlob = new Blob([rawBytes as BlobPart], { type: sourceMimeType });
-  const { bitmap, width, height } = await decodeAndDownsample(sourceBlob);
-  const hasAlpha = bitmapHasAlpha(bitmap);
-  const { bytes, mimeType } = await reencodeBitmap(bitmap, width, height, hasAlpha);
-  bitmap.close?.();
-  const bbox = placementBbox(width, height, centerCellX, centerCellY, gridLevel ?? 0);
+  // Encode the export-quality original first, then the display copy. When the
+  // source already fits the display cap the two are identical, so we skip the
+  // second decode and store no separate original. The display copy is pinned
+  // to the original's alpha decision so their mime types can't diverge.
+  const original = await prepareScaledEncoding(sourceBlob, ORIGINAL_MAX_EDGE_PX);
+  const needsSeparateOriginal =
+    Math.max(original.width, original.height) > MAX_EDGE_PX;
+  const display = needsSeparateOriginal
+    ? await prepareScaledEncoding(sourceBlob, MAX_EDGE_PX, original.hasAlpha)
+    : original;
+
+  const bbox = placementBbox(display.width, display.height, centerCellX, centerCellY, gridLevel ?? 0);
   const image: ImageObject = {
     id: mintImageNodeId(),
     name,
     imageId: mintImageId(),
-    mimeType,
-    pixelWidth: width,
-    pixelHeight: height,
+    mimeType: display.mimeType,
+    pixelWidth: display.width,
+    pixelHeight: display.height,
     cellX: bbox.cellX,
     cellY: bbox.cellY,
     cellWidth: bbox.cellWidth,
     cellHeight: bbox.cellHeight,
   };
-  return { image, bytes };
+  if (!needsSeparateOriginal) {
+    return { image, bytes: display.bytes };
+  }
+  image.originalImageId = mintImageId();
+  return { image, bytes: display.bytes, originalBytes: original.bytes };
 }
 
 /** Sniff a filename to decide whether to route through the image-import
