@@ -533,3 +533,80 @@ describe('normalizeComposition — degenerate / empty', () => {
     expect(r.svgObjects[0].segments[0]).toEqual({ kind: 'line', start: [CANONICAL_SIZE / 2, CANONICAL_SIZE / 2], end: [CANONICAL_SIZE / 2, CANONICAL_SIZE / 2] });
   });
 });
+
+describe('normalizeComposition — frame (page) anchoring', () => {
+  // A full-page daily-haiku-style frame: a hidden `isMask` boundary rect at the
+  // page origin + a photo dragged DOWN-RIGHT so it overhangs the frame, all
+  // members of an `isFrame` group at identity. The frame IS the page (the fixed
+  // white background div is drawn at world (0,0)); normalization must keep the
+  // frame's clip rect pinned there and NOT let the overhanging photo re-anchor
+  // the scene — otherwise the crop slides up-left of the page on reopen.
+  const PAGE_H = 42.67;
+  const rect = (x: number, y: number, w: number, h: number): SVGObject['segments'] => ([
+    { kind: 'line', start: [x, y], end: [x + w, y] },
+    { kind: 'line', start: [x + w, y], end: [x + w, y + h] },
+    { kind: 'line', start: [x + w, y + h], end: [x, y + h] },
+    { kind: 'line', start: [x, y + h], end: [x, y] },
+  ]);
+  const frameGroup: GroupNode = {
+    id: 'frame', name: 'Daily Haiku', translateX: 0, translateY: 0,
+    scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false, isFrame: true,
+  } as GroupNode;
+
+  function haikuInput(imgX: number, imgY: number): NormalizableInput {
+    return input({
+      svgObjects: [svg({
+        id: 'svg_boundary', groupId: 'frame', isMask: true, hidden: true,
+        segments: rect(0, 0, 32, PAGE_H), cellX: 0, cellY: 0, cellWidth: 32, cellHeight: PAGE_H,
+      })],
+      images: [img({ id: 'img_photo', groupId: 'frame', cellX: imgX, cellY: imgY, cellWidth: 32, cellHeight: PAGE_H })],
+      groups: [frameGroup],
+      gridLevel: 3,
+    });
+  }
+
+  const boundaryOf = (r: { svgObjects: SVGObject[] }) => r.svgObjects.find((s) => s.id === 'svg_boundary')!;
+
+  test('the hidden frame boundary anchors the bbox; framed overhang is ignored', () => {
+    // With groups, the overhanging photo does not extend the anchor bbox — it's
+    // the frame boundary (0,0,32,PAGE_H) that defines it.
+    const bbox = computeContentBBox(
+      haikuInput(6, 6).figures, haikuInput(6, 6).svgObjects, haikuInput(6, 6).images, undefined,
+      [frameGroup],
+    );
+    expect(bbox).toEqual({ minX: 0, minY: 0, maxX: 32, maxY: PAGE_H });
+  });
+
+  test('a down-right overhang leaves the frame clip pinned at the page origin', () => {
+    const r = normalizeComposition(haikuInput(6, 6));
+    const b = boundaryOf(r);
+    expect(b.cellX).toBeCloseTo(0, 5);
+    expect(b.cellY).toBeCloseTo(0, 5);
+    expect(b.cellWidth).toBeCloseTo(32, 5);
+    expect(b.cellHeight).toBeCloseTo(PAGE_H, 5);
+    // The photo keeps its position relative to the (pinned) clip.
+    const photo = r.images!.find((i) => i.id === 'img_photo')!;
+    expect(photo.cellX).toBeCloseTo(6, 5);
+    expect(photo.cellY).toBeCloseTo(6, 5);
+  });
+
+  test('an up-left overhang also leaves the frame pinned (no drift either way)', () => {
+    const r = normalizeComposition(haikuInput(-5, -4));
+    const b = boundaryOf(r);
+    expect(b.cellX).toBeCloseTo(0, 5);
+    expect(b.cellY).toBeCloseTo(0, 5);
+    const photo = r.images!.find((i) => i.id === 'img_photo')!;
+    expect(photo.cellX).toBeCloseTo(-5, 5);
+    expect(photo.cellY).toBeCloseTo(-4, 5);
+  });
+
+  test('regression: WITHOUT frame awareness the overhang drifts the clip', () => {
+    // The old behavior (no groups → all visible content drives the anchor):
+    // the hidden boundary was excluded and the down-right photo pushed the
+    // bbox min off (0,0), sliding the clip up-left. Guards the fix.
+    const i = haikuInput(6, 6);
+    const legacy = computeContentBBox(i.figures, i.svgObjects, i.images, undefined);
+    expect(legacy!.minX).toBeGreaterThan(0);
+    expect(legacy!.minY).toBeGreaterThan(0);
+  });
+});

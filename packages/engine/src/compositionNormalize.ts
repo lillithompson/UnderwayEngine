@@ -9,6 +9,7 @@ import {
   TextObject,
 } from './types';
 import { arcBoundingBox } from './compositionArcHitTest';
+import { frameGroupIdForNode } from './compositionFrame';
 
 /** Canonical canvas axis length in L0 cells. Soft target — the
  *  normalizer aims to fit content into a `[0, CANONICAL_SIZE]` box
@@ -51,18 +52,37 @@ export interface ContentBBox {
  * Locked and grouped items are included — group members carry world
  * `cellX/Y/Width/Height` that's already the materialized world bbox, so
  * we don't need to walk into group transforms separately.
+ *
+ * Frame-aware when `groups` is supplied: a Figma-style frame (an `isFrame`
+ * group) is the composition's page — content that overhangs it is clipped
+ * away and invisible, so it must NOT drive the normalization anchor. We
+ * therefore anchor to the frame's own boundary rect (its `isMask` member,
+ * included even though it's a hidden clip-only shape) and SKIP the frame's
+ * other members. Without this, dragging a framed photo past the frame edge
+ * grew the content bbox, so `normalizeComposition` re-anchored the whole
+ * scene — sliding the frame's clip rect off the fixed page background on
+ * reopen (the photo then "clipped in a different place"). Omitting `groups`
+ * keeps the legacy behavior (all visible content), so non-framed
+ * compositions and the direct unit-tests are unaffected.
  */
 export function computeContentBBox(
   figures: CompositionFigure[],
   svgObjects: SVGObject[],
   images: ImageObject[] | undefined,
   texts?: TextObject[],
+  groups?: readonly GroupNode[],
 ): ContentBBox | null {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   let any = false;
 
+  // Nearest `isFrame` ancestor of a node's group, or undefined. When there
+  // are no frames (or `groups` is omitted) this is always undefined, so every
+  // branch below collapses to the legacy "include all visible content" path.
+  const frameOf = (groupId: string | undefined): string | undefined =>
+    groups ? frameGroupIdForNode(groups, groupId) : undefined;
+
   for (const f of figures) {
-    if (f.hidden) continue;
+    if (f.hidden || frameOf(f.groupId)) continue;
     any = true;
     if (f.cellX < minX) minX = f.cellX;
     if (f.cellY < minY) minY = f.cellY;
@@ -71,7 +91,12 @@ export function computeContentBBox(
   }
 
   for (const s of svgObjects) {
-    if (s.hidden) continue;
+    // A frame's boundary rect (an `isMask` member of an `isFrame` group) is
+    // the page extent: keep it even though it's hidden. Any OTHER framed
+    // member is clipped to that boundary, so it can't extend the anchor.
+    const inFrame = frameOf(s.groupId);
+    const isFrameBoundary = !!inFrame && !!s.isMask;
+    if (!isFrameBoundary && (s.hidden || inFrame)) continue;
     any = true;
     const acc = (bb: { minX: number; minY: number; maxX: number; maxY: number } | null) => {
       if (!bb) return;
@@ -95,7 +120,7 @@ export function computeContentBBox(
 
   if (images) {
     for (const img of images) {
-      if (img.hidden) continue;
+      if (img.hidden || frameOf(img.groupId)) continue;
       any = true;
       if (img.cellX < minX) minX = img.cellX;
       if (img.cellY < minY) minY = img.cellY;
@@ -106,7 +131,7 @@ export function computeContentBBox(
 
   if (texts) {
     for (const t of texts) {
-      if (t.hidden) continue;
+      if (t.hidden || frameOf(t.groupId)) continue;
       any = true;
       if (t.cellX < minX) minX = t.cellX;
       if (t.cellY < minY) minY = t.cellY;
@@ -351,7 +376,7 @@ export interface NormalizeResult {
  * the viewport is known).
  */
 export function normalizeComposition(input: NormalizableInput): NormalizeResult {
-  const bbox = computeContentBBox(input.figures, input.svgObjects, input.images, input.texts);
+  const bbox = computeContentBBox(input.figures, input.svgObjects, input.images, input.texts, input.groups);
 
   if (!bbox) {
     return {
