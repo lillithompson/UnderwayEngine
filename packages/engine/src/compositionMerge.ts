@@ -114,7 +114,9 @@ function remapGroups(groups: GroupNode[]): { remapped: GroupNode[]; idRemap: Map
   }
   // Second pass: remap parentGroupId references
   const remapped = groups.map(g => {
-    const updated: GroupNode = { ...g, id: idRemap.get(g.id)! };
+    // Drop the group's inherited lock on merge, mirroring how leaf `locked` is
+    // cleared above — pasted/imported content lands unlocked.
+    const updated: GroupNode = { ...g, id: idRemap.get(g.id)!, locked: undefined };
     if (updated.parentGroupId && idRemap.has(updated.parentGroupId)) {
       updated.parentGroupId = idRemap.get(updated.parentGroupId)!;
     }

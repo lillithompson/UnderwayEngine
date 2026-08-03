@@ -1,8 +1,9 @@
 import {
   applyCompOps,
   revertCompOps,
-  computeGroupLockToggle,
   computeGroupHiddenToggle,
+  isItemLocked,
+  isGroupLocked,
 } from '../compositionOps';
 import { CompositionFigure, CompositionState, CompUndoEntry, GroupNode, makeViewport } from '../types';
 
@@ -95,19 +96,32 @@ describe('reparentNode — leaf out to top level', () => {
   });
 });
 
-describe('computeGroupLockToggle / HiddenToggle accept a group id', () => {
-  it('locks every member when passed the group id', () => {
+describe('lockGroup op — inherited lock, members untouched', () => {
+  it('sets the group flag and makes members effectively locked WITHOUT touching their own flags', () => {
     const state = grouped();
-    const t = computeGroupLockToggle(state, 'g1');
-    expect(t).not.toBeNull();
-    expect(t!.ids.sort()).toEqual(['a', 'b']);
-    expect(t!.newLocked).toBe(true);
-    const locked = applyCompOps(state, t!.undoOps);
-    expect(locked.figures.find((f) => f.id === 'a')!.locked).toBe(true);
-    expect(locked.figures.find((f) => f.id === 'b')!.locked).toBe(true);
+    const locked = applyCompOps(state, [{ op: 'lockGroup', id: 'g1', oldValue: false, newValue: true }]);
+    // Group carries its own lock…
+    expect(isGroupLocked(locked, 'g1')).toBe(true);
+    // …members' OWN flags stay untouched…
+    expect(locked.figures.find((f) => f.id === 'a')!.locked).toBeUndefined();
+    expect(locked.figures.find((f) => f.id === 'b')!.locked).toBeUndefined();
+    // …but they read as effectively locked (inherited), while the loose node does not.
+    expect(isItemLocked(locked, 'a')).toBe(true);
+    expect(isItemLocked(locked, 'b')).toBe(true);
+    expect(isItemLocked(locked, 'c')).toBe(false);
   });
 
-  it('hides every member when passed the group id', () => {
+  it('unlocking the group restores members to unlocked (their own flags were never set)', () => {
+    const state = grouped();
+    const op: CompUndoEntry = [{ op: 'lockGroup', id: 'g1', oldValue: false, newValue: true }];
+    const locked = applyCompOps(state, op);
+    const back = revertCompOps(locked, op);
+    expect(isGroupLocked(back, 'g1')).toBe(false);
+    expect(isItemLocked(back, 'a')).toBe(false);
+    expect(isItemLocked(back, 'b')).toBe(false);
+  });
+
+  it('computeGroupHiddenToggle still fans out to every member', () => {
     const state = grouped();
     const t = computeGroupHiddenToggle(state, 'g1');
     expect(t!.ids.sort()).toEqual(['a', 'b']);

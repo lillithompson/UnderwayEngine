@@ -1,4 +1,4 @@
-import { findItem, isItemLocked, getItemGroupId, applyCompOps, revertCompOps, clonePathSegment, assertSceneOrderInvariant } from '../compositionOps';
+import { findItem, isItemLocked, isGroupChainLocked, getItemGroupId, applyCompOps, revertCompOps, clonePathSegment, assertSceneOrderInvariant } from '../compositionOps';
 import { SVGObject, PathSegment, CompositionState, CompositionFigure, makeViewport } from '../types';
 
 function makeState(over: Partial<CompositionState> = {}): CompositionState {
@@ -65,6 +65,47 @@ describe('isItemLocked', () => {
     const lockedSVG = { ...SVG_ARC, locked: true };
     expect(isItemLocked(makeState({ svgObjects: [lockedSVG] }), 'svg_b')).toBe(true);
     expect(isItemLocked(makeState({ svgObjects: [SVG_ARC] }), 'svg_b')).toBe(false);
+  });
+
+  it('is EFFECTIVE: a member of a locked group reads as locked without its own flag set', () => {
+    const member = { ...SVG_ARC, groupId: 'g1' }; // no own `locked`
+    const openGroup = makeState({ svgObjects: [member], groups: [
+      { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },
+    ] } as Partial<CompositionState>);
+    expect(isItemLocked(openGroup, 'svg_b')).toBe(false);
+    const lockedGroup = { ...openGroup, groups: openGroup.groups.map((g) => ({ ...g, locked: true })) };
+    expect(isItemLocked(lockedGroup, 'svg_b')).toBe(true);
+    // The member's OWN flag is never touched by the inherited lock.
+    expect(lockedGroup.svgObjects[0].locked).toBeUndefined();
+  });
+
+  it('inherits a lock from ANY ancestor group (nested chain)', () => {
+    const member = { ...SVG_ARC, groupId: 'child' };
+    const state = makeState({ svgObjects: [member], groups: [
+      { id: 'root', name: 'R', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false, locked: true },
+      { id: 'child', name: 'C', parentGroupId: 'root', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },
+    ] } as Partial<CompositionState>);
+    // The child group is unlocked, but its locked ROOT ancestor still locks the member.
+    expect(isGroupChainLocked(state, 'child')).toBe(true);
+    expect(isItemLocked(state, 'svg_b')).toBe(true);
+  });
+});
+
+describe('isGroupChainLocked', () => {
+  const chain = makeState({ groups: [
+    { id: 'root', name: 'R', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },
+    { id: 'child', name: 'C', parentGroupId: 'root', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },
+  ] } as Partial<CompositionState>);
+
+  it('is false for undefined / an unlocked chain', () => {
+    expect(isGroupChainLocked(chain, undefined)).toBe(false);
+    expect(isGroupChainLocked(chain, 'child')).toBe(false);
+  });
+
+  it('is true when the group itself or any ancestor is locked', () => {
+    const rootLocked = { ...chain, groups: chain.groups.map((g) => (g.id === 'root' ? { ...g, locked: true } : g)) };
+    expect(isGroupChainLocked(rootLocked, 'child')).toBe(true);
+    expect(isGroupChainLocked(rootLocked, 'root')).toBe(true);
   });
 });
 

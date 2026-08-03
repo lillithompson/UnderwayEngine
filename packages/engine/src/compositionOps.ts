@@ -121,9 +121,33 @@ export function findItem(state: CompositionState, id: string): CompItemRef | nul
   return null;
 }
 
+/** A group's OWN lock flag (does not consider ancestors). */
+export function isGroupLocked(state: CompositionState, groupId: string): boolean {
+  return !!state.groups.find((g) => g.id === groupId)?.locked;
+}
+
+/** True when `groupId` OR any of its ancestor groups is locked. Passing a
+ *  leaf's `groupId` answers "is this leaf inside a locked group subtree?";
+ *  passing a frame's own id answers "is this frame effectively locked?"
+ *  (groupAncestorChain includes the group itself). */
+export function isGroupChainLocked(state: CompositionState, groupId: string | undefined): boolean {
+  if (!groupId) return false;
+  for (const g of groupAncestorChain(state.groups, groupId)) {
+    if (g.locked) return true;
+  }
+  return false;
+}
+
+/** A leaf's EFFECTIVE lock: its own `locked` flag OR the lock of any group in
+ *  its ancestor chain. Locking a group therefore makes every member act as
+ *  locked without mutating the members' own flags — an inherited lock. Every
+ *  interaction guard (hit-test, move, edit, delete) reads this so children of
+ *  a locked frame are inert while their individual lock settings are
+ *  preserved. */
 export function isItemLocked(state: CompositionState, id: string): boolean {
   const ref = findItem(state, id);
-  return ref ? (ref.item.locked ?? false) : false;
+  if (!ref) return false;
+  return (ref.item.locked ?? false) || isGroupChainLocked(state, ref.item.groupId);
 }
 
 export function isItemHidden(state: CompositionState, id: string): boolean {
@@ -135,28 +159,15 @@ export function getItemGroupId(state: CompositionState, id: string): string | un
   return findItem(state, id)?.item.groupId;
 }
 
-export interface GroupLockToggle {
-  ids: string[];
-  newLocked: boolean;
-  undoOps: CompUndoEntry;
-}
-
 /**
- * Resolve a lock-toggle gesture anchored at one item into the full set of
- * descendants that should toggle together. For grouped items the anchor
- * walks up to the root group so the toggle applies to every member of the
- * tree (including nested sub-groups). Aggregate rule: if any descendant
- * is currently locked, unlock everything; otherwise lock everything â€”
- * matches the row-icon aggregation (which reads as locked when any
- * descendant is locked) so the affordance and the action stay in sync,
- * and ensures an unlock on a partially-locked group propagates to every
- * child rather than re-locking the unlocked ones.
- */
-/**
- * Resolve a lock/hide-toggle anchor to the member ids that toggle together.
+ * Resolve a hide-toggle anchor to the member ids that toggle together.
  * The anchor may be a GROUP id (→ all descendant leaves) or a leaf id (→ its
  * whole root group when grouped, else just itself). Null when the anchor
  * resolves to nothing.
+ *
+ * NOTE: this is the VISIBILITY (hidden) fan-out only. Locking a group no
+ * longer propagates to members — a group carries its own `locked` flag and
+ * members inherit it (see the `lockGroup` op + isItemLocked's ancestor walk).
  */
 function resolveGroupToggleIds(state: CompositionState, anchorId: string): string[] | null {
   if (state.groups.some((g) => g.id === anchorId)) {
@@ -168,22 +179,6 @@ function resolveGroupToggleIds(state: CompositionState, anchorId: string): strin
   return gid ? allDescendantMemberIds(state, findRootGroupId(state.groups, gid)) : [anchorId];
 }
 
-export function computeGroupLockToggle(
-  state: CompositionState,
-  anchorId: string,
-): GroupLockToggle | null {
-  const ids = resolveGroupToggleIds(state, anchorId);
-  if (ids === null || ids.length === 0) return null;
-  const newLocked = !ids.some((id) => isItemLocked(state, id));
-  const undoOps: CompUndoEntry = ids.map((id) => ({
-    op: 'lockObject',
-    id,
-    oldValue: isItemLocked(state, id),
-    newValue: newLocked,
-  }));
-  return { ids, newLocked, undoOps };
-}
-
 export interface GroupHiddenToggle {
   ids: string[];
   newHidden: boolean;
@@ -191,10 +186,11 @@ export interface GroupHiddenToggle {
 }
 
 /**
- * Mirror of computeGroupLockToggle for the visibility (hidden) toggle.
- * Resolves an anchor id to all descendant member ids when grouped; the new
- * hidden value flips against the "all hidden" aggregate so the eye icon
- * and the action stay in sync.
+ * Compute the visibility (hidden) toggle for a group/leaf anchor. Resolves an
+ * anchor id to all descendant member ids when grouped; the new hidden value
+ * flips against the "all hidden" aggregate so the eye icon and the action stay
+ * in sync. (Visibility still fans out to members; lock does not — see the
+ * `lockGroup` op.)
  */
 export function computeGroupHiddenToggle(
   state: CompositionState,
@@ -2041,6 +2037,11 @@ export function findSceneObjectAtCell(
     const entry = lookup.get(id);
     if (!entry) continue;
     const { kind, node } = entry;
+    // Inherited lock: a member of a locked group (frame) acts as locked even
+    // though its own `locked` flag is untouched. The per-node hitTest below
+    // only checks the node's OWN flag, so skip ancestor-group-locked members
+    // here. `ignoreLock` (eyedropper) bypasses this like the per-node check.
+    if (!options?.ignoreLock && isGroupChainLocked(state, node.groupId)) continue;
     // Free (continuous) rotation is layered on top of the axis-aligned bbox:
     // the geometry adapters test the UNROTATED shape, so rotate the query
     // point back into the node's local frame (by -angleDeg about the bbox
@@ -3780,6 +3781,14 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       }
       return next;
     }
+    case 'lockGroup': {
+      // Set the group's OWN locked flag. Members are untouched — they inherit
+      // the lock through isItemLocked's ancestor walk.
+      return {
+        ...state,
+        groups: state.groups.map((g) => (g.id === op.id ? { ...g, locked: op.newValue } : g)),
+      };
+    }
     case 'setObjectHidden': {
       // Mirror of lockObject: find the matching id in whichever adapter
       // array contains it and flip the hidden field.
@@ -4420,6 +4429,8 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         oldValue: op.newValue, newValue: op.oldValue, oldQuads: op.newQuads, newQuads: op.oldQuads });
     case 'lockObject':
       return applyOp(state, { op: 'lockObject', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
+    case 'lockGroup':
+      return applyOp(state, { op: 'lockGroup', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
     case 'setObjectHidden':
       return applyOp(state, { op: 'setObjectHidden', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
     case 'setNodeRotation':

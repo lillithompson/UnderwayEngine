@@ -677,6 +677,13 @@ export interface GroupNode {
    *  dims), rather than the tight bounds of visible content. Stored as
    *  true/undefined, never false (mirrors the `isMask` convention). */
   isFrame?: boolean;
+  /** When true, this group is locked: its members act as locked (can't be
+   *  tap-selected, moved, edited, or deleted) WITHOUT their own per-leaf
+   *  `locked` flag being touched — the lock is inherited, not propagated.
+   *  A leaf's *effective* lock is its own `locked` OR any ancestor group's
+   *  `locked` (see isItemLocked / isGroupChainLocked in compositionOps).
+   *  Stored true/undefined, never false. */
+  locked?: boolean;
 }
 
 export interface CompositionEntry {
@@ -1349,6 +1356,11 @@ export type CompUndoOp =
    *  contains it (resolved via SCENE_ADAPTERS). Replaces per-kind
    *  `lockFigure` / `lockLine` / `lockArc`. */
   | { op: 'lockObject'; id: string; oldValue: boolean; newValue: boolean }
+  /** Lock toggle for a GROUP (frame or plain group). Apply: set
+   *  `group.locked = newValue` for the matching group id. The group's members
+   *  are NOT touched — they inherit the lock via isItemLocked's ancestor walk,
+   *  so unlocking the group restores each member's own lock state exactly. */
+  | { op: 'lockGroup'; id: string; oldValue: boolean; newValue: boolean }
   /** Free (continuous) rotation of any bbox/svg scene-object kind, in
    *  degrees CW about the bbox center. Apply sets `item.angleDeg = newAngleDeg`
    *  for the matching id in whichever array contains it (resolved via

@@ -1057,6 +1057,21 @@ describe('compositionBinaryFormat', () => {
       expect(groups.find((g) => g.id === 'plain')?.isFrame).toBeUndefined();
     });
 
+    test('round-trips the group locked flag (v32)', () => {
+      const locked = { ...makeGroup('lg', 'Locked'), locked: true as const };
+      const open = makeGroup('og', 'Open');
+      const fLocked = makeFigure({ id: 'f1', figureKey: 'k', groupId: 'lg' });
+      const fOpen = makeFigure({ id: 'f2', figureKey: 'k', groupId: 'og' });
+      const bytes = serializeComposition(
+        makeBundle({ figures: [fLocked, fOpen], groups: [locked, open] }),
+        [],
+      );
+      const groups = deserializeComposition(bytes).meta.groups ?? [];
+      expect(groups.find((g) => g.id === 'lg')?.locked).toBe(true);
+      // Absent flag stays undefined (true/undefined convention, never false).
+      expect(groups.find((g) => g.id === 'og')?.locked).toBeUndefined();
+    });
+
     test('regression: 2objsbug.tile loads with zero scene objects and no orphan groups', () => {
       // This file was authored before the fix: 2 GroupNodes ("Group 1"
       // and "Group 1 copy") with zero figure/svg/image members.  The dev
