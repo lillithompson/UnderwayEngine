@@ -1,4 +1,4 @@
-﻿import { BlendMode, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGSubpath, PathSegment, ImageObject, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode } from './types';
+﻿import { BlendMode, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGSubpath, PathSegment, ImageObject, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageFraming } from './types';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
@@ -142,13 +142,20 @@ import { compSnapStep } from './compositionCellMath';
 //
 // IMAGES SECTION (v10+) â€” written after embedded files; see writeImage.
 //   The image rotation byte carries: 0x03 rotation, 0x04 hidden (v14+),
-//   0x08 hasTint (v29+), 0x10 hasEffects (v29+). The main image flags
-//   byte is fully consumed, so the v29 presence bits live in the spare
+//   0x08 hasTint (v29+), 0x10 hasEffects (v29+), 0x20 hasAngle (v31+),
+//   0x40 hasFraming (v33+), 0x80 hasCornerRadius (v33+). The main image
+//   flags byte is fully consumed, so the presence bits live in the spare
 //   high bits of the rotation byte (older readers mask & 0x03 / & 0x04).
 //   Tint payload (after the identity-bbox block, before effects):
 //     r u8 + g u8 + b u8 + amount u8 (0-255 quantized /255)
 //     + mode u8 (0 tint, 1 duotone, 2 wash)
 //   Effects payload (after tint): shared EFFECTS payload above.
+//   Framing payload (v33+, after the angleDeg i16): modeByte u8
+//     (0 fill, 1 fit, 2 crop, 3 tile) + subflags u8 marking which optional
+//     fields follow, then those fields in bit order — ratio as an enum u8
+//     (0 free, 1 square, 2 fourFive, 3 sixteenNine), every numeric as f64
+//     (exact round-trip, no drift across repeated saves).
+//   CornerRadius payload (v33+, after framing): a single f64.
 //
 // TEXT OBJECTS SECTION (v29+) â€” written after the images + image-bytes
 //   sections and before scene order, so the blob-heavy payloads stay
@@ -232,7 +239,16 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // v32: GroupNode `locked` (an inherited group/frame lock) via group-flags bit
 // 0x80. Presence-only — no payload bytes. Older files load with locked
 // undefined (unlocked).
-const FORMAT_VERSION = 32;
+// v33: ImageObject `framing` (the "Crop" bar: mode + zoom / margin / ratio /
+// angle / tileScale / tileGap / pan offsetX/offsetY) and `cornerRadius`.
+// Presence flags: image rotation-byte bits 0x40 (framing) / 0x80 (cornerRadius),
+// written after the v31 angleDeg block. Framing payload is modeByte(u8) +
+// subflags(u8) + the present optional fields (ratio as u8; every numeric as
+// f32); cornerRadius is a single f32. Older files load with both undefined, so
+// the image falls back to legacy stretch-fill with square corners. Fixes the
+// binary round-trip silently dropping a photo's crop/pan/zoom (it reverted to
+// the default cover crop on reopen — "clipped in a different place").
+const FORMAT_VERSION = 33;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + 4Ã—float32 = 21
@@ -480,6 +496,87 @@ const IMG_ROT_HAS_TINT = 0x08;
 const IMG_ROT_HAS_EFFECTS = 0x10;
 // v31+: free rotation `angleDeg` present (i16 payload after effects).
 const IMG_ROT_HAS_ANGLE = 0x20;
+// v33+: framing ("Crop" bar) and cornerRadius present. Payloads follow the
+// v31 angleDeg block, in this bit order.
+const IMG_ROT_HAS_FRAMING = 0x40;
+const IMG_ROT_HAS_CORNER = 0x80;
+
+// v33 framing sub-flags (second byte of the framing payload): which optional
+// fields follow the mode byte, in bit order. Every numeric is an f32; `ratio`
+// is a single enum byte.
+const FRAMING_HAS_ZOOM = 0x01;
+const FRAMING_HAS_MARGIN = 0x02;
+const FRAMING_HAS_RATIO = 0x04;
+const FRAMING_HAS_ANGLE = 0x08;
+const FRAMING_HAS_TILE_SCALE = 0x10;
+const FRAMING_HAS_TILE_GAP = 0x20;
+const FRAMING_HAS_OFFSET_X = 0x40;
+const FRAMING_HAS_OFFSET_Y = 0x80;
+
+const FRAMING_MODE_TO_BYTE: Record<ImageFraming['mode'], number> = { fill: 0, fit: 1, crop: 2, tile: 3 };
+const BYTE_TO_FRAMING_MODE: ImageFraming['mode'][] = ['fill', 'fit', 'crop', 'tile'];
+const FRAMING_RATIO_TO_BYTE: Record<NonNullable<ImageFraming['ratio']>, number> = {
+  free: 0, square: 1, fourFive: 2, sixteenNine: 3,
+};
+const BYTE_TO_FRAMING_RATIO: NonNullable<ImageFraming['ratio']>[] = ['free', 'square', 'fourFive', 'sixteenNine'];
+
+/** Byte length of an image's v33 framing block (mode + subflags + present
+ *  fields). Mirrors `writeFraming` exactly so `imageBinarySize` stays correct. */
+function framingBinarySize(f: ImageFraming): number {
+  let size = 2; // modeByte + subflags
+  if (f.zoom != null) size += 8;
+  if (f.margin != null) size += 8;
+  if (f.ratio != null) size += 1;
+  if (f.angle != null) size += 8;
+  if (f.tileScale != null) size += 8;
+  if (f.tileGap != null) size += 8;
+  if (f.offsetX != null) size += 8;
+  if (f.offsetY != null) size += 8;
+  return size;
+}
+
+/** Write an image's framing: mode byte, a sub-flags byte marking which optional
+ *  fields are present, then those fields (ratio as an enum byte, every numeric
+ *  as f32). Only set fields are written so an untouched framing stays compact
+ *  and round-trips to the same `resolveFraming` result. */
+function writeFraming(view: DataView, out: Uint8Array, pos: number, f: ImageFraming): number {
+  out[pos++] = FRAMING_MODE_TO_BYTE[f.mode] ?? 0;
+  let sub = 0;
+  if (f.zoom != null) sub |= FRAMING_HAS_ZOOM;
+  if (f.margin != null) sub |= FRAMING_HAS_MARGIN;
+  if (f.ratio != null) sub |= FRAMING_HAS_RATIO;
+  if (f.angle != null) sub |= FRAMING_HAS_ANGLE;
+  if (f.tileScale != null) sub |= FRAMING_HAS_TILE_SCALE;
+  if (f.tileGap != null) sub |= FRAMING_HAS_TILE_GAP;
+  if (f.offsetX != null) sub |= FRAMING_HAS_OFFSET_X;
+  if (f.offsetY != null) sub |= FRAMING_HAS_OFFSET_Y;
+  out[pos++] = sub;
+  if (f.zoom != null) { view.setFloat64(pos, f.zoom, true); pos += 8; }
+  if (f.margin != null) { view.setFloat64(pos, f.margin, true); pos += 8; }
+  if (f.ratio != null) { out[pos++] = FRAMING_RATIO_TO_BYTE[f.ratio] ?? 0; }
+  if (f.angle != null) { view.setFloat64(pos, f.angle, true); pos += 8; }
+  if (f.tileScale != null) { view.setFloat64(pos, f.tileScale, true); pos += 8; }
+  if (f.tileGap != null) { view.setFloat64(pos, f.tileGap, true); pos += 8; }
+  if (f.offsetX != null) { view.setFloat64(pos, f.offsetX, true); pos += 8; }
+  if (f.offsetY != null) { view.setFloat64(pos, f.offsetY, true); pos += 8; }
+  return pos;
+}
+
+/** Read a v33 framing block written by `writeFraming`. */
+function readFraming(view: DataView, data: Uint8Array, pos: number): { framing: ImageFraming; pos: number } {
+  const mode = BYTE_TO_FRAMING_MODE[data[pos++]] ?? 'fill';
+  const sub = data[pos++];
+  const framing: ImageFraming = { mode };
+  if (sub & FRAMING_HAS_ZOOM) { framing.zoom = view.getFloat64(pos, true); pos += 8; }
+  if (sub & FRAMING_HAS_MARGIN) { framing.margin = view.getFloat64(pos, true); pos += 8; }
+  if (sub & FRAMING_HAS_RATIO) { framing.ratio = BYTE_TO_FRAMING_RATIO[data[pos++]] ?? 'free'; }
+  if (sub & FRAMING_HAS_ANGLE) { framing.angle = view.getFloat64(pos, true); pos += 8; }
+  if (sub & FRAMING_HAS_TILE_SCALE) { framing.tileScale = view.getFloat64(pos, true); pos += 8; }
+  if (sub & FRAMING_HAS_TILE_GAP) { framing.tileGap = view.getFloat64(pos, true); pos += 8; }
+  if (sub & FRAMING_HAS_OFFSET_X) { framing.offsetX = view.getFloat64(pos, true); pos += 8; }
+  if (sub & FRAMING_HAS_OFFSET_Y) { framing.offsetY = view.getFloat64(pos, true); pos += 8; }
+  return { framing, pos };
+}
 
 // v31+ free-rotation encoding: i16 hundredths of a degree (angleDeg * 100).
 // Range ±180° fits comfortably in i16 (±18000), precision 0.01°.
@@ -774,6 +871,8 @@ function imageBinarySize(img: ImageObject): number {
   if (img.tint) size += 5; // r,g,b + amount + mode
   if (img.effects) size += effectsBinarySize(img.effects);
   if (img.angleDeg) size += 2; // v31+ free rotation (i16)
+  if (img.framing) size += framingBinarySize(img.framing); // v33+
+  if (img.cornerRadius) size += 8; // v33+ (f64)
   return size;
 }
 
@@ -1436,7 +1535,9 @@ function writeImage(
     | (img.hidden ? 0x04 : 0)
     | (img.tint ? IMG_ROT_HAS_TINT : 0)
     | (img.effects ? IMG_ROT_HAS_EFFECTS : 0)
-    | (img.angleDeg ? IMG_ROT_HAS_ANGLE : 0);
+    | (img.angleDeg ? IMG_ROT_HAS_ANGLE : 0)
+    | (img.framing ? IMG_ROT_HAS_FRAMING : 0)
+    | (img.cornerRadius ? IMG_ROT_HAS_CORNER : 0);
   out[pos++] = img.mimeType === 'image/jpeg' ? 1 : 0;
   // Opacity quantized to 0..255 (default 255 = fully opaque). 256 levels
   // is well beyond what the eye can resolve and keeps the record
@@ -1491,6 +1592,14 @@ function writeImage(
   }
   if (img.angleDeg) {
     view.setInt16(pos, encodeAngleDeg(img.angleDeg), true); pos += 2;
+  }
+  // v33+ framing then cornerRadius (rotation-byte bits 0x40 / 0x80), after the
+  // v31 angleDeg block.
+  if (img.framing) {
+    pos = writeFraming(view, out, pos, img.framing);
+  }
+  if (img.cornerRadius) {
+    view.setFloat64(pos, img.cornerRadius, true); pos += 8;
   }
 
   return pos;
@@ -1579,6 +1688,16 @@ function readImage(
   }
   if (version >= 30 && (rotBits & IMG_ROT_HAS_ANGLE)) {
     img.angleDeg = decodeAngleDeg(view.getInt16(pos, true)); pos += 2;
+  }
+  // v33+ framing then cornerRadius (rotation-byte bits 0x40 / 0x80). Pre-v33
+  // files never set these bits, but gate the read on the version anyway.
+  if (version >= 33 && (rotBits & IMG_ROT_HAS_FRAMING)) {
+    const f = readFraming(view, data, pos);
+    img.framing = f.framing;
+    pos = f.pos;
+  }
+  if (version >= 33 && (rotBits & IMG_ROT_HAS_CORNER)) {
+    img.cornerRadius = view.getFloat64(pos, true); pos += 8;
   }
 
   return { img, pos };

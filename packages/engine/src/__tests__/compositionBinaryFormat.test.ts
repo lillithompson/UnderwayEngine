@@ -760,6 +760,79 @@ describe('compositionBinaryFormat', () => {
     expect(result.meta.images![0].hidden).toBe(true);
   });
 
+  // ── v33: image framing ("Crop" bar) + cornerRadius ──────────────────
+  // Regression: the binary format silently dropped `framing`, so a photo's
+  // crop/pan/zoom was lost on reopen and the image appeared "clipped in a
+  // different place" (it reverted to the default cover crop).
+
+  test('round-trips a Fill framing with zoom + pan offset', () => {
+    const img = {
+      id: 'img_a', imageId: 'blob_x', mimeType: 'image/png' as const,
+      pixelWidth: 100, pixelHeight: 100,
+      cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 42,
+      framing: { mode: 'fill' as const, zoom: 1.6, offsetX: 3.25, offsetY: -4.5 },
+    };
+    const out = serializeComposition(
+      makeBundle({ images: [img], imageBlobs: { blob_x: new Uint8Array([1]) } }),
+      [],
+    );
+    const result = deserializeComposition(out);
+    expect(result.meta.images![0].framing).toEqual({
+      mode: 'fill', zoom: 1.6, offsetX: 3.25, offsetY: -4.5,
+    });
+  });
+
+  test('round-trips every framing mode + optional field', () => {
+    const img = {
+      id: 'img_a', imageId: 'blob_x', mimeType: 'image/png' as const,
+      pixelWidth: 100, pixelHeight: 100,
+      cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
+      framing: {
+        mode: 'crop' as const, zoom: 2, margin: 0.875, ratio: 'sixteenNine' as const,
+        angle: -12.5, tileScale: 0.4, tileGap: 0.375, offsetX: 1.5, offsetY: 2.25,
+      },
+    };
+    const out = serializeComposition(
+      makeBundle({ images: [img], imageBlobs: { blob_x: new Uint8Array([1]) } }),
+      [],
+    );
+    const result = deserializeComposition(out);
+    // f64 → exact round-trip for every field.
+    expect(result.meta.images![0].framing).toEqual(img.framing);
+  });
+
+  test('round-trips cornerRadius, and framing + cornerRadius together', () => {
+    const img = {
+      id: 'img_a', imageId: 'blob_x', mimeType: 'image/png' as const,
+      pixelWidth: 100, pixelHeight: 100,
+      cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
+      cornerRadius: 0.25,
+      framing: { mode: 'fit' as const, margin: 1.5 },
+    };
+    const out = serializeComposition(
+      makeBundle({ images: [img], imageBlobs: { blob_x: new Uint8Array([1]) } }),
+      [],
+    );
+    const result = deserializeComposition(out);
+    expect(result.meta.images![0].cornerRadius).toBeCloseTo(0.25, 5);
+    expect(result.meta.images![0].framing).toEqual({ mode: 'fit', margin: 1.5 });
+  });
+
+  test('an image without framing / cornerRadius stays clean', () => {
+    const img = {
+      id: 'img_a', imageId: 'blob_x', mimeType: 'image/png' as const,
+      pixelWidth: 100, pixelHeight: 100,
+      cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
+    };
+    const out = serializeComposition(
+      makeBundle({ images: [img], imageBlobs: { blob_x: new Uint8Array([1]) } }),
+      [],
+    );
+    const result = deserializeComposition(out);
+    expect(result.meta.images![0].framing).toBeUndefined();
+    expect(result.meta.images![0].cornerRadius).toBeUndefined();
+  });
+
   test('round-trips a hidden figure', () => {
     const fig = makeFigure({ id: 'fig1', figureKey: 'file_123_L0', hidden: true });
     const bytes = serializeComposition(makeBundle({ figures: [fig] }), []);
