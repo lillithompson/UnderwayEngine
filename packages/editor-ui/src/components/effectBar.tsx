@@ -32,7 +32,8 @@ const SEG_TEXT = 'rgba(255,255,255,0.6)';
 
 /** Bar header: a back-Pressable (title, with an optional chevron) on the
  *  left, and — when a color is supplied — a color swatch, then the trash, on
- *  the right. The Crop bar omits the swatch (no color). */
+ *  the right. The Crop bar omits the swatch (no color); bars that pass no
+ *  `onRemove` omit the trash entirely (Text / Crop). */
 export function EffectBarHeader({ title, color, chevron, align = 'center', removeLabel, onBack, onRemove, onPickColor }: {
   title: string;
   /** Swatch color; omit (with onPickColor) for a bar without a color control. */
@@ -45,7 +46,9 @@ export function EffectBarHeader({ title, color, chevron, align = 'center', remov
   /** Accessibility label for the trash (defaults to `Remove <title>`). */
   removeLabel?: string;
   onBack: () => void;
-  onRemove: () => void;
+  /** Removes / resets the effect (renders a trash affordance). Omit to hide
+   *  the trash for bars that shouldn't offer it (Text, Crop). */
+  onRemove?: () => void;
   onPickColor?: () => void;
 }) {
   return (
@@ -63,9 +66,11 @@ export function EffectBarHeader({ title, color, chevron, align = 'center', remov
             style={[styles.swatch, { backgroundColor: rgbCss(color) }]}
           />
         ) : null}
-        <Pressable onPress={onRemove} hitSlop={10} accessibilityRole="button" accessibilityLabel={removeLabel ?? `Remove ${title.toLowerCase()}`}>
-          <MaterialCommunityIcons name={'trash-can-outline' as MCIName} size={22} color={TRASH} />
-        </Pressable>
+        {onRemove ? (
+          <Pressable onPress={onRemove} hitSlop={10} accessibilityRole="button" accessibilityLabel={removeLabel ?? `Remove ${title.toLowerCase()}`}>
+            <MaterialCommunityIcons name={'trash-can-outline' as MCIName} size={22} color={TRASH} />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );

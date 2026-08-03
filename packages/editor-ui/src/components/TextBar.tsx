@@ -106,7 +106,7 @@ function FontSheet({ fonts, current, onPick, onClose }: {
   );
 }
 
-export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onReset, onPickColor, onSheetOpenChange }: {
+export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onPickColor, onSheetOpenChange }: {
   /** Which carousel page to render: font controls or alignment controls. */
   page: 'font' | 'align';
   style: TextStyleModel;
@@ -116,8 +116,6 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onRese
   /** Commit as one undo step (slider release, segment / font pick). */
   onCommit: (s: TextStyleModel) => void;
   onBack: () => void;
-  /** Reset type settings to defaults (trash); the bar stays open. */
-  onReset: () => void;
   onPickColor: () => void;
   /** Fires when the font sheet opens / closes so the panel can suspend its
    *  swipe-to-dismiss gesture — otherwise scrolling the font list reads as a
@@ -142,11 +140,9 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onRese
         // Color is a font property: only the Font page shows the swatch.
         color={isFont ? style.color : undefined}
         chevron
-        // Both pages share one reset (size / spacing / weight → defaults,
-        // keeping font, color and alignment), so the label stays neutral.
-        removeLabel="Reset type settings"
+        // No trash: the Text bar edits an existing text object's type in
+        // place; there's nothing to remove / reset from here.
         onBack={onBack}
-        onRemove={onReset}
         onPickColor={isFont ? onPickColor : undefined}
       />
       <View style={styles.controls}>

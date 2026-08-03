@@ -454,30 +454,17 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   };
 
   // Crop controls → live preview / commit; the draft owns the tracked params
-  // (there's no external color). Reset re-seeds the draft to the defaults so
-  // the sliders/segments snap back with the bar staying open.
+  // (there's no external color).
   const applyFraming = (f: FramingModel, committed: boolean) => {
     setCropDraft(f);
     model.onFraming?.(f, committed);
   };
-  const resetFraming = () => {
-    model.onResetFraming?.();
-    setCropDraft(DEFAULT_FRAMING_MODEL);
-  };
 
   // Text style → live preview / commit; the draft owns the tracked params, so
-  // the sliders keep tracking (color comes from the model). Reset re-seeds the
-  // draft from the model's post-reset style (font + color kept).
+  // the sliders keep tracking (color comes from the model).
   const applyTextStyle = (s: TextStyleModel, committed: boolean) => {
     setTextDraft(s);
     model.onTextStyle?.(s, committed);
-  };
-  const resetTextStyle = () => {
-    model.onResetTextStyle?.();
-    // Re-seed on the next open from the model; clear the draft so the freshly
-    // reset style flows in.
-    setTextDraft(null);
-    prevTextOpen.current = false;
   };
 
   if (!mounted) return null;
@@ -619,7 +606,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         onChange={(f) => applyFraming(f, false)}
         onCommit={(f) => applyFraming(f, true)}
         onBack={dismissSubmenu}
-        onReset={resetFraming}
       />
     );
   } else if (displaySub === 'font' || displaySub === 'align') {
@@ -631,7 +617,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         onChange={(s) => applyTextStyle(s, false)}
         onCommit={(s) => applyTextStyle(s, true)}
         onBack={dismissSubmenu}
-        onReset={resetTextStyle}
         onPickColor={() => model.onPickTextColor?.()}
         onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
       />

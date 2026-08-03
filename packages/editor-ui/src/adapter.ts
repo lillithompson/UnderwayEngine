@@ -262,8 +262,9 @@ export interface ObjectPropertiesModel {
   /** Framing callback: fires live while dragging (`committed=false`) and once
    *  on release (`committed=true`, one undo step). */
   onFraming?(framing: FramingModel, committed: boolean): void;
-  /** Reset framing to its defaults + original mode (the Crop bar's trash). One
-   *  undo step; the bar stays open. */
+  /** Reset framing to its defaults + original mode. One undo step; the bar
+   *  stays open. No longer surfaced by the Crop bar (its trash was removed);
+   *  kept for hosts that drive a framing reset from elsewhere. */
   onResetFraming?(): void;
   /** Selected image's current corner rounding, a fraction (0–0.5) of the
    *  shorter side — seeds the Border panel's Radius slider. */
@@ -289,8 +290,9 @@ export interface ObjectPropertiesModel {
    *  toolbar color tool uses). */
   onPickTextColor?(): void;
   /** Reset type settings (size / character / line / weight) to defaults,
-   *  keeping the font family and color. One undo step; the bar stays open
-   *  (the Text bar's trash). */
+   *  keeping the font family and color. One undo step; the bar stays open.
+   *  No longer surfaced by the Text bar (its trash was removed); kept for
+   *  hosts that drive a type reset from elsewhere. */
   onResetTextStyle?(): void;
   onRotate(): void;
   onMirrorH(): void;

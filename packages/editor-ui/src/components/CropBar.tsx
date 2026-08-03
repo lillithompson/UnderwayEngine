@@ -4,12 +4,12 @@ import type { FramingModel, ImageCropRatio, ImageFramingMode } from '../adapter'
 import { BAR_BG, EffectBarHeader, HAIRLINE, Hint, SegmentedRow, SliderRow } from './effectBar';
 
 // The Crop / framing bar (design "4a"): a full-width dark bar with a header
-// (chevron · CROP · trash) and a Mode segmented row (Fill / Fit / Crop / Tile)
+// (chevron · CROP) and a Mode segmented row (Fill / Fit / Crop / Tile)
 // plus the rows that mode needs. A sibling of the Drop Shadow / Border bars —
-// same container + row grammar (see effectBar.tsx). No color swatch. The trash
-// resets framing to its defaults. On-canvas crop-rect handles + panning are
-// canvas-side (deferred); this bar sets mode, zoom, margin, ratio, straighten,
-// tile size and spacing.
+// same container + row grammar (see effectBar.tsx). No color swatch, and no
+// trash (framing is tuned in place, nothing to remove). On-canvas crop-rect
+// handles + panning are canvas-side (deferred); this bar sets mode, zoom,
+// margin, ratio, straighten, tile size and spacing.
 
 // ── Ranges (world cells for lengths; the design's pt/percent → these) ─
 const ZOOM_MIN = 1; // 100%
@@ -32,15 +32,13 @@ const RATIOS: readonly { value: ImageCropRatio; label: string }[] = [
   { value: 'sixteenNine', label: '16:9' },
 ];
 
-export function CropBar({ framing, onChange, onCommit, onBack, onReset }: {
+export function CropBar({ framing, onChange, onCommit, onBack }: {
   framing: FramingModel;
   /** Live preview (slider drag). */
   onChange: (f: FramingModel) => void;
   /** Commit as one undo step (slider release, mode / ratio change). */
   onCommit: (f: FramingModel) => void;
   onBack: () => void;
-  /** Reset framing to defaults (trash); the bar stays open. */
-  onReset: () => void;
 }) {
   const set = (patch: Partial<FramingModel>, committed: boolean) =>
     (committed ? onCommit : onChange)({ ...framing, ...patch });
@@ -49,9 +47,9 @@ export function CropBar({ framing, onChange, onCommit, onBack, onReset }: {
       <EffectBarHeader
         title="CROP"
         chevron
-        removeLabel="Reset framing"
+        // No trash: the Crop bar tunes framing in place; there's nothing to
+        // remove / reset from here.
         onBack={onBack}
-        onRemove={onReset}
       />
       <View style={styles.controls}>
         <SegmentedRow
