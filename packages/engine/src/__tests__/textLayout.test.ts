@@ -99,6 +99,45 @@ describe('alignment', () => {
   });
 });
 
+describe('vertical alignment', () => {
+  // Three lines at size 10, default line height 1.2 → block height 36.
+  const content = 'a\nb\nc';
+
+  test('no maxHeight: block stays top-anchored (y from 0) regardless of vAlign', () => {
+    const layout = layoutText(content, makeStyle({ vAlign: 'bottom' }), { measurer: mono });
+    expect(layout.lines.map((l) => l.y)).toEqual([0, 12, 24]);
+    expect(layout.height).toBe(36);
+  });
+
+  test("top (default): no offset even when the box is taller", () => {
+    const layout = layoutText(content, makeStyle(), { measurer: mono, maxHeight: 100 });
+    expect(layout.lines.map((l) => l.y)).toEqual([0, 12, 24]);
+  });
+
+  test('middle: block centered in the box by half the slack', () => {
+    // slack = 100 - 36 = 64 → offset 32.
+    const layout = layoutText(content, makeStyle({ vAlign: 'middle' }), { measurer: mono, maxHeight: 100 });
+    expect(layout.lines.map((l) => l.y)).toEqual([32, 44, 56]);
+  });
+
+  test('bottom: block pushed to the box floor by the full slack', () => {
+    // slack = 100 - 36 = 64.
+    const layout = layoutText(content, makeStyle({ vAlign: 'bottom' }), { measurer: mono, maxHeight: 100 });
+    expect(layout.lines.map((l) => l.y)).toEqual([64, 76, 88]);
+  });
+
+  test('reported height is the block height, not the box height', () => {
+    const layout = layoutText(content, makeStyle({ vAlign: 'middle' }), { measurer: mono, maxHeight: 100 });
+    expect(layout.height).toBe(36);
+  });
+
+  test('a box shorter than the block yields a negative offset (overflow up)', () => {
+    // slack = 20 - 36 = -16 → bottom offset -16.
+    const layout = layoutText(content, makeStyle({ vAlign: 'bottom' }), { measurer: mono, maxHeight: 20 });
+    expect(layout.lines.map((l) => l.y)).toEqual([-16, -4, 8]);
+  });
+});
+
 describe('letterSpacing and lineHeight math', () => {
   test('letterSpacing adds size * spacing per inter-character gap', () => {
     // 4 chars: em = 2.0, spacing = 0.1 * 3 = 0.3 → (2.3) * 10 = 23.

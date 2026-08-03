@@ -202,7 +202,10 @@ function buildTextSVGContent(text: TextObject, u: number): string {
   // shrinks to match so wrapped lines stay inside the rect.
   const pad = text.sticker ? style.size * STICKER_PAD_EM : 0;
   const wrapWidth = Math.max(text.cellWidth - 2 * pad, style.size * 0.1);
-  const layout = layoutText(text.content, style, { maxWidth: wrapWidth });
+  // maxHeight lets layoutText vertically align the block (style.vAlign) within
+  // the padded box; each line's `y` already carries the resulting offset.
+  const boxHeight = Math.max(text.cellHeight - 2 * pad, 0);
+  const layout = layoutText(text.content, style, { maxWidth: wrapWidth, maxHeight: boxHeight });
 
   const fontSize = style.size * u;
   const align = style.align ?? 'left';

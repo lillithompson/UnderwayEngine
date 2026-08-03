@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { TextFontOption, TextHAlign, TextStyleModel, TextWeight } from '../adapter';
+import type { TextFontOption, TextHAlign, TextStyleModel, TextVAlign, TextWeight } from '../adapter';
 import { ACCENT, BAR_BG, DualSliderRow, EffectBarHeader, HAIRLINE, LABEL, SegmentedRow, SliderRow } from './effectBar';
 
-// The Text typography bar (design "5a"): a full-width dark bar with a header
-// (chevron · TEXT · color swatch · trash) and the type rows — Font (a pill
-// that opens a font sheet), Weight (segmented), Size / Character / Line
-// (sliders) and Align (a segmented icon row, horizontal only). A sibling of
-// the image-effect bars (Drop Shadow / Border / Crop) — same container, header
-// and row grammar (see effectBar.tsx); the slide-in / swipe-out chrome is the
+// The Text typography bar (design "5a"), split into two carousel pages the
+// ObjectPropertiesPanel cycles between:
+//   • FONT  — color (header swatch) · Font (a pill that opens a font sheet) ·
+//     Weight (segmented) · Size (slider).
+//   • ALIGN — Character / Line spacing (dual slider) · horizontal justification
+//     (left/center/right) · vertical alignment (top/middle/bottom).
+// Both pages share this component (via `page`), the container, header and row
+// grammar of the image-effect bars (Drop Shadow / Border / Crop; see
+// effectBar.tsx). The slide-in / swipe-out chrome is the
 // ObjectPropertiesPanel's, shared with those bars.
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -33,6 +36,12 @@ const ALIGNS: readonly { value: TextHAlign; label: string; icon: MCIName }[] = [
   { value: 'left', label: 'Align left', icon: 'format-align-left' },
   { value: 'center', label: 'Align center', icon: 'format-align-center' },
   { value: 'right', label: 'Align right', icon: 'format-align-right' },
+];
+
+const VALIGNS: readonly { value: TextVAlign; label: string; icon: MCIName }[] = [
+  { value: 'top', label: 'Align top', icon: 'format-align-top' },
+  { value: 'middle', label: 'Align middle', icon: 'format-align-middle' },
+  { value: 'bottom', label: 'Align bottom', icon: 'format-align-bottom' },
 ];
 
 // Sheet tokens (design 5a font sheet).
@@ -97,7 +106,9 @@ function FontSheet({ fonts, current, onPick, onClose }: {
   );
 }
 
-export function TextBar({ style, fonts, onChange, onCommit, onBack, onReset, onPickColor }: {
+export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onReset, onPickColor }: {
+  /** Which carousel page to render: font controls or alignment controls. */
+  page: 'font' | 'align';
   style: TextStyleModel;
   fonts: readonly TextFontOption[];
   /** Live preview (slider drag). */
@@ -114,49 +125,66 @@ export function TextBar({ style, fonts, onChange, onCommit, onBack, onReset, onP
     (committed ? onCommit : onChange)({ ...style, ...patch });
 
   const currentLabel = fonts.find((f) => f.fontId === style.fontId)?.label ?? style.fontId;
+  const isFont = page === 'font';
 
   return (
     <View style={styles.bar}>
       <EffectBarHeader
-        title="TEXT"
-        color={style.color}
+        title={isFont ? 'FONT' : 'ALIGN'}
+        // Color is a font property: only the Font page shows the swatch.
+        color={isFont ? style.color : undefined}
         chevron
-        removeLabel="Reset type"
+        // Both pages share one reset (size / spacing / weight → defaults,
+        // keeping font, color and alignment), so the label stays neutral.
+        removeLabel="Reset type settings"
         onBack={onBack}
         onRemove={onReset}
-        onPickColor={onPickColor}
+        onPickColor={isFont ? onPickColor : undefined}
       />
       <View style={styles.controls}>
-        <FontRow label={currentLabel} onOpen={() => setSheetOpen(true)} />
-        <SegmentedRow
-          label="Weight"
-          options={WEIGHTS}
-          value={style.weight}
-          onChange={(weight) => set({ weight }, true)}
-        />
-        <SliderRow
-          label="Size"
-          value={(style.size - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)}
-          apply={(t, c) => set({ size: SIZE_MIN + t * (SIZE_MAX - SIZE_MIN) }, c)}
-        />
-        {/* Character (letter spacing) + Line (line height) share one row to
-            keep the Text bar within the shared object-menu height. */}
-        <DualSliderRow
-          leftLabel="Char"
-          leftValue={(style.letterSpacing - LS_MIN) / (LS_MAX - LS_MIN)}
-          leftApply={(t, c) => set({ letterSpacing: LS_MIN + t * (LS_MAX - LS_MIN) }, c)}
-          rightLabel="Line"
-          rightValue={(style.lineHeight - LH_MIN) / (LH_MAX - LH_MIN)}
-          rightApply={(t, c) => set({ lineHeight: LH_MIN + t * (LH_MAX - LH_MIN) }, c)}
-        />
-        <SegmentedRow
-          label="Align"
-          options={ALIGNS}
-          value={style.align}
-          onChange={(align) => set({ align }, true)}
-        />
+        {isFont ? (
+          <>
+            <FontRow label={currentLabel} onOpen={() => setSheetOpen(true)} />
+            <SegmentedRow
+              label="Weight"
+              options={WEIGHTS}
+              value={style.weight}
+              onChange={(weight) => set({ weight }, true)}
+            />
+            <SliderRow
+              label="Size"
+              value={(style.size - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)}
+              apply={(t, c) => set({ size: SIZE_MIN + t * (SIZE_MAX - SIZE_MIN) }, c)}
+            />
+          </>
+        ) : (
+          <>
+            {/* Character (letter spacing) + Line (line height) share one row to
+                keep the bar within the shared object-menu height. */}
+            <DualSliderRow
+              leftLabel="Char"
+              leftValue={(style.letterSpacing - LS_MIN) / (LS_MAX - LS_MIN)}
+              leftApply={(t, c) => set({ letterSpacing: LS_MIN + t * (LS_MAX - LS_MIN) }, c)}
+              rightLabel="Line"
+              rightValue={(style.lineHeight - LH_MIN) / (LH_MAX - LH_MIN)}
+              rightApply={(t, c) => set({ lineHeight: LH_MIN + t * (LH_MAX - LH_MIN) }, c)}
+            />
+            <SegmentedRow
+              label="Align"
+              options={ALIGNS}
+              value={style.align}
+              onChange={(align) => set({ align }, true)}
+            />
+            <SegmentedRow
+              label="Vertical"
+              options={VALIGNS}
+              value={style.vAlign}
+              onChange={(vAlign) => set({ vAlign }, true)}
+            />
+          </>
+        )}
       </View>
-      {sheetOpen ? (
+      {isFont && sheetOpen ? (
         <FontSheet
           fonts={fonts}
           current={style.fontId}

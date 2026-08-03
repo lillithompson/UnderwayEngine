@@ -160,6 +160,9 @@ export interface FramingModel {
 export type TextWeight = 'light' | 'regular' | 'semibold' | 'bold';
 /** Horizontal text alignment (mirrors the engine's TextAlign). */
 export type TextHAlign = 'left' | 'center' | 'right';
+/** Vertical alignment of the text block within its box (mirrors the engine's
+ *  TextVAlign). */
+export type TextVAlign = 'top' | 'middle' | 'bottom';
 
 /** One selectable font family for the Text bar's font sheet. */
 export interface TextFontOption {
@@ -184,6 +187,8 @@ export interface TextStyleModel {
   /** Line height as a multiple of the font size. */
   lineHeight: number;
   align: TextHAlign;
+  /** Vertical alignment of the block within its box height. */
+  vAlign: TextVAlign;
   color: RGBLike;
 }
 
@@ -198,8 +203,10 @@ export interface ObjectPropertiesModel {
    *  opening their effect bar. Text vs image are mutually exclusive. */
   showImageEdit?: boolean;
   /** Show the Type action (editable text selected): a second-row button that
-   *  slides the Text bar (font / weight / size / character / line / align) in
-   *  over the panel. Sits beside the Edit button (which edits the content). */
+   *  slides the Text bar in over the panel — a two-page carousel of Font
+   *  (color / family / weight / size) and Align (character / line spacing /
+   *  horizontal + vertical alignment). Sits beside the Edit button (which edits
+   *  the content). */
   showTextStyle?: boolean;
   /** Selection is a Figma-style frame: the panel's second row shows the frame
    *  options (background / shadow / border / ungroup), with Shadow / Border

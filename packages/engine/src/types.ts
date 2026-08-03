@@ -1094,6 +1094,10 @@ export interface ImageTint {
 }
 
 export type TextAlign = 'left' | 'center' | 'right';
+/** Vertical alignment of the text block within its bbox height (top default;
+ *  only visible when the box is taller than the laid-out lines, e.g. a
+ *  corner-resized text box). */
+export type TextVAlign = 'top' | 'middle' | 'bottom';
 
 /** Named font weights, mapped to the closest available face of the family
  *  by the renderer (see `effectiveFontWeight`). Supersedes the legacy `bold`
@@ -1123,6 +1127,8 @@ export interface TextStyle {
   /** Line height as a multiple of size (default 1.2). */
   lineHeight?: number;
   align?: TextAlign;
+  /** Vertical alignment within the bbox height (default 'top'). */
+  vAlign?: TextVAlign;
   /** Optional outline stroke drawn behind the fill. */
   stroke?: TextStroke;
 }

@@ -47,6 +47,11 @@ export interface TextLayout {
 
 export interface TextLayoutOptions {
   maxWidth?: number;
+  /** Box height (world units) the block is vertically aligned within. When
+   *  given and `style.vAlign` is 'middle'/'bottom', every line's `y` is
+   *  shifted so the block sits centered / bottom-anchored in the box. Omit (or
+   *  'top') leaves lines top-anchored (the original behavior). */
+  maxHeight?: number;
   measurer?: TextMeasurer;
 }
 
@@ -107,16 +112,24 @@ export function layoutText(content: string, style: TextStyle, opts?: TextLayoutO
   const refWidth = maxWidth ?? Math.max(0, ...widths);
   const align = style.align ?? 'left';
   const lineHeight = style.size * (style.lineHeight ?? DEFAULT_LINE_HEIGHT);
+  const blockHeight = texts.length * lineHeight;
+
+  // Vertical offset within the box: 'top' (and no maxHeight) leaves the block
+  // at the top; 'middle'/'bottom' shift it by the slack under the box height.
+  const vAlign = style.vAlign ?? 'top';
+  const offsetY = opts?.maxHeight === undefined || vAlign === 'top' ? 0
+    : vAlign === 'middle' ? (opts.maxHeight - blockHeight) / 2
+    : opts.maxHeight - blockHeight;
 
   const lines: TextLayoutLine[] = texts.map((text, i) => {
     const width = widths[i];
     const x = align === 'left' ? 0
       : align === 'center' ? (refWidth - width) / 2
       : refWidth - width;
-    return { text, width, x, y: i * lineHeight };
+    return { text, width, x, y: i * lineHeight + offsetY };
   });
 
-  return { lines, width: refWidth, height: lines.length * lineHeight };
+  return { lines, width: refWidth, height: blockHeight };
 }
 
 /** Convenience: just the layout extent. */

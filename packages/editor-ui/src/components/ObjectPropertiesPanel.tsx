@@ -66,14 +66,14 @@ const sameFramingModel = (a: FramingModel, b: FramingModel): boolean =>
 // (it always does while a text is selected — this only guards the transient
 // frame before model.textStyle lands).
 const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
-  fontId: 'system', weight: 'regular', size: 2, letterSpacing: 0, lineHeight: 1.2, align: 'left', color: { r: 58, g: 53, b: 50 },
+  fontId: 'system', weight: 'regular', size: 2, letterSpacing: 0, lineHeight: 1.2, align: 'left', vAlign: 'top', color: { r: 58, g: 53, b: 50 },
 };
 
 // The slide-up submenus, in carousel order. Image selections cycle through
-// crop / shadow / border (matching their type-option order); text has only the
-// one. Kept in this order so a left swipe advances the same way the type-option
-// row reads.
-type SubmenuKey = 'crop' | 'shadow' | 'border' | 'text';
+// crop / shadow / border (matching their type-option order); text cycles
+// through font / align (two pages of the Text bar). Kept in this order so a
+// left swipe advances the same way the type-option row reads.
+type SubmenuKey = 'crop' | 'shadow' | 'border' | 'font' | 'align';
 
 // One grid cell: an icon over a short caption, weighted (flex) so every button
 // shares the same column width whichever set is showing. `caption` is the
@@ -212,6 +212,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // — it's changed externally via the full-screen picker).
   const [textDraft, setTextDraft] = useState<TextStyleModel | null>(null);
   const prevTextOpen = useRef(false);
+  // The Text bar is a two-page carousel (font / align) sharing the single
+  // `textStyleOpen` flag; this tracks which page shows. The entry points own
+  // it: the Type button opens on 'font', the Align button on 'align', and the
+  // carousel swaps it (all via openSubmenu).
+  const [textPage, setTextPage] = useState<'font' | 'align'>('font');
   // ── Submenu carousel (Crop / Shadow / Border / Text) ────────────────
   // The open submenu slides up over the panel; a left/right swipe cycles
   // forward/back through the available submenus, and a downward swipe dismisses.
@@ -222,13 +227,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const submenuOrder: SubmenuKey[] =
     model.showImageEdit ? ['crop', 'shadow', 'border']
     : model.showFrameOptions ? ['shadow', 'border']
-    : model.showTextStyle ? ['text']
+    : model.showTextStyle ? ['font', 'align']
     : [];
   const activeSub: SubmenuKey | null =
     model.cropOpen ? 'crop'
     : model.shadowOpen ? 'shadow'
     : model.borderOpen ? 'border'
-    : model.textStyleOpen ? 'text'
+    : model.textStyleOpen ? textPage
     : null;
   const submenuOpen = activeSub != null;
   // Keep rendering the last-open bar through the dismiss slide (activeSub goes
@@ -242,7 +247,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     if (key === 'crop') model.onCropOpenChange?.(true);
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
     else if (key === 'border') model.onBorderOpenChange?.(true);
-    else if (key === 'text') model.onTextStyleOpenChange?.(true);
+    else if (key === 'font' || key === 'align') {
+      // Both text pages ride the single textStyleOpen flag; the page state
+      // picks which one shows (drives the carousel between them).
+      setTextPage(key);
+      model.onTextStyleOpenChange?.(true);
+    }
   };
   const dismissSubmenu = () => {
     model.onShadowOpenChange?.(false);
@@ -516,9 +526,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
       typeOptions.push(<GridButton key="ungroup" label="Ungroup" caption="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
     }
   } else if (model.showEdit || model.showTextStyle) {
+    // Edit (content) · Type (opens the Text bar on the Font page) · Align (opens
+    // it straight on the Align page). Type / Align both slide the same two-page
+    // Text bar up; they differ only in which page it lands on.
     typeOptions = [];
     if (model.showEdit) typeOptions.push(<GridButton key="edit" label="Edit" caption="Edit" icon="pencil-outline" onPress={model.onEdit} compact={compact} />);
-    if (model.showTextStyle) typeOptions.push(<GridButton key="type" label="Type" caption="Type" icon="format-font" onPress={() => model.onTextStyleOpenChange?.(true)} compact={compact} />);
+    if (model.showTextStyle) typeOptions.push(<GridButton key="type" label="Type" caption="Type" icon="format-font" onPress={() => openSubmenu('font')} compact={compact} />);
+    if (model.showTextStyle) typeOptions.push(<GridButton key="align" label="Align" caption="Align" icon="format-align-center" onPress={() => openSubmenu('align')} compact={compact} />);
   }
 
   // Only one set shows at a time; the `<` cell (far right) swaps between them.
@@ -598,9 +612,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         onReset={resetFraming}
       />
     );
-  } else if (displaySub === 'text') {
+  } else if (displaySub === 'font' || displaySub === 'align') {
     activeBarEl = (
       <TextBar
+        page={displaySub}
         style={textForBar}
         fonts={model.fonts ?? []}
         onChange={(s) => applyTextStyle(s, false)}
