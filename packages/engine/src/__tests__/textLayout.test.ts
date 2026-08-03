@@ -71,6 +71,28 @@ describe('word wrap', () => {
   });
 });
 
+describe('resize re-wraps to the box width', () => {
+  // The render lays a text object out with maxWidth = its box width, and the
+  // box is placed shrink-wrapped to the content (measureTextBbox, no maxWidth).
+  // So un-resized text must stay a single line, and narrowing the box must wrap.
+  const content = 'aaa aaa aaa';
+  const style = makeStyle();
+  const opts = { measurer: mono };
+
+  test('re-laying out at the shrink-wrapped width does not spuriously wrap', () => {
+    const { width } = measureTextBbox(content, style, opts); // placement width
+    const layout = layoutText(content, style, { ...opts, maxWidth: width });
+    expect(layout.lines.map((l) => l.text)).toEqual([content]);
+  });
+
+  test('narrowing the box below the content width wraps to fit', () => {
+    const { width } = measureTextBbox(content, style, opts);
+    const layout = layoutText(content, style, { ...opts, maxWidth: width - 1 });
+    expect(layout.lines.length).toBeGreaterThan(1);
+    for (const line of layout.lines) expect(line.width).toBeLessThanOrEqual(width - 1);
+  });
+});
+
 describe('alignment', () => {
   // Two lines: widths 20 and 10 (refWidth = 20 without maxWidth).
   const content = 'aaaa\naa';
