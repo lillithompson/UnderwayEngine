@@ -208,6 +208,16 @@ export interface ObjectPropertiesModel {
    *  horizontal + vertical alignment). Sits beside the Edit button (which edits
    *  the content). */
   showTextStyle?: boolean;
+  /** Selection is a word sticker (magnetic poetry): the panel's second row
+   *  shows a single Invert toggle instead of the text typography options. The
+   *  sticker's content and typography are fixed, so Edit / Type / Align are
+   *  suppressed and this is the only type-specific option. Mutually exclusive
+   *  with showTextStyle / showEdit (a sticker sets neither). */
+  showInvert?: boolean;
+  /** The sticker's current invert state, so the Invert button can reflect it. */
+  inverted?: boolean;
+  /** Toggle the selected sticker's inverted color scheme (one undo step). */
+  onInvert?(): void;
   /** Selection is a Figma-style frame: the panel's second row shows the frame
    *  options (background / shadow / border / ungroup), with Shadow / Border
    *  reusing the image effect bars (frame submenu carousel = shadow, border).

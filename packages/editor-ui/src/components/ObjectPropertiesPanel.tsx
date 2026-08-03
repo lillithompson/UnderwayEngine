@@ -181,12 +181,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     }),
   ).current;
 
-  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert;
   // Signature of the current selection's type-option set. It changes when the
   // panel first appears for a selection or the selected object's type changes
   // (image → frame → text …), and empties when the panel hides.
   const typeSig = model.visible
-    ? `${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}`
+    ? `${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}`
     : '';
   const prevTypeSig = useRef('');
   useEffect(() => {
@@ -522,6 +522,21 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     if (model.onUngroup) {
       typeOptions.push(<GridButton key="ungroup" label="Ungroup" caption="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
     }
+  } else if (model.showInvert) {
+    // Word sticker (magnetic poetry): the single type-specific option is
+    // Invert (dark card ⇄ light card). Content + typography are fixed, so no
+    // Edit / Type / Align. The swatch reflects the current inverted state.
+    typeOptions = [
+      <GridButton
+        key="invert"
+        label="Invert"
+        caption="Invert"
+        icon="invert-colors"
+        swatchColor={model.inverted ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 }}
+        onPress={model.onInvert}
+        compact={compact}
+      />,
+    ];
   } else if (model.showEdit || model.showTextStyle) {
     // Edit (content) · Type (opens the Text bar on the Font page) · Align (opens
     // it straight on the Align page). Type / Align both slide the same two-page

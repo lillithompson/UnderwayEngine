@@ -1167,6 +1167,11 @@ export interface TextObject {
    *  background, slight shadow, content not editable in place. A style
    *  preset, not a separate node kind. */
   sticker?: boolean;
+  /** Sticker-only: invert the card's color scheme (dark card + light text
+   *  instead of the default light card + dark text). The single
+   *  type-specific option a word sticker exposes; ignored when `sticker`
+   *  is not set. */
+  invert?: boolean;
   cellX: number;
   cellY: number;
   cellWidth: number;
