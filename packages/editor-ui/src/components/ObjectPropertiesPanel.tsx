@@ -243,7 +243,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const displaySub = activeSub ?? lastSubRef.current;
   const activeIndex = displaySub ? submenuOrder.indexOf(displaySub) : -1;
 
+  // True while the Text bar's font sheet (a scrollable list) is open. The
+  // submenu pan responder reads this to stand down, so dragging to scroll the
+  // list isn't mistaken for a downward dismiss swipe. Reset on every submenu
+  // change so it can't linger true over a different bar.
+  const fontSheetOpenRef = useRef(false);
+
   const openSubmenu = (key: SubmenuKey) => {
+    fontSheetOpenRef.current = false;
     if (key === 'crop') model.onCropOpenChange?.(true);
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
     else if (key === 'border') model.onBorderOpenChange?.(true);
@@ -255,6 +262,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     }
   };
   const dismissSubmenu = () => {
+    fontSheetOpenRef.current = false;
     model.onShadowOpenChange?.(false);
     model.onBorderOpenChange?.(false);
     model.onCropOpenChange?.(false);
@@ -314,10 +322,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const submenuPan = useRef(
     PanResponder.create({
       // Claim a clearly-horizontal fling (carousel) or a clearly-downward drag
-      // (dismiss).
+      // (dismiss) — but never while the font sheet is open, so scrolling its
+      // list isn't hijacked as a dismiss / carousel swipe.
       onMoveShouldSetPanResponder: (_e, g) =>
-        (Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5) ||
-        (g.dy > 10 && g.dy > Math.abs(g.dx) * 1.5),
+        !fontSheetOpenRef.current &&
+        ((Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5) ||
+          (g.dy > 10 && g.dy > Math.abs(g.dx) * 1.5)),
       onPanResponderMove: (_e, g) => {
         if (navigating.current) return;
         if (Math.abs(g.dx) > Math.abs(g.dy)) { if (canNavRef.current) navX.setValue(g.dx); }
@@ -623,6 +633,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         onBack={dismissSubmenu}
         onReset={resetTextStyle}
         onPickColor={() => model.onPickTextColor?.()}
+        onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
       />
     );
   }

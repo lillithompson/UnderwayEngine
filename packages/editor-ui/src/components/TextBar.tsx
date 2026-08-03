@@ -106,7 +106,7 @@ function FontSheet({ fonts, current, onPick, onClose }: {
   );
 }
 
-export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onReset, onPickColor }: {
+export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onReset, onPickColor, onSheetOpenChange }: {
   /** Which carousel page to render: font controls or alignment controls. */
   page: 'font' | 'align';
   style: TextStyleModel;
@@ -119,8 +119,16 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onRese
   /** Reset type settings to defaults (trash); the bar stays open. */
   onReset: () => void;
   onPickColor: () => void;
+  /** Fires when the font sheet opens / closes so the panel can suspend its
+   *  swipe-to-dismiss gesture — otherwise scrolling the font list reads as a
+   *  downward dismiss swipe. */
+  onSheetOpenChange?: (open: boolean) => void;
 }) {
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetOpen, setSheetOpenState] = useState(false);
+  const setSheetOpen = (open: boolean) => {
+    setSheetOpenState(open);
+    onSheetOpenChange?.(open);
+  };
   const set = (patch: Partial<TextStyleModel>, committed: boolean) =>
     (committed ? onCommit : onChange)({ ...style, ...patch });
 
