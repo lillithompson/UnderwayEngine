@@ -49,6 +49,10 @@ export function TopBar({ model }: { model: TopBarModel }) {
             accessibilityLabel={tool.id}
             style={styles.toolButton}
             onPress={() => model.onSelectTool(nextToolOnPress(toolIds, activeId, tool.id))}
+            // Facet's ToolbarButton: a hold runs the tool's own long-press
+            // action (sub-mode toggle) INSTEAD of the press toggle, never
+            // both — RN suppresses onPress once onLongPress has fired.
+            onLongPress={tool.onLongPress}
           >
             {tool.swatchColor ? (
               <View style={styles.swatchWrap}>
@@ -65,6 +69,11 @@ export function TopBar({ model }: { model: TopBarModel }) {
                   </>
                 ) : null}
               </View>
+            ) : tool.IconComponent ? (
+              <tool.IconComponent
+                size={ICON_SIZE}
+                color={tool.active ? STATE_ACTIVE : STATE_INACTIVE}
+              />
             ) : (
               <MaterialCommunityIcons
                 name={tool.icon as MCIName}

@@ -33,23 +33,50 @@ export function buildTilePathD(
 }
 
 /**
- * Convert an array of PathSegments into an SVG `d` attribute string.
- * Coordinates are in L0-cell space scaled by SVG_UNITS_PER_L0_CELL.
+ * How {@link buildPathD} maps L0-cell space into the output coordinate
+ * system. Must be a similarity transform (uniform scale, no shear), so an
+ * arc stays circular and one radius still describes it.
  */
-export function buildPathD(segments: ReadonlyArray<PathSegment>): string {
-  const u = SVG_UNITS_PER_L0_CELL;
+export interface PathProjection {
+  /** cell-space point → output-space point. */
+  point(x: number, y: number): [number, number];
+  /** cell-space length → output-space length. */
+  length(v: number): number;
+}
+
+/** The default: L0-cell space scaled by SVG_UNITS_PER_L0_CELL, which is what
+ *  every SVG-markup caller (export, thumbnails, node layers) wants. */
+const SVG_UNIT_PROJECTION: PathProjection = {
+  point: (x, y) => [x * SVG_UNITS_PER_L0_CELL, y * SVG_UNITS_PER_L0_CELL],
+  length: (v) => v * SVG_UNITS_PER_L0_CELL,
+};
+
+/**
+ * Convert an array of PathSegments into an SVG `d` attribute string.
+ *
+ * Coordinates default to L0-cell space scaled by SVG_UNITS_PER_L0_CELL. Pass
+ * a `projection` to emit the same path in another space — CozyJournal's
+ * editor uses this to draw a live line/arc draft in SCREEN pixels through the
+ * camera, rather than keeping a second copy of this walk.
+ */
+export function buildPathD(
+  segments: ReadonlyArray<PathSegment>,
+  projection: PathProjection = SVG_UNIT_PROJECTION,
+): string {
   let d = '';
   let curX = NaN, curY = NaN;
   for (const seg of segments) {
     if (seg.start[0] !== curX || seg.start[1] !== curY) {
-      d += `M ${seg.start[0] * u},${seg.start[1] * u} `;
+      const [sx, sy] = projection.point(seg.start[0], seg.start[1]);
+      d += `M ${sx},${sy} `;
     }
+    const [ex, ey] = projection.point(seg.end[0], seg.end[1]);
     if (seg.kind === 'arc') {
-      const r = arcRadius(seg) * u;
+      const r = projection.length(arcRadius(seg));
       const sf = computeSweepFlag(seg.start, seg.end, seg.center);
-      d += `A ${r},${r} 0 0,${sf} ${seg.end[0] * u},${seg.end[1] * u} `;
+      d += `A ${r},${r} 0 0,${sf} ${ex},${ey} `;
     } else {
-      d += `L ${seg.end[0] * u},${seg.end[1] * u} `;
+      d += `L ${ex},${ey} `;
     }
     curX = seg.end[0];
     curY = seg.end[1];

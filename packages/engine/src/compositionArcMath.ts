@@ -4,8 +4,11 @@ const INV_SQRT2 = 1 / Math.SQRT2;
 
 /**
  * Constrain a drag endpoint to form a square bounding box with the start
- * point, snapping the side length to the grid step. Returns the
- * constrained endpoint in L0-cell space.
+ * point. Returns the constrained endpoint in L0-cell space.
+ *
+ * `gridStep > 0` snaps the side length to that step; pass `0` (or any
+ * non-positive value) for a FREEFORM square that follows the cursor exactly —
+ * which is how CozyJournal's arc / circle tools create off-grid shapes.
  */
 export function constrainToSquare(
   sx: number, sy: number,
@@ -16,9 +19,41 @@ export function constrainToSquare(
   const dy = rawEndY - sy;
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
-  const side = Math.round(Math.min(absDx, absDy) / gridStep) * gridStep;
+  const raw = Math.min(absDx, absDy);
+  const side = gridStep > 0 ? Math.round(raw / gridStep) * gridStep : raw;
+  // A perfectly axis-aligned drag has min extent 0, so it yields no square —
+  // and past this guard both deltas are non-zero, so neither sign is 0.
   if (side === 0) return [sx, sy];
   return [sx + side * Math.sign(dx), sy + side * Math.sign(dy)];
+}
+
+/**
+ * Is this segment chain a full circle — every piece a same-center,
+ * same-radius arc, closing back on itself?
+ *
+ * Structural rather than a stored `shapeKind` tag, so it also recognizes
+ * circles drawn before the tag existed and can't drift when an object is
+ * renamed. Used to keep circles circular under a corner-handle resize:
+ * scaling one axis alone maps each arc's start / end / center independently,
+ * which leaves the radius disagreeing with the endpoints and renders a shape
+ * that is neither a circle nor an ellipse.
+ */
+export function isCircleSegments(segments: readonly PathSegment[]): boolean {
+  if (segments.length < 2) return false;
+  const first = segments[0];
+  if (first.kind !== 'arc') return false;
+  const [cx, cy] = first.center;
+  const r = arcRadius(first);
+  if (!(r > 0)) return false;
+  // Relative tolerance: these coordinates have been through float scaling.
+  const eps = r * 1e-6;
+  for (const seg of segments) {
+    if (seg.kind !== 'arc') return false;
+    if (Math.abs(seg.center[0] - cx) > eps || Math.abs(seg.center[1] - cy) > eps) return false;
+    if (Math.abs(arcRadius(seg) - r) > eps) return false;
+    if (Math.abs(Math.hypot(seg.end[0] - cx, seg.end[1] - cy) - r) > eps) return false;
+  }
+  return isClosedPath(segments);
 }
 
 /**

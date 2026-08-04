@@ -1,5 +1,9 @@
 // The generic scene-graph adapter for @underway/editor-ui.
 //
+// Type-only React import (erased at build): the module stays runtime-pure so
+// node tests can import it without a renderer.
+import type React from 'react';
+//
 // The whole point of "project agnostic": components never import engine
 // types or touch a CompositionState. They receive a normalized view model
 // + callbacks; each app builds the adapter from its own state. New object
@@ -77,13 +81,26 @@ export interface SceneOutlineModel {
 
 // ── Top bar ──────────────────────────────────────────────────────────
 
+/** A tool glyph the app supplies itself, for tools MaterialCommunityIcons
+ *  has no match for (Facet's line / rectangle / arc / circle). It is rendered
+ *  in place of `icon` and receives the same size + active/inactive color the
+ *  MCI glyph would have got. */
+export type ToolIconComponent = React.ComponentType<{ color: string; size: number }>;
+
 export interface TopBarTool {
   id: string;
-  /** MaterialCommunityIcons glyph name (ignored when swatchColor is set). */
+  /** MaterialCommunityIcons glyph name (ignored when swatchColor or
+   *  IconComponent is set). */
   icon: string;
   active: boolean;
   /** When present the tool renders as a live color swatch (color tool). */
   swatchColor?: RGBLike;
+  /** When present it renders instead of the MCI glyph (see above). */
+  IconComponent?: ToolIconComponent;
+  /** Long press on the button. Facet uses it for sub-mode toggles (line ⇄
+   *  rectangle, arc ⇄ circle); it bypasses the press toggle semantics
+   *  entirely — the app decides what the hold means. */
+  onLongPress?: () => void;
 }
 
 export interface TopBarModel {
