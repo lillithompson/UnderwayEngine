@@ -9,9 +9,10 @@
 import { CompositionFigure, FileConfig, SVGObject, ImageObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects } from './types';
 import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
-import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL, SVG_STROKE_WIDTH } from './svgExport';
+import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildTilePathD, buildExpandedTileSVGObjectContent } from './svgPathBuilder';
+import { buildPathD, buildTilePathD, buildExpandedTileSVGObjectContent, svgStrokePresentation } from './svgPathBuilder';
+import { roundPathCorners, svgStrokeRadiusCells } from './svgStroke';
 import { chainSegments } from './compositionArcMath';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { buildActiveMaskMap, clipRectToNodeMasks } from './compositionMask';
@@ -578,13 +579,24 @@ export async function generateCompositionSVGCore(
   for (const svg of svgObjects) {
     if (cancelled?.()) return null;
     if (svg.segments.length === 0) continue;
-    const sw = SVG_STROKE_WIDTH * effectiveStrokeScale;
-    const attrs = `fill="none" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"`;
+    // Per-object stroke (width / radius / position / dash) comes from the same
+    // helper the live DOM layer uses, so an authored stroke can't render one
+    // way on the canvas and another in the export. Export draws in SVG units,
+    // hence `U` as the unit-per-cell and no non-scaling vector-effect. An
+    // object with no stroke block gets exactly the legacy attrs.
+    const strokePres = svgStrokePresentation(svg, effectiveStrokeScale, U);
+    const attrs = strokePres.attrs;
+    // Tiled objects keep the authored segments: a pattern tile is built from
+    // tile-local geometry, which corner rounding and the alignment clip are
+    // not defined against.
+    const strokeSegments = svg.tileMode === 'repeat' ? svg.segments : strokePres.segments;
+    const strokeDefs = svg.tileMode === 'repeat' ? '' : strokePres.defs;
     // Fill path — rendered before strokes. A pattern-fill mask renders outline
     // only: its `fillColor` is painted as the tiled figure's background below.
     let fillElement = '';
     if ((svg.fillPaint || svg.fillColor) && !svg.isPatternFill) {
-      const chained = chainSegments(svg.segments);
+      // Fill follows the same (possibly corner-rounded) outline the stroke does.
+      const chained = chainSegments(strokeSegments);
       if (chained) {
         const fd = (svg.tileMode === 'repeat'
           ? buildTilePathD(chained, svg.cellX + (svg.tileOffsetXL0 ?? 0), svg.cellY + (svg.tileOffsetYL0 ?? 0))
@@ -657,17 +669,18 @@ export async function generateCompositionSVGCore(
         svg.effects, svg.id, svg, U,
       ), maskMap, groups, svg));
     } else {
-      let paths = fillElement;
+      let paths = strokeDefs + fillElement;
       if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
+        const radius = svgStrokeRadiusCells(svg);
         for (const sub of svg.subpaths) {
-          const d = buildPathD(sub.segments);
+          const d = buildPathD(radius > 0 ? roundPathCorners(sub.segments, radius) : sub.segments);
           if (d) {
             const { r, g, b } = sub.color;
             paths += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
           }
         }
       } else {
-        const d = buildPathD(svg.segments);
+        const d = buildPathD(strokeSegments);
         if (d) {
           const { r, g, b } = svg.color;
           paths += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;

@@ -2,6 +2,14 @@ import { PathSegment, RGBColor, SVGObject } from './types';
 import { SVG_UNITS_PER_L0_CELL, SVG_STROKE_WIDTH } from './svgExport';
 import { computeSweepFlag, arcRadius, chainSegmentsLoops } from './compositionArcMath';
 import { packKey, unpackKey, forEachVisibleTile } from './tileSegmentOverrides';
+import { borderDashPattern } from './paintSvg';
+import {
+  roundPathCorners,
+  svgStrokeAlignment,
+  svgStrokeDefId,
+  svgStrokeRadiusCells,
+  svgStrokeWidthUnits,
+} from './svgStroke';
 
 /**
  * Convert an array of PathSegments into an SVG `d` attribute string
@@ -288,21 +296,119 @@ function buildTileFillPathD(segments: ReadonlyArray<PathSegment>, minX: number, 
 }
 
 /**
- * Build complete SVG path element(s) for an SVGObject, including
- * multi-color subpath support and optional solid fill.
+ * The stroke presentation an SVGObject's own `stroke` block asks for: the
+ * shared `<path>` attributes, any `<defs>` they reference, and the (possibly
+ * corner-rounded) segments to draw.
+ *
+ * Both markup builders — the live DOM node layer via
+ * {@link buildSVGObjectContent} and the SVG exporter — go through here, so a
+ * stroke can never render one way on the canvas and another in the export.
+ *
+ * `unitsPerCell` is how many units of the emitted `stroke-width` one world
+ * cell spans, and the caller owns it because it depends on where the markup
+ * lands: the exporter draws in SVG units (`SVG_UNITS_PER_L0_CELL`), while the
+ * DOM layer sets `vector-effect="non-scaling-stroke"` and so measures in the
+ * pixels of the box it sits in (`BASE_CELL_PX`). `nonScaling` selects that
+ * vector-effect. An object with no stroke block ignores `unitsPerCell`
+ * entirely and renders at `strokeScale` exactly as it did before.
  */
-export function buildSVGObjectContent(obj: SVGObject, strokeScale: number): string {
-  if (obj.segments.length === 0) return '';
-  const sw = SVG_STROKE_WIDTH * strokeScale;
-  const attrs = `fill="none" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"`;
+export function svgStrokePresentation(
+  obj: SVGObject,
+  strokeScale: number,
+  unitsPerCell: number,
+  opts?: { nonScaling?: boolean },
+): { defs: string; attrs: string; segments: readonly PathSegment[] } {
+  const sw = svgStrokeWidthUnits(obj, strokeScale, unitsPerCell);
+  // Corner rounding is a render-time reshape of the segment chain; the stored
+  // geometry is untouched so hit testing and bbox math keep seeing the drawn
+  // shape. Radius 0 (the default) returns the segments unchanged.
+  const radius = svgStrokeRadiusCells(obj);
+  const segments = radius > 0 ? roundPathCorners(obj.segments, radius) : obj.segments;
 
-  let result = '';
+  // Stroke alignment. SVG has no `stroke-alignment`, so an inside/outside
+  // stroke is drawn at DOUBLE width and then clipped (inside) or masked
+  // (outside) against the filled path — exact for any closed path, and no
+  // geometry offsetting to go wrong. 'center' (and every open path) skips all
+  // of this and strokes plainly.
+  const align = svgStrokeAlignment(obj);
+  let defs = '';
+  let alignAttr = '';
+  let strokeWidth = sw;
+  if (align !== 'center') {
+    const clipD = buildClosedFillPathD(segments);
+    if (clipD) {
+      strokeWidth = sw * 2;
+      if (align === 'inside') {
+        const id = svgStrokeDefId(obj.id, 'clip');
+        defs = `<defs><clipPath id="${id}"><path d="${clipD}" /></clipPath></defs>`;
+        alignAttr = ` clip-path="url(#${id})"`;
+      } else {
+        const id = svgStrokeDefId(obj.id, 'mask');
+        // White keeps, black drops: a box comfortably larger than the object
+        // (the stroke can only reach half its width past the path) minus the
+        // filled interior leaves just the outer half of the doubled stroke.
+        const u = SVG_UNITS_PER_L0_CELL;
+        const pad = Math.max(obj.cellWidth, obj.cellHeight) * 0.5 * u + u;
+        const mx = obj.cellX * u - pad;
+        const my = obj.cellY * u - pad;
+        const mw = obj.cellWidth * u + pad * 2;
+        const mh = obj.cellHeight * u + pad * 2;
+        // The mask REGION must be stated explicitly. `<mask>` defaults to
+        // x/y/width/height of -10%/-10%/120%/120%, and under
+        // maskUnits="userSpaceOnUse" those percentages resolve against the
+        // VIEWPORT — i.e. a box near the user-space origin, not around this
+        // object, which sits out at (cellX·u, cellY·u). Leaving them implicit
+        // put every object outside its own mask region and erased it.
+        defs = `<defs><mask id="${id}" maskUnits="userSpaceOnUse" `
+          + `x="${mx}" y="${my}" width="${mw}" height="${mh}">`
+          + `<rect x="${mx}" y="${my}" width="${mw}" height="${mh}" fill="white" />`
+          + `<path d="${clipD}" fill="black" fill-rule="nonzero" />`
+          + `</mask></defs>`;
+        alignAttr = ` mask="url(#${id})"`;
+      }
+    }
+  }
+
+  // Dash shares the border effect's pattern table, so a dashed stroke and a
+  // dashed border of the same density read the same. The pattern is in world
+  // cells; the stroke unit is not, hence the conversion.
+  const pattern = borderDashPattern(obj.stroke?.dash);
+  const dashAttr = pattern
+    ? ` stroke-dasharray="${pattern[0] * unitsPerCell} ${pattern[1] * unitsPerCell}"`
+    : '';
+  const ve = opts?.nonScaling ? ' vector-effect="non-scaling-stroke"' : '';
+
+  return {
+    defs,
+    attrs: `fill="none" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"${ve}${dashAttr}${alignAttr}`,
+    segments,
+  };
+}
+
+/**
+ * Build complete SVG path element(s) for an SVGObject, including
+ * multi-color subpath support, optional solid fill, and the object's own
+ * per-object stroke settings (see {@link svgStrokePresentation}).
+ *
+ * `unitsPerCell` is the DOM node layer's `BASE_CELL_PX` — see
+ * {@link svgStrokePresentation} for why the caller owns that unit.
+ */
+export function buildSVGObjectContent(
+  obj: SVGObject,
+  strokeScale: number,
+  unitsPerCell: number,
+): string {
+  if (obj.segments.length === 0) return '';
+  const radius = svgStrokeRadiusCells(obj);
+  const { defs, attrs, segments } = svgStrokePresentation(obj, strokeScale, unitsPerCell, { nonScaling: true });
+
+  let result = defs;
 
   // Fill path — rendered before strokes so the outline sits on top. A
   // pattern-fill mask renders outline only: its `fillColor` is painted as the
   // tiled figure's background (beneath the pattern), not as the shape's fill.
   if (obj.fillColor && !obj.isPatternFill) {
-    const fd = buildClosedFillPathD(obj.segments);
+    const fd = buildClosedFillPathD(segments);
     if (fd) {
       const { r, g, b } = obj.fillColor;
       const oa = obj.fillOpacity != null && obj.fillOpacity < 1 ? ` fill-opacity="${obj.fillOpacity}"` : '';
@@ -312,7 +418,8 @@ export function buildSVGObjectContent(obj: SVGObject, strokeScale: number): stri
 
   if (Array.isArray(obj.subpaths) && obj.subpaths.length > 0) {
     for (const sub of obj.subpaths) {
-      const d = buildPathD(sub.segments);
+      const rounded = radius > 0 ? roundPathCorners(sub.segments, radius) : sub.segments;
+      const d = buildPathD(rounded);
       if (d) {
         const { r, g, b } = sub.color;
         result += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
@@ -321,7 +428,7 @@ export function buildSVGObjectContent(obj: SVGObject, strokeScale: number): stri
     return result;
   }
 
-  const d = buildPathD(obj.segments);
+  const d = buildPathD(segments);
   if (!d) return result;
   const { r: cr, g: cg, b: cb } = obj.color;
   result += `<path d="${d}" ${attrs} stroke="rgb(${cr},${cg},${cb})" />`;

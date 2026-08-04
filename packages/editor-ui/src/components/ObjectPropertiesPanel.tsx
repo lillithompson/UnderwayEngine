@@ -3,6 +3,7 @@ import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimension
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { BorderModel, FramingModel, ObjectPropertiesModel, RGBLike, ShadowModel, TextStyleModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
+import { svgEditOptions, svgStrokeRows } from '../logic/svgEdit';
 import { rgbCss } from '../logic/hsv';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
@@ -71,9 +72,10 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 
 // The slide-up submenus, in carousel order. Image selections cycle through
 // crop / shadow / border (matching their type-option order); text cycles
-// through font / align (two pages of the Text bar). Kept in this order so a
-// left swipe advances the same way the type-option row reads.
-type SubmenuKey = 'crop' | 'shadow' | 'border' | 'font' | 'align';
+// through font / align (two pages of the Text bar); a vector selection has the
+// single stroke page. Kept in this order so a left swipe advances the same way
+// the type-option row reads.
+type SubmenuKey = 'crop' | 'shadow' | 'border' | 'font' | 'align' | 'stroke';
 
 // One grid cell: an icon over a short caption, weighted (flex) so every button
 // shares the same column width whichever set is showing. `caption` is the
@@ -181,12 +183,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     }),
   ).current;
 
-  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions;
   // Signature of the current selection's type-option set. It changes when the
   // panel first appears for a selection or the selected object's type changes
-  // (image → frame → text …), and empties when the panel hides.
+  // (image → frame → text …), and empties when the panel hides. The vector
+  // subtype is part of it so switching between two vector objects with
+  // different menus (a line → a rectangle) re-lands on the type row.
   const typeSig = model.visible
-    ? `${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}`
+    ? `${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}` : ''}`
     : '';
   const prevTypeSig = useRef('');
   useEffect(() => {
@@ -208,6 +212,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const prevBorderOpen = useRef(false);
   const [cropDraft, setCropDraft] = useState<FramingModel | null>(null);
   const prevCropOpen = useRef(false);
+  // The Stroke bar rides the same draft pattern as Border — it IS the Border
+  // bar, pointed at a vector object's own stroke.
+  const [strokeDraft, setStrokeDraft] = useState<BorderModel | null>(null);
+  const prevStrokeOpen = useRef(false);
   // The Text bar owns its tracked params too (color still comes from the model
   // — it's changed externally via the full-screen picker).
   const [textDraft, setTextDraft] = useState<TextStyleModel | null>(null);
@@ -228,11 +236,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     model.showImageEdit ? ['crop', 'shadow', 'border']
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'align']
+    : model.showSvgOptions ? ['stroke']
     : [];
   const activeSub: SubmenuKey | null =
     model.cropOpen ? 'crop'
     : model.shadowOpen ? 'shadow'
     : model.borderOpen ? 'border'
+    : model.strokeOpen ? 'stroke'
     : model.textStyleOpen ? textPage
     : null;
   const submenuOpen = activeSub != null;
@@ -254,6 +264,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     if (key === 'crop') model.onCropOpenChange?.(true);
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
     else if (key === 'border') model.onBorderOpenChange?.(true);
+    else if (key === 'stroke') model.onStrokeOpenChange?.(true);
     else if (key === 'font' || key === 'align') {
       // Both text pages ride the single textStyleOpen flag; the page state
       // picks which one shows (drives the carousel between them).
@@ -266,6 +277,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     model.onShadowOpenChange?.(false);
     model.onBorderOpenChange?.(false);
     model.onCropOpenChange?.(false);
+    model.onStrokeOpenChange?.(false);
     model.onTextStyleOpenChange?.(false);
   };
 
@@ -400,11 +412,31 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     prevCropOpen.current = !!model.cropOpen;
   }, [model.cropOpen, model.framing]);
   useEffect(() => {
+    if (model.strokeOpen && !prevStrokeOpen.current) {
+      // Seeded from the app, which reports the object's CURRENT stroke —
+      // including the composition-wide default it is drawn at when it has
+      // never been given one, so the Width slider opens where the line
+      // actually is rather than at zero.
+      setStrokeDraft(model.stroke ?? DEFAULT_BORDER_MODEL);
+    }
+    prevStrokeOpen.current = !!model.strokeOpen;
+  }, [model.strokeOpen, model.stroke]);
+  useEffect(() => {
     if (model.textStyleOpen && !prevTextOpen.current) {
       setTextDraft(model.textStyle ?? DEFAULT_TEXT_STYLE_MODEL);
     }
     prevTextOpen.current = !!model.textStyleOpen;
   }, [model.textStyleOpen, model.textStyle]);
+  // Fold the Stroke bar away the moment the selection is no longer a vector
+  // object (or the panel hides), so it never lingers over the next object.
+  useEffect(() => {
+    if ((!model.visible || !model.showSvgOptions) && model.strokeOpen) {
+      model.onStrokeOpenChange?.(false);
+    }
+    // model.on* are stable setters; listing the whole model would re-run this
+    // every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model.visible, model.showSvgOptions, model.strokeOpen]);
   // Fold the Text bar away the moment the selection is no longer editable text
   // (or the whole bar hides), so it never lingers over the next object.
   useEffect(() => {
@@ -451,6 +483,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const removeBorder = () => {
     model.onBorder?.(null, true);
     model.onBorderOpenChange?.(false);
+  };
+
+  // Stroke controls → live preview / commit; same pattern as Border. The trash
+  // clears the object's stroke overrides, returning it to the composition-wide
+  // default rather than deleting anything.
+  const applyStroke = (b: BorderModel, committed: boolean) => {
+    setStrokeDraft(b);
+    model.onStroke?.(b, committed);
+  };
+  const removeStroke = () => {
+    model.onStroke?.(null, true);
+    model.onStrokeOpenChange?.(false);
   };
 
   // Crop controls → live preview / commit; the draft owns the tracked params
@@ -522,6 +566,20 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     if (model.onUngroup) {
       typeOptions.push(<GridButton key="ungroup" label="Ungroup" caption="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
     }
+  } else if (model.showSvgOptions) {
+    // Vector selection: the subtype's own option menu (svgEdit.ts). Every
+    // subtype offers Stroke — a path IS its stroke — and differs only in the
+    // glyph naming the shape.
+    typeOptions = svgEditOptions(model.svgSubtype ?? 'stroke').map((opt) => (
+      <GridButton
+        key={opt.action}
+        label={opt.label}
+        caption={opt.label}
+        icon={opt.icon}
+        onPress={() => openSubmenu('stroke')}
+        compact={compact}
+      />
+    ));
   } else if (model.showInvert) {
     // Word sticker (magnetic poetry): the single type-specific option is
     // Invert (dark card ⇄ light card). Content + typography are fixed, so no
@@ -581,6 +639,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     ? { ...borderDraft, color: model.border?.color ?? borderDraft.color }
     : (model.border ?? DEFAULT_BORDER_MODEL);
   const framingForBar: FramingModel = cropDraft ?? model.framing ?? DEFAULT_FRAMING_MODEL;
+  const strokeForBar: BorderModel = strokeDraft
+    ? { ...strokeDraft, color: model.stroke?.color ?? strokeDraft.color }
+    : (model.stroke ?? DEFAULT_BORDER_MODEL);
   // Tracked type params come from the draft; color comes from the model (the
   // full-screen picker changes it externally, like the effect bars' colors).
   const textForBar: TextStyleModel = textDraft
@@ -612,6 +673,25 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         onBack={dismissSubmenu}
         onRemove={removeBorder}
         onPickColor={() => model.onPickBorderColor?.()}
+      />
+    );
+  } else if (displaySub === 'stroke') {
+    // The Border bar retitled, pointed at the vector object's own stroke, with
+    // the rows this subtype has no answer for dropped (svgStrokeRows).
+    const rows = svgStrokeRows(model.svgSubtype ?? 'stroke');
+    activeBarEl = (
+      <BorderBar
+        title="STROKE"
+        border={strokeForBar}
+        cornerRadius={model.strokeRadius ?? 0}
+        showRadius={rows.radius}
+        showPosition={rows.position}
+        onChange={(b) => applyStroke(b, false)}
+        onCommit={(b) => applyStroke(b, true)}
+        onCornerRadius={(r, committed) => model.onStrokeRadius?.(r, committed)}
+        onBack={dismissSubmenu}
+        onRemove={removeStroke}
+        onPickColor={() => model.onPickStrokeColor?.()}
       />
     );
   } else if (displaySub === 'crop') {

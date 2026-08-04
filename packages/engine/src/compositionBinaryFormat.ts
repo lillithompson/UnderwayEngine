@@ -1,4 +1,4 @@
-﻿import { BlendMode, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGSubpath, PathSegment, ImageObject, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageFraming } from './types';
+﻿import { BlendMode, BorderPosition, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGSubpath, PathSegment, ImageObject, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageFraming } from './types';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
@@ -257,7 +257,14 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // the dedup'd blob list). Gated on version>=34 so v33 files — which have no
 // flags2 byte — are never misread; originalImageId loads undefined there
 // (export falls back to imageId).
-const FORMAT_VERSION = 34;
+// v35: SVGObject `stroke` — the per-object stroke block (width / radius /
+// position / dash) behind the Stroke option menu. SVG flags3 is fully spent,
+// so presence rides the last free flags2 bit (0x80) and the presence-masked
+// payload is written last in the SVG record, after angleDeg. Gated on
+// version>=35 so v34-and-earlier files — where that bit was always written 0
+// — can never be misread as carrying the block; they load `stroke` undefined
+// and render at the composition-wide strokeScale exactly as they did.
+const FORMAT_VERSION = 35;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + 4Ã—float32 = 21
@@ -482,6 +489,9 @@ const FLAG2_HAS_LOCAL_SUBPATHS = 0x20;
 // v21+ rectangle presence flag. Presence-only â€” `'rectangle'` is the only
 // legal `shapeKind` value so no extra bytes are written.
 const FLAG2_IS_RECTANGLE = 0x40;
+// v35+: per-object stroke block present (payload last in the SVG record,
+// after angleDeg). Rides the last free flags2 bit â€” flags3 is fully spent.
+const FLAG2_SVG_HAS_STROKE = 0x80;
 // v24+ SVG flags3 byte. Sits right after flags2 in the SVG record header.
 const FLAG3_SVG_HAS_FILL_COLOR = 0x01;
 // v25+ "Use as mask" flag. Presence-only.
@@ -821,6 +831,59 @@ function readEffects(view: DataView, data: Uint8Array, pos: number): { effects: 
   return { effects, pos };
 }
 
+// â”€â”€ Per-object SVG stroke payload (v35+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Presence-masked like the effects payload: every field of SVGStroke is
+// optional and "absent" is meaningfully different from "zero" (no width means
+// stroke at the composition-wide strokeScale, width 0 means an invisible
+// stroke), so each is written only when set.
+
+const STROKE_HAS_WIDTH = 0x01;
+const STROKE_HAS_RADIUS = 0x02;
+const STROKE_HAS_POSITION = 0x04;
+const STROKE_HAS_DASH = 0x08;
+
+const BORDER_POSITION_TO_BYTE: Record<BorderPosition, number> = { inside: 0, center: 1, outside: 2 };
+const BYTE_TO_BORDER_POSITION: BorderPosition[] = ['inside', 'center', 'outside'];
+
+/** True when the block carries anything worth writing. An all-undefined
+ *  stroke is treated as absent so it never costs a flag bit or a byte. */
+function hasSVGStroke(s: SVGStroke | undefined): s is SVGStroke {
+  return !!s && (s.width != null || s.radius != null || s.position != null || s.dash != null);
+}
+
+function strokeBinarySize(s: SVGStroke): number {
+  let size = 1; // presence mask
+  if (s.width != null) size += 4;
+  if (s.radius != null) size += 4;
+  if (s.position != null) size += 1;
+  if (s.dash != null) size += 1;
+  return size;
+}
+
+function writeSVGStroke(view: DataView, out: Uint8Array, pos: number, s: SVGStroke): number {
+  let mask = 0;
+  if (s.width != null) mask |= STROKE_HAS_WIDTH;
+  if (s.radius != null) mask |= STROKE_HAS_RADIUS;
+  if (s.position != null) mask |= STROKE_HAS_POSITION;
+  if (s.dash != null) mask |= STROKE_HAS_DASH;
+  out[pos++] = mask;
+  if (s.width != null) { view.setFloat32(pos, s.width, true); pos += 4; }
+  if (s.radius != null) { view.setFloat32(pos, s.radius, true); pos += 4; }
+  if (s.position != null) out[pos++] = BORDER_POSITION_TO_BYTE[s.position] ?? 1;
+  if (s.dash != null) out[pos++] = Math.max(0, Math.min(10, Math.round(s.dash))) & 0xff;
+  return pos;
+}
+
+function readSVGStroke(view: DataView, data: Uint8Array, pos: number): { stroke: SVGStroke; pos: number } {
+  const mask = data[pos++];
+  const stroke: SVGStroke = {};
+  if (mask & STROKE_HAS_WIDTH) { stroke.width = view.getFloat32(pos, true); pos += 4; }
+  if (mask & STROKE_HAS_RADIUS) { stroke.radius = view.getFloat32(pos, true); pos += 4; }
+  if (mask & STROKE_HAS_POSITION) { stroke.position = BYTE_TO_BORDER_POSITION[data[pos++]] ?? 'center'; }
+  if (mask & STROKE_HAS_DASH) { stroke.dash = data[pos++]; }
+  return { stroke, pos };
+}
+
 function subpathArraySize(subs: ReadonlyArray<SVGSubpath>): number {
   // u16 count + per-subpath { rgb(3) + segCount(2) + segments }
   let size = 2;
@@ -855,6 +918,7 @@ function svgBinarySize(svg: SVGObject): number {
   if (svg.fillPaint) size += paintBinarySize(svg.fillPaint);
   if (svg.effects) size += effectsBinarySize(svg.effects);
   if (svg.angleDeg) size += 2; // v31+ free rotation (i16)
+  if (hasSVGStroke(svg.stroke)) size += strokeBinarySize(svg.stroke); // v35+
   return size;
 }
 
@@ -1020,6 +1084,7 @@ function writeSVG(
   if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) flags2 |= FLAG2_HAS_SUBPATHS;
   if (Array.isArray(svg.localSubpaths) && svg.localSubpaths.length > 0) flags2 |= FLAG2_HAS_LOCAL_SUBPATHS;
   if (svg.shapeKind === 'rectangle') flags2 |= FLAG2_IS_RECTANGLE;
+  if (hasSVGStroke(svg.stroke)) flags2 |= FLAG2_SVG_HAS_STROKE;
   out[pos++] = flags2;
 
   // flags3 (v24+)
@@ -1114,6 +1179,10 @@ function writeSVG(
   // v31+ free rotation (i16), after effects.
   if (svg.angleDeg) {
     view.setInt16(pos, encodeAngleDeg(svg.angleDeg), true); pos += 2;
+  }
+  // v35+ per-object stroke, last in the record.
+  if (hasSVGStroke(svg.stroke)) {
+    pos = writeSVGStroke(view, out, pos, svg.stroke);
   }
   return pos;
 }
@@ -1283,6 +1352,14 @@ function readSVG(
   // v31+ free rotation (i16), after effects.
   if (version >= 30 && (flags3 & FLAG3_SVG_HAS_ANGLE)) {
     svg.angleDeg = decodeAngleDeg(view.getInt16(pos, true)); pos += 2;
+  }
+  // v35+ per-object stroke, last in the record. Gated on the version as well
+  // as the bit: 0x80 of flags2 was unused (and always written 0) before v35,
+  // so no older file can be misread as carrying a stroke payload.
+  if (version >= 35 && (flags2 & FLAG2_SVG_HAS_STROKE)) {
+    const s = readSVGStroke(view, data, pos);
+    svg.stroke = s.stroke;
+    pos = s.pos;
   }
 
   // v25+ "Use as mask" flag (presence-only, no payload)

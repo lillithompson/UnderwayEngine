@@ -771,6 +771,36 @@ export interface SVGSubpath {
   color: RGBColor;
 }
 
+/**
+ * Per-object stroke settings for an {@link SVGObject} — the Stroke bar's
+ * Width / Radius / Position / Dash rows. The stroke COLOR is not here: an SVG
+ * object's stroke color is its own `color` field (what the color tool, join
+ * and export already read), so duplicating it would give the same stroke two
+ * sources of truth.
+ *
+ * Every field is optional and absent means "unchanged from the default": no
+ * `width` strokes at the composition-wide `strokeScale`, no `dash` strokes
+ * solid, and so on. That keeps an untouched object's record byte-identical to
+ * what it was before this block existed.
+ */
+export interface SVGStroke {
+  /** Stroke width in world cells (design pt ÷ 16). Undefined = the
+   *  composition-wide `strokeScale`. */
+  width?: number;
+  /** Corner rounding at the path's own joins, as a 0–0.5 fraction of the
+   *  shorter bbox side (0 = sharp). Only line→line joins round; a join that
+   *  already meets an arc is left alone. */
+  radius?: number;
+  /** Stroke alignment vs. the path. Meaningful only for a CLOSED path (a
+   *  rectangle, circle or preset shape) — an open path like a line, arc or
+   *  freehand stroke has no inside, so this is inert there. Undefined =
+   *  'center' (the stroke straddles the path, i.e. today's rendering). */
+  position?: BorderPosition;
+  /** Dash density 0–10; 0 / undefined = solid. Shares `borderDashPattern`
+   *  with the border effect so a dashed stroke and a dashed border match. */
+  dash?: number;
+}
+
 export interface SVGObject {
   id: string;
   name?: string;
@@ -861,6 +891,11 @@ export interface SVGObject {
    *  as pre-blurred texture passes, never live SVG filters at runtime;
    *  SVG export emits real `<filter>` defs. */
   effects?: NodeEffects;
+  /** Per-object stroke overrides — width / corner radius / alignment / dash
+   *  for the path's OWN stroke (v35+). Distinct from `effects.border`, which
+   *  would draw a separate rect around the bbox. Undefined = stroke at the
+   *  composition-wide `strokeScale`, sharp joins, centered, solid. */
+  stroke?: SVGStroke;
   /** Direction at creation time. Persists through scaling and rotation
    *  so an H/V line never becomes diagonal after creation. Stripped on
    *  join — only original creation-tool lines carry this. */

@@ -147,6 +147,11 @@ export interface BorderModel {
   color: RGBLike;
 }
 
+/** Which vector subtype the selection is, so the panel can offer the option
+ *  set that subtype's menu defines (see `logic/svgEdit`). Mirrors the engine's
+ *  `SVGSubtype` without importing it — the package stays engine-agnostic. */
+export type SVGSubtypeKind = 'line' | 'arc' | 'rectangle' | 'circle' | 'shape' | 'stroke';
+
 /** How an image's bitmap fills its frame (the Crop bar). Mirrors the engine's
  *  ImageFraming without importing it (package stays engine-agnostic). */
 export type ImageFramingMode = 'fill' | 'fit' | 'crop' | 'tile';
@@ -235,6 +240,36 @@ export interface ObjectPropertiesModel {
   inverted?: boolean;
   /** Toggle the selected sticker's inverted color scheme (one undo step). */
   onInvert?(): void;
+  /** Selection is a vector (SVG) object: the panel's second row shows that
+   *  subtype's option menu — see `svgSubtype` for which one, and
+   *  `SVG_EDIT_OPTIONS` for the options each subtype offers. Mutually
+   *  exclusive with the image / text / frame type-options. */
+  showSvgOptions?: boolean;
+  /** Which vector subtype the selection is, choosing its option menu. Ignored
+   *  unless `showSvgOptions`; defaults to 'stroke' when unset. */
+  svgSubtype?: SVGSubtypeKind;
+  /** Whether the Stroke bar is shown. App-owned so a tap-off dismisses it
+   *  before the panel (same as the Shadow / Border bars). */
+  strokeOpen?: boolean;
+  onStrokeOpenChange?(open: boolean): void;
+  /** The selected vector object's current stroke, seeding the Stroke bar. It
+   *  reuses {@link BorderModel} because the Stroke bar IS the Border bar — the
+   *  same width / position / dash controls, pointed at the path's own stroke
+   *  rather than a rect around its bbox. `color` is the object's own color. */
+  stroke?: BorderModel;
+  /** The stroke's corner rounding, a 0–0.5 fraction of the shorter bbox side
+   *  — the Stroke bar's Radius row, mirroring `cornerRadius` for images. */
+  strokeRadius?: number;
+  /** Stroke-controls callback: fires live while dragging (`committed=false`)
+   *  and once on release (`committed=true`, one undo step). `stroke=null`
+   *  resets the object to the composition-wide default stroke. */
+  onStroke?(stroke: BorderModel | null, committed: boolean): void;
+  /** Radius-row callback, same live/commit contract as `onCornerRadius`. */
+  onStrokeRadius?(radius: number, committed: boolean): void;
+  /** Open the full-screen color picker for the stroke color (the same picker
+   *  the toolbar color tool uses — a vector object's stroke color IS its
+   *  color, so this commits through the ordinary color path). */
+  onPickStrokeColor?(): void;
   /** Selection is a Figma-style frame: the panel's second row shows the frame
    *  options (background / shadow / border / ungroup), with Shadow / Border
    *  reusing the image effect bars (frame submenu carousel = shadow, border).

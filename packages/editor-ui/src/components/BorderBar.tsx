@@ -9,6 +9,13 @@ import { BAR_BG, EffectBarHeader, HAIRLINE, SegmentedRow, SliderRow } from './ef
 // chrome (see effectBar.tsx). The Radius row rounds the object itself (folding
 // in the former standalone Round control), so it rides the app's cornerRadius
 // fields rather than the border model.
+//
+// A vector selection reuses this bar as its STROKE menu — same rows, same
+// ranges, same chrome — pointed at the path's own stroke instead of a rect
+// around a bbox. It overrides the title and drops the rows its subtype has no
+// answer for (Position needs a closed path; Radius is a rectangle control),
+// which is why this is a `title` + two row toggles rather than a copy of the
+// component. Width and Dash are universal and always render.
 
 // ── Ranges (world cells; design pt ÷ 16) ─────────────────────────────
 const MAX_WIDTH = 1.5; // 0…24pt
@@ -23,10 +30,18 @@ const POSITIONS: readonly { value: BorderPosition; label: string }[] = [
   { value: 'outside', label: 'Outside' },
 ];
 
-export function BorderBar({ border, cornerRadius, onChange, onCommit, onCornerRadius, onBack, onRemove, onPickColor }: {
+export function BorderBar({ border, cornerRadius, title = 'BORDER', showRadius = true, showPosition = true, onChange, onCommit, onCornerRadius, onBack, onRemove, onPickColor }: {
   border: BorderModel;
   /** Object corner rounding, a 0–0.5 fraction of the shorter side. */
   cornerRadius: number;
+  /** Header title. Defaults to BORDER; a vector selection passes STROKE. */
+  title?: string;
+  /** Render the Radius row. Off for a selection whose corners aren't roundable
+   *  (every vector subtype except a rectangle). */
+  showRadius?: boolean;
+  /** Render the Position row. Off for a selection with no inside to align a
+   *  stroke to (an open path: line, arc, freehand stroke). */
+  showPosition?: boolean;
   onChange: (b: BorderModel) => void;
   onCommit: (b: BorderModel) => void;
   /** Fires the Radius row: `radius` is a 0–0.5 fraction; `committed` marks the
@@ -41,7 +56,7 @@ export function BorderBar({ border, cornerRadius, onChange, onCommit, onCornerRa
   return (
     <View style={styles.bar}>
       <EffectBarHeader
-        title="BORDER"
+        title={title}
         color={border.color}
         chevron
         onBack={onBack}
@@ -50,17 +65,21 @@ export function BorderBar({ border, cornerRadius, onChange, onCommit, onCornerRa
       />
       <View style={styles.controls}>
         <SliderRow label="Width" value={border.width / MAX_WIDTH} apply={(t, c) => set({ width: t * MAX_WIDTH }, c)} />
-        <SliderRow
-          label="Radius"
-          value={cornerRadius / MAX_CORNER_RADIUS}
-          apply={(t, c) => onCornerRadius(t * MAX_CORNER_RADIUS, c)}
-        />
-        <SegmentedRow
-          label="Position"
-          options={POSITIONS}
-          value={border.position}
-          onChange={(position) => set({ position }, true)}
-        />
+        {showRadius ? (
+          <SliderRow
+            label="Radius"
+            value={cornerRadius / MAX_CORNER_RADIUS}
+            apply={(t, c) => onCornerRadius(t * MAX_CORNER_RADIUS, c)}
+          />
+        ) : null}
+        {showPosition ? (
+          <SegmentedRow
+            label="Position"
+            options={POSITIONS}
+            value={border.position}
+            onChange={(position) => set({ position }, true)}
+          />
+        ) : null}
         <SliderRow
           label="Dash"
           value={border.dash / MAX_DASH}
