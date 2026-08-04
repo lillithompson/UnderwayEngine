@@ -98,13 +98,19 @@ export function shareFile(
 }
 
 /**
- * Save a PNG to the camera roll. In WebView, sends to native for MediaLibrary save.
+ * Save an image to the camera roll. In WebView, sends to native for MediaLibrary save.
  * On mobile web, uses Web Share API to present the share sheet with "Save Image".
  * On desktop, triggers a file download.
+ *
+ * `mimeType` labels the Blob/File handed to the share sheet or download; it
+ * defaults to PNG for the original callers. Pass the real type when the bytes
+ * aren't PNG (e.g. 'image/jpeg') — a mislabelled File is what the share sheet
+ * names and saves.
  */
 export function savePngToCameraRoll(
   base64Data: string,
   filename: string,
+  mimeType: string = 'image/png',
 ): Promise<{ success: boolean; error?: string }> {
   if (isInWebView()) {
     return new Promise((resolve) => {
@@ -136,11 +142,11 @@ export function savePngToCameraRoll(
       const ab = new ArrayBuffer(byteString.length);
       const ia = new Uint8Array(ab);
       for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-      const blob = new Blob([ab], { type: 'image/png' });
+      const blob = new Blob([ab], { type: mimeType });
 
       if (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0
           && navigator.share && navigator.canShare) {
-        const file = new File([blob], filename, { type: 'image/png' });
+        const file = new File([blob], filename, { type: mimeType });
         if (navigator.canShare({ files: [file] })) {
           try {
             await navigator.share({ files: [file] });

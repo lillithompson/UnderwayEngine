@@ -1,4 +1,5 @@
 import { WebToNativeMessage, NativeToWebMessage } from './protocol';
+import { saveBase64ToCameraRoll } from './cameraRoll';
 import { showToast } from '@/engine/toast';
 
 type SendToWeb = (msg: NativeToWebMessage) => void;
@@ -109,44 +110,23 @@ async function handleShareFile(
   }
 }
 
+// Transport wrapper only — the save itself lives in ./cameraRoll so RN
+// screens can reuse it without a WebView round-trip.
 async function handleSaveToCameraRoll(
   payload: { data: string; filename: string },
   sendToWeb: SendToWeb,
 ): Promise<void> {
-  try {
-    const { Paths, File: FSFile } = require('expo-file-system');
-    const MediaLibrary = require('expo-media-library');
-
-    const { status } = await MediaLibrary.requestPermissionsAsync();
-    if (status !== 'granted') {
-      sendToWeb({
-        type: 'CAMERA_ROLL_RESULT',
-        payload: { success: false, error: 'permission_denied' },
-      });
-      showToast('Photo library access denied');
-      return;
-    }
-
-    const file = new FSFile(Paths.cache, payload.filename);
-    file.create({ overwrite: true });
-    file.write(payload.data, { encoding: 'base64' });
-
-    await MediaLibrary.saveToLibraryAsync(file.uri);
-
-    sendToWeb({
-      type: 'CAMERA_ROLL_RESULT',
-      payload: { success: true },
-    });
+  const result = await saveBase64ToCameraRoll(payload.data, payload.filename);
+  sendToWeb({ type: 'CAMERA_ROLL_RESULT', payload: result });
+  if (result.success) {
     showToast('Saved to Photos');
     handleHaptic('heavy');
-  } catch (e) {
-    console.warn('Save to camera roll failed:', e);
-    const message = e instanceof Error ? (e.message || e.name) : String(e);
-    sendToWeb({
-      type: 'CAMERA_ROLL_RESULT',
-      payload: { success: false, error: message || 'failed' },
-    });
-    showToast('Could not save image');
+  } else {
+    showToast(
+      result.error === 'permission_denied'
+        ? 'Photo library access denied'
+        : 'Could not save image',
+    );
   }
 }
 
