@@ -14,6 +14,10 @@ import { blendColor, recolorPixel } from './colorBlend';
 export interface ColoredSegments {
   color: RGBColor;
   segments: PathSegment[];
+  /** True when the group's source SVG elements were fill-painted (color
+   *  cells export as filled rects) rather than stroked (sprite line art).
+   *  Callers building an SVGObject map fill groups to `SVGSubpath.fill`. */
+  isFill?: boolean;
 }
 
 /**
@@ -137,7 +141,7 @@ function convertCachedSVGToColoredSegments(
   cached: CachedFigureSVG,
   fig: CompositionFigure,
 ): ColoredSegments[] {
-  const byColor = new Map<string, { color: RGBColor; segments: PathSegment[] }>();
+  const byColor = new Map<string, ColoredSegments>();
   const svgW = cached.svgWidth;
   const svgH = cached.svgHeight;
   const rotation = fig.rotation ?? 0;
@@ -179,11 +183,15 @@ function convertCachedSVGToColoredSegments(
     return [x + qCx, y + qCy];
   };
 
-  function getColorGroup(el: string): { color: RGBColor; segments: PathSegment[] } {
-    const color = parseElementColor(el);
-    const key = `${color.r},${color.g},${color.b}`;
+  function getColorGroup(el: string): ColoredSegments {
+    const { color, isFill } = parseElementPaint(el);
+    const key = `${color.r},${color.g},${color.b}|${isFill ? 'f' : 's'}`;
     let entry = byColor.get(key);
-    if (!entry) { entry = { color, segments: [] }; byColor.set(key, entry); }
+    if (!entry) {
+      entry = { color, segments: [] };
+      if (isFill) entry.isFill = true;
+      byColor.set(key, entry);
+    }
     return entry;
   }
 
@@ -264,7 +272,7 @@ function convertCachedSVGToColoredSegments(
 
   return [...byColor.values()]
     .map(g => ({
-      color: g.color,
+      ...g,
       segments: clipSegmentsToRect(g.segments, minX, minY, maxX, maxY),
     }))
     .filter(g => g.segments.length > 0);
@@ -419,13 +427,17 @@ export function clipSegmentsToRect(
 }
 
 /** Extract stroke or fill color from an SVG element string. */
-function parseElementColor(el: string): RGBColor {
+function parseElementPaint(el: string): { color: RGBColor; isFill: boolean } {
   // Try stroke first (paths use stroke), then fill (rects use fill)
   const strokeMatch = el.match(/\bstroke="rgb\((\d+),\s*(\d+),\s*(\d+)\)"/);
-  if (strokeMatch) return { r: +strokeMatch[1], g: +strokeMatch[2], b: +strokeMatch[3] };
+  if (strokeMatch) {
+    return { color: { r: +strokeMatch[1], g: +strokeMatch[2], b: +strokeMatch[3] }, isFill: false };
+  }
   const fillMatch = el.match(/\bfill="rgb\((\d+),\s*(\d+),\s*(\d+)\)"/);
-  if (fillMatch) return { r: +fillMatch[1], g: +fillMatch[2], b: +fillMatch[3] };
-  return { r: 255, g: 255, b: 255 }; // default white
+  if (fillMatch) {
+    return { color: { r: +fillMatch[1], g: +fillMatch[2], b: +fillMatch[3] }, isFill: true };
+  }
+  return { color: { r: 255, g: 255, b: 255 }, isFill: false }; // default white stroke
 }
 
 // ── SVG transform parsing ───────────────────────────────────────────

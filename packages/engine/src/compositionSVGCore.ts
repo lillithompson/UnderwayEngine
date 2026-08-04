@@ -11,7 +11,7 @@ import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildTilePathD, buildExpandedTileSVGObjectContent, svgStrokePresentation } from './svgPathBuilder';
+import { buildPathD, buildTilePathD, buildClosedFillPathD, buildTileFillPathD, buildExpandedTileSVGObjectContent, svgStrokePresentation } from './svgPathBuilder';
 import { roundPathCorners, svgStrokeRadiusCells } from './svgStroke';
 import { chainSegments } from './compositionArcMath';
 import { arcBoundingBox } from './compositionArcHitTest';
@@ -662,7 +662,18 @@ export async function generateCompositionSVGCore(
       const sMinY = svg.cellY + (svg.tileOffsetYL0 ?? 0);
       let tileContent = fillElement;
       if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
+        // Fill subpaths first so stroke subpaths draw on top (matches
+        // buildSVGObjectTileContent in svgPathBuilder.ts).
         for (const sub of svg.subpaths) {
+          if (!sub.fill) continue;
+          const fd = buildTileFillPathD(sub.segments, sMinX, sMinY);
+          if (fd) {
+            const { r, g, b } = sub.color;
+            tileContent += `<path d="${fd}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`;
+          }
+        }
+        for (const sub of svg.subpaths) {
+          if (sub.fill) continue;
           const d = buildTilePathD(sub.segments, sMinX, sMinY);
           if (d) {
             const { r, g, b } = sub.color;
@@ -695,7 +706,18 @@ export async function generateCompositionSVGCore(
       let paths = strokeDefs + fillElement;
       if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
         const radius = svgStrokeRadiusCells(svg);
+        // Fill subpaths first so stroke subpaths draw on top (matches
+        // buildSVGObjectContent in svgPathBuilder.ts).
         for (const sub of svg.subpaths) {
+          if (!sub.fill) continue;
+          const fd = buildClosedFillPathD(sub.segments);
+          if (fd) {
+            const { r, g, b } = sub.color;
+            paths += `<path d="${fd}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`;
+          }
+        }
+        for (const sub of svg.subpaths) {
+          if (sub.fill) continue;
           const d = buildPathD(radius > 0 ? roundPathCorners(sub.segments, radius) : sub.segments);
           if (d) {
             const { r, g, b } = sub.color;

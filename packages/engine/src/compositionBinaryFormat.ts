@@ -104,6 +104,7 @@ import { compSnapStep } from './compositionCellMath';
 //     if hasCreationBox (v15+): minX i16 + minY i16 + width u16 + height u16
 //                               (all encodeFixed quarter-cell)
 //     if hasSubpaths (v20+):     subpathCount u16 + per-subpath {r u8, g u8, b u8,
+//                                flags u8 (v37+: 0x01 fill),
 //                                segmentCount u16, segments}. Persists per-color
 //                                splits from drag-paint / join ops so per-segment
 //                                color survives save/load.
@@ -268,7 +269,12 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // a second per-image `flags2` bit (0x02); its payload rides after the
 // originalImageId block. v35-and-earlier files never set that bit, so the read
 // is gated on version>=36.
-const FORMAT_VERSION = 36;
+// v37: per-subpath flags byte (0x01 = `fill`: the subpath renders as filled
+// closed loops instead of a stroked path — figure→SVG pattern baking). The
+// byte sits between the subpath's RGB and its segment count, so the read is
+// gated on version>=37; v36-and-earlier subpaths load with `fill` unset and
+// render as strokes exactly as they did.
+const FORMAT_VERSION = 37;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + 4Ã—float32 = 21
@@ -932,10 +938,10 @@ function readSVGStroke(view: DataView, data: Uint8Array, pos: number): { stroke:
 }
 
 function subpathArraySize(subs: ReadonlyArray<SVGSubpath>): number {
-  // u16 count + per-subpath { rgb(3) + segCount(2) + segments }
+  // u16 count + per-subpath { rgb(3) + flags(1, v37+) + segCount(2) + segments }
   let size = 2;
   for (const sub of subs) {
-    size += 3 + 2 + segmentArraySize(sub.segments);
+    size += 3 + 1 + 2 + segmentArraySize(sub.segments);
   }
   return size;
 }
@@ -1059,29 +1065,35 @@ function readSegments(view: DataView, data: Uint8Array, pos: number, count: numb
 }
 
 // v20+: per-color subpath splits from drag-paint / join ops. Each
-// subpath = 3 bytes RGB + u16 segment count + segments.
+// subpath = 3 bytes RGB + flags u8 (v37+, 0x01 fill) + u16 segment count
+// + segments.
+const SUBPATH_FLAG_FILL = 0x01;
+
 function writeSubpaths(view: DataView, out: Uint8Array, pos: number, subs: ReadonlyArray<SVGSubpath>): number {
   pos = writeCount16(view, pos, subs.length, 'subpaths');
   for (const sub of subs) {
     out[pos++] = sub.color.r & 0xff;
     out[pos++] = sub.color.g & 0xff;
     out[pos++] = sub.color.b & 0xff;
+    out[pos++] = sub.fill ? SUBPATH_FLAG_FILL : 0;
     pos = writeCount16(view, pos, sub.segments.length, 'subpath.segments');
     pos = writeSegments(view, out, pos, sub.segments);
   }
   return pos;
 }
 
-function readSubpaths(view: DataView, data: Uint8Array, pos: number): { subs: SVGSubpath[]; pos: number } {
+function readSubpaths(view: DataView, data: Uint8Array, pos: number, version: number): { subs: SVGSubpath[]; pos: number } {
   const count = view.getUint16(pos, true); pos += 2;
   const subs: SVGSubpath[] = [];
+  const headerBytes = version >= 37 ? 6 : 5; // rgb(3) + flags(1, v37+) + segCount(2)
   for (let i = 0; i < count; i++) {
-    if (pos + 5 > data.byteLength) {
+    if (pos + headerBytes > data.byteLength) {
       throw new Error(`Corrupt .tile: subpath ${i}/${count} header runs past file end (likely a count overflow during save).`);
     }
     const r = data[pos++];
     const g = data[pos++];
     const b = data[pos++];
+    const subFlags = version >= 37 ? data[pos++] : 0;
     const segCount = view.getUint16(pos, true); pos += 2;
     // Minimum bytes a segment can occupy is 9 (line). If the declared
     // segment count claims more bytes than remain in the buffer, the
@@ -1093,7 +1105,9 @@ function readSubpaths(view: DataView, data: Uint8Array, pos: number): { subs: SV
     }
     const s = readSegments(view, data, pos, segCount);
     pos = s.pos;
-    subs.push({ color: { r, g, b }, segments: s.segs });
+    const sub: SVGSubpath = { color: { r, g, b }, segments: s.segs };
+    if (subFlags & SUBPATH_FLAG_FILL) sub.fill = true;
+    subs.push(sub);
   }
   return { subs, pos };
 }
@@ -1338,12 +1352,12 @@ function readSVG(
   // creationBox so the position lines up with the writer. Older files
   // never have these flag bits set, so they're a no-op pre-v20.
   if (version >= 20 && (flags2 & FLAG2_HAS_SUBPATHS)) {
-    const r2 = readSubpaths(view, data, pos);
+    const r2 = readSubpaths(view, data, pos, version);
     svg.subpaths = r2.subs;
     pos = r2.pos;
   }
   if (version >= 20 && (flags2 & FLAG2_HAS_LOCAL_SUBPATHS)) {
-    const r3 = readSubpaths(view, data, pos);
+    const r3 = readSubpaths(view, data, pos, version);
     svg.localSubpaths = r3.subs;
     pos = r3.pos;
   }

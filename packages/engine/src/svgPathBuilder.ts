@@ -139,7 +139,17 @@ export function buildSVGObjectTileContent(obj: SVGObject, strokeScale: number): 
   }
 
   if (Array.isArray(obj.subpaths) && obj.subpaths.length > 0) {
+    // Fill subpaths first so stroke subpaths draw on top of them.
     for (const sub of obj.subpaths) {
+      if (!sub.fill) continue;
+      const fd = buildTileFillPathD(sub.segments, minX, minY);
+      if (fd) {
+        const { r, g, b } = sub.color;
+        result += `<path d="${fd}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`;
+      }
+    }
+    for (const sub of obj.subpaths) {
+      if (sub.fill) continue;
       const d = buildTilePathD(sub.segments, minX, minY);
       if (d) {
         const { r, g, b } = sub.color;
@@ -289,7 +299,7 @@ export function buildClosedFillPathD(segments: ReadonlyArray<PathSegment>): stri
 /**
  * Tile-local variant of buildClosedFillPathD (coordinates relative to minX, minY).
  */
-function buildTileFillPathD(segments: ReadonlyArray<PathSegment>, minX: number, minY: number): string {
+export function buildTileFillPathD(segments: ReadonlyArray<PathSegment>, minX: number, minY: number): string {
   const loops = chainSegmentsLoops(segments);
   if (!loops) return '';
   return loops.map(loop => buildTilePathD(loop, minX, minY) + ' Z').join(' ');
@@ -417,7 +427,17 @@ export function buildSVGObjectContent(
   }
 
   if (Array.isArray(obj.subpaths) && obj.subpaths.length > 0) {
+    // Fill subpaths first so stroke subpaths draw on top of them.
     for (const sub of obj.subpaths) {
+      if (!sub.fill) continue;
+      const fd = buildClosedFillPathD(sub.segments);
+      if (fd) {
+        const { r, g, b } = sub.color;
+        result += `<path d="${fd}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`;
+      }
+    }
+    for (const sub of obj.subpaths) {
+      if (sub.fill) continue;
       const rounded = radius > 0 ? roundPathCorners(sub.segments, radius) : sub.segments;
       const d = buildPathD(rounded);
       if (d) {

@@ -769,6 +769,12 @@ export type PathSegment = CurveSegment | LineSegment;
 export interface SVGSubpath {
   segments: PathSegment[];
   color: RGBColor;
+  /** When true the subpath renders as FILLED closed loops (chained via
+   *  `buildClosedFillPathD`, nonzero fill rule) instead of a stroked path.
+   *  Fill subpaths render beneath stroke subpaths. Used by figure→SVG baking
+   *  where color-painted cells are filled rects while sprite art is strokes.
+   *  Persisted from binary format v37 (per-subpath flags byte). */
+  fill?: boolean;
 }
 
 /**
