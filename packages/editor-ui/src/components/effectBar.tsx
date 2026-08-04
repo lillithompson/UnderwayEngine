@@ -34,10 +34,13 @@ const SEG_TEXT = 'rgba(255,255,255,0.6)';
  *  left, and — when a color is supplied — a color swatch, then the trash, on
  *  the right. The Crop bar omits the swatch (no color); bars that pass no
  *  `onRemove` omit the trash entirely (Text / Crop). */
-export function EffectBarHeader({ title, color, chevron, align = 'center', removeLabel, onBack, onRemove, onPickColor }: {
+export function EffectBarHeader({ title, color, swatch, chevron, align = 'center', removeLabel, onBack, onRemove, onPickColor }: {
   title: string;
   /** Swatch color; omit (with onPickColor) for a bar without a color control. */
   color?: RGBLike;
+  /** Custom swatch fill (e.g. the Tint bar's gradient preview), rendered inside
+   *  the circular swatch instead of a flat `color`. Clipped to the circle. */
+  swatch?: React.ReactNode;
   /** Show a leading down-chevron before the title (the bar dismisses downward). */
   chevron?: boolean;
   /** 'top' aligns the swatch's top with the title's top (Shadow's tweak);
@@ -58,13 +61,15 @@ export function EffectBarHeader({ title, color, chevron, align = 'center', remov
         <Text style={styles.title}>{title}</Text>
       </Pressable>
       <View style={styles.headerRight}>
-        {color && onPickColor ? (
+        {(color || swatch) && onPickColor ? (
           <Pressable
             onPress={onPickColor}
             accessibilityRole="button"
             accessibilityLabel={`${title} color`}
-            style={[styles.swatch, { backgroundColor: rgbCss(color) }]}
-          />
+            style={[styles.swatch, swatch ? styles.swatchClip : { backgroundColor: rgbCss(color!) }]}
+          >
+            {swatch}
+          </Pressable>
         ) : null}
         {onRemove ? (
           <Pressable onPress={onRemove} hitSlop={10} accessibilityRole="button" accessibilityLabel={removeLabel ?? `Remove ${title.toLowerCase()}`}>
@@ -177,6 +182,8 @@ const styles = StyleSheet.create({
     width: 22, height: 22, borderRadius: 11, borderWidth: 1.8, borderColor: SWATCH_BORDER,
     shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
   },
+  // A custom swatch fill (gradient preview) is clipped to the circle.
+  swatchClip: { overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', height: 32 },
   rowLabel: { width: 50, color: LABEL, fontSize: 12 },
   rowSlider: { flex: 1 },

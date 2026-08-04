@@ -214,6 +214,46 @@ export interface TextStyleModel {
   color: RGBLike;
 }
 
+/** The gradient tint's fill type (the Tint bar's Type segmented control).
+ *  Solid = one flat color; Linear / Radial = a gradient of `stops`. */
+export type TintType = 'solid' | 'linear' | 'radial';
+
+/** Compositing mode for the tint layer over the image. The strings are the CSS
+ *  `mix-blend-mode` values (and map onto Core Image's blend filters), so the
+ *  preview needs no lookup table. This is the design's own 8-mode set — NOT the
+ *  engine's generative `BlendMode` (which lacks soft-light / saturation) — so it
+ *  stays a package-local union the app maps to its own storage. */
+export type TintBlend =
+  | 'normal' | 'multiply' | 'darken' | 'lighten'
+  | 'soft-light' | 'color' | 'hue' | 'saturation';
+
+/** One gradient stop: a color at a position along the ramp. */
+export interface TintStop {
+  /** Position along the ramp, 0…1 (the design's 0–100 % ÷ 100). */
+  position: number;
+  color: RGBLike;
+}
+
+/** Editable image tint: a solid / linear / radial overlay composited onto the
+ *  image with a blend mode and layer opacity. Distinct from the engine's legacy
+ *  shader `tint` (tint/duotone/wash) — this is the design 6a gradient tint. The
+ *  non-active fields are kept so switching Type back restores them (a Solid tint
+ *  remembers its gradient; a Radial one remembers its angle). */
+export interface TintModel {
+  type: TintType;
+  /** Solid-mode color. */
+  solid: RGBLike;
+  /** Gradient stops (min 2), used by linear / radial. */
+  stops: TintStop[];
+  /** Index into `stops` the color picker targets in gradient modes. */
+  selectedStop: number;
+  /** Linear gradient angle in degrees, 0…360 (90 = top→bottom). */
+  angle: number;
+  /** Whole-layer opacity 0…1, applied after the blend. */
+  opacity: number;
+  blend: TintBlend;
+}
+
 export interface ObjectPropertiesModel {
   visible: boolean;
   mode?: 'single' | 'multi' | 'group';
@@ -286,7 +326,22 @@ export interface ObjectPropertiesModel {
   /** Image-edit sub-panel actions (surfaced only when showImageEdit). Each
    *  is optional so apps can land the UI ahead of the edits themselves. */
   onReplaceImage?(): void;
-  onTintImage?(): void;
+  /** Whether the Tint controls are shown. App-owned so a tap-off dismisses
+   *  them before the panel (same as the Shadow / Border bars). */
+  tintOpen?: boolean;
+  onTintOpenChange?(open: boolean): void;
+  /** The selected image's current tint (defaults supplied by the app when none
+   *  is set yet), seeding the Tint controls. */
+  tint?: TintModel;
+  /** Tint-controls callback: fires live while dragging a stop / slider or on a
+   *  stop selection (`committed=false`) and once on release / a structural edit
+   *  — Type, stop add/delete, blend pick (`committed=true`, one undo step).
+   *  `tint=null` removes the tint layer. */
+  onTint?(tint: TintModel | null, committed: boolean): void;
+  /** Open the full-screen color picker for the tint. It targets the solid color
+   *  in Solid mode or `tint.stops[tint.selectedStop]` in gradient modes; the app
+   *  reads the current tint to know which. */
+  onPickTintColor?(): void;
   /** Whether the Shadow controls are shown. App-owned so a tap-off dismisses
    *  them before the panel (same as the Border bar). */
   shadowOpen?: boolean;

@@ -1,14 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { BorderModel, FramingModel, ObjectPropertiesModel, RGBLike, ShadowModel, TextStyleModel } from '../adapter';
+import type { BorderModel, FramingModel, ObjectPropertiesModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
 import { svgEditOptions, svgStrokeRows } from '../logic/svgEdit';
+import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import { rgbCss } from '../logic/hsv';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
 import { CropBar } from './CropBar';
 import { TextBar } from './TextBar';
+import { TintBar } from './TintBar';
 import { BAR_BG } from './effectBar';
 import {
   HEADER_BG,
@@ -71,11 +73,11 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 };
 
 // The slide-up submenus, in carousel order. Image selections cycle through
-// crop / shadow / border (matching their type-option order); text cycles
+// tint / crop / shadow / border (matching their type-option order); text cycles
 // through font / align (two pages of the Text bar); a vector selection has the
 // single stroke page. Kept in this order so a left swipe advances the same way
 // the type-option row reads.
-type SubmenuKey = 'crop' | 'shadow' | 'border' | 'font' | 'align' | 'stroke';
+type SubmenuKey = 'tint' | 'crop' | 'shadow' | 'border' | 'font' | 'align' | 'stroke';
 
 // One grid cell: an icon over a short caption, weighted (flex) so every button
 // shares the same column width whichever set is showing. `caption` is the
@@ -216,6 +218,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // bar, pointed at a vector object's own stroke.
   const [strokeDraft, setStrokeDraft] = useState<BorderModel | null>(null);
   const prevStrokeOpen = useRef(false);
+  const [tintDraft, setTintDraft] = useState<TintModel | null>(null);
+  const prevTintOpen = useRef(false);
   // The Text bar owns its tracked params too (color still comes from the model
   // — it's changed externally via the full-screen picker).
   const [textDraft, setTextDraft] = useState<TextStyleModel | null>(null);
@@ -233,13 +237,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // for the vertical open/dismiss, `navX` for the horizontal carousel slide.
   const submenuSlide = OBJECT_MENU_HEIGHT + safeBottom;
   const submenuOrder: SubmenuKey[] =
-    model.showImageEdit ? ['crop', 'shadow', 'border']
+    model.showImageEdit ? ['tint', 'crop', 'shadow', 'border']
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'align']
     : model.showSvgOptions ? ['stroke']
     : [];
   const activeSub: SubmenuKey | null =
-    model.cropOpen ? 'crop'
+    model.tintOpen ? 'tint'
+    : model.cropOpen ? 'crop'
     : model.shadowOpen ? 'shadow'
     : model.borderOpen ? 'border'
     : model.strokeOpen ? 'stroke'
@@ -261,7 +266,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
 
   const openSubmenu = (key: SubmenuKey) => {
     fontSheetOpenRef.current = false;
-    if (key === 'crop') model.onCropOpenChange?.(true);
+    if (key === 'tint') model.onTintOpenChange?.(true);
+    else if (key === 'crop') model.onCropOpenChange?.(true);
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
     else if (key === 'border') model.onBorderOpenChange?.(true);
     else if (key === 'stroke') model.onStrokeOpenChange?.(true);
@@ -274,6 +280,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   };
   const dismissSubmenu = () => {
     fontSheetOpenRef.current = false;
+    model.onTintOpenChange?.(false);
     model.onShadowOpenChange?.(false);
     model.onBorderOpenChange?.(false);
     model.onCropOpenChange?.(false);
@@ -378,6 +385,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     }
     if (!model.visible || !model.showImageEdit) {
       model.onCropOpenChange?.(false);
+      model.onTintOpenChange?.(false);
     }
     // model.on*OpenChange are stable setters; listing the whole model would
     // re-run this every render.
@@ -437,6 +445,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showSvgOptions, model.strokeOpen]);
+  useEffect(() => {
+    if (model.tintOpen && !prevTintOpen.current) {
+      setTintDraft(model.tint ?? DEFAULT_TINT_MODEL);
+    }
+    prevTintOpen.current = !!model.tintOpen;
+  }, [model.tintOpen, model.tint]);
   // Fold the Text bar away the moment the selection is no longer editable text
   // (or the whole bar hides), so it never lingers over the next object.
   useEffect(() => {
@@ -451,17 +465,19 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const toggleShadow = () => model.onShadowOpenChange?.(!model.shadowOpen);
   const toggleBorder = () => model.onBorderOpenChange?.(!model.borderOpen);
   const toggleCrop = () => model.onCropOpenChange?.(!model.cropOpen);
+  const toggleTint = () => model.onTintOpenChange?.(!model.tintOpen);
 
   const runImageAction = (action: ImageEditAction) => {
+    if (action === 'tint') { toggleTint(); return; }
     if (action === 'shadow') { toggleShadow(); return; }
     if (action === 'border') { toggleBorder(); return; }
     if (action === 'crop') { toggleCrop(); return; }
     // Any other action closes the transient bars.
+    model.onTintOpenChange?.(false);
     model.onShadowOpenChange?.(false);
     model.onBorderOpenChange?.(false);
     model.onCropOpenChange?.(false);
     if (action === 'replace') model.onReplaceImage?.();
-    else if (action === 'tint') model.onTintImage?.();
   };
 
   // Shadow controls → live preview / commit through the model; the draft stays
@@ -509,6 +525,27 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const applyTextStyle = (s: TextStyleModel, committed: boolean) => {
     setTextDraft(s);
     model.onTextStyle?.(s, committed);
+  };
+
+  // Tint → live preview / commit; the draft owns the tracked params (type,
+  // stop positions, angle, opacity, blend, selection) while colors (solid +
+  // per-stop) come from the model, changed externally via the full-screen
+  // picker — same split as the effect bars' colors.
+  const applyTint = (t: TintModel, committed: boolean) => {
+    setTintDraft(t);
+    model.onTint?.(t, committed);
+  };
+  // Header trash: drop the whole tint layer (one undo step) and close the bar.
+  const removeTint = () => {
+    model.onTint?.(null, true);
+    model.onTintOpenChange?.(false);
+  };
+  // + button: commit the new stop (one undo step) then open the picker on it so
+  // a fresh stop is never a dead end (design 6a).
+  const addTintStop = () => {
+    const next = addStop(tintDraft ?? model.tint ?? DEFAULT_TINT_MODEL);
+    applyTint(next, true);
+    model.onPickTintColor?.();
   };
 
   if (!mounted) return null;
@@ -647,11 +684,34 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const textForBar: TextStyleModel = textDraft
     ? { ...textDraft, color: model.textStyle?.color ?? textDraft.color }
     : (model.textStyle ?? DEFAULT_TEXT_STYLE_MODEL);
+  // Tracked tint params from the draft; the solid + per-stop colors come from
+  // the model (the full-screen picker edits them externally). Stops are matched
+  // by index — add / delete commit immediately, so the counts stay aligned.
+  const tintForBar: TintModel = tintDraft
+    ? {
+        ...tintDraft,
+        solid: model.tint?.solid ?? tintDraft.solid,
+        stops: tintDraft.stops.map((s, i) => ({ ...s, color: model.tint?.stops[i]?.color ?? s.color })),
+      }
+    : (model.tint ?? DEFAULT_TINT_MODEL);
 
   // The currently-shown submenu bar (retained through the dismiss slide). onBack
   // (the down chevron) dismisses the whole submenu layer.
   let activeBarEl: React.ReactNode = null;
-  if (displaySub === 'shadow') {
+  if (displaySub === 'tint') {
+    activeBarEl = (
+      <TintBar
+        tint={tintForBar}
+        onChange={(t) => applyTint(t, false)}
+        onCommit={(t) => applyTint(t, true)}
+        onBack={dismissSubmenu}
+        onRemove={removeTint}
+        onPickColor={() => model.onPickTintColor?.()}
+        onAddStop={addTintStop}
+        onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
+      />
+    );
+  } else if (displaySub === 'shadow') {
     activeBarEl = (
       <ShadowBar
         shadow={shadowForBar}

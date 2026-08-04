@@ -6,6 +6,7 @@
   "description": "Project-agnostic React Native editor chrome (top bar, scene outline, object properties, undo/redo, grid, color picker) rendered against a generic scene-graph adapter. Consumed by CozyJournal via the @/editor-ui/* path alias; Facet repoints later.",
   "peerDependencies": {
     "@expo/vector-icons": "*",
+    "expo-linear-gradient": "*",
     "react": "*",
     "react-native": "*"
   }

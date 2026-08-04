@@ -1,4 +1,4 @@
-﻿import { BlendMode, BorderPosition, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGSubpath, PathSegment, ImageObject, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageFraming } from './types';
+﻿import { BlendMode, BorderPosition, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGSubpath, PathSegment, ImageObject, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
@@ -264,7 +264,11 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // version>=35 so v34-and-earlier files — where that bit was always written 0
 // — can never be misread as carrying the block; they load `stroke` undefined
 // and render at the composition-wide strokeScale exactly as they did.
-const FORMAT_VERSION = 35;
+// v36: ImageObject gradient tint overlay (`ImageTintFill`) on image records, on
+// a second per-image `flags2` bit (0x02); its payload rides after the
+// originalImageId block. v35-and-earlier files never set that bit, so the read
+// is gated on version>=36.
+const FORMAT_VERSION = 36;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + 4Ã—float32 = 21
@@ -601,6 +605,9 @@ function readFraming(view: DataView, data: Uint8Array, pos: number): { framing: 
 // v34+ per-image `flags2` byte (the rotation byte is full after v33). Bit 0x01
 // marks an `originalImageId`, whose u16 string-table index follows the byte.
 const IMG_FLAGS2_HAS_ORIGINAL = 0x01;
+// v36+: gradient tint overlay (`tintFill`) present; payload follows the
+// originalImageId block (when present) inside the flags2 section.
+const IMG_FLAGS2_HAS_TINT_FILL = 0x02;
 
 // v31+ free-rotation encoding: i16 hundredths of a degree (angleDeg * 100).
 // Range ±180° fits comfortably in i16 (±18000), precision 0.01°.
@@ -659,6 +666,16 @@ const EFFECT_HAS_BORDER = 0x04;
 const PAINT_KIND_SOLID = 0;
 const PAINT_KIND_LINEAR = 1;
 const PAINT_KIND_RADIAL = 2;
+
+// v36+ gradient tint overlay (`ImageTintFill`) byte mappings.
+const TINT_FILL_TYPE_TO_BYTE: Record<ImageTintFill['type'], number> = { solid: 0, linear: 1, radial: 2 };
+const BYTE_TO_TINT_FILL_TYPE: ImageTintFill['type'][] = ['solid', 'linear', 'radial'];
+const TINT_BLEND_TO_BYTE: Record<ImageTintBlend, number> = {
+  normal: 0, multiply: 1, darken: 2, lighten: 3, 'soft-light': 4, color: 5, hue: 6, saturation: 7,
+};
+const BYTE_TO_TINT_BLEND: ImageTintBlend[] = [
+  'normal', 'multiply', 'darken', 'lighten', 'soft-light', 'color', 'hue', 'saturation',
+];
 
 // â”€â”€ Paint / effects payload helpers (v29+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -755,6 +772,36 @@ function readPaint(view: DataView, data: Uint8Array, pos: number): { paint: Pain
   const cy = view.getFloat32(pos, true); pos += 4;
   const r = view.getFloat32(pos, true); pos += 4;
   return { paint: { kind: 'radial', stops: s.stops, cx, cy, r }, pos };
+}
+
+// â”€â”€ Gradient tint overlay payload (v36+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// type(1) + solid r,g,b(3) + stops(1 + 5Ã—n) + angle u16(2) + opacity u8(1)
+// + blend u8(1).
+
+function tintFillBinarySize(t: ImageTintFill): number {
+  return 1 + 3 + (1 + t.stops.length * 5) + 2 + 1 + 1;
+}
+
+function writeTintFill(view: DataView, out: Uint8Array, pos: number, t: ImageTintFill): number {
+  out[pos++] = TINT_FILL_TYPE_TO_BYTE[t.type] & 0xff;
+  out[pos++] = t.solid.r & 0xff;
+  out[pos++] = t.solid.g & 0xff;
+  out[pos++] = t.solid.b & 0xff;
+  pos = writeGradientStops(out, pos, t.stops);
+  view.setUint16(pos, Math.max(0, Math.min(360, Math.round(t.angle))), true); pos += 2;
+  out[pos++] = quantize255(t.opacity);
+  out[pos++] = (TINT_BLEND_TO_BYTE[t.blend] ?? 0) & 0xff;
+  return pos;
+}
+
+function readTintFill(view: DataView, data: Uint8Array, pos: number): { tintFill: ImageTintFill; pos: number } {
+  const type = BYTE_TO_TINT_FILL_TYPE[data[pos++]] ?? 'linear';
+  const r = data[pos++], g = data[pos++], b = data[pos++];
+  const s = readGradientStops(data, pos); pos = s.pos;
+  const angle = view.getUint16(pos, true); pos += 2;
+  const opacity = data[pos++] / 255;
+  const blend = BYTE_TO_TINT_BLEND[data[pos++]] ?? 'multiply';
+  return { tintFill: { type, solid: { r, g, b }, stops: s.stops, angle, opacity, blend }, pos };
 }
 
 function effectsBinarySize(fx: NodeEffects): number {
@@ -953,6 +1000,7 @@ function imageBinarySize(img: ImageObject): number {
   if (img.cornerRadius) size += 8; // v33+ (f64)
   size += 1; // v34+ image flags2 byte (always written by the current writer)
   if (img.originalImageId != null) size += 2; // v34+ originalImageId index
+  if (img.tintFill) size += tintFillBinarySize(img.tintFill); // v36+
   return size;
 }
 
@@ -1697,10 +1745,15 @@ function writeImage(
   // v34+ image flags2 byte, then the originalImageId string index when present.
   // Written after the v33 blocks; bytes ride the existing image-blob section.
   {
-    const flags2 = img.originalImageId != null ? IMG_FLAGS2_HAS_ORIGINAL : 0;
+    const flags2 = (img.originalImageId != null ? IMG_FLAGS2_HAS_ORIGINAL : 0)
+      | (img.tintFill ? IMG_FLAGS2_HAS_TINT_FILL : 0);
     out[pos++] = flags2;
     if (img.originalImageId != null) {
       view.setUint16(pos, indexOf.get(img.originalImageId) ?? 0, true); pos += 2;
+    }
+    // v36+ gradient tint overlay, after the originalImageId within this section.
+    if (img.tintFill) {
+      pos = writeTintFill(view, out, pos, img.tintFill);
     }
   }
 
@@ -1807,6 +1860,13 @@ function readImage(
     const flags2 = data[pos++];
     if (flags2 & IMG_FLAGS2_HAS_ORIGINAL) {
       img.originalImageId = strings[view.getUint16(pos, true)]; pos += 2;
+    }
+    // v36+ gradient tint overlay. v35-and-earlier files never set this bit, but
+    // gate the read on the version anyway to keep the rule uniform.
+    if (version >= 36 && (flags2 & IMG_FLAGS2_HAS_TINT_FILL)) {
+      const t = readTintFill(view, data, pos);
+      img.tintFill = t.tintFill;
+      pos = t.pos;
     }
   }
 

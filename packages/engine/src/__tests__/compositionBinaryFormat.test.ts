@@ -833,6 +833,75 @@ describe('compositionBinaryFormat', () => {
     expect(result.meta.images![0].cornerRadius).toBeUndefined();
   });
 
+  // ── v36: image gradient tint overlay ("Tint" bar) ───────────────────
+
+  test('round-trips a linear gradient tintFill', () => {
+    const img = {
+      id: 'img_a', imageId: 'blob_x', mimeType: 'image/png' as const,
+      pixelWidth: 100, pixelHeight: 100,
+      cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
+      tintFill: {
+        type: 'linear' as const,
+        solid: { r: 0x12, g: 0x30, b: 0x47 },
+        stops: [
+          { offset: 0, color: { r: 46, g: 26, b: 61 } },
+          { offset: 0.5, color: { r: 200, g: 100, b: 50 } },
+          { offset: 1, color: { r: 255, g: 159, b: 10 } },
+        ],
+        angle: 135,
+        opacity: 0.7,
+        blend: 'soft-light' as const,
+      },
+    };
+    const out = serializeComposition(
+      makeBundle({ images: [img], imageBlobs: { blob_x: new Uint8Array([1]) } }),
+      [],
+    );
+    const got = deserializeComposition(out).meta.images![0].tintFill!;
+    expect(got.type).toBe('linear');
+    expect(got.angle).toBe(135);
+    expect(got.blend).toBe('soft-light');
+    expect(got.solid).toEqual({ r: 0x12, g: 0x30, b: 0x47 });
+    expect(got.opacity).toBeCloseTo(0.7, 2);
+    expect(got.stops).toHaveLength(3);
+    expect(got.stops[1].offset).toBeCloseTo(0.5, 2);
+    expect(got.stops[2].color).toEqual({ r: 255, g: 159, b: 10 });
+  });
+
+  test('round-trips a solid tintFill and every blend mode', () => {
+    const blends = ['normal', 'multiply', 'darken', 'lighten', 'soft-light', 'color', 'hue', 'saturation'] as const;
+    for (const blend of blends) {
+      const img = {
+        id: 'img_a', imageId: 'blob_x', mimeType: 'image/png' as const,
+        pixelWidth: 10, pixelHeight: 10,
+        cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
+        tintFill: {
+          type: 'solid' as const, solid: { r: 1, g: 2, b: 3 },
+          stops: [{ offset: 0, color: { r: 0, g: 0, b: 0 } }, { offset: 1, color: { r: 9, g: 9, b: 9 } }],
+          angle: 0, opacity: 1, blend,
+        },
+      };
+      const out = serializeComposition(
+        makeBundle({ images: [img], imageBlobs: { blob_x: new Uint8Array([1]) } }),
+        [],
+      );
+      expect(deserializeComposition(out).meta.images![0].tintFill!.blend).toBe(blend);
+    }
+  });
+
+  test('an image without a tintFill stays clean', () => {
+    const img = {
+      id: 'img_a', imageId: 'blob_x', mimeType: 'image/png' as const,
+      pixelWidth: 100, pixelHeight: 100,
+      cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
+    };
+    const out = serializeComposition(
+      makeBundle({ images: [img], imageBlobs: { blob_x: new Uint8Array([1]) } }),
+      [],
+    );
+    expect(deserializeComposition(out).meta.images![0].tintFill).toBeUndefined();
+  });
+
   test('round-trips a hidden figure', () => {
     const fig = makeFigure({ id: 'fig1', figureKey: 'file_123_L0', hidden: true });
     const bytes = serializeComposition(makeBundle({ figures: [fig] }), []);

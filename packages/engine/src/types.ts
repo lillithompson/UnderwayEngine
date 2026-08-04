@@ -1052,6 +1052,11 @@ export interface ImageObject {
    *  bitmap — zero extra memory, no re-encode. Export bakes the tint
    *  when rasterizing and emits `feColorMatrix` in SVG. */
   tint?: ImageTint;
+  /** Gradient tint overlay (v35+): a solid / linear / radial fill composited
+   *  over the image with a blend mode + layer opacity (the "Tint" bar,
+   *  design 6a). Distinct from the shader `tint` above — this is a
+   *  non-destructive overlay layer. See {@link ImageTintFill}. */
+  tintFill?: ImageTintFill;
   /** Cached-texture effects (v29+); see `SVGObject.effects`. */
   effects?: NodeEffects;
   /** Corner rounding as a fraction (0–0.5) of the shorter side. Undefined /
@@ -1142,6 +1147,36 @@ export interface ImageTint {
   color: RGBColor;
   amount: number;
   mode: ImageTintMode;
+}
+
+/** Fill type of the gradient tint overlay (the Tint bar's Type control). */
+export type ImageTintFillType = 'solid' | 'linear' | 'radial';
+
+/** Compositing mode for the gradient tint overlay. These are the CSS
+ *  `mix-blend-mode` keywords (and map onto Core Image's blend filters), so the
+ *  web preview + SVG export need no lookup. This is the Tint design's own
+ *  8-mode set — deliberately NOT the generative {@link BlendMode} (which lacks
+ *  soft-light / saturation). */
+export type ImageTintBlend =
+  | 'normal' | 'multiply' | 'darken' | 'lighten'
+  | 'soft-light' | 'color' | 'hue' | 'saturation';
+
+/** A gradient tint overlay composited onto an image (design 6a). The overlay
+ *  is clipped to the image frame and flattened at export. Non-active fields are
+ *  retained so switching Type back restores them (a Solid tint remembers its
+ *  gradient, a Radial one its angle). Convert to a {@link Paint} for rendering
+ *  / export via `tintFillToPaint` (imageTintFill.ts). */
+export interface ImageTintFill {
+  type: ImageTintFillType;
+  /** Solid-mode color. */
+  solid: RGBColor;
+  /** Gradient stops (min 2), offset 0..1 — used by linear / radial. */
+  stops: GradientStop[];
+  /** Linear gradient angle in degrees, 0..360 (90 = top→bottom). */
+  angle: number;
+  /** Whole-layer opacity 0..1, applied after the blend. */
+  opacity: number;
+  blend: ImageTintBlend;
 }
 
 export type TextAlign = 'left' | 'center' | 'right';

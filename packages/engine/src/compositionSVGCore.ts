@@ -21,6 +21,7 @@ import { effectiveStrokeMultiplier, normalizeStrokeScale } from './strokeScale';
 import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
 import { paintToSvg, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
+import { tintFillToPaint } from './imageTintFill';
 import { layoutText } from './textLayout';
 import { resolveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
 
@@ -505,7 +506,29 @@ export async function generateCompositionSVGCore(
     // the image) and the border rect rides along instead of staying axis-
     // aligned. Opacity stays on the image content so the border/shadow aren't
     // dimmed with it.
-    const localContent = opacityAttr ? `<g${opacityAttr}>${framedContent}</g>` : framedContent;
+    // v35 gradient tint overlay (design 6a): a rect of the tint Paint blended
+    // over the bitmap, clipped to the (rounded) frame, wrapped with the image
+    // in an isolated group so the blend is confined to the image (matching the
+    // editor preview's `isolation: isolate`). Sits inside the image's local
+    // content so a drop shadow is cast by the already-tinted image.
+    let tintedContent = framedContent;
+    if (img.tintFill) {
+      const p = paintToSvg(tintFillToPaint(img.tintFill), `tintfill_${img.id}`);
+      const foAttr = p.fillOpacity != null ? ` fill-opacity="${p.fillOpacity}"` : '';
+      let ovClipDefs = '';
+      let ovClipAttr = '';
+      if (cornerR > 0) {
+        const ovClipId = `tintfillclip_${img.id}`;
+        ovClipDefs = `<defs><clipPath id="${ovClipId}">` +
+          `<rect x="0" y="0" width="${iw}" height="${ih}" rx="${cornerR}" ry="${cornerR}"/></clipPath></defs>`;
+        ovClipAttr = ` clip-path="url(#${ovClipId})"`;
+      }
+      const overlay = ovClipDefs + (p.defs ? `<defs>${p.defs}</defs>` : '') +
+        `<rect x="0" y="0" width="${iw}" height="${ih}" fill="${p.fill}"${foAttr}` +
+        ` opacity="${img.tintFill.opacity}" style="mix-blend-mode:${img.tintFill.blend}"${ovClipAttr}/>`;
+      tintedContent = `<g style="isolation:isolate">${framedContent}${overlay}</g>`;
+    }
+    const localContent = opacityAttr ? `<g${opacityAttr}>${tintedContent}</g>` : tintedContent;
     const effected = applyNodeEffects(
       localContent, img.effects, img.id,
       { cellX: 0, cellY: 0, cellWidth: img.cellWidth, cellHeight: img.cellHeight, cornerRadius: img.cornerRadius },
