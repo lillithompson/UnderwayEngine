@@ -89,9 +89,12 @@ import { compSnapStep } from './compositionCellMath';
 //                     0x04 hidden (v26+), 0x08 isPatternFill (v27+),
 //                     0x10 hasSegmentOverrides (v28+),
 //                     0x20 hasFillPaint (v29+), 0x40 hasEffects (v29+)
+//     flags4:       u8         (v38+)
+//                     0x01 hasPatternFileId (v38+)
 //     rotBits:      u8         (low 2 bits â†’ 0/90/180/270, bit 0x04 tileRepeat)
 //     color:        u8 r, u8 g, u8 b
-//     conditional u16 string refs (in flag order): nameIdx, groupIdIdx, preGroupNameIdx
+//     conditional u16 string refs (in flag order): nameIdx, groupIdIdx,
+//                   preGroupNameIdx, patternFileIdIdx (v38+)
 //     segmentCount: u16 LE
 //     segments:     segmentCount Ã— segment-record
 //     if hasLocalSegments:    u16 count + segments
@@ -274,7 +277,11 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // byte sits between the subpath's RGB and its segment count, so the read is
 // gated on version>=37; v36-and-earlier subpaths load with `fill` unset and
 // render as strokes exactly as they did.
-const FORMAT_VERSION = 37;
+// v38: SVG records gain a flags4 byte (after flags3, which is fully spent).
+// flags4 bit 0x01 = hasPatternFileId; payload = u16 string-table ref written
+// with the other conditional string refs (after preGroupName). Read is gated
+// on version>=38, so older files load with no flags4 byte consumed.
+const FORMAT_VERSION = 38;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + 4Ã—float32 = 21
@@ -404,6 +411,7 @@ function buildStringTable(
       add(s.name);
       add(s.groupId);
       add(s.preGroupName);
+      add(s.patternFileId);
     }
   }
 
@@ -518,6 +526,9 @@ const FLAG3_SVG_HAS_FILL_PAINT = 0x20;
 const FLAG3_SVG_HAS_EFFECTS = 0x40;
 // v31+: free rotation `angleDeg` present (i16 payload after effects).
 const FLAG3_SVG_HAS_ANGLE = 0x80;
+
+// v38+ SVG flags4 byte. Sits right after flags3 in the SVG record header.
+const FLAG4_SVG_HAS_PATTERN_FILE_ID = 0x01;
 
 // v29+ image rotation-byte bits. The image `flags` byte is fully
 // consumed (0x01..0x80), so tint/effects presence rides the spare high
@@ -947,11 +958,13 @@ function subpathArraySize(subs: ReadonlyArray<SVGSubpath>): number {
 }
 
 function svgBinarySize(svg: SVGObject): number {
-  // idIdx(2) + flags(1) + flags2(1, v15+) + flags3(1, v24+) + rotBits(1) + color(3) + segmentCount(2)
-  let size = 11;
+  // idIdx(2) + flags(1) + flags2(1, v15+) + flags3(1, v24+) + flags4(1, v38+)
+  // + rotBits(1) + color(3) + segmentCount(2)
+  let size = 12;
   if (svg.name != null) size += 2;
   if (svg.groupId != null) size += 2;
   if (svg.preGroupName != null) size += 2;
+  if (svg.patternFileId != null) size += 2;
   size += segmentArraySize(svg.segments);
   if (svg.localSegments != null) size += 2 + segmentArraySize(svg.localSegments);
   if (svg.identitySegments != null) size += 2 + segmentArraySize(svg.identitySegments);
@@ -1161,6 +1174,11 @@ function writeSVG(
   if (svg.angleDeg) flags3 |= FLAG3_SVG_HAS_ANGLE;
   out[pos++] = flags3;
 
+  // flags4 (v38+)
+  let flags4 = 0;
+  if (svg.patternFileId != null) flags4 |= FLAG4_SVG_HAS_PATTERN_FILE_ID;
+  out[pos++] = flags4;
+
   let rotBits = ROTATION_TO_BITS[svg.rotation ?? 0] & 0x03;
   if (svg.tileMode === 'repeat') rotBits |= 0x04;
   out[pos++] = rotBits;
@@ -1172,6 +1190,7 @@ function writeSVG(
   if (svg.name != null) { view.setUint16(pos, indexOf.get(svg.name) ?? 0, true); pos += 2; }
   if (svg.groupId != null) { view.setUint16(pos, indexOf.get(svg.groupId) ?? 0, true); pos += 2; }
   if (svg.preGroupName != null) { view.setUint16(pos, indexOf.get(svg.preGroupName) ?? 0, true); pos += 2; }
+  if (svg.patternFileId != null) { view.setUint16(pos, indexOf.get(svg.patternFileId) ?? 0, true); pos += 2; }
 
   pos = writeCount16(view, pos, svg.segments.length, `svg(${svg.id}).segments`);
   pos = writeSegments(view, out, pos, svg.segments);
@@ -1264,6 +1283,8 @@ function readSVG(
   const flags2 = version >= 15 ? data[pos++] : 0;
   // v24+ adds a flags3 byte right after flags2 (fillColor presence).
   const flags3 = version >= 24 ? data[pos++] : 0;
+  // v38+ adds a flags4 byte right after flags3 (patternFileId presence).
+  const flags4 = version >= 38 ? data[pos++] : 0;
   const rotBits = data[pos++];
   const r = data[pos++];
   const g = data[pos++];
@@ -1272,9 +1293,11 @@ function readSVG(
   let name: string | undefined;
   let groupId: string | undefined;
   let preGroupName: string | undefined;
+  let patternFileId: string | undefined;
   if (flags & FLAG_HAS_NAME) { name = strings[view.getUint16(pos, true)]; pos += 2; }
   if (flags & FLAG_HAS_GROUP_ID) { groupId = strings[view.getUint16(pos, true)]; pos += 2; }
   if (flags & FLAG_HAS_PRE_GROUP_NAME) { preGroupName = strings[view.getUint16(pos, true)]; pos += 2; }
+  if (flags4 & FLAG4_SVG_HAS_PATTERN_FILE_ID) { patternFileId = strings[view.getUint16(pos, true)]; pos += 2; }
 
   const segCount = view.getUint16(pos, true); pos += 2;
   const s = readSegments(view, data, pos, segCount);
@@ -1293,6 +1316,7 @@ function readSVG(
   if (name != null) svg.name = name;
   if (groupId != null) svg.groupId = groupId;
   if (preGroupName != null) svg.preGroupName = preGroupName;
+  if (patternFileId != null) svg.patternFileId = patternFileId;
   if (flags & FLAG_MIRROR_H) svg.mirrorH = true;
   if (flags & FLAG_MIRROR_V) svg.mirrorV = true;
   if (flags & FLAG_LOCKED) svg.locked = true;

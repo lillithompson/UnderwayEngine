@@ -923,6 +923,12 @@ export interface SVGObject {
    *  logic use this instead of the tight AABB of segments. Only set for
    *  lines created via the bounding-box drag UX. Cleared on join. */
   creationBox?: { minX: number; minY: number; width: number; height: number };
+  /** The figure-file id this object was baked from (a pattern tile drawn in
+   *  the tile editor). Presence marks the object as a pattern object: it
+   *  scales uniformly (aspect-locked) and offers an Edit action that reopens
+   *  the tile editor on the source file and rebakes in place. Persisted from
+   *  binary format v38 (flags4 bit 0x01 + string-table ref). */
+  patternFileId?: string;
 }
 
 /** A saved SVG design template, stored globally so it can be reused

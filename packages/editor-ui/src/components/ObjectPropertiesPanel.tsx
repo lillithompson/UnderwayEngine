@@ -192,7 +192,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // subtype is part of it so switching between two vector objects with
   // different menus (a line → a rectangle) re-lands on the type row.
   const typeSig = model.visible
-    ? `${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}` : ''}`
+    ? `${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
     : '';
   const prevTypeSig = useRef('');
   useEffect(() => {
@@ -617,6 +617,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         compact={compact}
       />
     ));
+    if (model.onSvgEdit) {
+      // Source-editor Edit (e.g. reopen a pattern object's tile editor),
+      // ahead of the subtype options.
+      typeOptions.unshift(
+        <GridButton key="svgEdit" label="Edit" caption="Edit" icon="pencil-outline" onPress={model.onSvgEdit} compact={compact} />,
+      );
+    }
   } else if (model.showInvert) {
     // Word sticker (magnetic poetry): the single type-specific option is
     // Invert (dark card ⇄ light card). Content + typography are fixed, so no

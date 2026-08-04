@@ -466,7 +466,24 @@ describe('compositionBinaryFormat v29', () => {
     // Guard the construction: the v29 tail must be all zeros.
     expect(Array.from(v29Bytes.subarray(v29Bytes.length - 9))).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
-    const v28Bytes = v29Bytes.slice(0, v29Bytes.length - 3);
+    // v38 writes a flags4 byte after flags3 in every svg record; a v28
+    // reader doesn't consume it, so splice it out. Locate it via the svg
+    // record's distinctive header bytes: flags3(FILL_COLOR=0x01),
+    // flags4(0x00), rotBits(0x00), color(9,8,7).
+    const marker = [0x01, 0x00, 0x00, 9, 8, 7];
+    let markerAt = -1;
+    for (let i = 0; i <= v29Bytes.length - marker.length; i++) {
+      if (marker.every((b, j) => v29Bytes[i + j] === b)) {
+        expect(markerAt).toBe(-1); // must be unique or the splice is ambiguous
+        markerAt = i;
+      }
+    }
+    expect(markerAt).toBeGreaterThan(-1);
+    const noFlags4 = new Uint8Array(v29Bytes.length - 1);
+    noFlags4.set(v29Bytes.subarray(0, markerAt + 1), 0);            // ...flags3
+    noFlags4.set(v29Bytes.subarray(markerAt + 2), markerAt + 1);    // rotBits...
+
+    const v28Bytes = noFlags4.slice(0, noFlags4.length - 3);
     new DataView(v28Bytes.buffer, v28Bytes.byteOffset, v28Bytes.byteLength).setUint16(4, 28, true);
 
     const result = deserializeComposition(v28Bytes);

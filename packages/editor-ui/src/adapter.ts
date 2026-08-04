@@ -288,6 +288,11 @@ export interface ObjectPropertiesModel {
   /** Which vector subtype the selection is, choosing its option menu. Ignored
    *  unless `showSvgOptions`; defaults to 'stroke' when unset. */
   svgSubtype?: SVGSubtypeKind;
+  /** Extra "Edit" action prepended to the vector option menu — for vector
+   *  objects with an external source editor (e.g. a pattern object baked
+   *  from a tile file, whose Edit reopens the tile editor and rebakes).
+   *  Only rendered when set; ignored unless `showSvgOptions`. */
+  onSvgEdit?(): void;
   /** Whether the Stroke bar is shown. App-owned so a tap-off dismisses it
    *  before the panel (same as the Shadow / Border bars). */
   strokeOpen?: boolean;
