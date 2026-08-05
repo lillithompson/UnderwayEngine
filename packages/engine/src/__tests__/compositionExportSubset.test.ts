@@ -226,6 +226,65 @@ describe('subset (cutout) export', () => {
   });
 });
 
+describe('textColorOverride', () => {
+  const WHITE = { r: 255, g: 255, b: 255 };
+
+  it('repaints every glyph, whatever the node was authored in', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      texts: [
+        makeText({ id: 'txt_1', content: 'first', style: { fontId: 'CozySans', size: 2, color: { r: 10, g: 20, b: 30 } } }),
+        makeText({ id: 'txt_2', content: 'second', cellY: 10, style: { fontId: 'CozySans', size: 2, color: { r: 200, g: 40, b: 40 } } }),
+      ],
+      textColorOverride: WHITE,
+    }));
+    expect(svg).not.toContain('rgb(10,20,30)');
+    expect(svg).not.toContain('rgb(200,40,40)');
+    expect(svg!.match(/fill="rgb\(255,255,255\)"/g)).toHaveLength(2);
+  });
+
+  it('drops the authored outline with the color', async () => {
+    // A dark outline around forced-white glyphs would put back exactly the
+    // contrast the override is there to remove.
+    const outlined = makeText({
+      id: 'txt_1',
+      style: {
+        fontId: 'CozySans', size: 2, color: { r: 10, g: 20, b: 30 },
+        stroke: { width: 0.05, color: { r: 0, g: 0, b: 0 } },
+      },
+    });
+    const kept = await generateCompositionSVGCore(makeInputs({ texts: [outlined] }));
+    expect(kept).toContain('stroke="rgb(0,0,0)"');
+
+    const overridden = await generateCompositionSVGCore(
+      makeInputs({ texts: [outlined], textColorOverride: WHITE }),
+    );
+    expect(overridden).not.toContain('stroke="rgb(0,0,0)"');
+    expect(overridden).toContain('stroke="none"');
+  });
+
+  it('leaves a sticker alone — its ink is half its card', async () => {
+    // stickerColors pairs the ink with the card (it also strokes the border),
+    // so recoloring one of the two would be white type on a white card.
+    const magnet = makeText({ id: 'txt_1', sticker: true });
+    const plain = await generateCompositionSVGCore(makeInputs({ texts: [magnet] }));
+    const overridden = await generateCompositionSVGCore(
+      makeInputs({ texts: [magnet], textColorOverride: WHITE }),
+    );
+    expect(overridden).toEqual(plain);
+  });
+
+  it('changes paint only — the frame is where it was', async () => {
+    const line = makeText({ id: 'txt_1', content: 'wren', cellWidth: 28, cellHeight: 3.5 });
+    const plain = await generateCompositionSVGCore(
+      makeInputs({ texts: [line], subset: () => new Set(['txt_1']) }),
+    );
+    const white = await generateCompositionSVGCore(makeInputs({
+      texts: [line], subset: () => new Set(['txt_1']), textColorOverride: WHITE,
+    }));
+    expect(viewBoxOf(white!)).toEqual(viewBoxOf(plain!));
+  });
+});
+
 describe('subset text framing', () => {
   const all = (scene: { texts: readonly TextObject[] }) => new Set(scene.texts.map((t) => t.id));
 

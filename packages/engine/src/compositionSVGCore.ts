@@ -6,7 +6,7 @@
  * with pre-deserialized embedded files.
  */
 
-import { CompositionFigure, FileConfig, SVGObject, ImageObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects } from './types';
+import { CompositionFigure, FileConfig, SVGObject, ImageObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, RGBColor } from './types';
 import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
@@ -121,6 +121,21 @@ export interface CompositionSVGInputs {
    * (or selecting nothing that is visible) yields null, like an empty scene.
    */
   subset?: CompositionSubsetSelector;
+  /**
+   * Paint every glyph this color, whatever the node's authored text color is.
+   * For an export that lands on a backdrop the page never had — a cutout on a
+   * card's colored tint well — where the author's ink was chosen to read
+   * against the page (dark type over a photo) and would vanish or clash there.
+   *
+   * Any authored text OUTLINE is dropped with it: an outline is a color
+   * decision too, and keeping a dark one around forced-white glyphs would put
+   * back exactly the contrast the override is removing.
+   *
+   * Sticker text is exempt. A sticker's ink and its card come as a pair from
+   * `stickerColors` (the ink also strokes the card's border), so recoloring
+   * one of the two would put white type on a white card.
+   */
+  textColorOverride?: RGBColor;
   /** When true, emit each image from its higher-resolution `originalImageId`
    *  blob (falling back to `imageId` when absent). Off by default so cheap
    *  consumers — thumbnails, previews — keep rasterizing the small display
@@ -242,8 +257,13 @@ const FALLBACK_FAMILY_STACK = "system-ui, -apple-system, &apos;Segoe UI&apos;, s
  *    center, which is exactly where CSS puts it (half-leading + ascent —
  *    verified equal in Blink and WebKit). A fixed ascent constant sat
  *    ~0.12 em high and drifted per family.
+ *
+ * `colorOverride` repaints the glyphs (and drops any authored outline) for
+ * exports that land on a backdrop the page never had — see
+ * {@link CompositionSVGInputs.textColorOverride}. Geometry is untouched: it
+ * changes paint only, so the layout and the framing math still agree.
  */
-function buildTextSVGContent(text: TextObject, u: number): string {
+function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBColor): string {
   const style = text.style;
   const tx = text.cellX * u;
   const ty = text.cellY * u;
@@ -273,7 +293,10 @@ function buildTextSVGContent(text: TextObject, u: number): string {
   const fontSize = style.size * u;
   const lineHeight = style.size * (style.lineHeight ?? DEFAULT_LINE_HEIGHT);
   const colors = text.sticker ? stickerColors(text.invert) : null;
-  const fill = colors ? colors.fg : `rgb(${style.color.r},${style.color.g},${style.color.b})`;
+  // A sticker's ink is half of its card's palette, so the override skips it.
+  const override = text.sticker ? undefined : colorOverride;
+  const ink = override ?? style.color;
+  const fill = colors ? colors.fg : `rgb(${ink.r},${ink.g},${ink.b})`;
 
   let attrs = `font-family="&apos;${escapeXml(style.fontId)}&apos;, ${FALLBACK_FAMILY_STACK}"` +
     ` font-size="${fontSize}" dominant-baseline="central"`;
@@ -285,7 +308,7 @@ function buildTextSVGContent(text: TextObject, u: number): string {
     // letterSpacing is authored in em units; SVG letter-spacing is a length.
     attrs += ` letter-spacing="${style.letterSpacing * fontSize}"`;
   }
-  if (style.stroke) {
+  if (style.stroke && !override) {
     // paint-order="stroke" draws the outline behind the fill, matching
     // the runtime glyph renderer's outline-under-fill compositing.
     const sc = style.stroke.color;
@@ -1016,7 +1039,7 @@ export async function generateCompositionSVGCore(
 
   for (const txt of texts) {
     if (cancelled?.()) return null;
-    const content = buildTextSVGContent(txt, U);
+    const content = buildTextSVGContent(txt, U, input.textColorOverride);
     if (!content) continue;
     elementsById.set(txt.id, wrapWithMaskClip(
       applyNodeEffects(content, txt.effects, txt.id, txt, U),

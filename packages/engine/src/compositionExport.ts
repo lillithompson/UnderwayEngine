@@ -1,4 +1,4 @@
-import { CompositionFigure } from './types';
+import { CompositionFigure, RGBColor } from './types';
 import { loadCompositionState, loadFileStateLite, loadClipBox } from './persistence';
 import { loadBakedFigurePng } from './bake';
 import { encodePNG, toBase64 } from './pngcodec';
@@ -59,6 +59,10 @@ export interface CompositionExportOptions {
    *  {@link exportCompositionPNG}: JPEG has no alpha, so a cutout exported as
    *  JPEG lands on a white backdrop. */
   subset?: CompositionSubsetSelector;
+  /** Paint every glyph this color instead of its authored one — for a cutout
+   *  that lands on a backdrop the page never had. See
+   *  {@link CompositionSVGInputs.textColorOverride}. */
+  textColorOverride?: RGBColor;
 }
 
 /**
@@ -180,6 +184,7 @@ export async function exportCompositionSVG(
     fontResolver: options?.fontResolver ?? defaultFontResolver,
     preferOriginalImages: options?.preferOriginalImages,
     subset: options?.subset,
+    textColorOverride: options?.textColorOverride,
     groups: partial.groups ?? [],
     sceneOrder: partial.sceneOrder,
     strokeScale: strokeScale ?? partial.strokeScale,
