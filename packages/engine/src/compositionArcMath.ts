@@ -28,20 +28,23 @@ export function constrainToSquare(
 }
 
 /**
- * Is this segment chain a full circle — every piece a same-center,
- * same-radius arc, closing back on itself?
+ * Does this segment chain lie on ONE circle — every piece an arc sharing a
+ * single center and a single radius? True for the arc tool's lone quarter
+ * circle as well as for a closed circle (see {@link isCircleSegments}, which
+ * is this plus closure).
  *
  * Structural rather than a stored `shapeKind` tag, so it also recognizes
- * circles drawn before the tag existed and can't drift when an object is
- * renamed. Used to keep circles circular under a corner-handle resize:
- * scaling one axis alone maps each arc's start / end / center independently,
- * which leaves the radius disagreeing with the endpoints and renders a shape
- * that is neither a circle nor an ellipse.
+ * shapes drawn before the tag existed and can't drift when an object is
+ * renamed. It is the property a resize must not break: the arc format stores
+ * (start, end, center) and infers ONE radius from them, so scaling the axes by
+ * different factors maps those three points independently and leaves the
+ * radius disagreeing with the endpoints — the result is not an ellipse (the
+ * format can't express one), just broken arc geometry. Callers use it to force
+ * such nodes to scale uniformly.
  */
-export function isCircleSegments(segments: readonly PathSegment[]): boolean {
-  if (segments.length < 2) return false;
+export function isCircularSegments(segments: readonly PathSegment[]): boolean {
   const first = segments[0];
-  if (first.kind !== 'arc') return false;
+  if (!first || first.kind !== 'arc') return false;
   const [cx, cy] = first.center;
   const r = arcRadius(first);
   if (!(r > 0)) return false;
@@ -53,7 +56,16 @@ export function isCircleSegments(segments: readonly PathSegment[]): boolean {
     if (Math.abs(arcRadius(seg) - r) > eps) return false;
     if (Math.abs(Math.hypot(seg.end[0] - cx, seg.end[1] - cy) - r) > eps) return false;
   }
-  return isClosedPath(segments);
+  return true;
+}
+
+/**
+ * Is this segment chain a full circle — arcs on one circle
+ * ({@link isCircularSegments}) that close back on themselves? The ≥2-segment
+ * floor keeps a single degenerate arc whose ends coincide from counting.
+ */
+export function isCircleSegments(segments: readonly PathSegment[]): boolean {
+  return segments.length >= 2 && isCircularSegments(segments) && isClosedPath(segments);
 }
 
 /**
