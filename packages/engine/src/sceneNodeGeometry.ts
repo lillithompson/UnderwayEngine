@@ -196,7 +196,20 @@ const svgAdapter: GeometryAdapter<SVGObject> = {
   },
 
   rescale(svg, oldBbox, newBbox) {
-    if (svg.tileMode === 'repeat') return { ...svg, ...newBbox };
+    if (svg.tileMode === 'repeat') {
+      // Pattern mode: the region resizes, the tile does not — the segments
+      // (one pattern unit) stay put and the renderer repeats them across the
+      // new bbox. When the ORIGIN edge moves, shift the tile-grid offset the
+      // opposite way so the pattern stays fixed in world space (Facet's
+      // SCALE_FIGURE tile branch); a bottom/right-edge resize leaves it 0.
+      const dx = newBbox.cellX - svg.cellX;
+      const dy = newBbox.cellY - svg.cellY;
+      const newOx = (svg.tileOffsetXL0 ?? 0) - dx;
+      const newOy = (svg.tileOffsetYL0 ?? 0) - dy;
+      return { ...svg, ...newBbox,
+        tileOffsetXL0: newOx === 0 ? undefined : newOx,
+        tileOffsetYL0: newOy === 0 ? undefined : newOy };
+    }
     const newSegs = Array.isArray(svg.segments) ? rescaleSegs(svg.segments, oldBbox, newBbox) : [];
     const newSubpaths = Array.isArray(svg.subpaths)
       ? svg.subpaths.map(sub => ({ ...sub, segments: Array.isArray(sub.segments) ? rescaleSegs(sub.segments, oldBbox, newBbox) : [] }))

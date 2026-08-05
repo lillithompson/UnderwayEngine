@@ -1667,7 +1667,17 @@ export type CompUndoOp =
       oldMirrorV?: boolean; newMirrorV?: boolean;
       oldIdentitySegments?: PathSegment[]; newIdentitySegments?: PathSegment[];
       oldIdentityCellX?: number; oldIdentityCellY?: number;
-      newIdentityCellX?: number; newIdentityCellY?: number }
+      newIdentityCellX?: number; newIdentityCellY?: number;
+      /** Tile-grid metadata for `tileMode: 'repeat'` objects, kept in step
+       *  with the segment rewrite (a 90° rotation swaps the tile W/H and
+       *  remaps the offsets; a mirror reflects the offsets). `undefined` =
+       *  don't touch — clearing the grid is `toggleRepeat`'s job. Offsets are
+       *  carried as plain numbers; the reducer normalizes 0 back to the
+       *  field's absent form. */
+      oldTileWidthL0?: number; newTileWidthL0?: number;
+      oldTileHeightL0?: number; newTileHeightL0?: number;
+      oldTileOffsetXL0?: number; newTileOffsetXL0?: number;
+      oldTileOffsetYL0?: number; newTileOffsetYL0?: number }
   | { op: 'renameSVG'; svgId: string; oldName: string | undefined; newName: string | undefined }
   /**
    * Recolor an SVGObject. Two shapes coexist:

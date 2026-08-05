@@ -1,6 +1,6 @@
 import { PathSegment, RGBColor, SVGObject } from './types';
 import { SVG_UNITS_PER_L0_CELL, SVG_STROKE_WIDTH } from './svgExport';
-import { computeSweepFlag, arcRadius, chainSegmentsLoops } from './compositionArcMath';
+import { computeSweepFlag, arcRadius, chainSegments, chainSegmentsLoops } from './compositionArcMath';
 import { packKey, unpackKey, forEachVisibleTile } from './tileSegmentOverrides';
 import { borderDashPattern, paintToSvg } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
@@ -284,6 +284,114 @@ export function buildExpandedTileSVGObjectContent(
     }
   });
   return out.join('');
+}
+
+/**
+ * Complete markup for a `tileMode: 'repeat'` SVGObject's REGION: the stored
+ * segments are one pattern unit, repeated across the object's bbox on the
+ * `tileWidthL0 × tileHeightL0` grid anchored at `cellX/Y + tileOffset` (the
+ * offset compensates origin-side resizes so the pattern stays put in world
+ * space). Coordinates are absolute world SVG-units, matching the non-tiled
+ * markup, so the same `<svg viewBox>` frames both.
+ *
+ * Two shapes, matching the export renderer exactly:
+ *  - sparse per-copy paint (`segmentOverrides`): a `<pattern>` can't express
+ *    different colors per repeated copy, so expand into one `<g>` per visible
+ *    copy with overrides baked in, clipped by a nested region `<svg>`.
+ *  - otherwise: a `<defs><pattern>` of the single tile + a region `<rect>`
+ *    filled with it — the browser does the repetition.
+ *
+ * Shared by the composition exporter (which wraps it in effects/mask clips)
+ * and the live DOM node layer via {@link buildSVGObjectContent}, so pattern
+ * mode can't render one way on the canvas and another in the export.
+ *
+ * `unitsPerCell` is the unit the CALLER's strokes are measured in (see
+ * {@link buildSVGObjectContent}) — SVG units for the export (the default),
+ * the layer's base pixel for the DOM. The tile is always drawn in SVG units
+ * and scaled by the region's viewBox transform (no non-scaling
+ * vector-effect works inside a `<pattern>`), so the legacy
+ * strokeScale-derived width — a raw number independent of `unitsPerCell` —
+ * is rescaled into SVG units here. Without this a repeat toggle in the DOM
+ * would thin every stroke by the SVG-unit/base-pixel ratio.
+ */
+export function buildTiledSVGObjectRegionMarkup(
+  svg: SVGObject,
+  strokeScale: number,
+  unitsPerCell: number = SVG_UNITS_PER_L0_CELL,
+): string {
+  if (svg.segments.length === 0) return '';
+  const U = SVG_UNITS_PER_L0_CELL;
+  const regionX = svg.cellX * U;
+  const regionY = svg.cellY * U;
+  const regionW = svg.cellWidth * U;
+  const regionH = svg.cellHeight * U;
+  // Legacy widths are `SVG_STROKE_WIDTH × strokeScale` in the caller's units;
+  // the viewBox transform renders one SVG unit as unitsPerCell/U of them, so
+  // pre-multiplying the scale by U/unitsPerCell lands the drawn stroke at
+  // exactly the caller's width. Stroke-block widths are authored in world
+  // cells and unaffected (svgStrokePresentation multiplies them by the U
+  // passed below, never by strokeScale).
+  const tileStrokeScale = strokeScale * (U / unitsPerCell);
+
+  if (svg.segmentOverrides && svg.segmentOverrides.size > 0) {
+    const instances = buildExpandedTileSVGObjectContent(svg, tileStrokeScale);
+    return `<svg x="${regionX}" y="${regionY}" width="${regionW}" height="${regionH}" overflow="hidden" ` +
+      `viewBox="${regionX} ${regionY} ${regionW} ${regionH}">${instances}</svg>`;
+  }
+
+  // Per-object stroke attrs in SVG units, no non-scaling vector-effect: the
+  // pattern content scales with the region's viewBox transform like the
+  // figure-tile rasterizer's output (see buildSVGObjectTileContent's note).
+  const attrs = svgStrokePresentation(svg, tileStrokeScale, U).attrs;
+  // Tile-grid anchor (cellX + tileOffset) — fixed in the pattern tile
+  // regardless of region expansion (the double-shift bug guard).
+  const sMinX = svg.cellX + (svg.tileOffsetXL0 ?? 0);
+  const sMinY = svg.cellY + (svg.tileOffsetYL0 ?? 0);
+  // Fill path — rendered before strokes, anchored to the tile grid. The paint
+  // comes from the same helper the non-tiled markup uses.
+  let tileContent = '';
+  const fillPres = svgFillPresentation(svg, `grad_${svg.id}`);
+  if (fillPres) {
+    const chained = chainSegments(svg.segments);
+    if (chained) {
+      const fd = buildTilePathD(chained, sMinX, sMinY) + ' Z';
+      tileContent += `${fillPres.defs}<path d="${fd}" ${fillPres.attrs} stroke="none" fill-rule="nonzero" />`;
+    }
+  }
+  if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
+    // Fill subpaths first so stroke subpaths draw on top (matches
+    // buildSVGObjectTileContent above).
+    for (const sub of svg.subpaths) {
+      if (!sub.fill) continue;
+      const fd = buildTileFillPathD(sub.segments, sMinX, sMinY);
+      if (fd) {
+        const { r, g, b } = sub.color;
+        tileContent += `<path d="${fd}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`;
+      }
+    }
+    for (const sub of svg.subpaths) {
+      if (sub.fill) continue;
+      const d = buildTilePathD(sub.segments, sMinX, sMinY);
+      if (d) {
+        const { r, g, b } = sub.color;
+        tileContent += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
+      }
+    }
+  } else {
+    const d = buildTilePathD(svg.segments, sMinX, sMinY);
+    const { r, g, b } = svg.color;
+    tileContent += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
+  }
+  const tileW = (svg.tileWidthL0 ?? svg.cellWidth) * U;
+  const tileH = (svg.tileHeightL0 ?? svg.cellHeight) * U;
+  const patOrgX = regionX + (svg.tileOffsetXL0 ?? 0) * U;
+  const patOrgY = regionY + (svg.tileOffsetYL0 ?? 0) * U;
+  const patId = `pat_svg_${svgDefIdSafe(svg.id)}`;
+  return `<defs><pattern id="${patId}" patternUnits="userSpaceOnUse" ` +
+    `x="${patOrgX}" y="${patOrgY}" width="${tileW}" height="${tileH}">` +
+    tileContent +
+    `</pattern></defs>` +
+    `<rect x="${regionX}" y="${regionY}" width="${regionW}" height="${regionH}" fill="url(#${patId})" stroke="none" />`;
 }
 
 /**
@@ -573,6 +681,11 @@ export function buildSVGObjectContent(
   unitsPerCell: number,
 ): string {
   if (obj.segments.length === 0) return '';
+  // Pattern mode: the stored segments are one tile; render the repeating
+  // region instead of the single unit, with the stroke widths converted from
+  // this caller's units into the tile's SVG-unit space — see
+  // buildTiledSVGObjectRegionMarkup.
+  if (obj.tileMode === 'repeat') return buildTiledSVGObjectRegionMarkup(obj, strokeScale, unitsPerCell);
   const radius = svgStrokeRadiusCells(obj);
   const { defs, attrs, segments } = svgStrokePresentation(obj, strokeScale, unitsPerCell, { nonScaling: true });
 

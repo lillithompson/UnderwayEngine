@@ -322,6 +322,14 @@ export interface ObjectPropertiesModel {
    *  from a tile file, whose Edit reopens the tile editor and rebakes).
    *  Only rendered when set; ignored unless `showSvgOptions`. */
   onSvgEdit?(): void;
+  /** Extra "Repeat" action in the vector option menu (after Edit) — Facet's
+   *  pattern-mode toggle for tile pattern objects: on, the object's bounding
+   *  box REPEATS the tile rather than scaling it. Only rendered when
+   *  `onToggleRepeat` is set; ignored unless `showSvgOptions`. */
+  onToggleRepeat?(): void;
+  /** Whether the selection is currently in pattern (repeat) mode, tinting the
+   *  Repeat button. Facet's `repeat` prop. */
+  repeat?: boolean;
   /** Whether the Stroke bar is shown. App-owned so a tap-off dismisses it
    *  before the panel (same as the Shadow / Border bars). */
   strokeOpen?: boolean;

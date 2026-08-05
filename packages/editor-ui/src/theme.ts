@@ -14,6 +14,7 @@ export const HEADER_BG = '#e5e5e5'; // Facet TEXT_SECONDARY
 export const HEADER_INK = '#2a2a2a'; // Facet BG_HEADER — header text/icons
 export const STATE_ACTIVE = '#38BDF8'; // Facet ACCENT_PRIMARY
 export const STATE_INACTIVE = 'rgba(42, 42, 42, 0.8)';
+export const PATTERN_ACTIVE = '#FFA032'; // Facet PATTERN_ACTIVE — Repeat toggle on
 
 // ── Floating capsules (Facet UndoRedoPanel / GridQuickActionPanel) ──
 export const CAPSULE_SIZE = 44; // Facet COMPACT_BUTTON_SIZE

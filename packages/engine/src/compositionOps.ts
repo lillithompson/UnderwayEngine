@@ -4265,7 +4265,15 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
               ? (op.newSubpaths === null ? { subpaths: undefined } : { subpaths: op.newSubpaths })
               : null),
             ...(op.newCreationBox !== undefined ? { creationBox: op.newCreationBox } : null),
-            ...(op.newLineDirection !== undefined ? { lineDirection: op.newLineDirection } : null) }
+            ...(op.newLineDirection !== undefined ? { lineDirection: op.newLineDirection } : null),
+            // Tile-grid metadata (tile-mode rotate/mirror). Offsets normalize
+            // 0 → undefined so an untouched pattern stays field-free.
+            ...(op.newTileWidthL0 !== undefined ? { tileWidthL0: op.newTileWidthL0 } : null),
+            ...(op.newTileHeightL0 !== undefined ? { tileHeightL0: op.newTileHeightL0 } : null),
+            ...(op.newTileOffsetXL0 !== undefined
+              ? { tileOffsetXL0: op.newTileOffsetXL0 === 0 ? undefined : op.newTileOffsetXL0 } : null),
+            ...(op.newTileOffsetYL0 !== undefined
+              ? { tileOffsetYL0: op.newTileOffsetYL0 === 0 ? undefined : op.newTileOffsetYL0 } : null) }
         : s);
       return { ...state, svgObjects };
     }
@@ -4784,7 +4792,11 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         oldMirrorV: op.newMirrorV, newMirrorV: op.oldMirrorV,
         oldIdentitySegments: op.newIdentitySegments, newIdentitySegments: op.oldIdentitySegments,
         oldIdentityCellX: op.newIdentityCellX, newIdentityCellX: op.oldIdentityCellX,
-        oldIdentityCellY: op.newIdentityCellY, newIdentityCellY: op.oldIdentityCellY });
+        oldIdentityCellY: op.newIdentityCellY, newIdentityCellY: op.oldIdentityCellY,
+        oldTileWidthL0: op.newTileWidthL0, newTileWidthL0: op.oldTileWidthL0,
+        oldTileHeightL0: op.newTileHeightL0, newTileHeightL0: op.oldTileHeightL0,
+        oldTileOffsetXL0: op.newTileOffsetXL0, newTileOffsetXL0: op.oldTileOffsetXL0,
+        oldTileOffsetYL0: op.newTileOffsetYL0, newTileOffsetYL0: op.oldTileOffsetYL0 });
     case 'renameSVG':
       return applyOp(state, { op: 'renameSVG', svgId: op.svgId, oldName: op.newName, newName: op.oldName });
     case 'recolorSVG': {

@@ -22,6 +22,7 @@ import {
   OBJECT_MENU_HEIGHT,
   PANEL_ANIM_MS,
   PANEL_HAIRLINE,
+  PATTERN_ACTIVE,
 } from '../theme';
 
 // Facet's ObjectPropertiesPanel: a bottom sheet that slides up (150ms) when
@@ -734,6 +735,22 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         compact={compact}
       />
     ));
+    if (model.onToggleRepeat) {
+      // Pattern-mode toggle (tile pattern objects): repeat the tile across
+      // the bounding box instead of scaling it. Facet's Repeat button —
+      // view-grid glyph, tinted PATTERN_ACTIVE while on.
+      typeOptions.unshift(
+        <GridButton
+          key="repeat"
+          label="Repeat"
+          caption="Repeat"
+          icon="view-grid"
+          iconColor={model.repeat ? PATTERN_ACTIVE : ICON_COLOR}
+          onPress={model.onToggleRepeat}
+          compact={compact}
+        />,
+      );
+    }
     if (model.onSvgEdit) {
       // Source-editor Edit (e.g. reopen a pattern object's tile editor),
       // ahead of the subtype options.

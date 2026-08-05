@@ -11,7 +11,7 @@ import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildTilePathD, buildClosedFillPathD, buildTileFillPathD, buildExpandedTileSVGObjectContent, svgFillPresentation, svgStrokePresentation, wrapSVGObjectOpacity } from './svgPathBuilder';
+import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, svgFillPresentation, svgStrokePresentation, wrapSVGObjectOpacity } from './svgPathBuilder';
 import { roundPathCorners, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import { chainSegments } from './compositionArcMath';
@@ -888,6 +888,16 @@ export async function generateCompositionSVGCore(
   for (const svg of svgObjects) {
     if (cancelled?.()) return null;
     if (svg.segments.length === 0) continue;
+    if (svg.tileMode === 'repeat') {
+      // Pattern mode: the shared region builder (also the live DOM layer's
+      // path via buildSVGObjectContent) emits the repeating markup — the
+      // sparse-override <g>-per-copy expansion or the <pattern> + rect.
+      elementsById.set(svg.id, wrapWithMaskClip(applyNodeEffects(
+        buildTiledSVGObjectRegionMarkup(svg, effectiveStrokeScale),
+        svg.effects, svg.id, svg, U,
+      ), maskMap, groups, svg));
+      continue;
+    }
     // Per-object stroke (width / radius / position / dash) comes from the same
     // helper the live DOM layer uses, so an authored stroke can't render one
     // way on the canvas and another in the export. Export draws in SVG units,
@@ -895,16 +905,12 @@ export async function generateCompositionSVGCore(
     // object with no stroke block gets exactly the legacy attrs.
     const strokePres = svgStrokePresentation(svg, effectiveStrokeScale, U);
     const attrs = strokePres.attrs;
-    // Tiled objects keep the authored segments: a pattern tile is built from
-    // tile-local geometry, which corner rounding and the alignment clip are
-    // not defined against.
-    const strokeSegments = svg.tileMode === 'repeat' ? svg.segments : strokePres.segments;
-    const strokeDefs = svg.tileMode === 'repeat' ? '' : strokePres.defs;
+    const strokeSegments = strokePres.segments;
+    const strokeDefs = strokePres.defs;
     // Fill path — rendered before strokes. The paint (fill / fill-opacity /
     // blend, and any gradient defs) comes from the same helper the live DOM
     // layer uses, so an authored fill can't render one way on the canvas and
-    // another in the export; only the `d` differs, tiled objects anchoring
-    // theirs to the tile grid. A pattern-fill mask is skipped in there: it
+    // another in the export. A pattern-fill mask is skipped in there: it
     // renders outline only, its fill painted as the tiled figure's background.
     let fillElement = '';
     const fillPres = svgFillPresentation(svg, `grad_${svg.id}`);
@@ -912,117 +918,52 @@ export async function generateCompositionSVGCore(
       // Fill follows the same (possibly corner-rounded) outline the stroke does.
       const chained = chainSegments(strokeSegments);
       if (chained) {
-        const fd = (svg.tileMode === 'repeat'
-          ? buildTilePathD(chained, svg.cellX + (svg.tileOffsetXL0 ?? 0), svg.cellY + (svg.tileOffsetYL0 ?? 0))
-          : buildPathD(chained)) + ' Z';
+        const fd = buildPathD(chained) + ' Z';
         fillElement = `${fillPres.defs}<path d="${fd}" ${fillPres.attrs} stroke="none" fill-rule="nonzero" />`;
       }
     }
 
-    if (svg.tileMode === 'repeat' && svg.segmentOverrides && svg.segmentOverrides.size > 0) {
-      // Sparse per-copy paint: a `<pattern>` can't express different colors per
-      // repeated copy, so expand into one editable `<g>` per visible copy with
-      // overrides baked in. Clipped to the region by the wrapping `<svg>`.
-      const regionX = svg.cellX * U, regionY = svg.cellY * U;
-      const regionW = svg.cellWidth * U, regionH = svg.cellHeight * U;
-      const instances = buildExpandedTileSVGObjectContent(svg, effectiveStrokeScale);
-      elementsById.set(svg.id, wrapWithMaskClip(applyNodeEffects(
-        `<svg x="${regionX}" y="${regionY}" width="${regionW}" height="${regionH}" overflow="hidden" ` +
-        `viewBox="${regionX} ${regionY} ${regionW} ${regionH}">${instances}</svg>`,
-        svg.effects, svg.id, svg, U,
-      ), maskMap, groups, svg));
-    } else if (svg.tileMode === 'repeat') {
-      // Use the tile-grid anchor (cellX + tileOffset) so the content stays
-      // at a fixed position in the pattern tile regardless of region
-      // expansion. See svgPathBuilder.ts:buildSVGObjectTileContent for the
-      // full explanation of the double-shift bug this prevents.
-      const sMinX = svg.cellX + (svg.tileOffsetXL0 ?? 0);
-      const sMinY = svg.cellY + (svg.tileOffsetYL0 ?? 0);
-      let tileContent = fillElement;
-      if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
-        // Fill subpaths first so stroke subpaths draw on top (matches
-        // buildSVGObjectTileContent in svgPathBuilder.ts).
-        for (const sub of svg.subpaths) {
-          if (!sub.fill) continue;
-          const fd = buildTileFillPathD(sub.segments, sMinX, sMinY);
-          if (fd) {
-            const { r, g, b } = sub.color;
-            tileContent += `<path d="${fd}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`;
-          }
+    let paths = strokeDefs + fillElement;
+    if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
+      const radius = svgStrokeRadiusCells(svg);
+      // Fill subpaths first so stroke subpaths draw on top (matches
+      // buildSVGObjectContent in svgPathBuilder.ts).
+      for (const sub of svg.subpaths) {
+        if (!sub.fill) continue;
+        const fd = buildClosedFillPathD(sub.segments);
+        if (fd) {
+          const { r, g, b } = sub.color;
+          paths += `<path d="${fd}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`;
         }
-        for (const sub of svg.subpaths) {
-          if (sub.fill) continue;
-          const d = buildTilePathD(sub.segments, sMinX, sMinY);
-          if (d) {
-            const { r, g, b } = sub.color;
-            tileContent += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
-          }
-        }
-      } else {
-        const d = buildTilePathD(svg.segments, sMinX, sMinY);
-        const { r, g, b } = svg.color;
-        tileContent += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
       }
-      const tileW = (svg.tileWidthL0 ?? svg.cellWidth) * U;
-      const tileH = (svg.tileHeightL0 ?? svg.cellHeight) * U;
-      const regionW = svg.cellWidth * U;
-      const regionH = svg.cellHeight * U;
-      const regionX = svg.cellX * U;
-      const regionY = svg.cellY * U;
-      const patOrgX = regionX + (svg.tileOffsetXL0 ?? 0) * U;
-      const patOrgY = regionY + (svg.tileOffsetYL0 ?? 0) * U;
-      const patId = `pat_svg_${svg.id}`;
-      elementsById.set(svg.id, wrapWithMaskClip(applyNodeEffects(
-        `<defs><pattern id="${patId}" patternUnits="userSpaceOnUse" ` +
-        `x="${patOrgX}" y="${patOrgY}" width="${tileW}" height="${tileH}">` +
-        tileContent +
-        `</pattern></defs>` +
-        `<rect x="${regionX}" y="${regionY}" width="${regionW}" height="${regionH}" fill="url(#${patId})" stroke="none" />`,
-        svg.effects, svg.id, svg, U,
-      ), maskMap, groups, svg));
-    } else {
-      let paths = strokeDefs + fillElement;
-      if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
-        const radius = svgStrokeRadiusCells(svg);
-        // Fill subpaths first so stroke subpaths draw on top (matches
-        // buildSVGObjectContent in svgPathBuilder.ts).
-        for (const sub of svg.subpaths) {
-          if (!sub.fill) continue;
-          const fd = buildClosedFillPathD(sub.segments);
-          if (fd) {
-            const { r, g, b } = sub.color;
-            paths += `<path d="${fd}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`;
-          }
-        }
-        for (const sub of svg.subpaths) {
-          if (sub.fill) continue;
-          const d = buildPathD(radius > 0 ? roundPathCorners(sub.segments, radius) : sub.segments);
-          if (d) {
-            const { r, g, b } = sub.color;
-            paths += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
-          }
-        }
-      } else {
-        const d = buildPathD(strokeSegments);
+      for (const sub of svg.subpaths) {
+        if (sub.fill) continue;
+        const d = buildPathD(radius > 0 ? roundPathCorners(sub.segments, radius) : sub.segments);
         if (d) {
-          const { r, g, b } = svg.color;
+          const { r, g, b } = sub.color;
           paths += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
         }
       }
-      // Endpoint decorations last, on top of the stroke they cap. Same helper
-      // the live DOM layer uses, so an arrow can't point one way on the canvas
-      // and another in the export.
-      paths += svgEndpointsMarkup(svg, strokeSegments, svgStrokeWidthCells(svg, effectiveStrokeScale, U));
-      // Whole-object opacity + edge soften (the Opacity bar) wrap everything
-      // the object drew, INSIDE the node effects so a drop shadow is cast by
-      // the already-faded shape. Same helper as the live DOM layer.
-      paths = wrapSVGObjectOpacity(svg, paths, effectiveStrokeScale);
-      if (paths) {
-        elementsById.set(svg.id, wrapWithMaskClip(
-          applyNodeEffects(paths, svg.effects, svg.id, svg, U),
-          maskMap, groups, svg,
-        ));
+    } else {
+      const d = buildPathD(strokeSegments);
+      if (d) {
+        const { r, g, b } = svg.color;
+        paths += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
       }
+    }
+    // Endpoint decorations last, on top of the stroke they cap. Same helper
+    // the live DOM layer uses, so an arrow can't point one way on the canvas
+    // and another in the export.
+    paths += svgEndpointsMarkup(svg, strokeSegments, svgStrokeWidthCells(svg, effectiveStrokeScale, U));
+    // Whole-object opacity + edge soften (the Opacity bar) wrap everything
+    // the object drew, INSIDE the node effects so a drop shadow is cast by
+    // the already-faded shape. Same helper as the live DOM layer.
+    paths = wrapSVGObjectOpacity(svg, paths, effectiveStrokeScale);
+    if (paths) {
+      elementsById.set(svg.id, wrapWithMaskClip(
+        applyNodeEffects(paths, svg.effects, svg.id, svg, U),
+        maskMap, groups, svg,
+      ));
     }
 
     // Free rotation (v30+): wrap whatever this svg emitted in a group that
