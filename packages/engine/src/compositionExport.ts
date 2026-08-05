@@ -6,6 +6,8 @@ import { rasterizeSvgToPixels, rasterizeSvgToJpegDataUri } from './svgRasterize'
 import {
   generateCompositionSVGCore,
   type CompositionFigureLoadResult,
+  type CompositionSubsetScene,
+  type CompositionSubsetSelector,
   type CompositionSVGInputs,
   type SVGFontResolver,
 } from './compositionSVGCore';
@@ -16,7 +18,13 @@ import {
 // kept pure so Node-side tooling can call it without dragging in
 // IndexedDB / WebGL / react-native.
 export { generateCompositionSVGCore };
-export type { CompositionFigureLoadResult, CompositionSVGInputs, SVGFontResolver };
+export type {
+  CompositionFigureLoadResult,
+  CompositionSubsetScene,
+  CompositionSubsetSelector,
+  CompositionSVGInputs,
+  SVGFontResolver,
+};
 
 /** Host-registered fallback resolver — see {@link setDefaultSVGFontResolver}. */
 let defaultFontResolver: SVGFontResolver | undefined;
@@ -46,6 +54,11 @@ export interface CompositionExportOptions {
    *  real file exports; leave off for thumbnails/previews (see
    *  {@link CompositionSVGInputs.preferOriginalImages}). */
   preferOriginalImages?: boolean;
+  /** Export a CUTOUT — only the selected objects, framed tightly on them, on a
+   *  transparent canvas. See {@link CompositionSVGInputs.subset}. Pair with
+   *  {@link exportCompositionPNG}: JPEG has no alpha, so a cutout exported as
+   *  JPEG lands on a white backdrop. */
+  subset?: CompositionSubsetSelector;
 }
 
 /**
@@ -166,6 +179,7 @@ export async function exportCompositionSVG(
     background: partial.background,
     fontResolver: options?.fontResolver ?? defaultFontResolver,
     preferOriginalImages: options?.preferOriginalImages,
+    subset: options?.subset,
     groups: partial.groups ?? [],
     sceneOrder: partial.sceneOrder,
     strokeScale: strokeScale ?? partial.strokeScale,

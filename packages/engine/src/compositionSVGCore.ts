@@ -55,6 +55,28 @@ export interface CompositionFigureLoadResult {
 export type SVGFontFace = { woff2Base64?: string } | null;
 export type SVGFontResolver = (fontId: string) => SVGFontFace | Promise<SVGFontFace>;
 
+/** The visible scene handed to a {@link CompositionSubsetSelector} — the nodes
+ *  that would be drawn, after `hidden` filtering, plus the group hierarchy. */
+export interface CompositionSubsetScene {
+  figures: readonly CompositionFigure[];
+  svgObjects: readonly SVGObject[];
+  images: readonly ImageObject[];
+  texts: readonly TextObject[];
+  groups: readonly GroupNode[];
+}
+
+/**
+ * Picks which of the visible scene's nodes to draw, by id. Called once per
+ * export with the whole scene, so a selector can answer questions no per-node
+ * predicate could ("the word stickers that sit inside a frame, unless none
+ * do") without the caller re-loading the composition.
+ *
+ * Returning every id is NOT the same as passing no selector: a subset export
+ * also drops the canvas background and ignores frame bounds (see
+ * {@link CompositionSVGInputs.subset}).
+ */
+export type CompositionSubsetSelector = (scene: CompositionSubsetScene) => ReadonlySet<string>;
+
 /**
  * Inputs for the pure SVG-generation core. Decoupled from IndexedDB so
  * Node-side tooling can call this, threading pre-deserialized figure data
@@ -83,6 +105,22 @@ export interface CompositionSVGInputs {
   sceneOrder?: string[];
   /** Raw composition-level stroke scale (0–1). Normalized internally. */
   strokeScale?: number;
+  /**
+   * Draw only part of the scene — a CUTOUT of the composition rather than the
+   * page. When set, three things change together, because they are one
+   * intent ("give me just these objects, framed on themselves"):
+   *   1. only the selected nodes are drawn;
+   *   2. the viewBox is the tight union of what's left, so frames no longer
+   *      pin it to page bounds (a cutout is zoomed by definition), and text
+   *      is framed on its glyphs rather than on the roomy box it lays out in
+   *      (see {@link paintedTextBounds});
+   *   3. the canvas background is skipped, so the result is transparent.
+   *
+   * Masks are unaffected: they resolve from the unfiltered scene, so a node
+   * that was clipped by its frame stays clipped by it. Returning an empty set
+   * (or selecting nothing that is visible) yields null, like an empty scene.
+   */
+  subset?: CompositionSubsetSelector;
   /** When true, emit each image from its higher-resolution `originalImageId`
    *  blob (falling back to `imageId` when absent). Off by default so cheap
    *  consumers — thumbnails, previews — keep rasterizing the small display
@@ -290,6 +328,133 @@ function buildTextSVGContent(text: TextObject, u: number): string {
 }
 
 /**
+ * Fraction of a line's measured width kept as slack on each side when framing
+ * a cutout on the glyphs. `layoutText`'s measurer is a deterministic
+ * approximation (the engine has no font metrics), while the glyphs themselves
+ * are drawn by the browser from the real face, so the two drift by a few
+ * percent — proportionally, since the error accumulates per character. 4% is
+ * comfortably over the drift on ordinary copy without reading as padding.
+ */
+const MEASURER_SLACK = 0.04;
+
+/**
+ * How far a text node's paint can spill past the box it lays out in: the
+ * sticker card's fixed drop shadow, plus any authored shadow / glow / border.
+ * One scalar applied on all four sides — the sticker's shadow rotates with its
+ * card, so a directional outset would be wrong for a tilted magnet, and
+ * erring outward costs a hair of margin while erring inward clips paint.
+ *
+ * Only the cutout framing needs this. A page export is pinned to the page, so
+ * a shadow running off the edge is cropped there, as it is on paper.
+ */
+function textPaintOutset(text: TextObject): number {
+  let out = 0;
+  if (text.sticker) {
+    const s = STICKER_SHADOW_CELLS;
+    out = Math.max(Math.abs(s.dx), Math.abs(s.dy)) + s.blur;
+  }
+  const fx = text.effects;
+  if (fx?.shadow) {
+    const reach = Math.max(Math.abs(fx.shadow.dx), Math.abs(fx.shadow.dy))
+      + fx.shadow.blur + (fx.shadow.spread ?? 0);
+    out = Math.max(out, reach);
+  }
+  if (fx?.glow) out = Math.max(out, fx.glow.radius);
+  if (fx?.border) {
+    const pos = fx.border.position ?? 'center';
+    out = Math.max(out, pos === 'outside' ? fx.border.width : pos === 'center' ? fx.border.width / 2 : 0);
+  }
+  return out;
+}
+
+/** Rotate (x, y) clockwise by `deg` about (cx, cy) in the y-down world frame —
+ *  the forward of {@link unrotatePointForNode}, matching the `rotate()` the
+ *  text markup emits. */
+function rotateAboutCW(x: number, y: number, cx: number, cy: number, deg: number): [number, number] {
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = x - cx;
+  const dy = y - cy;
+  return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+}
+
+/**
+ * The world box a text node actually PAINTS INTO, for cutout framing.
+ *
+ * A text node's bbox is the box its content is laid out in, and it is usually
+ * much bigger than the words: a haiku slot is 28 cells wide whatever the line
+ * says, so framing on bboxes would surround the poem with the empty space it
+ * was given to grow into. This returns the glyph block instead — the union of
+ * the non-empty line boxes — so the cutout zooms to the words themselves.
+ *
+ * A sticker is the exception, and not a special case: its card is painted to
+ * fill its bbox, so on a magnet the bbox already IS the paint.
+ *
+ * The result is a world axis-aligned box: the node's rotation and mirroring
+ * are applied to the local paint rect's corners first (a tilted magnet's
+ * corners have to land inside the frame), then the effect outset is added.
+ * Null when the node paints nothing — an empty text node, which the generator
+ * also skips drawing, must not pad the frame either.
+ */
+function paintedTextBounds(
+  text: TextObject,
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  const tw = text.cellWidth;
+  const th = text.cellHeight;
+  // Local paint rect. A sticker's card fills the bbox; plain text covers only
+  // its laid-out lines. The layout call mirrors buildTextSVGContent's exactly,
+  // so the two can't disagree about where the glyphs land.
+  let lx = 0, ly = 0, rx = tw, by = th;
+  if (!text.sticker) {
+    const layout = layoutText(text.content, text.style, { maxWidth: tw, maxHeight: th });
+    const lineHeight = text.style.size * (text.style.lineHeight ?? DEFAULT_LINE_HEIGHT);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const line of layout.lines) {
+      if (line.text.length === 0) continue; // not emitted, so not framed
+      // Line widths come from the deterministic measurer, but the glyphs are
+      // drawn by the browser from the real font, so the two disagree by a few
+      // percent — and the error grows with the line. A slack proportional to
+      // the line absorbs it; without it a long line risks losing its last
+      // glyph to the viewBox edge. Horizontal only: line height is exactly
+      // `size × lineHeight`, font-independent, and already generous over the
+      // cap height.
+      const slack = line.width * MEASURER_SLACK;
+      if (line.x - slack < minX) minX = line.x - slack;
+      if (line.x + line.width + slack > maxX) maxX = line.x + line.width + slack;
+      if (line.y < minY) minY = line.y;
+      if (line.y + lineHeight > maxY) maxY = line.y + lineHeight;
+    }
+    if (minX === Infinity) return null;
+    lx = minX; ly = minY; rx = maxX; by = maxY;
+  }
+
+  // Through the node transform, in the order buildTextSVGContent composes it:
+  // mirrors innermost, then the discrete rotation, then the free rotation.
+  const cx = tw / 2;
+  const cy = th / 2;
+  const rot = text.rotation ?? 0;
+  const toWorld = (x: number, y: number): [number, number] => {
+    if (text.mirrorV) y = th - y;
+    if (text.mirrorH) x = tw - x;
+    if (rot) [x, y] = rotateAboutCW(x, y, cx, cy, rot);
+    if (text.angleDeg) [x, y] = rotateAboutCW(x, y, cx, cy, text.angleDeg);
+    return [text.cellX + x, text.cellY + y];
+  };
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [px, py] of [[lx, ly], [rx, ly], [rx, by], [lx, by]] as const) {
+    const [wx, wy] = toWorld(px, py);
+    if (wx < minX) minX = wx;
+    if (wx > maxX) maxX = wx;
+    if (wy < minY) minY = wy;
+    if (wy > maxY) maxY = wy;
+  }
+  const pad = textPaintOutset(text);
+  return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+}
+
+/**
  * Framing-aware inner markup for an image, in the node's local frame space
  * [0,0,iw,ih] (the caller's `<g transform>` handles translate/rotate/mirror).
  * `fu` is the resolved framing already scaled to SVG units (margin/tileGap/
@@ -361,15 +526,28 @@ export async function generateCompositionSVGCore(
   const hiddenGroups = hiddenGroupIds(input.groups ?? []);
   const shown = (n: { hidden?: boolean; groupId?: string }): boolean =>
     !n.hidden && !(n.groupId !== undefined && hiddenGroups.has(n.groupId));
-  const figures = input.figures.filter(shown);
-  const svgObjects = input.svgObjects.filter(shown);
-  const images = input.images.filter(shown);
-  const texts = (input.texts ?? []).filter(shown);
+  let figures = input.figures.filter(shown);
+  let svgObjects = input.svgObjects.filter(shown);
+  let images = input.images.filter(shown);
+  let texts = (input.texts ?? []).filter(shown);
   if (figures.length === 0 && svgObjects.length === 0 && images.length === 0 && texts.length === 0) return null;
 
   // Active masks resolve from the UNFILTERED svg objects: a hidden mask
   // still clips (invisible-mask behavior) even though it isn't drawn.
   const groups = input.groups ?? [];
+
+  // Cutout export: narrow the drawn set to the selector's ids. Everything
+  // downstream — the bbox union, the viewBox, the background — then sees only
+  // this subset, which is what tightens the frame onto it.
+  if (input.subset) {
+    const keep = input.subset({ figures, svgObjects, images, texts, groups });
+    const kept = (n: { id: string }): boolean => keep.has(n.id);
+    figures = figures.filter(kept);
+    svgObjects = svgObjects.filter(kept);
+    images = images.filter(kept);
+    texts = texts.filter(kept);
+    if (figures.length === 0 && svgObjects.length === 0 && images.length === 0 && texts.length === 0) return null;
+  }
   const maskMap = buildActiveMaskMap({
     groups,
     svgObjects: input.svgObjects,
@@ -419,6 +597,15 @@ export async function generateCompositionSVGCore(
     accept(img, img.cellX, img.cellY, img.cellX + img.cellWidth, img.cellY + img.cellHeight);
   }
   for (const txt of texts) {
+    // A cutout frames on the glyphs, not on the box they were laid out in —
+    // see paintedTextBounds. A page export keeps using the node bbox: its
+    // viewBox is the page, and tightening it would move every existing
+    // freeform export's frame.
+    if (input.subset) {
+      const b = paintedTextBounds(txt);
+      if (b) accept(txt, b.minX, b.minY, b.maxX, b.maxY);
+      continue;
+    }
     accept(txt, txt.cellX, txt.cellY, txt.cellX + txt.cellWidth, txt.cellY + txt.cellHeight);
   }
 
@@ -434,8 +621,11 @@ export async function generateCompositionSVGCore(
   // rather than the tight bounds of the (clipped) content. Content outside the
   // frame is already excluded by the per-node clip (buildMaskClipDefs +
   // wrapWithMaskClip), so this only pins the outer viewBox.
+  //
+  // A cutout export skips it: `subset` asked for those objects framed on
+  // themselves, and pinning to the page would undo the zoom.
   let fMinCX = Infinity, fMinCY = Infinity, fMaxCX = -Infinity, fMaxCY = -Infinity;
-  for (const g of groups) {
+  for (const g of input.subset ? [] : groups) {
     if (!g.isFrame) continue;
     const mask = maskMap.get(g.id);
     if (!mask) continue;
@@ -879,9 +1069,10 @@ export async function generateCompositionSVGCore(
   }
 
   // Canvas background: a full-viewBox rect painted behind everything.
-  // Gradient backgrounds emit their def alongside the rect.
+  // Gradient backgrounds emit their def alongside the rect. A cutout export
+  // omits it — the point of one is the objects on transparency.
   let backgroundRect = '';
-  if (input.background) {
+  if (input.background && !input.subset) {
     const p = paintToSvg(input.background, 'bg_paint');
     const oa = p.fillOpacity !== undefined ? ` fill-opacity="${p.fillOpacity}"` : '';
     backgroundRect = (p.defs ? `<defs>${p.defs}</defs>` : '') +
