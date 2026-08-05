@@ -1,4 +1,10 @@
-import { screenToContainingCompCell, pickFigureGridLevel, computeMoveSnapDelta } from '../compositionCellMath';
+import {
+  screenToContainingCompCell,
+  screenToNearestGridIntersection,
+  snapCellToCompGrid,
+  pickFigureGridLevel,
+  computeMoveSnapDelta,
+} from '../compositionCellMath';
 import { CELL_COUNTS, GridLevel } from '../types';
 
 // A trivial camera that maps the 32-cell-wide canvas exactly onto the
@@ -11,6 +17,39 @@ function pointInCell(cellIndex: number, fraction: number): number {
   // fraction is 0..1 within the cell
   return cellIndex * PX_PER_CELL + fraction * PX_PER_CELL;
 }
+
+describe('snapCellToCompGrid', () => {
+  it('rounds to the nearest gridline at the level step', () => {
+    expect(snapCellToCompGrid(3.4, 0)).toBe(3);
+    expect(snapCellToCompGrid(3.6, 0)).toBe(4);
+    expect(snapCellToCompGrid(9, 2)).toBe(8);   // step 4
+    expect(snapCellToCompGrid(11, 2)).toBe(12);
+  });
+
+  it('handles sub-cell steps at negative levels', () => {
+    expect(snapCellToCompGrid(1.2, -1)).toBe(1);   // step 0.5
+    expect(snapCellToCompGrid(1.4, -1)).toBe(1.5);
+  });
+
+  it('snaps negative coordinates symmetrically', () => {
+    expect(snapCellToCompGrid(-9, 2)).toBe(-8);
+    expect(snapCellToCompGrid(-11, 2)).toBe(-12);
+  });
+
+  it('is the rounding screenToNearestGridIntersection performs', () => {
+    // Under the trivial camera, screen px / PX_PER_CELL is the raw cell
+    // coordinate — so the intersection helper must equal snapping that raw
+    // projection. Guards the two from drifting apart.
+    const rawX = 9.3;
+    const rawY = 11.8;
+    expect(
+      screenToNearestGridIntersection(rawX * PX_PER_CELL, rawY * PX_PER_CELL, VIEWPORT, CAMERA, 2),
+    ).toEqual({
+      cellX: snapCellToCompGrid(rawX, 2),
+      cellY: snapCellToCompGrid(rawY, 2),
+    });
+  });
+});
 
 describe('screenToContainingCompCell', () => {
   it('returns the same cell for touches in either half of a single cell', () => {

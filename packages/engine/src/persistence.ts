@@ -845,6 +845,20 @@ export async function loadShowDimensions(): Promise<boolean> {
   return JSON.parse(raw) === true;
 }
 
+// ── Grid Snap ──────────────────────────────────────────────────────
+
+const GRID_SNAP_KEY = 'app_grid_snap';
+
+export async function saveGridSnap(enabled: boolean): Promise<void> {
+  await storage.setItem(GRID_SNAP_KEY, JSON.stringify(enabled));
+}
+
+export async function loadGridSnap(): Promise<boolean> {
+  const raw = await storage.getItem(GRID_SNAP_KEY);
+  if (!raw) return false;
+  return JSON.parse(raw) === true;
+}
+
 // ── Show Touches ───────────────────────────────────────────────────
 
 const SHOW_TOUCHES_KEY = 'app_show_touches';

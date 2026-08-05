@@ -17,6 +17,19 @@ export function compSnapStep(level: number): number {
 }
 
 /**
+ * Round one axis of an L0 cell coordinate onto the nearest gridline at the
+ * given composition grid level (step = {@link compSnapStep}). The single
+ * definition of "snap to the grid" in cell space — used by
+ * {@link screenToNearestGridIntersection} and by editor gestures that already
+ * hold a world-cell point (object drag, corner resize), so a snapped click and
+ * a snapped drag can't disagree about where a gridline is.
+ */
+export function snapCellToCompGrid(value: number, level: number): number {
+  const step = compSnapStep(level);
+  return Math.round(value / step) * step;
+}
+
+/**
  * Project a composition grid level onto the discrete layer-level range
  * `[0, MAX_LAYER_LEVEL]`. Used when the comp snap level needs to be
  * converted to a baked-layer resolution. Critical: clamps negative values
@@ -54,11 +67,10 @@ export function screenToNearestGridIntersection(
   const rawX = uvX * cellCount;
   const rawY = uvY * cellCount;
 
-  const step = compSnapStep(gridLevel);
-  const cellX = Math.round(rawX / step) * step;
-  const cellY = Math.round(rawY / step) * step;
-
-  return { cellX, cellY };
+  return {
+    cellX: snapCellToCompGrid(rawX, gridLevel),
+    cellY: snapCellToCompGrid(rawY, gridLevel),
+  };
 }
 
 /**
