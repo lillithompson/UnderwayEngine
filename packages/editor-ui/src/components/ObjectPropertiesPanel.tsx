@@ -35,9 +35,9 @@ import {
 // buttons and the carousel dots. It shows one row of icon+caption
 // buttons at a time: the common actions (rotate / flip / copy / lock / delete)
 // or — when the selection has them — the type-specific options (images: replace
-// / tint / crop / shadow / border; text: edit / type). A leading `<` cell swaps
-// between the two, sliding the row leftward; a horizontal swipe (either
-// direction) swaps too. Crop / Shadow / Border / Text open their full editing
+// / tint / crop / shadow / border; text: edit / type). A horizontal swipe
+// (either direction) swaps between the two, sliding the row along; the dots
+// below track which is showing. Crop / Shadow / Border / Text open their full editing
 // bar (the taller OBJECT_MENU_HEIGHT), which slides up over the panel as a
 // carousel: a left/right swipe cycles forward/back through the available
 // submenus (dots at the bottom track the position) and a downward swipe
@@ -95,7 +95,7 @@ type SubmenuKey = 'tint' | 'crop' | 'shadow' | 'border' | 'opacity' | 'font' | '
 // One grid cell: an icon over a short caption, weighted (flex) so every button
 // shares the same column width whichever set is showing. `caption` is the
 // visible label; `label` is the (often longer) accessibility name.
-function GridButton({ label, caption, icon, iconColor, swatchColor, onPress, compact, iconOnly }: {
+function GridButton({ label, caption, icon, iconColor, swatchColor, onPress, compact }: {
   label: string;
   caption?: string;
   icon: string;
@@ -105,8 +105,6 @@ function GridButton({ label, caption, icon, iconColor, swatchColor, onPress, com
   swatchColor?: RGBLike;
   onPress?: () => void;
   compact: boolean;
-  /** Render just the icon (no caption) — used by the swap arrow. */
-  iconOnly?: boolean;
 }) {
   const glyphSize = compact ? 24 : 28;
   return (
@@ -121,7 +119,7 @@ function GridButton({ label, caption, icon, iconColor, swatchColor, onPress, com
       ) : (
         <MaterialCommunityIcons name={icon as MCIName} size={glyphSize} color={iconColor ?? ICON_COLOR} />
       )}
-      {iconOnly ? null : <Text style={styles.gridLabel} numberOfLines={1}>{caption ?? label}</Text>}
+      <Text style={styles.gridLabel} numberOfLines={1}>{caption ?? label}</Text>
     </Pressable>
   );
 }
@@ -136,8 +134,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const compact = width < COMPACT_MAX_WIDTH;
   const [mounted, setMounted] = useState(model.visible);
   // Which set the single row shows: false = common actions, true = the
-  // type-specific options. The leading `<` cell (and a horizontal swipe) flip
-  // it; showTypeRow is ignored when the selection has no type options.
+  // type-specific options. A horizontal swipe flips it; showTypeRow is ignored
+  // when the selection has no type options.
   const [showTypeRow, setShowTypeRow] = useState(false);
   // The panel rests against the bottom edge. Where a device reports a bottom
   // inset (iOS home indicator / curved corners) the carousel dots sit *in* that
@@ -768,30 +766,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     if (model.showTextStyle) typeOptions.push(<GridButton key="align" label="Align" caption="Align" icon="format-align-center" onPress={() => openSubmenu('align')} compact={compact} />);
   }
 
-  // Only one set shows at a time; the `<` cell (far right) swaps between them.
-  // Columns stay fixed (the larger set + the arrow) so the cells don't resize
-  // on swap; empty cells sit between the buttons and the right-aligned arrow.
+  // Only one set shows at a time; a horizontal swipe swaps between them (the
+  // dots below track which is showing). Columns stay fixed at the larger set's
+  // count so the cells don't resize on swap; empty cells split either side of
+  // the smaller set to centre it.
   const canSwap = !!typeOptions;
   canSwapRef.current = canSwap;
   const showType = canSwap && showTypeRow;
   const activeButtons = showType ? typeOptions! : row1;
-  const columns = Math.max(row1.length, typeOptions ? typeOptions.length : 0) + (canSwap ? 1 : 0);
-  // Empty cells keep each button one grid column wide (so the buttons never
-  // resize); split them either side of the button group to centre it, with the
-  // arrow always in the last column.
-  const totalPad = Math.max(0, columns - activeButtons.length - (canSwap ? 1 : 0));
-  const padLeft = Math.min(totalPad, Math.floor((columns - activeButtons.length) / 2));
+  const columns = Math.max(row1.length, typeOptions ? typeOptions.length : 0);
+  const totalPad = Math.max(0, columns - activeButtons.length);
+  const padLeft = Math.floor(totalPad / 2);
   const padRight = totalPad - padLeft;
-  const swapArrow = canSwap ? (
-    <GridButton
-      key="swap"
-      label={showType ? 'Back to common actions' : 'Show edit options'}
-      icon="chevron-left"
-      iconOnly
-      onPress={() => runSwapRef.current(-1)}
-      compact={compact}
-    />
-  ) : null;
 
   // Params tracked by the sliders/pad come from the local draft; color comes
   // from the model (it's changed externally, via the full-screen picker).
@@ -970,16 +956,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
       <View style={styles.clip} pointerEvents="box-none">
         <Animated.View style={[styles.panel, { height: panelBox.height, paddingBottom: panelBox.paddingBottom, transform: [{ translateY }] }]}>
         {/* A single row of buttons (common actions or type-specific options)
-            that the `<` cell / a horizontal swipe slides between. Empty cells
-            flank the buttons to centre the group; the arrow stays last.
-            Carousel dots below track which page is showing. */}
+            that a horizontal swipe slides between. Empty cells flank the
+            buttons to centre the group. Carousel dots below track which page
+            is showing. */}
         <View style={styles.swapArea} {...(canSwap ? swapPan.panHandlers : {})}>
           <Animated.View style={{ transform: [{ translateX: swapX }] }}>
             <View style={styles.gridRow}>
               {Array.from({ length: padLeft }).map((_, i) => <View key={`padL${i}`} style={styles.gridSpacer} />)}
               {activeButtons}
               {Array.from({ length: padRight }).map((_, i) => <View key={`padR${i}`} style={styles.gridSpacer} />)}
-              {swapArrow}
             </View>
           </Animated.View>
         </View>
@@ -1021,10 +1006,10 @@ const styles = StyleSheet.create({
   dotActive: { backgroundColor: ICON_COLOR },
   // Submenu carousel dots, pinned to the bottom of the slide-up layer.
   submenuDots: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 },
-  // A grid row: equal-width cells (the buttons) plus any right-side padding
-  // cells, so the common-actions and type-options sets share the same columns
-  // (stable cell width across a swap), separated by a gap wide enough that the
-  // icon+caption cells read as distinct buttons rather than one strip.
+  // A grid row: equal-width cells (the buttons) plus the padding cells that
+  // centre them, so the common-actions and type-options sets share the same
+  // columns (stable cell width across a swap), separated by a gap wide enough
+  // that the icon+caption cells read as distinct buttons rather than one strip.
   gridRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
