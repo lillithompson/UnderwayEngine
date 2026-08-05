@@ -146,4 +146,35 @@ describe('generateCompositionSVGCore — frame export bounds', () => {
     // Without isFrame the viewBox tracks the visible member (2..6), NOT 0..32.
     expect(svg).toMatch(new RegExp(`viewBox="${2 * U} ${2 * U} ${4 * U} ${4 * U}"`));
   });
+
+  test('a hidden frame exports nothing — members inherit the hide', async () => {
+    const gFrame = { ...group('gFrame', { isFrame: true }), hidden: true as const };
+    const boundary = { ...rectMask('svg_boundary', 'gFrame', 0, 0, 32, 42), hidden: true };
+    const member = rectMask('svg_member', 'gFrame', 2, 2, 4, 4);
+    member.isMask = undefined;
+    member.color = { r: 200, g: 100, b: 50 };
+
+    // Nothing visible is left, so the generator returns null (empty scene) —
+    // even though the member's own `hidden` flag is clear.
+    expect(member.hidden).toBeUndefined();
+    expect(await generateCompositionSVGCore(baseInput([boundary, member], [gFrame]))).toBeNull();
+  });
+
+  test('a hidden NESTED group hides only its own subtree', async () => {
+    const gFrame = group('gFrame', { isFrame: true });
+    const gInner = { ...group('gInner', { parentGroupId: 'gFrame' }), hidden: true as const };
+    const boundary = { ...rectMask('svg_boundary', 'gFrame', 0, 0, 32, 42), hidden: true };
+    const shown = rectMask('svg_shown', 'gFrame', 2, 2, 4, 4);
+    shown.isMask = undefined;
+    shown.color = { r: 200, g: 100, b: 50 };
+    const inner = rectMask('svg_inner', 'gInner', 8, 8, 4, 4);
+    inner.isMask = undefined;
+    inner.color = { r: 10, g: 20, b: 30 };
+
+    // Nodes are identified in the output by their stroke color.
+    const svg = await generateCompositionSVGCore(baseInput([boundary, shown, inner], [gFrame, gInner]));
+    expect(svg).not.toBeNull();
+    expect(svg).toContain('rgb(200,100,50)'); // shown: outside the hidden group
+    expect(svg).not.toContain('rgb(10,20,30)'); // inner: inherits gInner's hide
+  });
 });

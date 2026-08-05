@@ -280,10 +280,10 @@ describe('image visibility (hidden)', () => {
   });
 
   test('single setObjectHidden op affects only the targeted member of a group', () => {
-    // Group cascade is computed at the handler layer in
-    // `computeGroupHiddenToggle` (which emits one op per descendant). The
-    // op itself is single-id, mirroring lockObject — this test pins that
-    // the op alone never silently fans out to group siblings.
+    // Group visibility is inherited, not propagated: hiding a group is a
+    // single `hideGroup` op on the group's own flag. `setObjectHidden` is
+    // single-id, mirroring lockObject — this test pins that the op alone
+    // never silently fans out to group siblings.
     const a = makeImage('img_a', { groupId: 'g1' });
     const b = makeImage('img_b', { groupId: 'g1' });
     const group: GroupNode = {

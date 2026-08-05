@@ -684,6 +684,14 @@ export interface GroupNode {
    *  `locked` (see isItemLocked / isGroupChainLocked in compositionOps).
    *  Stored true/undefined, never false. */
   locked?: boolean;
+  /** When true, this group is hidden: nothing inside it draws or hit-tests,
+   *  WITHOUT the members' own per-leaf `hidden` flags being touched — the
+   *  hide is inherited, not propagated, so un-hiding the group restores each
+   *  member's individual visibility exactly as it was. A leaf's *effective*
+   *  visibility is its own `hidden` OR any ancestor group's `hidden` (see
+   *  isItemHidden / isGroupChainHidden in compositionOps). Mirrors `locked`.
+   *  Stored true/undefined, never false. */
+  hidden?: boolean;
 }
 
 export interface CompositionEntry {
@@ -1470,6 +1478,12 @@ export type CompUndoOp =
    *  contains it (resolved via SCENE_ADAPTERS). Replaces the prior
    *  image-only `setImageHidden`. */
   | { op: 'setObjectHidden'; id: string; oldValue: boolean; newValue: boolean }
+  /** Visibility toggle for a GROUP (frame or plain group). Apply: set
+   *  `group.hidden = newValue` for the matching group id. The group's members
+   *  are NOT touched — they inherit the hide via isItemHidden's ancestor walk,
+   *  so un-hiding the group restores each member's own visibility exactly.
+   *  Mirror of `lockGroup`. */
+  | { op: 'hideGroup'; id: string; oldValue: boolean; newValue: boolean }
   /** Generic z-order change for any number of scene-object kinds.
    *  `oldOrder` / `newOrder` map kind → id list. Apply uses newOrder,
    *  revert uses oldOrder. Adding a new CompItemKind extends the keys

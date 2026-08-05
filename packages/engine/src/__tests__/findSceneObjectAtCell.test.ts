@@ -139,6 +139,41 @@ describe('findSceneObjectAtCell — z-order across kinds', () => {
     expect(findSceneObjectAtCell(state, 1, 1, { ignoreLock: true })).toBeNull();
   });
 
+  test('a member of a hidden group is skipped, next-front wins', () => {
+    // The image's OWN `hidden` flag is clear — it inherits the hide from its
+    // frame, exactly as it inherits a lock.
+    const big = makeFigure('big', { cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 10 });
+    const img = makeImage('i1', { cellX: 3, cellY: 3, cellWidth: 4, cellHeight: 4, groupId: 'frame' });
+    const state = makeState({
+      figures: [big],
+      images: [img],
+      groups: [{
+        id: 'frame', name: 'Daily Haiku', isFrame: true, hidden: true,
+        translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
+        rotation: 0, mirrorH: false, mirrorV: false,
+      }],
+      sceneOrder: ['big', 'i1'], // image on top, but its frame is hidden
+    });
+    expect(img.hidden).toBeUndefined();
+    expect(findSceneObjectAtCell(state, 5, 5)).toEqual({ kind: 'figure', id: 'big' });
+    // ignoreLock (eyedropper) does not resurrect an invisible node either.
+    expect(findSceneObjectAtCell(state, 5, 5, { ignoreLock: true })).toEqual({ kind: 'figure', id: 'big' });
+  });
+
+  test('a visible group does not hide its members', () => {
+    const img = makeImage('i1', { cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4, groupId: 'frame' });
+    const state = makeState({
+      images: [img],
+      groups: [{
+        id: 'frame', name: 'Daily Haiku', isFrame: true,
+        translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
+        rotation: 0, mirrorH: false, mirrorV: false,
+      }],
+      sceneOrder: ['i1'],
+    });
+    expect(findSceneObjectAtCell(state, 1, 1)).toEqual({ kind: 'image', id: 'i1' });
+  });
+
   test('locked front-most object is skipped, next-front wins', () => {
     const big = makeFigure('big', { cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 10, locked: true });
     const line = makeLine('l1', [[2, 5], [8, 5]]);

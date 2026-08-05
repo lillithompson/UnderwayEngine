@@ -16,6 +16,7 @@ import { roundPathCorners, svgStrokeRadiusCells } from './svgStroke';
 import { chainSegments } from './compositionArcMath';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { buildActiveMaskMap, clipRectToNodeMasks } from './compositionMask';
+import { hiddenGroupIds } from './compositionOps';
 import { buildMaskClipDefs, wrapWithMaskClip } from './compositionMaskSVG';
 import { effectiveStrokeMultiplier, normalizeStrokeScale } from './strokeScale';
 import { simplifySVG } from './simplifySVG';
@@ -321,10 +322,16 @@ export async function generateCompositionSVGCore(
   cancelled?: () => boolean,
 ): Promise<string | null> {
   const { imageBlobs } = input;
-  const figures = input.figures.filter(f => !f.hidden);
-  const svgObjects = input.svgObjects.filter(s => !s.hidden);
-  const images = input.images.filter(i => !i.hidden);
-  const texts = (input.texts ?? []).filter(t => !t.hidden);
+  // A node is dropped from the drawn set when its OWN `hidden` flag is set or
+  // when it sits inside a hidden group (an inherited hide — the group carries
+  // the flag, its members keep their individual settings).
+  const hiddenGroups = hiddenGroupIds(input.groups ?? []);
+  const shown = (n: { hidden?: boolean; groupId?: string }): boolean =>
+    !n.hidden && !(n.groupId !== undefined && hiddenGroups.has(n.groupId));
+  const figures = input.figures.filter(shown);
+  const svgObjects = input.svgObjects.filter(shown);
+  const images = input.images.filter(shown);
+  const texts = (input.texts ?? []).filter(shown);
   if (figures.length === 0 && svgObjects.length === 0 && images.length === 0 && texts.length === 0) return null;
 
   // Active masks resolve from the UNFILTERED svg objects: a hidden mask

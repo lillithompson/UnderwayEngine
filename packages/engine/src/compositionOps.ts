@@ -150,33 +150,67 @@ export function isItemLocked(state: CompositionState, id: string): boolean {
   return (ref.item.locked ?? false) || isGroupChainLocked(state, ref.item.groupId);
 }
 
+/** A group's OWN hidden flag (does not consider ancestors). */
+export function isGroupHidden(state: CompositionState, groupId: string): boolean {
+  return !!state.groups.find((g) => g.id === groupId)?.hidden;
+}
+
+/**
+ * THE definition of "hidden" for groups: every group id that is hidden, either
+ * by its own `hidden` flag or inherited from an ancestor. One O(groups) pass —
+ * each chain is walked at most once, since a walk stops at the first
+ * already-classified group.
+ *
+ * Call this ONCE per pass (render, hit-test, export) and test membership in
+ * O(1); {@link isGroupChainHidden} wraps it for one-off queries.
+ */
+export function hiddenGroupIds(groups: readonly GroupNode[]): Set<string> {
+  const hidden = new Set<string>();
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  for (const g of groups) {
+    // Walk to the root, remembering the path so every group on it can be
+    // marked in one pass.
+    const path: GroupNode[] = [];
+    const onPath = new Set<string>(); // cycle guard for a malformed parent chain
+    let cur: GroupNode | undefined = g;
+    let inherited = false;
+    while (cur && !onPath.has(cur.id)) {
+      if (hidden.has(cur.id)) { inherited = true; break; }
+      path.push(cur);
+      onPath.add(cur.id);
+      if (cur.hidden) { inherited = true; break; }
+      cur = cur.parentGroupId ? byId.get(cur.parentGroupId) : undefined;
+    }
+    if (inherited) for (const p of path) hidden.add(p.id);
+  }
+  return hidden;
+}
+
+/** True when `groupId` OR any of its ancestor groups is hidden. Passing a
+ *  leaf's `groupId` answers "is this leaf inside a hidden group subtree?";
+ *  passing a frame's own id answers "is this frame effectively hidden?"
+ *  Mirror of {@link isGroupChainLocked}. Delegates to {@link hiddenGroupIds}
+ *  so there is one implementation of the inheritance rule; prefer that set
+ *  directly in any loop over nodes. */
+export function isGroupChainHidden(state: CompositionState, groupId: string | undefined): boolean {
+  if (!groupId) return false;
+  return hiddenGroupIds(state.groups).has(groupId);
+}
+
+/** A leaf's EFFECTIVE visibility: its own `hidden` flag OR the hidden flag of
+ *  any group in its ancestor chain. Hiding a group therefore makes every
+ *  member invisible without mutating the members' own flags — an inherited
+ *  hide, exactly like {@link isItemLocked}. Un-hiding the group restores each
+ *  member's individual visibility setting. */
 export function isItemHidden(state: CompositionState, id: string): boolean {
   const ref = findItem(state, id);
-  return ref ? ((ref.item as { hidden?: boolean }).hidden ?? false) : false;
+  if (!ref) return false;
+  return ((ref.item as { hidden?: boolean }).hidden ?? false)
+    || isGroupChainHidden(state, ref.item.groupId);
 }
 
 export function getItemGroupId(state: CompositionState, id: string): string | undefined {
   return findItem(state, id)?.item.groupId;
-}
-
-/**
- * Resolve a hide-toggle anchor to the member ids that toggle together.
- * The anchor may be a GROUP id (→ all descendant leaves) or a leaf id (→ its
- * whole root group when grouped, else just itself). Null when the anchor
- * resolves to nothing.
- *
- * NOTE: this is the VISIBILITY (hidden) fan-out only. Locking a group no
- * longer propagates to members — a group carries its own `locked` flag and
- * members inherit it (see the `lockGroup` op + isItemLocked's ancestor walk).
- */
-function resolveGroupToggleIds(state: CompositionState, anchorId: string): string[] | null {
-  if (state.groups.some((g) => g.id === anchorId)) {
-    return allDescendantMemberIds(state, anchorId);
-  }
-  const anchor = findItem(state, anchorId);
-  if (!anchor) return null;
-  const gid = anchor.item.groupId;
-  return gid ? allDescendantMemberIds(state, findRootGroupId(state.groups, gid)) : [anchorId];
 }
 
 export interface GroupHiddenToggle {
@@ -186,26 +220,38 @@ export interface GroupHiddenToggle {
 }
 
 /**
- * Compute the visibility (hidden) toggle for a group/leaf anchor. Resolves an
- * anchor id to all descendant member ids when grouped; the new hidden value
- * flips against the "all hidden" aggregate so the eye icon and the action stay
- * in sync. (Visibility still fans out to members; lock does not — see the
- * `lockGroup` op.)
+ * Compute the visibility (hidden) toggle for a group/leaf anchor — the single
+ * authority behind the Scene Outline's eye toggle.
+ *
+ * Visibility works exactly like lock (see the `lockGroup` op): it does NOT fan
+ * out. A GROUP anchor flips the group's own `hidden` flag, which every member
+ * inherits (isItemHidden's ancestor walk) while their individual `hidden`
+ * settings stay untouched — so un-hiding the frame restores each child's own
+ * visibility rather than revealing everything. A LEAF anchor flips only that
+ * leaf, even when it belongs to a group. Null when the anchor resolves to
+ * nothing.
  */
 export function computeGroupHiddenToggle(
   state: CompositionState,
   anchorId: string,
 ): GroupHiddenToggle | null {
-  const ids = resolveGroupToggleIds(state, anchorId);
-  if (ids === null || ids.length === 0) return null;
-  const newHidden = !ids.every((id) => isItemHidden(state, id));
-  const undoOps: CompUndoEntry = ids.map((id) => ({
-    op: 'setObjectHidden',
-    id,
-    oldValue: isItemHidden(state, id),
-    newValue: newHidden,
-  }));
-  return { ids, newHidden, undoOps };
+  const group = state.groups.find((g) => g.id === anchorId);
+  if (group) {
+    const oldValue = group.hidden ?? false;
+    return {
+      ids: [anchorId],
+      newHidden: !oldValue,
+      undoOps: [{ op: 'hideGroup', id: anchorId, oldValue, newValue: !oldValue }],
+    };
+  }
+  const anchor = findItem(state, anchorId);
+  if (!anchor) return null;
+  const oldValue = (anchor.item as { hidden?: boolean }).hidden ?? false;
+  return {
+    ids: [anchorId],
+    newHidden: !oldValue,
+    undoOps: [{ op: 'setObjectHidden', id: anchorId, oldValue, newValue: !oldValue }],
+  };
 }
 
 /**
@@ -1812,6 +1858,7 @@ export function findFigureAtCell(
   cellX: number, cellY: number, state: CompositionState,
 ): string | null {
   const maskMap = buildActiveMaskMap(state);
+  const hiddenGroups = hiddenGroupIds(state.groups);
   const figMap = new Map<string, CompositionFigure>();
   for (const f of state.figures) figMap.set(f.id, f);
 
@@ -1823,6 +1870,7 @@ export function findFigureAtCell(
     if (f.groupId) {
       if (checkedGroups.has(f.groupId)) continue;
       checkedGroups.add(f.groupId);
+      if (hiddenGroups.has(f.groupId)) continue; // inherited hide
       const members = state.figures.filter(m => m.groupId === f.groupId);
       if (members.some(m => m.locked)) continue;
       if (state.svgObjects.some(s => s.groupId === f.groupId && s.locked)) continue;
@@ -1865,6 +1913,7 @@ export function findFigureAtCell(
     const s = svgMap.get(state.sceneOrder[i]);
     if (!s || !s.groupId || checkedGroups.has(s.groupId)) continue;
     checkedGroups.add(s.groupId);
+    if (hiddenGroups.has(s.groupId)) continue; // inherited hide
     if (state.svgObjects.some(m => m.groupId === s.groupId && m.locked)) continue;
     if (state.svgObjects.some(m => m.groupId === s.groupId && m.hidden)) continue;
     const b = groupBounds(state.figures, s.groupId, state.svgObjects, undefined, state.images, state.groups, undefined, state.texts);
@@ -1896,6 +1945,7 @@ export function findImageAtCell(
   const stateImages = state.images ?? [];
   if (stateImages.length === 0) return null;
   const maskMap = buildActiveMaskMap(state);
+  const hiddenGroups = hiddenGroupIds(state.groups);
   const imgMap = new Map<string, ImageObject>();
   for (const img of stateImages) imgMap.set(img.id, img);
 
@@ -1907,6 +1957,7 @@ export function findImageAtCell(
     if (img.groupId) {
       if (checkedGroups.has(img.groupId)) continue;
       checkedGroups.add(img.groupId);
+      if (hiddenGroups.has(img.groupId)) continue; // inherited hide
       if (stateImages.some(m => m.groupId === img.groupId && m.locked)) continue;
       if (stateImages.some(m => m.groupId === img.groupId && m.hidden)) continue;
       if (state.figures.some(f => f.groupId === img.groupId && f.hidden)) continue;
@@ -1943,6 +1994,7 @@ export function findTextAtCell(
   const stateTexts = state.texts ?? [];
   if (stateTexts.length === 0) return null;
   const maskMap = buildActiveMaskMap(state);
+  const hiddenGroups = hiddenGroupIds(state.groups);
   const txtMap = new Map<string, TextObject>();
   for (const txt of stateTexts) txtMap.set(txt.id, txt);
 
@@ -1954,6 +2006,7 @@ export function findTextAtCell(
     if (txt.groupId) {
       if (checkedGroups.has(txt.groupId)) continue;
       checkedGroups.add(txt.groupId);
+      if (hiddenGroups.has(txt.groupId)) continue; // inherited hide
       if (stateTexts.some(m => m.groupId === txt.groupId && m.locked)) continue;
       if (stateTexts.some(m => m.groupId === txt.groupId && m.hidden)) continue;
       if (state.figures.some(f => f.groupId === txt.groupId && f.hidden)) continue;
@@ -2027,6 +2080,11 @@ export function findSceneObjectAtCell(
 
   const maskMap = buildActiveMaskMap(state);
 
+  // Inherited hide: a member of a hidden group (frame) draws nothing, so it
+  // must not be hit-testable either. Resolved once for the whole walk (O(1)
+  // membership below) instead of re-walking each node's ancestor chain.
+  const hiddenGroups = hiddenGroupIds(state.groups);
+
   // Track the first SVG whose bbox passes but whose path misses â€”
   // returned as a fallback when nothing else is behind it.
   let svgBboxFallback: { kind: CompItemKind; id: string } | null = null;
@@ -2042,6 +2100,10 @@ export function findSceneObjectAtCell(
     // only checks the node's OWN flag, so skip ancestor-group-locked members
     // here. `ignoreLock` (eyedropper) bypasses this like the per-node check.
     if (!options?.ignoreLock && isGroupChainLocked(state, node.groupId)) continue;
+    // Inherited hide (mirror of the lock skip above): the per-node hitTest
+    // only checks the node's OWN `hidden` flag. Unlike lock, `ignoreLock`
+    // does not bypass this — an invisible pixel has no color to sample.
+    if (node.groupId && hiddenGroups.has(node.groupId)) continue;
     // Free (continuous) rotation is layered on top of the axis-aligned bbox:
     // the geometry adapters test the UNROTATED shape, so rotate the query
     // point back into the node's local frame (by -angleDeg about the bbox
@@ -3808,6 +3870,15 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       }
       return next;
     }
+    case 'hideGroup': {
+      // Mirror of lockGroup: set the group's OWN hidden flag. Members are
+      // untouched — they inherit the hide through isItemHidden's ancestor
+      // walk, so un-hiding restores each member's own visibility.
+      return {
+        ...state,
+        groups: state.groups.map((g) => (g.id === op.id ? { ...g, hidden: op.newValue } : g)),
+      };
+    }
     case 'setNodeRotation':
       // Free (continuous) rotation: mirror of lockObject — resolve the id
       // through SCENE_ADAPTERS and write the new angle. Apply uses
@@ -4433,6 +4504,8 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
       return applyOp(state, { op: 'lockGroup', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
     case 'setObjectHidden':
       return applyOp(state, { op: 'setObjectHidden', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
+    case 'hideGroup':
+      return applyOp(state, { op: 'hideGroup', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
     case 'setNodeRotation':
       return setNodeAngleDeg(state, op.id, op.oldAngleDeg);
     case 'reorderObjects':

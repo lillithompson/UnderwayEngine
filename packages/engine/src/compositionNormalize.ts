@@ -10,6 +10,7 @@ import {
 } from './types';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { frameGroupIdForNode } from './compositionFrame';
+import { hiddenGroupIds } from './compositionOps';
 
 /** Canonical canvas axis length in L0 cells. Soft target — the
  *  normalizer aims to fit content into a `[0, CANONICAL_SIZE]` box
@@ -81,8 +82,16 @@ export function computeContentBBox(
   const frameOf = (groupId: string | undefined): string | undefined =>
     groups ? frameGroupIdForNode(groups, groupId) : undefined;
 
+  // Inherited hide: a member of a hidden group is invisible even though its
+  // own `hidden` flag is clear, so it must not drive the anchor either. A
+  // hidden FRAME still anchors through its boundary rect (below), so hiding a
+  // frame never re-anchors the page.
+  const hiddenGroups = groups ? hiddenGroupIds(groups) : null;
+  const inHiddenGroup = (groupId: string | undefined): boolean =>
+    !!hiddenGroups && groupId !== undefined && hiddenGroups.has(groupId);
+
   for (const f of figures) {
-    if (f.hidden || frameOf(f.groupId)) continue;
+    if (f.hidden || inHiddenGroup(f.groupId) || frameOf(f.groupId)) continue;
     any = true;
     if (f.cellX < minX) minX = f.cellX;
     if (f.cellY < minY) minY = f.cellY;
@@ -96,7 +105,7 @@ export function computeContentBBox(
     // member is clipped to that boundary, so it can't extend the anchor.
     const inFrame = frameOf(s.groupId);
     const isFrameBoundary = !!inFrame && !!s.isMask;
-    if (!isFrameBoundary && (s.hidden || inFrame)) continue;
+    if (!isFrameBoundary && (s.hidden || inHiddenGroup(s.groupId) || inFrame)) continue;
     any = true;
     const acc = (bb: { minX: number; minY: number; maxX: number; maxY: number } | null) => {
       if (!bb) return;
@@ -120,7 +129,7 @@ export function computeContentBBox(
 
   if (images) {
     for (const img of images) {
-      if (img.hidden || frameOf(img.groupId)) continue;
+      if (img.hidden || inHiddenGroup(img.groupId) || frameOf(img.groupId)) continue;
       any = true;
       if (img.cellX < minX) minX = img.cellX;
       if (img.cellY < minY) minY = img.cellY;
@@ -131,7 +140,7 @@ export function computeContentBBox(
 
   if (texts) {
     for (const t of texts) {
-      if (t.hidden || frameOf(t.groupId)) continue;
+      if (t.hidden || inHiddenGroup(t.groupId) || frameOf(t.groupId)) continue;
       any = true;
       if (t.cellX < minX) minX = t.cellX;
       if (t.cellY < minY) minY = t.cellY;

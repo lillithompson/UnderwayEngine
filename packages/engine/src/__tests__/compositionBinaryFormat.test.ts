@@ -1273,6 +1273,40 @@ describe('compositionBinaryFormat', () => {
       expect(groups.find((g) => g.id === 'og')?.locked).toBeUndefined();
     });
 
+    test('round-trips the group hidden flag (v39)', () => {
+      const hidden = { ...makeGroup('hg', 'Hidden'), hidden: true as const };
+      const shown = makeGroup('sg', 'Shown');
+      const fHidden = makeFigure({ id: 'f1', figureKey: 'k', groupId: 'hg' });
+      const fShown = makeFigure({ id: 'f2', figureKey: 'k', groupId: 'sg' });
+      const bytes = serializeComposition(
+        makeBundle({ figures: [fHidden, fShown], groups: [hidden, shown] }),
+        [],
+      );
+      const groups = deserializeComposition(bytes).meta.groups ?? [];
+      expect(groups.find((g) => g.id === 'hg')?.hidden).toBe(true);
+      // Absent flag stays undefined (true/undefined convention, never false).
+      expect(groups.find((g) => g.id === 'sg')?.hidden).toBeUndefined();
+      // The hide is inherited — members' own flags were never written.
+      const figs = deserializeComposition(bytes).meta.figures ?? [];
+      expect(figs.every((f) => f.hidden === undefined)).toBe(true);
+    });
+
+    test('the second group-flags byte does not disturb the other group fields', () => {
+      const g = { ...makeGroup('g', 'G', undefined), hidden: true as const, locked: true as const, isFrame: true as const };
+      const child = { ...makeGroup('c', 'C', 'g'), translateX: 3, translateY: -2, scaleX: 2, scaleY: 4 };
+      const bytes = serializeComposition(
+        makeBundle({ figures: [makeFigure({ id: 'f1', figureKey: 'k', groupId: 'c' })], groups: [g, child] }),
+        [],
+      );
+      const groups = deserializeComposition(bytes).meta.groups ?? [];
+      const rg = groups.find((x) => x.id === 'g')!;
+      expect([rg.hidden, rg.locked, rg.isFrame]).toEqual([true, true, true]);
+      const rc = groups.find((x) => x.id === 'c')!;
+      expect(rc.parentGroupId).toBe('g');
+      expect([rc.translateX, rc.translateY, rc.scaleX, rc.scaleY]).toEqual([3, -2, 2, 4]);
+      expect(rc.hidden).toBeUndefined();
+    });
+
     test('regression: 2objsbug.tile loads with zero scene objects and no orphan groups', () => {
       // This file was authored before the fix: 2 GroupNodes ("Group 1"
       // and "Group 1 copy") with zero figure/svg/image members.  The dev

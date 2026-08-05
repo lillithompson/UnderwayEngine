@@ -1,4 +1,4 @@
-import { findItem, isItemLocked, isGroupChainLocked, getItemGroupId, applyCompOps, revertCompOps, clonePathSegment, assertSceneOrderInvariant } from '../compositionOps';
+import { findItem, isItemLocked, isGroupChainLocked, isItemHidden, isGroupChainHidden, hiddenGroupIds, getItemGroupId, applyCompOps, revertCompOps, clonePathSegment, assertSceneOrderInvariant } from '../compositionOps';
 import { SVGObject, PathSegment, CompositionState, CompositionFigure, makeViewport } from '../types';
 
 function makeState(over: Partial<CompositionState> = {}): CompositionState {
@@ -106,6 +106,46 @@ describe('isGroupChainLocked', () => {
     const rootLocked = { ...chain, groups: chain.groups.map((g) => (g.id === 'root' ? { ...g, locked: true } : g)) };
     expect(isGroupChainLocked(rootLocked, 'child')).toBe(true);
     expect(isGroupChainLocked(rootLocked, 'root')).toBe(true);
+  });
+});
+
+describe('isItemHidden / isGroupChainHidden / hiddenGroupIds', () => {
+  const nested = (over: Partial<CompositionState> = {}) => makeState({
+    svgObjects: [{ ...SVG_ARC, groupId: 'child' }],
+    groups: [
+      { id: 'root', name: 'R', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },
+      { id: 'child', name: 'C', parentGroupId: 'root', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },
+    ],
+    ...over,
+  } as Partial<CompositionState>);
+
+  it('is false throughout a visible chain', () => {
+    const state = nested();
+    expect(isGroupChainHidden(state, undefined)).toBe(false);
+    expect(isGroupChainHidden(state, 'child')).toBe(false);
+    expect(isItemHidden(state, 'svg_b')).toBe(false);
+    expect(hiddenGroupIds(state.groups).size).toBe(0);
+  });
+
+  it('is EFFECTIVE: a member of a hidden group reads as hidden without its own flag set', () => {
+    const state = nested();
+    const hidden = { ...state, groups: state.groups.map((g) => (g.id === 'child' ? { ...g, hidden: true } : g)) };
+    expect(isItemHidden(hidden, 'svg_b')).toBe(true);
+    // The member's OWN flag is never touched by the inherited hide.
+    expect(hidden.svgObjects[0].hidden).toBeUndefined();
+  });
+
+  it('inherits a hide from ANY ancestor group (nested chain)', () => {
+    const state = nested();
+    const rootHidden = { ...state, groups: state.groups.map((g) => (g.id === 'root' ? { ...g, hidden: true } : g)) };
+    expect(isGroupChainHidden(rootHidden, 'child')).toBe(true);
+    expect(isItemHidden(rootHidden, 'svg_b')).toBe(true);
+    expect(hiddenGroupIds(rootHidden.groups)).toEqual(new Set(['root', 'child']));
+  });
+
+  it("does not clear a member's own hide when the group is visible", () => {
+    const state = nested({ svgObjects: [{ ...SVG_ARC, groupId: 'child', hidden: true }] });
+    expect(isItemHidden(state, 'svg_b')).toBe(true);
   });
 });
 

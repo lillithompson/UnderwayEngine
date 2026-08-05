@@ -281,12 +281,19 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // flags4 bit 0x01 = hasPatternFileId; payload = u16 string-table ref written
 // with the other conditional string refs (after preGroupName). Read is gated
 // on version>=38, so older files load with no flags4 byte consumed.
-const FORMAT_VERSION = 38;
+// v39: GroupNode `hidden` (an inherited group/frame hide, the mirror of the
+// v32 `locked` flag). The group-flags byte is fully spent (v32 took 0x80), so
+// v39 adds a second per-group flags byte written right after it; bit 0x01 =
+// hidden. Presence-only — no payload bytes. Gated on version>=39, so v38-and-
+// earlier files (which have no second byte) are never misread; they load with
+// hidden undefined (visible), exactly as they rendered before.
+const FORMAT_VERSION = 39;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
-// Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + 4Ã—float32 = 21
+// Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
+// + 4Ã—float32 = 22
 // Optionally followed by parentGroupIdIdx(u16) and preGroupNameIdx(u16)
-const GROUP_RECORD_BASE_SIZE = 2 + 2 + 1 + 4 + 4 + 4 + 4; // 21 bytes
+const GROUP_RECORD_BASE_SIZE = 2 + 2 + 1 + 1 + 4 + 4 + 4 + 4; // 22 bytes
 
 // Blend mode â†” byte mapping for colorOverride persistence (v22+).
 const BLEND_MODE_TO_BYTE: Record<BlendMode, number> = {
@@ -2397,6 +2404,8 @@ export function serializeComposition(
     if (g.isFrame) gflags |= 0x40;
     if (g.locked) gflags |= 0x80;
     out[pos++] = gflags;
+    // Second group-flags byte (v39+): gflags is fully spent.
+    out[pos++] = g.hidden ? 0x01 : 0x00;
     view.setFloat32(pos, g.translateX, true); pos += 4;
     view.setFloat32(pos, g.translateY, true); pos += 4;
     view.setFloat32(pos, g.scaleX, true); pos += 4;
@@ -2696,6 +2705,8 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       const idIdx = view.getUint16(pos, true); pos += 2;
       const nameIdx = view.getUint16(pos, true); pos += 2;
       const gflags = data[pos++];
+      // Second group-flags byte, present only in v39+ files.
+      const gflags2 = version >= 39 ? data[pos++] : 0;
       const translateX = view.getFloat32(pos, true); pos += 4;
       const translateY = view.getFloat32(pos, true); pos += 4;
       const scaleX = view.getFloat32(pos, true); pos += 4;
@@ -2720,6 +2731,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
         mirrorV: (gflags & 0x02) !== 0,
         ...(version >= 30 && (gflags & 0x40) !== 0 ? { isFrame: true as const } : null),
         ...(version >= 32 && (gflags & 0x80) !== 0 ? { locked: true as const } : null),
+        ...((gflags2 & 0x01) !== 0 ? { hidden: true as const } : null),
       });
     }
   }
