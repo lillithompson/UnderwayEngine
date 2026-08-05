@@ -19,13 +19,17 @@ import {
 // tools right-aligned as 40px icon buttons (blue when active). The color
 // tool renders as a live swatch with Facet's double selection ring. Toggle
 // semantics (nextToolOnPress) are applied here so the app's onSelectTool
-// receives the already-resolved tool.
+// receives the already-resolved tool — including `null`, which is a press on
+// the active tool untoggling it, leaving every button unlit.
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 export function TopBar({ model }: { model: TopBarModel }) {
-  const toolIds = model.tools.map((t) => t.id);
-  const activeId = model.tools.find((t) => t.active)?.id ?? toolIds[0] ?? '';
+  // No `active` tool is a real state (all tools untoggled), not a missing
+  // one — so it stays null rather than falling back to the first tool, or
+  // pressing that tool would read as "already active" and untoggle instead
+  // of selecting it.
+  const activeId = model.tools.find((t) => t.active)?.id ?? null;
   const swatchSize = ICON_SIZE - 4;
 
   return (
@@ -48,7 +52,7 @@ export function TopBar({ model }: { model: TopBarModel }) {
             accessibilityRole="button"
             accessibilityLabel={tool.id}
             style={styles.toolButton}
-            onPress={() => model.onSelectTool(nextToolOnPress(toolIds, activeId, tool.id))}
+            onPress={() => model.onSelectTool(nextToolOnPress(activeId, tool.id))}
             // Facet's ToolbarButton: a hold runs the tool's own long-press
             // action (sub-mode toggle) INSTEAD of the press toggle, never
             // both — RN suppresses onPress once onLongPress has fired.

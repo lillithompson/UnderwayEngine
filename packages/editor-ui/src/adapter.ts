@@ -109,7 +109,9 @@ export interface TopBarModel {
   onLabelPress?: () => void;
   tools: TopBarTool[];
   onBack(): void;
-  onSelectTool(id: string): void;
+  /** The tool the press resolves to, or `null` when the press untoggled the
+   *  active tool and the app is left with none (see nextToolOnPress). */
+  onSelectTool(id: string | null): void;
 }
 
 // ── Object properties ────────────────────────────────────────────────
