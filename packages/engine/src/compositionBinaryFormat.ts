@@ -136,12 +136,18 @@ import { compSnapStep } from './compositionCellMath';
 //   Gradient geometry is unit-bbox space, stored as f32 LE.
 //
 // EFFECTS PAYLOAD (v29+, shared by SVG, image, and text records)
-//   presenceMask: u8 (0x01 shadow, 0x02 glow, 0x04 border)
+//   presenceMask: u8 (0x01 shadow, 0x02 glow, 0x04 border,
+//                 v44+: 0x08 shadow spread, 0x10 border extension)
 //   shadow:       dx f32 + dy f32 + blur f32 + r u8 + g u8 + b u8
 //                 + alpha u8 (0-255 quantized /255)
 //   glow:         radius f32 + r u8 + g u8 + b u8 + alpha u8 (quantized)
 //   border:       width f32 + r u8 + g u8 + b u8 + hasRadius u8
 //                 + radius f32 (only when hasRadius == 1)
+//   v44 blocks follow the above, in mask-bit order:
+//   shadowSpread: spread f32 (written only when non-zero)
+//   borderExt:    subMask u8 (0x01 hasPosition, 0x02 hasDash)
+//                 + position u8 (0 inside, 1 center, 2 outside) if set
+//                 + dash u8 (0-10) if set
 //
 // EMBEDDED FILES
 //   fileCount:   u16 LE
@@ -180,12 +186,11 @@ import { compSnapStep } from './compositionCellMath';
 //     conditional u16 string refs (flag order): nameIdx, groupIdIdx,
 //                             preGroupNameIdx
 //     contentIdx: u16 LE      (string table; text content)
-//     bbox:       cellX i16 + cellY i16 (encodeFixed quarter-cell)
-//                 + cellWidth u16 + cellHeight u16 (encodeFixed)
-//     if hasLocalBbox:    localCellX i16 + localCellY i16
-//                         + localCellWidth u16 + localCellHeight u16 (fixed)
-//     if hasIdentityBbox: identityCellX i16 + identityCellY i16
-//                         + identityCellWidth u16 + identityCellHeight u16
+//     bbox:       v44+: cellX f32 + cellY f32 + cellWidth f32
+//                 + cellHeight f32. v43-: cellX i16 + cellY i16
+//                 + cellWidth u16 + cellHeight u16 (encodeFixed quarter-cell)
+//     if hasLocalBbox:    local bbox, same encoding as above
+//     if hasIdentityBbox: identity bbox, same encoding as above
 //     style:      fontIdIdx u16 (string table) + size f32
 //                 + styleFlags u8 (0x01 bold, 0x02 italic, 0x04 hasStroke,
 //                   0x08 hasLetterSpacing, 0x10 hasLineHeight,
@@ -321,7 +326,26 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // presence rides text flags2 bit 0x10, which was always written 0 before, so
 // no older file can be misread as carrying it. Older files load `fixedSize`
 // undefined = auto-size, matching how their boxes always re-measured.
-const FORMAT_VERSION = 43;
+// v44: two round-trip fidelity fixes, both visible after a .tile export /
+// reimport.
+//  (a) EFFECTS payload: `border.position`, `border.dash` and `shadow.spread`
+//      were authored by the Border / Shadow bars but never written, so a
+//      reimported border reverted to 'center' alignment — drawing a rect up
+//      to a full stroke width smaller (or larger) than the one exported —
+//      and lost its dashes, while a shadow lost its spread. Two new
+//      presenceMask bits carry them: 0x08 = shadow spread (f32), 0x10 =
+//      border extension (sub-mask u8 + position u8 + dash u8). Both blocks
+//      are appended AFTER the v29 payload and are written only when
+//      non-default, so an untouched effects block is byte-identical to v43.
+//      Gated on version>=44: those bits were always written 0 before.
+//  (b) TEXT bbox: the four bbox fields (main, local, identity) move from
+//      quarter-cell fixed-point to f32. A text box's width IS its wrap
+//      width, so rounding it to the nearest quarter cell re-flowed the
+//      paragraph on reimport — lines broke in different places. Unlike a
+//      shape's box, where quantizing is a sub-pixel nudge, here it changes
+//      what the page says. v43-and-earlier text records still read as
+//      fixed-point (readTextBbox branches on version).
+const FORMAT_VERSION = 44;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -726,6 +750,13 @@ const BYTE_TO_TINT_MODE: ImageTintMode[] = ['tint', 'duotone', 'wash'];
 const EFFECT_HAS_SHADOW = 0x01;
 const EFFECT_HAS_GLOW = 0x02;
 const EFFECT_HAS_BORDER = 0x04;
+// v44 extension bits — the fields BorderEffect / ShadowEffect grew after the
+// v29 payload was fixed. Written only when non-default, so an untouched
+// effects block is byte-identical to v43.
+const EFFECT_HAS_SHADOW_SPREAD = 0x08;
+const EFFECT_HAS_BORDER_EXT = 0x10;
+const BORDER_EXT_HAS_POSITION = 0x01;
+const BORDER_EXT_HAS_DASH = 0x02;
 
 // v29+ paint kind byte.
 const PAINT_KIND_SOLID = 0;
@@ -869,11 +900,33 @@ function readTintFill(view: DataView, data: Uint8Array, pos: number): { tintFill
   return { tintFill: { type, solid: { r, g, b }, stops: s.stops, angle, opacity, blend }, pos };
 }
 
+/** True when the shadow's `spread` needs the v44 extension block. A zero /
+ *  absent spread renders identically to the plain drop shadow, so it stays
+ *  out of the file — the same absent-at-default rule the stroke, endpoints
+ *  and opacity blocks follow, keeping untouched records byte-identical. */
+function hasShadowSpread(fx: NodeEffects): boolean {
+  return !!fx.shadow && fx.shadow.spread != null && fx.shadow.spread !== 0;
+}
+
+/** True when the border carries alignment or dashes — the two fields the
+ *  v29 border payload had no room for. Both are absent-at-default
+ *  ('center', solid), so a plain border never grows the record. */
+function hasBorderExt(fx: NodeEffects): boolean {
+  return !!fx.border && (fx.border.position != null || fx.border.dash != null);
+}
+
 function effectsBinarySize(fx: NodeEffects): number {
   let size = 1; // presenceMask
   if (fx.shadow) size += 12 + 4;            // dx,dy,blur f32 + r,g,b,alpha u8
   if (fx.glow) size += 4 + 4;               // radius f32 + r,g,b,alpha u8
   if (fx.border) size += 4 + 3 + 1 + (fx.border.radius != null ? 4 : 0);
+  // v44 extension blocks, appended after the v29 payload in mask-bit order.
+  if (hasShadowSpread(fx)) size += 4;       // spread f32
+  if (hasBorderExt(fx)) {
+    size += 1;                              // sub-mask
+    if (fx.border!.position != null) size += 1;
+    if (fx.border!.dash != null) size += 1;
+  }
   return size;
 }
 
@@ -882,6 +935,8 @@ function writeEffects(view: DataView, out: Uint8Array, pos: number, fx: NodeEffe
   if (fx.shadow) mask |= EFFECT_HAS_SHADOW;
   if (fx.glow) mask |= EFFECT_HAS_GLOW;
   if (fx.border) mask |= EFFECT_HAS_BORDER;
+  if (hasShadowSpread(fx)) mask |= EFFECT_HAS_SHADOW_SPREAD;
+  if (hasBorderExt(fx)) mask |= EFFECT_HAS_BORDER_EXT;
   out[pos++] = mask;
   if (fx.shadow) {
     view.setFloat32(pos, fx.shadow.dx, true); pos += 4;
@@ -911,10 +966,29 @@ function writeEffects(view: DataView, out: Uint8Array, pos: number, fx: NodeEffe
       out[pos++] = 0;
     }
   }
+  // v44 extensions last, so a v43 reader stopping after the border radius
+  // sees exactly the bytes it expects.
+  if (hasShadowSpread(fx)) {
+    view.setFloat32(pos, fx.shadow!.spread!, true); pos += 4;
+  }
+  if (hasBorderExt(fx)) {
+    const b = fx.border!;
+    let sub = 0;
+    if (b.position != null) sub |= BORDER_EXT_HAS_POSITION;
+    if (b.dash != null) sub |= BORDER_EXT_HAS_DASH;
+    out[pos++] = sub;
+    if (b.position != null) out[pos++] = BORDER_POSITION_TO_BYTE[b.position] ?? 1;
+    if (b.dash != null) out[pos++] = Math.max(0, Math.min(10, Math.round(b.dash))) & 0xff;
+  }
   return pos;
 }
 
-function readEffects(view: DataView, data: Uint8Array, pos: number): { effects: NodeEffects; pos: number } {
+function readEffects(
+  view: DataView,
+  data: Uint8Array,
+  pos: number,
+  version: number,
+): { effects: NodeEffects; pos: number } {
   const mask = data[pos++];
   const effects: NodeEffects = {};
   if (mask & EFFECT_HAS_SHADOW) {
@@ -938,6 +1012,21 @@ function readEffects(view: DataView, data: Uint8Array, pos: number): { effects: 
     effects.border = { width, color: { r, g, b } };
     if (hasRadius === 1) {
       effects.border.radius = view.getFloat32(pos, true); pos += 4;
+    }
+  }
+  // v44 extension blocks. Gated on version >= 44 for the usual reason: both
+  // mask bits were always written 0 before, so no older file can be misread
+  // as carrying them.
+  if (version >= 44 && (mask & EFFECT_HAS_SHADOW_SPREAD) && effects.shadow) {
+    effects.shadow.spread = view.getFloat32(pos, true); pos += 4;
+  }
+  if (version >= 44 && (mask & EFFECT_HAS_BORDER_EXT) && effects.border) {
+    const sub = data[pos++];
+    if (sub & BORDER_EXT_HAS_POSITION) {
+      effects.border.position = BYTE_TO_BORDER_POSITION[data[pos++]] ?? 'center';
+    }
+    if (sub & BORDER_EXT_HAS_DASH) {
+      effects.border.dash = data[pos++];
     }
   }
   return { effects, pos };
@@ -1547,7 +1636,7 @@ function readSVG(
     pos = p.pos;
   }
   if (version >= 29 && (flags3 & FLAG3_SVG_HAS_EFFECTS)) {
-    const e = readEffects(view, data, pos);
+    const e = readEffects(view, data, pos, version);
     svg.effects = e.effects;
     pos = e.pos;
   }
@@ -2019,7 +2108,7 @@ function readImage(
     };
   }
   if (version >= 29 && (rotBits & IMG_ROT_HAS_EFFECTS)) {
-    const e = readEffects(view, data, pos);
+    const e = readEffects(view, data, pos, version);
     img.effects = e.effects;
     pos = e.pos;
   }
@@ -2062,16 +2151,64 @@ function readImage(
 
 // â”€â”€ Text write / read helpers (v29+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+/** Bytes one text bbox costs. v44+ writes f32 per field rather than the
+ *  quarter-cell fixed-point the other record kinds use: a text box's width is
+ *  the wrap width, so rounding it to a quarter cell re-flows the paragraph —
+ *  a visible change, not the sub-pixel nudge quantizing a shape's box causes. */
+const TEXT_BBOX_BYTES = 16;
+
+interface TextBbox { cellX: number; cellY: number; cellWidth: number; cellHeight: number }
+
+function writeTextBbox(
+  view: DataView,
+  pos: number,
+  cellX: number,
+  cellY: number,
+  cellWidth: number,
+  cellHeight: number,
+): number {
+  view.setFloat32(pos, cellX, true); pos += 4;
+  view.setFloat32(pos, cellY, true); pos += 4;
+  view.setFloat32(pos, cellWidth, true); pos += 4;
+  view.setFloat32(pos, cellHeight, true); pos += 4;
+  return pos;
+}
+
+/** Read one text bbox: f32 quadruple in v44+, quarter-cell fixed-point in
+ *  v43-and-earlier files, which stay readable exactly as they were written. */
+function readTextBbox(
+  view: DataView,
+  pos: number,
+  version: number,
+): { bbox: TextBbox; pos: number } {
+  if (version >= 44) {
+    const bbox = {
+      cellX: view.getFloat32(pos, true),
+      cellY: view.getFloat32(pos + 4, true),
+      cellWidth: view.getFloat32(pos + 8, true),
+      cellHeight: view.getFloat32(pos + 12, true),
+    };
+    return { bbox, pos: pos + TEXT_BBOX_BYTES };
+  }
+  const bbox = {
+    cellX: decodeFixed(view.getInt16(pos, true)),
+    cellY: decodeFixed(view.getInt16(pos + 2, true)),
+    cellWidth: decodeFixed(view.getUint16(pos + 4, true)),
+    cellHeight: decodeFixed(view.getUint16(pos + 6, true)),
+  };
+  return { bbox, pos: pos + 8 };
+}
+
 function textBinarySize(text: TextObject): number {
   // idIdx(2) + flags(1) + flags2(1) + rotBits(1) + contentIdx(2)
-  // + bbox (i16/u16 Ã— 4 = 8)
+  // + bbox (f32 Ã— 4 = 16)
   // + style: fontIdIdx(2) + size f32(4) + styleFlags(1) + color(3)
-  let size = 2 + 1 + 1 + 1 + 2 + 8 + 2 + 4 + 1 + 3;
+  let size = 2 + 1 + 1 + 1 + 2 + TEXT_BBOX_BYTES + 2 + 4 + 1 + 3;
   if (text.name != null) size += 2;
   if (text.groupId != null) size += 2;
   if (text.preGroupName != null) size += 2;
-  if (text.localCellX != null) size += 8;
-  if (text.identityCellX != null) size += 8;
+  if (text.localCellX != null) size += TEXT_BBOX_BYTES;
+  if (text.identityCellX != null) size += TEXT_BBOX_BYTES;
   if (text.style.letterSpacing != null) size += 4;
   if (text.style.lineHeight != null) size += 4;
   if (text.style.stroke != null) size += 7; // width f32 + r,g,b
@@ -2117,22 +2254,13 @@ function writeText(
 
   view.setUint16(pos, indexOf.get(text.content) ?? 0, true); pos += 2;
 
-  view.setInt16(pos, encodeFixed(text.cellX), true); pos += 2;
-  view.setInt16(pos, encodeFixed(text.cellY), true); pos += 2;
-  view.setUint16(pos, encodeFixed(text.cellWidth), true); pos += 2;
-  view.setUint16(pos, encodeFixed(text.cellHeight), true); pos += 2;
+  pos = writeTextBbox(view, pos, text.cellX, text.cellY, text.cellWidth, text.cellHeight);
 
   if (text.localCellX != null) {
-    view.setInt16(pos, encodeFixed(text.localCellX), true); pos += 2;
-    view.setInt16(pos, encodeFixed(text.localCellY!), true); pos += 2;
-    view.setUint16(pos, encodeFixed(text.localCellWidth!), true); pos += 2;
-    view.setUint16(pos, encodeFixed(text.localCellHeight!), true); pos += 2;
+    pos = writeTextBbox(view, pos, text.localCellX, text.localCellY!, text.localCellWidth!, text.localCellHeight!);
   }
   if (text.identityCellX != null) {
-    view.setInt16(pos, encodeFixed(text.identityCellX), true); pos += 2;
-    view.setInt16(pos, encodeFixed(text.identityCellY!), true); pos += 2;
-    view.setUint16(pos, encodeFixed(text.identityCellWidth!), true); pos += 2;
-    view.setUint16(pos, encodeFixed(text.identityCellHeight!), true); pos += 2;
+    pos = writeTextBbox(view, pos, text.identityCellX, text.identityCellY!, text.identityCellWidth!, text.identityCellHeight!);
   }
 
   // Style block.
@@ -2178,6 +2306,7 @@ function readText(
   data: Uint8Array,
   pos: number,
   strings: string[],
+  version: number,
 ): { text: TextObject; pos: number } {
   const idIdx = view.getUint16(pos, true); pos += 2;
   const flags = data[pos++];
@@ -2193,26 +2322,18 @@ function readText(
 
   const contentIdx = view.getUint16(pos, true); pos += 2;
 
-  const cellX = decodeFixed(view.getInt16(pos, true)); pos += 2;
-  const cellY = decodeFixed(view.getInt16(pos, true)); pos += 2;
-  const cellWidth = decodeFixed(view.getUint16(pos, true)); pos += 2;
-  const cellHeight = decodeFixed(view.getUint16(pos, true)); pos += 2;
+  const main = readTextBbox(view, pos, version); pos = main.pos;
+  const { cellX, cellY, cellWidth, cellHeight } = main.bbox;
 
-  let localCellX: number | undefined, localCellY: number | undefined;
-  let localCellWidth: number | undefined, localCellHeight: number | undefined;
+  let local: TextBbox | undefined;
   if (flags2 & TFLAG2_HAS_LOCAL) {
-    localCellX = decodeFixed(view.getInt16(pos, true)); pos += 2;
-    localCellY = decodeFixed(view.getInt16(pos, true)); pos += 2;
-    localCellWidth = decodeFixed(view.getUint16(pos, true)); pos += 2;
-    localCellHeight = decodeFixed(view.getUint16(pos, true)); pos += 2;
+    const r = readTextBbox(view, pos, version); pos = r.pos;
+    local = r.bbox;
   }
-  let identityCellX: number | undefined, identityCellY: number | undefined;
-  let identityCellWidth: number | undefined, identityCellHeight: number | undefined;
+  let identity: TextBbox | undefined;
   if (flags2 & TFLAG2_HAS_IDENTITY) {
-    identityCellX = decodeFixed(view.getInt16(pos, true)); pos += 2;
-    identityCellY = decodeFixed(view.getInt16(pos, true)); pos += 2;
-    identityCellWidth = decodeFixed(view.getUint16(pos, true)); pos += 2;
-    identityCellHeight = decodeFixed(view.getUint16(pos, true)); pos += 2;
+    const r = readTextBbox(view, pos, version); pos = r.pos;
+    identity = r.bbox;
   }
 
   // Style block.
@@ -2261,20 +2382,20 @@ function readText(
   if (flags & TFLAG_STICKER) text.sticker = true;
   const rot = BITS_TO_ROTATION[rotBits & 0x03];
   if (rot !== 0) text.rotation = rot;
-  if (localCellX != null) {
-    text.localCellX = localCellX;
-    text.localCellY = localCellY;
-    text.localCellWidth = localCellWidth;
-    text.localCellHeight = localCellHeight;
+  if (local) {
+    text.localCellX = local.cellX;
+    text.localCellY = local.cellY;
+    text.localCellWidth = local.cellWidth;
+    text.localCellHeight = local.cellHeight;
   }
-  if (identityCellX != null) {
-    text.identityCellX = identityCellX;
-    text.identityCellY = identityCellY;
-    text.identityCellWidth = identityCellWidth;
-    text.identityCellHeight = identityCellHeight;
+  if (identity) {
+    text.identityCellX = identity.cellX;
+    text.identityCellY = identity.cellY;
+    text.identityCellWidth = identity.cellWidth;
+    text.identityCellHeight = identity.cellHeight;
   }
   if (flags2 & TFLAG2_HAS_EFFECTS) {
-    const e = readEffects(view, data, pos);
+    const e = readEffects(view, data, pos, version);
     text.effects = e.effects;
     pos = e.pos;
   }
@@ -2962,7 +3083,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
   if (version >= 29 && pos < data.byteLength) {
     const textCount = view.getUint16(pos, true); pos += 2;
     for (let i = 0; i < textCount; i++) {
-      const r = readText(view, data, pos, strings);
+      const r = readText(view, data, pos, strings, version);
       texts.push(r.text);
       pos = r.pos;
     }
