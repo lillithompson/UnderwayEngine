@@ -315,6 +315,26 @@ export interface ObjectPropertiesModel {
    *  the toolbar color tool uses — a vector object's stroke color IS its
    *  color, so this commits through the ordinary color path). */
   onPickStrokeColor?(): void;
+  /** Whether the Fill bar is shown. App-owned so a tap-off dismisses it before
+   *  the panel (same as the Stroke / Shadow / Border bars). Only reachable from
+   *  a subtype whose option menu offers Fill — see `svgHasFill`. */
+  svgFillOpen?: boolean;
+  onSvgFillOpenChange?(open: boolean): void;
+  /** The selected shape's current fill, seeding the Fill bar (defaults supplied
+   *  by the app when the shape has none yet). It reuses {@link TintModel}
+   *  because the Fill bar IS the Tint bar — the same Type / Stops / Angle /
+   *  Opacity / Blend controls, pointed at a closed path's interior rather than
+   *  at an overlay over a bitmap. */
+  svgFill?: TintModel;
+  /** Fill-controls callback, same contract as `onTint`: live while dragging a
+   *  stop / slider (`committed=false`), once on release or a structural edit —
+   *  Type, stop add/delete, blend pick (`committed=true`, one undo step).
+   *  `fill=null` removes the fill, leaving the shape an outline. */
+  onSvgFill?(fill: TintModel | null, committed: boolean): void;
+  /** Open the full-screen color picker for the fill. Targets the solid color in
+   *  Solid mode or `svgFill.stops[svgFill.selectedStop]` in gradient modes; the
+   *  app reads the current fill to know which. */
+  onPickSvgFillColor?(): void;
   /** Selection is a Figma-style frame: the panel's second row shows the frame
    *  options (background / shadow / border / ungroup), with Shadow / Border
    *  reusing the image effect bars (frame submenu carousel = shadow, border).

@@ -220,7 +220,12 @@ function BlendSheet({ current, onPick, onClose }: {
   );
 }
 
-export function TintBar({ tint, onChange, onCommit, onBack, onRemove, onPickColor, onAddStop, onSheetOpenChange }: {
+export function TintBar({ title = 'TINT', removeLabel, tint, onChange, onCommit, onBack, onRemove, onPickColor, onAddStop, onSheetOpenChange }: {
+  /** Bar title. Defaults to the image tint; the Fill bar passes 'FILL' — it is
+   *  this same bar pointed at a closed shape's interior (see `svgHasFill`). */
+  title?: string;
+  /** Accessibility label for the header trash (defaults to `Remove <title>`). */
+  removeLabel?: string;
   tint: TintModel;
   /** Live preview (stop / slider drag, stop selection). */
   onChange: (t: TintModel) => void;
@@ -251,13 +256,13 @@ export function TintBar({ tint, onChange, onCommit, onBack, onRemove, onPickColo
   return (
     <View style={styles.bar}>
       <EffectBarHeader
-        title="TINT"
+        title={title}
         chevron
         // The swatch previews the tint: solid color, a 135° linear preview, or
         // the radial gradient. Tapping it targets the solid / selected stop.
         // The trash beside it removes the whole tint layer.
         swatch={<Ramp tint={tint} diagonal />}
-        removeLabel="Remove tint"
+        removeLabel={removeLabel ?? 'Remove tint'}
         onBack={onBack}
         onRemove={onRemove}
         onPickColor={onPickColor}

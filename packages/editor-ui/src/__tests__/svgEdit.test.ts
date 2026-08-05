@@ -4,7 +4,7 @@
  * images.
  */
 
-import { SVG_EDIT_OPTIONS, svgEditOptions, svgStrokeRows } from '../logic/svgEdit';
+import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasFill, svgStrokeRows } from '../logic/svgEdit';
 import type { SVGSubtypeKind } from '../adapter';
 
 const SUBTYPES: SVGSubtypeKind[] = ['line', 'arc', 'rectangle', 'circle', 'shape', 'stroke'];
@@ -13,8 +13,30 @@ describe('svgEditOptions', () => {
   it('gives every vector subtype a Stroke option — a path is its stroke', () => {
     for (const subtype of SUBTYPES) {
       const options = svgEditOptions(subtype);
-      expect(options.map((o) => o.action)).toEqual(['stroke']);
+      expect(options[0].action).toBe('stroke');
       expect(options[0].label).toBe('Stroke');
+    }
+  });
+
+  it('adds Fill to the two shapes with an interior, and to nothing else', () => {
+    expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'fill']);
+    expect(svgEditOptions('circle').map((o) => o.action)).toEqual(['stroke', 'fill']);
+    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'circle')) {
+      expect(svgEditOptions(subtype).map((o) => o.action)).toEqual(['stroke']);
+    }
+  });
+
+  it('puts Stroke first — it is the option every subtype has', () => {
+    for (const subtype of SUBTYPES) {
+      expect(svgEditOptions(subtype)[0].action).toBe('stroke');
+    }
+  });
+
+  it('labels and glyphs the Fill option the same way whichever shape it is on', () => {
+    for (const subtype of ['rectangle', 'circle'] as SVGSubtypeKind[]) {
+      const fill = svgEditOptions(subtype).find((o) => o.action === 'fill')!;
+      expect(fill.label).toBe('Fill');
+      expect(fill.icon).toBe('format-color-fill');
     }
   });
 
@@ -44,6 +66,32 @@ describe('svgEditOptions', () => {
         expect(o.label.length).toBeGreaterThan(0);
         expect(o.icon.length).toBeGreaterThan(0);
       }
+    }
+  });
+});
+
+describe('svgHasFill', () => {
+  it('is true only for the closed shapes the shape tools author', () => {
+    expect(svgHasFill('rectangle')).toBe(true);
+    expect(svgHasFill('circle')).toBe(true);
+    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'circle')) {
+      expect(svgHasFill(subtype)).toBe(false);
+    }
+  });
+
+  it('never offers a fill without an inside to align a stroke against', () => {
+    // A fill needs an enclosed area, and so does stroke Position — so anything
+    // fillable is necessarily closed. (Not the converse: 'shape' is closed but
+    // has no Fill yet.)
+    for (const subtype of SUBTYPES) {
+      if (svgHasFill(subtype)) expect(svgStrokeRows(subtype).position).toBe(true);
+    }
+  });
+
+  it('agrees with the option menu', () => {
+    for (const subtype of SUBTYPES) {
+      const hasFillOption = svgEditOptions(subtype).some((o) => o.action === 'fill');
+      expect(hasFillOption).toBe(svgHasFill(subtype));
     }
   });
 });

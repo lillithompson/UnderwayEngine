@@ -3,7 +3,7 @@ import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimension
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { BorderModel, FramingModel, ObjectPropertiesModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
-import { svgEditOptions, svgStrokeRows } from '../logic/svgEdit';
+import { svgEditOptions, svgHasFill, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import { rgbCss } from '../logic/hsv';
 import { ShadowBar } from './ShadowBar';
@@ -74,10 +74,10 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 
 // The slide-up submenus, in carousel order. Image selections cycle through
 // tint / crop / shadow / border (matching their type-option order); text cycles
-// through font / align (two pages of the Text bar); a vector selection has the
-// single stroke page. Kept in this order so a left swipe advances the same way
-// the type-option row reads.
-type SubmenuKey = 'tint' | 'crop' | 'shadow' | 'border' | 'font' | 'align' | 'stroke';
+// through font / align (two pages of the Text bar); a vector selection has
+// stroke, plus svgFill on the closed shapes that offer it. Kept in this order
+// so a left swipe advances the same way the type-option row reads.
+type SubmenuKey = 'tint' | 'crop' | 'shadow' | 'border' | 'font' | 'align' | 'stroke' | 'svgFill';
 
 // One grid cell: an icon over a short caption, weighted (flex) so every button
 // shares the same column width whichever set is showing. `caption` is the
@@ -220,6 +220,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const prevStrokeOpen = useRef(false);
   const [tintDraft, setTintDraft] = useState<TintModel | null>(null);
   const prevTintOpen = useRef(false);
+  // The Fill bar rides the same draft pattern as Tint — it IS the Tint bar,
+  // pointed at a closed shape's interior.
+  const [svgFillDraft, setSvgFillDraft] = useState<TintModel | null>(null);
+  const prevSvgFillOpen = useRef(false);
   // The Text bar owns its tracked params too (color still comes from the model
   // — it's changed externally via the full-screen picker).
   const [textDraft, setTextDraft] = useState<TextStyleModel | null>(null);
@@ -236,11 +240,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // bars but only one shows at a time, so this drives a single layer: `layerY`
   // for the vertical open/dismiss, `navX` for the horizontal carousel slide.
   const submenuSlide = OBJECT_MENU_HEIGHT + safeBottom;
+  const svgFillable = !!model.showSvgOptions && svgHasFill(model.svgSubtype ?? 'stroke');
   const submenuOrder: SubmenuKey[] =
     model.showImageEdit ? ['tint', 'crop', 'shadow', 'border']
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'align']
-    : model.showSvgOptions ? ['stroke']
+    : model.showSvgOptions ? (svgFillable ? ['stroke', 'svgFill'] : ['stroke'])
     : [];
   const activeSub: SubmenuKey | null =
     model.tintOpen ? 'tint'
@@ -248,6 +253,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     : model.shadowOpen ? 'shadow'
     : model.borderOpen ? 'border'
     : model.strokeOpen ? 'stroke'
+    : model.svgFillOpen ? 'svgFill'
     : model.textStyleOpen ? textPage
     : null;
   const submenuOpen = activeSub != null;
@@ -271,6 +277,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
     else if (key === 'border') model.onBorderOpenChange?.(true);
     else if (key === 'stroke') model.onStrokeOpenChange?.(true);
+    else if (key === 'svgFill') model.onSvgFillOpenChange?.(true);
     else if (key === 'font' || key === 'align') {
       // Both text pages ride the single textStyleOpen flag; the page state
       // picks which one shows (drives the carousel between them).
@@ -285,6 +292,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     model.onBorderOpenChange?.(false);
     model.onCropOpenChange?.(false);
     model.onStrokeOpenChange?.(false);
+    model.onSvgFillOpenChange?.(false);
     model.onTextStyleOpenChange?.(false);
   };
 
@@ -435,16 +443,30 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     }
     prevTextOpen.current = !!model.textStyleOpen;
   }, [model.textStyleOpen, model.textStyle]);
+  useEffect(() => {
+    if (model.svgFillOpen && !prevSvgFillOpen.current) {
+      // Seeded from the app, which reports the shape's CURRENT fill — or a
+      // default one when it has never been filled, so the bar opens on
+      // something coherent rather than on an empty gradient.
+      setSvgFillDraft(model.svgFill ?? DEFAULT_TINT_MODEL);
+    }
+    prevSvgFillOpen.current = !!model.svgFillOpen;
+  }, [model.svgFillOpen, model.svgFill]);
   // Fold the Stroke bar away the moment the selection is no longer a vector
   // object (or the panel hides), so it never lingers over the next object.
+  // The Fill bar goes with it, and also whenever the new vector selection is a
+  // subtype with no interior to fill (a line, an arc, a freehand stroke).
   useEffect(() => {
     if ((!model.visible || !model.showSvgOptions) && model.strokeOpen) {
       model.onStrokeOpenChange?.(false);
     }
+    if ((!model.visible || !svgFillable) && model.svgFillOpen) {
+      model.onSvgFillOpenChange?.(false);
+    }
     // model.on* are stable setters; listing the whole model would re-run this
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showSvgOptions, model.strokeOpen]);
+  }, [model.visible, model.showSvgOptions, model.strokeOpen, svgFillable, model.svgFillOpen]);
   useEffect(() => {
     if (model.tintOpen && !prevTintOpen.current) {
       setTintDraft(model.tint ?? DEFAULT_TINT_MODEL);
@@ -548,6 +570,21 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     model.onPickTintColor?.();
   };
 
+  // Shape fill → the same three handlers as Tint, against the shape's own fill.
+  const applySvgFill = (f: TintModel, committed: boolean) => {
+    setSvgFillDraft(f);
+    model.onSvgFill?.(f, committed);
+  };
+  const removeSvgFill = () => {
+    model.onSvgFill?.(null, true);
+    model.onSvgFillOpenChange?.(false);
+  };
+  const addSvgFillStop = () => {
+    const next = addStop(svgFillDraft ?? model.svgFill ?? DEFAULT_TINT_MODEL);
+    applySvgFill(next, true);
+    model.onPickSvgFillColor?.();
+  };
+
   if (!mounted) return null;
 
   // Common actions (rotate / flip / copy / lock / delete, plus the optional
@@ -605,15 +642,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     }
   } else if (model.showSvgOptions) {
     // Vector selection: the subtype's own option menu (svgEdit.ts). Every
-    // subtype offers Stroke — a path IS its stroke — and differs only in the
-    // glyph naming the shape.
+    // subtype offers Stroke — a path IS its stroke, and its glyph names the
+    // shape; the closed shapes add Fill.
     typeOptions = svgEditOptions(model.svgSubtype ?? 'stroke').map((opt) => (
       <GridButton
         key={opt.action}
         label={opt.label}
         caption={opt.label}
         icon={opt.icon}
-        onPress={() => openSubmenu('stroke')}
+        onPress={() => openSubmenu(opt.action === 'fill' ? 'svgFill' : 'stroke')}
         compact={compact}
       />
     ));
@@ -701,6 +738,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         stops: tintDraft.stops.map((s, i) => ({ ...s, color: model.tint?.stops[i]?.color ?? s.color })),
       }
     : (model.tint ?? DEFAULT_TINT_MODEL);
+  // Same draft/model split for the shape fill.
+  const svgFillForBar: TintModel = svgFillDraft
+    ? {
+        ...svgFillDraft,
+        solid: model.svgFill?.solid ?? svgFillDraft.solid,
+        stops: svgFillDraft.stops.map((s, i) => ({ ...s, color: model.svgFill?.stops[i]?.color ?? s.color })),
+      }
+    : (model.svgFill ?? DEFAULT_TINT_MODEL);
 
   // The currently-shown submenu bar (retained through the dismiss slide). onBack
   // (the down chevron) dismisses the whole submenu layer.
@@ -715,6 +760,22 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         onRemove={removeTint}
         onPickColor={() => model.onPickTintColor?.()}
         onAddStop={addTintStop}
+        onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
+      />
+    );
+  } else if (displaySub === 'svgFill') {
+    // The Tint bar retitled, pointed at the closed shape's own interior.
+    activeBarEl = (
+      <TintBar
+        title="FILL"
+        removeLabel="Remove fill"
+        tint={svgFillForBar}
+        onChange={(t) => applySvgFill(t, false)}
+        onCommit={(t) => applySvgFill(t, true)}
+        onBack={dismissSubmenu}
+        onRemove={removeSvgFill}
+        onPickColor={() => model.onPickSvgFillColor?.()}
+        onAddStop={addSvgFillStop}
         onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
       />
     );

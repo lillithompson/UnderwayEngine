@@ -5,17 +5,21 @@
 //
 // Every vector subtype offers Stroke — a path IS its stroke, so there is no
 // vector object the control doesn't apply to. The table is keyed by subtype
-// rather than being one flat list so a subtype can diverge later (a rectangle
-// gaining a corner control, a circle a sweep control) without reworking the
-// dispatch; today they differ only in the glyph, which names the shape the
-// menu belongs to.
+// rather than being one flat list so a subtype can diverge, which is exactly
+// what Fill does: only the two shapes the tools draw closed (a rectangle and a
+// circle) have an interior to paint, so only they carry the second action.
 
 import type { SVGSubtypeKind } from '../adapter';
 
-/** The vector-specific editing actions. Stroke opens the Stroke bar — the
- *  Border bar's four rows (Width / Radius / Position / Dash) plus its color
- *  swatch, pointed at the path's own stroke. */
-export type SVGEditAction = 'stroke';
+/** The vector-specific editing actions.
+ *
+ *  - `stroke` opens the Stroke bar — the Border bar's four rows (Width /
+ *    Radius / Position / Dash) plus its color swatch, pointed at the path's
+ *    own stroke.
+ *  - `fill` opens the Fill bar — the image Tint bar's rows (Type / Stops /
+ *    Angle / Opacity / Blend) plus its gradient swatch, pointed at the closed
+ *    path's interior. */
+export type SVGEditAction = 'stroke' | 'fill';
 
 export interface SVGEditOption {
   action: SVGEditAction;
@@ -36,9 +40,30 @@ const STROKE_ICON: Record<SVGSubtypeKind, string> = {
   stroke: 'vector-polyline',
 };
 
-/** The option menu for one vector subtype, in display order. */
+/**
+ * Whether a subtype offers the Fill bar.
+ *
+ * A fill needs an enclosed interior to paint, so it is closed-path only — and
+ * of the closed subtypes only the two the shape tools author (`rectangle`, from
+ * the line tool's rectangle mode, and `circle`, from the arc tool's) take it
+ * today. `shape` is closed too and is the obvious next candidate, but it also
+ * covers join / union results and the preset library, whose fills are authored
+ * elsewhere; it stays out until that is reconciled rather than being given a
+ * second, competing source of fill.
+ */
+export function svgHasFill(subtype: SVGSubtypeKind): boolean {
+  return subtype === 'rectangle' || subtype === 'circle';
+}
+
+/** The option menu for one vector subtype, in display order. Stroke leads —
+ *  it is the one action every subtype has — and Fill follows on the shapes
+ *  that enclose an area. */
 export function svgEditOptions(subtype: SVGSubtypeKind): readonly SVGEditOption[] {
-  return [{ action: 'stroke', label: 'Stroke', icon: STROKE_ICON[subtype] ?? STROKE_ICON.stroke }];
+  const options: SVGEditOption[] = [
+    { action: 'stroke', label: 'Stroke', icon: STROKE_ICON[subtype] ?? STROKE_ICON.stroke },
+  ];
+  if (svgHasFill(subtype)) options.push({ action: 'fill', label: 'Fill', icon: 'format-color-fill' });
+  return options;
 }
 
 /** Which of the Stroke bar's optional rows a subtype offers. Width and Dash

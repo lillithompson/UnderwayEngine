@@ -8,6 +8,7 @@ import {
 import { arcBoundingBox } from './compositionArcHitTest';
 import { isItemLocked, getItemGroupId, findRootGroupId } from './compositionOps';
 import { adapterForId, Bbox } from './sceneNodeGeometry';
+import { svgIsFilled } from './svgPathBuilder';
 
 /**
  * The set of scene objects that overlap a mask shape's interior, partitioned
@@ -145,7 +146,9 @@ export function computeMaskMembership(
     // Unfilled, non-tiled stroke shapes: include only if a stroke actually
     // enters the mask region. Filled SVGs, tiled SVGs, figures, and images
     // show area/raster content, so the bbox-interior rule still applies.
-    if (svg && svg.fillColor == null && svg.tileMode !== 'repeat') {
+    // "Filled" is asked of every fill field, not just the legacy `fillColor`:
+    // a shape filled from the Fill bar carries `fill` and none of the others.
+    if (svg && !svgIsFilled(svg) && svg.tileMode !== 'repeat') {
       const allSegments = svg.subpaths && svg.subpaths.length > 0
         ? [...svg.segments, ...svg.subpaths.flatMap((sub) => sub.segments)]
         : svg.segments;

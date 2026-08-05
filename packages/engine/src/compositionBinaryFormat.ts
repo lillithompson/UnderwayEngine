@@ -118,6 +118,9 @@ import { compSnapStep } from './compositionCellMath';
 //     if hasSegmentOverrides (v28+): count u16 + count Ã— (key u32 + r u8 + g u8 + b u8)
 //     if hasFillPaint (v29+):  PAINT payload (see below)
 //     if hasEffects (v29+):    EFFECTS payload (see below)
+//     if hasFill (v40+):       TINT FILL payload (see below) — the shape's own
+//                              editable fill; written last, after the v35
+//                              stroke block.
 //   Segment:      kind: u8 (0=line, 1=arc)
 //                 start: i16 i16, end: i16 i16
 //                 if kind==1: center: i16 i16
@@ -287,7 +290,16 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // hidden. Presence-only — no payload bytes. Gated on version>=39, so v38-and-
 // earlier files (which have no second byte) are never misread; they load with
 // hidden undefined (visible), exactly as they rendered before.
-const FORMAT_VERSION = 39;
+// v40: SVGObject `fill` — the editable solid / gradient fill block behind the
+// Fill option menu, and the shape-side twin of the v36 image tint overlay (same
+// `ShapeFill`/`ImageTintFill` payload, so it reuses writeTintFill/readTintFill).
+// flags2 and flags3 are fully spent, so presence rides flags4 bit 0x02 and the
+// payload is written last in the SVG record, after the v35 stroke block. Gated
+// on version>=40: v39-and-earlier files either have no flags4 byte at all or
+// always wrote that bit 0, so none can be misread as carrying the block. They
+// load `fill` undefined and keep rendering from `fillPaint` / `fillColor`
+// exactly as they did.
+const FORMAT_VERSION = 40;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -536,6 +548,7 @@ const FLAG3_SVG_HAS_ANGLE = 0x80;
 
 // v38+ SVG flags4 byte. Sits right after flags3 in the SVG record header.
 const FLAG4_SVG_HAS_PATTERN_FILE_ID = 0x01;
+const FLAG4_SVG_HAS_FILL = 0x02; // v40+
 
 // v29+ image rotation-byte bits. The image `flags` byte is fully
 // consumed (0x01..0x80), so tint/effects presence rides the spare high
@@ -992,6 +1005,7 @@ function svgBinarySize(svg: SVGObject): number {
   if (svg.effects) size += effectsBinarySize(svg.effects);
   if (svg.angleDeg) size += 2; // v31+ free rotation (i16)
   if (hasSVGStroke(svg.stroke)) size += strokeBinarySize(svg.stroke); // v35+
+  if (svg.fill) size += tintFillBinarySize(svg.fill); // v40+
   return size;
 }
 
@@ -1184,6 +1198,7 @@ function writeSVG(
   // flags4 (v38+)
   let flags4 = 0;
   if (svg.patternFileId != null) flags4 |= FLAG4_SVG_HAS_PATTERN_FILE_ID;
+  if (svg.fill) flags4 |= FLAG4_SVG_HAS_FILL;
   out[pos++] = flags4;
 
   let rotBits = ROTATION_TO_BITS[svg.rotation ?? 0] & 0x03;
@@ -1268,9 +1283,14 @@ function writeSVG(
   if (svg.angleDeg) {
     view.setInt16(pos, encodeAngleDeg(svg.angleDeg), true); pos += 2;
   }
-  // v35+ per-object stroke, last in the record.
+  // v35+ per-object stroke, after the free rotation.
   if (hasSVGStroke(svg.stroke)) {
     pos = writeSVGStroke(view, out, pos, svg.stroke);
+  }
+  // v40+ the shape's own fill, last in the record. Same payload as the image
+  // tint overlay — they are the same editable spec (see ShapeFill).
+  if (svg.fill) {
+    pos = writeTintFill(view, out, pos, svg.fill);
   }
   return pos;
 }
@@ -1453,6 +1473,14 @@ function readSVG(
     const s = readSVGStroke(view, data, pos);
     svg.stroke = s.stroke;
     pos = s.pos;
+  }
+  // v40+ the shape's own fill, last in the record. Same gating argument as the
+  // stroke: flags4 bit 0x02 was always written 0 before v40 (and the whole
+  // flags4 byte is absent before v38), so no older file carries this payload.
+  if (version >= 40 && (flags4 & FLAG4_SVG_HAS_FILL)) {
+    const f = readTintFill(view, data, pos);
+    svg.fill = f.tintFill;
+    pos = f.pos;
   }
 
   // v25+ "Use as mask" flag (presence-only, no payload)

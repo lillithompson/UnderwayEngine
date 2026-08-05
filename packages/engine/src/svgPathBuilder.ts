@@ -2,7 +2,8 @@ import { PathSegment, RGBColor, SVGObject } from './types';
 import { SVG_UNITS_PER_L0_CELL, SVG_STROKE_WIDTH } from './svgExport';
 import { computeSweepFlag, arcRadius, chainSegmentsLoops } from './compositionArcMath';
 import { packKey, unpackKey, forEachVisibleTile } from './tileSegmentOverrides';
-import { borderDashPattern } from './paintSvg';
+import { borderDashPattern, paintToSvg } from './paintSvg';
+import { tintFillToPaint } from './imageTintFill';
 import {
   roundPathCorners,
   svgStrokeAlignment,
@@ -306,6 +307,79 @@ export function buildTileFillPathD(segments: ReadonlyArray<PathSegment>, minX: n
 }
 
 /**
+ * Whether a shape paints an interior at all — through any of the three fields
+ * that can carry one (the editable `fill` block, a flattened `fillPaint`, or
+ * the legacy `fillColor`). A pattern-fill mask reads as UNFILLED: its own path
+ * renders outline-only, its color painted as the tiled figure's background.
+ *
+ * Callers that only care whether there is area content, rather than how to
+ * paint it, should ask this rather than testing one field — a shape filled from
+ * the Fill bar carries `fill` and none of the older two.
+ */
+export function svgIsFilled(
+  obj: Pick<SVGObject, 'fill' | 'fillPaint' | 'fillColor' | 'isPatternFill'>,
+): boolean {
+  if (obj.isPatternFill) return false;
+  return !!(obj.fill || obj.fillPaint || obj.fillColor);
+}
+
+/**
+ * The paint half of a shape's fill: everything deciding HOW the fill path is
+ * painted — the `fill`, its `fill-opacity` and blend mode, plus any gradient
+ * `<defs>` those reference — leaving the `d` to the caller.
+ *
+ * The geometry is the caller's because the two markup builders derive it
+ * differently (world SVG units in the exporter, tile-local coordinates in the
+ * pattern path) while the paint is identical; splitting it here is what stops a
+ * fill rendering one way on the canvas and another in the export, exactly as
+ * {@link svgStrokePresentation} does for the stroke.
+ *
+ * Precedence matches the field docs: the editable `fill` block (what the Fill
+ * bar authors) outranks the flattened `fillPaint`, which outranks the legacy
+ * `fillColor`/`fillOpacity`. Returns null when the object has no fill, or when
+ * it is a pattern-fill mask — that one renders outline-only, its `fillColor`
+ * painted as the tiled figure's background instead of as its own fill.
+ *
+ * `defId` must be unique within the document: a gradient fill emits a `<defs>`
+ * the returned attrs reference by id.
+ */
+export function svgFillPresentation(
+  obj: Pick<SVGObject, 'fill' | 'fillPaint' | 'fillColor' | 'fillOpacity' | 'isPatternFill'>,
+  defId: string,
+): { defs: string; attrs: string } | null {
+  if (!svgIsFilled(obj)) return null;
+  if (obj.fill) {
+    const p = paintToSvg(tintFillToPaint(obj.fill), defId);
+    // The bar's Opacity row is the whole fill layer's opacity, so it multiplies
+    // whatever alpha the Paint itself carries rather than replacing it.
+    const alpha = clamp01(p.fillOpacity ?? 1) * clamp01(obj.fill.opacity);
+    const oa = alpha < 1 ? ` fill-opacity="${roundOpacity(alpha)}"` : '';
+    // 'normal' is the default compositing, so an unblended fill emits no style
+    // at all — one less attribute on the overwhelmingly common case.
+    const blend = obj.fill.blend !== 'normal' ? ` style="mix-blend-mode:${obj.fill.blend}"` : '';
+    return { defs: p.defs ? `<defs>${p.defs}</defs>` : '', attrs: `fill="${p.fill}"${oa}${blend}` };
+  }
+  if (obj.fillPaint) {
+    // Gradient geometry is unit-bbox space → objectBoundingBox defs resolve
+    // against the fill path's own bbox. The id is node-prefixed by the caller
+    // so several gradient fills coexist in one document.
+    const p = paintToSvg(obj.fillPaint, defId);
+    const oa = p.fillOpacity !== undefined ? ` fill-opacity="${p.fillOpacity}"` : '';
+    return { defs: p.defs ? `<defs>${p.defs}</defs>` : '', attrs: `fill="${p.fill}"${oa}` };
+  }
+  if (obj.fillColor) {
+    const { r, g, b } = obj.fillColor;
+    const oa = obj.fillOpacity != null && obj.fillOpacity < 1 ? ` fill-opacity="${obj.fillOpacity}"` : '';
+    return { defs: '', attrs: `fill="rgb(${r},${g},${b})"${oa}` };
+  }
+  return null;
+}
+
+const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+/** Trim float noise out of the emitted opacity (0.5 × 0.7 = 0.35, not 0.3499…). */
+const roundOpacity = (v: number): number => Math.round(v * 1e4) / 1e4;
+
+/**
  * The stroke presentation an SVGObject's own `stroke` block asks for: the
  * shared `<path>` attributes, any `<defs>` they reference, and the (possibly
  * corner-rounded) segments to draw.
@@ -414,16 +488,14 @@ export function buildSVGObjectContent(
 
   let result = defs;
 
-  // Fill path — rendered before strokes so the outline sits on top. A
-  // pattern-fill mask renders outline only: its `fillColor` is painted as the
-  // tiled figure's background (beneath the pattern), not as the shape's fill.
-  if (obj.fillColor && !obj.isPatternFill) {
+  // Fill path — rendered before strokes so the outline sits on top, and
+  // following the same (possibly corner-rounded) outline the stroke does.
+  // svgFillPresentation decides the paint (and skips a pattern-fill mask,
+  // whose fill belongs to the tiled figure beneath it).
+  const fill = svgFillPresentation(obj, `grad_${obj.id}`);
+  if (fill) {
     const fd = buildClosedFillPathD(segments);
-    if (fd) {
-      const { r, g, b } = obj.fillColor;
-      const oa = obj.fillOpacity != null && obj.fillOpacity < 1 ? ` fill-opacity="${obj.fillOpacity}"` : '';
-      result += `<path d="${fd}" fill="rgb(${r},${g},${b})"${oa} stroke="none" fill-rule="nonzero" />`;
-    }
+    if (fd) result += `${fill.defs}<path d="${fd}" ${fill.attrs} stroke="none" fill-rule="nonzero" />`;
   }
 
   if (Array.isArray(obj.subpaths) && obj.subpaths.length > 0) {

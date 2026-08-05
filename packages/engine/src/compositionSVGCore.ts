@@ -11,7 +11,7 @@ import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildTilePathD, buildClosedFillPathD, buildTileFillPathD, buildExpandedTileSVGObjectContent, svgStrokePresentation } from './svgPathBuilder';
+import { buildPathD, buildTilePathD, buildClosedFillPathD, buildTileFillPathD, buildExpandedTileSVGObjectContent, svgFillPresentation, svgStrokePresentation } from './svgPathBuilder';
 import { roundPathCorners, svgStrokeRadiusCells } from './svgStroke';
 import { chainSegments } from './compositionArcMath';
 import { arcBoundingBox } from './compositionArcHitTest';
@@ -653,30 +653,22 @@ export async function generateCompositionSVGCore(
     // not defined against.
     const strokeSegments = svg.tileMode === 'repeat' ? svg.segments : strokePres.segments;
     const strokeDefs = svg.tileMode === 'repeat' ? '' : strokePres.defs;
-    // Fill path — rendered before strokes. A pattern-fill mask renders outline
-    // only: its `fillColor` is painted as the tiled figure's background below.
+    // Fill path — rendered before strokes. The paint (fill / fill-opacity /
+    // blend, and any gradient defs) comes from the same helper the live DOM
+    // layer uses, so an authored fill can't render one way on the canvas and
+    // another in the export; only the `d` differs, tiled objects anchoring
+    // theirs to the tile grid. A pattern-fill mask is skipped in there: it
+    // renders outline only, its fill painted as the tiled figure's background.
     let fillElement = '';
-    if ((svg.fillPaint || svg.fillColor) && !svg.isPatternFill) {
+    const fillPres = svgFillPresentation(svg, `grad_${svg.id}`);
+    if (fillPres) {
       // Fill follows the same (possibly corner-rounded) outline the stroke does.
       const chained = chainSegments(strokeSegments);
       if (chained) {
         const fd = (svg.tileMode === 'repeat'
           ? buildTilePathD(chained, svg.cellX + (svg.tileOffsetXL0 ?? 0), svg.cellY + (svg.tileOffsetYL0 ?? 0))
           : buildPathD(chained)) + ' Z';
-        if (svg.fillPaint) {
-          // fillPaint (v29+) takes precedence over the legacy fillColor.
-          // Gradient geometry is unit-bbox space → objectBoundingBox defs
-          // resolve against this path's own bbox. Def id is node-prefixed
-          // so multiple gradient fills coexist in one document.
-          const p = paintToSvg(svg.fillPaint, `grad_${svg.id}`);
-          const oa = p.fillOpacity !== undefined ? ` fill-opacity="${p.fillOpacity}"` : '';
-          fillElement = (p.defs ? `<defs>${p.defs}</defs>` : '') +
-            `<path d="${fd}" fill="${p.fill}"${oa} stroke="none" fill-rule="nonzero" />`;
-        } else {
-          const { r, g, b } = svg.fillColor!;
-          const oa = svg.fillOpacity != null && svg.fillOpacity < 1 ? ` fill-opacity="${svg.fillOpacity}"` : '';
-          fillElement = `<path d="${fd}" fill="rgb(${r},${g},${b})"${oa} stroke="none" fill-rule="nonzero" />`;
-        }
+        fillElement = `${fillPres.defs}<path d="${fd}" ${fillPres.attrs} stroke="none" fill-rule="nonzero" />`;
       }
     }
 

@@ -901,6 +901,17 @@ export interface SVGObject {
    *  readers and untouched render paths degrade gracefully. Coordinates
    *  are in the unit bbox space of the shape (0..1). */
   fillPaint?: Paint;
+  /** The shape's own editable fill — what the Fill bar authors (v39+).
+   *
+   *  Outranks `fillPaint` and `fillColor`/`fillOpacity` wherever a fill is
+   *  drawn: it is the EDITABLE record (it keeps the stops a Solid fill isn't
+   *  currently using, the angle a Radial one isn't, and the blend mode none of
+   *  the older fields can express), while those are the flattened forms. Absent
+   *  on every object that has never visited the Fill bar, so an untouched
+   *  record — and every legacy fill — is byte-identical to what it was.
+   *
+   *  Only closed shapes offer it (a rectangle or a circle); see `svgSubtype`. */
+  fill?: ShapeFill;
   /** Cached-texture effects: drop shadow, glow, border (v29+). Rendered
    *  as pre-blurred texture passes, never live SVG filters at runtime;
    *  SVG export emits real `<filter>` defs. */
@@ -1198,6 +1209,16 @@ export interface ImageTintFill {
   opacity: number;
   blend: ImageTintBlend;
 }
+
+/** A closed shape's own editable fill — the Fill bar (see {@link SVGObject.fill}).
+ *
+ *  It is the SAME editable spec as the image tint overlay, aliased rather than
+ *  re-declared so the two menus (and the single `tintFillToPaint` converter they
+ *  share) can't drift: both are "solid / linear / radial, with the non-active
+ *  fields retained, composited at an opacity and a blend mode". The difference
+ *  is only what the paint lands on — an overlay over a bitmap vs. the interior
+ *  of a path. */
+export type ShapeFill = ImageTintFill;
 
 export type TextAlign = 'left' | 'center' | 'right';
 /** Vertical alignment of the text block within its bbox height (top default;
