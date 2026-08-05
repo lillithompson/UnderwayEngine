@@ -12,8 +12,12 @@ import { OBJECT_PANEL_HEIGHT } from '../theme';
 
 /** Carousel dot diameter. */
 export const OBJECT_DOT_SIZE = 12;
-/** Dot row box: paddingTop (4) + dot + paddingBottom (8). */
-export const OBJECT_DOTS_ROW_HEIGHT = 4 + OBJECT_DOT_SIZE + 8;
+/** Clearance under the dots — how far they ride above the bottom edge, on both
+ *  surfaces. Deep enough that the dots sit in the upper half of a home-indicator
+ *  strip rather than against the screen edge. */
+export const OBJECT_DOTS_BOTTOM = 18;
+/** Dot row box: paddingTop (4) + dot + the bottom clearance. */
+export const OBJECT_DOTS_ROW_HEIGHT = 4 + OBJECT_DOT_SIZE + OBJECT_DOTS_BOTTOM;
 
 /** Panel box for a given inset. `height` is the full slide distance (so the
  *  hidden position clears the screen edge); `paddingBottom` keeps the button
@@ -34,5 +38,5 @@ export function objectPanelLayout(safeBottom: number, dotsInSafeArea: boolean): 
 /** Offset of the submenu dots from the bottom of the slide-up layer: clear of
  *  the inset normally, inside it when the dots take the strip over. */
 export function submenuDotsBottom(safeBottom: number, dotsInSafeArea: boolean): number {
-  return (dotsInSafeArea ? 0 : safeBottom) + 8;
+  return (dotsInSafeArea ? 0 : safeBottom) + OBJECT_DOTS_BOTTOM;
 }

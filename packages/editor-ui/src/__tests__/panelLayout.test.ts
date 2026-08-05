@@ -1,4 +1,4 @@
-import { OBJECT_DOTS_ROW_HEIGHT, objectPanelLayout, submenuDotsBottom } from '../logic/panelLayout';
+import { OBJECT_DOTS_BOTTOM, OBJECT_DOTS_ROW_HEIGHT, objectPanelLayout, submenuDotsBottom } from '../logic/panelLayout';
 import { OBJECT_PANEL_HEIGHT } from '../theme';
 
 describe('objectPanelLayout', () => {
@@ -24,9 +24,9 @@ describe('objectPanelLayout', () => {
 
 describe('submenuDotsBottom', () => {
   test('clears the inset when the dots stay above it', () => {
-    expect(submenuDotsBottom(34, false)).toBe(42);
+    expect(submenuDotsBottom(34, false)).toBe(34 + OBJECT_DOTS_BOTTOM);
   });
   test('sits inside the inset when the dots take the strip over', () => {
-    expect(submenuDotsBottom(34, true)).toBe(8);
+    expect(submenuDotsBottom(34, true)).toBe(OBJECT_DOTS_BOTTOM);
   });
 });

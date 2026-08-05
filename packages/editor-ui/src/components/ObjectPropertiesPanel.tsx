@@ -5,7 +5,7 @@ import type { BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, 
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
-import { OBJECT_DOT_SIZE, objectPanelLayout, submenuDotsBottom } from '../logic/panelLayout';
+import { OBJECT_DOTS_BOTTOM, OBJECT_DOT_SIZE, objectPanelLayout, submenuDotsBottom } from '../logic/panelLayout';
 import { rgbCss } from '../logic/hsv';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
@@ -953,7 +953,7 @@ const styles = StyleSheet.create({
   // buttons) swaps the row.
   swapArea: { flex: 1 },
   // Carousel dots (bottom): one filled for the current page, the other empty.
-  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, paddingTop: 4, paddingBottom: 8 },
+  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, paddingTop: 4, paddingBottom: OBJECT_DOTS_BOTTOM },
   dot: { width: OBJECT_DOT_SIZE, height: OBJECT_DOT_SIZE, borderRadius: OBJECT_DOT_SIZE / 2, backgroundColor: 'rgba(255,255,255,0.28)' },
   dotActive: { backgroundColor: ICON_COLOR },
   // Submenu carousel dots, pinned to the bottom of the slide-up layer.

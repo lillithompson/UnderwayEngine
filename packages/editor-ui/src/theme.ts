@@ -40,10 +40,10 @@ export const OBJECT_MENU_HEIGHT = 240;
 // The main object-properties panel is shorter than the submenus — it holds only
 // one row of options and the carousel dots (the taller submenus slide in over
 // it):
-//   1 border + 60 row + 24 dots = 85.
+//   1 border + 60 row + 34 dots (4 + 12 dot + 18 clearance) = 95.
 // On a notched phone the dots move into the home-indicator strip and this
 // shrinks by the dot row (see logic/panelLayout.ts).
-export const OBJECT_PANEL_HEIGHT = 85;
+export const OBJECT_PANEL_HEIGHT = 95;
 
 // ── Modal surfaces (Facet AppModal / ViewModal) ──
 export const MODAL_BG = '#3f3f3f'; // Facet BG_RAISED_ALT
