@@ -5,6 +5,7 @@ import type { BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, 
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
+import { OBJECT_DOT_SIZE, objectPanelLayout, submenuDotsBottom } from '../logic/panelLayout';
 import { rgbCss } from '../logic/hsv';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
@@ -18,7 +19,6 @@ import {
   MODAL_BG,
   MODAL_TEXT,
   OBJECT_MENU_HEIGHT,
-  OBJECT_PANEL_HEIGHT,
   PANEL_ANIM_MS,
   PANEL_HAIRLINE,
 } from '../theme';
@@ -134,10 +134,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // type-specific options. The leading `<` cell (and a horizontal swipe) flip
   // it; showTypeRow is ignored when the selection has no type options.
   const [showTypeRow, setShowTypeRow] = useState(false);
-  // The panel rests against the bottom edge but pads its content up by the
-  // device safe-area inset (home indicator / screen curve on iOS native), so
-  // the hidden position must clear the full padded height to slide fully off.
-  const hiddenY = OBJECT_PANEL_HEIGHT + safeBottom;
+  // The panel rests against the bottom edge. Where a device reports a bottom
+  // inset (iOS home indicator / curved corners) the carousel dots sit *in* that
+  // strip — nothing there is tappable anyway — and the panel reclaims their
+  // row; with no inset (desktop web) the dots stay in flow. The hidden position
+  // must clear the full height either way, to slide fully off.
+  // Note the editor always runs as the web bundle, inside a WebView on native,
+  // so this keys off the measured inset rather than Platform.OS.
+  const dotsInSafeArea = safeBottom > 0;
+  const panelBox = objectPanelLayout(safeBottom, dotsInSafeArea);
+  const hiddenY = panelBox.height;
   const translateY = useRef(new Animated.Value(model.visible ? 0 : hiddenY)).current;
 
   useEffect(() => {
@@ -890,7 +896,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
             {activeBarEl}
           </Animated.View>
           {submenuOrder.length > 1 ? (
-            <View style={[styles.submenuDots, { bottom: safeBottom + 8 }]} pointerEvents="none">
+            <View style={[styles.submenuDots, { bottom: submenuDotsBottom(safeBottom, dotsInSafeArea) }]} pointerEvents="none">
               {submenuOrder.map((k, i) => (
                 <View key={k} style={[styles.dot, i === activeIndex && styles.dotActive]} />
               ))}
@@ -899,7 +905,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         </Animated.View>
       ) : null}
       <View style={styles.clip} pointerEvents="box-none">
-        <Animated.View style={[styles.panel, { height: OBJECT_PANEL_HEIGHT + safeBottom, paddingBottom: safeBottom, transform: [{ translateY }] }]}>
+        <Animated.View style={[styles.panel, { height: panelBox.height, paddingBottom: panelBox.paddingBottom, transform: [{ translateY }] }]}>
         {/* A single row of buttons (common actions or type-specific options)
             that the `<` cell / a horizontal swipe slides between. Empty cells
             flank the buttons to centre the group; the arrow stays last.
@@ -947,18 +953,19 @@ const styles = StyleSheet.create({
   // buttons) swaps the row.
   swapArea: { flex: 1 },
   // Carousel dots (bottom): one filled for the current page, the other empty.
-  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingTop: 4, paddingBottom: 8 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.28)' },
+  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, paddingTop: 4, paddingBottom: 8 },
+  dot: { width: OBJECT_DOT_SIZE, height: OBJECT_DOT_SIZE, borderRadius: OBJECT_DOT_SIZE / 2, backgroundColor: 'rgba(255,255,255,0.28)' },
   dotActive: { backgroundColor: ICON_COLOR },
   // Submenu carousel dots, pinned to the bottom of the slide-up layer.
-  submenuDots: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
+  submenuDots: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 },
   // A grid row: equal-width cells (the buttons) plus any right-side padding
   // cells, so the common-actions and type-options sets share the same columns
-  // (stable cell width across a swap). Cell gap matches the transform spacing.
+  // (stable cell width across a swap), separated by a gap wide enough that the
+  // icon+caption cells read as distinct buttons rather than one strip.
   gridRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 2,
+    gap: 8,
     paddingTop: 4,
     paddingBottom: 8,
   },
