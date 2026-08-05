@@ -1,14 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
+import type { BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
-import { svgEditOptions, svgHasEndpoints, svgHasFill, svgStrokeRows } from '../logic/svgEdit';
+import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import { OBJECT_DOTS_BOTTOM, OBJECT_DOT_SIZE, objectPanelLayout, submenuDotsBottom } from '../logic/panelLayout';
 import { rgbCss } from '../logic/hsv';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
+import { OpacityBar } from './OpacityBar';
 import { CropBar } from './CropBar';
 import { TextBar } from './TextBar';
 import { TintBar } from './TintBar';
@@ -60,6 +61,9 @@ const DEFAULT_ENDPOINTS_MODEL: EndpointsModel = {
 const DEFAULT_BORDER_MODEL: BorderModel = {
   width: 0.375, position: 'center', dash: 0, color: { r: 58, g: 53, b: 50 },
 };
+// Opacity-bar defaults: fully opaque, hard edges — what every object renders
+// as until it visits the bar, and what the bar's trash resets to.
+const DEFAULT_OPACITY_MODEL: OpacityModel = { opacity: 1, edgeSoften: 0 };
 // Design default framing (Zoom 130%, Margin 14pt, Ratio 1:1, Straighten 0°,
 // Size 46, Spacing 6pt). Lengths in world cells (pt ÷ 16).
 const DEFAULT_FRAMING_MODEL: FramingModel = {
@@ -80,12 +84,13 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 };
 
 // The slide-up submenus, in carousel order. Image selections cycle through
-// tint / crop / shadow / border (matching their type-option order); text cycles
-// through font / align (two pages of the Text bar); a vector selection has
-// stroke, plus its subtype's second bar — svgFill on the closed shapes,
-// endpoints on the open paths. Kept in this order so a left swipe advances the
-// same way the type-option row reads.
-type SubmenuKey = 'tint' | 'crop' | 'shadow' | 'border' | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints';
+// tint / crop / shadow / border / opacity (matching their type-option order);
+// text cycles through font / align (two pages of the Text bar); a vector
+// selection has stroke, plus its subtype's second bar — svgFill on the closed
+// shapes, endpoints on the open paths — plus opacity on the closed shapes.
+// Kept in this order so a left swipe advances the same way the type-option
+// row reads.
+type SubmenuKey = 'tint' | 'crop' | 'shadow' | 'border' | 'opacity' | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints';
 
 // One grid cell: an icon over a short caption, weighted (flex) so every button
 // shares the same column width whichever set is showing. `caption` is the
@@ -228,6 +233,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const prevBorderOpen = useRef(false);
   const [cropDraft, setCropDraft] = useState<FramingModel | null>(null);
   const prevCropOpen = useRef(false);
+  // The Opacity bar rides the same draft pattern as Crop — the draft owns
+  // both tracked params (there's no external color to split off).
+  const [opacityDraft, setOpacityDraft] = useState<OpacityModel | null>(null);
+  const prevOpacityOpen = useRef(false);
   // The Stroke bar rides the same draft pattern as Border — it IS the Border
   // bar, pointed at a vector object's own stroke.
   const [strokeDraft, setStrokeDraft] = useState<BorderModel | null>(null);
@@ -256,18 +265,25 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const submenuSlide = OBJECT_MENU_HEIGHT + safeBottom;
   const svgFillable = !!model.showSvgOptions && svgHasFill(model.svgSubtype ?? 'stroke');
   const svgEndable = !!model.showSvgOptions && svgHasEndpoints(model.svgSubtype ?? 'stroke');
+  const svgOpacityable = !!model.showSvgOptions && svgHasOpacity(model.svgSubtype ?? 'stroke');
   const submenuOrder: SubmenuKey[] =
-    model.showImageEdit ? ['tint', 'crop', 'shadow', 'border']
+    model.showImageEdit ? ['tint', 'crop', 'shadow', 'border', 'opacity']
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'align']
     : model.showSvgOptions
-      ? (svgFillable ? ['stroke', 'svgFill'] : svgEndable ? ['stroke', 'endpoints'] : ['stroke'])
+      ? [
+          'stroke',
+          ...(svgFillable ? (['svgFill'] as const) : []),
+          ...(svgEndable ? (['endpoints'] as const) : []),
+          ...(svgOpacityable ? (['opacity'] as const) : []),
+        ]
     : [];
   const activeSub: SubmenuKey | null =
     model.tintOpen ? 'tint'
     : model.cropOpen ? 'crop'
     : model.shadowOpen ? 'shadow'
     : model.borderOpen ? 'border'
+    : model.opacityOpen ? 'opacity'
     : model.strokeOpen ? 'stroke'
     : model.svgFillOpen ? 'svgFill'
     : model.endpointsOpen ? 'endpoints'
@@ -293,6 +309,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     else if (key === 'crop') model.onCropOpenChange?.(true);
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
     else if (key === 'border') model.onBorderOpenChange?.(true);
+    else if (key === 'opacity') model.onOpacityOpenChange?.(true);
     else if (key === 'stroke') model.onStrokeOpenChange?.(true);
     else if (key === 'svgFill') model.onSvgFillOpenChange?.(true);
     else if (key === 'endpoints') model.onEndpointsOpenChange?.(true);
@@ -309,6 +326,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     model.onShadowOpenChange?.(false);
     model.onBorderOpenChange?.(false);
     model.onCropOpenChange?.(false);
+    model.onOpacityOpenChange?.(false);
     model.onStrokeOpenChange?.(false);
     model.onSvgFillOpenChange?.(false);
     model.onEndpointsOpenChange?.(false);
@@ -418,6 +436,17 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     // re-run this every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showImageEdit, model.showFrameOptions]);
+  // The Opacity bar is shared by images and the closed vector shapes, so it
+  // folds away only when the selection is neither (or the panel hides).
+  useEffect(() => {
+    const canOpacity = model.showImageEdit || svgOpacityable;
+    if ((!model.visible || !canOpacity) && model.opacityOpen) {
+      model.onOpacityOpenChange?.(false);
+    }
+    // model.on* are stable setters; listing the whole model would re-run this
+    // every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model.visible, model.showImageEdit, svgOpacityable, model.opacityOpen]);
 
   // Seed the shadow / border drafts from the current effect each time the
   // controls open.
@@ -446,6 +475,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     }
     prevCropOpen.current = !!model.cropOpen;
   }, [model.cropOpen, model.framing]);
+  useEffect(() => {
+    if (model.opacityOpen && !prevOpacityOpen.current) {
+      // Seeded from the app, which reports the object's CURRENT opacity /
+      // soften (defaults resolved), so the sliders open where the object is.
+      setOpacityDraft(model.objectOpacity ?? DEFAULT_OPACITY_MODEL);
+    }
+    prevOpacityOpen.current = !!model.opacityOpen;
+  }, [model.opacityOpen, model.objectOpacity]);
   useEffect(() => {
     if (model.strokeOpen && !prevStrokeOpen.current) {
       // Seeded from the app, which reports the object's CURRENT stroke —
@@ -511,17 +548,20 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const toggleBorder = () => model.onBorderOpenChange?.(!model.borderOpen);
   const toggleCrop = () => model.onCropOpenChange?.(!model.cropOpen);
   const toggleTint = () => model.onTintOpenChange?.(!model.tintOpen);
+  const toggleOpacity = () => model.onOpacityOpenChange?.(!model.opacityOpen);
 
   const runImageAction = (action: ImageEditAction) => {
     if (action === 'tint') { toggleTint(); return; }
     if (action === 'shadow') { toggleShadow(); return; }
     if (action === 'border') { toggleBorder(); return; }
     if (action === 'crop') { toggleCrop(); return; }
+    if (action === 'opacity') { toggleOpacity(); return; }
     // Any other action closes the transient bars.
     model.onTintOpenChange?.(false);
     model.onShadowOpenChange?.(false);
     model.onBorderOpenChange?.(false);
     model.onCropOpenChange?.(false);
+    model.onOpacityOpenChange?.(false);
     if (action === 'replace') model.onReplaceImage?.();
   };
 
@@ -563,6 +603,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const applyFraming = (f: FramingModel, committed: boolean) => {
     setCropDraft(f);
     model.onFraming?.(f, committed);
+  };
+
+  // Opacity controls → live preview / commit; the draft owns both params
+  // (no external color). The trash resets to the defaults as one undo step
+  // and closes the bar.
+  const applyOpacity = (o: OpacityModel, committed: boolean) => {
+    setOpacityDraft(o);
+    model.onObjectOpacity?.(o, committed);
+  };
+  const removeOpacity = () => {
+    applyOpacity(DEFAULT_OPACITY_MODEL, true);
+    model.onOpacityOpenChange?.(false);
   };
 
   // Text style → live preview / commit; the draft owns the tracked params, so
@@ -680,7 +732,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         label={opt.label}
         caption={opt.label}
         icon={opt.icon}
-        onPress={() => openSubmenu(opt.action === 'fill' ? 'svgFill' : opt.action === 'endpoints' ? 'endpoints' : 'stroke')}
+        onPress={() => openSubmenu(opt.action === 'fill' ? 'svgFill' : opt.action === 'endpoints' ? 'endpoints' : opt.action === 'opacity' ? 'opacity' : 'stroke')}
         compact={compact}
       />
     ));
@@ -750,6 +802,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     ? { ...borderDraft, color: model.border?.color ?? borderDraft.color }
     : (model.border ?? DEFAULT_BORDER_MODEL);
   const framingForBar: FramingModel = cropDraft ?? model.framing ?? DEFAULT_FRAMING_MODEL;
+  const opacityForBar: OpacityModel = opacityDraft ?? model.objectOpacity ?? DEFAULT_OPACITY_MODEL;
   const strokeForBar: BorderModel = strokeDraft
     ? { ...strokeDraft, color: model.stroke?.color ?? strokeDraft.color }
     : (model.stroke ?? DEFAULT_BORDER_MODEL);
@@ -859,6 +912,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         onBack={dismissSubmenu}
         onRemove={removeStroke}
         onPickColor={() => model.onPickStrokeColor?.()}
+      />
+    );
+  } else if (displaySub === 'opacity') {
+    activeBarEl = (
+      <OpacityBar
+        opacity={opacityForBar}
+        onChange={(o) => applyOpacity(o, false)}
+        onCommit={(o) => applyOpacity(o, true)}
+        onBack={dismissSubmenu}
+        onRemove={removeOpacity}
       />
     );
   } else if (displaySub === 'crop') {

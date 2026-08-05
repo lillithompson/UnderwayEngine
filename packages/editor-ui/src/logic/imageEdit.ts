@@ -7,13 +7,15 @@
 /** The image-specific editing actions, in display order. Replace swaps the
  *  image inside the same container; the rest are visual adjustments. Corner
  *  rounding lives inside the Border panel (its Radius slider), so there is no
- *  standalone Round action. */
+ *  standalone Round action. Opacity opens the Opacity bar (whole-image
+ *  opacity + edge soften). */
 export type ImageEditAction =
   | 'replace'
   | 'tint'
   | 'crop'
   | 'shadow'
-  | 'border';
+  | 'border'
+  | 'opacity';
 
 export interface ImageEditOption {
   action: ImageEditAction;
@@ -29,6 +31,7 @@ export const IMAGE_EDIT_OPTIONS: readonly ImageEditOption[] = [
   { action: 'crop', label: 'Crop', icon: 'crop' },
   { action: 'shadow', label: 'Shadow', icon: 'box-shadow' },
   { action: 'border', label: 'Border', icon: 'border-outside' },
+  { action: 'opacity', label: 'Opacity', icon: 'opacity' },
 ];
 
 /** Horizontal travel (px, either direction) that commits a dismiss. Matched

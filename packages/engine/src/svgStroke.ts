@@ -213,8 +213,13 @@ export function svgStrokeAlignment(
   return p;
 }
 
+/** A node id reduced to DOM-id-safe characters, for per-object defs ids. */
+export function svgDefIdSafe(nodeId: string): string {
+  return nodeId.replace(/[^A-Za-z0-9_-]/g, '_');
+}
+
 /** A DOM-id-safe suffix derived from a node id, for the per-object clip/mask
  *  defs an aligned stroke needs. */
 export function svgStrokeDefId(nodeId: string, kind: 'clip' | 'mask'): string {
-  return `uw-stroke-${kind}-${nodeId.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+  return `uw-stroke-${kind}-${svgDefIdSafe(nodeId)}`;
 }

@@ -307,7 +307,16 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // bit was always written 0 before, so no older file can be misread as carrying
 // it. They load `endpoints` undefined — bare ends, round caps, exactly how
 // every path has always been drawn.
-const FORMAT_VERSION = 41;
+// v42: whole-object opacity + edge soften (the Opacity bar). SVG records:
+// presence rides flags4 bit 0x08, payload is two u8s (opacity quantized to
+// 0..255, edgeSoften likewise) written last in the record, after the v41
+// endpoints byte; gated on version>=42 since that bit was always written 0
+// before. Image records already persist `opacity` (the always-present opacity
+// byte), so only `edgeSoften` is new there: presence rides image flags2 bit
+// 0x04, payload one u8 after the v36 tintFill block, gated on version>=42 the
+// same way. Both fields default absent (opaque / hard edges), so untouched
+// records are byte-identical to v41.
+const FORMAT_VERSION = 42;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -558,6 +567,7 @@ const FLAG3_SVG_HAS_ANGLE = 0x80;
 const FLAG4_SVG_HAS_PATTERN_FILE_ID = 0x01;
 const FLAG4_SVG_HAS_FILL = 0x02; // v40+
 const FLAG4_SVG_HAS_ENDPOINTS = 0x04; // v41+
+const FLAG4_SVG_HAS_OPACITY = 0x08; // v42+ (opacity + edgeSoften, two u8s)
 
 // v29+ image rotation-byte bits. The image `flags` byte is fully
 // consumed (0x01..0x80), so tint/effects presence rides the spare high
@@ -654,6 +664,8 @@ const IMG_FLAGS2_HAS_ORIGINAL = 0x01;
 // v36+: gradient tint overlay (`tintFill`) present; payload follows the
 // originalImageId block (when present) inside the flags2 section.
 const IMG_FLAGS2_HAS_TINT_FILL = 0x02;
+// v42+: edge soften present; one u8 after the tintFill block.
+const IMG_FLAGS2_HAS_EDGE_SOFTEN = 0x04;
 
 // v31+ free-rotation encoding: i16 hundredths of a degree (angleDeg * 100).
 // Range ±180° fits comfortably in i16 (±18000), precision 0.01°.
@@ -993,6 +1005,14 @@ function hasSVGEndpoints(e: SVGEndpoints | undefined): e is SVGEndpoints {
   return !!e && packEndpoints(e) !== 0;
 }
 
+/** True when the v42 opacity payload carries anything but defaults (fully
+ *  opaque, hard edges) — same absent-at-default rule as the stroke and
+ *  endpoints blocks, so untouched records never grow. */
+function hasSVGOpacity(svg: Pick<SVGObject, 'opacity' | 'edgeSoften'>): boolean {
+  return (svg.opacity != null && svg.opacity < 1)
+    || (svg.edgeSoften != null && svg.edgeSoften > 0);
+}
+
 function packEndpoints(e: SVGEndpoints): number {
   return (END_MARKER_TO_BITS[e.startMarker ?? 'none'] ?? 0)
     | ((END_MARKER_TO_BITS[e.endMarker ?? 'none'] ?? 0) << 2)
@@ -1053,6 +1073,7 @@ function svgBinarySize(svg: SVGObject): number {
   if (hasSVGStroke(svg.stroke)) size += strokeBinarySize(svg.stroke); // v35+
   if (svg.fill) size += tintFillBinarySize(svg.fill); // v40+
   if (hasSVGEndpoints(svg.endpoints)) size += 1; // v41+
+  if (hasSVGOpacity(svg)) size += 2; // v42+ opacity + edgeSoften
   return size;
 }
 
@@ -1088,6 +1109,7 @@ function imageBinarySize(img: ImageObject): number {
   size += 1; // v34+ image flags2 byte (always written by the current writer)
   if (img.originalImageId != null) size += 2; // v34+ originalImageId index
   if (img.tintFill) size += tintFillBinarySize(img.tintFill); // v36+
+  if (img.edgeSoften != null && img.edgeSoften > 0) size += 1; // v42+
   return size;
 }
 
@@ -1247,6 +1269,7 @@ function writeSVG(
   if (svg.patternFileId != null) flags4 |= FLAG4_SVG_HAS_PATTERN_FILE_ID;
   if (svg.fill) flags4 |= FLAG4_SVG_HAS_FILL;
   if (hasSVGEndpoints(svg.endpoints)) flags4 |= FLAG4_SVG_HAS_ENDPOINTS;
+  if (hasSVGOpacity(svg)) flags4 |= FLAG4_SVG_HAS_OPACITY;
   out[pos++] = flags4;
 
   let rotBits = ROTATION_TO_BITS[svg.rotation ?? 0] & 0x03;
@@ -1340,9 +1363,16 @@ function writeSVG(
   if (svg.fill) {
     pos = writeTintFill(view, out, pos, svg.fill);
   }
-  // v41+ the open path's endpoints, last in the record — one packed byte.
+  // v41+ the open path's endpoints — one packed byte.
   if (hasSVGEndpoints(svg.endpoints)) {
     out[pos++] = packEndpoints(svg.endpoints);
+  }
+  // v42+ whole-object opacity + edge soften, last in the record. Both
+  // quantized to u8 like the image opacity byte (256 levels is beyond what
+  // the eye resolves).
+  if (hasSVGOpacity(svg)) {
+    out[pos++] = svg.opacity == null ? 255 : quantize255(Math.max(0, Math.min(1, svg.opacity)));
+    out[pos++] = quantize255(Math.max(0, Math.min(1, svg.edgeSoften ?? 0)));
   }
   return pos;
 }
@@ -1538,6 +1568,15 @@ function readSVG(
   // again: flags4 bit 0x04 was always written 0 before v41.
   if (version >= 41 && (flags4 & FLAG4_SVG_HAS_ENDPOINTS)) {
     svg.endpoints = unpackEndpoints(data[pos++]);
+  }
+  // v42+ whole-object opacity + edge soften. Same gating argument: flags4 bit
+  // 0x08 was always written 0 before v42. Defaults (255 / 0) stay absent so a
+  // round-trip is toEqual-identical to what was written.
+  if (version >= 42 && (flags4 & FLAG4_SVG_HAS_OPACITY)) {
+    const opByte = data[pos++];
+    const softByte = data[pos++];
+    if (opByte < 255) svg.opacity = opByte / 255;
+    if (softByte > 0) svg.edgeSoften = softByte / 255;
   }
 
   // v25+ "Use as mask" flag (presence-only, no payload)
@@ -1875,8 +1914,10 @@ function writeImage(
   // v34+ image flags2 byte, then the originalImageId string index when present.
   // Written after the v33 blocks; bytes ride the existing image-blob section.
   {
+    const hasSoften = img.edgeSoften != null && img.edgeSoften > 0;
     const flags2 = (img.originalImageId != null ? IMG_FLAGS2_HAS_ORIGINAL : 0)
-      | (img.tintFill ? IMG_FLAGS2_HAS_TINT_FILL : 0);
+      | (img.tintFill ? IMG_FLAGS2_HAS_TINT_FILL : 0)
+      | (hasSoften ? IMG_FLAGS2_HAS_EDGE_SOFTEN : 0);
     out[pos++] = flags2;
     if (img.originalImageId != null) {
       view.setUint16(pos, indexOf.get(img.originalImageId) ?? 0, true); pos += 2;
@@ -1884,6 +1925,10 @@ function writeImage(
     // v36+ gradient tint overlay, after the originalImageId within this section.
     if (img.tintFill) {
       pos = writeTintFill(view, out, pos, img.tintFill);
+    }
+    // v42+ edge soften, one u8 after the tintFill block.
+    if (hasSoften) {
+      out[pos++] = quantize255(Math.max(0, Math.min(1, img.edgeSoften!)));
     }
   }
 
@@ -1997,6 +2042,11 @@ function readImage(
       const t = readTintFill(view, data, pos);
       img.tintFill = t.tintFill;
       pos = t.pos;
+    }
+    // v42+ edge soften. Bit 0x04 was always written 0 before v42.
+    if (version >= 42 && (flags2 & IMG_FLAGS2_HAS_EDGE_SOFTEN)) {
+      const softByte = data[pos++];
+      if (softByte > 0) img.edgeSoften = softByte / 255;
     }
   }
 

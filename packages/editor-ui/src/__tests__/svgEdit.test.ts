@@ -4,7 +4,7 @@
  * images.
  */
 
-import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndpoints, svgHasFill, svgStrokeRows } from '../logic/svgEdit';
+import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
 import type { SVGSubtypeKind } from '../adapter';
 
 const SUBTYPES: SVGSubtypeKind[] = ['line', 'arc', 'rectangle', 'circle', 'shape', 'stroke'];
@@ -18,11 +18,12 @@ describe('svgEditOptions', () => {
     }
   });
 
-  it('adds Fill to the two shapes with an interior, and to nothing else', () => {
-    expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'fill']);
-    expect(svgEditOptions('circle').map((o) => o.action)).toEqual(['stroke', 'fill']);
+  it('adds Fill then Opacity to the two shapes with an interior, and to nothing else', () => {
+    expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity']);
+    expect(svgEditOptions('circle').map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity']);
     for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'circle')) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('fill');
+      expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('opacity');
     }
   });
 
@@ -65,6 +66,14 @@ describe('svgEditOptions', () => {
       const fill = svgEditOptions(subtype).find((o) => o.action === 'fill')!;
       expect(fill.label).toBe('Fill');
       expect(fill.icon).toBe('format-color-fill');
+    }
+  });
+
+  it('labels and glyphs the Opacity option the same way whichever shape it is on', () => {
+    for (const subtype of ['rectangle', 'circle'] as SVGSubtypeKind[]) {
+      const op = svgEditOptions(subtype).find((o) => o.action === 'opacity')!;
+      expect(op.label).toBe('Opacity');
+      expect(op.icon).toBe('opacity');
     }
   });
 
@@ -122,6 +131,23 @@ describe('svgHasFill', () => {
     for (const subtype of SUBTYPES) {
       const hasFillOption = svgEditOptions(subtype).some((o) => o.action === 'fill');
       expect(hasFillOption).toBe(svgHasFill(subtype));
+    }
+  });
+});
+
+describe('svgHasOpacity', () => {
+  it('is true only for the closed shapes the shape tools author', () => {
+    expect(svgHasOpacity('rectangle')).toBe(true);
+    expect(svgHasOpacity('circle')).toBe(true);
+    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'circle')) {
+      expect(svgHasOpacity(subtype)).toBe(false);
+    }
+  });
+
+  it('agrees with the option menu', () => {
+    for (const subtype of SUBTYPES) {
+      const hasOpacityOption = svgEditOptions(subtype).some((o) => o.action === 'opacity');
+      expect(hasOpacityOption).toBe(svgHasOpacity(subtype));
     }
   });
 });

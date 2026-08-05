@@ -23,8 +23,10 @@ import type { SVGSubtypeKind } from '../adapter';
  *    Angle / Opacity / Blend) plus its gradient swatch, pointed at the closed
  *    path's interior.
  *  - `endpoints` opens the Endpoints bar — a marker (none / circle / arrow) and
- *    a cap (round / square) for each of an open path's two loose ends. */
-export type SVGEditAction = 'stroke' | 'fill' | 'endpoints';
+ *    a cap (round / square) for each of an open path's two loose ends.
+ *  - `opacity` opens the Opacity bar — the whole object's render opacity plus
+ *    an edge soften (0 = hard edges, 1 = transparent toward the edges). */
+export type SVGEditAction = 'stroke' | 'fill' | 'endpoints' | 'opacity';
 
 export interface SVGEditOption {
   action: SVGEditAction;
@@ -72,16 +74,32 @@ export function svgHasEndpoints(subtype: SVGSubtypeKind): boolean {
   return subtype === 'line' || subtype === 'arc' || subtype === 'stroke';
 }
 
+/**
+ * Whether a subtype offers the Opacity bar (whole-object opacity + edge
+ * soften).
+ *
+ * The same two closed shapes the Fill bar takes (`rectangle`, `circle`) —
+ * softening an edge into transparency needs an enclosed silhouette to fade,
+ * and the open paths already read as weightless lines. Kept a separate
+ * predicate from {@link svgHasFill} rather than an alias because the two menus
+ * answer different questions and are free to diverge (e.g. `shape` could take
+ * Opacity before its fill story is reconciled).
+ */
+export function svgHasOpacity(subtype: SVGSubtypeKind): boolean {
+  return subtype === 'rectangle' || subtype === 'circle';
+}
+
 /** The option menu for one vector subtype, in display order. Stroke leads — it
  *  is the one action every subtype has — then the subtype's own second action:
  *  Fill on the shapes that enclose an area, Endpoints on the paths that don't
- *  close. */
+ *  close — then Opacity on the closed shapes. */
 export function svgEditOptions(subtype: SVGSubtypeKind): readonly SVGEditOption[] {
   const options: SVGEditOption[] = [
     { action: 'stroke', label: 'Stroke', icon: STROKE_ICON[subtype] ?? STROKE_ICON.stroke },
   ];
   if (svgHasFill(subtype)) options.push({ action: 'fill', label: 'Fill', icon: 'format-color-fill' });
   if (svgHasEndpoints(subtype)) options.push({ action: 'endpoints', label: 'Ends', icon: 'ray-start-end' });
+  if (svgHasOpacity(subtype)) options.push({ action: 'opacity', label: 'Opacity', icon: 'opacity' });
   return options;
 }
 

@@ -956,6 +956,19 @@ export interface SVGObject {
    *  `svgSubtype` and `svgHasEndpoints`. Undefined = bare ends, round caps,
    *  which is how every path has always been drawn. */
   endpoints?: SVGEndpoints;
+  /** Whole-object render opacity in [0, 1] — the Opacity bar's Opacity row
+   *  (v42+). Applies to everything the object draws (fill, stroke, subpaths,
+   *  endpoint decorations) as one layer. Undefined = fully opaque, so an
+   *  untouched record stays byte-identical to what it was. Distinct from the
+   *  fill layer's own `fill.opacity`, which dims only the interior. */
+  opacity?: number;
+  /** Edge soften in [0, 1] — the Opacity bar's Soften row (v42+). 0 /
+   *  undefined = hard edges; the edge itself is always at 0 opacity when set,
+   *  with the fade completing `edgeSoften × half the shorter side` inward (at
+   *  1 the shape fades from its center out). Rendered as an eroded-then-
+   *  blurred silhouette mask (never a live filter on the shape itself); only
+   *  the closed shapes offer the control — see `svgHasOpacity` in editor-ui. */
+  edgeSoften?: number;
   /** Direction at creation time. Persists through scaling and rotation
    *  so an H/V line never becomes diagonal after creation. Stripped on
    *  join — only original creation-tool lines carry this. */
@@ -1114,6 +1127,13 @@ export interface ImageObject {
    *  trace-over use; default (undefined) = fully opaque so older saves
    *  and newly imported images render unchanged. */
   opacity?: number;
+  /** Edge soften in [0, 1] — the Opacity bar's Soften row (v42+). 0 /
+   *  undefined = hard edges; the frame edge itself is always at 0 opacity
+   *  when set, with the fade completing `edgeSoften × half the shorter side`
+   *  inward (at 1 the image fades from its center out). Rendered as a
+   *  gradient / eroded-then-blurred mask over the framed content (following
+   *  any corner rounding), never a live filter. */
+  edgeSoften?: number;
   /** Shader-time recolor (v29+): applied at draw time from the original
    *  bitmap — zero extra memory, no re-encode. Export bakes the tint
    *  when rasterizing and emits `feColorMatrix` in SVG. */

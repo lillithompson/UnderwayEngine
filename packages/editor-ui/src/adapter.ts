@@ -272,6 +272,17 @@ export interface TintModel {
   blend: TintBlend;
 }
 
+/** Editable whole-object opacity (the Opacity bar): the object's own render
+ *  opacity plus how far its edges soften into transparency. Shared by images
+ *  and the closed vector shapes (rectangle / circle — see `svgHasOpacity`). */
+export interface OpacityModel {
+  /** Whole-object opacity 0…1 (1 = fully opaque). */
+  opacity: number;
+  /** Edge soften 0…1: 0 = hard edges, 1 = the object fades to transparent
+   *  toward its edges. */
+  edgeSoften: number;
+}
+
 export interface ObjectPropertiesModel {
   visible: boolean;
   mode?: 'single' | 'multi' | 'group';
@@ -448,6 +459,18 @@ export interface ObjectPropertiesModel {
    *  `committed=true` (single undo step). Drives the object's own corner
    *  rounding — the Radius row of the Border panel. */
   onCornerRadius?(radius: number, committed: boolean): void;
+  /** Whether the Opacity bar is shown. App-owned so a tap-off dismisses it
+   *  before the panel (same as the other effect bars). Offered by images and
+   *  the closed vector shapes (see `svgHasOpacity`). */
+  opacityOpen?: boolean;
+  onOpacityOpenChange?(open: boolean): void;
+  /** The selection's current opacity + edge soften, seeding the Opacity bar.
+   *  The app resolves absent to the defaults (fully opaque, hard edges) so
+   *  both sliders always have a position to show. */
+  objectOpacity?: OpacityModel;
+  /** Opacity-bar callback: fires live while dragging (`committed=false`) and
+   *  once on release (`committed=true`, one undo step). */
+  onObjectOpacity?(opacity: OpacityModel, committed: boolean): void;
   /** Whether the Text styling bar is shown. App-owned so a tap-off dismisses
    *  it before the panel (same as the image effect bars). */
   textStyleOpen?: boolean;

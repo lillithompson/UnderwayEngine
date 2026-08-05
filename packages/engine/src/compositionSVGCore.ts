@@ -11,7 +11,7 @@ import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildTilePathD, buildClosedFillPathD, buildTileFillPathD, buildExpandedTileSVGObjectContent, svgFillPresentation, svgStrokePresentation } from './svgPathBuilder';
+import { buildPathD, buildTilePathD, buildClosedFillPathD, buildTileFillPathD, buildExpandedTileSVGObjectContent, svgFillPresentation, svgStrokePresentation, wrapSVGObjectOpacity } from './svgPathBuilder';
 import { roundPathCorners, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import { chainSegments } from './compositionArcMath';
@@ -568,7 +568,40 @@ export async function generateCompositionSVGCore(
         ` opacity="${img.tintFill.opacity}" style="mix-blend-mode:${img.tintFill.blend}"${ovClipAttr}/>`;
       tintedContent = `<g style="isolation:isolate">${framedContent}${overlay}</g>`;
     }
-    const localContent = opacityAttr ? `<g${opacityAttr}>${tintedContent}</g>` : tintedContent;
+    // v42 edge soften: an eroded-then-blurred silhouette mask over the framed
+    // content — a white rect of the (rounded) frame, eroded inward by half
+    // the feather depth (`edgeSoften × half the shorter side`) and blurred by
+    // a fifth of it, so the ramp's 2.5σ tail ENDS at the frame edge: the edge
+    // is at 0 opacity, fully opaque a feather-depth in (a plain blur would
+    // leave the edge at ~50%; same math as wrapSVGObjectOpacity for shapes).
+    // A mask (not a filter on the content) so the bitmap itself is untouched;
+    // regions are explicit userSpaceOnUse boxes in the image's LOCAL frame
+    // because the defaults resolve against the viewport (see the
+    // stroke-alignment mask's caveat in svgPathBuilder).
+    let softenDefs = '';
+    let softenAttr = '';
+    const soften = img.edgeSoften != null ? Math.max(0, Math.min(1, img.edgeSoften)) : 0;
+    if (soften > 0 && iw > 0 && ih > 0) {
+      const depth = soften * 0.5 * Math.min(iw, ih);
+      const erode = depth / 2;
+      const sigma = depth / 5;
+      const pad = sigma * 3 + U;
+      const softenFilterId = `softenf_${img.id}`;
+      const softenMaskId = `softenm_${img.id}`;
+      const region = `x="${-pad}" y="${-pad}" width="${iw + 2 * pad}" height="${ih + 2 * pad}"`;
+      const rxAttr = cornerR > 0 ? ` rx="${cornerR}" ry="${cornerR}"` : '';
+      softenDefs = `<defs><filter id="${softenFilterId}" filterUnits="userSpaceOnUse" ${region}>`
+        + `<feMorphology operator="erode" radius="${erode}"/>`
+        + `<feGaussianBlur stdDeviation="${sigma}"/></filter>`
+        + `<mask id="${softenMaskId}" maskUnits="userSpaceOnUse" ${region}>`
+        + `<g filter="url(#${softenFilterId})">`
+        + `<rect x="0" y="0" width="${iw}" height="${ih}"${rxAttr} fill="white"/></g>`
+        + `</mask></defs>`;
+      softenAttr = ` mask="url(#${softenMaskId})"`;
+    }
+    const localContent = opacityAttr || softenAttr
+      ? softenDefs + `<g${opacityAttr}${softenAttr}>${tintedContent}</g>`
+      : tintedContent;
     const effected = applyNodeEffects(
       localContent, img.effects, img.id,
       { cellX: 0, cellY: 0, cellWidth: img.cellWidth, cellHeight: img.cellHeight, cornerRadius: img.cornerRadius },
@@ -767,6 +800,10 @@ export async function generateCompositionSVGCore(
       // the live DOM layer uses, so an arrow can't point one way on the canvas
       // and another in the export.
       paths += svgEndpointsMarkup(svg, strokeSegments, svgStrokeWidthCells(svg, effectiveStrokeScale, U));
+      // Whole-object opacity + edge soften (the Opacity bar) wrap everything
+      // the object drew, INSIDE the node effects so a drop shadow is cast by
+      // the already-faded shape. Same helper as the live DOM layer.
+      paths = wrapSVGObjectOpacity(svg, paths, effectiveStrokeScale);
       if (paths) {
         elementsById.set(svg.id, wrapWithMaskClip(
           applyNodeEffects(paths, svg.effects, svg.id, svg, U),
