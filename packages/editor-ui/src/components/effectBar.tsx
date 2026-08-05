@@ -2,8 +2,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { RGBLike } from '../adapter';
-import { rgbCss } from '../logic/hsv';
 import { MODAL_BG } from '../theme';
+import { ColorSwatchFill } from './ColorSwatch';
 import { Slider } from './Slider';
 
 // Shared chrome for the image-effect editing bars (Drop Shadow, Border): the
@@ -66,9 +66,14 @@ export function EffectBarHeader({ title, color, swatch, chevron, align = 'center
             onPress={onPickColor}
             accessibilityRole="button"
             accessibilityLabel={`${title} color`}
-            style={[styles.swatch, swatch ? styles.swatchClip : { backgroundColor: rgbCss(color!) }]}
+            style={styles.swatch}
           >
-            {swatch}
+            {/* A flat color renders as a ColorSwatchFill (not a background
+                color) so a picked opacity shows as a checkerboard behind it,
+                the same as the picker's own preview. The clip is its own inner
+                layer because `overflow: hidden` on the outer would take the
+                swatch's drop shadow with it (RN maps it to clipsToBounds). */}
+            <View style={styles.swatchClip}>{swatch ?? <ColorSwatchFill color={color!} />}</View>
           </Pressable>
         ) : null}
         {onRemove ? (
@@ -229,8 +234,9 @@ const styles = StyleSheet.create({
     width: 22, height: 22, borderRadius: 11, borderWidth: 1.8, borderColor: SWATCH_BORDER,
     shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
   },
-  // A custom swatch fill (gradient preview) is clipped to the circle.
-  swatchClip: { overflow: 'hidden' },
+  // Clips the swatch's fill — flat color or a custom one (the Tint bar's
+  // gradient preview) — to the circle, inside the border.
+  swatchClip: { ...StyleSheet.absoluteFillObject, borderRadius: 11, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', height: 32 },
   rowLabel: { width: 50, color: LABEL, fontSize: 12 },
   rowSlider: { flex: 1 },

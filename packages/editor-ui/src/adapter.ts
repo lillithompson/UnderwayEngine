@@ -16,6 +16,13 @@ export interface RGBLike {
   r: number;
   g: number;
   b: number;
+  /** Alpha 0–1, set by the color picker's Opacity slider. OPTIONAL and
+   *  omitted when fully opaque, so an opaque color is still `{r,g,b}` —
+   *  existing colors, stored state and equality checks are unaffected. Read
+   *  it through `colorAlpha` / write it through `withAlpha` (logic/hsv)
+   *  rather than touching the field, and render via `rgbCss`, which emits
+   *  `rgba(...)` once alpha drops below 1. */
+  a?: number;
 }
 
 // ── Scene outline ────────────────────────────────────────────────────
@@ -534,11 +541,28 @@ export interface GridViewModel {
 export interface ColorPickerModel {
   visible: boolean;
   color: RGBLike;
+  /** A committed color change: a swatch tap, or the release of an Opacity
+   *  drag. One call = one undo step. The color carries the picker's current
+   *  alpha (see {@link RGBLike.a}), so a host that stores `{r,g,b}` verbatim
+   *  keeps the opacity with the color and needs no separate channel. */
   onChange(color: RGBLike): void;
   onClose(): void;
+  /** Uncommitted color, fired continuously while the Opacity slider is
+   *  dragged, so the canvas can track the drag. Hosts that fold every change
+   *  into the undo stack should leave this unset: the picker previews the drag
+   *  itself and only reports it via `onChange` on release. */
+  onPreview?(color: RGBLike): void;
+  /** Show the Opacity slider (default true). Set false where the target can't
+   *  carry a per-color alpha, so the picker doesn't offer a control the host
+   *  would have to discard. */
+  showOpacity?: boolean;
   /** Tap on the picker's eyedropper swatch (Facet parity). The host closes the
    *  picker and enters eyedropper mode — arming its canvas for sampling and
    *  rendering {@link EyedropperOverlay} over it, whose dismissal commits the
-   *  sampled color. Unset → no eyedropper swatch. */
+   *  sampled color. Unset → no eyedropper swatch.
+   *
+   *  Sampling reads opaque canvas pixels, so commit the sample through
+   *  `withAlpha(sampled, colorAlpha(previous))` — the eyedropper is picking a
+   *  hue off the canvas, not resetting the opacity the slider set. */
   onEyedropper?(): void;
 }

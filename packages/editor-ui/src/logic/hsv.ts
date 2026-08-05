@@ -1,7 +1,8 @@
 import type { RGBLike } from '../adapter';
 
-// Pure HSV↔RGB math + a palette generator for the fallback ColorPickerModal
-// (no WebGL, no engine dep). Channels: r/g/b 0–255, h 0–360, s/v 0–1.
+// Pure HSV↔RGB math, alpha helpers, and a palette generator for the fallback
+// ColorPickerModal (no WebGL, no engine dep). Channels: r/g/b 0–255, h 0–360,
+// s/v/a 0–1.
 
 export interface HSV {
   h: number;
@@ -9,9 +10,36 @@ export interface HSV {
   v: number;
 }
 
-/** RGBLike → a CSS `rgb(...)` string (works as a react-native color value). */
-export const rgbCss = (c: RGBLike): string =>
-  `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`;
+const clamp01 = (t: number): number => (t < 0 ? 0 : t > 1 ? 1 : t);
+
+/** A color's alpha, 0–1. Absent (or non-finite) means fully opaque, so every
+ *  color written before the picker gained its Opacity slider reads as 1. */
+export const colorAlpha = (c: RGBLike): number =>
+  typeof c.a === 'number' && Number.isFinite(c.a) ? clamp01(c.a) : 1;
+
+/** `c` at alpha `a` (0–1). Fully opaque drops the field rather than storing
+ *  `a: 1`, so an opaque color stays structurally `{r,g,b}` — hosts diffing or
+ *  serializing colors see no change until an opacity is actually set. */
+export function withAlpha(c: RGBLike, a: number): RGBLike {
+  const alpha = clamp01(Number.isFinite(a) ? a : 1);
+  const { r, g, b } = c;
+  return alpha >= 1 ? { r, g, b } : { r, g, b, a: alpha };
+}
+
+/** Whether the color is see-through — i.e. anything painted with it needs a
+ *  checkerboard behind it to read as transparent rather than as a color that
+ *  merely happens to sit closer to the surface behind it. */
+export const isTranslucent = (c: RGBLike): boolean => colorAlpha(c) < 1;
+
+/** RGBLike → a CSS color string (works as a react-native color value):
+ *  `rgb(...)` when opaque, `rgba(...)` once an alpha is set. Every swatch,
+ *  gradient stop and canvas paint in the package goes through this, so a
+ *  color's opacity follows it everywhere it is used. */
+export const rgbCss = (c: RGBLike): string => {
+  const [r, g, b] = [Math.round(c.r), Math.round(c.g), Math.round(c.b)];
+  const a = colorAlpha(c);
+  return a < 1 ? `rgba(${r}, ${g}, ${b}, ${Math.round(a * 1000) / 1000})` : `rgb(${r}, ${g}, ${b})`;
+};
 
 export function rgbToHsv({ r, g, b }: RGBLike): HSV {
   const rn = r / 255, gn = g / 255, bn = b / 255;

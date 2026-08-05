@@ -6,7 +6,7 @@ import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../l
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import { OBJECT_DOTS_BOTTOM, OBJECT_DOT_SIZE, objectPanelLayout, submenuDotsBottom } from '../logic/panelLayout';
-import { rgbCss } from '../logic/hsv';
+import { ColorSwatchFill } from './ColorSwatch';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
 import { OpacityBar } from './OpacityBar';
@@ -116,7 +116,9 @@ function GridButton({ label, caption, icon, iconColor, swatchColor, onPress, com
       style={styles.gridButton}
     >
       {swatchColor ? (
-        <View style={[styles.swatch, { width: glyphSize, height: glyphSize, borderRadius: glyphSize / 2, backgroundColor: rgbCss(swatchColor) }]} />
+        <View style={[styles.swatch, { width: glyphSize, height: glyphSize, borderRadius: glyphSize / 2, overflow: 'hidden' }]}>
+          <ColorSwatchFill color={swatchColor} />
+        </View>
       ) : (
         <MaterialCommunityIcons name={icon as MCIName} size={glyphSize} color={iconColor ?? ICON_COLOR} />
       )}

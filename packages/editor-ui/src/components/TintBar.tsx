@@ -3,7 +3,7 @@ import { LayoutChangeEvent, PanResponder, Pressable, ScrollView, StyleSheet, Tex
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TintModel } from '../adapter';
-import { rgbCss } from '../logic/hsv';
+import { isTranslucent } from '../logic/hsv';
 import {
   TINT_ANGLE_MAX,
   TINT_BLENDS,
@@ -16,6 +16,7 @@ import {
   removeStop,
   tintBlendLabel,
 } from '../logic/tint';
+import { CheckerboardFill, ColorSwatchFill } from './ColorSwatch';
 import { ACCENT, BAR_BG, EffectBarHeader, HAIRLINE, LABEL, SegmentedRow, SliderRow } from './effectBar';
 
 // The image Tint bar (design "6a"): a full-width dark bar whose contents vary by
@@ -47,17 +48,23 @@ const STOP_UNSELECTED = 'rgba(255,255,255,0.7)';
  *  a left→right ramp (the stop bar's positional view). */
 function Ramp({ tint, diagonal }: { tint: TintModel; diagonal?: boolean }) {
   if (tint.type === 'solid') {
-    return <View style={[StyleSheet.absoluteFill, { backgroundColor: rgbCss(tint.solid) }]} />;
+    return <ColorSwatchFill color={tint.solid} />;
   }
   const { colors, locations } = rampGradient(tint.stops);
   return (
-    <LinearGradient
-      colors={colors as [string, string, ...string[]]}
-      locations={locations as [number, number, ...number[]]}
-      start={{ x: 0, y: 0 }}
-      end={diagonal ? { x: 1, y: 1 } : { x: 1, y: 0 }}
-      style={StyleSheet.absoluteFill}
-    />
+    <>
+      {/* rampGradient emits rgba() for any stop the picker gave an opacity, so
+          a partly-transparent ramp needs the checker behind it to read as
+          transparent rather than as a muddier gradient. */}
+      {tint.stops.some((s) => isTranslucent(s.color)) ? <CheckerboardFill /> : null}
+      <LinearGradient
+        colors={colors as [string, string, ...string[]]}
+        locations={locations as [number, number, ...number[]]}
+        start={{ x: 0, y: 0 }}
+        end={diagonal ? { x: 1, y: 1 } : { x: 1, y: 0 }}
+        style={StyleSheet.absoluteFill}
+      />
+    </>
   );
 }
 
@@ -144,12 +151,17 @@ function StopBar({ tint, onChange, onCommit, onAdd, onRemove, onDragActiveChange
                 styles.stopHandle,
                 {
                   left: s.position * barWidth - STOP_HANDLE / 2,
-                  backgroundColor: rgbCss(s.color),
                   borderWidth: i === tint.selectedStop ? 3 : 1.5,
                   borderColor: i === tint.selectedStop ? '#FFFFFF' : STOP_UNSELECTED,
                 },
               ]}
-            />
+            >
+              {/* Inner clip layer, not `overflow: hidden` on the handle: that
+                  would clip the handle's own drop shadow away too. */}
+              <View style={styles.stopHandleClip}>
+                <ColorSwatchFill color={s.color} />
+              </View>
+            </View>
           ))}
         </View>
       </View>
@@ -340,6 +352,9 @@ const styles = StyleSheet.create({
     borderRadius: STOP_HANDLE / 2,
     shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2,
   },
+  // The stop's color is a ColorSwatchFill child (so a translucent stop shows
+  // its checkerboard), clipped to the handle's circle inside its border.
+  stopHandleClip: { ...StyleSheet.absoluteFillObject, borderRadius: STOP_HANDLE / 2, overflow: 'hidden' },
   stopBtn: {
     width: 28, height: 28, borderRadius: 8, backgroundColor: BTN_TRACK,
     alignItems: 'center', justifyContent: 'center',

@@ -137,4 +137,12 @@ describe('rampGradient', () => {
     expect(locations).toEqual([0, 1]);
     expect(colors).toHaveLength(locations.length);
   });
+
+  test('a stop\'s picked opacity reaches the gradient', () => {
+    const { colors } = rampGradient([
+      { position: 0, color: { r: 0, g: 0, b: 255, a: 0.25 } },
+      { position: 1, color: { r: 255, g: 0, b: 0 } },
+    ]);
+    expect(colors).toEqual(['rgba(0, 0, 255, 0.25)', 'rgb(255, 0, 0)']);
+  });
 });

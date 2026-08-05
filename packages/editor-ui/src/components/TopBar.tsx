@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TopBarModel } from '../adapter';
 import { nextToolOnPress } from '../logic/toolbarBehavior';
-import { rgbCss } from '../logic/hsv';
+import { ColorSwatchFill } from './ColorSwatch';
 import {
   HEADER_BG,
   HEADER_HEIGHT,
@@ -63,9 +63,11 @@ export function TopBar({ model }: { model: TopBarModel }) {
                 <View
                   style={{
                     width: swatchSize, height: swatchSize, borderRadius: swatchSize / 2,
-                    backgroundColor: rgbCss(tool.swatchColor),
+                    overflow: 'hidden',
                   }}
-                />
+                >
+                  <ColorSwatchFill color={tool.swatchColor} />
+                </View>
                 {tool.active ? (
                   <>
                     <View style={ring(swatchSize, STATE_INACTIVE)} />

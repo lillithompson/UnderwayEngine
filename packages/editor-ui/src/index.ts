@@ -26,5 +26,8 @@ export { UndoRedoPanel } from './components/UndoRedoPanel';
 export { GridQuickActionPanel } from './components/GridQuickActionPanel';
 export { ObjectPropertiesPanel } from './components/ObjectPropertiesPanel';
 export { ColorPickerModal } from './components/ColorPickerModal';
+// Exported so a host painting its own preview of a picked color (a canvas
+// overlay, a custom swatch) shows opacity the same way the package does.
+export { CheckerboardFill, ColorSwatchFill } from './components/ColorSwatch';
 export { EyedropperOverlay } from './components/EyedropperOverlay';
 export { EndpointsBar } from './components/EndpointsBar';
