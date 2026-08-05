@@ -528,4 +528,9 @@ export interface ColorPickerModel {
   color: RGBLike;
   onChange(color: RGBLike): void;
   onClose(): void;
+  /** Tap on the picker's eyedropper swatch (Facet parity). The host closes the
+   *  picker and enters eyedropper mode — arming its canvas for sampling and
+   *  rendering {@link EyedropperOverlay} over it, whose dismissal commits the
+   *  sampled color. Unset → no eyedropper swatch. */
+  onEyedropper?(): void;
 }
