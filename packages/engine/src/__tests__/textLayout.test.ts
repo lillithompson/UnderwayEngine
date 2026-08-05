@@ -8,6 +8,7 @@ import {
   layoutText,
   measureTextBbox,
   defaultMeasurer,
+  registerTextMeasurer,
   DEFAULT_LINE_HEIGHT,
   TextMeasurer,
 } from '../textLayout';
@@ -201,6 +202,46 @@ describe('defaultMeasurer', () => {
 
   test('is the fallback when no measurer is injected', () => {
     // 'mi' = 0.9 + 0.35 = 1.25 em → 12.5 at size 10.
+    const layout = layoutText('mi', makeStyle());
+    expect(layout.lines[0].width).toBeCloseTo(12.5, 10);
+  });
+});
+
+describe('lineAdvance', () => {
+  test('replaces the per-char sum when present', () => {
+    // Per-char would give 3 * 0.5 = 1.5 em; lineAdvance reports 2 em.
+    const shaped: TextMeasurer = { advance: () => 0.5, lineAdvance: () => 2 };
+    const layout = layoutText('abc', makeStyle(), { measurer: shaped });
+    expect(layout.lines[0].width).toBeCloseTo(20, 10);
+  });
+
+  test('letterSpacing still adds on top of the whole-line advance', () => {
+    // 4 chars: lineAdvance 2 em + 0.1 * 3 spacing = 2.3 em → 23 at size 10.
+    const shaped: TextMeasurer = { advance: () => 0.5, lineAdvance: () => 2 };
+    const layout = layoutText('aaaa', makeStyle({ letterSpacing: 0.1 }), { measurer: shaped });
+    expect(layout.lines[0].width).toBeCloseTo(23, 10);
+  });
+});
+
+describe('registerTextMeasurer', () => {
+  afterEach(() => registerTextMeasurer(null));
+
+  test('a registered measurer becomes the no-opts default', () => {
+    registerTextMeasurer(mono);
+    const layout = layoutText('mi', makeStyle());
+    // mono, not defaultMeasurer: 2 * 0.5 em → 10 at size 10.
+    expect(layout.lines[0].width).toBeCloseTo(10, 10);
+  });
+
+  test('an explicit opts.measurer still wins over the registered one', () => {
+    registerTextMeasurer({ advance: () => 99 });
+    const layout = layoutText('mi', makeStyle(), { measurer: mono });
+    expect(layout.lines[0].width).toBeCloseTo(10, 10);
+  });
+
+  test('null restores the deterministic default', () => {
+    registerTextMeasurer(mono);
+    registerTextMeasurer(null);
     const layout = layoutText('mi', makeStyle());
     expect(layout.lines[0].width).toBeCloseTo(12.5, 10);
   });

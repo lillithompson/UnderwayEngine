@@ -316,7 +316,12 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // 0x04, payload one u8 after the v36 tintFill block, gated on version>=42 the
 // same way. Both fields default absent (opaque / hard edges), so untouched
 // records are byte-identical to v41.
-const FORMAT_VERSION = 42;
+// v43: TextObject `fixedSize` — the Figma-style sizing mode flag (auto-size
+// until the user authors the box, fixed after). Pure flag, no payload:
+// presence rides text flags2 bit 0x10, which was always written 0 before, so
+// no older file can be misread as carrying it. Older files load `fixedSize`
+// undefined = auto-size, matching how their boxes always re-measured.
+const FORMAT_VERSION = 43;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -693,6 +698,8 @@ const TFLAG2_HAS_IDENTITY = 0x02;
 const TFLAG2_HAS_EFFECTS = 0x04;
 // v31+: free rotation `angleDeg` present (i16 payload after effects).
 const TFLAG2_HAS_ANGLE = 0x08;
+// v43+: fixed-size sizing mode (pure flag, no payload).
+const TFLAG2_FIXED_SIZE = 0x10;
 // v29+ text style flag bits.
 const TSTYLE_BOLD = 0x01;
 const TSTYLE_ITALIC = 0x02;
@@ -2099,6 +2106,7 @@ function writeText(
   if (text.identityCellX != null) flags2 |= TFLAG2_HAS_IDENTITY;
   if (text.effects) flags2 |= TFLAG2_HAS_EFFECTS;
   if (text.angleDeg) flags2 |= TFLAG2_HAS_ANGLE;
+  if (text.fixedSize) flags2 |= TFLAG2_FIXED_SIZE;
   out[pos++] = flags2;
 
   out[pos++] = ROTATION_TO_BITS[text.rotation ?? 0] & 0x03;
@@ -2275,6 +2283,9 @@ function readText(
   if (flags2 & TFLAG2_HAS_ANGLE) {
     text.angleDeg = decodeAngleDeg(view.getInt16(pos, true)); pos += 2;
   }
+  // v43+ fixed-size mode. Pure flag (no payload), always written 0 before
+  // v43, so the presence bit alone is a safe gate here too.
+  if (flags2 & TFLAG2_FIXED_SIZE) text.fixedSize = true;
 
   return { text, pos };
 }

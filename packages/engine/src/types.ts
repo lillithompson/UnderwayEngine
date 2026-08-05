@@ -1342,6 +1342,13 @@ export interface TextObject {
   cellY: number;
   cellWidth: number;
   cellHeight: number;
+  /** Figma-style sizing mode. Absent = auto-size: the bbox hugs the content
+   *  and re-measures (anchored by align/vAlign) whenever content or a
+   *  metric-affecting style field changes. Set once the user explicitly
+   *  authors the box (drag-to-place with a box, corner-handle resize); from
+   *  then on content/style edits leave the bbox alone and text reflows
+   *  within it. Alignment changes never touch the bbox in either mode. */
+  fixedSize?: boolean;
   rotation?: 0 | 90 | 180 | 270;
   /** Free (continuous) rotation in degrees, clockwise, about the bbox
    *  center, layered on top of the discrete `rotation`/`mirror`. Authored by
@@ -1782,12 +1789,18 @@ export type CompUndoOp =
    */
   | { op: 'setText'; textId: string; oldContent: string; newContent: string;
       oldCellWidth: number; oldCellHeight: number;
-      newCellWidth: number; newCellHeight: number }
+      newCellWidth: number; newCellHeight: number;
+      // Auto-size re-measures anchor the box by align/vAlign, so the origin
+      // can move too. Optional: absent (pre-anchor entries) leaves cellX/Y put.
+      oldCellX?: number; oldCellY?: number;
+      newCellX?: number; newCellY?: number }
   /** Committed text-style change (v29+). Swaps the whole style block;
    *  size-affecting changes carry the resulting bbox like `setText`. */
   | { op: 'setTextStyle'; textId: string; oldStyle: TextStyle; newStyle: TextStyle;
       oldCellWidth: number; oldCellHeight: number;
-      newCellWidth: number; newCellHeight: number }
+      newCellWidth: number; newCellHeight: number;
+      oldCellX?: number; oldCellY?: number;
+      newCellX?: number; newCellY?: number }
   /** Set/replace/clear a node's effects block (v29+). Resolved via
    *  SCENE_ADAPTERS like lockObject — any kind that carries `effects`. */
   | { op: 'setNodeEffects'; id: string; oldEffects?: NodeEffects; newEffects?: NodeEffects }

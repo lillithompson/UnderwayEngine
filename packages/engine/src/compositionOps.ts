@@ -4435,6 +4435,10 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       const texts = (state.texts ?? []).map((t) => t.id === op.textId ? {
         ...t, content: op.newContent,
         cellWidth: op.newCellWidth, cellHeight: op.newCellHeight,
+        // Anchored auto-size re-measures move the origin too; entries
+        // without the optional fields leave cellX/Y untouched.
+        ...(op.newCellX !== undefined ? { cellX: op.newCellX } : {}),
+        ...(op.newCellY !== undefined ? { cellY: op.newCellY } : {}),
       } : t);
       return { ...state, texts };
     }
@@ -4442,6 +4446,8 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       const texts = (state.texts ?? []).map((t) => t.id === op.textId ? {
         ...t, style: op.newStyle,
         cellWidth: op.newCellWidth, cellHeight: op.newCellHeight,
+        ...(op.newCellX !== undefined ? { cellX: op.newCellX } : {}),
+        ...(op.newCellY !== undefined ? { cellY: op.newCellY } : {}),
       } : t);
       return { ...state, texts };
     }
@@ -4927,12 +4933,16 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
       return applyOp(state, { ...op,
         oldContent: op.newContent, newContent: op.oldContent,
         oldCellWidth: op.newCellWidth, newCellWidth: op.oldCellWidth,
-        oldCellHeight: op.newCellHeight, newCellHeight: op.oldCellHeight });
+        oldCellHeight: op.newCellHeight, newCellHeight: op.oldCellHeight,
+        oldCellX: op.newCellX, newCellX: op.oldCellX,
+        oldCellY: op.newCellY, newCellY: op.oldCellY });
     case 'setTextStyle':
       return applyOp(state, { ...op,
         oldStyle: op.newStyle, newStyle: op.oldStyle,
         oldCellWidth: op.newCellWidth, newCellWidth: op.oldCellWidth,
-        oldCellHeight: op.newCellHeight, newCellHeight: op.oldCellHeight });
+        oldCellHeight: op.newCellHeight, newCellHeight: op.oldCellHeight,
+        oldCellX: op.newCellX, newCellX: op.oldCellX,
+        oldCellY: op.newCellY, newCellY: op.oldCellY });
     case 'setNodeEffects':
       return applyOp(state, { ...op, oldEffects: op.newEffects, newEffects: op.oldEffects });
     case 'setFillPaint':

@@ -469,6 +469,61 @@ describe('setText op', () => {
   });
 });
 
+describe('setText / setTextStyle anchored origin (optional cellX/Y)', () => {
+  // Auto-size re-measures anchor the box by alignment, so the origin can
+  // move with the size; the optional fields carry it through undo exactly.
+  test('setText apply moves the origin; revert restores it', () => {
+    const state = makeState({ texts: [makeText('txt_a', { cellX: 10, cellY: 20 })] });
+    const entry: CompUndoEntry = [{
+      op: 'setText', textId: 'txt_a',
+      oldContent: 'hello', newContent: 'hello!',
+      oldCellWidth: 4, oldCellHeight: 2,
+      newCellWidth: 6, newCellHeight: 2,
+      oldCellX: 10, oldCellY: 20,
+      newCellX: 9, newCellY: 20,
+    }];
+    const after = applyCompOps(state, entry);
+    expect(after.texts![0].cellX).toBe(9);
+    expect(after.texts![0].cellWidth).toBe(6);
+    const reverted = revertCompOps(after, entry);
+    expect(reverted.texts![0].cellX).toBe(10);
+    expect(reverted.texts![0].cellY).toBe(20);
+    expect(reverted.texts![0].cellWidth).toBe(4);
+  });
+
+  test('setTextStyle apply moves the origin; revert restores it', () => {
+    const state = makeState({ texts: [makeText('txt_a', { cellX: 5, cellY: 7 })] });
+    const entry: CompUndoEntry = [{
+      op: 'setTextStyle', textId: 'txt_a',
+      oldStyle: makeStyle(), newStyle: makeStyle({ size: 4 }),
+      oldCellWidth: 4, oldCellHeight: 2,
+      newCellWidth: 8, newCellHeight: 4,
+      oldCellX: 5, oldCellY: 7,
+      newCellX: 3, newCellY: 6,
+    }];
+    const after = applyCompOps(state, entry);
+    expect(after.texts![0].cellX).toBe(3);
+    expect(after.texts![0].cellY).toBe(6);
+    const reverted = revertCompOps(after, entry);
+    expect(reverted.texts![0].cellX).toBe(5);
+    expect(reverted.texts![0].cellY).toBe(7);
+    expect(reverted.texts![0].style).toEqual(makeStyle());
+  });
+
+  test('entries without the optional fields leave the origin untouched', () => {
+    const state = makeState({ texts: [makeText('txt_a', { cellX: 10, cellY: 20 })] });
+    const entry: CompUndoEntry = [{
+      op: 'setText', textId: 'txt_a',
+      oldContent: 'hello', newContent: 'edited',
+      oldCellWidth: 4, oldCellHeight: 2,
+      newCellWidth: 5, newCellHeight: 2,
+    }];
+    const after = applyCompOps(state, entry);
+    expect(after.texts![0].cellX).toBe(10);
+    expect(after.texts![0].cellY).toBe(20);
+  });
+});
+
 describe('setTextStyle op', () => {
   test('apply swaps the whole style block and bbox; revert restores both', () => {
     const oldStyle = makeStyle();

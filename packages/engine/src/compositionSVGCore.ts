@@ -240,8 +240,9 @@ const FALLBACK_FAMILY_STACK = "system-ui, -apple-system, &apos;Segoe UI&apos;, s
 
 /**
  * Build SVG markup for a text node: one `<text>` element per layout line
- * (via `layoutText` with the default deterministic measurer), wrapped in
- * the same translate/rotate/mirror group images use. Layout runs in
+ * (via `layoutText` with the shared measurer — the app-registered one when
+ * present, else the deterministic default), wrapped in the same
+ * translate/rotate/mirror group images use. Layout runs in
  * world units against the node's bbox width, then scales into SVG units.
  * Sticker nodes get a card background behind the lines.
  *
@@ -352,11 +353,14 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
 
 /**
  * Fraction of a line's measured width kept as slack on each side when framing
- * a cutout on the glyphs. `layoutText`'s measurer is a deterministic
- * approximation (the engine has no font metrics), while the glyphs themselves
- * are drawn by the browser from the real face, so the two drift by a few
- * percent — proportionally, since the error accumulates per character. 4% is
- * comfortably over the drift on ordinary copy without reading as padding.
+ * a cutout on the glyphs. Without an app-registered measurer `layoutText`
+ * falls back to a deterministic approximation (the engine has no font
+ * metrics), while the glyphs themselves are drawn by the browser from the
+ * real face, so the two can drift by a few percent — proportionally, since
+ * the error accumulates per character. (A registered canvas measurer shrinks
+ * the drift to shaping-level noise, but the slack must still cover the
+ * fallback.) 4% is comfortably over the drift on ordinary copy without
+ * reading as padding.
  */
 const MEASURER_SLACK = 0.04;
 

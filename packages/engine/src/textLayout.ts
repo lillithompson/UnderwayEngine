@@ -12,6 +12,11 @@ export interface TextMeasurer {
   /** Advance width of a single character in em units (multiples of
    *  `style.size`), excluding letter spacing. */
   advance(ch: string, style: TextStyle): number;
+  /** Optional whole-string advance in em units, excluding letter spacing.
+   *  When present it replaces the per-char sum in `measureLine`, letting a
+   *  real-font measurer report shaped (kerned) widths that per-char
+   *  advances can't capture. */
+  lineAdvance?(text: string, style: TextStyle): number;
 }
 
 const NARROW_CHARS = new Set(['i', 'l', 'j', 't', '.', ',', ':', ';', '!', "'", '|']);
@@ -27,6 +32,20 @@ export const defaultMeasurer: TextMeasurer = {
     return 0.6;
   },
 };
+
+// App-registered measurer, used whenever a call doesn't pass its own. ONE
+// slot on purpose: bbox measurement (editor session builders), canvas layout
+// (node render), and SVG export all call layoutText, and they must agree on
+// metrics or exported line breaks drift from the editor's. Registering here
+// switches all of them at once. Engine tests never register, so layout stays
+// deterministic under the approximation above.
+let registeredMeasurer: TextMeasurer = defaultMeasurer;
+
+/** Install the app's font-metric measurer (e.g. a canvas-based one keyed to
+ *  the registered font pack); `null` restores the deterministic default. */
+export function registerTextMeasurer(measurer: TextMeasurer | null): void {
+  registeredMeasurer = measurer ?? defaultMeasurer;
+}
 
 export interface TextLayoutLine {
   text: string;
@@ -63,8 +82,9 @@ export const DEFAULT_LINE_HEIGHT = 1.2;
 function measureLine(text: string, style: TextStyle, measurer: TextMeasurer): number {
   const chars = Array.from(text);
   if (chars.length === 0) return 0;
-  let em = 0;
-  for (const ch of chars) em += measurer.advance(ch, style);
+  const em = measurer.lineAdvance
+    ? measurer.lineAdvance(text, style)
+    : chars.reduce((sum, ch) => sum + measurer.advance(ch, style), 0);
   const spacing = (style.letterSpacing ?? 0) * (chars.length - 1);
   return (em + spacing) * style.size;
 }
@@ -96,7 +116,7 @@ function wrapLine(text: string, style: TextStyle, measurer: TextMeasurer, maxWid
  * line; `y` is each line's top offset.
  */
 export function layoutText(content: string, style: TextStyle, opts?: TextLayoutOptions): TextLayout {
-  const measurer = opts?.measurer ?? defaultMeasurer;
+  const measurer = opts?.measurer ?? registeredMeasurer;
   const maxWidth = opts?.maxWidth;
 
   const texts: string[] = [];
