@@ -23,7 +23,8 @@ import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
 import { paintToSvg, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
-import { layoutText } from './textLayout';
+import { DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
+import { STICKER_BORDER_CELLS, STICKER_SHADOW_CELLS, stickerColors } from './stickerStyle';
 import { resolveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
 
 /** Layer set + dimensions returned by a figure loader. Mirrors the relevant
@@ -42,9 +43,16 @@ export interface CompositionFigureLoadResult {
  * return WOFF2 bytes (base64) to embed as an `@font-face` data URI, or
  * null/undefined to skip. When no resolver is provided (or it returns
  * nothing for every used font), text elements reference the family by
- * name only — the viewer must have the font installed/registered.
+ * name only — the viewer must have the font installed/registered, and the
+ * `<img>`-based rasterizer (which cannot see page-registered fonts) falls
+ * back to the platform's default face, so exported text stops matching the
+ * editor. Supply one for any export that will be rasterized.
+ *
+ * May be async, so a host can fetch a face on first use and cache it
+ * instead of holding every bundled font in memory.
  */
-export type SVGFontResolver = (fontId: string) => { woff2Base64?: string } | null;
+export type SVGFontFace = { woff2Base64?: string } | null;
+export type SVGFontResolver = (fontId: string) => SVGFontFace | Promise<SVGFontFace>;
 
 /**
  * Inputs for the pure SVG-generation core. Decoupled from IndexedDB so
@@ -171,22 +179,30 @@ function applyNodeEffects(
   return out;
 }
 
-/** Sticker padding between the rounded-rect background and the text, in
- *  em units of the text's font size. Also used as the corner radius. */
-const STICKER_PAD_EM = 0.35;
-
-/** Approximate ascent (baseline offset from the line top) in em units.
- *  Matches the deterministic default measurer's spirit: exact metrics
- *  come from the app's fonts; export uses a stable approximation so
- *  output doesn't depend on platform font APIs. */
-const TEXT_ASCENT_EM = 0.8;
+/** Fallback family tail appended after the node's own font, mirroring the
+ *  DOM node layer's stack so an un-embedded family (or `fontId: 'system'`)
+ *  lands on the same platform face in the export that the editor shows. */
+const FALLBACK_FAMILY_STACK = "system-ui, -apple-system, &apos;Segoe UI&apos;, sans-serif";
 
 /**
  * Build SVG markup for a text node: one `<text>` element per layout line
  * (via `layoutText` with the default deterministic measurer), wrapped in
  * the same translate/rotate/mirror group images use. Layout runs in
  * world units against the node's bbox width, then scales into SVG units.
- * Sticker nodes get a padded rounded-rect background behind the lines.
+ * Sticker nodes get a card background behind the lines.
+ *
+ * Deliberately mirrors the DOM node layer line for line, because these two
+ * renderers must produce the same picture — the editor draws the node with
+ * DOM text, this draws the image the journal stores:
+ *
+ *  • Same `layoutText` call (same measurer), so lines break identically.
+ *  • Lines are placed at the layout's own `x` with no `text-anchor`, so
+ *    alignment comes from the shared layout rather than from the two
+ *    renderers' independent glyph metrics.
+ *  • The baseline uses `dominant-baseline="central"` at the line box's
+ *    center, which is exactly where CSS puts it (half-leading + ascent —
+ *    verified equal in Blink and WebKit). A fixed ascent constant sat
+ *    ~0.12 em high and drifted per family.
  */
 function buildTextSVGContent(text: TextObject, u: number): string {
   const style = text.style;
@@ -206,27 +222,26 @@ function buildTextSVGContent(text: TextObject, u: number): string {
   if (text.mirrorH) parts.push(`translate(${tw}, 0) scale(-1, 1)`);
   if (text.mirrorV) parts.push(`translate(0, ${th}) scale(1, -1)`);
 
-  // Sticker padding insets the text from the bbox edge; the wrap width
-  // shrinks to match so wrapped lines stay inside the rect.
-  const pad = text.sticker ? style.size * STICKER_PAD_EM : 0;
-  const wrapWidth = Math.max(text.cellWidth - 2 * pad, style.size * 0.1);
-  // maxHeight lets layoutText vertically align the block (style.vAlign) within
-  // the padded box; each line's `y` already carries the resulting offset.
-  const boxHeight = Math.max(text.cellHeight - 2 * pad, 0);
-  const layout = layoutText(text.content, style, { maxWidth: wrapWidth, maxHeight: boxHeight });
+  // A sticker's node bbox IS its card: the scaffold already grew the box by
+  // the interior margin on every side, so the text lays out against the full
+  // bbox here exactly as it does in the DOM layer. Insetting again would
+  // wrap earlier than the editor does.
+  const layout = layoutText(text.content, style, {
+    maxWidth: text.cellWidth,
+    maxHeight: text.cellHeight,
+  });
 
   const fontSize = style.size * u;
-  const align = style.align ?? 'left';
-  // Anchor x in world units, relative to the wrap box. 'start' is the SVG
-  // default, so text-anchor is only emitted for center/right.
-  const anchorWorldX = pad + (align === 'left' ? 0 : align === 'center' ? wrapWidth / 2 : wrapWidth);
-  const anchorAttr = align === 'left' ? '' : ` text-anchor="${align === 'center' ? 'middle' : 'end'}"`;
+  const lineHeight = style.size * (style.lineHeight ?? DEFAULT_LINE_HEIGHT);
+  const colors = text.sticker ? stickerColors(text.invert) : null;
+  const fill = colors ? colors.fg : `rgb(${style.color.r},${style.color.g},${style.color.b})`;
 
-  let attrs = `font-family="${escapeXml(style.fontId)}" font-size="${fontSize}"`;
+  let attrs = `font-family="&apos;${escapeXml(style.fontId)}&apos;, ${FALLBACK_FAMILY_STACK}"` +
+    ` font-size="${fontSize}" dominant-baseline="central"`;
   const weight = effectiveFontWeight(style);
   if (weight !== 400) attrs += ` font-weight="${weight}"`;
   if (style.italic) attrs += ' font-style="italic"';
-  attrs += ` fill="rgb(${style.color.r},${style.color.g},${style.color.b})"`;
+  attrs += ` fill="${fill}"`;
   if (style.letterSpacing !== undefined && style.letterSpacing !== 0) {
     // letterSpacing is authored in em units; SVG letter-spacing is a length.
     attrs += ` letter-spacing="${style.letterSpacing * fontSize}"`;
@@ -236,21 +251,38 @@ function buildTextSVGContent(text: TextObject, u: number): string {
     // the runtime glyph renderer's outline-under-fill compositing.
     const sc = style.stroke.color;
     attrs += ` stroke="rgb(${sc.r},${sc.g},${sc.b})" stroke-width="${style.stroke.width * u}" stroke-linejoin="round" paint-order="stroke"`;
+  } else {
+    // Unstroked text must say so: the root <svg> carries stroke="white" for
+    // the figure paths, and glyphs would otherwise inherit it as a hairline
+    // outline that thins them against the DOM layer's.
+    attrs += ' stroke="none"';
   }
 
   let inner = '';
-  if (text.sticker) {
-    // Padded rounded-rect background behind the lines. Fills the node
-    // bbox (the padding lives between the rect edge and the text).
-    const r = pad * u;
-    inner += `<rect x="0" y="0" width="${tw}" height="${th}" rx="${r}" fill="#ffffff"/>`;
+  if (colors) {
+    // The card fills the node bbox exactly (bbox === card), bordered and
+    // drop-shadowed like the DOM layer's div. CSS draws its border inside
+    // the box (border-box sizing) while an SVG stroke straddles the edge,
+    // so the rect is inset by half the stroke to land in the same place.
+    const bw = STICKER_BORDER_CELLS * u;
+    const sh = STICKER_SHADOW_CELLS;
+    const filterId = `stk_${text.id}`;
+    inner +=
+      `<defs><filter id="${filterId}" x="-20%" y="-20%" width="140%" height="140%">` +
+      `<feDropShadow dx="${sh.dx * u}" dy="${sh.dy * u}" stdDeviation="${(sh.blur / 2) * u}"` +
+      ` flood-color="#000000" flood-opacity="${sh.opacity}"/></filter></defs>` +
+      `<rect x="${bw / 2}" y="${bw / 2}" width="${tw - bw}" height="${th - bw}"` +
+      ` fill="${colors.bg}" stroke="${colors.fg}" stroke-width="${bw}"` +
+      ` filter="url(#${filterId})"/>`;
   }
   for (const line of layout.lines) {
     if (line.text.length === 0) continue;
-    const lx = anchorWorldX * u;
-    // Baseline = line top + approximate ascent.
-    const ly = (pad + line.y + style.size * TEXT_ASCENT_EM) * u;
-    inner += `<text x="${lx}" y="${ly}" ${attrs}${anchorAttr}>${escapeXml(line.text)}</text>`;
+    // Lines carry the align offset from the shared layout, so the export
+    // and the DOM layer place them identically; `central` puts the baseline
+    // where CSS's half-leading does.
+    const lx = line.x * u;
+    const ly = (line.y + lineHeight / 2) * u;
+    inner += `<text x="${lx}" y="${ly}" ${attrs}>${escapeXml(line.text)}</text>`;
   }
   if (!inner) return '';
   return `<g transform="${parts.join(' ')}">${inner}</g>`;
@@ -801,7 +833,7 @@ export async function generateCompositionSVGCore(
       const fontId = txt.style.fontId;
       if (seen.has(fontId)) continue;
       seen.add(fontId);
-      const resolved = input.fontResolver(fontId);
+      const resolved = await input.fontResolver(fontId);
       if (resolved?.woff2Base64) {
         faces.push(
           `@font-face{font-family:"${escapeXml(fontId)}";` +

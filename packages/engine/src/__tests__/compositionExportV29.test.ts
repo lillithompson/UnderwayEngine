@@ -11,6 +11,8 @@
  * loader's field passthrough.
  */
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
+import { DEFAULT_LINE_HEIGHT, layoutText } from '../textLayout';
+import { STICKER_BORDER_CELLS } from '../stickerStyle';
 import { SVGObject, ImageObject, TextObject, PathSegment } from '../types';
 
 /** SVG_UNITS_PER_L0_CELL — world cells scale into SVG units by this. */
@@ -79,9 +81,15 @@ describe('generateCompositionSVGCore — text nodes', () => {
     expect(svg).not.toContain('<ok>');
     // font-size in SVG units: 2 world units × 256.
     expect(svg).toContain(`font-size="${2 * U}"`);
-    // fontId is used verbatim as the family name.
-    expect(svg).toContain('font-family="CozySans"');
+    // The fontId names the family (matching the @font-face the resolver
+    // embeds), followed by the DOM node layer's own fallback tail so an
+    // un-embedded family lands on the same face the editor shows.
+    expect(svg).toContain(
+      `font-family="&apos;CozySans&apos;, system-ui, -apple-system, &apos;Segoe UI&apos;, sans-serif"`);
     expect(svg).toContain(`fill="rgb(10,20,30)"`);
+    // Glyphs must not inherit the root <svg>'s stroke="white" (a hairline
+    // outline that would thin them against the editor's DOM text).
+    expect(svg).toContain('stroke="none"');
     // Node transform mirrors the image path: translate to the bbox origin.
     expect(svg).toContain(`transform="translate(${2 * U}, ${3 * U})"`);
   });
@@ -94,7 +102,7 @@ describe('generateCompositionSVGCore — text nodes', () => {
     expect(svg).toMatch(/viewBox="0 0 2048 512"/);
   });
 
-  it('honors bold, italic, letter-spacing, stroke outline, and align → text-anchor', async () => {
+  it('honors bold, italic, letter-spacing, and the stroke outline', async () => {
     const svg = await generateCompositionSVGCore(makeInputs({
       texts: [makeText({
         content: 'styled',
@@ -111,7 +119,11 @@ describe('generateCompositionSVGCore — text nodes', () => {
     expect(svg).toContain('font-style="italic"');
     // letterSpacing (em) × font-size (512) = 51.2 SVG units.
     expect(svg).toContain(`letter-spacing="${0.1 * 2 * U}"`);
-    expect(svg).toContain('text-anchor="middle"');
+    // Alignment rides the shared layout's per-line x (see the parity test),
+    // never text-anchor: anchoring would re-align each line by the
+    // rasterizer's real glyph widths while the editor placed it by the
+    // shared measurer's, so the two would disagree.
+    expect(svg).not.toContain('text-anchor');
     // Outline behind the fill: stroke attrs + paint-order.
     expect(svg).toContain('stroke="rgb(255,0,0)"');
     expect(svg).toContain(`stroke-width="${0.05 * U}"`);
@@ -147,18 +159,88 @@ describe('generateCompositionSVGCore — text nodes', () => {
     expect(svg).toContain(`translate(${10 * U}, 0) scale(-1, 1)`);
   });
 
-  it('sticker emits a padded rounded-rect background behind the text', async () => {
+  it('sticker emits the card background behind the text, filling the bbox', async () => {
     const svg = await generateCompositionSVGCore(makeInputs({
       texts: [makeText({ content: 'word', sticker: true })],
     }));
     expect(svg).not.toBeNull();
-    const rectIdx = svg!.indexOf('rx="');
+    const rectIdx = svg!.indexOf('<rect');
     const textIdx = svg!.indexOf('<text');
     expect(rectIdx).toBeGreaterThanOrEqual(0);
-    expect(textIdx).toBeGreaterThanOrEqual(0);
     // Background rect precedes the text (drawn behind it).
     expect(rectIdx).toBeLessThan(textIdx);
-    expect(svg).toMatch(/<rect x="0" y="0" width="2560" height="1024" rx="[\d.]+" fill="#ffffff"\/>/);
+    // The bbox IS the card: white face, black border, square corners, drop
+    // shadow — the same card stickerStyle gives the DOM node layer. The rect
+    // is inset by half the border because CSS draws its border inside the
+    // box while an SVG stroke straddles the edge.
+    const bw = STICKER_BORDER_CELLS * U;
+    expect(svg).toContain(
+      `<rect x="${bw / 2}" y="${bw / 2}" width="${10 * U - bw}" height="${4 * U - bw}"` +
+      ` fill="#FFFFFF" stroke="#000000" stroke-width="${bw}"`);
+    expect(svg).not.toContain('rx=');
+    expect(svg).toContain('<feDropShadow');
+  });
+
+  it('an inverted sticker swaps the card and text colors', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      texts: [makeText({ content: 'word', sticker: true, invert: true })],
+    }));
+    expect(svg).toContain('fill="#000000" stroke="#FFFFFF"');
+    // Text takes the card's foreground, not TextStyle.color (10,20,30).
+    expect(svg).toContain('fill="#FFFFFF"');
+    expect(svg).not.toContain('fill="rgb(10,20,30)"');
+  });
+
+  it('places every line where the DOM node layer does', async () => {
+    // The journal's entry image must be indistinguishable from the editor
+    // page it was rasterized from, so these two renderers have to agree on
+    // the geometry: same layoutText call (same measurer → same wrapping),
+    // lines placed at the layout's own x, and a baseline at the line box's
+    // center — where CSS's half-leading puts it, and where
+    // dominant-baseline="central" puts a <text>.
+    for (const align of ['left', 'center', 'right'] as const) {
+      const style = {
+        fontId: 'CozySans', size: 2, color: { r: 0, g: 0, b: 0 },
+        align, lineHeight: 1.4,
+      };
+      const node = makeText({
+        content: 'two words wrap here', style, cellWidth: 10, cellHeight: 6,
+      });
+      const svg = await generateCompositionSVGCore(makeInputs({ texts: [node] }));
+
+      // What the DOM node layer computes for the same node.
+      const layout = layoutText(node.content, style, {
+        maxWidth: node.cellWidth, maxHeight: node.cellHeight,
+      });
+      const lineHeight = style.size * style.lineHeight;
+      const emitted = [...svg!.matchAll(/<text x="([-\d.]+)" y="([-\d.]+)"/g)]
+        .map((m) => ({ x: Number(m[1]), y: Number(m[2]) }));
+
+      expect(layout.lines.length).toBeGreaterThan(1); // the wrap actually happened
+      expect(emitted).toEqual(layout.lines.map((line) => ({
+        x: line.x * U,
+        y: (line.y + lineHeight / 2) * U,
+      })));
+      expect(svg).toContain('dominant-baseline="central"');
+    }
+  });
+
+  it('lays a sticker out against the full bbox, like the DOM node layer', async () => {
+    // A sticker's bbox already includes its interior margin (the scaffold
+    // grew it), so neither renderer insets again — an extra inset here would
+    // wrap the text earlier than the editor did.
+    const style = { fontId: 'CozySans', size: 1.5, color: { r: 0, g: 0, b: 0 },
+      align: 'center' as const, vAlign: 'middle' as const };
+    const node = makeText({ content: 'poetry', style, sticker: true, cellWidth: 8, cellHeight: 3 });
+    const svg = await generateCompositionSVGCore(makeInputs({ texts: [node] }));
+
+    const layout = layoutText(node.content, style, {
+      maxWidth: node.cellWidth, maxHeight: node.cellHeight,
+    });
+    const m = svg!.match(/<text x="([-\d.]+)" y="([-\d.]+)"/);
+    expect(Number(m![1])).toBeCloseTo(layout.lines[0].x * U, 6);
+    expect(Number(m![2])).toBeCloseTo(
+      (layout.lines[0].y + style.size * DEFAULT_LINE_HEIGHT / 2) * U, 6);
   });
 
   it('emits an @font-face style block only when the fontResolver yields bytes', async () => {

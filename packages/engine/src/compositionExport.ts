@@ -18,6 +18,23 @@ import {
 export { generateCompositionSVGCore };
 export type { CompositionFigureLoadResult, CompositionSVGInputs, SVGFontResolver };
 
+/** Host-registered fallback resolver — see {@link setDefaultSVGFontResolver}. */
+let defaultFontResolver: SVGFontResolver | undefined;
+
+/**
+ * Register the resolver every storage-backed export uses when the caller
+ * doesn't pass one of its own.
+ *
+ * Fonts are a host concern (the engine has no idea where an app keeps its
+ * face files), but *every* rasterizing export path needs them — journal
+ * entry images, page thumbnails, file export — and each one silently
+ * rendering fallback glyphs is exactly the drift this avoids. Registering
+ * once at app start fixes them all; `options.fontResolver` still wins.
+ */
+export function setDefaultSVGFontResolver(resolver: SVGFontResolver | undefined): void {
+  defaultFontResolver = resolver;
+}
+
 /** Optional knobs for the storage-backed export wrappers. */
 export interface CompositionExportOptions {
   /** Font-embedding hook for text nodes — see {@link SVGFontResolver}.
@@ -147,7 +164,7 @@ export async function exportCompositionSVG(
     imageBlobs: partial.imageBlobs ?? {},
     texts: partial.texts ?? [],
     background: partial.background,
-    fontResolver: options?.fontResolver,
+    fontResolver: options?.fontResolver ?? defaultFontResolver,
     preferOriginalImages: options?.preferOriginalImages,
     groups: partial.groups ?? [],
     sceneOrder: partial.sceneOrder,
