@@ -6,8 +6,11 @@
 // Every vector subtype offers Stroke — a path IS its stroke, so there is no
 // vector object the control doesn't apply to. The table is keyed by subtype
 // rather than being one flat list so a subtype can diverge, which is exactly
-// what Fill does: only the two shapes the tools draw closed (a rectangle and a
-// circle) have an interior to paint, so only they carry the second action.
+// what the second action does: it is Fill on the shapes the tools draw CLOSED
+// (a rectangle, a circle), which alone have an interior to paint, and Endpoints
+// on the OPEN ones (a line, an arc, a freehand stroke), which alone have loose
+// ends to decorate. The two are complements — no subtype offers both, and none
+// of the drawing subtypes offers neither.
 
 import type { SVGSubtypeKind } from '../adapter';
 
@@ -18,8 +21,10 @@ import type { SVGSubtypeKind } from '../adapter';
  *    own stroke.
  *  - `fill` opens the Fill bar — the image Tint bar's rows (Type / Stops /
  *    Angle / Opacity / Blend) plus its gradient swatch, pointed at the closed
- *    path's interior. */
-export type SVGEditAction = 'stroke' | 'fill';
+ *    path's interior.
+ *  - `endpoints` opens the Endpoints bar — a marker (none / circle / arrow) and
+ *    a cap (round / square) for each of an open path's two loose ends. */
+export type SVGEditAction = 'stroke' | 'fill' | 'endpoints';
 
 export interface SVGEditOption {
   action: SVGEditAction;
@@ -55,14 +60,28 @@ export function svgHasFill(subtype: SVGSubtypeKind): boolean {
   return subtype === 'rectangle' || subtype === 'circle';
 }
 
-/** The option menu for one vector subtype, in display order. Stroke leads —
- *  it is the one action every subtype has — and Fill follows on the shapes
- *  that enclose an area. */
+/**
+ * Whether a subtype offers the Endpoints bar.
+ *
+ * A decorated end needs a LOOSE end to sit on, so it is open-path only — the
+ * exact complement of {@link svgHasFill}, minus `shape`: a line, an arc and the
+ * freehand draw tool's polyline. (`shape` is closed, so it is excluded here for
+ * the same reason `circle` is; a preset shape has no loose end either.)
+ */
+export function svgHasEndpoints(subtype: SVGSubtypeKind): boolean {
+  return subtype === 'line' || subtype === 'arc' || subtype === 'stroke';
+}
+
+/** The option menu for one vector subtype, in display order. Stroke leads — it
+ *  is the one action every subtype has — then the subtype's own second action:
+ *  Fill on the shapes that enclose an area, Endpoints on the paths that don't
+ *  close. */
 export function svgEditOptions(subtype: SVGSubtypeKind): readonly SVGEditOption[] {
   const options: SVGEditOption[] = [
     { action: 'stroke', label: 'Stroke', icon: STROKE_ICON[subtype] ?? STROKE_ICON.stroke },
   ];
   if (svgHasFill(subtype)) options.push({ action: 'fill', label: 'Fill', icon: 'format-color-fill' });
+  if (svgHasEndpoints(subtype)) options.push({ action: 'endpoints', label: 'Ends', icon: 'ray-start-end' });
   return options;
 }
 

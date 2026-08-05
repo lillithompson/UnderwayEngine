@@ -4,11 +4,13 @@ import { computeSweepFlag, arcRadius, chainSegmentsLoops } from './compositionAr
 import { packKey, unpackKey, forEachVisibleTile } from './tileSegmentOverrides';
 import { borderDashPattern, paintToSvg } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
+import { svgEndpointsMarkup } from './svgEndpoints';
 import {
   roundPathCorners,
   svgStrokeAlignment,
   svgStrokeDefId,
   svgStrokeRadiusCells,
+  svgStrokeWidthCells,
   svgStrokeWidthUnits,
 } from './svgStroke';
 
@@ -524,5 +526,9 @@ export function buildSVGObjectContent(
   if (!d) return result;
   const { r: cr, g: cg, b: cb } = obj.color;
   result += `<path d="${d}" ${attrs} stroke="rgb(${cr},${cg},${cb})" />`;
+  // Endpoint decorations last, so they sit on top of the stroke they cap. They
+  // are sized off the stroke's width in CELLS, which is what makes them match
+  // the line in whichever space this markup lands in.
+  result += svgEndpointsMarkup(obj, segments, svgStrokeWidthCells(obj, strokeScale, unitsPerCell));
   return result;
 }

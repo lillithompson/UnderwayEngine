@@ -25,3 +25,4 @@ export { UndoRedoPanel } from './components/UndoRedoPanel';
 export { GridQuickActionPanel } from './components/GridQuickActionPanel';
 export { ObjectPropertiesPanel } from './components/ObjectPropertiesPanel';
 export { ColorPickerModal } from './components/ColorPickerModal';
+export { EndpointsBar } from './components/EndpointsBar';

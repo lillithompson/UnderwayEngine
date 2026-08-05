@@ -417,3 +417,58 @@ describe('exportCompositionSVG — lines', () => {
     expect(svg).toBeNull();
   });
 });
+
+describe('exportCompositionSVG — path endpoints', () => {
+  const withEndpoints = async (key: string, endpoints: unknown) => {
+    storage[`comp_meta_${key}`] = JSON.stringify({
+      name: 'Ends',
+      figures: [],
+      svgObjects: [
+        {
+          id: 'svg_a',
+          segments: [{ kind: 'line', start: [0, 0], end: [32, 32] }],
+          color: { r: 0, g: 0, b: 0 },
+          cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+          stroke: { width: 0.25 },
+          ...(endpoints ? { endpoints } : {}),
+        },
+      ],
+      camera: { offsetX: 0, offsetY: 0, zoom: 1 },
+      strokeScale: 0.04, gridIntensity: 0.5,
+    });
+    return exportCompositionSVG(key);
+  };
+
+  it('emits nothing extra for an undecorated path', async () => {
+    const svg = (await withEndpoints('ends_bare', null))!;
+    expect(svg).not.toContain('<circle');
+    expect(svg).toContain('stroke-linecap="round"');
+  });
+
+  it('exports the circle marker at the path\'s first point', async () => {
+    const svg = (await withEndpoints('ends_circle', { startMarker: 'circle' }))!;
+    // A 0.25-cell stroke → r = 0.25 × 1.75 × 256 = 112, centred on (0,0).
+    expect(svg).toContain('<circle cx="0" cy="0" r="112"');
+    expect(svg).toContain('fill="rgb(0,0,0)"');
+  });
+
+  it('exports the arrowhead growing outward from the last point', async () => {
+    const svg = (await withEndpoints('ends_arrow', { endMarker: 'arrow' }))!;
+    // The tip is one stroke-length past (32,32) along the 45° tangent.
+    const tip = 32 * 256 + (0.25 * 4 * 256) / Math.SQRT2;
+    expect(svg).toContain(`L ${Math.round(tip * 1e3) / 1e3},${Math.round(tip * 1e3) / 1e3} `);
+  });
+
+  it('exports a square cap without touching stroke-linecap', async () => {
+    const svg = (await withEndpoints('ends_cap', { startCap: 'square', endCap: 'square' }))!;
+    expect(svg).toContain('stroke-linecap="round"');
+    expect(svg).not.toContain('stroke-linecap="square"');
+    // Two quads, one per end, over and above the stroke path itself.
+    expect(svg.match(/fill="rgb\(0,0,0\)" stroke="none"/g)).toHaveLength(2);
+  });
+
+  it('draws the decorations after the stroke they cap', async () => {
+    const svg = (await withEndpoints('ends_order', { endMarker: 'circle' }))!;
+    expect(svg.indexOf('stroke="rgb(0,0,0)"')).toBeLessThan(svg.indexOf('<circle'));
+  });
+});

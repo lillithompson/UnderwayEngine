@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { BorderModel, FramingModel, ObjectPropertiesModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
+import type { BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
-import { svgEditOptions, svgHasFill, svgStrokeRows } from '../logic/svgEdit';
+import { svgEditOptions, svgHasEndpoints, svgHasFill, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import { rgbCss } from '../logic/hsv';
 import { ShadowBar } from './ShadowBar';
@@ -11,6 +11,7 @@ import { BorderBar } from './BorderBar';
 import { CropBar } from './CropBar';
 import { TextBar } from './TextBar';
 import { TintBar } from './TintBar';
+import { EndpointsBar } from './EndpointsBar';
 import { BAR_BG } from './effectBar';
 import {
   HEADER_BG,
@@ -49,6 +50,12 @@ const COMPACT_MAX_WIDTH = 500;
 const DEFAULT_SHADOW_MODEL: ShadowModel = {
   dx: 0.75, dy: 0.875, blur: 1.125, spread: 0.125, color: { r: 0, g: 0, b: 0 }, opacity: 0.45,
 };
+// Design default endpoints: bare ends, round caps — how every path has always
+// been drawn. Only a fallback for the transient frame before model.endpoints
+// lands; the app resolves the real ones.
+const DEFAULT_ENDPOINTS_MODEL: EndpointsModel = {
+  startMarker: 'none', endMarker: 'none', startCap: 'round', endCap: 'round',
+};
 // Design default border: 6pt (0.375 cell) centered solid stroke.
 const DEFAULT_BORDER_MODEL: BorderModel = {
   width: 0.375, position: 'center', dash: 0, color: { r: 58, g: 53, b: 50 },
@@ -75,9 +82,10 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 // The slide-up submenus, in carousel order. Image selections cycle through
 // tint / crop / shadow / border (matching their type-option order); text cycles
 // through font / align (two pages of the Text bar); a vector selection has
-// stroke, plus svgFill on the closed shapes that offer it. Kept in this order
-// so a left swipe advances the same way the type-option row reads.
-type SubmenuKey = 'tint' | 'crop' | 'shadow' | 'border' | 'font' | 'align' | 'stroke' | 'svgFill';
+// stroke, plus its subtype's second bar — svgFill on the closed shapes,
+// endpoints on the open paths. Kept in this order so a left swipe advances the
+// same way the type-option row reads.
+type SubmenuKey = 'tint' | 'crop' | 'shadow' | 'border' | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints';
 
 // One grid cell: an icon over a short caption, weighted (flex) so every button
 // shares the same column width whichever set is showing. `caption` is the
@@ -241,11 +249,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // for the vertical open/dismiss, `navX` for the horizontal carousel slide.
   const submenuSlide = OBJECT_MENU_HEIGHT + safeBottom;
   const svgFillable = !!model.showSvgOptions && svgHasFill(model.svgSubtype ?? 'stroke');
+  const svgEndable = !!model.showSvgOptions && svgHasEndpoints(model.svgSubtype ?? 'stroke');
   const submenuOrder: SubmenuKey[] =
     model.showImageEdit ? ['tint', 'crop', 'shadow', 'border']
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'align']
-    : model.showSvgOptions ? (svgFillable ? ['stroke', 'svgFill'] : ['stroke'])
+    : model.showSvgOptions
+      ? (svgFillable ? ['stroke', 'svgFill'] : svgEndable ? ['stroke', 'endpoints'] : ['stroke'])
     : [];
   const activeSub: SubmenuKey | null =
     model.tintOpen ? 'tint'
@@ -254,6 +264,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     : model.borderOpen ? 'border'
     : model.strokeOpen ? 'stroke'
     : model.svgFillOpen ? 'svgFill'
+    : model.endpointsOpen ? 'endpoints'
     : model.textStyleOpen ? textPage
     : null;
   const submenuOpen = activeSub != null;
@@ -278,6 +289,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     else if (key === 'border') model.onBorderOpenChange?.(true);
     else if (key === 'stroke') model.onStrokeOpenChange?.(true);
     else if (key === 'svgFill') model.onSvgFillOpenChange?.(true);
+    else if (key === 'endpoints') model.onEndpointsOpenChange?.(true);
     else if (key === 'font' || key === 'align') {
       // Both text pages ride the single textStyleOpen flag; the page state
       // picks which one shows (drives the carousel between them).
@@ -293,6 +305,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     model.onCropOpenChange?.(false);
     model.onStrokeOpenChange?.(false);
     model.onSvgFillOpenChange?.(false);
+    model.onEndpointsOpenChange?.(false);
     model.onTextStyleOpenChange?.(false);
   };
 
@@ -453,9 +466,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     prevSvgFillOpen.current = !!model.svgFillOpen;
   }, [model.svgFillOpen, model.svgFill]);
   // Fold the Stroke bar away the moment the selection is no longer a vector
-  // object (or the panel hides), so it never lingers over the next object.
-  // The Fill bar goes with it, and also whenever the new vector selection is a
-  // subtype with no interior to fill (a line, an arc, a freehand stroke).
+  // object (or the panel hides), so it never lingers over the next object. The
+  // Fill and Endpoints bars go with it, and also whenever the new vector
+  // selection is a subtype that doesn't offer that one — a shape with no
+  // interior to fill, or a closed one with no loose end to decorate.
   useEffect(() => {
     if ((!model.visible || !model.showSvgOptions) && model.strokeOpen) {
       model.onStrokeOpenChange?.(false);
@@ -463,10 +477,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     if ((!model.visible || !svgFillable) && model.svgFillOpen) {
       model.onSvgFillOpenChange?.(false);
     }
+    if ((!model.visible || !svgEndable) && model.endpointsOpen) {
+      model.onEndpointsOpenChange?.(false);
+    }
     // model.on* are stable setters; listing the whole model would re-run this
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showSvgOptions, model.strokeOpen, svgFillable, model.svgFillOpen]);
+  }, [model.visible, model.showSvgOptions, model.strokeOpen, svgFillable, model.svgFillOpen, svgEndable, model.endpointsOpen]);
   useEffect(() => {
     if (model.tintOpen && !prevTintOpen.current) {
       setTintDraft(model.tint ?? DEFAULT_TINT_MODEL);
@@ -585,6 +602,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     model.onPickSvgFillColor?.();
   };
 
+  // Endpoints keeps no draft: every control is a segmented pick, so there is no
+  // drag for a live preview to smooth over and the model is always the truth.
+  const removeEndpoints = () => {
+    model.onEndpoints?.(null);
+    model.onEndpointsOpenChange?.(false);
+  };
+
   if (!mounted) return null;
 
   // Common actions (rotate / flip / copy / lock / delete, plus the optional
@@ -650,7 +674,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         label={opt.label}
         caption={opt.label}
         icon={opt.icon}
-        onPress={() => openSubmenu(opt.action === 'fill' ? 'svgFill' : 'stroke')}
+        onPress={() => openSubmenu(opt.action === 'fill' ? 'svgFill' : opt.action === 'endpoints' ? 'endpoints' : 'stroke')}
         compact={compact}
       />
     ));
@@ -777,6 +801,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         onPickColor={() => model.onPickSvgFillColor?.()}
         onAddStop={addSvgFillStop}
         onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
+      />
+    );
+  } else if (displaySub === 'endpoints') {
+    activeBarEl = (
+      <EndpointsBar
+        endpoints={model.endpoints ?? DEFAULT_ENDPOINTS_MODEL}
+        onChange={(e) => model.onEndpoints?.(e)}
+        onBack={dismissSubmenu}
+        onRemove={removeEndpoints}
       />
     );
   } else if (displaySub === 'shadow') {

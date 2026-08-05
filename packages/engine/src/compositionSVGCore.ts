@@ -12,7 +12,8 @@ import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
 import { buildPathD, buildTilePathD, buildClosedFillPathD, buildTileFillPathD, buildExpandedTileSVGObjectContent, svgFillPresentation, svgStrokePresentation } from './svgPathBuilder';
-import { roundPathCorners, svgStrokeRadiusCells } from './svgStroke';
+import { roundPathCorners, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
+import { svgEndpointsMarkup } from './svgEndpoints';
 import { chainSegments } from './compositionArcMath';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { buildActiveMaskMap, clipRectToNodeMasks } from './compositionMask';
@@ -762,6 +763,10 @@ export async function generateCompositionSVGCore(
           paths += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
         }
       }
+      // Endpoint decorations last, on top of the stroke they cap. Same helper
+      // the live DOM layer uses, so an arrow can't point one way on the canvas
+      // and another in the export.
+      paths += svgEndpointsMarkup(svg, strokeSegments, svgStrokeWidthCells(svg, effectiveStrokeScale, U));
       if (paths) {
         elementsById.set(svg.id, wrapWithMaskClip(
           applyNodeEffects(paths, svg.effects, svg.id, svg, U),

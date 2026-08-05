@@ -4,7 +4,7 @@
  * images.
  */
 
-import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasFill, svgStrokeRows } from '../logic/svgEdit';
+import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndpoints, svgHasFill, svgStrokeRows } from '../logic/svgEdit';
 import type { SVGSubtypeKind } from '../adapter';
 
 const SUBTYPES: SVGSubtypeKind[] = ['line', 'arc', 'rectangle', 'circle', 'shape', 'stroke'];
@@ -22,7 +22,35 @@ describe('svgEditOptions', () => {
     expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'fill']);
     expect(svgEditOptions('circle').map((o) => o.action)).toEqual(['stroke', 'fill']);
     for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'circle')) {
-      expect(svgEditOptions(subtype).map((o) => o.action)).toEqual(['stroke']);
+      expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('fill');
+    }
+  });
+
+  it('adds Ends to the three open paths, and to nothing else', () => {
+    for (const subtype of ['line', 'arc', 'stroke'] as SVGSubtypeKind[]) {
+      expect(svgEditOptions(subtype).map((o) => o.action)).toEqual(['stroke', 'endpoints']);
+    }
+    for (const subtype of ['rectangle', 'circle', 'shape'] as SVGSubtypeKind[]) {
+      expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('endpoints');
+    }
+  });
+
+  it('never offers both Fill and Ends — closed and open are complements', () => {
+    for (const subtype of SUBTYPES) {
+      const actions = svgEditOptions(subtype).map((o) => o.action);
+      expect(actions.includes('fill') && actions.includes('endpoints')).toBe(false);
+    }
+  });
+
+  it('leaves the closed-but-not-drawn `shape` with Stroke alone', () => {
+    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke']);
+  });
+
+  it('labels and glyphs the Ends option the same way whichever path it is on', () => {
+    for (const subtype of ['line', 'arc', 'stroke'] as SVGSubtypeKind[]) {
+      const ends = svgEditOptions(subtype).find((o) => o.action === 'endpoints')!;
+      expect(ends.label).toBe('Ends');
+      expect(ends.icon).toBe('ray-start-end');
     }
   });
 
@@ -52,6 +80,8 @@ describe('svgEditOptions', () => {
     const options = svgEditOptions('mystery' as SVGSubtypeKind);
     expect(options[0].icon).toBe('vector-polyline');
     expect(options[0].action).toBe('stroke');
+    // …and offers it neither of the two subtype-specific bars.
+    expect(options).toHaveLength(1);
   });
 
   it('exposes the same menus through the whole-table export', () => {
@@ -126,6 +156,37 @@ describe('svgStrokeRows', () => {
     for (const subtype of SUBTYPES) {
       const rows = svgStrokeRows(subtype);
       if (rows.radius) expect(rows.position).toBe(true);
+    }
+  });
+});
+
+describe('svgHasEndpoints', () => {
+  it('is true for exactly the open paths a drawing tool produces', () => {
+    expect(svgHasEndpoints('line')).toBe(true);
+    expect(svgHasEndpoints('arc')).toBe(true);
+    expect(svgHasEndpoints('stroke')).toBe(true);
+  });
+
+  it('is false for every closed subtype — no loose end to decorate', () => {
+    expect(svgHasEndpoints('rectangle')).toBe(false);
+    expect(svgHasEndpoints('circle')).toBe(false);
+    expect(svgHasEndpoints('shape')).toBe(false);
+  });
+
+  it('is the inverse of svgHasFill on every subtype but `shape`', () => {
+    for (const subtype of SUBTYPES.filter((s) => s !== 'shape')) {
+      expect(svgHasEndpoints(subtype)).toBe(!svgHasFill(subtype));
+    }
+    // `shape` is closed but its fills are authored elsewhere, so it gets
+    // neither bar (see svgHasFill's note).
+    expect(svgHasFill('shape')).toBe(false);
+    expect(svgHasEndpoints('shape')).toBe(false);
+  });
+
+  it('agrees with the menu it gates', () => {
+    for (const subtype of SUBTYPES) {
+      const has = svgEditOptions(subtype).some((o) => o.action === 'endpoints');
+      expect(has).toBe(svgHasEndpoints(subtype));
     }
   });
 });

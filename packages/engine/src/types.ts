@@ -815,6 +815,31 @@ export interface SVGStroke {
   dash?: number;
 }
 
+/** What sits AT one loose end of an open path — the Endpoints bar's first two
+ *  rows. 'none' (the default) leaves the end bare. */
+export type SVGEndMarker = 'none' | 'circle' | 'arrow';
+
+/** How one loose end of an open path is capped. 'round' is the default (and
+ *  what every path has always been drawn with); 'square' extends the stroke
+ *  half its width past the endpoint, the SVG `stroke-linecap` definitions. */
+export type SVGEndCap = 'round' | 'square';
+
+/**
+ * Per-END decoration for an OPEN path — a line, an arc, or a freehand stroke
+ * (see `svgSubtype`). A closed path has no loose end, so this is inert there.
+ *
+ * The two ends are independent: `start` is the beginning of the chain as drawn
+ * (`segments[0].start`) and `end` its finish (`segments[n-1].end`). Every field
+ * is optional and absent means the default — no marker, round cap — so an
+ * object that has never visited the Endpoints bar carries nothing at all.
+ */
+export interface SVGEndpoints {
+  startMarker?: SVGEndMarker;
+  endMarker?: SVGEndMarker;
+  startCap?: SVGEndCap;
+  endCap?: SVGEndCap;
+}
+
 export interface SVGObject {
   id: string;
   name?: string;
@@ -901,7 +926,7 @@ export interface SVGObject {
    *  readers and untouched render paths degrade gracefully. Coordinates
    *  are in the unit bbox space of the shape (0..1). */
   fillPaint?: Paint;
-  /** The shape's own editable fill — what the Fill bar authors (v39+).
+  /** The shape's own editable fill — what the Fill bar authors (v40+).
    *
    *  Outranks `fillPaint` and `fillColor`/`fillOpacity` wherever a fill is
    *  drawn: it is the EDITABLE record (it keeps the stops a Solid fill isn't
@@ -921,6 +946,16 @@ export interface SVGObject {
    *  would draw a separate rect around the bbox. Undefined = stroke at the
    *  composition-wide `strokeScale`, sharp joins, centered, solid. */
   stroke?: SVGStroke;
+  /** What the path's two loose ends carry — the Endpoints bar (v41+).
+   *
+   *  A separate block from `stroke` rather than a field inside it, so the two
+   *  bars can never overwrite each other's work: the Stroke bar rebuilds the
+   *  whole `stroke` record from its four rows on every edit.
+   *
+   *  Only OPEN paths offer it (a line, an arc, a freehand stroke); see
+   *  `svgSubtype` and `svgHasEndpoints`. Undefined = bare ends, round caps,
+   *  which is how every path has always been drawn. */
+  endpoints?: SVGEndpoints;
   /** Direction at creation time. Persists through scaling and rotation
    *  so an H/V line never becomes diagonal after creation. Stripped on
    *  join — only original creation-tool lines carry this. */

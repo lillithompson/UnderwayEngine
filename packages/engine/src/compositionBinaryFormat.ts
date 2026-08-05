@@ -1,4 +1,4 @@
-﻿import { BlendMode, BorderPosition, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGSubpath, PathSegment, ImageObject, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
+﻿import { BlendMode, BorderPosition, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
@@ -299,7 +299,15 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // always wrote that bit 0, so none can be misread as carrying the block. They
 // load `fill` undefined and keep rendering from `fillPaint` / `fillColor`
 // exactly as they did.
-const FORMAT_VERSION = 40;
+// v41: SVGObject `endpoints` — what an OPEN path's two loose ends carry (the
+// Endpoints option menu): a marker each (none / circle / arrow) and a cap each
+// (round / square). All four settings pack into ONE byte, so presence rides
+// flags4 bit 0x04 and the payload is a single byte written last in the SVG
+// record, after the v40 fill. Gated on version>=41 for the same reason: that
+// bit was always written 0 before, so no older file can be misread as carrying
+// it. They load `endpoints` undefined — bare ends, round caps, exactly how
+// every path has always been drawn.
+const FORMAT_VERSION = 41;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -549,6 +557,7 @@ const FLAG3_SVG_HAS_ANGLE = 0x80;
 // v38+ SVG flags4 byte. Sits right after flags3 in the SVG record header.
 const FLAG4_SVG_HAS_PATTERN_FILE_ID = 0x01;
 const FLAG4_SVG_HAS_FILL = 0x02; // v40+
+const FLAG4_SVG_HAS_ENDPOINTS = 0x04; // v41+
 
 // v29+ image rotation-byte bits. The image `flags` byte is fully
 // consumed (0x01..0x80), so tint/effects presence rides the spare high
@@ -968,6 +977,43 @@ function readSVGStroke(view: DataView, data: Uint8Array, pos: number): { stroke:
   return { stroke, pos };
 }
 
+// ── Per-object SVG endpoints payload (v41+) ──────────────────────────
+// One byte, unlike the presence-masked stroke block: all four settings are
+// small enumerations whose "absent" and "default" are the same thing (no
+// marker, round cap), so there is nothing a mask could express that the packed
+// defaults don't. Bits: 0-1 startMarker, 2-3 endMarker, 4 startCap, 5 endCap.
+
+const END_MARKER_TO_BITS: Record<SVGEndMarker, number> = { none: 0, circle: 1, arrow: 2 };
+const BITS_TO_END_MARKER: SVGEndMarker[] = ['none', 'circle', 'arrow', 'none'];
+
+/** True when the block carries anything but defaults. An all-default endpoints
+ *  record is treated as absent so it never costs a flag bit or a byte —
+ *  the same rule `hasSVGStroke` applies to an all-undefined stroke. */
+function hasSVGEndpoints(e: SVGEndpoints | undefined): e is SVGEndpoints {
+  return !!e && packEndpoints(e) !== 0;
+}
+
+function packEndpoints(e: SVGEndpoints): number {
+  return (END_MARKER_TO_BITS[e.startMarker ?? 'none'] ?? 0)
+    | ((END_MARKER_TO_BITS[e.endMarker ?? 'none'] ?? 0) << 2)
+    | (e.startCap === 'square' ? 0x10 : 0)
+    | (e.endCap === 'square' ? 0x20 : 0);
+}
+
+/** Unpack the byte, omitting every field that is at its default so a
+ *  round-tripped record is `toEqual`-identical to the one that was written
+ *  (which drops defaults for the same reason). */
+function unpackEndpoints(byte: number): SVGEndpoints {
+  const e: SVGEndpoints = {};
+  const sm = BITS_TO_END_MARKER[byte & 0x03];
+  const em = BITS_TO_END_MARKER[(byte >> 2) & 0x03];
+  if (sm !== 'none') e.startMarker = sm;
+  if (em !== 'none') e.endMarker = em;
+  if (byte & 0x10) e.startCap = 'square';
+  if (byte & 0x20) e.endCap = 'square';
+  return e;
+}
+
 function subpathArraySize(subs: ReadonlyArray<SVGSubpath>): number {
   // u16 count + per-subpath { rgb(3) + flags(1, v37+) + segCount(2) + segments }
   let size = 2;
@@ -1006,6 +1052,7 @@ function svgBinarySize(svg: SVGObject): number {
   if (svg.angleDeg) size += 2; // v31+ free rotation (i16)
   if (hasSVGStroke(svg.stroke)) size += strokeBinarySize(svg.stroke); // v35+
   if (svg.fill) size += tintFillBinarySize(svg.fill); // v40+
+  if (hasSVGEndpoints(svg.endpoints)) size += 1; // v41+
   return size;
 }
 
@@ -1199,6 +1246,7 @@ function writeSVG(
   let flags4 = 0;
   if (svg.patternFileId != null) flags4 |= FLAG4_SVG_HAS_PATTERN_FILE_ID;
   if (svg.fill) flags4 |= FLAG4_SVG_HAS_FILL;
+  if (hasSVGEndpoints(svg.endpoints)) flags4 |= FLAG4_SVG_HAS_ENDPOINTS;
   out[pos++] = flags4;
 
   let rotBits = ROTATION_TO_BITS[svg.rotation ?? 0] & 0x03;
@@ -1287,10 +1335,14 @@ function writeSVG(
   if (hasSVGStroke(svg.stroke)) {
     pos = writeSVGStroke(view, out, pos, svg.stroke);
   }
-  // v40+ the shape's own fill, last in the record. Same payload as the image
-  // tint overlay — they are the same editable spec (see ShapeFill).
+  // v40+ the shape's own fill. Same payload as the image tint overlay — they
+  // are the same editable spec (see ShapeFill).
   if (svg.fill) {
     pos = writeTintFill(view, out, pos, svg.fill);
+  }
+  // v41+ the open path's endpoints, last in the record — one packed byte.
+  if (hasSVGEndpoints(svg.endpoints)) {
+    out[pos++] = packEndpoints(svg.endpoints);
   }
   return pos;
 }
@@ -1481,6 +1533,11 @@ function readSVG(
     const f = readTintFill(view, data, pos);
     svg.fill = f.tintFill;
     pos = f.pos;
+  }
+  // v41+ the open path's endpoints, last in the record. Same gating argument
+  // again: flags4 bit 0x04 was always written 0 before v41.
+  if (version >= 41 && (flags4 & FLAG4_SVG_HAS_ENDPOINTS)) {
+    svg.endpoints = unpackEndpoints(data[pos++]);
   }
 
   // v25+ "Use as mask" flag (presence-only, no payload)

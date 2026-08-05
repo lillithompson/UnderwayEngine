@@ -173,6 +173,53 @@ export function SegmentedRow<T extends string>({ label, options, value, onChange
   );
 }
 
+/** Two segmented controls sharing one row, split down the middle — the
+ *  segmented sibling of {@link DualSliderRow}, for a bar that has the same
+ *  choice to offer about two related things (the Endpoints bar's per-end cap).
+ *  Selection applies immediately, as in {@link SegmentedRow}. */
+export function DualSegmentedRow<T extends string>({ label, options, leftLabel, leftValue, onLeftChange, rightLabel, rightValue, onRightChange }: {
+  label: string;
+  /** The same choices on both halves — the point of the row is that they ask
+   *  one question twice. */
+  options: readonly { value: T; label: string }[];
+  leftLabel: string;
+  leftValue: T;
+  onLeftChange: (v: T) => void;
+  rightLabel: string;
+  rightValue: T;
+  onRightChange: (v: T) => void;
+}) {
+  const half = (halfLabel: string, value: T, onChange: (v: T) => void) => (
+    <View style={styles.dualHalf}>
+      <Text style={styles.dualSegLabel}>{halfLabel}</Text>
+      <View style={styles.segmented}>
+        {options.map((o) => {
+          const active = o.value === value;
+          return (
+            <Pressable
+              key={o.value}
+              onPress={() => onChange(o.value)}
+              style={[styles.segment, active && styles.segmentActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${halfLabel} ${o.label}`}
+            >
+              <Text style={[styles.segmentText, active && styles.segmentTextActive]} numberOfLines={1}>{o.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+  return (
+    <View style={styles.dualSegmentedRow}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      {half(leftLabel, leftValue, onLeftChange)}
+      {half(rightLabel, rightValue, onRightChange)}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', minHeight: 22 },
   back: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -192,6 +239,10 @@ const styles = StyleSheet.create({
   dualHalf: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   dualLabel: { width: 34, color: LABEL, fontSize: 12 },
   segmentedRow: { flexDirection: 'row', alignItems: 'center', height: 36 },
+  // Two segmented controls in one row: the shared label column, then two
+  // equal halves each with a compact label of its own.
+  dualSegmentedRow: { flexDirection: 'row', alignItems: 'center', height: 36, gap: 10 },
+  dualSegLabel: { width: 36, color: LABEL, fontSize: 12 },
   segmented: { flex: 1, flexDirection: 'row', backgroundColor: SEG_TRACK, borderRadius: 9, padding: 2, gap: 2 },
   segment: { flex: 1, paddingVertical: 6, alignItems: 'center', justifyContent: 'center', borderRadius: 7 },
   segmentActive: { backgroundColor: SEG_ACTIVE },

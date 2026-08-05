@@ -152,6 +152,22 @@ export interface BorderModel {
  *  `SVGSubtype` without importing it — the package stays engine-agnostic. */
 export type SVGSubtypeKind = 'line' | 'arc' | 'rectangle' | 'circle' | 'shape' | 'stroke';
 
+/** What sits at one loose end of an open path, and how that end is capped.
+ *  Mirror the engine's `SVGEndMarker` / `SVGEndCap` without importing them. */
+export type EndMarkerKind = 'none' | 'circle' | 'arrow';
+export type EndCapKind = 'round' | 'square';
+
+/** Editable endpoints for an open path (the Endpoints bar). Unlike the engine's
+ *  `SVGEndpoints` every field is concrete: the app resolves absent to the
+ *  default before handing the model over, so the segmented rows always have a
+ *  selection to show. */
+export interface EndpointsModel {
+  startMarker: EndMarkerKind;
+  endMarker: EndMarkerKind;
+  startCap: EndCapKind;
+  endCap: EndCapKind;
+}
+
 /** How an image's bitmap fills its frame (the Crop bar). Mirrors the engine's
  *  ImageFraming without importing it (package stays engine-agnostic). */
 export type ImageFramingMode = 'fill' | 'fit' | 'crop' | 'tile';
@@ -335,6 +351,19 @@ export interface ObjectPropertiesModel {
    *  Solid mode or `svgFill.stops[svgFill.selectedStop]` in gradient modes; the
    *  app reads the current fill to know which. */
   onPickSvgFillColor?(): void;
+  /** Whether the Endpoints bar is shown. App-owned so a tap-off dismisses it
+   *  before the panel (same as the Stroke / Fill bars). Only reachable from a
+   *  subtype whose option menu offers it — see `svgHasEndpoints`. */
+  endpointsOpen?: boolean;
+  onEndpointsOpenChange?(open: boolean): void;
+  /** The selected path's current endpoints, seeding the bar. The app fills in
+   *  the defaults (bare ends, round caps) for a path that has never been given
+   *  any, so every field is concrete here. */
+  endpoints?: EndpointsModel;
+  /** Endpoints callback. Unlike the slider bars there is no live/commit split:
+   *  every control is a segmented pick, so each call is one finished edit and
+   *  one undo step. `endpoints=null` resets both ends to the defaults. */
+  onEndpoints?(endpoints: EndpointsModel | null): void;
   /** Selection is a Figma-style frame: the panel's second row shows the frame
    *  options (background / shadow / border / ungroup), with Shadow / Border
    *  reusing the image effect bars (frame submenu carousel = shadow, border).
