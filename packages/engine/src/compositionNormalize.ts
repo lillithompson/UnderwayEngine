@@ -371,13 +371,24 @@ export interface NormalizeResult {
  *      precision constraint (kPrecision), pushing the scaled bbox past 32.
  *      Power-of-2 preserves grid alignment: content snapped at step `2^L`
  *      becomes snapped at step `2^(L+k)` after the transform.
- *   3. Translate content so bbox.min is at origin, scale by `s`, then
- *      center within the canonical canvas when the scaled content fits;
- *      otherwise anchor at the origin.
+ *   3. Translate content so bbox.min (floored to the grid step, so the
+ *      translation is always a whole number of grid steps) is at origin,
+ *      scale by `s`, then center within the canonical canvas when the
+ *      scaled content fits; otherwise anchor at the origin.
  *   4. Bump `gridLevel` by `k`.
  *   5. Scale `strokeScale` by `s` so visual line width is preserved.
  *
- * Pure: returns new arrays; the input arrays are not mutated.
+ * Invariants:
+ *   - Grid-preserving: the affine maps grid points to grid points (scale is
+ *     a power of two; translation is a multiple of the new grid step), so
+ *     normalizing can never change any object's alignment to the grid —
+ *     even when an off-grid freehand stroke defines the content bbox.
+ *   - Stable: when no transform is needed (k = 0 and content already in
+ *     canonical position) the input arrays are returned untouched, so a
+ *     save → load round trip reproduces coordinates bit-exactly.
+ *
+ * Pure: returns new arrays (or the untouched inputs when the transform is
+ * an exact identity); the input arrays are not mutated.
  *
  * Camera is NOT touched by this function — callers reset / reframe as
  * appropriate (`saveCompositionState` resets the camera written to disk
@@ -448,6 +459,30 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
     scale = Math.pow(2, k);
   }
 
+  // Stability: once a file is saved in canonical position, reloading it must
+  // be a bit-exact no-op. When no rescale is needed and the content already
+  // sits inside the canonical box, skip the transform entirely — even an
+  // identity affine ((x - o) * 1 + o) re-rounds every coordinate by a float
+  // ulp, which would make coordinates drift across save/load cycles.
+  if (
+    k === 0 &&
+    bbox.minX >= 0 && bbox.minY >= 0 &&
+    bbox.maxX <= CANONICAL_SIZE && bbox.maxY <= CANONICAL_SIZE
+  ) {
+    return {
+      figures: input.figures,
+      svgObjects: input.svgObjects,
+      images: input.images,
+      texts: input.texts,
+      groups: input.groups,
+      gridLevel: input.gridLevel,
+      strokeScale: input.strokeScale,
+      background: input.background,
+      scale: 1,
+      k: 0,
+    };
+  }
+
   const scaledW = bboxW * scale;
   const scaledH = bboxH * scale;
   // Position the scaled content. Center within the canonical canvas when
@@ -456,15 +491,46 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
   // Snap the offset to the new grid step so non-square bboxes don't break
   // grid alignment; floor (vs round) keeps content's maxX/Y inside the
   // canonical box when centering, and at origin otherwise.
+  const snapDown = (v: number, step: number): number =>
+    step > 0 ? Math.floor(v / step) * step : v;
   const newStep = Math.pow(2, input.gridLevel + k);
   const idealOffsetX = scaledW <= CANONICAL_SIZE ? (CANONICAL_SIZE - scaledW) / 2 : 0;
   const idealOffsetY = scaledH <= CANONICAL_SIZE ? (CANONICAL_SIZE - scaledH) / 2 : 0;
-  const offsetX = newStep > 0 ? Math.floor(idealOffsetX / newStep) * newStep : idealOffsetX;
-  const offsetY = newStep > 0 ? Math.floor(idealOffsetY / newStep) * newStep : idealOffsetY;
+  const offsetX = snapDown(idealOffsetX, newStep);
+  const offsetY = snapDown(idealOffsetY, newStep);
+
+  // Anchor the transform at the bbox min FLOORED to the old grid step, not
+  // the raw bbox min. The raw min is off-grid whenever any freehand stroke
+  // defines it, and translating by an off-grid amount knocks every
+  // grid-aligned object in the scene off the grid (the Reimagine "reload
+  // misaligns the seed squiggle" bug). With a snapped origin the net
+  // translation (offset - origin·scale) is always a multiple of the new
+  // grid step, so both grid alignment and sub-grid phase are preserved for
+  // all content. Content may overhang the ideal placement by < 1 step.
+  const oldStep = Math.pow(2, input.gridLevel);
+  const originX = snapDown(bbox.minX, oldStep);
+  const originY = snapDown(bbox.minY, oldStep);
+
+  // Exact identity — same rationale as the in-box early return above:
+  // never rewrite coordinates through a no-op affine.
+  if (scale === 1 && offsetX === originX && offsetY === originY) {
+    return {
+      figures: input.figures,
+      svgObjects: input.svgObjects,
+      images: input.images,
+      texts: input.texts,
+      groups: input.groups,
+      gridLevel: input.gridLevel,
+      strokeScale: input.strokeScale,
+      background: input.background,
+      scale: 1,
+      k: 0,
+    };
+  }
 
   const tr: AffineTransform = {
-    originX: bbox.minX,
-    originY: bbox.minY,
+    originX,
+    originY,
     scale,
     offsetX,
     offsetY,

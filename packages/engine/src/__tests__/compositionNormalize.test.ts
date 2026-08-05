@@ -1,5 +1,4 @@
 import {
-  CANONICAL_SIZE,
   computeContentBBox,
   normalizeComposition,
   NormalizableInput,
@@ -523,14 +522,118 @@ describe('normalizeComposition — degenerate / empty', () => {
     expect(r.strokeScale).toBe(inp.strokeScale);
   });
 
-  test('single zero-extent point centers at (16, 16)', () => {
+  test('single zero-extent point inside the canonical box passes through untouched', () => {
+    // Stability invariant: content already inside [0, CANONICAL_SIZE] with
+    // k=0 is returned as-is — no recentering, no coordinate rewrite.
     const r = normalizeComposition(input({
       svgObjects: [svg({ id: 'p', cellX: 5, cellY: 5, cellWidth: 0, cellHeight: 0,
         segments: [{ kind: 'line', start: [5, 5], end: [5, 5] }] })],
     }));
     expect(r.scale).toBe(1);
     expect(r.k).toBe(0);
-    expect(r.svgObjects[0].segments[0]).toEqual({ kind: 'line', start: [CANONICAL_SIZE / 2, CANONICAL_SIZE / 2], end: [CANONICAL_SIZE / 2, CANONICAL_SIZE / 2] });
+    expect(r.svgObjects[0].segments[0]).toEqual({ kind: 'line', start: [5, 5], end: [5, 5] });
+  });
+});
+
+describe('normalizeComposition — authored coordinates are inviolable', () => {
+  test('content already in canonical position round-trips bit-exactly', () => {
+    // Coordinates with non-representable fractions: an identity affine
+    // ((x - o) * 1 + o) would perturb these by a float ulp. The stability
+    // early-return must hand back the exact input arrays.
+    const inp = input({
+      svgObjects: [svg({
+        id: 's', cellX: 0.1, cellY: 0.1, cellWidth: 28, cellHeight: 20,
+        segments: [{ kind: 'line', start: [0.1, 0.1], end: [28.1, 20.1] }],
+      })],
+    });
+    const r = normalizeComposition(inp);
+    expect(r.k).toBe(0);
+    expect(r.svgObjects).toBe(inp.svgObjects); // same array, not a rewrite
+  });
+
+  test('off-grid freehand bbox min cannot knock grid-aligned content off the grid', () => {
+    // The Reimagine bug: a grid-aligned seed squiggle (gridLevel 2, step 4)
+    // plus a freehand stroke whose bbox min is off-grid AND out of the
+    // canonical box (negative coords force a translation). The translation
+    // must be a multiple of the grid step so the seed stays aligned.
+    const step = 4; // 2^gridLevel
+    const r = normalizeComposition(input({
+      svgObjects: [
+        svg({ id: 'seed', cellX: 4, cellY: 8, cellWidth: 8, cellHeight: 8,
+          segments: [
+            { kind: 'line', start: [4, 8], end: [8, 8] },
+            { kind: 'arc', start: [8, 8], end: [12, 12], center: [8, 12] },
+          ] }),
+        svg({ id: 'freehand', cellX: -3.7, cellY: -1.3, cellWidth: 30, cellHeight: 30,
+          segments: [{ kind: 'line', start: [-3.7, -1.3], end: [26.3, 28.7] }] }),
+      ],
+      gridLevel: 2,
+    }));
+    expect(r.k).toBe(0);
+    const newStep = Math.pow(2, r.gridLevel);
+    expect(newStep).toBe(step);
+    const seed = r.svgObjects.find(s => s.id === 'seed')!;
+    for (const seg of seed.segments) {
+      expect(seg.start[0] % newStep).toBe(0);
+      expect(seg.start[1] % newStep).toBe(0);
+      expect(seg.end[0] % newStep).toBe(0);
+      expect(seg.end[1] % newStep).toBe(0);
+      if (seg.kind === 'arc') {
+        expect(seg.center[0] % newStep).toBe(0);
+        expect(seg.center[1] % newStep).toBe(0);
+      }
+    }
+    // The freehand stroke keeps its sub-grid phase exactly (translated by a
+    // whole number of steps only).
+    const fh = r.svgObjects.find(s => s.id === 'freehand')!;
+    expect(((fh.segments[0].start[0] % step) + step) % step).toBeCloseTo(((-3.7 % step) + step) % step, 12);
+    expect(((fh.segments[0].start[1] % step) + step) % step).toBeCloseTo(((-1.3 % step) + step) % step, 12);
+  });
+
+  test('grid-aligned content stays aligned when an off-grid stroke forces an upscale', () => {
+    // Small scene (bbox < 16 → k > 0) whose bbox min is defined by an
+    // off-grid freehand point. Scaling is anchored at the floored-to-grid
+    // origin, so the aligned square must land on the new grid step.
+    const r = normalizeComposition(input({
+      figures: [fig({ id: 'sq', cellX: 4, cellY: 4, cellWidth: 4, cellHeight: 4 })],
+      svgObjects: [svg({ id: 'fh', cellX: 2.3, cellY: 2.9, cellWidth: 1, cellHeight: 1,
+        segments: [{ kind: 'line', start: [2.3, 2.9], end: [3.3, 3.9] }] })],
+      gridLevel: 2,
+    }));
+    expect(r.k).toBeGreaterThan(0);
+    const newStep = Math.pow(2, r.gridLevel);
+    const sq = r.figures[0];
+    expect(sq.cellX % newStep).toBe(0);
+    expect(sq.cellY % newStep).toBe(0);
+    expect(sq.cellWidth % newStep).toBe(0);
+    expect(sq.cellHeight % newStep).toBe(0);
+  });
+
+  test('normalize is exactly stable across repeated applications', () => {
+    // Whatever the first normalize produces, applying it again (a reload)
+    // must return the identical arrays — not merely close values.
+    const first = normalizeComposition(input({
+      svgObjects: [
+        svg({ id: 'seed', cellX: 4, cellY: 8, cellWidth: 8, cellHeight: 8,
+          segments: [{ kind: 'line', start: [4, 8], end: [12, 16] }] }),
+        svg({ id: 'freehand', cellX: -3.7, cellY: -1.3, cellWidth: 10, cellHeight: 10,
+          segments: [{ kind: 'line', start: [-3.7, -1.3], end: [6.3, 8.7] }] }),
+      ],
+      gridLevel: 2,
+    }));
+    const second = normalizeComposition({
+      figures: first.figures,
+      svgObjects: first.svgObjects,
+      images: first.images,
+      texts: first.texts,
+      groups: first.groups,
+      gridLevel: first.gridLevel,
+      strokeScale: first.strokeScale,
+    });
+    expect(second.k).toBe(0);
+    expect(second.scale).toBe(1);
+    expect(second.svgObjects).toBe(first.svgObjects); // identical reference
+    expect(second.figures).toBe(first.figures);
   });
 });
 
