@@ -8,9 +8,12 @@ export const MAX_LINE_WIDTH = 1000;
 // Convert at the rendering boundary so downstream code can stay unchanged.
 export const STROKE_SCALE_RENDER_MULTIPLIER = MAX_LINE_WIDTH / 5;
 
-// Default strokeScale (percentage). Renders at 40 SVG units of stroke width,
-// matching the legacy default of 8× SVG_STROKE_WIDTH.
-export const DEFAULT_STROKE_SCALE = 40 / MAX_LINE_WIDTH;
+// Default strokeScale (percentage), used only as a fallback for input that
+// records none: pre-v4 binary files and legacy JSON. Renders at 200 SVG units
+// of stroke width — 5× the old 40-unit default (legacy 8× SVG_STROKE_WIDTH),
+// so files with no recorded width land near the current app default rather
+// than a fifth of it.
+export const DEFAULT_STROKE_SCALE = 200 / MAX_LINE_WIDTH;
 
 // Validate a strokeScale value and fill in the default for missing/bad input.
 // v4+ strokeScale is a number in [0, 1] (rendered = scale × MAX_LINE_WIDTH).

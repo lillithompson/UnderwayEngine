@@ -16,7 +16,7 @@ export interface ZipExportOpts {
 
 // Default stroke scale when an entry has none stored — keep in sync with the
 // consuming app's single-export default.
-const DEFAULT_STROKE_SCALE = 0.2;
+const DEFAULT_STROKE_SCALE = 1.0;
 
 const utf8 = new TextEncoder();
 const SAFE_NAME_RE = /[^a-zA-Z0-9_-]/g;

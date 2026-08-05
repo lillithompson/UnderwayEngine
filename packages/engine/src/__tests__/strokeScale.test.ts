@@ -70,4 +70,11 @@ describe('effectiveStrokeMultiplier', () => {
 });
 
 describe('constants', () => {
+  test('DEFAULT_STROKE_SCALE renders at 200 SVG units', () => {
+    // The fallback for input that records no width (pre-v4 binary, legacy
+    // JSON). Pinned because it is only ever exercised by old files, so a
+    // drift here would surface as those files silently changing weight.
+    expect(DEFAULT_STROKE_SCALE * MAX_LINE_WIDTH).toBeCloseTo(200);
+    expect(SVG_STROKE_WIDTH * effectiveStrokeMultiplier(DEFAULT_STROKE_SCALE)).toBeCloseTo(200);
+  });
 });

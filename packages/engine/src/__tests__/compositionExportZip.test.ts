@@ -68,7 +68,7 @@ beforeEach(() => {
 });
 
 describe('exportCompositionsAsZip', () => {
-  test('PNG: bundles entries and threads per-composition strokeScale (with 0.2 default)', async () => {
+  test('PNG: bundles entries and threads per-composition strokeScale (with 1.0 default)', async () => {
     // "AA==" base64-decodes to a single 0x00 byte — exact value doesn't matter, just
     // needs to round-trip through the decoder.
     mockExportCompositionPNG.mockImplementation((id: string) =>
@@ -91,10 +91,11 @@ describe('exportCompositionsAsZip', () => {
     expect(eocdEntryCount(zip!)).toBe(2);
     expect(readCentralDirectoryNames(zip!)).toEqual(['Alpha.png', 'Beta.png']);
 
-    // Per-comp strokeScale: 0.5 for "a", 0.2 default for "b". Real exports
-    // request the full-resolution originals.
+    // Per-comp strokeScale: 0.5 for "a", 1.0 default for "b" (matching the
+    // consuming app's blank-composition default). Real exports request the
+    // full-resolution originals.
     expect(mockExportCompositionPNG).toHaveBeenCalledWith('a', 1024, 0.5, { preferOriginalImages: true });
-    expect(mockExportCompositionPNG).toHaveBeenCalledWith('b', 1024, 0.2, { preferOriginalImages: true });
+    expect(mockExportCompositionPNG).toHaveBeenCalledWith('b', 1024, 1.0, { preferOriginalImages: true });
 
     // Decoded payloads.
     const payloads = localEntryPayloads(zip!);
