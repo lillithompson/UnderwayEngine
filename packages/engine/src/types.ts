@@ -1641,6 +1641,11 @@ export type CompUndoOp =
       oldLocalSegments?: PathSegment[] | null; newLocalSegments?: PathSegment[] | null;
       oldCreationBox?: { minX: number; minY: number; width: number; height: number };
       newCreationBox?: { minX: number; minY: number; width: number; height: number };
+      /** H/V line orientation metadata, kept in step with the segment
+       *  rewrite (a 90° rotation swaps horizontal ↔ vertical). `undefined`
+       *  = don't touch — these ops never clear the field. */
+      oldLineDirection?: 'horizontal' | 'vertical' | 'diagonal';
+      newLineDirection?: 'horizontal' | 'vertical' | 'diagonal';
       /** Subpath set. `null` = clear subpaths (return to single-color path);
        *  `undefined` = don't touch; array = set. Captured by rotate/mirror so
        *  joined-SVG transforms round-trip through undo/redo. */

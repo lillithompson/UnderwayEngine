@@ -201,10 +201,24 @@ const svgAdapter: GeometryAdapter<SVGObject> = {
     const newSubpaths = Array.isArray(svg.subpaths)
       ? svg.subpaths.map(sub => ({ ...sub, segments: Array.isArray(sub.segments) ? rescaleSegs(sub.segments, oldBbox, newBbox) : [] }))
       : undefined;
-    return {
+    const next: SVGObject = {
       ...svg, segments: newSegs, subpaths: newSubpaths, ...newBbox,
       identitySegments: undefined, rotation: undefined, mirrorH: undefined, mirrorV: undefined,
     };
+    // creationBox rides the same affine as the segments (degenerate old
+    // axes fall back to scale 1, matching rescaleSegs), so an H/V line's
+    // selection box and hit target stay glued to its stroke after a scale.
+    if (svg.creationBox) {
+      const sx = oldBbox.cellWidth > 0 ? newBbox.cellWidth / oldBbox.cellWidth : 1;
+      const sy = oldBbox.cellHeight > 0 ? newBbox.cellHeight / oldBbox.cellHeight : 1;
+      next.creationBox = {
+        minX: newBbox.cellX + (svg.creationBox.minX - oldBbox.cellX) * sx,
+        minY: newBbox.cellY + (svg.creationBox.minY - oldBbox.cellY) * sy,
+        width: svg.creationBox.width * sx,
+        height: svg.creationBox.height * sy,
+      };
+    }
+    return next;
   },
 
   hitTest(svg, cellX, cellY, ignoreLock) {

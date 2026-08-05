@@ -2670,7 +2670,7 @@ function inverseChainedGroupTransform(
   return result;
 }
 
-function inverseChainedGroupTransformPoint(
+export function inverseChainedGroupTransformPoint(
   chain: readonly GroupNode[],
   worldX: number, worldY: number,
 ): [number, number] {
@@ -3623,7 +3623,23 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
     }
     return rotated;
   }
+  // H/V line metadata follows the geometry. The rotation pivot is the
+  // identity bbox center, which for a creation-tool line is the line's own
+  // midpoint — also the creationBox's center (the box straddles the line) —
+  // so the rotated box is the same box with width/height swapped about its
+  // center. Direction swaps H ↔ V; diagonal is invariant.
+  let rotatedCreationBox = svg.creationBox;
+  if (svg.creationBox) {
+    const cb = svg.creationBox;
+    const bcx = cb.minX + cb.width / 2;
+    const bcy = cb.minY + cb.height / 2;
+    rotatedCreationBox = { minX: bcx - cb.height / 2, minY: bcy - cb.width / 2, width: cb.height, height: cb.width };
+  }
+  const rotatedLineDirection = svg.lineDirection === 'horizontal' ? 'vertical' as const
+    : svg.lineDirection === 'vertical' ? 'horizontal' as const
+    : svg.lineDirection;
   return { ...svg, segments: newSegs, subpaths: newSubpaths, rotation: newRot, identitySegments: newIdSegs, ...computeSVGBbox(newSegs),
+    creationBox: rotatedCreationBox, lineDirection: rotatedLineDirection,
     localSegments: undefined, localCellX: undefined, localCellY: undefined, localCellWidth: undefined, localCellHeight: undefined };
 }
 
@@ -4248,7 +4264,8 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
             ...(op.newSubpaths !== undefined
               ? (op.newSubpaths === null ? { subpaths: undefined } : { subpaths: op.newSubpaths })
               : null),
-            ...(op.newCreationBox !== undefined ? { creationBox: op.newCreationBox } : null) }
+            ...(op.newCreationBox !== undefined ? { creationBox: op.newCreationBox } : null),
+            ...(op.newLineDirection !== undefined ? { lineDirection: op.newLineDirection } : null) }
         : s);
       return { ...state, svgObjects };
     }
@@ -4756,6 +4773,7 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         oldLocalSegments: op.newLocalSegments, newLocalSegments: op.oldLocalSegments,
         oldSubpaths: op.newSubpaths, newSubpaths: op.oldSubpaths,
         oldCreationBox: op.newCreationBox, newCreationBox: op.oldCreationBox,
+        oldLineDirection: op.newLineDirection, newLineDirection: op.oldLineDirection,
         oldCellX: op.newCellX, oldCellY: op.newCellY,
         oldCellWidth: op.newCellWidth, oldCellHeight: op.newCellHeight,
         newCellX: op.oldCellX, newCellY: op.oldCellY,
