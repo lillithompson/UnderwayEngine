@@ -15,13 +15,15 @@ import {
   OVERLAY_TEXELS_PER_CELL,
 } from '../imagePaintOverlay';
 import { gaussianFalloff } from '../colorBlend';
+import { fromBase64, toBase64 } from '../pngcodec';
 import {
   CompositionBundle,
   deserializeComposition,
   serializeComposition,
 } from '../compositionBinaryFormat';
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
-import { ImageObject, ImagePaintOverlay, RGBColor } from '../types';
+import { buildSVGObjectContent } from '../svgPathBuilder';
+import { ImageObject, ImagePaintOverlay, RGBColor, SVGObject } from '../types';
 
 const RED: RGBColor = { r: 255, g: 0, b: 0 };
 
@@ -90,6 +92,15 @@ describe('overlayPngDataUri', () => {
       (bytes[off] << 24) | (bytes[off + 1] << 16) | (bytes[off + 2] << 8) | bytes[off + 3];
     expect(be32(16)).toBe(o.cols);
     expect(be32(20)).toBe(o.rows);
+  });
+});
+
+describe('base64 texel transport (persistence JSON)', () => {
+  test('fromBase64 inverts toBase64 at every padding length', () => {
+    for (const len of [0, 1, 2, 3, 4, 63, 64, 65]) {
+      const bytes = Uint8Array.from({ length: len }, (_, i) => (i * 37 + 11) & 0xff);
+      expect(Array.from(fromBase64(toBase64(bytes)))).toEqual(Array.from(bytes));
+    }
   });
 });
 
@@ -194,5 +205,74 @@ describe('SVG export of paintOverlay', () => {
       sceneOrder: ['img_1'],
     }));
     expect(svg).not.toContain('isolation:isolate');
+  });
+});
+
+// ── Solid shapes (v49) ──────────────────────────────────────────────
+
+/** A closed 8×6 rectangle at the origin (subtype 'rectangle'). */
+function makeShape(overrides: Partial<SVGObject> = {}): SVGObject {
+  return {
+    id: 'svg_1',
+    segments: [
+      { kind: 'line', start: [0, 0], end: [8, 0] },
+      { kind: 'line', start: [8, 0], end: [8, 6] },
+      { kind: 'line', start: [8, 6], end: [0, 6] },
+      { kind: 'line', start: [0, 6], end: [0, 0] },
+    ],
+    color: { r: 0, g: 0, b: 0 },
+    cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 6,
+    ...overrides,
+  };
+}
+
+describe('shape paintOverlay binary round-trip (v49)', () => {
+  test('the layer round-trips byte-for-byte alongside the other flags4 payloads', () => {
+    const overlay = paintedOverlay();
+    const bundle: CompositionBundle = {
+      name: 'ShapeOverlay Comp',
+      gridLevel: 1,
+      strokeScale: 0.5,
+      gridIntensity: 0.3,
+      camera: { offsetX: 0, offsetY: 0, zoom: 1 },
+      figures: [],
+      svgObjects: [makeShape({ paintOverlay: overlay, opacity: 0.5 })],
+    };
+    const rt = deserializeComposition(serializeComposition(bundle, []));
+    const back = rt.meta.svgObjects?.[0];
+    expect(back?.opacity).toBeCloseTo(0.5, 2);
+    expect(back?.paintOverlay?.blend).toBe('multiply');
+    expect(Array.from(back!.paintOverlay!.rgba)).toEqual(Array.from(overlay.rgba));
+
+    const plain = deserializeComposition(serializeComposition(
+      { ...bundle, svgObjects: [makeShape()] }, [],
+    ));
+    expect(plain.meta.svgObjects?.[0].paintOverlay).toBeUndefined();
+  });
+});
+
+describe('shape paintOverlay markup', () => {
+  test('the DOM markup clips the layer to the outline inside an isolated group', () => {
+    const overlay = paintedOverlay();
+    const shape = makeShape({ paintOverlay: overlay });
+    const markup = buildSVGObjectContent(shape, 1, 16);
+    expect(markup).toContain('<g style="isolation:isolate">');
+    expect(markup).toContain(`<clipPath id="paintclip_svg_1">`);
+    expect(markup).toContain(`href="${overlayPngDataUri(overlay)}"`);
+    expect(markup).toContain('style="mix-blend-mode:multiply"');
+    expect(markup).toContain('clip-path="url(#paintclip_svg_1)"');
+
+    expect(buildSVGObjectContent(makeShape(), 1, 16)).not.toContain('isolation:isolate');
+  });
+
+  test('the SVG export emits the identical overlay element', async () => {
+    const overlay = paintedOverlay();
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [makeShape({ paintOverlay: overlay })],
+      sceneOrder: ['svg_1'],
+    }));
+    expect(svg).toContain(`<clipPath id="paintclip_svg_1">`);
+    expect(svg).toContain(`href="${overlayPngDataUri(overlay)}"`);
+    expect(svg).toContain('style="mix-blend-mode:multiply"');
   });
 });

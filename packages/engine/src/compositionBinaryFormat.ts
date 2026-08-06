@@ -375,7 +375,11 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      image record, after the v42 edge-soften byte: cols u16 + rows u16 +
 //      blend u8 (PAINT_BLEND_TO_BYTE) + cols×rows×4 straight-alpha RGBA
 //      bytes. Both sides ≤ 64 by construction, so a record grows ≤ ~16 KB.
-const FORMAT_VERSION = 48;
+// v49: SVGObject `paintOverlay` — the same brush layer on solid shapes
+//      (rectangle / circle / polygon), masked to the outline at render.
+//      Presence rides svg flags4 bit 0x20; payload is LAST in the svg
+//      record, after the v42 opacity block, in the identical v48 layout.
+const FORMAT_VERSION = 49;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -663,6 +667,8 @@ const FLAG4_SVG_HAS_OPACITY = 0x08; // v42+ (opacity + edgeSoften, two u8s)
 // v46+ presence flag for shapeKind='polygon' (flags2's rectangle bit 0x40 has
 // no free sibling — flags2 is fully spent — so the polygon tag lives here).
 const FLAG4_SVG_IS_POLYGON = 0x10;
+// v49+: color-tool paint overlay payload present (last in the record).
+const FLAG4_SVG_HAS_PAINT_OVERLAY = 0x20;
 
 // v29+ image rotation-byte bits. The image `flags` byte is fully
 // consumed (0x01..0x80), so tint/effects presence rides the spare high
@@ -775,6 +781,43 @@ const BYTE_TO_PAINT_BLEND: BlendMode[] = [
   'normal', 'multiply', 'dodge', 'lighten', 'darken', 'burn',
   'invert', 'rotate', 'randomize', 'hue', 'color',
 ];
+
+// The v48/v49 paint-overlay payload, shared by the image (flags2 0x08) and
+// svg (flags4 0x20) records: cols u16 + rows u16 + blend u8 + cols×rows×4
+// straight-alpha RGBA bytes.
+
+function paintOverlayBinarySize(po: ImagePaintOverlay): number {
+  return 5 + po.cols * po.rows * 4; // writer emits exactly cols×rows×4
+}
+
+function writePaintOverlay(
+  view: DataView,
+  out: Uint8Array,
+  pos: number,
+  po: ImagePaintOverlay,
+): number {
+  view.setUint16(pos, po.cols, true); pos += 2;
+  view.setUint16(pos, po.rows, true); pos += 2;
+  out[pos++] = PAINT_BLEND_TO_BYTE[po.blend] ?? 0;
+  out.set(po.rgba.subarray(0, po.cols * po.rows * 4), pos);
+  pos += po.cols * po.rows * 4;
+  return pos;
+}
+
+/** The RGBA slice is COPIED out so the overlay doesn't pin the whole file
+ *  buffer alive. */
+function readPaintOverlay(
+  view: DataView,
+  data: Uint8Array,
+  pos: number,
+): { overlay: ImagePaintOverlay; pos: number } {
+  const cols = view.getUint16(pos, true); pos += 2;
+  const rows = view.getUint16(pos, true); pos += 2;
+  const blend = BYTE_TO_PAINT_BLEND[data[pos++]] ?? 'normal';
+  const byteLen = cols * rows * 4;
+  const overlay: ImagePaintOverlay = { cols, rows, blend, rgba: data.slice(pos, pos + byteLen) };
+  return { overlay, pos: pos + byteLen };
+}
 
 // v31+ free-rotation encoding: i16 hundredths of a degree (angleDeg * 100).
 // Range ±180° fits comfortably in i16 (±18000), precision 0.01°.
@@ -1252,6 +1295,7 @@ function svgBinarySize(svg: SVGObject): number {
   if (svg.fill) size += tintFillBinarySize(svg.fill); // v40+
   if (hasSVGEndpoints(svg.endpoints)) size += 1; // v41+
   if (hasSVGOpacity(svg)) size += 2; // v42+ opacity + edgeSoften
+  if (svg.paintOverlay) size += paintOverlayBinarySize(svg.paintOverlay); // v49+
   return size;
 }
 
@@ -1288,9 +1332,7 @@ function imageBinarySize(img: ImageObject): number {
   if (img.originalImageId != null) size += 2; // v34+ originalImageId index
   if (img.tintFill) size += tintFillBinarySize(img.tintFill); // v36+
   if (img.edgeSoften != null && img.edgeSoften > 0) size += 1; // v42+
-  if (img.paintOverlay) { // v48+ cols+rows+blend+rgba (writer emits exactly cols×rows×4)
-    size += 5 + img.paintOverlay.cols * img.paintOverlay.rows * 4;
-  }
+  if (img.paintOverlay) size += paintOverlayBinarySize(img.paintOverlay); // v48+
   return size;
 }
 
@@ -1452,6 +1494,7 @@ function writeSVG(
   if (hasSVGEndpoints(svg.endpoints)) flags4 |= FLAG4_SVG_HAS_ENDPOINTS;
   if (hasSVGOpacity(svg)) flags4 |= FLAG4_SVG_HAS_OPACITY;
   if (svg.shapeKind === 'polygon') flags4 |= FLAG4_SVG_IS_POLYGON;
+  if (svg.paintOverlay) flags4 |= FLAG4_SVG_HAS_PAINT_OVERLAY;
   out[pos++] = flags4;
 
   let rotBits = ROTATION_TO_BITS[svg.rotation ?? 0] & 0x03;
@@ -1549,12 +1592,15 @@ function writeSVG(
   if (hasSVGEndpoints(svg.endpoints)) {
     out[pos++] = packEndpoints(svg.endpoints);
   }
-  // v42+ whole-object opacity + edge soften, last in the record. Both
-  // quantized to u8 like the image opacity byte (256 levels is beyond what
-  // the eye resolves).
+  // v42+ whole-object opacity + edge soften. Both quantized to u8 like the
+  // image opacity byte (256 levels is beyond what the eye resolves).
   if (hasSVGOpacity(svg)) {
     out[pos++] = svg.opacity == null ? 255 : quantize255(Math.max(0, Math.min(1, svg.opacity)));
     out[pos++] = quantize255(Math.max(0, Math.min(1, svg.edgeSoften ?? 0)));
+  }
+  // v49+ color-tool paint overlay, last in the record.
+  if (svg.paintOverlay) {
+    pos = writePaintOverlay(view, out, pos, svg.paintOverlay);
   }
   return pos;
 }
@@ -1760,6 +1806,13 @@ function readSVG(
     const softByte = data[pos++];
     if (opByte < 255) svg.opacity = opByte / 255;
     if (softByte > 0) svg.edgeSoften = softByte / 255;
+  }
+  // v49+ color-tool paint overlay, last in the record. Same gating argument:
+  // flags4 bit 0x20 was always written 0 before v49.
+  if (version >= 49 && (flags4 & FLAG4_SVG_HAS_PAINT_OVERLAY)) {
+    const po = readPaintOverlay(view, data, pos);
+    svg.paintOverlay = po.overlay;
+    pos = po.pos;
   }
 
   // v25+ "Use as mask" flag (presence-only, no payload)
@@ -2114,15 +2167,9 @@ function writeImage(
     if (hasSoften) {
       out[pos++] = quantize255(Math.max(0, Math.min(1, img.edgeSoften!)));
     }
-    // v48+ color-tool paint overlay, last in the record: cols u16 + rows u16
-    // + blend u8 + straight-alpha RGBA texels.
+    // v48+ color-tool paint overlay, last in the record.
     if (img.paintOverlay) {
-      const po = img.paintOverlay;
-      view.setUint16(pos, po.cols, true); pos += 2;
-      view.setUint16(pos, po.rows, true); pos += 2;
-      out[pos++] = PAINT_BLEND_TO_BYTE[po.blend] ?? 0;
-      out.set(po.rgba.subarray(0, po.cols * po.rows * 4), pos);
-      pos += po.cols * po.rows * 4;
+      pos = writePaintOverlay(view, out, pos, img.paintOverlay);
     }
   }
 
@@ -2242,19 +2289,11 @@ function readImage(
       const softByte = data[pos++];
       if (softByte > 0) img.edgeSoften = softByte / 255;
     }
-    // v48+ color-tool paint overlay, last in the record. The RGBA slice is
-    // COPIED out so the overlay doesn't pin the whole file buffer alive.
+    // v48+ color-tool paint overlay, last in the record.
     if (version >= 48 && (flags2 & IMG_FLAGS2_HAS_PAINT_OVERLAY)) {
-      const cols = view.getUint16(pos, true); pos += 2;
-      const rows = view.getUint16(pos, true); pos += 2;
-      const blend = BYTE_TO_PAINT_BLEND[data[pos++]] ?? 'normal';
-      const byteLen = cols * rows * 4;
-      const overlay: ImagePaintOverlay = {
-        cols, rows, blend,
-        rgba: data.slice(pos, pos + byteLen),
-      };
-      pos += byteLen;
-      img.paintOverlay = overlay;
+      const po = readPaintOverlay(view, data, pos);
+      img.paintOverlay = po.overlay;
+      pos = po.pos;
     }
   }
 

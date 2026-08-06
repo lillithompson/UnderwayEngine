@@ -937,6 +937,13 @@ export interface SVGObject {
    *
    *  Only closed shapes offer it (a rectangle or a circle); see `svgSubtype`. */
   fill?: ShapeFill;
+  /** Color-tool brushwork (v49+): a hidden low-resolution RGBA layer the
+   *  drag-paint brush colors into, spanning the bbox and MASKED to the
+   *  shape's closed outline at render, composited with one blend mode.
+   *  Only the fill-bar shapes take it (rectangle / circle / polygon —
+   *  the same `svgHasFill` split as `fill`). See {@link ImagePaintOverlay}
+   *  (imagePaintOverlay.ts). */
+  paintOverlay?: ImagePaintOverlay;
   /** Cached-texture effects: drop shadow, glow, border (v29+). Rendered
    *  as pre-blurred texture passes, never live SVG filters at runtime;
    *  SVG export emits real `<filter>` defs. */
@@ -1254,15 +1261,16 @@ export type ImageTintBlend =
   | 'soft-light' | 'color' | 'hue' | 'saturation';
 
 /**
- * The color tool's brushwork on an image: a low-resolution straight-alpha
- * RGBA bitmap spanning the image's inner content frame, upscaled smoothly at
- * render and composited with ONE blend mode for the whole layer (per-stroke
- * modes can't mix inside a single bitmap; a stroke in a new mode re-modes
- * the layer). The texel grid is sized once from the frame at first paint
- * ({@link OVERLAY_TEXELS_PER_CELL}, clamped) and never re-sampled — the
- * layer stretches with the bbox like the image pixels do. Rendered by the
- * DOM node layer and the SVG export from the SAME engine-encoded PNG
- * (`overlayPngDataUri`), so the two can't drift.
+ * The color tool's brushwork on an image or a solid shape: a low-resolution
+ * straight-alpha RGBA bitmap spanning the node's bbox frame (an image's
+ * inner content frame; a shape's bbox, masked to its outline at render),
+ * upscaled smoothly at render and composited with ONE blend mode for the
+ * whole layer (per-stroke modes can't mix inside a single bitmap; a stroke
+ * in a new mode re-modes the layer). The texel grid is sized once from the
+ * frame at first paint ({@link OVERLAY_TEXELS_PER_CELL}, clamped) and never
+ * re-sampled — the layer stretches with the bbox like the content does.
+ * Rendered by the DOM node layer and the SVG export from the SAME
+ * engine-encoded PNG (`overlayPngDataUri`), so the two can't drift.
  */
 export interface ImagePaintOverlay {
   cols: number;

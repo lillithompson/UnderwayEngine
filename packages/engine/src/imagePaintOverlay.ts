@@ -120,6 +120,32 @@ export function overlayPngDataUri(overlay: ImagePaintOverlay): string {
 }
 
 /**
+ * A solid shape's paint layer as SVG markup: the overlay <image> stretched
+ * over the bbox and clipped to the shape's own closed outline (`fillD`, in
+ * the caller's geometry units — the same `d` its fill paints with, so paint
+ * can't bleed past the fill). Both SVGObject markup builders — the DOM node
+ * layer's buildSVGObjectContent and the exporter — emit the overlay through
+ * here, the same single-source rule as svgFillPresentation. The caller wraps
+ * this together with its fill element in `<g style="isolation:isolate">` so
+ * the blend is confined to the shape.
+ */
+export function shapePaintOverlaySVG(
+  overlay: ImagePaintOverlay,
+  id: string,
+  fillD: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): string {
+  const clipId = `paintclip_${id}`;
+  return `<clipPath id="${clipId}"><path d="${fillD}" fill-rule="nonzero"/></clipPath>` +
+    `<image x="${x}" y="${y}" width="${width}" height="${height}"` +
+    ` href="${overlayPngDataUri(overlay)}" preserveAspectRatio="none"` +
+    ` style="mix-blend-mode:${paintBlendCss(overlay.blend) ?? 'normal'}" clip-path="url(#${clipId})"/>`;
+}
+
+/**
  * CSS `mix-blend-mode` for a brush BlendMode, or null for the unary modes
  * (invert / rotate / randomize), which rewrite a base color in place and
  * have no compositing equivalent — the brush skips images entirely for

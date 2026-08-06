@@ -67,6 +67,32 @@ export function toBase64(bytes: Uint8Array): string {
   return parts.join('');
 }
 
+// Reverse lookup for fromBase64: ASCII code → 6-bit value (255 = invalid).
+const B64_REV = new Uint8Array(128).fill(255);
+for (let i = 0; i < 64; i++) B64_REV[B64.charCodeAt(i)] = i;
+
+/** Inverse of {@link toBase64} — pure like the encoder, so persistence
+ *  round-trips need neither `atob` (browser) nor `Buffer` (node). Invalid
+ *  characters and padding terminate the decode. */
+export function fromBase64(s: string): Uint8Array {
+  const out = new Uint8Array(Math.floor((s.length * 3) / 4));
+  let buffer = 0;
+  let bits = 0;
+  let j = 0;
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    const v = code < 128 ? B64_REV[code] : 255;
+    if (v === 255) break; // '=' padding or garbage: stop
+    buffer = (buffer << 6) | v;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out[j++] = (buffer >> bits) & 0xff;
+    }
+  }
+  return j === out.length ? out : out.subarray(0, j);
+}
+
 // ── Minimal PNG encoder (uncompressed DEFLATE) ──────────────────────────
 
 function write32BE(arr: Uint8Array, offset: number, val: number) {

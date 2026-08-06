@@ -4,6 +4,7 @@ import { computeSweepFlag, arcRadius, chainSegments, chainSegmentsLoops } from '
 import { packKey, unpackKey, forEachVisibleTile } from './tileSegmentOverrides';
 import { borderDashPattern, paintToSvg } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
+import { shapePaintOverlaySVG } from './imagePaintOverlay';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import {
   roundPathCorners,
@@ -724,10 +725,26 @@ export function buildSVGObjectContent(
   // svgFillPresentation decides the paint (and skips a pattern-fill mask,
   // whose fill belongs to the tiled figure beneath it).
   const fill = svgFillPresentation(obj, `grad_${obj.id}`);
-  if (fill) {
-    const fd = buildClosedFillPathD(segments);
-    if (fd) result += `${fill.defs}<path d="${fd}" ${fill.attrs} stroke="none" fill-rule="nonzero" />`;
+  const closedD = fill || obj.paintOverlay ? buildClosedFillPathD(segments) : '';
+  let fillMarkup = '';
+  if (fill && closedD) {
+    fillMarkup = `${fill.defs}<path d="${closedD}" ${fill.attrs} stroke="none" fill-rule="nonzero" />`;
   }
+  // Color-tool paint layer (v49): the low-res bitmap stretched over the bbox
+  // and clipped to the same closed outline the fill paints, blended with its
+  // one mode. Isolated together with the fill so the blend composites
+  // against the shape's own interior, not the canvas behind it — the same
+  // confinement the image node's overlay gets. Sits under the strokes (and
+  // any recolored fill subpaths), so painted outlines stay legible.
+  if (obj.paintOverlay && closedD) {
+    const u = SVG_UNITS_PER_L0_CELL;
+    const overlay = shapePaintOverlaySVG(
+      obj.paintOverlay, obj.id, closedD,
+      obj.cellX * u, obj.cellY * u, obj.cellWidth * u, obj.cellHeight * u,
+    );
+    fillMarkup = `<g style="isolation:isolate">${fillMarkup}${overlay}</g>`;
+  }
+  result += fillMarkup;
 
   if (Array.isArray(obj.subpaths) && obj.subpaths.length > 0) {
     // Fill subpaths first so stroke subpaths draw on top of them.

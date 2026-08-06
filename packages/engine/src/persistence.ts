@@ -1,5 +1,5 @@
 import storage from './storage';
-import { Layer, CellState, CellTransform, GridLevel, LAYER_PX, Pattern, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, PathSegment, RGBColor, SVGDesignTemplate, TextObject, Paint, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
+import { Layer, CellState, CellTransform, GridLevel, LAYER_PX, Pattern, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, ImagePaintOverlay, BlendMode, PathSegment, RGBColor, SVGDesignTemplate, TextObject, Paint, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
 import { createCellGrid, rebuildPixelData } from './cells';
 import { bakeFile } from './bake';
 import { exportToSVG } from './svgExport';
@@ -8,6 +8,7 @@ import { logToNative } from '@/native-shell/bridge/webBridge';
 import { deriveSceneOrderFromKindArrays, repairSceneOrder } from './compositionOps';
 import { normalizeStrokeScale } from './strokeScale';
 import { normalizeComposition } from './compositionNormalize';
+import { fromBase64, toBase64 } from './pngcodec';
 
 // ── Storage Keys ────────────────────────────────────────────────────
 
@@ -457,15 +458,73 @@ function _getCompMetaCache(): Map<string, string> {
  *  routine composition save/load uses JSON (only import/export bundles go
  *  through the Map-aware binary format), so the Map must be converted here.
  *  Serialize it as a JSON-safe entries array; `migrateSegmentOverrides`
- *  rebuilds the Map on load. Objects without overrides pass through untouched. */
+ *  rebuilds the Map on load. Objects without overrides pass through untouched.
+ *  The color tool's `paintOverlay` has the same problem with its Uint8Array
+ *  texels (stringify turns it into a bloated index→byte object whose
+ *  `.subarray` crashes the PNG encoder on reload) — same treatment, via
+ *  {@link serializePaintOverlayForMeta} / {@link migratePaintOverlay}. */
 function serializeSVGForMeta(svg: SVGObject): SVGObject {
-  if (!svg.segmentOverrides || svg.segmentOverrides.size === 0) {
-    if (!svg.segmentOverrides) return svg;
-    // Drop an empty Map so it doesn't serialize as a stray `{}`.
-    const { segmentOverrides: _omit, ...rest } = svg;
-    return rest as SVGObject;
+  let out = svg;
+  if (out.segmentOverrides) {
+    if (out.segmentOverrides.size > 0) {
+      out = { ...out, segmentOverrides: Array.from(out.segmentOverrides.entries()) as any };
+    } else {
+      // Drop an empty Map so it doesn't serialize as a stray `{}`.
+      const { segmentOverrides: _omit, ...rest } = out;
+      out = rest as SVGObject;
+    }
   }
-  return { ...svg, segmentOverrides: Array.from(svg.segmentOverrides.entries()) as any };
+  if (out.paintOverlay) {
+    out = { ...out, paintOverlay: serializePaintOverlayForMeta(out.paintOverlay) as any };
+  }
+  return out;
+}
+
+/** The image half of the same rule: only `paintOverlay` needs converting. */
+function serializeImageForMeta(img: ImageObject): ImageObject {
+  return img.paintOverlay
+    ? { ...img, paintOverlay: serializePaintOverlayForMeta(img.paintOverlay) as any }
+    : img;
+}
+
+/** JSON-safe paint overlay: the RGBA texels ride as base64 (a third the size
+ *  of JSON.stringify's index→byte object form, and unambiguous to revive). */
+function serializePaintOverlayForMeta(po: ImagePaintOverlay): unknown {
+  return { cols: po.cols, rows: po.rows, blend: po.blend, rgba: toBase64(po.rgba) };
+}
+
+/** Revive a paint overlay from its JSON form. New saves store base64 texels;
+ *  saves from the window before this converter existed stored the Uint8Array
+ *  flattened to an index→byte object — those revive too, rather than
+ *  crashing the render on reopen. Anything unrecognized → undefined, so the
+ *  field is always a real overlay (Uint8Array texels of the exact grid
+ *  size) or absent. */
+function migratePaintOverlay(v: any): ImagePaintOverlay | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const cols = Number(v.cols);
+  const rows = Number(v.rows);
+  if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols <= 0 || rows <= 0) return undefined;
+  const len = cols * rows * 4;
+  let rgba: Uint8Array | undefined;
+  if (typeof v.rgba === 'string') {
+    rgba = fromBase64(v.rgba);
+  } else if (v.rgba instanceof Uint8Array) {
+    rgba = v.rgba;
+  } else if (v.rgba && typeof v.rgba === 'object') {
+    rgba = new Uint8Array(len);
+    for (const [k, val] of Object.entries(v.rgba)) {
+      const i = Number(k);
+      if (Number.isInteger(i) && i >= 0 && i < len && typeof val === 'number') rgba[i] = val & 0xff;
+    }
+  }
+  if (!rgba) return undefined;
+  if (rgba.length !== len) {
+    const fixed = new Uint8Array(len);
+    fixed.set(rgba.subarray(0, Math.min(len, rgba.length)));
+    rgba = fixed;
+  }
+  const blend: BlendMode = typeof v.blend === 'string' ? (v.blend as BlendMode) : 'normal';
+  return { cols, rows, blend, rgba };
 }
 
 /** Rebuild the sparse per-copy paint Map from its JSON form. New saves store an
@@ -570,7 +629,9 @@ export async function saveCompositionState(
     figures: normalized.figures,
     groups: normalized.groups,
     svgObjects: normalized.svgObjects.length > 0 ? normalized.svgObjects.map(serializeSVGForMeta) : undefined,
-    images: normalized.images && normalized.images.length > 0 ? normalized.images : undefined,
+    images: normalized.images && normalized.images.length > 0
+      ? normalized.images.map(serializeImageForMeta)
+      : undefined,
     texts: normalized.texts && normalized.texts.length > 0 ? normalized.texts : undefined,
     background: normalized.background,
     sceneOrder: state.sceneOrder.length > 0 ? state.sceneOrder : undefined,
@@ -660,13 +721,17 @@ export async function loadCompositionState(
     identitySegments: migrateOptSegArray(s.identitySegments),
     subpaths: migrateSubpaths(s.subpaths),
     segmentOverrides: migrateSegmentOverrides(s.segmentOverrides),
+    paintOverlay: migratePaintOverlay(s.paintOverlay),
   }));
 
   // Hydrate image blobs from their binary keys. Missing keys (corrupt
   // storage / partial copy) are silently skipped — the renderer will
   // log a warning and skip those wrappers, which is preferable to
   // throwing during composition open.
-  const images: ImageObject[] = parsed.images ?? [];
+  const images: ImageObject[] = (parsed.images ?? []).map((img: any) => ({
+    ...img,
+    paintOverlay: migratePaintOverlay(img.paintOverlay),
+  }));
   const imageBlobs: Record<string, Uint8Array> = {};
   if (images.length > 0) {
     const fetched = new Set<string>();

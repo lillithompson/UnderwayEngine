@@ -25,7 +25,7 @@ import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
 import { paintToSvg, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
-import { overlayPngDataUri, paintBlendCss } from './imagePaintOverlay';
+import { overlayPngDataUri, paintBlendCss, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { charColorRuns, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
 import { STICKER_BORDER_CELLS, STICKER_SHADOW_CELLS, stickerColors } from './stickerStyle';
 import { resolveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
@@ -1037,13 +1037,23 @@ export async function generateCompositionSVGCore(
     // renders outline only, its fill painted as the tiled figure's background.
     let fillElement = '';
     const fillPres = svgFillPresentation(svg, `grad_${svg.id}`);
-    if (fillPres) {
-      // Fill follows the same (possibly corner-rounded) outline the stroke does.
-      const chained = chainSegments(strokeSegments);
-      if (chained) {
-        const fd = buildPathD(chained) + ' Z';
-        fillElement = `${fillPres.defs}<path d="${fd}" ${fillPres.attrs} stroke="none" fill-rule="nonzero" />`;
-      }
+    // Fill (and the paint layer's clip) follow the same (possibly
+    // corner-rounded) outline the stroke does.
+    const chained = fillPres || svg.paintOverlay ? chainSegments(strokeSegments) : null;
+    const closedD = chained ? buildPathD(chained) + ' Z' : '';
+    if (fillPres && closedD) {
+      fillElement = `${fillPres.defs}<path d="${closedD}" ${fillPres.attrs} stroke="none" fill-rule="nonzero" />`;
+    }
+    // v49 color-tool paint layer: the low-res bitmap clipped to the shape's
+    // outline and isolated with the fill, exactly as buildSVGObjectContent
+    // emits it for the live DOM layer — same shared markup helper, so the
+    // export can't drift from the canvas.
+    if (svg.paintOverlay && closedD) {
+      const overlay = shapePaintOverlaySVG(
+        svg.paintOverlay, svg.id, closedD,
+        svg.cellX * U, svg.cellY * U, svg.cellWidth * U, svg.cellHeight * U,
+      );
+      fillElement = `<g style="isolation:isolate">${fillElement}${overlay}</g>`;
     }
 
     let paths = strokeDefs + fillElement;
