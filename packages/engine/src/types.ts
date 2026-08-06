@@ -1143,6 +1143,12 @@ export interface ImageObject {
    *  design 6a). Distinct from the shader `tint` above — this is a
    *  non-destructive overlay layer. See {@link ImageTintFill}. */
   tintFill?: ImageTintFill;
+  /** Color-tool brushwork (v48+): a hidden low-resolution RGBA layer the
+   *  drag-paint brush colors into, composited over the image with one blend
+   *  mode. Lives in the image's inner content frame (the box the bitmap
+   *  fills), so it rides rotation/mirror with the pixels and stretches with
+   *  the bbox. See {@link ImagePaintOverlay} (imagePaintOverlay.ts). */
+  paintOverlay?: ImagePaintOverlay;
   /** Cached-texture effects (v29+); see `SVGObject.effects`. */
   effects?: NodeEffects;
   /** Corner rounding as a fraction (0–0.5) of the shorter side. Undefined /
@@ -1246,6 +1252,27 @@ export type ImageTintFillType = 'solid' | 'linear' | 'radial';
 export type ImageTintBlend =
   | 'normal' | 'multiply' | 'darken' | 'lighten'
   | 'soft-light' | 'color' | 'hue' | 'saturation';
+
+/**
+ * The color tool's brushwork on an image: a low-resolution straight-alpha
+ * RGBA bitmap spanning the image's inner content frame, upscaled smoothly at
+ * render and composited with ONE blend mode for the whole layer (per-stroke
+ * modes can't mix inside a single bitmap; a stroke in a new mode re-modes
+ * the layer). The texel grid is sized once from the frame at first paint
+ * ({@link OVERLAY_TEXELS_PER_CELL}, clamped) and never re-sampled — the
+ * layer stretches with the bbox like the image pixels do. Rendered by the
+ * DOM node layer and the SVG export from the SAME engine-encoded PNG
+ * (`overlayPngDataUri`), so the two can't drift.
+ */
+export interface ImagePaintOverlay {
+  cols: number;
+  rows: number;
+  /** Straight-alpha RGBA texels, row-major, `cols × rows × 4` bytes. */
+  rgba: Uint8Array;
+  /** Blend mode of the whole layer; CSS mapping via `paintBlendCss`. The
+   *  unary brush modes never paint images, so they don't appear here. */
+  blend: BlendMode;
+}
 
 /** A gradient tint overlay composited onto an image (design 6a). The overlay
  *  is clipped to the image frame and flattened at export. Non-active fields are

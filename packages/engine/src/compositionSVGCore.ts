@@ -25,6 +25,7 @@ import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
 import { paintToSvg, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
+import { overlayPngDataUri, paintBlendCss } from './imagePaintOverlay';
 import { charColorRuns, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
 import { STICKER_BORDER_CELLS, STICKER_SHADOW_CELLS, stickerColors } from './stickerStyle';
 import { resolveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
@@ -881,6 +882,27 @@ export async function generateCompositionSVGCore(
         `<rect x="0" y="0" width="${iw}" height="${ih}" fill="${p.fill}"${foAttr}` +
         ` opacity="${img.tintFill.opacity}" style="mix-blend-mode:${img.tintFill.blend}"${ovClipAttr}/>`;
       tintedContent = `<g style="isolation:isolate">${framedContent}${overlay}</g>`;
+    }
+    // v48 color-tool paint overlay: the low-res brush layer stretched over
+    // the image's local frame and blended with its one mode, clipped and
+    // isolated exactly like the tint overlay above (its own isolate group,
+    // so tint blends against the image and paint blends against the tinted
+    // result — the editor preview's layer order). The PNG comes from the
+    // engine encoder shared with the DOM layer, so the two can't drift.
+    if (img.paintOverlay) {
+      const po = img.paintOverlay;
+      let ovClipDefs = '';
+      let ovClipAttr = '';
+      if (cornerR > 0) {
+        const ovClipId = `paintclip_${img.id}`;
+        ovClipDefs = `<defs><clipPath id="${ovClipId}">` +
+          `<rect x="0" y="0" width="${iw}" height="${ih}" rx="${cornerR}" ry="${cornerR}"/></clipPath></defs>`;
+        ovClipAttr = ` clip-path="url(#${ovClipId})"`;
+      }
+      const overlay = ovClipDefs +
+        `<image x="0" y="0" width="${iw}" height="${ih}" href="${overlayPngDataUri(po)}"` +
+        ` preserveAspectRatio="none" style="mix-blend-mode:${paintBlendCss(po.blend) ?? 'normal'}"${ovClipAttr}/>`;
+      tintedContent = `<g style="isolation:isolate">${tintedContent}${overlay}</g>`;
     }
     // v42 edge soften: an eroded-then-blurred silhouette mask over the framed
     // content — a white rect of the (rounded) frame, eroded inward by half

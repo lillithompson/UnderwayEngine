@@ -1,4 +1,4 @@
-﻿import { BlendMode, BorderPosition, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
+﻿import { BlendMode, BorderPosition, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
@@ -370,7 +370,12 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      the v31 angle: u16 entry count, then per entry u16 code-point index +
 //      r,g,b. Only non-null overrides are written; absent entries inherit the
 //      base font color, so the sparse map round-trips exactly.
-const FORMAT_VERSION = 47;
+// v48: ImageObject `paintOverlay` — the color tool's low-res brush layer over
+//      an image. Presence rides image flags2 bit 0x08; payload is LAST in the
+//      image record, after the v42 edge-soften byte: cols u16 + rows u16 +
+//      blend u8 (PAINT_BLEND_TO_BYTE) + cols×rows×4 straight-alpha RGBA
+//      bytes. Both sides ≤ 64 by construction, so a record grows ≤ ~16 KB.
+const FORMAT_VERSION = 48;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -756,6 +761,20 @@ const IMG_FLAGS2_HAS_ORIGINAL = 0x01;
 const IMG_FLAGS2_HAS_TINT_FILL = 0x02;
 // v42+: edge soften present; one u8 after the tintFill block.
 const IMG_FLAGS2_HAS_EDGE_SOFTEN = 0x04;
+// v48+: color-tool paint overlay payload present (last in the record).
+const IMG_FLAGS2_HAS_PAINT_OVERLAY = 0x08;
+
+// v48 paint-overlay blend byte ⇄ BlendMode. Table order is frozen — append
+// only. The unary modes never reach an overlay but map anyway so an
+// unexpected value can't corrupt the record.
+const PAINT_BLEND_TO_BYTE: Record<BlendMode, number> = {
+  normal: 0, multiply: 1, dodge: 2, lighten: 3, darken: 4, burn: 5,
+  invert: 6, rotate: 7, randomize: 8, hue: 9, color: 10,
+};
+const BYTE_TO_PAINT_BLEND: BlendMode[] = [
+  'normal', 'multiply', 'dodge', 'lighten', 'darken', 'burn',
+  'invert', 'rotate', 'randomize', 'hue', 'color',
+];
 
 // v31+ free-rotation encoding: i16 hundredths of a degree (angleDeg * 100).
 // Range ±180° fits comfortably in i16 (±18000), precision 0.01°.
@@ -1269,6 +1288,9 @@ function imageBinarySize(img: ImageObject): number {
   if (img.originalImageId != null) size += 2; // v34+ originalImageId index
   if (img.tintFill) size += tintFillBinarySize(img.tintFill); // v36+
   if (img.edgeSoften != null && img.edgeSoften > 0) size += 1; // v42+
+  if (img.paintOverlay) { // v48+ cols+rows+blend+rgba (writer emits exactly cols×rows×4)
+    size += 5 + img.paintOverlay.cols * img.paintOverlay.rows * 4;
+  }
   return size;
 }
 
@@ -2078,7 +2100,8 @@ function writeImage(
     const hasSoften = img.edgeSoften != null && img.edgeSoften > 0;
     const flags2 = (img.originalImageId != null ? IMG_FLAGS2_HAS_ORIGINAL : 0)
       | (img.tintFill ? IMG_FLAGS2_HAS_TINT_FILL : 0)
-      | (hasSoften ? IMG_FLAGS2_HAS_EDGE_SOFTEN : 0);
+      | (hasSoften ? IMG_FLAGS2_HAS_EDGE_SOFTEN : 0)
+      | (img.paintOverlay ? IMG_FLAGS2_HAS_PAINT_OVERLAY : 0);
     out[pos++] = flags2;
     if (img.originalImageId != null) {
       view.setUint16(pos, indexOf.get(img.originalImageId) ?? 0, true); pos += 2;
@@ -2090,6 +2113,16 @@ function writeImage(
     // v42+ edge soften, one u8 after the tintFill block.
     if (hasSoften) {
       out[pos++] = quantize255(Math.max(0, Math.min(1, img.edgeSoften!)));
+    }
+    // v48+ color-tool paint overlay, last in the record: cols u16 + rows u16
+    // + blend u8 + straight-alpha RGBA texels.
+    if (img.paintOverlay) {
+      const po = img.paintOverlay;
+      view.setUint16(pos, po.cols, true); pos += 2;
+      view.setUint16(pos, po.rows, true); pos += 2;
+      out[pos++] = PAINT_BLEND_TO_BYTE[po.blend] ?? 0;
+      out.set(po.rgba.subarray(0, po.cols * po.rows * 4), pos);
+      pos += po.cols * po.rows * 4;
     }
   }
 
@@ -2208,6 +2241,20 @@ function readImage(
     if (version >= 42 && (flags2 & IMG_FLAGS2_HAS_EDGE_SOFTEN)) {
       const softByte = data[pos++];
       if (softByte > 0) img.edgeSoften = softByte / 255;
+    }
+    // v48+ color-tool paint overlay, last in the record. The RGBA slice is
+    // COPIED out so the overlay doesn't pin the whole file buffer alive.
+    if (version >= 48 && (flags2 & IMG_FLAGS2_HAS_PAINT_OVERLAY)) {
+      const cols = view.getUint16(pos, true); pos += 2;
+      const rows = view.getUint16(pos, true); pos += 2;
+      const blend = BYTE_TO_PAINT_BLEND[data[pos++]] ?? 'normal';
+      const byteLen = cols * rows * 4;
+      const overlay: ImagePaintOverlay = {
+        cols, rows, blend,
+        rgba: data.slice(pos, pos + byteLen),
+      };
+      pos += byteLen;
+      img.paintOverlay = overlay;
     }
   }
 
