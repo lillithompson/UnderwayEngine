@@ -43,6 +43,19 @@ export function setDefaultSVGFontResolver(resolver: SVGFontResolver | undefined)
   defaultFontResolver = resolver;
 }
 
+/**
+ * The resolver {@link setDefaultSVGFontResolver} registered, for a caller that
+ * drives {@link generateCompositionSVGCore} directly instead of going through
+ * the storage-backed wrappers below (which apply it themselves).
+ *
+ * Reading it is how such a caller inherits the host's fonts without importing
+ * the host's font module — the engine has no idea where an app keeps its faces,
+ * and a caller that guessed would be a second registration to keep in sync.
+ */
+export function getDefaultSVGFontResolver(): SVGFontResolver | undefined {
+  return defaultFontResolver;
+}
+
 /** Optional knobs for the storage-backed export wrappers. */
 export interface CompositionExportOptions {
   /** Font-embedding hook for text nodes — see {@link SVGFontResolver}.
@@ -86,6 +99,39 @@ async function loadFigurePngDataUri(fig: CompositionFigure): Promise<string | nu
   }
   return null;
 }
+
+/**
+ * The storage-backed {@link CompositionSVGInputs.loadFigure} — reads a figure
+ * file's layers + clip box out of IndexedDB.
+ *
+ * Exported because the SVG core is pure and every browser-side caller has to
+ * supply the same reader: `exportCompositionSVG` below, and any host that
+ * generates SVG from LIVE (unsaved) composition state rather than from a
+ * stored record — e.g. an editor's eyedropper snapshot, which must see what is
+ * on screen right now. Two copies of this would silently diverge the moment
+ * the figure record grows a field.
+ */
+export async function storageFigureLoader(
+  fileId: string,
+): Promise<CompositionFigureLoadResult | null> {
+  const [fileState, clipBox] = await Promise.all([
+    loadFileStateLite(fileId),
+    loadClipBox(fileId),
+  ]);
+  if (!fileState) return null;
+  return {
+    layers: fileState.layers,
+    widthL0: fileState.widthL0,
+    heightL0: fileState.heightL0,
+    originL0X: fileState.originL0X,
+    originL0Y: fileState.originL0Y,
+    clipBox: clipBox ?? null,
+  };
+}
+
+/** Raster fallback for asset figures with no vector data (legacy-only read).
+ *  Exported alongside {@link storageFigureLoader} for the same reason. */
+export const storageFigurePngLoader = loadFigurePngDataUri;
 
 /**
  * Export a composition as a PNG data URI.
@@ -204,21 +250,7 @@ export async function exportCompositionSVG(
     groups: partial.groups ?? [],
     sceneOrder: partial.sceneOrder,
     strokeScale: strokeScale ?? partial.strokeScale,
-    loadFigure: async (fileId) => {
-      const [fileState, clipBox] = await Promise.all([
-        loadFileStateLite(fileId),
-        loadClipBox(fileId),
-      ]);
-      if (!fileState) return null;
-      return {
-        layers: fileState.layers,
-        widthL0: fileState.widthL0,
-        heightL0: fileState.heightL0,
-        originL0X: fileState.originL0X,
-        originL0Y: fileState.originL0Y,
-        clipBox: clipBox ?? null,
-      };
-    },
+    loadFigure: storageFigureLoader,
     loadBakedFigurePng: loadFigurePngDataUri,
   }, cancelled);
 }
