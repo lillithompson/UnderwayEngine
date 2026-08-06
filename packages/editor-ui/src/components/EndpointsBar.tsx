@@ -1,6 +1,9 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { EndCapKind, EndMarkerKind, EndpointsModel } from '../adapter';
+import {
+  BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP, ROW_GAP,
+} from '../logic/submenuHeight';
 import { BAR_BG, DualSegmentedRow, EffectBarHeader, HAIRLINE, SegmentedRow } from './effectBar';
 
 // The Endpoints bar: what an OPEN path's two loose ends carry. A sibling of the
@@ -77,12 +80,12 @@ export function EndpointsBar({ endpoints, onChange, onBack, onRemove }: {
 const styles = StyleSheet.create({
   bar: {
     backgroundColor: BAR_BG,
-    borderTopWidth: 1,
+    borderTopWidth: BAR_BORDER,
     borderTopColor: HAIRLINE,
-    paddingTop: 10,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingTop: BAR_PAD_TOP,
+    paddingHorizontal: BAR_PAD_HORIZONTAL,
+    paddingBottom: BAR_PAD_BOTTOM,
   },
   // Matches the Border / Stroke bar: 10pt header→controls gap, rows self-space.
-  controls: { marginTop: 10, gap: 2 },
+  controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
 });

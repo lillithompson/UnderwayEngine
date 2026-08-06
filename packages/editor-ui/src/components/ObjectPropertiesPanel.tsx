@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
-import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
+import { IMAGE_EDIT_OPTIONS, ImageEditAction, formatPixelSize, swipeDismissDirection } from '../logic/imageEdit';
+import { SubmenuKey, typeMenuHeight } from '../logic/submenuHeight';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import {
@@ -25,7 +26,6 @@ import { EndpointsBar } from './EndpointsBar';
 import { LayoutBar } from './LayoutBar';
 import { BAR_BG } from './effectBar';
 import {
-  OBJECT_MENU_HEIGHT,
   PANEL_ANIM_MS,
   PANEL_BG,
   PANEL_BORDER,
@@ -56,14 +56,16 @@ import {
 // swaps between the two, sliding the row along; the dots below track which is
 // showing.
 //
-// Crop / Shadow / Border / Text open their full editing bar (the taller
-// OBJECT_MENU_HEIGHT), which STACKS ABOVE this panel rather than covering it —
-// the bar's bottom edge meets the panel's top, so the options row stays visible
-// underneath and the option that opened the bar wears the pushdown's selection
-// blue to say so. That lit pill is why the bar carries no carousel dots of its
-// own. The bar is still a carousel: a left/right swipe cycles forward/back
-// through the available submenus and a downward swipe dismisses, dropping it
-// back down behind the panel.
+// Crop / Shadow / Border / Text open their full editing bar, which STACKS
+// ABOVE this panel rather than covering it — the bar's bottom edge meets the
+// panel's top, so the options row stays visible underneath and the option that
+// opened the bar wears the pushdown's selection blue to say so. That lit pill
+// is why the bar carries no carousel dots of its own. The bar is still a
+// carousel: a left/right swipe cycles forward/back through the available
+// submenus and a downward swipe dismisses, dropping it back down behind the
+// panel. Its height is the tallest bar THIS selection can reach and no more
+// (logic/submenuHeight.ts), so the top edge holds still across the carousel
+// without a text selection reserving an image bar's room.
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -117,7 +119,9 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 // type, so it joins whichever of the above the members happen to share (and
 // stands alone when they share none), always last — the type's own controls
 // are what the selection came for.
-type SubmenuKey = 'tint' | 'crop' | 'shadow' | 'border' | 'opacity' | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'layout';
+//
+// SubmenuKey itself lives in logic/submenuHeight.ts, which needs it to say how
+// tall each of these bars stands.
 
 // One grid cell: a bare icon, weighted (flex) so every button shares the same
 // column width whichever set is showing. The common actions these draw —
@@ -435,7 +439,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // home-indicator strip. Its height doubles as its slide distance: pushed down
   // by exactly that, it sits wholly behind the panel (which draws over it) and
   // below the screen edge, so it reveals by rising out from under the panel.
-  const barHeight = OBJECT_MENU_HEIGHT;
   const svgFillable = !!model.showSvgOptions && svgHasFill(model.svgSubtype ?? 'stroke');
   const svgEndable = !!model.showSvgOptions && svgHasEndpoints(model.svgSubtype ?? 'stroke');
   const svgOpacityable = !!model.showSvgOptions && svgHasOpacity(model.svgSubtype ?? 'stroke');
@@ -457,6 +460,25 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // mixed multi-selection lands on a one-page carousel and a uniform one
   // swipes from its type's bars into Layout.
   const submenuOrder: SubmenuKey[] = showLayout ? [...typeSubmenuOrder, 'layout'] : typeSubmenuOrder;
+
+  // How tall the bar layer stands: the tallest bar THIS selection can reach,
+  // and no taller. Every bar of a type shares it, so swiping the carousel never
+  // moves the bar's top edge — but a text selection (two three-row bars) no
+  // longer reserves room for the five-row gradient Tint only an image can open.
+  //
+  // Rows are counted from the state the bars will actually render from, drafts
+  // included, so this tracks a live edit: switching a tint to Linear genuinely
+  // adds an angle row, and the layer grows by one row to hold it.
+  const barHeight = typeMenuHeight(submenuOrder, {
+    tintType: (tintDraft ?? model.tint ?? DEFAULT_TINT_MODEL).type,
+    svgFillType: (svgFillDraft ?? model.svgFill ?? DEFAULT_TINT_MODEL).type,
+    cropMode: (cropDraft ?? model.framing ?? DEFAULT_FRAMING_MODEL).mode,
+    cropHasResolution: formatPixelSize(model.imagePixelSize) !== null,
+    // The image / frame border offers every row; a vector's stroke drops the
+    // ones its subtype has no answer for.
+    borderRows: { radius: true, position: true },
+    strokeRows: svgStrokeRows(model.svgSubtype ?? 'stroke'),
+  });
   const activeSub: SubmenuKey | null =
     model.layoutOpen ? 'layout'
     : model.tintOpen ? 'tint'

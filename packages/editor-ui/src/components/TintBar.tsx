@@ -19,6 +19,10 @@ import {
 import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK } from '../theme';
 import { CheckerboardFill, ColorSwatchFill } from './ColorSwatch';
 import {
+  BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP,
+  ROW_GAP, ROW_PILL,
+} from '../logic/submenuHeight';
+import {
   ACCENT, BAR_BG, EffectBarHeader, HAIRLINE, LABEL, PILL_CHEVRON, PILL_TRACK,
   SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL, SHEET_ROW_ACTIVE,
   SHEET_TEXT, SliderRow,
@@ -333,19 +337,19 @@ const STOP_HANDLE = 20;
 const styles = StyleSheet.create({
   bar: {
     backgroundColor: BAR_BG,
-    borderTopWidth: 1,
+    borderTopWidth: BAR_BORDER,
     borderTopColor: HAIRLINE,
-    paddingTop: 10,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingTop: BAR_PAD_TOP,
+    paddingHorizontal: BAR_PAD_HORIZONTAL,
+    paddingBottom: BAR_PAD_BOTTOM,
   },
   // 10pt header→controls gap; rows self-space (32/36pt tall) with a 2pt gap.
-  controls: { marginTop: 10, gap: 2 },
+  controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
   rowLabel: { width: 50, color: LABEL, fontSize: 12 },
   // Stops row: label + gradient bar (fills) + the two 28pt buttons.
-  stopRow: { flexDirection: 'row', alignItems: 'center', height: 36, gap: 10 },
+  stopRow: { flexDirection: 'row', alignItems: 'center', height: ROW_PILL, gap: 10 },
   // The drag hit area fills the row height (≥44pt effective) around the 28pt bar.
-  stopBarHit: { flex: 1, height: 36, justifyContent: 'center' },
+  stopBarHit: { flex: 1, height: ROW_PILL, justifyContent: 'center' },
   stopBar: {
     height: 28, borderRadius: 8, borderWidth: 1, borderColor: STOP_BAR_BORDER, overflow: 'visible',
   },
@@ -365,7 +369,7 @@ const styles = StyleSheet.create({
   },
   stopBtnDisabled: { opacity: 0.4 },
   // Blend pill row.
-  pillRow: { flexDirection: 'row', alignItems: 'center', height: 36 },
+  pillRow: { flexDirection: 'row', alignItems: 'center', height: ROW_PILL },
   pill: {
     flex: 1, height: 32, flexDirection: 'row', alignItems: 'center',
     backgroundColor: PILL_TRACK, borderRadius: 9, paddingHorizontal: 12,

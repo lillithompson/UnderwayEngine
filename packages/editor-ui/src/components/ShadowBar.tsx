@@ -1,6 +1,10 @@
 import React, { useRef } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import type { ShadowModel } from '../adapter';
+import {
+  BAR_BORDER, BAR_PAD_HORIZONTAL, SHADOW_CONTROLS_TOP, SHADOW_PAD_BOTTOM,
+  SHADOW_PAD_SIZE, SHADOW_PAD_TOP,
+} from '../logic/submenuHeight';
 import { BAR_BG, CONTROL_ACCENT, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
 
 // The Drop Shadow editing bar (design "2a"): a full-width light bar with a
@@ -22,7 +26,7 @@ const PAD_BORDER = 'rgba(42,42,42,0.16)';
 const CROSSHAIR = 'rgba(42,42,42,0.16)';
 const CENTER_DOT = 'rgba(42,42,42,0.34)';
 
-const PAD_SIZE = 106;
+const PAD_SIZE = SHADOW_PAD_SIZE;
 const PAD_HANDLE = 26;
 
 /** The XY offset pad: drag (or tap) anywhere to set the shadow offset; the
@@ -113,16 +117,16 @@ export function ShadowBar({ shadow, onChange, onCommit, onBack, onRemove, onPick
 const styles = StyleSheet.create({
   bar: {
     backgroundColor: BAR_BG,
-    borderTopWidth: 1,
+    borderTopWidth: BAR_BORDER,
     borderTopColor: HAIRLINE,
     // 6 bar padding + 6 header nudge (the header no longer carries its own
     // marginTop); the controls' marginTop absorbs the difference so the
     // overall bar height is unchanged from the tuned design.
-    paddingTop: 12,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingTop: SHADOW_PAD_TOP,
+    paddingHorizontal: BAR_PAD_HORIZONTAL,
+    paddingBottom: SHADOW_PAD_BOTTOM,
   },
-  controls: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 4 },
+  controls: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: SHADOW_CONTROLS_TOP },
   pad: {
     width: PAD_SIZE, height: PAD_SIZE, borderRadius: 12, backgroundColor: PAD_FILL,
     borderWidth: 1, borderColor: PAD_BORDER,

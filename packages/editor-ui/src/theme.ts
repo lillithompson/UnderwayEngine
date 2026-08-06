@@ -66,17 +66,13 @@ export const PANEL_SWATCH_BORDER = 'rgba(42, 42, 42, 0.45)'; // ring around a co
 export const PANEL_SHEET_BG = 'rgba(246, 246, 246, 0.98)';
 export const PANEL_SHEET_BORDER = 'rgba(42, 42, 42, 0.14)';
 export const PANEL_SHEET_ROW_ACTIVE = 'rgba(42, 42, 42, 0.10)';
-// Every slide-in effect bar (Shadow/Border/Crop/Text) shares this one fixed
-// height. The bars sit above the properties panel, stacked, so a shared height
-// keeps the bar's TOP edge still as the carousel swaps between them — only the
-// contents change. Sized to the tallest, the Text bar (Font + Weight + Size +
-// Character/Line + Align, the last two now sharing a row):
-//   1 border + 10 top + 22 header + 10 gap + 180 rows + 14 bottom = 237,
-// plus a 3px cushion so font metrics can't clip its last row.
-export const OBJECT_MENU_HEIGHT = 240;
-// The main object-properties panel is shorter than the submenus — it holds only
-// one row of options and the carousel dots (the taller submenus slide in over
-// it):
+// The effect bars used to share one fixed height here, sized to the tallest bar
+// in the editor. They now size per selection — see logic/submenuHeight.ts,
+// which derives each bar's height from its rows and takes the tallest a given
+// selection can reach.
+//
+// The main object-properties panel holds only one row of options and the
+// carousel dots:
 //   1 border + 60 row + 34 dots (4 + 12 dot + 18 clearance) = 95.
 // On a notched phone the dots move into the home-indicator strip and this
 // shrinks by the dot row (see logic/panelLayout.ts).

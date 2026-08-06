@@ -3,6 +3,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TextFontOption, TextHAlign, TextStyleModel, TextVAlign, TextWeight } from '../adapter';
 import {
+  BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP,
+  ROW_GAP, ROW_PILL,
+} from '../logic/submenuHeight';
+import {
   ACCENT, BAR_BG, DualSliderRow, EffectBarHeader, HAIRLINE, LABEL,
   PILL_CHEVRON, PILL_TRACK, SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL,
   SHEET_ROW_ACTIVE, SHEET_TEXT, SliderRow,
@@ -199,15 +203,15 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onPick
 const styles = StyleSheet.create({
   bar: {
     backgroundColor: BAR_BG,
-    borderTopWidth: 1,
+    borderTopWidth: BAR_BORDER,
     borderTopColor: HAIRLINE,
-    paddingTop: 10,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingTop: BAR_PAD_TOP,
+    paddingHorizontal: BAR_PAD_HORIZONTAL,
+    paddingBottom: BAR_PAD_BOTTOM,
   },
   // 10pt header→controls gap; rows self-space (32/36pt tall) with a 2pt gap.
-  controls: { marginTop: 10, gap: 2 },
-  row: { flexDirection: 'row', alignItems: 'center', height: 36 },
+  controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
+  row: { flexDirection: 'row', alignItems: 'center', height: ROW_PILL },
   rowLabel: { width: 50, color: LABEL, fontSize: 12 },
   pill: {
     flex: 1, height: 32, flexDirection: 'row', alignItems: 'center',

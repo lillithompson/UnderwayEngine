@@ -3,6 +3,9 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { FramingModel, ImageCropRatio, ImageFramingMode } from '../adapter';
 import { formatPixelSize } from '../logic/imageEdit';
 import { PANEL_INK_MUTED } from '../theme';
+import {
+  BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP, ROW_GAP,
+} from '../logic/submenuHeight';
 import { BAR_BG, EffectBarHeader, HAIRLINE, Hint, SegmentedRow, SliderRow } from './effectBar';
 
 // The Crop / framing bar (design "4a"): a full-width light bar with a header
@@ -128,14 +131,14 @@ export function CropBar({ framing, pixelSize, onChange, onCommit, onBack }: {
 const styles = StyleSheet.create({
   bar: {
     backgroundColor: BAR_BG,
-    borderTopWidth: 1,
+    borderTopWidth: BAR_BORDER,
     borderTopColor: HAIRLINE,
-    paddingTop: 10,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingTop: BAR_PAD_TOP,
+    paddingHorizontal: BAR_PAD_HORIZONTAL,
+    paddingBottom: BAR_PAD_BOTTOM,
   },
   // 10pt header→controls gap; rows self-space (32/36pt tall) with a 2pt gap.
-  controls: { marginTop: 10, gap: 2 },
+  controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
   // Dimmer than a Hint and centred: a caption for the whole bar, not a note on
   // one row, so it doesn't sit in the control column.
   resolution: {

@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { RGBLike } from '../adapter';
+import { BAR_HEADER, ROW_SEGMENTED, ROW_SLIDER } from '../logic/submenuHeight';
 import {
   PANEL_BG,
   PANEL_CONTROL,
@@ -295,7 +296,7 @@ export function DualSegmentedRow<T extends string>({ label, options, leftLabel, 
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', justifyContent: 'space-between', minHeight: 22 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', minHeight: BAR_HEADER },
   back: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   title: { color: LABEL_DIM, fontSize: 11, lineHeight: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
@@ -308,17 +309,17 @@ const styles = StyleSheet.create({
   // Clips the swatch's fill — flat color or a custom one (the Tint bar's
   // gradient preview) — to the circle, inside the border.
   swatchClip: { ...StyleSheet.absoluteFillObject, borderRadius: 11, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', height: 32 },
+  row: { flexDirection: 'row', alignItems: 'center', height: ROW_SLIDER },
   rowLabel: { width: 50, color: LABEL, fontSize: 12 },
   rowSlider: { flex: 1 },
   // Dual-slider row: two label+slider halves split evenly with a gap between.
-  dualRow: { flexDirection: 'row', alignItems: 'center', height: 32, gap: 16 },
+  dualRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SLIDER, gap: 16 },
   dualHalf: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   dualLabel: { width: 34, color: LABEL, fontSize: 12 },
-  segmentedRow: { flexDirection: 'row', alignItems: 'center', height: 36 },
+  segmentedRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SEGMENTED },
   // Two segmented controls in one row: the shared label column, then two
   // equal halves each with a compact label of its own.
-  dualSegmentedRow: { flexDirection: 'row', alignItems: 'center', height: 36, gap: 10 },
+  dualSegmentedRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SEGMENTED, gap: 10 },
   dualSegLabel: { width: 36, color: LABEL, fontSize: 12 },
   segmented: { flex: 1, flexDirection: 'row', backgroundColor: SEG_TRACK, borderRadius: 9, padding: 2, gap: 2 },
   segment: { flex: 1, paddingVertical: 6, alignItems: 'center', justifyContent: 'center', borderRadius: 7 },

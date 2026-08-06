@@ -1,6 +1,9 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { OpacityModel } from '../adapter';
+import {
+  BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP, ROW_GAP,
+} from '../logic/submenuHeight';
 import { BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
 
 // The Opacity editing bar: a full-width light bar with a header (chevron ·
@@ -44,12 +47,12 @@ export function OpacityBar({ opacity, onChange, onCommit, onBack, onRemove }: {
 const styles = StyleSheet.create({
   bar: {
     backgroundColor: BAR_BG,
-    borderTopWidth: 1,
+    borderTopWidth: BAR_BORDER,
     borderTopColor: HAIRLINE,
-    paddingTop: 10,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingTop: BAR_PAD_TOP,
+    paddingHorizontal: BAR_PAD_HORIZONTAL,
+    paddingBottom: BAR_PAD_BOTTOM,
   },
   // 10pt header→controls gap; rows self-space (32pt tall) with a 2pt gap.
-  controls: { marginTop: 10, gap: 2 },
+  controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
 });
