@@ -1,6 +1,7 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import type { FramingModel, ImageCropRatio, ImageFramingMode } from '../adapter';
+import { formatPixelSize } from '../logic/imageEdit';
 import { BAR_BG, EffectBarHeader, HAIRLINE, Hint, SegmentedRow, SliderRow } from './effectBar';
 
 // The Crop / framing bar (design "4a"): a full-width dark bar with a header
@@ -9,7 +10,8 @@ import { BAR_BG, EffectBarHeader, HAIRLINE, Hint, SegmentedRow, SliderRow } from
 // same container + row grammar (see effectBar.tsx). No color swatch, and no
 // trash (framing is tuned in place, nothing to remove). On-canvas crop-rect
 // handles + panning are canvas-side (deferred); this bar sets mode, zoom,
-// margin, ratio, straighten, tile size and spacing.
+// margin, ratio, straighten, tile size and spacing, and closes with an
+// informational line giving the image's source resolution in pixels.
 
 // ── Ranges (world cells for lengths; the design's pt/percent → these) ─
 const ZOOM_MIN = 1; // 100%
@@ -32,14 +34,17 @@ const RATIOS: readonly { value: ImageCropRatio; label: string }[] = [
   { value: 'sixteenNine', label: '16:9' },
 ];
 
-export function CropBar({ framing, onChange, onCommit, onBack }: {
+export function CropBar({ framing, pixelSize, onChange, onCommit, onBack }: {
   framing: FramingModel;
+  /** Source resolution of the image being framed, shown at the bottom. */
+  pixelSize?: { width: number; height: number };
   /** Live preview (slider drag). */
   onChange: (f: FramingModel) => void;
   /** Commit as one undo step (slider release, mode / ratio change). */
   onCommit: (f: FramingModel) => void;
   onBack: () => void;
 }) {
+  const resolution = formatPixelSize(pixelSize);
   const set = (patch: Partial<FramingModel>, committed: boolean) =>
     (committed ? onCommit : onChange)({ ...framing, ...patch });
   return (
@@ -108,6 +113,13 @@ export function CropBar({ framing, onChange, onCommit, onBack }: {
           </>
         ) : null}
       </View>
+      {resolution ? (
+        // Informational only (no control): the source resolution of the image
+        // being framed, so a crop can be judged against the pixels available.
+        <Text style={styles.resolution} accessibilityLabel={`Image resolution ${resolution}`}>
+          {resolution}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -123,4 +135,12 @@ const styles = StyleSheet.create({
   },
   // 10pt header→controls gap; rows self-space (32/36pt tall) with a 2pt gap.
   controls: { marginTop: 10, gap: 2 },
+  // Dimmer than a Hint and centred: a caption for the whole bar, not a note on
+  // one row, so it doesn't sit in the control column.
+  resolution: {
+    marginTop: 8,
+    textAlign: 'center',
+    color: 'rgba(255,255,255,0.38)',
+    fontSize: 11,
+  },
 });

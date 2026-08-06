@@ -465,6 +465,10 @@ export interface ObjectPropertiesModel {
    *  stays open. No longer surfaced by the Crop bar (its trash was removed);
    *  kept for hosts that drive a framing reset from elsewhere. */
   onResetFraming?(): void;
+  /** The selected image's source resolution in pixels, shown as an
+   *  informational line at the bottom of the Crop bar. Omitted (or
+   *  non-positive) when the host doesn't know it — the line is then hidden. */
+  imagePixelSize?: { width: number; height: number };
   /** Selected image's current corner rounding, a fraction (0–0.5) of the
    *  shorter side — seeds the Border panel's Radius slider. */
   cornerRadius?: number;

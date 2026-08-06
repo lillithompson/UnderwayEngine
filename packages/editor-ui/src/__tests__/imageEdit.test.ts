@@ -1,6 +1,7 @@
 import {
   IMAGE_EDIT_OPTIONS,
   IMAGE_EDIT_SWIPE_DISMISS_PX,
+  formatPixelSize,
   swipeDismissDirection,
 } from '../logic/imageEdit';
 
@@ -37,5 +38,25 @@ describe('swipeDismissDirection', () => {
   test('honors a custom threshold', () => {
     expect(swipeDismissDirection(30, 20)).toBe(1);
     expect(swipeDismissDirection(30, 40)).toBe(0);
+  });
+});
+
+describe('formatPixelSize', () => {
+  test('reads width × height px', () => {
+    expect(formatPixelSize({ width: 3024, height: 4032 })).toBe('3024 × 4032 px');
+  });
+  test('rounds fractional dimensions to whole pixels', () => {
+    expect(formatPixelSize({ width: 640.4, height: 480.6 })).toBe('640 × 481 px');
+  });
+  test('omits the line when the size is unknown', () => {
+    expect(formatPixelSize(undefined)).toBeNull();
+    expect(formatPixelSize(null)).toBeNull();
+  });
+  test('omits the line rather than printing a degenerate size', () => {
+    expect(formatPixelSize({ width: 0, height: 0 })).toBeNull();
+    expect(formatPixelSize({ width: 100, height: 0 })).toBeNull();
+    expect(formatPixelSize({ width: -8, height: 8 })).toBeNull();
+    expect(formatPixelSize({ width: Number.NaN, height: 8 })).toBeNull();
+    expect(formatPixelSize({ width: Number.POSITIVE_INFINITY, height: 8 })).toBeNull();
   });
 });

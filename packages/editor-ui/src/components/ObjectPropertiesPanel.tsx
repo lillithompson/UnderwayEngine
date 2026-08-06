@@ -933,6 +933,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     activeBarEl = (
       <CropBar
         framing={framingForBar}
+        pixelSize={model.imagePixelSize}
         onChange={(f) => applyFraming(f, false)}
         onCommit={(f) => applyFraming(f, true)}
         onBack={dismissSubmenu}
