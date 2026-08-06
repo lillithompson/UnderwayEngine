@@ -2089,38 +2089,69 @@ export function findSceneObjectAtCell(
   // returned as a fallback when nothing else is behind it.
   let svgBboxFallback: { kind: CompItemKind; id: string } | null = null;
 
+  // Per-node gate shared by the selected-preference pre-pass and the main
+  // front-to-back walk, so the two can never disagree about a node's
+  // eligibility. Returns the query point rotated into the node's UNROTATED
+  // local frame when the node passes every guard and its bbox contains the
+  // point, else null.
+  const nodeHitAt = (
+    id: string, kind: CompItemKind, node: any,
+  ): [number, number] | null => {
+    // Inherited lock: a member of a locked group (frame) acts as locked even
+    // though its own `locked` flag is untouched. The per-node hitTest below
+    // only checks the node's OWN flag, so skip ancestor-group-locked members
+    // here. `ignoreLock` (eyedropper) bypasses this like the per-node check.
+    if (!options?.ignoreLock && isGroupChainLocked(state, node.groupId)) return null;
+    // Inherited hide (mirror of the lock skip above): the per-node hitTest
+    // only checks the node's OWN `hidden` flag. Unlike lock, `ignoreLock`
+    // does not bypass this — an invisible pixel has no color to sample.
+    if (node.groupId && hiddenGroups.has(node.groupId)) return null;
+    // Free (continuous) rotation is layered on top of the axis-aligned bbox:
+    // the geometry adapters test the UNROTATED shape, so rotate the query
+    // point back into the node's local frame (by -angleDeg about the bbox
+    // center) before every per-node test below. No-op when angleDeg is 0.
+    const [hx, hy] = unrotatePointForNode(node, cellX, cellY);
+    if (!GEOMETRY_ADAPTERS[kind].hitTest(node, hx, hy, options?.ignoreLock)) return null;
+    // Mask gate: a member of a masked group is hit-testable only inside
+    // its mask chain (the mask itself is exempt from its own clip). Sits
+    // before every kind-specific accept so figures/images/tiled/selected
+    // SVGs are all covered AND the svgBboxFallback stays mask-clean.
+    // Returning null (not a hit) lets the caller fall through to visible
+    // objects behind the clipped-away area.
+    if (maskMap.size > 0
+      && !pointPassesMasks(getAncestorMasks(maskMap, state.groups, node.groupId), id, cellX, cellY)) {
+      return null;
+    }
+    return [hx, hy];
+  };
+
+  // Sticky selection: once an object is selected, a tap or drag anywhere
+  // inside its bounding box re-grabs THAT object, even when another object
+  // sits above it in z-order or has opaque pixels under the point. Without
+  // this, nudging a selected object by dragging from a spot that overlaps a
+  // neighbor silently switches the selection to the neighbor. Walk
+  // front-to-back so the topmost selected object wins when several overlap.
+  // Skipped for the eyedropper / long-press sampler (ignoreLock), which
+  // sample the literal stack and must not honor the current selection.
+  if (!options?.ignoreLock && state.selectedFigureIds.size > 0) {
+    for (let i = state.sceneOrder.length - 1; i >= 0; i--) {
+      const id = state.sceneOrder[i];
+      if (!state.selectedFigureIds.has(id)) continue;
+      const entry = lookup.get(id);
+      if (!entry) continue;
+      if (nodeHitAt(id, entry.kind, entry.node)) return { kind: entry.kind, id };
+    }
+  }
+
   // Walk sceneOrder front-to-back (last index = front).
   for (let i = state.sceneOrder.length - 1; i >= 0; i--) {
     const id = state.sceneOrder[i];
     const entry = lookup.get(id);
     if (!entry) continue;
     const { kind, node } = entry;
-    // Inherited lock: a member of a locked group (frame) acts as locked even
-    // though its own `locked` flag is untouched. The per-node hitTest below
-    // only checks the node's OWN flag, so skip ancestor-group-locked members
-    // here. `ignoreLock` (eyedropper) bypasses this like the per-node check.
-    if (!options?.ignoreLock && isGroupChainLocked(state, node.groupId)) continue;
-    // Inherited hide (mirror of the lock skip above): the per-node hitTest
-    // only checks the node's OWN `hidden` flag. Unlike lock, `ignoreLock`
-    // does not bypass this — an invisible pixel has no color to sample.
-    if (node.groupId && hiddenGroups.has(node.groupId)) continue;
-    // Free (continuous) rotation is layered on top of the axis-aligned bbox:
-    // the geometry adapters test the UNROTATED shape, so rotate the query
-    // point back into the node's local frame (by -angleDeg about the bbox
-    // center) before every per-node test below. No-op when angleDeg is 0.
-    const [hx, hy] = unrotatePointForNode(node, cellX, cellY);
-    if (!GEOMETRY_ADAPTERS[kind].hitTest(node, hx, hy, options?.ignoreLock)) continue;
-
-    // Mask gate: a member of a masked group is hit-testable only inside
-    // its mask chain (the mask itself is exempt from its own clip). Sits
-    // before every kind-specific accept so figures/images/tiled/selected
-    // SVGs are all covered AND the svgBboxFallback stays mask-clean.
-    // `continue` (not return) lets the walk fall through to visible
-    // objects behind the clipped-away area.
-    if (maskMap.size > 0
-      && !pointPassesMasks(getAncestorMasks(maskMap, state.groups, node.groupId), id, cellX, cellY)) {
-      continue;
-    }
+    const hit = nodeHitAt(id, kind, node);
+    if (!hit) continue;
+    const [hx, hy] = hit;
 
     // Bbox hit confirmed.
     if (kind !== 'svg') return { kind, id };  // figure/image: bbox is definitive
@@ -2130,10 +2161,10 @@ export function findSceneObjectAtCell(
 
     // Selected SVGs are bbox-definitive: the user has expressed intent
     // to interact with this object, so its bbox claims hits even where
-    // path-distance would otherwise fall through. Without this, duplicating
-    // an SVG (which auto-selects the +1,+1-offset copy that overlaps the
-    // original) and dragging from inside the duplicate's bbox routinely
-    // grabs the original instead.
+    // path-distance would otherwise fall through. The sticky-selection
+    // pre-pass above already covers this for normal selection; this branch
+    // now only fires on the ignoreLock (eyedropper/long-press) path, where
+    // the pre-pass is skipped but a selected SVG should still win its bbox.
     if (state.selectedFigureIds.has(id)) return { kind, id };
 
     // SVG: precise path-distance test (in the node's unrotated frame).

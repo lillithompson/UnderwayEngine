@@ -368,3 +368,63 @@ describe('findSceneObjectAtCell — selected SVG is bbox-definitive', () => {
     expect(findSceneObjectAtCell(state, 5, 5)).toEqual({ kind: 'svg', id: 'orig' });
   });
 });
+
+describe('findSceneObjectAtCell — sticky selection (bbox re-grabs the selected object)', () => {
+  // A selected object claims any tap/drag inside its bounding box, even when a
+  // different object sits above it in z-order or has opaque pixels there. This
+  // keeps a nudge-drag that starts over an overlapping neighbor from silently
+  // switching the selection.
+  test('selected figure behind an opaque image on top still wins inside its bbox', () => {
+    const back = makeFigure('back', { cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 10 });
+    const front = makeImage('front', { cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 10 });
+    const base = makeState({
+      figures: [back],
+      images: [front],
+      sceneOrder: ['back', 'front'], // image fully covers the figure, on top
+    });
+    // Without a selection, the top image wins.
+    expect(findSceneObjectAtCell(base, 5, 5)).toEqual({ kind: 'image', id: 'front' });
+    // With the figure selected, its bbox re-grabs it despite the image above.
+    const selected = { ...base, selectedFigureIds: new Set(['back']) };
+    expect(findSceneObjectAtCell(selected, 5, 5)).toEqual({ kind: 'figure', id: 'back' });
+  });
+
+  test('the topmost selected object wins when several selected bboxes overlap', () => {
+    const lo = makeFigure('lo', { cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 10 });
+    const hi = makeFigure('hi', { cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 10 });
+    const state = makeState({
+      figures: [lo, hi],
+      sceneOrder: ['lo', 'hi'],
+      selectedFigureIds: new Set(['lo', 'hi']),
+    });
+    expect(findSceneObjectAtCell(state, 5, 5)).toEqual({ kind: 'figure', id: 'hi' });
+  });
+
+  test('a tap outside the selected object still selects whatever is under the point', () => {
+    const sel = makeFigure('sel', { cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4 });
+    const other = makeImage('other', { cellX: 6, cellY: 6, cellWidth: 4, cellHeight: 4 });
+    const state = makeState({
+      figures: [sel],
+      images: [other],
+      sceneOrder: ['sel', 'other'],
+      selectedFigureIds: new Set(['sel']),
+    });
+    // (8,8) is outside sel's bbox but inside other's — sticky selection must
+    // not hijack a tap that misses the selected object entirely.
+    expect(findSceneObjectAtCell(state, 8, 8)).toEqual({ kind: 'image', id: 'other' });
+  });
+
+  test('a locked selected object is not re-grabbed on a normal tap', () => {
+    const back = makeImage('back', { cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 10 });
+    const sel = makeFigure('sel', { cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 10, locked: true });
+    const state = makeState({
+      figures: [sel],
+      images: [back],
+      sceneOrder: ['back', 'sel'],
+      selectedFigureIds: new Set(['sel']),
+    });
+    // Locked objects are inert to normal taps; sticky selection honors the
+    // same lock guard, so the tap falls through to the image behind.
+    expect(findSceneObjectAtCell(state, 5, 5)).toEqual({ kind: 'image', id: 'back' });
+  });
+});
