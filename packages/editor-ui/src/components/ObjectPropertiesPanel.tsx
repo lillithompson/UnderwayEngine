@@ -205,6 +205,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     }),
   ).current;
 
+  // Multi-selection mode: the host applies every edit to ALL selected
+  // objects at once. The common row drops Lock (a mixed selection's lock
+  // state is ambiguous), and the image set drops the single-target actions
+  // (Replace swaps one image, Crop frames one image).
+  const multi = model.mode === 'multi';
+
   const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions;
   // Signature of the current selection's type-option set. It changes when the
   // panel first appears for a selection or the selected object's type changes
@@ -212,7 +218,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // subtype is part of it so switching between two vector objects with
   // different menus (a line → a rectangle) re-lands on the type row.
   const typeSig = model.visible
-    ? `${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
+    ? `${multi ? 'm' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
     : '';
   const prevTypeSig = useRef('');
   useEffect(() => {
@@ -268,7 +274,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const svgEndable = !!model.showSvgOptions && svgHasEndpoints(model.svgSubtype ?? 'stroke');
   const svgOpacityable = !!model.showSvgOptions && svgHasOpacity(model.svgSubtype ?? 'stroke');
   const submenuOrder: SubmenuKey[] =
-    model.showImageEdit ? ['tint', 'crop', 'shadow', 'border', 'opacity']
+    model.showImageEdit ? (multi
+      ? ['tint', 'shadow', 'border', 'opacity']
+      : ['tint', 'crop', 'shadow', 'border', 'opacity'])
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'align']
     : model.showSvgOptions
@@ -678,15 +686,19 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     <GridButton key="flipH" label="Mirror H" caption="Flip H" icon="arrow-left-right" onPress={model.onMirrorH} compact={compact} />,
     <GridButton key="flipV" label="Mirror V" caption="Flip V" icon="arrow-up-down" onPress={model.onMirrorV} compact={compact} />,
     <GridButton key="copy" label="Duplicate" caption="Copy" icon="content-copy" onPress={model.onDuplicate} compact={compact} />,
-    <GridButton
-      key="lock"
-      label={model.locked ? 'Locked' : 'Lock'}
-      caption={model.locked ? 'Locked' : 'Lock'}
-      icon={model.locked ? 'lock' : 'lock-open-outline'}
-      iconColor={model.locked ? ICON_COLOR_STRONG : ICON_COLOR}
-      onPress={model.onToggleLock}
-      compact={compact}
-    />,
+    // A multi-selection's common row is rotate / flip / copy / delete only —
+    // Lock is per-object state a mixed group can't answer with one button.
+    ...(multi ? [] : [
+      <GridButton
+        key="lock"
+        label={model.locked ? 'Locked' : 'Lock'}
+        caption={model.locked ? 'Locked' : 'Lock'}
+        icon={model.locked ? 'lock' : 'lock-open-outline'}
+        iconColor={model.locked ? ICON_COLOR_STRONG : ICON_COLOR}
+        onPress={model.onToggleLock}
+        compact={compact}
+      />,
+    ]),
     <GridButton key="delete" label="Delete" caption="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
   ];
   if (model.onGroup) row1.push(<GridButton key="group" label="Group" caption="Group" icon="group" onPress={model.onGroup} compact={compact} />);
@@ -700,9 +712,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // null when the selection has none.
   let typeOptions: React.ReactNode[] | null = null;
   if (model.showImageEdit) {
-    typeOptions = IMAGE_EDIT_OPTIONS.map((opt) => (
-      <GridButton key={opt.action} label={opt.label} icon={opt.icon} onPress={() => runImageAction(opt.action)} compact={compact} />
-    ));
+    typeOptions = IMAGE_EDIT_OPTIONS
+      .filter((opt) => !multi || (opt.action !== 'replace' && opt.action !== 'crop'))
+      .map((opt) => (
+        <GridButton key={opt.action} label={opt.label} icon={opt.icon} onPress={() => runImageAction(opt.action)} compact={compact} />
+      ));
   } else if (model.showFrameOptions) {
     // Frame options: Background (circular color swatch) · Shadow · Border ·
     // Ungroup. Shadow / Border reuse the image effect bars (the frame submenu

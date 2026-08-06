@@ -292,6 +292,9 @@ export interface OpacityModel {
 
 export interface ObjectPropertiesModel {
   visible: boolean;
+  /** 'multi' marks a multi-selection: the host applies every edit to ALL
+   *  selected objects, the common row drops Lock, and the image options drop
+   *  the single-target actions (Replace / Crop). Default 'single'. */
   mode?: 'single' | 'multi' | 'group';
   /** Show the Edit action (editable text selected): a second-row button that
    *  invokes onEdit to edit the text content. */
