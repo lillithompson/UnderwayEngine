@@ -6,7 +6,7 @@
  * with pre-deserialized embedded files.
  */
 
-import { CompositionFigure, FileConfig, SVGObject, ImageObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, RGBColor } from './types';
+import { CompositionFigure, FileConfig, SVGObject, ImageObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
 import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
@@ -17,6 +17,7 @@ import { svgEndpointsMarkup } from './svgEndpoints';
 import { chainSegments } from './compositionArcMath';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { buildActiveMaskMap, clipRectToNodeMasks } from './compositionMask';
+import { frameGroupIdForNode } from './compositionFrame';
 import { hiddenGroupIds } from './compositionOps';
 import { buildMaskClipDefs, wrapWithMaskClip } from './compositionMaskSVG';
 import { effectiveStrokeMultiplier, normalizeStrokeScale } from './strokeScale';
@@ -192,6 +193,33 @@ function scaleEffectsToSvgUnits(effects: NodeEffects, u: number): NodeEffects {
   return out;
 }
 
+/** Bbox a border effect is stroked around — a node's own box, or a frame's. */
+interface BorderBox {
+  cellX: number; cellY: number; cellWidth: number; cellHeight: number; cornerRadius?: number;
+}
+
+/**
+ * A border effect as a stroked `<rect>` over `box`, in SVG units. World-unit
+ * geometry (width, radius) is scaled here, so callers pass a world-space box.
+ * Shared by the per-node effects wrapper and the frame-border overlay so the
+ * two can't disagree about where a border sits.
+ */
+function borderRectForBox(border: BorderEffect, box: BorderBox, u: number): string {
+  const scaled = scaleEffectsToSvgUnits({ border }, u).border!;
+  // Round the stroke to the node's own corner rounding when it has one
+  // (images carry cornerRadius as a fraction of the shorter side) so the
+  // border hugs the rounded image; otherwise use the border's own radius.
+  const cornerR = box.cornerRadius
+    ? Math.min(0.5, box.cornerRadius) * Math.min(box.cellWidth, box.cellHeight) * u
+    : (scaled.radius ?? 0);
+  return borderToSvgRect({ ...scaled, radius: cornerR }, {
+    cellX: box.cellX * u,
+    cellY: box.cellY * u,
+    cellWidth: box.cellWidth * u,
+    cellHeight: box.cellHeight * u,
+  }, u);
+}
+
 /**
  * Wrap node markup with its NodeEffects: shadow/glow become a `<filter>`
  * def referenced by a wrapping `<g>`; a border becomes a stroked rect drawn
@@ -206,7 +234,7 @@ function applyNodeEffects(
   markup: string,
   effects: NodeEffects | undefined,
   nodeId: string,
-  node: { cellX: number; cellY: number; cellWidth: number; cellHeight: number; cornerRadius?: number },
+  node: BorderBox,
   u: number,
 ): string {
   if (!effects) return markup;
@@ -216,20 +244,7 @@ function applyNodeEffects(
   if (defs && filterRef) {
     out = `<defs>${defs}</defs><g filter="${filterRef}">${out}</g>`;
   }
-  if (scaled.border) {
-    // Round the stroke to the node's own corner rounding when it has one
-    // (images carry cornerRadius as a fraction of the shorter side) so the
-    // border hugs the rounded image; otherwise use the border's own radius.
-    const cornerR = node.cornerRadius
-      ? Math.min(0.5, node.cornerRadius) * Math.min(node.cellWidth, node.cellHeight) * u
-      : (scaled.border.radius ?? 0);
-    out += borderToSvgRect({ ...scaled.border, radius: cornerR }, {
-      cellX: node.cellX * u,
-      cellY: node.cellY * u,
-      cellWidth: node.cellWidth * u,
-      cellHeight: node.cellHeight * u,
-    }, u);
-  }
+  if (effects.border) out += borderRectForBox(effects.border, node, u);
   return out;
 }
 
@@ -581,6 +596,37 @@ export async function generateCompositionSVGCore(
     sceneOrder: input.sceneOrder ?? input.svgObjects.map(s => s.id),
   });
   const maskDefs = buildMaskClipDefs(maskMap, groups);
+
+  // A FRAME's border paints OVER the frame's contents, not with the boundary
+  // rect that carries it. A frame's border lives on its boundary rect's
+  // `effects` (that rect is the frame's clip mask), and the boundary is the
+  // BACK-MOST member of the frame group — so drawing the border with the node
+  // buries it under everything inside the frame: a page frame's white mat
+  // vanishes entirely behind a full-page photo. The canvas draws it as an
+  // overlay just after the frame's clipped run (CanvasSurface's BorderOverlay,
+  // outside the clip wrapper), and this mirrors that: the border is stripped
+  // from the boundary node's own effects here and emitted after the frame's run
+  // in `sceneOrder` below.
+  //
+  // frameGroupId → the overlay markup; the boundary ids are collected so the
+  // paint loop knows which nodes must not draw their own border (and can't
+  // draw it twice).
+  const frameBorders = new Map<string, string>();
+  const frameBorderBoundaryIds = new Set<string>();
+  for (const g of groups) {
+    if (!g.isFrame || hiddenGroups.has(g.id)) continue;
+    const boundary = maskMap.get(g.id);
+    const border = boundary?.effects?.border;
+    if (!boundary || !border || border.width <= 0) continue;
+    // A cutout draws only what its selector asked for, so a frame's border
+    // rides along only when the boundary rect itself was selected. (A hidden
+    // boundary — the invisible clip rect a frame without a background uses —
+    // still shows its border, matching the canvas overlay, which reads the
+    // mask's effects regardless of the node's own `hidden`.)
+    if (input.subset && !svgObjects.some(s => s.id === boundary.id)) continue;
+    frameBorders.set(g.id, borderRectForBox(border, boundary, SVG_UNITS_PER_L0_CELL));
+    frameBorderBoundaryIds.add(boundary.id);
+  }
 
   // Resolved before the frame is measured as well as used to paint, because a
   // cutout's frame has to allow for the width the strokes will be drawn at.
@@ -978,8 +1024,14 @@ export async function generateCompositionSVGCore(
     // the already-faded shape. Same helper as the live DOM layer.
     paths = wrapSVGObjectOpacity(svg, paths, effectiveStrokeScale);
     if (paths) {
+      // A frame boundary's border is emitted as an overlay over the frame's
+      // whole run instead (see frameBorders) — its shadow/glow still belong
+      // to the node, behind the frame's contents.
+      const effects = frameBorderBoundaryIds.has(svg.id)
+        ? { ...svg.effects, border: undefined }
+        : svg.effects;
       elementsById.set(svg.id, wrapWithMaskClip(
-        applyNodeEffects(paths, svg.effects, svg.id, svg, U),
+        applyNodeEffects(paths, effects, svg.id, svg, U),
         maskMap, groups, svg,
       ));
     }
@@ -1012,16 +1064,47 @@ export async function generateCompositionSVGCore(
   const allElements: string[] = [];
   const order = input.sceneOrder;
   if (order && order.length > 0) {
+    // Frame borders go in right after the frame's last member. A group's
+    // members are contiguous in `sceneOrder`, so that lands the border over the
+    // frame's own content and under anything painted after it — exactly where
+    // the canvas puts its overlay. Membership is read from the UNFILTERED nodes
+    // so a hidden member still ends the run at the same place the canvas does.
+    const borderAfterIndex = new Map<number, string>();
+    const placedFrames = new Set<string>();
+    if (frameBorders.size > 0) {
+      const groupIdByNode = new Map<string, string | undefined>();
+      for (const n of input.figures) groupIdByNode.set(n.id, n.groupId);
+      for (const n of input.svgObjects) groupIdByNode.set(n.id, n.groupId);
+      for (const n of input.images) groupIdByNode.set(n.id, n.groupId);
+      for (const n of input.texts ?? []) groupIdByNode.set(n.id, n.groupId);
+      const lastIndexByFrame = new Map<string, number>();
+      order.forEach((id, i) => {
+        const fid = frameGroupIdForNode(groups, groupIdByNode.get(id));
+        if (fid !== undefined && frameBorders.has(fid)) lastIndexByFrame.set(fid, i);
+      });
+      for (const [fid, i] of lastIndexByFrame) {
+        borderAfterIndex.set(i, frameBorders.get(fid)!);
+        placedFrames.add(fid);
+      }
+    }
     const emitted = new Set<string>();
-    for (const id of order) {
+    order.forEach((id, i) => {
       const el = elementsById.get(id);
       if (el !== undefined) { allElements.push(el); emitted.add(id); }
-    }
+      const border = borderAfterIndex.get(i);
+      if (border) allElements.push(border);
+    });
     for (const [id, el] of elementsById) {
       if (!emitted.has(id)) allElements.push(el);
     }
+    // A frame with no member in `sceneOrder` (a bare board, or a legacy record
+    // whose order is incomplete) still gets its border, on top.
+    for (const [fid, border] of frameBorders) {
+      if (!placedFrames.has(fid)) allElements.push(border);
+    }
   } else {
     for (const el of elementsById.values()) allElements.push(el);
+    for (const border of frameBorders.values()) allElements.push(border);
   }
 
   const compName = (input.name ?? 'composition').replace(/[^a-zA-Z0-9_-]/g, '_');
