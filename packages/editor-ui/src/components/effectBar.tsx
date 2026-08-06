@@ -178,6 +178,41 @@ export function SegmentedRow<T extends string>({ label, options, value, onChange
   );
 }
 
+/** One row of ACTIONS: the same 50pt label column + equal-width track as
+ *  {@link SegmentedRow}, but every cell is a button that fires and stays
+ *  unlit — there is no selected value to show. The Layout bar's align rows
+ *  are the case this exists for: "align left" is something you do, not a
+ *  state an object is in, so lighting a segment would lie about it. Cells
+ *  dim while held, which is the only feedback a stateless control can give. */
+export function ActionRow<T extends string>({ label, options, onPress }: {
+  label: string;
+  options: readonly { value: T; label: string; icon?: MCIName }[];
+  onPress: (v: T) => void;
+}) {
+  return (
+    <View style={styles.segmentedRow}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <View style={styles.segmented}>
+        {options.map((o) => (
+          <Pressable
+            key={o.value}
+            onPress={() => onPress(o.value)}
+            style={({ pressed }) => [styles.segment, pressed && styles.segmentActive]}
+            accessibilityRole="button"
+            accessibilityLabel={o.label}
+          >
+            {o.icon ? (
+              <MaterialCommunityIcons name={o.icon} size={18} color={SEG_TEXT} />
+            ) : (
+              <Text style={styles.segmentText} numberOfLines={1}>{o.label}</Text>
+            )}
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 /** Two segmented controls sharing one row, split down the middle — the
  *  segmented sibling of {@link DualSliderRow}, for a bar that has the same
  *  choice to offer about two related things (the Endpoints bar's per-end cap).

@@ -15,6 +15,7 @@ export * from './logic/hsv';
 export * from './logic/eyedropper';
 export * from './logic/imageEdit';
 export * from './logic/svgEdit';
+export * from './logic/layout';
 export * from './logic/tint';
 
 // Components (React Native).
@@ -31,3 +32,4 @@ export { ColorPickerModal } from './components/ColorPickerModal';
 export { CheckerboardFill, ColorSwatchFill } from './components/ColorSwatch';
 export { EyedropperOverlay } from './components/EyedropperOverlay';
 export { EndpointsBar } from './components/EndpointsBar';
+export { LayoutBar } from './components/LayoutBar';

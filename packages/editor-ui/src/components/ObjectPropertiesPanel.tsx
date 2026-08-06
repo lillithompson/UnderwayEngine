@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
+import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
@@ -14,6 +14,7 @@ import { CropBar } from './CropBar';
 import { TextBar } from './TextBar';
 import { TintBar } from './TintBar';
 import { EndpointsBar } from './EndpointsBar';
+import { LayoutBar } from './LayoutBar';
 import { BAR_BG } from './effectBar';
 import {
   HEADER_BG,
@@ -91,7 +92,12 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 // shapes, endpoints on the open paths — plus opacity on the closed shapes.
 // Kept in this order so a left swipe advances the same way the type-option
 // row reads.
-type SubmenuKey = 'tint' | 'crop' | 'shadow' | 'border' | 'opacity' | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints';
+//
+// `layout` is the odd one out: it rides on a MULTI-selection rather than on a
+// type, so it joins whichever of the above the members happen to share (and
+// stands alone when they share none), always last — the type's own controls
+// are what the selection came for.
+type SubmenuKey = 'tint' | 'crop' | 'shadow' | 'border' | 'opacity' | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'layout';
 
 // One grid cell: an icon over a short caption, weighted (flex) so every button
 // shares the same column width whichever set is showing. `caption` is the
@@ -210,15 +216,22 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // state is ambiguous), and the image set drops the single-target actions
   // (Replace swaps one image, Crop frames one image).
   const multi = model.mode === 'multi';
+  // Layout (align the members against their combined box) — the one type
+  // option that asks nothing of the members but their boxes, so it rides on
+  // the selection being multi rather than on what it is made of. A mixed
+  // selection gets it as its ONLY type option; a uniform one gets it appended
+  // to that type's own set. Gated on the host supplying onAlign, like the
+  // other optional actions.
+  const showLayout = multi && !!model.onAlign;
 
-  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || showLayout;
   // Signature of the current selection's type-option set. It changes when the
   // panel first appears for a selection or the selected object's type changes
   // (image → frame → text …), and empties when the panel hides. The vector
   // subtype is part of it so switching between two vector objects with
   // different menus (a line → a rectangle) re-lands on the type row.
   const typeSig = model.visible
-    ? `${multi ? 'm' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
+    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
     : '';
   const prevTypeSig = useRef('');
   useEffect(() => {
@@ -273,7 +286,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const svgFillable = !!model.showSvgOptions && svgHasFill(model.svgSubtype ?? 'stroke');
   const svgEndable = !!model.showSvgOptions && svgHasEndpoints(model.svgSubtype ?? 'stroke');
   const svgOpacityable = !!model.showSvgOptions && svgHasOpacity(model.svgSubtype ?? 'stroke');
-  const submenuOrder: SubmenuKey[] =
+  const typeSubmenuOrder: SubmenuKey[] =
     model.showImageEdit ? (multi
       ? ['tint', 'shadow', 'border', 'opacity']
       : ['tint', 'crop', 'shadow', 'border', 'opacity'])
@@ -287,8 +300,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
           ...(svgOpacityable ? (['opacity'] as const) : []),
         ]
     : [];
+  // Layout joins the tail of whatever the selection's type offers, so a
+  // mixed multi-selection lands on a one-page carousel and a uniform one
+  // swipes from its type's bars into Layout.
+  const submenuOrder: SubmenuKey[] = showLayout ? [...typeSubmenuOrder, 'layout'] : typeSubmenuOrder;
   const activeSub: SubmenuKey | null =
-    model.tintOpen ? 'tint'
+    model.layoutOpen ? 'layout'
+    : model.tintOpen ? 'tint'
     : model.cropOpen ? 'crop'
     : model.shadowOpen ? 'shadow'
     : model.borderOpen ? 'border'
@@ -322,6 +340,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     else if (key === 'stroke') model.onStrokeOpenChange?.(true);
     else if (key === 'svgFill') model.onSvgFillOpenChange?.(true);
     else if (key === 'endpoints') model.onEndpointsOpenChange?.(true);
+    else if (key === 'layout') model.onLayoutOpenChange?.(true);
     else if (key === 'font' || key === 'align') {
       // Both text pages ride the single textStyleOpen flag; the page state
       // picks which one shows (drives the carousel between them).
@@ -339,6 +358,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     model.onStrokeOpenChange?.(false);
     model.onSvgFillOpenChange?.(false);
     model.onEndpointsOpenChange?.(false);
+    model.onLayoutOpenChange?.(false);
     model.onTextStyleOpenChange?.(false);
   };
 
@@ -536,6 +556,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showSvgOptions, model.strokeOpen, svgFillable, model.svgFillOpen, svgEndable, model.endpointsOpen]);
+  // Fold the Layout bar away as soon as the selection stops being a multi one
+  // (a tap that drops it to a single object, or clears it), so it never
+  // lingers over an object it has nothing to say about.
+  useEffect(() => {
+    if ((!model.visible || !showLayout) && model.layoutOpen) model.onLayoutOpenChange?.(false);
+    // model.on* are stable setters; listing the whole model would re-run this
+    // every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model.visible, showLayout, model.layoutOpen]);
   useEffect(() => {
     if (model.tintOpen && !prevTintOpen.current) {
       setTintDraft(model.tint ?? DEFAULT_TINT_MODEL);
@@ -709,7 +738,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   if (model.onUnion) row1.push(<GridButton key="union" label="Union" caption="Union" icon="vector-union" onPress={model.onUnion} compact={compact} />);
 
   // Type-specific options (images: the image-edit set; text: Edit + Type),
-  // null when the selection has none.
+  // null when the selection has none — except a multi-selection, which always
+  // has Layout (appended below).
   let typeOptions: React.ReactNode[] | null = null;
   if (model.showImageEdit) {
     typeOptions = IMAGE_EDIT_OPTIONS
@@ -797,6 +827,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     if (model.showEdit) typeOptions.push(<GridButton key="edit" label="Edit" caption="Edit" icon="pencil-outline" onPress={model.onEdit} compact={compact} />);
     if (model.showTextStyle) typeOptions.push(<GridButton key="type" label="Type" caption="Type" icon="format-font" onPress={() => openSubmenu('font')} compact={compact} />);
     if (model.showTextStyle) typeOptions.push(<GridButton key="align" label="Align" caption="Align" icon="format-align-center" onPress={() => openSubmenu('align')} compact={compact} />);
+  }
+  if (showLayout) {
+    // Layout closes the set for a multi-selection, whatever its members are —
+    // it starts the set outright when they share no type at all. Its glyph is
+    // the align-to-a-vertical-edge one, so it doesn't read as the text Align
+    // button (which is about a paragraph's own lines, not where objects sit).
+    typeOptions = [
+      ...(typeOptions ?? []),
+      <GridButton key="layout" label="Layout" caption="Layout" icon="align-horizontal-left" onPress={() => openSubmenu('layout')} compact={compact} />,
+    ];
   }
 
   // Only one set shows at a time; a horizontal swipe swaps between them (the
@@ -888,6 +928,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         onChange={(e) => model.onEndpoints?.(e)}
         onBack={dismissSubmenu}
         onRemove={removeEndpoints}
+      />
+    );
+  } else if (displaySub === 'layout') {
+    activeBarEl = (
+      <LayoutBar
+        onAlign={(edge: AlignEdge) => model.onAlign?.(edge)}
+        onBack={dismissSubmenu}
       />
     );
   } else if (displaySub === 'shadow') {

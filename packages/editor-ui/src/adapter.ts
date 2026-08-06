@@ -161,6 +161,11 @@ export interface BorderModel {
  *  `SVGSubtype` without importing it — the package stays engine-agnostic. */
 export type SVGSubtypeKind = 'line' | 'arc' | 'rectangle' | 'circle' | 'polygon' | 'shape' | 'stroke';
 
+/** Which edge (or centre line) of a multi-selection's combined box the Layout
+ *  bar's align actions push its members to — the horizontal three, then the
+ *  vertical three (see `logic/layout`). */
+export type AlignEdge = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
+
 /** What sits at one loose end of an open path, and how that end is capped.
  *  Mirror the engine's `SVGEndMarker` / `SVGEndCap` without importing them. */
 export type EndMarkerKind = 'none' | 'circle' | 'arrow';
@@ -512,6 +517,22 @@ export interface ObjectPropertiesModel {
    *  No longer surfaced by the Text bar (its trash was removed); kept for
    *  hosts that drive a type reset from elsewhere. */
   onResetTextStyle?(): void;
+  /** Whether the Layout bar is shown. App-owned so a tap-off dismisses it
+   *  before the panel (same as the Shadow / Border bars). Only reachable from
+   *  a multi-selection — see `onAlign`. */
+  layoutOpen?: boolean;
+  onLayoutOpenChange?(open: boolean): void;
+  /** Align every selected object to one edge (or the centre line) of the
+   *  selection's combined box. Supplying this puts a Layout option in the
+   *  type-options row of a `mode: 'multi'` selection and a Layout page in its
+   *  submenu carousel; leave it unset and neither appears.
+   *
+   *  Layout is the only type-option a MIXED multi-selection gets: aligning
+   *  asks nothing of the members but their boxes, so unlike Tint / Stroke /
+   *  Type it doesn't need them to share a kind. Like the Endpoints bar's
+   *  picks there is no live/commit split — each call is one finished move and
+   *  one undo step. */
+  onAlign?(edge: AlignEdge): void;
   onRotate(): void;
   onMirrorH(): void;
   onMirrorV(): void;
