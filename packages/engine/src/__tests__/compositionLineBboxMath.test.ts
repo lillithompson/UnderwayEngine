@@ -1,5 +1,6 @@
 import {
   detectLineDirection,
+  OCTANT_ZONE_RAD,
   constrainLineBbox,
   constrainRectBbox,
   computeLineVertices,
@@ -54,6 +55,24 @@ describe('detectLineDirection', () => {
     const dy = dx * Math.tan(Math.PI / 12); // exactly at 15° boundary
     const result = detectLineDirection(dx, dy * 0.99);
     expect(result).toBe('horizontal');
+  });
+
+  test('a custom zone moves the boundary — OCTANT_ZONE_RAD gives nearest-of-8', () => {
+    // 20°: diagonal under the default 15° zones, horizontal once the zones
+    // meet halfway (22.5°), which is what a caller forcing the diagonal to an
+    // exact 45° wants — nothing between 0° and 45° is left un-owned.
+    expect(detectLineDirection(10, 3.6)).toBe('diagonal');
+    expect(detectLineDirection(10, 3.6, OCTANT_ZONE_RAD)).toBe('horizontal');
+    expect(detectLineDirection(3.6, 10, OCTANT_ZONE_RAD)).toBe('vertical');
+    // 30° is still nearer 45 than 0, so it stays diagonal in both zonings.
+    expect(detectLineDirection(10, 5.8, OCTANT_ZONE_RAD)).toBe('diagonal');
+    expect(detectLineDirection(10, 10, OCTANT_ZONE_RAD)).toBe('diagonal');
+  });
+
+  test('the octant zones are symmetric across all four quadrants', () => {
+    for (const [dx, dy] of [[10, 3.6], [-10, 3.6], [10, -3.6], [-10, -3.6]]) {
+      expect(detectLineDirection(dx, dy, OCTANT_ZONE_RAD)).toBe('horizontal');
+    }
   });
 });
 

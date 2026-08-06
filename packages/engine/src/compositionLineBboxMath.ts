@@ -2,20 +2,38 @@ import { PathSegment } from './types';
 
 export type LineDirection = 'horizontal' | 'vertical' | 'diagonal';
 
+/** 15 degrees: the default axis zone, wide enough to draw a clean H/V line
+ *  freehand but leaving a 60-degree band in the middle for free-angle
+ *  diagonals (Facet's zones). */
+export const AXIS_ZONE_RAD = Math.PI / 12;
+
+/** 22.5 degrees: the zone that makes the three answers the NEAREST multiple of
+ *  45 degrees — the axis zones and the diagonal band meet exactly halfway
+ *  between H/V and the diagonal, with no free-angle band left over. For
+ *  callers that go on to force the line onto that exact angle. */
+export const OCTANT_ZONE_RAD = Math.PI / 8;
+
 /**
  * Detect whether a drag produces a horizontal, vertical, or diagonal line.
- * Uses 15-degree threshold zones: angles within 15 degrees of the
- * horizontal axis are H, within 15 of vertical are V, and the wide
- * 60-degree band in between is diagonal. The wider diagonal zone
- * makes it easier to draw diagonals without frequent flipping.
+ * Angles within `threshold` of the horizontal axis are H, within `threshold`
+ * of vertical are V, and the band in between is diagonal.
+ *
+ * The default 15-degree zones leave a wide diagonal band, which makes it
+ * easier to draw a diagonal without frequent flipping — the right call when
+ * the diagonal is drawn at whatever angle the drag had. Pass
+ * {@link OCTANT_ZONE_RAD} instead when the diagonal will be forced to 45
+ * degrees, so the answer is the nearest of the eight directions rather than a
+ * 30-degree drag snapping to 45.
  */
-export function detectLineDirection(dx: number, dy: number): LineDirection {
+export function detectLineDirection(
+  dx: number,
+  dy: number,
+  threshold: number = AXIS_ZONE_RAD,
+): LineDirection {
   if (dx === 0 && dy === 0) return 'horizontal';
   const angle = Math.abs(Math.atan2(dy, dx)); // 0..PI
   // Normalize to 0..PI/2 (first quadrant) since H/V/diag are symmetric
   const a = angle > Math.PI / 2 ? Math.PI - angle : angle;
-  // 15 degrees in radians
-  const threshold = Math.PI / 12;
   if (a < threshold) return 'horizontal';
   if (a > Math.PI / 2 - threshold) return 'vertical';
   return 'diagonal';
