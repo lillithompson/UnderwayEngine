@@ -40,3 +40,17 @@ export function objectPanelLayout(safeBottom: number, dotsInSafeArea: boolean): 
 export function submenuDotsBottom(safeBottom: number, dotsInSafeArea: boolean): number {
   return (dotsInSafeArea ? 0 : safeBottom) + OBJECT_DOTS_BOTTOM;
 }
+
+/** Flex weight of the empty cell flanking each side of a button row that has
+ *  fewer buttons than the row has columns.
+ *
+ *  The row holds `columns` equal cells — fixed at the larger page's count so a
+ *  swipe between the common actions and the type options can't resize them —
+ *  and the smaller page is centred by padding both ends. Returning one
+ *  fractional weight per side rather than a whole number of unit cells is the
+ *  point: an odd pad (3 text options in 6 columns, 5 image options in 6) has no
+ *  whole-cell split, and rounding it left the group sitting half a column left
+ *  of centre. Half of an odd pad is 1.5, which flex handles exactly. */
+export function optionRowSidePad(columns: number, buttons: number): number {
+  return Math.max(0, columns - buttons) / 2;
+}

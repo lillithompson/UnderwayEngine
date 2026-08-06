@@ -89,6 +89,20 @@ describe('object-properties chrome matches the toolbar', () => {
     expect(/backgroundColor: CONTROL_ACCENT/.test(read('ShadowBar.tsx'))).toBe(true);
   });
 
+  it('dresses the type-specific options as the toolbar pushdown does', () => {
+    const panel = read('ObjectPropertiesPanel.tsx');
+    expect(/function OptionPill\(/.test(panel)).toBe(true);
+    // Every type-specific option is a pill; the common-actions row keeps its
+    // icon buttons, so both components must still be in play.
+    expect((panel.match(/<OptionPill/g) ?? []).length).toBeGreaterThanOrEqual(10);
+    expect(/<GridButton/.test(panel)).toBe(true);
+    // The three things that make it the pushdown's capsule rather than a new
+    // look: fully-round, the pushdown's inactive grey, selection blue when lit.
+    expect(/optionPill: \{[^}]*borderRadius: 999/s.test(panel)).toBe(true);
+    expect(/optionLabel: \{[^}]*color: PUSHDOWN_INACTIVE/s.test(panel)).toBe(true);
+    expect(/backgroundColor: tint \?\? STATE_ACTIVE/.test(panel)).toBe(true);
+  });
+
   it('keeps the dark modal surface out of every menu file', () => {
     for (const file of MENU_FILES) {
       const src = read(file);

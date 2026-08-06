@@ -5,7 +5,7 @@ import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectProper
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
-import { OBJECT_DOTS_BOTTOM, OBJECT_DOT_SIZE, objectPanelLayout, submenuDotsBottom } from '../logic/panelLayout';
+import { OBJECT_DOTS_BOTTOM, OBJECT_DOT_SIZE, objectPanelLayout, optionRowSidePad, submenuDotsBottom } from '../logic/panelLayout';
 import { ColorSwatchFill } from './ColorSwatch';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
@@ -26,6 +26,8 @@ import {
   PANEL_INK,
   PANEL_SWATCH_BORDER,
   PATTERN_ACTIVE,
+  PUSHDOWN_INACTIVE,
+  STATE_ACTIVE,
 } from '../theme';
 
 // Facet's ObjectPropertiesPanel: a bottom sheet that slides up (150ms) when
@@ -37,10 +39,12 @@ import {
 // CozyJournal leaves them unset).
 //
 // The panel is a compact fixed height (OBJECT_PANEL_HEIGHT) — just one row of
-// buttons and the carousel dots. It shows one row of icon+caption
-// buttons at a time: the common actions (rotate / flip / copy / lock / delete)
-// or — when the selection has them — the type-specific options (images: replace
-// / tint / crop / shadow / border; text: edit / type). A horizontal swipe
+// buttons and the carousel dots. It shows one row at a time, and the two pages
+// are drawn differently because they say different kinds of thing: the common
+// actions (rotate / flip / copy / lock / delete) are bare icons, universal
+// enough to need no caption, while the type-specific options (images: replace
+// / tint / crop / shadow / border; text: edit / type) are word capsules in the
+// toolbar line-mode pushdown's style. A horizontal swipe
 // (either direction) swaps between the two, sliding the row along; the dots
 // below track which is showing. Crop / Shadow / Border / Text open their full editing
 // bar (the taller OBJECT_MENU_HEIGHT), which slides up over the panel as a
@@ -102,17 +106,16 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 // are what the selection came for.
 type SubmenuKey = 'tint' | 'crop' | 'shadow' | 'border' | 'opacity' | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'layout';
 
-// One grid cell: an icon over a short caption, weighted (flex) so every button
-// shares the same column width whichever set is showing. `caption` is the
-// visible label; `label` is the (often longer) accessibility name.
-function GridButton({ label, caption, icon, iconColor, swatchColor, onPress, compact }: {
+// One grid cell: a bare icon, weighted (flex) so every button shares the same
+// column width whichever set is showing. The common actions these draw —
+// rotate, flip, copy, lock, delete — are the universal ones, and their glyphs
+// name them without help; `label` survives as the accessibility name. The cell
+// keeps its 48pt height with the caption gone so the row stays put across a
+// swipe to the type options (whose pills are the same height).
+function GridButton({ label, icon, iconColor, onPress, compact }: {
   label: string;
-  caption?: string;
   icon: string;
   iconColor?: string;
-  /** When set, the button renders a circular color swatch (of this color) in
-   *  place of the icon — used by the frame Background button. */
-  swatchColor?: RGBLike;
   onPress?: () => void;
   compact: boolean;
 }) {
@@ -124,14 +127,55 @@ function GridButton({ label, caption, icon, iconColor, swatchColor, onPress, com
       onPress={onPress}
       style={styles.gridButton}
     >
-      {swatchColor ? (
-        <View style={[styles.swatch, { width: glyphSize, height: glyphSize, borderRadius: glyphSize / 2, overflow: 'hidden' }]}>
-          <ColorSwatchFill color={swatchColor} />
-        </View>
-      ) : (
-        <MaterialCommunityIcons name={icon as MCIName} size={glyphSize} color={iconColor ?? ICON_COLOR} />
-      )}
-      <Text style={styles.gridLabel} numberOfLines={1}>{caption ?? label}</Text>
+      <MaterialCommunityIcons name={icon as MCIName} size={glyphSize} color={iconColor ?? ICON_COLOR} />
+    </Pressable>
+  );
+}
+
+// One type-specific option: a word on a capsule, borrowed wholesale from the
+// toolbar's line-mode pushdown (Freehand | Line | Arc) — same 13/600 word, same
+// fully-round pill, the same selection blue under the one that's on. No glyph:
+// these options name a thing you're about to open or turn on, and the pushdown
+// makes the case that the word alone carries that better than an icon does.
+//
+// It keeps the GridButton's flex cell and 48pt height so the row doesn't
+// resize or reflow when a swipe swaps the two pages — only the contents change.
+// Most of these options just open a submenu and so are never lit; `active` is
+// for the ones that are genuinely a toggle (Repeat, Invert).
+function OptionPill({ label, caption, active, tint, swatchColor, onPress, compact }: {
+  label: string;
+  caption?: string;
+  /** Omit for an option that opens something (no on/off state to show). */
+  active?: boolean;
+  /** Fill for the lit pill; defaults to the toolbar's selection blue. */
+  tint?: string;
+  /** Renders a small swatch of this color before the word — for an option
+   *  whose state is a color rather than on/off (the frame's Fill). */
+  swatchColor?: RGBLike;
+  onPress?: () => void;
+  compact: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={active === undefined ? undefined : { selected: active }}
+      onPress={onPress}
+      style={styles.optionCell}
+    >
+      <View style={[styles.optionPill, active ? { backgroundColor: tint ?? STATE_ACTIVE } : null]}>
+        {swatchColor ? (
+          <View style={styles.optionSwatch}>
+            <ColorSwatchFill color={swatchColor} />
+          </View>
+        ) : null}
+        <Text
+          style={[styles.optionLabel, compact && styles.optionLabelCompact, active && styles.optionLabelActive]}
+          numberOfLines={1}
+        >
+          {caption ?? label}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -715,30 +759,29 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // column count and the row keeps a stable cell width across a swap.
   const row1: React.ReactNode[] = [
     <GridButton key="rotate" label="Rotate" icon="rotate-right" onPress={model.onRotate} compact={compact} />,
-    <GridButton key="flipH" label="Mirror H" caption="Flip H" icon="arrow-left-right" onPress={model.onMirrorH} compact={compact} />,
-    <GridButton key="flipV" label="Mirror V" caption="Flip V" icon="arrow-up-down" onPress={model.onMirrorV} compact={compact} />,
-    <GridButton key="copy" label="Duplicate" caption="Copy" icon="content-copy" onPress={model.onDuplicate} compact={compact} />,
+    <GridButton key="flipH" label="Mirror H" icon="arrow-left-right" onPress={model.onMirrorH} compact={compact} />,
+    <GridButton key="flipV" label="Mirror V" icon="arrow-up-down" onPress={model.onMirrorV} compact={compact} />,
+    <GridButton key="copy" label="Duplicate" icon="content-copy" onPress={model.onDuplicate} compact={compact} />,
     // A multi-selection's common row is rotate / flip / copy / delete only —
     // Lock is per-object state a mixed group can't answer with one button.
     ...(multi ? [] : [
       <GridButton
         key="lock"
         label={model.locked ? 'Locked' : 'Lock'}
-        caption={model.locked ? 'Locked' : 'Lock'}
         icon={model.locked ? 'lock' : 'lock-open-outline'}
         iconColor={model.locked ? ICON_COLOR_STRONG : ICON_COLOR}
         onPress={model.onToggleLock}
         compact={compact}
       />,
     ]),
-    <GridButton key="delete" label="Delete" caption="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
+    <GridButton key="delete" label="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
   ];
-  if (model.onGroup) row1.push(<GridButton key="group" label="Group" caption="Group" icon="group" onPress={model.onGroup} compact={compact} />);
+  if (model.onGroup) row1.push(<GridButton key="group" label="Group" icon="group" onPress={model.onGroup} compact={compact} />);
   // Frames surface Ungroup in their own type-options row (not the common row),
   // so skip it here when the frame options are showing.
-  if (model.onUngroup && !model.showFrameOptions) row1.push(<GridButton key="ungroup" label="Ungroup" caption="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
-  if (model.onJoin) row1.push(<GridButton key="join" label="Join" caption="Join" icon="vector-combine" onPress={model.onJoin} compact={compact} />);
-  if (model.onUnion) row1.push(<GridButton key="union" label="Union" caption="Union" icon="vector-union" onPress={model.onUnion} compact={compact} />);
+  if (model.onUngroup && !model.showFrameOptions) row1.push(<GridButton key="ungroup" label="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
+  if (model.onJoin) row1.push(<GridButton key="join" label="Join" icon="vector-combine" onPress={model.onJoin} compact={compact} />);
+  if (model.onUnion) row1.push(<GridButton key="union" label="Union" icon="vector-union" onPress={model.onUnion} compact={compact} />);
 
   // Type-specific options (images: the image-edit set; text: Edit + Type),
   // null when the selection has none — except a multi-selection, which always
@@ -748,53 +791,50 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     typeOptions = IMAGE_EDIT_OPTIONS
       .filter((opt) => !multi || (opt.action !== 'replace' && opt.action !== 'crop'))
       .map((opt) => (
-        <GridButton key={opt.action} label={opt.label} icon={opt.icon} onPress={() => runImageAction(opt.action)} compact={compact} />
+        <OptionPill key={opt.action} label={opt.label} onPress={() => runImageAction(opt.action)} compact={compact} />
       ));
   } else if (model.showFrameOptions) {
     // Frame options: Background (circular color swatch) · Shadow · Border ·
     // Ungroup. Shadow / Border reuse the image effect bars (the frame submenu
     // carousel). Background opens the shared full-screen color picker.
     typeOptions = [
-      <GridButton
+      <OptionPill
         key="background"
         label="Background color"
         caption="Fill"
-        icon="palette"
         swatchColor={model.frameBackgroundColor}
         onPress={model.onPickFrameBackground}
         compact={compact}
       />,
-      <GridButton key="shadow" label="Shadow" caption="Shadow" icon="box-shadow" onPress={toggleShadow} compact={compact} />,
-      <GridButton key="border" label="Border" caption="Border" icon="border-outside" onPress={toggleBorder} compact={compact} />,
+      <OptionPill key="shadow" label="Shadow" onPress={toggleShadow} compact={compact} />,
+      <OptionPill key="border" label="Border" onPress={toggleBorder} compact={compact} />,
     ];
     if (model.onUngroup) {
-      typeOptions.push(<GridButton key="ungroup" label="Ungroup" caption="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
+      typeOptions.push(<OptionPill key="ungroup" label="Ungroup" onPress={model.onUngroup} compact={compact} />);
     }
   } else if (model.showSvgOptions) {
     // Vector selection: the subtype's own option menu (svgEdit.ts). Every
-    // subtype offers Stroke — a path IS its stroke, and its glyph names the
-    // shape; the closed shapes add Fill.
+    // subtype offers Stroke — a path IS its stroke; the closed shapes add Fill.
     typeOptions = svgEditOptions(model.svgSubtype ?? 'stroke').map((opt) => (
-      <GridButton
+      <OptionPill
         key={opt.action}
         label={opt.label}
-        caption={opt.label}
-        icon={opt.icon}
         onPress={() => openSubmenu(opt.action === 'fill' ? 'svgFill' : opt.action === 'endpoints' ? 'endpoints' : opt.action === 'opacity' ? 'opacity' : 'stroke')}
         compact={compact}
       />
     ));
     if (model.onToggleRepeat) {
       // Pattern-mode toggle (tile pattern objects): repeat the tile across
-      // the bounding box instead of scaling it. Facet's Repeat button —
-      // view-grid glyph, tinted PATTERN_ACTIVE while on.
+      // the bounding box instead of scaling it. The one option here that's a
+      // toggle, so the only one that lights — and it keeps Facet's
+      // PATTERN_ACTIVE rather than selection blue, which is what separates
+      // "pattern mode is on" from "this is the selected thing".
       typeOptions.unshift(
-        <GridButton
+        <OptionPill
           key="repeat"
           label="Repeat"
-          caption="Repeat"
-          icon="view-grid"
-          iconColor={model.repeat ? PATTERN_ACTIVE : ICON_COLOR}
+          active={model.repeat}
+          tint={PATTERN_ACTIVE}
           onPress={model.onToggleRepeat}
           compact={compact}
         />,
@@ -804,41 +844,34 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
       // Source-editor Edit (e.g. reopen a pattern object's tile editor),
       // ahead of the subtype options.
       typeOptions.unshift(
-        <GridButton key="svgEdit" label="Edit" caption="Edit" icon="pencil-outline" onPress={model.onSvgEdit} compact={compact} />,
+        <OptionPill key="svgEdit" label="Edit" onPress={model.onSvgEdit} compact={compact} />,
       );
     }
   } else if (model.showInvert) {
     // Word sticker (magnetic poetry): the single type-specific option is
     // Invert (dark card ⇄ light card). Content + typography are fixed, so no
-    // Edit / Type / Align. The swatch reflects the current inverted state.
+    // Edit / Type / Align. It's a toggle, so the lit pill now says what the
+    // black/white swatch used to.
     typeOptions = [
-      <GridButton
-        key="invert"
-        label="Invert"
-        caption="Invert"
-        icon="invert-colors"
-        swatchColor={model.inverted ? { r: 0, g: 0, b: 0 } : { r: 255, g: 255, b: 255 }}
-        onPress={model.onInvert}
-        compact={compact}
-      />,
+      <OptionPill key="invert" label="Invert" active={model.inverted} onPress={model.onInvert} compact={compact} />,
     ];
   } else if (model.showEdit || model.showTextStyle) {
     // Edit (content) · Type (opens the Text bar on the Font page) · Align (opens
     // it straight on the Align page). Type / Align both slide the same two-page
     // Text bar up; they differ only in which page it lands on.
     typeOptions = [];
-    if (model.showEdit) typeOptions.push(<GridButton key="edit" label="Edit" caption="Edit" icon="pencil-outline" onPress={model.onEdit} compact={compact} />);
-    if (model.showTextStyle) typeOptions.push(<GridButton key="type" label="Type" caption="Type" icon="format-font" onPress={() => openSubmenu('font')} compact={compact} />);
-    if (model.showTextStyle) typeOptions.push(<GridButton key="align" label="Align" caption="Align" icon="format-align-center" onPress={() => openSubmenu('align')} compact={compact} />);
+    if (model.showEdit) typeOptions.push(<OptionPill key="edit" label="Edit" onPress={model.onEdit} compact={compact} />);
+    if (model.showTextStyle) typeOptions.push(<OptionPill key="type" label="Type" onPress={() => openSubmenu('font')} compact={compact} />);
+    if (model.showTextStyle) typeOptions.push(<OptionPill key="align" label="Align" onPress={() => openSubmenu('align')} compact={compact} />);
   }
   if (showLayout) {
     // Layout closes the set for a multi-selection, whatever its members are —
-    // it starts the set outright when they share no type at all. Its glyph is
-    // the align-to-a-vertical-edge one, so it doesn't read as the text Align
-    // button (which is about a paragraph's own lines, not where objects sit).
+    // it starts the set outright when they share no type at all. The word keeps
+    // it clear of the text Align option (which is about a paragraph's own
+    // lines, not where objects sit) now that neither carries a glyph.
     typeOptions = [
       ...(typeOptions ?? []),
-      <GridButton key="layout" label="Layout" caption="Layout" icon="align-horizontal-left" onPress={() => openSubmenu('layout')} compact={compact} />,
+      <OptionPill key="layout" label="Layout" onPress={() => openSubmenu('layout')} compact={compact} />,
     ];
   }
 
@@ -851,9 +884,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const showType = canSwap && showTypeRow;
   const activeButtons = showType ? typeOptions! : row1;
   const columns = Math.max(row1.length, typeOptions ? typeOptions.length : 0);
-  const totalPad = Math.max(0, columns - activeButtons.length);
-  const padLeft = Math.floor(totalPad / 2);
-  const padRight = totalPad - padLeft;
+  const sidePad = optionRowSidePad(columns, activeButtons.length);
 
   // Params tracked by the sliders/pad come from the local draft; color comes
   // from the model (it's changed externally, via the full-screen picker).
@@ -1046,9 +1077,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         <View style={styles.swapArea} {...(canSwap ? swapPan.panHandlers : {})}>
           <Animated.View style={{ transform: [{ translateX: swapX }] }}>
             <View style={styles.gridRow}>
-              {Array.from({ length: padLeft }).map((_, i) => <View key={`padL${i}`} style={styles.gridSpacer} />)}
+              {sidePad > 0 ? <View style={{ flex: sidePad }} /> : null}
               {activeButtons}
-              {Array.from({ length: padRight }).map((_, i) => <View key={`padR${i}`} style={styles.gridSpacer} />)}
+              {sidePad > 0 ? <View style={{ flex: sidePad }} /> : null}
             </View>
           </Animated.View>
         </View>
@@ -1090,10 +1121,10 @@ const styles = StyleSheet.create({
   dotActive: { backgroundColor: ICON_COLOR },
   // Submenu carousel dots, pinned to the bottom of the slide-up layer.
   submenuDots: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 },
-  // A grid row: equal-width cells (the buttons) plus the padding cells that
-  // centre them, so the common-actions and type-options sets share the same
-  // columns (stable cell width across a swap), separated by a gap wide enough
-  // that the icon+caption cells read as distinct buttons rather than one strip.
+  // A grid row: equal-width cells (the buttons) flanked by one weighted empty
+  // cell per side that centres them, so the common-actions and type-options
+  // sets share the same columns (stable cell width across a swap), separated by
+  // a gap wide enough that the cells read as distinct buttons, not one strip.
   gridRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1101,12 +1132,31 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 8,
   },
-  gridButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', gap: 2 },
-  // Circular color swatch (frame Background button), a hairline ring so a
-  // near-background fill still reads as a control.
-  swatch: { borderWidth: 1.5, borderColor: PANEL_SWATCH_BORDER },
-  gridSpacer: { flex: 1 },
-  gridLabel: { color: ICON_COLOR, fontSize: 10, fontWeight: '500' },
+  gridButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
+  // ── Type-specific option pills (the toolbar line-mode pushdown's look) ──
+  // The cell keeps the GridButton's flex weight and 48pt height so a page swap
+  // can't resize the row; the pill sits centred inside it.
+  optionCell: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
+  // The pushdown's capsule: 4pt vertical padding, fully round. It hugs its word
+  // instead of taking that row's fixed 88pt — the option sets run to six items
+  // and their words vary, so a single fixed width would either clip or overflow.
+  // Nothing shifts when the fill moves regardless, since each pill owns a
+  // fixed-width column.
+  optionPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    maxWidth: '100%', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999,
+  },
+  optionLabel: { flexShrink: 1, color: PUSHDOWN_INACTIVE, fontSize: 13, fontWeight: '600' },
+  // Narrow screens pack up to six of these into the row; drop a couple of
+  // points rather than ellipsing words like "Endpoints".
+  optionLabelCompact: { fontSize: 11 },
+  optionLabelActive: { color: '#ffffff' },
+  // A color-valued option (the frame's Fill) keeps a small swatch ahead of its
+  // word — on/off the pill can say itself, a color it can't.
+  optionSwatch: {
+    width: 12, height: 12, borderRadius: 6, overflow: 'hidden',
+    borderWidth: 1, borderColor: PANEL_SWATCH_BORDER,
+  },
   // Full-width, bottom-anchored effect bar (Drop Shadow / Border) that slides
   // in over the panel.
   effectBarWrap: {
