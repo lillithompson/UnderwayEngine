@@ -16,10 +16,15 @@ import {
   removeStop,
   tintBlendLabel,
 } from '../logic/tint';
+import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK } from '../theme';
 import { CheckerboardFill, ColorSwatchFill } from './ColorSwatch';
-import { ACCENT, BAR_BG, EffectBarHeader, HAIRLINE, LABEL, SegmentedRow, SliderRow } from './effectBar';
+import {
+  ACCENT, BAR_BG, EffectBarHeader, HAIRLINE, LABEL, PILL_CHEVRON, PILL_TRACK,
+  SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL, SHEET_ROW_ACTIVE,
+  SHEET_TEXT, SliderRow,
+} from './effectBar';
 
-// The image Tint bar (design "6a"): a full-width dark bar whose contents vary by
+// The image Tint bar (design "6a"): a full-width light bar whose contents vary by
 // Type. A header (chevron · TINT · gradient swatch) sits above:
 //   • Type      — segmented Solid / Linear / Radial (always).
 //   • Stops     — a positional gradient editor with draggable stops + add /
@@ -32,16 +37,15 @@ import { ACCENT, BAR_BG, EffectBarHeader, HAIRLINE, LABEL, SegmentedRow, SliderR
 // ObjectPropertiesPanel's, shared with those bars. The tint is a non-destructive
 // overlay composited onto the image with the chosen blend mode + opacity.
 
-// Sheet tokens (shared with the Text bar's font sheet, design 5a/6a).
-const SHEET_BG = 'rgba(58,58,60,0.98)';
-const SHEET_BORDER = 'rgba(255,255,255,0.14)';
-const SHEET_LABEL = 'rgba(255,255,255,0.55)';
-const SHEET_ROW_ACTIVE = 'rgba(255,255,255,0.18)';
-const PILL_TRACK = 'rgba(0,0,0,0.30)';
-const PILL_CHEVRON = 'rgba(255,255,255,0.5)';
-const STOP_BAR_BORDER = 'rgba(255,255,255,0.18)';
-const BTN_TRACK = 'rgba(0,0,0,0.30)';
-const STOP_UNSELECTED = 'rgba(255,255,255,0.7)';
+// Sheet tokens are shared with the Text bar's font sheet (design 5a/6a) and
+// come from effectBar.tsx — this file used to keep a private copy of all six.
+// Stop-editor tokens: a stop rides ON the gradient ramp, so its ring is drawn
+// against arbitrary colors, not the bar. Unselected stays white-ish (readable
+// over a dark stop); selected is the panel's ink, matching the toolbar.
+const STOP_BAR_BORDER = 'rgba(42,42,42,0.18)';
+const BTN_TRACK = PANEL_TRACK;
+const STOP_SELECTED = PANEL_INK;
+const STOP_UNSELECTED = 'rgba(255,255,255,0.85)';
 
 /** A small gradient fill (expo LinearGradient) used by the header swatch and the
  *  stop bar. `diagonal` renders a 135°-ish preview (the swatch); otherwise it's
@@ -152,7 +156,7 @@ function StopBar({ tint, onChange, onCommit, onAdd, onRemove, onDragActiveChange
                 {
                   left: s.position * barWidth - STOP_HANDLE / 2,
                   borderWidth: i === tint.selectedStop ? 3 : 1.5,
-                  borderColor: i === tint.selectedStop ? '#FFFFFF' : STOP_UNSELECTED,
+                  borderColor: i === tint.selectedStop ? STOP_SELECTED : STOP_UNSELECTED,
                 },
               ]}
             >
@@ -166,7 +170,7 @@ function StopBar({ tint, onChange, onCommit, onAdd, onRemove, onDragActiveChange
         </View>
       </View>
       <Pressable style={styles.stopBtn} onPress={onAdd} accessibilityRole="button" accessibilityLabel="Add stop">
-        <MaterialCommunityIcons name="plus" size={17} color="#FFFFFF" />
+        <MaterialCommunityIcons name="plus" size={17} color={PANEL_INK} />
       </Pressable>
       <Pressable
         style={[styles.stopBtn, !canRemoveStop(tint) && styles.stopBtnDisabled]}
@@ -176,7 +180,7 @@ function StopBar({ tint, onChange, onCommit, onAdd, onRemove, onDragActiveChange
         accessibilityLabel="Delete stop"
         accessibilityState={{ disabled: !canRemoveStop(tint) }}
       >
-        <MaterialCommunityIcons name="trash-can-outline" size={17} color="rgba(255,255,255,0.62)" />
+        <MaterialCommunityIcons name="trash-can-outline" size={17} color={PANEL_INK_DIM} />
       </Pressable>
     </View>
   );
@@ -346,11 +350,11 @@ const styles = StyleSheet.create({
     height: 28, borderRadius: 8, borderWidth: 1, borderColor: STOP_BAR_BORDER, overflow: 'visible',
   },
   // Inner clip carrying the gradient fill (rounded to match the bar).
-  stopBarClip: { ...StyleSheet.absoluteFillObject, borderRadius: 8, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.2)' },
+  stopBarClip: { ...StyleSheet.absoluteFillObject, borderRadius: 8, overflow: 'hidden', backgroundColor: PANEL_TRACK },
   stopHandle: {
     position: 'absolute', top: (28 - STOP_HANDLE) / 2, width: STOP_HANDLE, height: STOP_HANDLE,
     borderRadius: STOP_HANDLE / 2,
-    shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2,
+    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2,
   },
   // The stop's color is a ColorSwatchFill child (so a translucent stop shows
   // its checkerboard), clipped to the handle's circle inside its border.
@@ -366,13 +370,15 @@ const styles = StyleSheet.create({
     flex: 1, height: 32, flexDirection: 'row', alignItems: 'center',
     backgroundColor: PILL_TRACK, borderRadius: 9, paddingHorizontal: 12,
   },
-  pillText: { flex: 1, color: '#FFFFFF', fontSize: 13.5 },
+  pillText: { flex: 1, color: SHEET_TEXT, fontSize: 13.5 },
   // Blend sheet — presented over the bar (inset from its sides + bottom).
   sheet: {
     position: 'absolute', left: 16, right: 16, bottom: 14, maxHeight: 320,
     backgroundColor: SHEET_BG, borderWidth: 1, borderColor: SHEET_BORDER,
     borderRadius: 14, padding: 8,
-    shadowColor: '#000', shadowOpacity: 0.65, shadowRadius: 34, shadowOffset: { width: 0, height: 12 }, elevation: 12,
+    // Half the dark scheme's shadow opacity: over a light bar this only has to
+    // read as a layer above, not as a hole punched through it.
+    shadowColor: '#000', shadowOpacity: 0.32, shadowRadius: 34, shadowOffset: { width: 0, height: 12 }, elevation: 12,
   },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8, paddingTop: 4, paddingBottom: 8 },
   sheetTitle: { color: SHEET_LABEL, fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
@@ -380,5 +386,5 @@ const styles = StyleSheet.create({
   sheetList: { flexGrow: 0 },
   sheetRow: { height: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 9, paddingHorizontal: 12 },
   sheetRowActive: { backgroundColor: SHEET_ROW_ACTIVE },
-  sheetRowLabel: { flex: 1, color: '#FFFFFF', fontSize: 15 },
+  sheetRowLabel: { flex: 1, color: SHEET_TEXT, fontSize: 15 },
 });

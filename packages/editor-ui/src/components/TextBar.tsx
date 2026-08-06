@@ -2,7 +2,11 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TextFontOption, TextHAlign, TextStyleModel, TextVAlign, TextWeight } from '../adapter';
-import { ACCENT, BAR_BG, DualSliderRow, EffectBarHeader, HAIRLINE, LABEL, SegmentedRow, SliderRow } from './effectBar';
+import {
+  ACCENT, BAR_BG, DualSliderRow, EffectBarHeader, HAIRLINE, LABEL,
+  PILL_CHEVRON, PILL_TRACK, SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL,
+  SHEET_ROW_ACTIVE, SHEET_TEXT, SliderRow,
+} from './effectBar';
 
 // The Text typography bar (design "5a"), split into two carousel pages the
 // ObjectPropertiesPanel cycles between:
@@ -43,14 +47,6 @@ const VALIGNS: readonly { value: TextVAlign; label: string; icon: MCIName }[] = 
   { value: 'middle', label: 'Align middle', icon: 'format-align-middle' },
   { value: 'bottom', label: 'Align bottom', icon: 'format-align-bottom' },
 ];
-
-// Sheet tokens (design 5a font sheet).
-const SHEET_BG = 'rgba(58,58,60,0.98)';
-const SHEET_BORDER = 'rgba(255,255,255,0.14)';
-const SHEET_LABEL = 'rgba(255,255,255,0.55)';
-const SHEET_ROW_ACTIVE = 'rgba(255,255,255,0.18)';
-const PILL_TRACK = 'rgba(0,0,0,0.30)';
-const PILL_CHEVRON = 'rgba(255,255,255,0.5)';
 
 /** The Font row: a full-width pill showing the current family, tapping it
  *  opens the font sheet. */
@@ -217,13 +213,15 @@ const styles = StyleSheet.create({
     flex: 1, height: 32, flexDirection: 'row', alignItems: 'center',
     backgroundColor: PILL_TRACK, borderRadius: 9, paddingHorizontal: 12,
   },
-  pillText: { flex: 1, color: '#FFFFFF', fontSize: 13.5 },
+  pillText: { flex: 1, color: SHEET_TEXT, fontSize: 13.5 },
   // Font sheet — presented over the bar (inset from its sides + bottom).
   sheet: {
     position: 'absolute', left: 16, right: 16, bottom: 14, maxHeight: 288,
     backgroundColor: SHEET_BG, borderWidth: 1, borderColor: SHEET_BORDER,
     borderRadius: 14, padding: 8,
-    shadowColor: '#000', shadowOpacity: 0.65, shadowRadius: 34, shadowOffset: { width: 0, height: 12 }, elevation: 12,
+    // Half the dark scheme's shadow opacity: over a light bar this only has to
+    // read as a layer above, not as a hole punched through it.
+    shadowColor: '#000', shadowOpacity: 0.32, shadowRadius: 34, shadowOffset: { width: 0, height: 12 }, elevation: 12,
   },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8, paddingTop: 4, paddingBottom: 8 },
   sheetTitle: { color: SHEET_LABEL, fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
@@ -231,5 +229,5 @@ const styles = StyleSheet.create({
   sheetList: { flexGrow: 0 },
   sheetRow: { height: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 9, paddingHorizontal: 12 },
   sheetRowActive: { backgroundColor: SHEET_ROW_ACTIVE },
-  sheetRowLabel: { flex: 1, color: '#FFFFFF', fontSize: 15 },
+  sheetRowLabel: { flex: 1, color: SHEET_TEXT, fontSize: 15 },
 });

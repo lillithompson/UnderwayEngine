@@ -70,9 +70,13 @@ const styles = StyleSheet.create({
     width: THUMB,
     height: THUMB,
     borderRadius: THUMB / 2,
+    // White thumb in both schemes — on the light properties bars it's the
+    // raised cell over a recessed track, on the dark color picker it's the one
+    // bright thing on the row. The shadow is dialled back from the dark-only
+    // 0.55 so it lifts the thumb on a pale surface without haloing it.
     backgroundColor: MODAL_TEXT,
     shadowColor: '#000',
-    shadowOpacity: 0.55,
+    shadowOpacity: 0.35,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,

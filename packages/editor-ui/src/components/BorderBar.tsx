@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import type { BorderModel, BorderPosition } from '../adapter';
 import { BAR_BG, EffectBarHeader, HAIRLINE, SegmentedRow, SliderRow } from './effectBar';
 
-// The Border (stroke) editing bar (design "3a"): a full-width dark bar with a
+// The Border (stroke) editing bar (design "3a"): a full-width light bar with a
 // header (chevron · BORDER · color swatch · trash) and four rows — Width,
 // Radius, Position, Dash. It's a sibling of the Drop Shadow bar and shares its
 // chrome (see effectBar.tsx). The Radius row rounds the object itself (folding

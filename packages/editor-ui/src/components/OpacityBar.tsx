@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import type { OpacityModel } from '../adapter';
 import { BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
 
-// The Opacity editing bar: a full-width dark bar with a header (chevron ·
+// The Opacity editing bar: a full-width light bar with a header (chevron ·
 // OPACITY · trash) and two rows — Opacity (the whole object's render opacity)
 // and Soften (how far the edges fade to transparent: 0 = hard edges, 1 = the
 // object is transparent toward its edges). Shared by images and the closed

@@ -1,9 +1,9 @@
 import React, { useRef } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import type { ShadowModel } from '../adapter';
-import { ACCENT, BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
+import { BAR_BG, CONTROL_ACCENT, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
 
-// The Drop Shadow editing bar (design "2a"): a full-width dark bar with a
+// The Drop Shadow editing bar (design "2a"): a full-width light bar with a
 // header (title · color swatch · trash), an XY offset pad, and Blur / Spread /
 // Opacity sliders. Values are the app's world-cell units (see the ranges
 // below, mapped from the design's iOS-point ranges at 16px/cell). Header and
@@ -15,10 +15,12 @@ const MAX_BLUR = 3.75; // 0…60pt
 const MIN_SPREAD = -0.75; // −12pt
 const MAX_SPREAD = 1.5; // 24pt
 
-const PAD_FILL = 'rgba(0,0,0,0.26)';
-const PAD_BORDER = 'rgba(255,255,255,0.15)';
-const CROSSHAIR = 'rgba(255,255,255,0.18)';
-const CENTER_DOT = 'rgba(255,255,255,0.40)';
+// The pad is a recessed well on the light bar: a faint dark wash with a
+// slightly stronger edge, its guides darker still so they stay readable.
+const PAD_FILL = 'rgba(42,42,42,0.08)';
+const PAD_BORDER = 'rgba(42,42,42,0.16)';
+const CROSSHAIR = 'rgba(42,42,42,0.16)';
+const CENTER_DOT = 'rgba(42,42,42,0.34)';
 
 const PAD_SIZE = 106;
 const PAD_HANDLE = 26;
@@ -133,8 +135,12 @@ const styles = StyleSheet.create({
   },
   padHandle: {
     position: 'absolute', width: PAD_HANDLE, height: PAD_HANDLE, borderRadius: PAD_HANDLE / 2,
-    backgroundColor: ACCENT, borderWidth: 2, borderColor: '#ffffff',
-    shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 4,
+    // Selection blue, same as the Blur / Spread / Opacity sliders beside it —
+    // the pad is those sliders on two axes.
+    backgroundColor: CONTROL_ACCENT, borderWidth: 2, borderColor: '#ffffff',
+    // Softer than the dark scheme's: the handle only needs enough lift to
+    // separate from the pale well behind it.
+    shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 4,
   },
   sliders: { flex: 1 },
 });

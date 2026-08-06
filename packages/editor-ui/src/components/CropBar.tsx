@@ -2,9 +2,10 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { FramingModel, ImageCropRatio, ImageFramingMode } from '../adapter';
 import { formatPixelSize } from '../logic/imageEdit';
+import { PANEL_INK_MUTED } from '../theme';
 import { BAR_BG, EffectBarHeader, HAIRLINE, Hint, SegmentedRow, SliderRow } from './effectBar';
 
-// The Crop / framing bar (design "4a"): a full-width dark bar with a header
+// The Crop / framing bar (design "4a"): a full-width light bar with a header
 // (chevron · CROP) and a Mode segmented row (Fill / Fit / Crop / Tile)
 // plus the rows that mode needs. A sibling of the Drop Shadow / Border bars —
 // same container + row grammar (see effectBar.tsx). No color swatch, and no
@@ -140,7 +141,7 @@ const styles = StyleSheet.create({
   resolution: {
     marginTop: 8,
     textAlign: 'center',
-    color: 'rgba(255,255,255,0.38)',
+    color: PANEL_INK_MUTED,
     fontSize: 11,
   },
 });

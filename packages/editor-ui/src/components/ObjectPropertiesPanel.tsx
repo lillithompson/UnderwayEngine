@@ -17,18 +17,21 @@ import { EndpointsBar } from './EndpointsBar';
 import { LayoutBar } from './LayoutBar';
 import { BAR_BG } from './effectBar';
 import {
-  HEADER_BG,
-  MODAL_BG,
-  MODAL_TEXT,
   OBJECT_MENU_HEIGHT,
   PANEL_ANIM_MS,
-  PANEL_HAIRLINE,
+  PANEL_BG,
+  PANEL_BORDER,
+  PANEL_DOT,
+  PANEL_ICON,
+  PANEL_INK,
+  PANEL_SWATCH_BORDER,
   PATTERN_ACTIVE,
 } from '../theme';
 
 // Facet's ObjectPropertiesPanel: a bottom sheet that slides up (150ms) when
-// something is selected — dark raised surface, hairline top border, icon
-// buttons grouped by hairline dividers. Below 500px wide the buttons go
+// something is selected — light raised surface (the toolbar's #e5e5e5, so top
+// and bottom chrome match; see PANEL_BG in theme.ts), hairline top border,
+// icon buttons grouped by hairline dividers. Below 500px wide the buttons go
 // compact (24px icons, flex-weighted groups). Group actions (group/ungroup/
 // join/union) render only when the app supplies them (Facet superset;
 // CozyJournal leaves them unset).
@@ -47,8 +50,8 @@ import {
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
-const ICON_COLOR = HEADER_BG; // Facet TEXT_SECONDARY
-const ICON_COLOR_STRONG = MODAL_TEXT; // Facet TEXT_PRIMARY (locked state)
+const ICON_COLOR = PANEL_ICON; // the toolbar's inactive-tool grey
+const ICON_COLOR_STRONG = PANEL_INK; // full ink — the locked state, a step up
 const COMPACT_MAX_WIDTH = 500;
 const DEFAULT_SHADOW_MODEL: ShadowModel = {
   dx: 0.75, dy: 0.875, blur: 1.125, spread: 0.125, color: { r: 0, g: 0, b: 0 }, opacity: 0.45,
@@ -1071,9 +1074,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   panel: {
-    backgroundColor: MODAL_BG,
+    backgroundColor: PANEL_BG,
     borderTopWidth: 1,
-    borderTopColor: PANEL_HAIRLINE,
+    borderTopColor: PANEL_BORDER,
     // 16 to match the effect bars' content inset, so the title lands in the
     // same place whether the panel or an effect bar is showing.
     paddingHorizontal: 16,
@@ -1083,7 +1086,7 @@ const styles = StyleSheet.create({
   swapArea: { flex: 1 },
   // Carousel dots (bottom): one filled for the current page, the other empty.
   dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, paddingTop: 4, paddingBottom: OBJECT_DOTS_BOTTOM },
-  dot: { width: OBJECT_DOT_SIZE, height: OBJECT_DOT_SIZE, borderRadius: OBJECT_DOT_SIZE / 2, backgroundColor: 'rgba(255,255,255,0.28)' },
+  dot: { width: OBJECT_DOT_SIZE, height: OBJECT_DOT_SIZE, borderRadius: OBJECT_DOT_SIZE / 2, backgroundColor: PANEL_DOT },
   dotActive: { backgroundColor: ICON_COLOR },
   // Submenu carousel dots, pinned to the bottom of the slide-up layer.
   submenuDots: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 },
@@ -1101,7 +1104,7 @@ const styles = StyleSheet.create({
   gridButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', gap: 2 },
   // Circular color swatch (frame Background button), a hairline ring so a
   // near-background fill still reads as a control.
-  swatch: { borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.55)' },
+  swatch: { borderWidth: 1.5, borderColor: PANEL_SWATCH_BORDER },
   gridSpacer: { flex: 1 },
   gridLabel: { color: ICON_COLOR, fontSize: 10, fontWeight: '500' },
   // Full-width, bottom-anchored effect bar (Drop Shadow / Border) that slides

@@ -29,7 +29,39 @@ export const WHITE_60 = 'rgba(255, 255, 255, 0.6)';
 // ── Object properties panel (Facet ObjectPropertiesPanel) ──
 export const PANEL_HEIGHT = 61; // Facet PANEL_HEIGHT (48 button + 4/8 padding + 1 border)
 export const PANEL_ANIM_MS = 150; // Facet ANIM_DURATION
-export const PANEL_HAIRLINE = '#6b7280'; // Facet TEXT_DIM — top border + dividers
+export const PANEL_HAIRLINE = '#6b7280'; // Facet TEXT_DIM — modal dividers / default slider track
+
+// ── Object-properties chrome (the panel and every submenu bar) ──
+// Inverted from Facet's dark sheet to the HEADER scheme: a light #e5e5e5
+// surface with dark ink, so the bottom properties sheet and the top toolbar
+// read as one set of controls bracketing the canvas rather than two opposite
+// ones. The modal surfaces above (color picker, rename, view settings) stay
+// dark — they float over the whole editor, not alongside the toolbar.
+export const PANEL_BG = HEADER_BG; // #e5e5e5 — panel + submenu surface
+export const PANEL_INK = HEADER_INK; // #2a2a2a — full-strength ink (body text)
+// The panel's buttons are the toolbar's buttons, so they take the toolbar's
+// icon grey rather than full ink: an unselected tool up top and an action
+// button down here should be the same weight, and against #e5e5e5 solid
+// #2a2a2a reads harder than either.
+export const PANEL_ICON = STATE_INACTIVE; // rgba(42, 42, 42, 0.8) — icons + captions
+// Ink ramp: the dark-scheme alphas re-struck against the light surface.
+export const PANEL_INK_LABEL = 'rgba(42, 42, 42, 0.75)'; // row labels
+export const PANEL_INK_DIM = 'rgba(42, 42, 42, 0.55)'; // bar titles, sheet labels, trash
+export const PANEL_INK_MUTED = 'rgba(42, 42, 42, 0.45)'; // hints, captions under a control
+export const PANEL_DOT = 'rgba(42, 42, 42, 0.28)'; // unfilled carousel dot
+export const PANEL_INK_HAIRLINE = 'rgba(42, 42, 42, 0.14)'; // bar top borders + dividers
+export const PANEL_BORDER = 'rgba(42, 42, 42, 0.22)'; // panel top border (against the canvas)
+// Recessed vs raised: on a dark sheet a track was black and the selected cell
+// white; inverted, the track darkens the surface and the selected cell is the
+// one thing lighter than it.
+export const PANEL_TRACK = 'rgba(42, 42, 42, 0.12)'; // slider / segmented / pill track
+export const PANEL_CONTROL = '#ffffff'; // selected segment, raised cell
+export const PANEL_SWATCH_BORDER = 'rgba(42, 42, 42, 0.45)'; // ring around a color swatch
+// Popover sheets presented over a bar (font list, tint presets): a hair
+// lighter than the bar so the layer reads as sitting above it.
+export const PANEL_SHEET_BG = 'rgba(246, 246, 246, 0.98)';
+export const PANEL_SHEET_BORDER = 'rgba(42, 42, 42, 0.14)';
+export const PANEL_SHEET_ROW_ACTIVE = 'rgba(42, 42, 42, 0.10)';
 // Every object-property menu — the two-row default panel (actions + type-
 // specific options) and each slide-in effect bar (Shadow/Border/Crop/Text) —
 // shares this one fixed height so the bottom sheet never jumps as you switch

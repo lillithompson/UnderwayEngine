@@ -2,12 +2,26 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { RGBLike } from '../adapter';
-import { MODAL_BG } from '../theme';
+import {
+  PANEL_BG,
+  PANEL_CONTROL,
+  PANEL_INK,
+  PANEL_INK_DIM,
+  PANEL_INK_HAIRLINE,
+  PANEL_INK_LABEL,
+  PANEL_INK_MUTED,
+  PANEL_SHEET_BG,
+  PANEL_SHEET_BORDER,
+  PANEL_SHEET_ROW_ACTIVE,
+  PANEL_SWATCH_BORDER,
+  PANEL_TRACK,
+  STATE_ACTIVE,
+} from '../theme';
 import { ColorSwatchFill } from './ColorSwatch';
 import { Slider } from './Slider';
 
 // Shared chrome for the image-effect editing bars (Drop Shadow, Border): the
-// full-width dark bar's header (back · color swatch · trash) and the row
+// full-width light bar's header (back · color swatch · trash) and the row
 // grammar (50pt label column + a control filling the rest). Both bars are
 // siblings of the same design, so this is their single source of truth — the
 // bars themselves only supply their specific controls (the shadow XY pad, the
@@ -16,19 +30,39 @@ import { Slider } from './Slider';
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 // ── Design tokens (shared by every effect bar) ───────────────────────
-// Submenu (effect bar) surface — matches the object-properties panel's grey so
-// the two read as one continuous surface.
-export const BAR_BG = MODAL_BG;
-export const HAIRLINE = 'rgba(255,255,255,0.09)';
-export const LABEL_DIM = 'rgba(255,255,255,0.55)';
-export const LABEL = 'rgba(255,255,255,0.75)';
-export const TRASH = 'rgba(255,255,255,0.62)';
-export const TRACK = 'rgba(0,0,0,0.34)';
+// Submenu (effect bar) surface — matches the object-properties panel's light
+// grey so the two read as one continuous surface, and that surface is the
+// toolbar's (see PANEL_BG in theme.ts). Every token here is the light-scheme
+// value; nothing in a properties menu should reach for a raw color.
+export const BAR_BG = PANEL_BG;
+export const HAIRLINE = PANEL_INK_HAIRLINE;
+export const LABEL_DIM = PANEL_INK_DIM;
+export const LABEL = PANEL_INK_LABEL;
+export const TRASH = PANEL_INK_DIM;
+export const TRACK = PANEL_TRACK;
+// The filled portion of any value control — every slider, and the Shadow bar's
+// XY pad handle, which is the same control on two axes. Selection blue, so a
+// slider carrying a value reads as "set" in the same color the toolbar lights
+// an active tool in.
+export const CONTROL_ACCENT = STATE_ACTIVE; // #38BDF8
+// Text-weight accent: the sheets' "Done" and their checkmark glyph. Stays the
+// deeper iOS blue — selection blue is a fill color, and at 13px on a near-white
+// sheet it drops to roughly 2:1 against the background.
 export const ACCENT = '#0A84FF';
-const SWATCH_BORDER = 'rgba(255,255,255,0.75)';
-const SEG_TRACK = 'rgba(0,0,0,0.30)';
-const SEG_ACTIVE = 'rgba(255,255,255,0.22)';
-const SEG_TEXT = 'rgba(255,255,255,0.6)';
+// Popover sheets presented over a bar (the Font list, the Tint presets). Both
+// bars drew these identically from their own private copies; they live here so
+// the two can't drift.
+export const SHEET_BG = PANEL_SHEET_BG;
+export const SHEET_BORDER = PANEL_SHEET_BORDER;
+export const SHEET_LABEL = PANEL_INK_DIM;
+export const SHEET_ROW_ACTIVE = PANEL_SHEET_ROW_ACTIVE;
+export const SHEET_TEXT = PANEL_INK;
+export const PILL_TRACK = PANEL_TRACK;
+export const PILL_CHEVRON = PANEL_INK_DIM;
+const SWATCH_BORDER = PANEL_SWATCH_BORDER;
+const SEG_TRACK = PANEL_TRACK;
+const SEG_ACTIVE = PANEL_CONTROL;
+const SEG_TEXT = PANEL_INK_DIM;
 
 /** Bar header: a back-Pressable (title, with an optional chevron) on the
  *  left, and — when a color is supplied — a color swatch, then the trash, on
@@ -103,7 +137,7 @@ export function SliderRow({ label, value, apply }: {
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
       <View style={styles.rowSlider}>
-        <Slider value={value} accent={ACCENT} trackColor={TRACK} onChange={(v) => apply(v, false)} onCommit={(v) => apply(v, true)} />
+        <Slider value={value} accent={CONTROL_ACCENT} trackColor={TRACK} onChange={(v) => apply(v, false)} onCommit={(v) => apply(v, true)} />
       </View>
     </View>
   );
@@ -127,13 +161,13 @@ export function DualSliderRow({ leftLabel, leftValue, leftApply, rightLabel, rig
       <View style={styles.dualHalf}>
         <Text style={styles.dualLabel}>{leftLabel}</Text>
         <View style={styles.rowSlider}>
-          <Slider value={leftValue} accent={ACCENT} trackColor={TRACK} onChange={(v) => leftApply(v, false)} onCommit={(v) => leftApply(v, true)} />
+          <Slider value={leftValue} accent={CONTROL_ACCENT} trackColor={TRACK} onChange={(v) => leftApply(v, false)} onCommit={(v) => leftApply(v, true)} />
         </View>
       </View>
       <View style={styles.dualHalf}>
         <Text style={styles.dualLabel}>{rightLabel}</Text>
         <View style={styles.rowSlider}>
-          <Slider value={rightValue} accent={ACCENT} trackColor={TRACK} onChange={(v) => rightApply(v, false)} onCommit={(v) => rightApply(v, true)} />
+          <Slider value={rightValue} accent={CONTROL_ACCENT} trackColor={TRACK} onChange={(v) => rightApply(v, false)} onCommit={(v) => rightApply(v, true)} />
         </View>
       </View>
     </View>
@@ -166,7 +200,7 @@ export function SegmentedRow<T extends string>({ label, options, value, onChange
               accessibilityLabel={o.label}
             >
               {o.icon ? (
-                <MaterialCommunityIcons name={o.icon} size={18} color={active ? '#FFFFFF' : SEG_TEXT} />
+                <MaterialCommunityIcons name={o.icon} size={18} color={active ? PANEL_INK : SEG_TEXT} />
               ) : (
                 <Text style={[styles.segmentText, active && styles.segmentTextActive]} numberOfLines={1}>{o.label}</Text>
               )}
@@ -267,7 +301,9 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   swatch: {
     width: 22, height: 22, borderRadius: 11, borderWidth: 1.8, borderColor: SWATCH_BORDER,
-    shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
+    // Lighter than the dark scheme's drop shadow: on a light surface the same
+    // 0.5 black reads as grime around the swatch rather than lift.
+    shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
   },
   // Clips the swatch's fill — flat color or a custom one (the Tint bar's
   // gradient preview) — to the circle, inside the border.
@@ -286,9 +322,15 @@ const styles = StyleSheet.create({
   dualSegLabel: { width: 36, color: LABEL, fontSize: 12 },
   segmented: { flex: 1, flexDirection: 'row', backgroundColor: SEG_TRACK, borderRadius: 9, padding: 2, gap: 2 },
   segment: { flex: 1, paddingVertical: 6, alignItems: 'center', justifyContent: 'center', borderRadius: 7 },
-  segmentActive: { backgroundColor: SEG_ACTIVE },
+  // The selected cell is the one thing LIGHTER than the recessed track — the
+  // inverse of the dark scheme, where it was the one thing lighter than a
+  // black track. A hairline lift keeps it from floating off the surface.
+  segmentActive: {
+    backgroundColor: SEG_ACTIVE,
+    shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1,
+  },
   segmentText: { color: SEG_TEXT, fontSize: 11.5, fontWeight: '600' },
-  segmentTextActive: { color: '#FFFFFF' },
+  segmentTextActive: { color: PANEL_INK },
   // Hint line: indented to the control column (50pt label + 10pt gap), dim.
-  hint: { marginLeft: 60, marginTop: 2, paddingBottom: 2, color: 'rgba(255,255,255,0.42)', fontSize: 11 },
+  hint: { marginLeft: 60, marginTop: 2, paddingBottom: 2, color: PANEL_INK_MUTED, fontSize: 11 },
 });
