@@ -21,7 +21,7 @@ jest.mock('@/native-shell/bridge/webBridge', () => ({
   logToNative: jest.fn(),
 }));
 
-import { saveCompositionState } from '../persistence';
+import { loadCompositionState, saveCompositionState } from '../persistence';
 import { exportCompositionSVG } from '../compositionExport';
 import { makeViewport } from '../types';
 import type { CompositionState } from '../types';
@@ -149,5 +149,52 @@ describe('save → load → SVG export roundtrip', () => {
     // Both calls write the same normalized payload (state is unchanged
     // between saves).
     expect(secondJson).toBe(firstJson);
+  });
+});
+
+// A page-anchored caller (a journal page, where cell coordinates are
+// positions on a fixed page) opts out of canonical-box normalization on BOTH
+// sides of the round trip — otherwise small content is power-of-2 upscaled
+// and re-anchored, i.e. moved relative to the page it was placed on.
+describe('{ normalize: false }', () => {
+  const smallState = () => freshState({
+    svgObjects: [{
+      id: 'svg-1',
+      segments: [{ kind: 'line', start: [4, 4], end: [12, 12] }],
+      color: { r: 100, g: 100, b: 100 },
+      cellX: 4, cellY: 4, cellWidth: 8, cellHeight: 8,
+    }],
+    sceneOrder: ['svg-1'],
+  });
+
+  test('save stores small content at its own coordinates, unscaled', async () => {
+    await saveCompositionState(smallState(), { normalize: false });
+    const meta = JSON.parse(storage['comp_meta_comp1'] as string);
+    expect(meta.svgObjects[0]).toMatchObject({ cellX: 4, cellY: 4, cellWidth: 8, cellHeight: 8 });
+    expect(meta.svgObjects[0].segments).toEqual([{ kind: 'line', start: [4, 4], end: [12, 12] }]);
+    // gridLevel / strokeScale are only bumped to compensate a rescale.
+    expect(meta.gridLevel).toBe(2);
+    expect(meta.strokeScale).toBe(0.04);
+    // No rescale ⇒ the caller's working camera is kept, not a placeholder.
+    expect(meta.camera).toEqual({ offsetX: 0, offsetY: 0, zoom: 1 });
+  });
+
+  test('load returns those coordinates untouched', async () => {
+    await saveCompositionState(smallState(), { normalize: false });
+    const loaded = await loadCompositionState('comp1', { normalize: false });
+    expect(loaded!.svgObjects![0]).toMatchObject({ cellX: 4, cellY: 4, cellWidth: 8, cellHeight: 8 });
+    expect(loaded!.gridLevel).toBe(2);
+  });
+
+  test('the default still normalizes — 8× upscale of the same content', async () => {
+    await saveCompositionState(smallState());
+    const meta = JSON.parse(storage['comp_meta_comp1'] as string);
+    expect(meta.svgObjects[0]).toMatchObject({ cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32 });
+  });
+
+  test('load can still normalize a record saved without normalization', async () => {
+    await saveCompositionState(smallState(), { normalize: false });
+    const loaded = await loadCompositionState('comp1');
+    expect(loaded!.svgObjects![0]).toMatchObject({ cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32 });
   });
 });

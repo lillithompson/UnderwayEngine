@@ -491,7 +491,32 @@ function migrateSegmentOverrides(v: any): Map<number, RGBColor> | undefined {
   return m.size > 0 ? m : undefined;
 }
 
-export async function saveCompositionState(state: CompositionState): Promise<void> {
+/**
+ * Options for the composition JSON save/load pair. They MUST be passed
+ * consistently to both — `saveCompositionState` and `loadCompositionState`
+ * each normalize independently, so opting one out alone accomplishes nothing.
+ */
+export interface CompositionIOOptions {
+  /**
+   * Rescale + recenter content into the canonical 32×32 L0 box (default true).
+   *
+   * That is right for a free-floating composition (the tile editor's model:
+   * the artwork IS the document, so its absolute placement carries no
+   * meaning). It is WRONG for a PAGE-ANCHORED composition, where coordinates
+   * are positions on a fixed page: normalization power-of-2 upscales any
+   * content smaller than the canonical box and re-anchors it to the snapped
+   * grid origin, which moves objects relative to the page they were placed
+   * on. A journal page holding one small drawing would come back 4× larger
+   * and half off the page. Pass `false` for those and store page coordinates
+   * verbatim.
+   */
+  normalize?: boolean;
+}
+
+export async function saveCompositionState(
+  state: CompositionState,
+  opts?: CompositionIOOptions,
+): Promise<void> {
   // Persist image bytes alongside the JSON meta. Each unique imageId
   // gets its own binary key so duplicate ImageObjects don't double-store.
   // Bytes are immutable per imageId, so we skip the write when the key
@@ -517,13 +542,14 @@ export async function saveCompositionState(state: CompositionState): Promise<voi
     }
   }
 
-  // Normalize content into the canonical 32×32 L0 box before serializing.
+  // Normalize content into the canonical 32×32 L0 box before serializing
+  // (unless the caller opted out — see CompositionIOOptions.normalize).
   // Power-of-2 scaling preserves grid alignment; gridLevel is bumped by k and
   // strokeScale by s so visual content is preserved across the transform.
   // The in-memory state is NOT mutated — the caller keeps its working camera
   // and (possibly drifted) content. On next load the disk copy comes back
   // canonical.
-  const normalized = normalizeComposition({
+  const input = {
     figures: state.figures,
     svgObjects: state.svgObjects,
     images,
@@ -532,7 +558,12 @@ export async function saveCompositionState(state: CompositionState): Promise<voi
     gridLevel: state.gridLevel,
     strokeScale: state.strokeScale,
     background: state.background,
-  });
+  };
+  // A page-anchored caller opts out: coordinates go to disk exactly as the
+  // page holds them (and `scale === 1 && k === 0` keeps the camera below).
+  const normalized = opts?.normalize === false
+    ? { ...input, scale: 1, k: 0 }
+    : normalizeComposition(input);
 
   const meta: CompMeta = {
     name: state.name,
@@ -557,7 +588,10 @@ export async function saveCompositionState(state: CompositionState): Promise<voi
   await storage.setItem(compMetaKey(state.id), json);
 }
 
-export async function loadCompositionState(id: string): Promise<Partial<CompositionState> | null> {
+export async function loadCompositionState(
+  id: string,
+  opts?: CompositionIOOptions,
+): Promise<Partial<CompositionState> | null> {
   const cached = _getCompMetaCache().get(compMetaKey(id));
   const raw = cached ?? await storage.getItem(compMetaKey(id));
   if (!raw) return null;
@@ -651,9 +685,12 @@ export async function loadCompositionState(id: string): Promise<Partial<Composit
   // Migration: pre-normalization (legacy) JSON records may have content
   // outside the canonical 32×32 L0 box. Normalize idempotently — content
   // already in canonical position passes through unchanged (scale=1, k=0).
+  // Skipped for a page-anchored caller (CompositionIOOptions.normalize):
+  // there the stored coordinates ARE page coordinates, and re-anchoring them
+  // to the content bbox would move objects around the page on every open.
   const groups = parsed.groups ?? [];
   const texts: TextObject[] = parsed.texts ?? [];
-  const r = normalizeComposition({
+  const normalizeInput = {
     figures,
     svgObjects,
     images,
@@ -662,7 +699,10 @@ export async function loadCompositionState(id: string): Promise<Partial<Composit
     gridLevel: parsed.gridLevel ?? 1,
     strokeScale: normalizeStrokeScale(parsed.strokeScale),
     background: parsed.background,
-  });
+  };
+  const r = opts?.normalize === false
+    ? { ...normalizeInput, scale: 1, k: 0 }
+    : normalizeComposition(normalizeInput);
 
   return {
     name: parsed.name,
