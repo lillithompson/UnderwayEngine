@@ -63,6 +63,11 @@ export interface CompositionExportOptions {
    *  that lands on a backdrop the page never had. See
    *  {@link CompositionSVGInputs.textColorOverride}. */
   textColorOverride?: RGBColor;
+  /** Stroke every line an SVG object draws in this color instead of its
+   *  authored one, fills left alone — the same intent as `textColorOverride`
+   *  for a cutout that is line art. See
+   *  {@link CompositionSVGInputs.strokeColorOverride}. */
+  strokeColorOverride?: RGBColor;
   /** How to read the stored record — see {@link CompositionIOOptions}. Pass
    *  `false` for a PAGE-ANCHORED composition, so the export sees the same
    *  coordinates and `strokeScale` the editor holds. It matters whenever an
@@ -195,6 +200,7 @@ export async function exportCompositionSVG(
     preferOriginalImages: options?.preferOriginalImages,
     subset: options?.subset,
     textColorOverride: options?.textColorOverride,
+    strokeColorOverride: options?.strokeColorOverride,
     groups: partial.groups ?? [],
     sceneOrder: partial.sceneOrder,
     strokeScale: strokeScale ?? partial.strokeScale,

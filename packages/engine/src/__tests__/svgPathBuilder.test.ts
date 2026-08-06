@@ -1,5 +1,5 @@
-import { PathSegment } from '../types';
-import { buildClosedFillPathD } from '../svgPathBuilder';
+import { PathSegment, RGBColor, SVGObject } from '../types';
+import { buildClosedFillPathD, withSVGObjectStrokeColor } from '../svgPathBuilder';
 import { computeCircleSegments } from '../compositionArcMath';
 import { unionRegionContours } from '../outlineUnion';
 
@@ -54,5 +54,62 @@ describe('buildClosedFillPathD — multi-loop fill', () => {
       { kind: 'line', start: [10, 0], end: [10, 10] },
     ];
     expect(buildClosedFillPathD(open)).toBe('');
+  });
+});
+
+describe('withSVGObjectStrokeColor', () => {
+  const WHITE: RGBColor = { r: 255, g: 255, b: 255 };
+  const AUTHORED: RGBColor = { r: 40, g: 30, b: 60 };
+
+  const shape = (over: Partial<SVGObject> = {}): SVGObject => ({
+    id: 'svg_1',
+    segments: rect(0, 0, 10, 10),
+    color: AUTHORED,
+    cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 10,
+    ...over,
+  } as SVGObject);
+
+  it('repaints the object’s own stroke', () => {
+    expect(withSVGObjectStrokeColor(shape(), WHITE).color).toEqual(WHITE);
+  });
+
+  it('repaints stroked subpaths and leaves filled ones alone', () => {
+    // A joined object carries a subpath per source color; the stroked ones are
+    // lines, the filled ones are areas (figure→SVG baking makes both).
+    const fillInk: RGBColor = { r: 200, g: 40, b: 40 };
+    const out = withSVGObjectStrokeColor(shape({
+      subpaths: [
+        { segments: rect(0, 0, 4, 4), color: AUTHORED },
+        { segments: rect(5, 5, 4, 4), color: fillInk, fill: true },
+      ],
+    }), WHITE);
+    expect(out.subpaths![0].color).toEqual(WHITE);
+    expect(out.subpaths![1].color).toEqual(fillInk);
+  });
+
+  it('repaints every per-copy override a pattern carries', () => {
+    // Recoloring the base color alone would leave a recolored tile copy
+    // painting its old ink in the middle of the white ones.
+    const overrides = new Map<number, RGBColor>([[7, { r: 1, g: 2, b: 3 }], [9, { r: 4, g: 5, b: 6 }]]);
+    const out = withSVGObjectStrokeColor(shape({ tileMode: 'repeat', segmentOverrides: overrides }), WHITE);
+    expect([...out.segmentOverrides!.keys()].sort()).toEqual([7, 9]);
+    for (const c of out.segmentOverrides!.values()) expect(c).toEqual(WHITE);
+  });
+
+  it('leaves the source object and its geometry untouched', () => {
+    const src = shape({ subpaths: [{ segments: rect(0, 0, 4, 4), color: AUTHORED }] });
+    const out = withSVGObjectStrokeColor(src, WHITE);
+    expect(src.color).toEqual(AUTHORED);
+    expect(src.subpaths![0].color).toEqual(AUTHORED);
+    expect(out.segments).toBe(src.segments);
+    expect(out.cellX).toBe(src.cellX);
+    expect(out.cellWidth).toBe(src.cellWidth);
+  });
+
+  it('keeps the fill a filled shape paints its interior with', () => {
+    const src = shape({ fillColor: { r: 10, g: 20, b: 30 }, fillOpacity: 0.5 });
+    const out = withSVGObjectStrokeColor(src, WHITE);
+    expect(out.fillColor).toEqual({ r: 10, g: 20, b: 30 });
+    expect(out.fillOpacity).toBe(0.5);
   });
 });

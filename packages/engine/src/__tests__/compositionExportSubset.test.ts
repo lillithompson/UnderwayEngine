@@ -285,6 +285,93 @@ describe('textColorOverride', () => {
   });
 });
 
+describe('strokeColorOverride', () => {
+  const WHITE = { r: 255, g: 255, b: 255 };
+
+  const openL: PathSegment[] = [
+    { kind: 'line', start: [4, 4], end: [12, 4] },
+    { kind: 'line', start: [12, 4], end: [12, 14] },
+  ];
+
+  function makeSvg(overrides: Partial<SVGObject> & { id: string }): SVGObject {
+    return {
+      segments: openL,
+      color: { r: 10, g: 20, b: 30 },
+      cellX: 4, cellY: 4, cellWidth: 8, cellHeight: 10,
+      ...overrides,
+    } as SVGObject;
+  }
+
+  it('repaints every line, whatever the objects were authored in', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [
+        makeSvg({ id: 'svg_1' }),
+        makeSvg({ id: 'svg_2', color: { r: 200, g: 40, b: 40 }, cellY: 18 }),
+      ],
+      strokeColorOverride: WHITE,
+    }));
+    expect(svg).not.toContain('stroke="rgb(10,20,30)"');
+    expect(svg).not.toContain('stroke="rgb(200,40,40)"');
+    expect(svg!.match(/stroke="rgb\(255,255,255\)"/g)).toHaveLength(2);
+  });
+
+  it('repaints a joined object’s stroked subpaths too', async () => {
+    // A joined object draws its subpaths INSTEAD of its own segments, each in
+    // the ink of the object it came from — recoloring `color` alone would
+    // repaint nothing at all here.
+    const joined = makeSvg({
+      id: 'svg_1',
+      subpaths: [
+        { segments: openL, color: { r: 90, g: 0, b: 0 } },
+        { segments: openL, color: { r: 0, g: 90, b: 0 } },
+      ],
+    });
+    const svg = await generateCompositionSVGCore(
+      makeInputs({ svgObjects: [joined], strokeColorOverride: WHITE }),
+    );
+    expect(svg).not.toContain('stroke="rgb(90,0,0)"');
+    expect(svg).not.toContain('stroke="rgb(0,90,0)"');
+    expect(svg!.match(/stroke="rgb\(255,255,255\)"/g)).toHaveLength(2);
+  });
+
+  it('leaves a fill alone — an area is not a line', async () => {
+    // Flooding the interior too would collapse a drawing into a silhouette;
+    // the fill reads against the backdrop on its own.
+    const filled = makeSvg({
+      id: 'svg_1',
+      segments: closedSquare,
+      cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+      fillColor: { r: 120, g: 160, b: 200 },
+    });
+    const svg = await generateCompositionSVGCore(
+      makeInputs({ svgObjects: [filled], strokeColorOverride: WHITE }),
+    );
+    expect(svg).toContain('fill="rgb(120,160,200)"');
+    expect(svg).toContain('stroke="rgb(255,255,255)"');
+  });
+
+  it('leaves text to textColorOverride', async () => {
+    // The two overrides are separate decisions: a cutout of line art has no
+    // glyphs to repaint, and one of type has no strokes.
+    const svg = await generateCompositionSVGCore(makeInputs({
+      texts: [makeText({ id: 'txt_1', style: { fontId: 'CozySans', size: 2, color: { r: 10, g: 20, b: 30 } } })],
+      strokeColorOverride: WHITE,
+    }));
+    expect(svg).toContain('fill="rgb(10,20,30)"');
+  });
+
+  it('changes paint only — the frame is where it was', async () => {
+    const line = makeSvg({ id: 'svg_1' });
+    const plain = await generateCompositionSVGCore(
+      makeInputs({ svgObjects: [line], subset: () => new Set(['svg_1']) }),
+    );
+    const white = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [line], subset: () => new Set(['svg_1']), strokeColorOverride: WHITE,
+    }));
+    expect(viewBoxOf(white!)).toEqual(viewBoxOf(plain!));
+  });
+});
+
 describe('subset text framing', () => {
   const all = (scene: { texts: readonly TextObject[] }) => new Set(scene.texts.map((t) => t.id));
 

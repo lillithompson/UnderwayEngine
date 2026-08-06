@@ -668,6 +668,34 @@ export function svgStrokePresentation(
 }
 
 /**
+ * The same object with every STROKE it paints in `color`: its own `color`, each
+ * stroked subpath's, and every per-copy tile override. Geometry, effects and
+ * FILLS are untouched.
+ *
+ * For a cutout export landing on a backdrop the page never had — see
+ * {@link CompositionSVGInputs.strokeColorOverride}. Recoloring the node up
+ * front rather than at each `stroke="…"` site means every downstream builder —
+ * the tiled region markup, the endpoint decorations, the subpath loops —
+ * inherits the override without threading a color of its own.
+ *
+ * A fill keeps its authored paint because it is an AREA, not a line: flooding
+ * it too would turn line art into a silhouette, and it reads against the
+ * backdrop on its own the way a hairline stroke doesn't.
+ */
+export function withSVGObjectStrokeColor(obj: SVGObject, color: RGBColor): SVGObject {
+  const out: SVGObject = { ...obj, color };
+  if (obj.subpaths) {
+    out.subpaths = obj.subpaths.map((sub) => (sub.fill ? sub : { ...sub, color }));
+  }
+  if (obj.segmentOverrides && obj.segmentOverrides.size > 0) {
+    const overrides = new Map<number, RGBColor>();
+    for (const key of obj.segmentOverrides.keys()) overrides.set(key, color);
+    out.segmentOverrides = overrides;
+  }
+  return out;
+}
+
+/**
  * Build complete SVG path element(s) for an SVGObject, including
  * multi-color subpath support, optional solid fill, and the object's own
  * per-object stroke settings (see {@link svgStrokePresentation}).

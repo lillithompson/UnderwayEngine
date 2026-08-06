@@ -11,7 +11,7 @@ import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, svgFillPresentation, svgStrokePresentation, wrapSVGObjectOpacity } from './svgPathBuilder';
+import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, svgFillPresentation, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
 import { roundPathCorners, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import { chainSegments } from './compositionArcMath';
@@ -137,6 +137,20 @@ export interface CompositionSVGInputs {
    * one of the two would put white type on a white card.
    */
   textColorOverride?: RGBColor;
+  /**
+   * Stroke every line an SVG object draws in this color, whatever the node's
+   * authored one is — the shape's own color, each of its stroked subpaths, and
+   * a pattern's per-copy segment overrides.
+   *
+   * The `textColorOverride` argument, for line art: a cutout of the marks on a
+   * page lands on the card's colored tint well, where the dark inks a user
+   * naturally draws with go muddy against it and a tinted one clashes.
+   *
+   * FILLS keep their authored paint. A fill is an area, not a line — it reads
+   * against the well on its own, and flooding it too would collapse a drawing
+   * into a silhouette.
+   */
+  strokeColorOverride?: RGBColor;
   /** When true, emit each image from its higher-resolution `originalImageId`
    *  blob (falling back to `imageId` when absent). Off by default so cheap
    *  consumers — thumbnails, previews — keep rasterizing the small display
@@ -590,6 +604,16 @@ export async function generateCompositionSVGCore(
     texts = texts.filter(kept);
     if (figures.length === 0 && svgObjects.length === 0 && images.length === 0 && texts.length === 0) return null;
   }
+
+  // Ink override for line art. Applied to the DRAWN nodes only, and only to
+  // what they stroke — geometry is identical, so the bbox union below and the
+  // masks (which resolve from the unfiltered scene) see exactly what they would
+  // have. Doing it here, once, rather than at each `stroke="…"` site is what
+  // keeps the tiled, subpath and endpoint markup from each needing its own
+  // notion of the override.
+  const strokeInk = input.strokeColorOverride;
+  if (strokeInk) svgObjects = svgObjects.map((s) => withSVGObjectStrokeColor(s, strokeInk));
+
   const maskMap = buildActiveMaskMap({
     groups,
     svgObjects: input.svgObjects,
