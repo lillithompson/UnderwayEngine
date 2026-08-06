@@ -364,7 +364,13 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      rides flags4 bit 0x10, which was always written 0 before, so no older
 //      file can be misread as carrying it; a file without it loads shapeKind
 //      undefined and the object classifies as a generic closed 'shape'.
-const FORMAT_VERSION = 46;
+// v47: TextStyle `charColors` — the color tool's per-character brush colors.
+//      Presence rides text flags2 bit 0x20 (always written 0 before, so the
+//      bit alone gates the read); payload is LAST in the text record, after
+//      the v31 angle: u16 entry count, then per entry u16 code-point index +
+//      r,g,b. Only non-null overrides are written; absent entries inherit the
+//      base font color, so the sparse map round-trips exactly.
+const FORMAT_VERSION = 47;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -779,6 +785,8 @@ const TFLAG2_HAS_EFFECTS = 0x04;
 const TFLAG2_HAS_ANGLE = 0x08;
 // v43+: fixed-size sizing mode (pure flag, no payload).
 const TFLAG2_FIXED_SIZE = 0x10;
+// v47+: per-character brush colors payload present (last in the record).
+const TFLAG2_HAS_CHAR_COLORS = 0x20;
 // v29+ text style flag bits.
 const TSTYLE_BOLD = 0x01;
 const TSTYLE_ITALIC = 0x02;
@@ -2272,7 +2280,17 @@ function textBinarySize(text: TextObject): number {
   if (text.style.weight != null) size += 1; // weight u8
   if (text.effects) size += effectsBinarySize(text.effects);
   if (text.angleDeg) size += 2; // v31+ free rotation (i16)
+  const charColorCount = countCharColors(text.style.charColors);
+  if (charColorCount > 0) size += 2 + charColorCount * 5; // v47+ count + (idx u16, rgb)
   return size;
+}
+
+/** Non-null override entries in a `charColors` array — what v47 serializes
+ *  (null / hole entries inherit the base color and are not written). */
+function countCharColors(charColors: (RGBColor | null)[] | undefined): number {
+  let n = 0;
+  if (charColors) for (const c of charColors) if (c) n++;
+  return n;
 }
 
 function writeText(
@@ -2301,6 +2319,8 @@ function writeText(
   if (text.effects) flags2 |= TFLAG2_HAS_EFFECTS;
   if (text.angleDeg) flags2 |= TFLAG2_HAS_ANGLE;
   if (text.fixedSize) flags2 |= TFLAG2_FIXED_SIZE;
+  const charColorCount = countCharColors(text.style.charColors);
+  if (charColorCount > 0) flags2 |= TFLAG2_HAS_CHAR_COLORS;
   out[pos++] = flags2;
 
   out[pos++] = ROTATION_TO_BITS[text.rotation ?? 0] & 0x03;
@@ -2353,6 +2373,21 @@ function writeText(
   // v31+ free rotation (i16), after effects.
   if (text.angleDeg) {
     view.setInt16(pos, encodeAngleDeg(text.angleDeg), true); pos += 2;
+  }
+
+  // v47+ per-character brush colors, last in the record: u16 count, then
+  // u16 code-point index + rgb per non-null override.
+  if (charColorCount > 0) {
+    view.setUint16(pos, charColorCount, true); pos += 2;
+    const charColors = text.style.charColors!;
+    for (let i = 0; i < charColors.length; i++) {
+      const c = charColors[i];
+      if (!c) continue;
+      view.setUint16(pos, i, true); pos += 2;
+      out[pos++] = c.r & 0xff;
+      out[pos++] = c.g & 0xff;
+      out[pos++] = c.b & 0xff;
+    }
   }
 
   return pos;
@@ -2464,6 +2499,19 @@ function readText(
   // v43+ fixed-size mode. Pure flag (no payload), always written 0 before
   // v43, so the presence bit alone is a safe gate here too.
   if (flags2 & TFLAG2_FIXED_SIZE) text.fixedSize = true;
+  // v47+ per-character brush colors, last in the record. Rebuilt as a dense
+  // null-filled array up to the highest written index (unset = inherit).
+  if (flags2 & TFLAG2_HAS_CHAR_COLORS) {
+    const count = view.getUint16(pos, true); pos += 2;
+    const charColors: (RGBColor | null)[] = [];
+    for (let i = 0; i < count; i++) {
+      const idx = view.getUint16(pos, true); pos += 2;
+      const cr = data[pos++], cg = data[pos++], cb = data[pos++];
+      while (charColors.length < idx) charColors.push(null);
+      charColors[idx] = { r: cr, g: cg, b: cb };
+    }
+    style.charColors = charColors;
+  }
 
   return { text, pos };
 }

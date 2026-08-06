@@ -25,7 +25,7 @@ import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
 import { paintToSvg, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
-import { DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
+import { charColorRuns, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
 import { STICKER_BORDER_CELLS, STICKER_SHADOW_CELLS, stickerColors } from './stickerStyle';
 import { resolveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
 
@@ -367,6 +367,13 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
       ` fill="${colors.bg}" stroke="${colors.fg}" stroke-width="${bw}"` +
       ` filter="url(#${filterId})"/>`;
   }
+  // Brush-colored characters (`charColors`) override the base fill per run
+  // of same-colored characters — tspans inside the line's <text>, split by
+  // the SAME rule the DOM layer splits its spans (charColorRuns), so the two
+  // renderers lose kerning at identical boundaries. A sticker's forced ink
+  // and a colorOverride both flatten the text to one color, so both drop
+  // the per-character brushwork.
+  const charColors = colors || override ? undefined : style.charColors;
   for (const line of layout.lines) {
     if (line.text.length === 0) continue;
     // Lines carry the align offset from the shared layout, so the export
@@ -374,7 +381,13 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
     // where CSS's half-leading does.
     const lx = line.x * u;
     const ly = (line.y + lineHeight / 2) * u;
-    inner += `<text x="${lx}" y="${ly}" ${attrs}>${escapeXml(line.text)}</text>`;
+    const runs = charColors ? charColorRuns(line.text, line.start, charColors) : null;
+    const body = runs && runs.some((r) => r.color !== null)
+      ? runs.map((r) => (r.color
+        ? `<tspan fill="rgb(${r.color.r},${r.color.g},${r.color.b})">${escapeXml(r.text)}</tspan>`
+        : `<tspan>${escapeXml(r.text)}</tspan>`)).join('')
+      : escapeXml(line.text);
+    inner += `<text x="${lx}" y="${ly}" ${attrs}>${body}</text>`;
   }
   if (!inner) return '';
   return `<g transform="${parts.join(' ')}">${inner}</g>`;

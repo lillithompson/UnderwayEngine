@@ -1313,6 +1313,15 @@ export interface TextStyle {
   vAlign?: TextVAlign;
   /** Optional outline stroke drawn behind the fill. */
   stroke?: TextStroke;
+  /**
+   * Per-character color overrides (the color tool's brush on text), indexed
+   * by code point into `content` (the `Array.from` walk every layout and
+   * spacing computation uses). `null`/absent entries inherit `color`; the
+   * array may be shorter than the content. Setting the font color as a whole
+   * replaces the brushwork: writers of `color` drop this field. Indices are
+   * positional — a content edit does not remap them.
+   */
+  charColors?: (RGBColor | null)[];
 }
 
 /**
