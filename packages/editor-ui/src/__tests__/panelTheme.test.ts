@@ -102,6 +102,10 @@ describe('object-properties chrome matches the toolbar', () => {
     expect(/optionPill: \{[^}]*borderRadius: 999/s.test(panel)).toBe(true);
     expect(/optionLabel: \{[^}]*color: PUSHDOWN_INACTIVE/s.test(panel)).toBe(true);
     expect(/optionCapsule: \{[^}]*backgroundColor: STATE_ACTIVE/s.test(panel)).toBe(true);
+    // The pushdown's word is 13/600 at every width. A narrow-screen override
+    // that shrank it was the one thing keeping the two from matching.
+    expect(/optionLabel: \{[^}]*fontSize: 13, fontWeight: '600'/s.test(panel)).toBe(true);
+    expect(/optionLabelCompact/.test(panel)).toBe(false);
   });
 
   it('gives the row one sliding capsule, not a fill per option', () => {

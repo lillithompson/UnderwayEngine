@@ -236,7 +236,7 @@ interface OptionSpec {
 //
 // It keeps the GridButton's flex cell and 48pt height so the row doesn't
 // resize or reflow when a swipe swaps the two pages — only the contents change.
-function OptionPill({ spec, selected, width, compact }: {
+function OptionPill({ spec, selected, width }: {
   spec: OptionSpec;
   /** True when this option's submenu is the open one — colors the word for the
    *  capsule sliding underneath it. */
@@ -244,7 +244,6 @@ function OptionPill({ spec, selected, width, compact }: {
   /** The row's constant capsule width; 0 before the row has been measured, when
    *  the word falls back to hugging its own content. */
   width: number;
-  compact: boolean;
 }) {
   const lit = selected || !!spec.toggled;
   return (
@@ -270,7 +269,7 @@ function OptionPill({ spec, selected, width, compact }: {
           </View>
         ) : null}
         <Text
-          style={[styles.optionLabel, compact && styles.optionLabelCompact, lit && styles.optionLabelActive]}
+          style={[styles.optionLabel, lit && styles.optionLabelActive]}
           numberOfLines={1}
         >
           {spec.caption ?? spec.label}
@@ -1050,13 +1049,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
 
   const activeButtons: React.ReactNode[] = showType
     ? typeSpecs!.map((spec, i) => (
-        <OptionPill
-          key={spec.key}
-          spec={spec}
-          selected={i === selectedOption}
-          width={capsule.width}
-          compact={compact}
-        />
+        <OptionPill key={spec.key} spec={spec} selected={i === selectedOption} width={capsule.width} />
       ))
     : row1;
   const sidePad = optionRowSidePad(columns, activeButtons.length);
@@ -1339,10 +1332,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     maxWidth: '100%', height: OPTION_CAPSULE_HEIGHT, paddingHorizontal: 10, borderRadius: 999,
   },
+  // 13/600, the toolbar line-mode pushdown's word, at every width. Narrow
+  // screens used to drop this to 11 to keep the longest words whole; matching
+  // the pushdown matters more, and a word that outgrows its cell ellipsizes.
   optionLabel: { flexShrink: 1, color: PUSHDOWN_INACTIVE, fontSize: 13, fontWeight: '600' },
-  // Narrow screens pack up to six of these into the row; drop a couple of
-  // points rather than ellipsing words like "Endpoints".
-  optionLabelCompact: { fontSize: 11 },
   optionLabelActive: { color: '#ffffff' },
   // A color-valued option (the frame's Fill) keeps a small swatch ahead of its
   // word — on/off the pill can say itself, a color it can't.
