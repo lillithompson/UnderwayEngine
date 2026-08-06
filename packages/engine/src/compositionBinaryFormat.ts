@@ -359,7 +359,12 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      gridLevel ≥ −1 derive the legacy ×4 scale, so their coordinate bytes
 //      are identical to v44; the version gate exists because v44- files
 //      with a negative gridLevel were nonetheless WRITTEN at ×4.
-const FORMAT_VERSION = 45;
+// v46: SVG records persist `shapeKind === 'polygon'` (the polygon tool's tag,
+//      the analogue of v21's rectangle bit). Pure flag, no payload: presence
+//      rides flags4 bit 0x10, which was always written 0 before, so no older
+//      file can be misread as carrying it; a file without it loads shapeKind
+//      undefined and the object classifies as a generic closed 'shape'.
+const FORMAT_VERSION = 46;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -616,8 +621,8 @@ const LINE_DIR_DIAGONAL = 2;
 // v20+ subpath flags.
 const FLAG2_HAS_SUBPATHS = 0x10;
 const FLAG2_HAS_LOCAL_SUBPATHS = 0x20;
-// v21+ rectangle presence flag. Presence-only â€” `'rectangle'` is the only
-// legal `shapeKind` value so no extra bytes are written.
+// v21+ rectangle presence flag. Presence-only â€” one bit per `shapeKind`
+// value, so no extra bytes are written (polygon's is FLAG4_SVG_IS_POLYGON).
 const FLAG2_IS_RECTANGLE = 0x40;
 // v35+: per-object stroke block present (payload last in the SVG record,
 // after angleDeg). Rides the last free flags2 bit â€” flags3 is fully spent.
@@ -644,6 +649,9 @@ const FLAG4_SVG_HAS_PATTERN_FILE_ID = 0x01;
 const FLAG4_SVG_HAS_FILL = 0x02; // v40+
 const FLAG4_SVG_HAS_ENDPOINTS = 0x04; // v41+
 const FLAG4_SVG_HAS_OPACITY = 0x08; // v42+ (opacity + edgeSoften, two u8s)
+// v46+ presence flag for shapeKind='polygon' (flags2's rectangle bit 0x40 has
+// no free sibling — flags2 is fully spent — so the polygon tag lives here).
+const FLAG4_SVG_IS_POLYGON = 0x10;
 
 // v29+ image rotation-byte bits. The image `flags` byte is fully
 // consumed (0x01..0x80), so tint/effects presence rides the spare high
@@ -1413,6 +1421,7 @@ function writeSVG(
   if (svg.fill) flags4 |= FLAG4_SVG_HAS_FILL;
   if (hasSVGEndpoints(svg.endpoints)) flags4 |= FLAG4_SVG_HAS_ENDPOINTS;
   if (hasSVGOpacity(svg)) flags4 |= FLAG4_SVG_HAS_OPACITY;
+  if (svg.shapeKind === 'polygon') flags4 |= FLAG4_SVG_IS_POLYGON;
   out[pos++] = flags4;
 
   let rotBits = ROTATION_TO_BITS[svg.rotation ?? 0] & 0x03;
@@ -1638,6 +1647,7 @@ function readSVG(
     pos = r3.pos;
   }
   if (version >= 21 && (flags2 & FLAG2_IS_RECTANGLE)) svg.shapeKind = 'rectangle';
+  if (version >= 46 && (flags4 & FLAG4_SVG_IS_POLYGON)) svg.shapeKind = 'polygon';
   if (flags2 & FLAG2_HAS_LINE_DIRECTION) {
     const dirBits = (flags2 >> 2) & 0x03;
     svg.lineDirection = dirBits === LINE_DIR_HORIZONTAL ? 'horizontal'

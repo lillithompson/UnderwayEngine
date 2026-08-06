@@ -211,3 +211,39 @@ export function computeRectSegments(
     { kind: 'line', start: [sx, ey], end: [sx, sy] },
   ];
 }
+
+/**
+ * Produce `sides` line segments forming a closed regular polygon inscribed
+ * in the circle that fits the box with opposite corners (sx, sy) and
+ * (ex, ey) — center at the box's midpoint, radius half its shorter side
+ * (for the square box the polygon tool drags, that IS the inscribed
+ * circle). The first vertex sits at the top (12 o'clock) and winding is
+ * clockwise in screen-y-down coords, matching {@link computeRectSegments}
+ * and computeCircleSegments.
+ *
+ * Each vertex is computed once and its coordinates reused for both the
+ * incoming end and the outgoing start, so consecutive endpoints compare
+ * bit-for-bit equal and the chain closes without an epsilon.
+ */
+export function computeRegularPolygonSegments(
+  sx: number, sy: number,
+  ex: number, ey: number,
+  sides: number,
+): PathSegment[] {
+  const n = Math.max(3, Math.round(sides));
+  const cx = (sx + ex) / 2;
+  const cy = (sy + ey) / 2;
+  const r = Math.min(Math.abs(ex - sx), Math.abs(ey - sy)) / 2;
+  const verts: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    verts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+  const segments: PathSegment[] = [];
+  for (let i = 0; i < n; i++) {
+    const s = verts[i];
+    const e = verts[(i + 1) % n];
+    segments.push({ kind: 'line', start: [s[0], s[1]], end: [e[0], e[1]] });
+  }
+  return segments;
+}

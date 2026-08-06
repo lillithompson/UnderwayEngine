@@ -159,7 +159,7 @@ export interface BorderModel {
 /** Which vector subtype the selection is, so the panel can offer the option
  *  set that subtype's menu defines (see `logic/svgEdit`). Mirrors the engine's
  *  `SVGSubtype` without importing it — the package stays engine-agnostic. */
-export type SVGSubtypeKind = 'line' | 'arc' | 'rectangle' | 'circle' | 'shape' | 'stroke';
+export type SVGSubtypeKind = 'line' | 'arc' | 'rectangle' | 'circle' | 'polygon' | 'shape' | 'stroke';
 
 /** What sits at one loose end of an open path, and how that end is capped.
  *  Mirror the engine's `SVGEndMarker` / `SVGEndCap` without importing them. */

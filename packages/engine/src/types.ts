@@ -845,7 +845,7 @@ export interface SVGObject {
   name?: string;
   /** Geometric shape kind at creation time. Persists through duplication
    *  and renaming so scaling/selection behavior stays correct. */
-  shapeKind?: 'rectangle';
+  shapeKind?: 'rectangle' | 'polygon';
   segments: PathSegment[];
   color: RGBColor;
   /** Additional colored sub-paths. When present, the object renders multiple

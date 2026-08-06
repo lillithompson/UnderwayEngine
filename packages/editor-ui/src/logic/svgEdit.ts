@@ -43,7 +43,8 @@ const STROKE_ICON: Record<SVGSubtypeKind, string> = {
   arc: 'vector-radius',
   rectangle: 'vector-rectangle',
   circle: 'vector-circle',
-  shape: 'vector-polygon',
+  polygon: 'vector-polygon',
+  shape: 'shape-outline',
   stroke: 'vector-polyline',
 };
 
@@ -51,15 +52,16 @@ const STROKE_ICON: Record<SVGSubtypeKind, string> = {
  * Whether a subtype offers the Fill bar.
  *
  * A fill needs an enclosed interior to paint, so it is closed-path only — and
- * of the closed subtypes only the two the shape tools author (`rectangle`, from
- * the line tool's rectangle mode, and `circle`, from the arc tool's) take it
- * today. `shape` is closed too and is the obvious next candidate, but it also
- * covers join / union results and the preset library, whose fills are authored
- * elsewhere; it stays out until that is reconciled rather than being given a
- * second, competing source of fill.
+ * of the closed subtypes only the three the shape tools author (`rectangle`,
+ * from the line tool's rectangle mode, `circle`, from the arc tool's, and
+ * `polygon`, from the polygon tool) take it today. `shape` is closed too and
+ * is the obvious next candidate, but it also covers join / union results and
+ * the preset library, whose fills are authored elsewhere; it stays out until
+ * that is reconciled rather than being given a second, competing source of
+ * fill.
  */
 export function svgHasFill(subtype: SVGSubtypeKind): boolean {
-  return subtype === 'rectangle' || subtype === 'circle';
+  return subtype === 'rectangle' || subtype === 'circle' || subtype === 'polygon';
 }
 
 /**
@@ -78,15 +80,15 @@ export function svgHasEndpoints(subtype: SVGSubtypeKind): boolean {
  * Whether a subtype offers the Opacity bar (whole-object opacity + edge
  * soften).
  *
- * The same two closed shapes the Fill bar takes (`rectangle`, `circle`) —
- * softening an edge into transparency needs an enclosed silhouette to fade,
- * and the open paths already read as weightless lines. Kept a separate
- * predicate from {@link svgHasFill} rather than an alias because the two menus
- * answer different questions and are free to diverge (e.g. `shape` could take
- * Opacity before its fill story is reconciled).
+ * The same closed shapes the Fill bar takes (`rectangle`, `circle`,
+ * `polygon`) — softening an edge into transparency needs an enclosed
+ * silhouette to fade, and the open paths already read as weightless lines.
+ * Kept a separate predicate from {@link svgHasFill} rather than an alias
+ * because the two menus answer different questions and are free to diverge
+ * (e.g. `shape` could take Opacity before its fill story is reconciled).
  */
 export function svgHasOpacity(subtype: SVGSubtypeKind): boolean {
-  return subtype === 'rectangle' || subtype === 'circle';
+  return subtype === 'rectangle' || subtype === 'circle' || subtype === 'polygon';
 }
 
 /** The option menu for one vector subtype, in display order. Stroke leads — it
@@ -110,13 +112,15 @@ export function svgEditOptions(subtype: SVGSubtypeKind): readonly SVGEditOption[
  *  - `position` (inside / center / outside) needs an enclosed area to align
  *    against, so it is closed-path only: a line, an arc and a freehand stroke
  *    have no inside and the row is dropped rather than shown inert.
- *  - `radius` rounds the path's own corners, which is a rectangle control.
- *    A circle has no corners, and the other subtypes either have none or
- *    aren't offered the control. */
+ *  - `radius` rounds the path's own corners — a control for the subtypes
+ *    whose corners are LINE→LINE joins (`roundPathCorners` only rounds
+ *    those): the rectangle and the polygon. A circle has no corners, and the
+ *    other subtypes either have none or aren't offered the control. */
 export function svgStrokeRows(subtype: SVGSubtypeKind): { radius: boolean; position: boolean } {
   return {
-    radius: subtype === 'rectangle',
-    position: subtype === 'rectangle' || subtype === 'circle' || subtype === 'shape',
+    radius: subtype === 'rectangle' || subtype === 'polygon',
+    position: subtype === 'rectangle' || subtype === 'circle' || subtype === 'polygon'
+      || subtype === 'shape',
   };
 }
 
@@ -127,6 +131,7 @@ export const SVG_EDIT_OPTIONS: Readonly<Record<SVGSubtypeKind, readonly SVGEditO
   arc: svgEditOptions('arc'),
   rectangle: svgEditOptions('rectangle'),
   circle: svgEditOptions('circle'),
+  polygon: svgEditOptions('polygon'),
   shape: svgEditOptions('shape'),
   stroke: svgEditOptions('stroke'),
 };

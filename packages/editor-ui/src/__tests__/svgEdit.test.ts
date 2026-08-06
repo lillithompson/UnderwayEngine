@@ -7,7 +7,10 @@
 import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
 import type { SVGSubtypeKind } from '../adapter';
 
-const SUBTYPES: SVGSubtypeKind[] = ['line', 'arc', 'rectangle', 'circle', 'shape', 'stroke'];
+const SUBTYPES: SVGSubtypeKind[] = ['line', 'arc', 'rectangle', 'circle', 'polygon', 'shape', 'stroke'];
+
+/** The closed subtypes the shape tools author — the ones with Fill/Opacity. */
+const FILLED: SVGSubtypeKind[] = ['rectangle', 'circle', 'polygon'];
 
 describe('svgEditOptions', () => {
   it('gives every vector subtype a Stroke option — a path is its stroke', () => {
@@ -18,10 +21,11 @@ describe('svgEditOptions', () => {
     }
   });
 
-  it('adds Fill then Opacity to the two shapes with an interior, and to nothing else', () => {
-    expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity']);
-    expect(svgEditOptions('circle').map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity']);
-    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'circle')) {
+  it('adds Fill then Opacity to the shapes with an interior, and to nothing else', () => {
+    for (const subtype of FILLED) {
+      expect(svgEditOptions(subtype).map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity']);
+    }
+    for (const subtype of SUBTYPES.filter((s) => !FILLED.includes(s))) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('fill');
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('opacity');
     }
@@ -31,7 +35,7 @@ describe('svgEditOptions', () => {
     for (const subtype of ['line', 'arc', 'stroke'] as SVGSubtypeKind[]) {
       expect(svgEditOptions(subtype).map((o) => o.action)).toEqual(['stroke', 'endpoints']);
     }
-    for (const subtype of ['rectangle', 'circle', 'shape'] as SVGSubtypeKind[]) {
+    for (const subtype of ['rectangle', 'circle', 'polygon', 'shape'] as SVGSubtypeKind[]) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('endpoints');
     }
   });
@@ -62,7 +66,7 @@ describe('svgEditOptions', () => {
   });
 
   it('labels and glyphs the Fill option the same way whichever shape it is on', () => {
-    for (const subtype of ['rectangle', 'circle'] as SVGSubtypeKind[]) {
+    for (const subtype of FILLED) {
       const fill = svgEditOptions(subtype).find((o) => o.action === 'fill')!;
       expect(fill.label).toBe('Fill');
       expect(fill.icon).toBe('format-color-fill');
@@ -70,7 +74,7 @@ describe('svgEditOptions', () => {
   });
 
   it('labels and glyphs the Opacity option the same way whichever shape it is on', () => {
-    for (const subtype of ['rectangle', 'circle'] as SVGSubtypeKind[]) {
+    for (const subtype of FILLED) {
       const op = svgEditOptions(subtype).find((o) => o.action === 'opacity')!;
       expect(op.label).toBe('Opacity');
       expect(op.icon).toBe('opacity');
@@ -83,6 +87,7 @@ describe('svgEditOptions', () => {
     expect(svgEditOptions('rectangle')[0].icon).toBe('vector-rectangle');
     expect(svgEditOptions('circle')[0].icon).toBe('vector-circle');
     expect(svgEditOptions('line')[0].icon).toBe('vector-line');
+    expect(svgEditOptions('polygon')[0].icon).toBe('vector-polygon');
   });
 
   it('falls back to the freehand glyph for an unrecognized subtype', () => {
@@ -111,9 +116,8 @@ describe('svgEditOptions', () => {
 
 describe('svgHasFill', () => {
   it('is true only for the closed shapes the shape tools author', () => {
-    expect(svgHasFill('rectangle')).toBe(true);
-    expect(svgHasFill('circle')).toBe(true);
-    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'circle')) {
+    for (const subtype of FILLED) expect(svgHasFill(subtype)).toBe(true);
+    for (const subtype of SUBTYPES.filter((s) => !FILLED.includes(s))) {
       expect(svgHasFill(subtype)).toBe(false);
     }
   });
@@ -137,9 +141,8 @@ describe('svgHasFill', () => {
 
 describe('svgHasOpacity', () => {
   it('is true only for the closed shapes the shape tools author', () => {
-    expect(svgHasOpacity('rectangle')).toBe(true);
-    expect(svgHasOpacity('circle')).toBe(true);
-    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'circle')) {
+    for (const subtype of FILLED) expect(svgHasOpacity(subtype)).toBe(true);
+    for (const subtype of SUBTYPES.filter((s) => !FILLED.includes(s))) {
       expect(svgHasOpacity(subtype)).toBe(false);
     }
   });
@@ -157,6 +160,7 @@ describe('svgStrokeRows', () => {
     // Closed paths enclose an area…
     expect(svgStrokeRows('rectangle').position).toBe(true);
     expect(svgStrokeRows('circle').position).toBe(true);
+    expect(svgStrokeRows('polygon').position).toBe(true);
     expect(svgStrokeRows('shape').position).toBe(true);
     // …open ones do not, so the row is dropped rather than shown inert.
     expect(svgStrokeRows('line').position).toBe(false);
@@ -164,9 +168,10 @@ describe('svgStrokeRows', () => {
     expect(svgStrokeRows('stroke').position).toBe(false);
   });
 
-  it('offers Radius only for a rectangle', () => {
+  it('offers Radius only for the subtypes with line→line corners to round', () => {
     expect(svgStrokeRows('rectangle').radius).toBe(true);
-    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle')) {
+    expect(svgStrokeRows('polygon').radius).toBe(true);
+    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'polygon')) {
       expect(svgStrokeRows(subtype).radius).toBe(false);
     }
   });
@@ -196,6 +201,7 @@ describe('svgHasEndpoints', () => {
   it('is false for every closed subtype — no loose end to decorate', () => {
     expect(svgHasEndpoints('rectangle')).toBe(false);
     expect(svgHasEndpoints('circle')).toBe(false);
+    expect(svgHasEndpoints('polygon')).toBe(false);
     expect(svgHasEndpoints('shape')).toBe(false);
   });
 

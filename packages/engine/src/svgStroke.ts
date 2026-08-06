@@ -21,10 +21,12 @@ import { SVG_STROKE_WIDTH } from './svgExport';
  * - `arc`    — a single curved segment (the arc tool)
  * - `rectangle` — a closed axis-aligned 4-line box (line tool, rectangle mode)
  * - `circle` — a closed path made entirely of arcs (the arc tool, circle mode)
+ * - `polygon` — a closed regular N-gon (the polygon tool). Tag-only: after a
+ *   resize the geometry is any closed polyline, so `shapeKind` carries it.
  * - `shape`  — any other closed path (the preset shapes, join/union results)
  * - `stroke` — any other open path: the freehand draw tool's polyline
  */
-export type SVGSubtype = 'line' | 'arc' | 'rectangle' | 'circle' | 'shape' | 'stroke';
+export type SVGSubtype = 'line' | 'arc' | 'rectangle' | 'circle' | 'polygon' | 'shape' | 'stroke';
 
 const EPS = 1e-6;
 
@@ -41,8 +43,11 @@ export function svgSubtype(obj: Pick<SVGObject, 'segments' | 'shapeKind'>): SVGS
   if (segs.length === 0) return 'stroke';
   if (segs.length === 1) return segs[0].kind === 'arc' ? 'arc' : 'line';
   // `shapeKind` is the authored truth for a rectangle and survives scaling and
-  // rotation, so it outranks the geometric sniff below.
+  // rotation, so it outranks the geometric sniff below. A polygon has no
+  // sniff at all — a rotated or resized N-gon is indistinguishable from any
+  // closed polyline — so the tag is its only route to this subtype.
   if (obj.shapeKind === 'rectangle') return 'rectangle';
+  if (obj.shapeKind === 'polygon') return 'polygon';
   if (!isClosedPath(segs)) return 'stroke';
   if (segs.every((s) => s.kind === 'arc')) return 'circle';
   if (segs.length === 4 && segs.every((s) => s.kind === 'line') && allAxisAligned(segs)) {
