@@ -893,9 +893,11 @@ export async function saveGridSnap(enabled: boolean): Promise<void> {
   await storage.setItem(GRID_SNAP_KEY, JSON.stringify(enabled));
 }
 
-export async function loadGridSnap(): Promise<boolean> {
+/** null when the user has never set the toggle — the caller (gridSnapStore)
+ *  then falls back to whatever default the open format asks for. */
+export async function loadGridSnap(): Promise<boolean | null> {
   const raw = await storage.getItem(GRID_SNAP_KEY);
-  if (!raw) return false;
+  if (!raw) return null;
   return JSON.parse(raw) === true;
 }
 
