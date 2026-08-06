@@ -1,14 +1,18 @@
 import { OBJECT_PANEL_HEIGHT } from '../theme';
 
-// Bottom-edge layout for the object-properties panel and its slide-up submenus.
+// Bottom-edge layout for the object-properties panel and its submenus.
 //
-// Both surfaces end in a row of carousel dots. Where those dots sit depends on
-// the device: on a notched phone they drop *into* the home-indicator strip (the
-// "unsafe" space at the very bottom) rather than sitting above it, so the panel
-// reclaims the dot row's height and the whole sheet reads shorter. With no
-// inset (desktop web) there is no strip to drop into, so the dots stay in flow.
-// Callers pass `dotsInSafeArea` — keyed off a measured inset, not the platform:
-// the editor runs as the web bundle even inside the native iOS WebView.
+// The panel ends in a row of carousel dots (which of its two pages is showing).
+// Where those dots sit depends on the device: on a notched phone they drop
+// *into* the home-indicator strip (the "unsafe" space at the very bottom)
+// rather than sitting above it, so the panel reclaims the dot row's height and
+// the whole sheet reads shorter. With no inset (desktop web) there is no strip
+// to drop into, so the dots stay in flow. Callers pass `dotsInSafeArea` — keyed
+// off a measured inset, not the platform: the editor runs as the web bundle
+// even inside the native iOS WebView.
+//
+// The submenu bars carry no dots of their own: they stack directly above the
+// panel, so the lit option in its type row is what says which bar is open.
 
 /** Carousel dot diameter. */
 export const OBJECT_DOT_SIZE = 12;
@@ -35,12 +39,6 @@ export function objectPanelLayout(safeBottom: number, dotsInSafeArea: boolean): 
   };
 }
 
-/** Offset of the submenu dots from the bottom of the slide-up layer: clear of
- *  the inset normally, inside it when the dots take the strip over. */
-export function submenuDotsBottom(safeBottom: number, dotsInSafeArea: boolean): number {
-  return (dotsInSafeArea ? 0 : safeBottom) + OBJECT_DOTS_BOTTOM;
-}
-
 /** Flex weight of the empty cell flanking each side of a button row that has
  *  fewer buttons than the row has columns.
  *
@@ -53,4 +51,53 @@ export function submenuDotsBottom(safeBottom: number, dotsInSafeArea: boolean): 
  *  of centre. Half of an odd pad is 1.5, which flex handles exactly. */
 export function optionRowSidePad(columns: number, buttons: number): number {
   return Math.max(0, columns - buttons) / 2;
+}
+
+/** Gap between cells in the option row. Shared with the row's own style so the
+ *  capsule maths and the layout can't disagree about it. */
+export const OPTION_ROW_GAP = 8;
+/** Capsule width ceiling — the toolbar line-mode pushdown's capsule, so a wide
+ *  window doesn't stretch these into slabs. Below it the capsule takes the
+ *  whole cell. */
+export const OPTION_CAPSULE_MAX_WIDTH = 88;
+/** Capsule height: a 13pt word with the pushdown's 4pt vertical padding. */
+export const OPTION_CAPSULE_HEIGHT = 26;
+
+export interface OptionCapsuleLayout {
+  /** One width for every option — the point of the capsule being constant is
+   *  that it can slide between options without resizing on the way. */
+  width: number;
+  /** Left offset of the capsule when option i is selected, one per option. */
+  lefts: number[];
+}
+
+/** Where the sliding selection capsule sits over each option.
+ *
+ *  The row is `columns` equal cells (fixed at the larger page's count) plus a
+ *  weighted pad at each end; see {@link optionRowSidePad}. One flex unit is
+ *  therefore the cell width, and every offset falls out of it. `rowWidth` comes
+ *  from the row's own onLayout — 0 before the first measure, which yields a
+ *  zero-width capsule the caller can skip drawing. */
+export function optionCapsuleLayout(
+  rowWidth: number,
+  columns: number,
+  buttons: number,
+  gap: number = OPTION_ROW_GAP,
+  maxWidth: number = OPTION_CAPSULE_MAX_WIDTH,
+): OptionCapsuleLayout {
+  if (rowWidth <= 0 || columns <= 0 || buttons <= 0) return { width: 0, lefts: [] };
+  const sidePad = optionRowSidePad(columns, buttons);
+  // The pads are real children, so they carry gaps of their own.
+  const children = buttons + (sidePad > 0 ? 2 : 0);
+  const gapTotal = Math.max(0, children - 1) * gap;
+  const unit = Math.max(0, rowWidth - gapTotal) / columns;
+  const width = Math.min(unit, maxWidth);
+  // Centre the capsule in its cell, so a capped width stays put rather than
+  // hugging the cell's left edge.
+  const inset = (unit - width) / 2;
+  const start = sidePad > 0 ? sidePad * unit + gap : 0;
+  return {
+    width,
+    lefts: Array.from({ length: buttons }, (_, i) => start + i * (unit + gap) + inset),
+  };
 }

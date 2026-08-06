@@ -5,7 +5,15 @@ import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectProper
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, swipeDismissDirection } from '../logic/imageEdit';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
-import { OBJECT_DOTS_BOTTOM, OBJECT_DOT_SIZE, objectPanelLayout, optionRowSidePad, submenuDotsBottom } from '../logic/panelLayout';
+import {
+  OBJECT_DOTS_BOTTOM,
+  OBJECT_DOT_SIZE,
+  OPTION_CAPSULE_HEIGHT,
+  OPTION_ROW_GAP,
+  objectPanelLayout,
+  optionCapsuleLayout,
+  optionRowSidePad,
+} from '../logic/panelLayout';
 import { ColorSwatchFill } from './ColorSwatch';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
@@ -44,13 +52,18 @@ import {
 // actions (rotate / flip / copy / lock / delete) are bare icons, universal
 // enough to need no caption, while the type-specific options (images: replace
 // / tint / crop / shadow / border; text: edit / type) are word capsules in the
-// toolbar line-mode pushdown's style. A horizontal swipe
-// (either direction) swaps between the two, sliding the row along; the dots
-// below track which is showing. Crop / Shadow / Border / Text open their full editing
-// bar (the taller OBJECT_MENU_HEIGHT), which slides up over the panel as a
-// carousel: a left/right swipe cycles forward/back through the available
-// submenus (dots at the bottom track the position) and a downward swipe
-// dismisses.
+// toolbar line-mode pushdown's style. A horizontal swipe (either direction)
+// swaps between the two, sliding the row along; the dots below track which is
+// showing.
+//
+// Crop / Shadow / Border / Text open their full editing bar (the taller
+// OBJECT_MENU_HEIGHT), which STACKS ABOVE this panel rather than covering it —
+// the bar's bottom edge meets the panel's top, so the options row stays visible
+// underneath and the option that opened the bar wears the pushdown's selection
+// blue to say so. That lit pill is why the bar carries no carousel dots of its
+// own. The bar is still a carousel: a left/right swipe cycles forward/back
+// through the available submenus and a downward swipe dismisses, dropping it
+// back down behind the panel.
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -132,48 +145,131 @@ function GridButton({ label, icon, iconColor, onPress, compact }: {
   );
 }
 
-// One type-specific option: a word on a capsule, borrowed wholesale from the
-// toolbar's line-mode pushdown (Freehand | Line | Arc) — same 13/600 word, same
-// fully-round pill, the same selection blue under the one that's on. No glyph:
-// these options name a thing you're about to open or turn on, and the pushdown
-// makes the case that the word alone carries that better than an icon does.
-//
-// It keeps the GridButton's flex cell and 48pt height so the row doesn't
-// resize or reflow when a swipe swaps the two pages — only the contents change.
-// Most of these options just open a submenu and so are never lit; `active` is
-// for the ones that are genuinely a toggle (Repeat, Invert).
-function OptionPill({ label, caption, active, tint, swatchColor, onPress, compact }: {
+/** The option row's single selection capsule: one constant width for the whole
+ *  row, parked over whichever option opened the bar you're looking at.
+ *
+ *  It SLIDES only when moving between two options. Arriving from nowhere — a
+ *  bar opening, or the type row swiping in — it fades up in place instead,
+ *  because sliding in from a cell that was never selected would be a lie about
+ *  where it came from. `shown` outlives `at` so the fade-out has something to
+ *  animate against.
+ *
+ *  Its own component because the panel returns early when it isn't mounted, and
+ *  these hooks must not sit behind that.  */
+function OptionCapsule({ at, width }: {
+  /** Left offset of the selected cell, or null when nothing is selected. */
+  at: number | null;
+  /** The row's constant capsule width; 0 before the row has been measured. */
+  width: number;
+}) {
+  const x = useRef(new Animated.Value(at ?? 0)).current;
+  const fade = useRef(new Animated.Value(0)).current;
+  const [shown, setShown] = useState(at != null);
+  const prevAt = useRef<number | null>(null);
+  useEffect(() => {
+    const from = prevAt.current;
+    prevAt.current = at;
+    if (at == null) {
+      const anim = Animated.timing(fade, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true });
+      anim.start(({ finished }) => { if (finished) setShown(false); });
+      return () => anim.stop();
+    }
+    setShown(true);
+    if (from == null) {
+      x.setValue(at);
+      const anim = Animated.timing(fade, { toValue: 1, duration: PANEL_ANIM_MS, useNativeDriver: true });
+      anim.start();
+      return () => anim.stop();
+    }
+    fade.setValue(1);
+    const anim = Animated.timing(x, { toValue: at, duration: PANEL_ANIM_MS, useNativeDriver: true });
+    anim.start();
+    return () => anim.stop();
+  }, [at, x, fade]);
+
+  if (!shown || width <= 0) return null;
+  return (
+    // Untappable, so it can't swallow a press meant for the option it sits on.
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.optionCapsule, { width, opacity: fade, transform: [{ translateX: x }] }]}
+    />
+  );
+}
+
+/** One type-specific option, described rather than rendered — the row needs the
+ *  set before it can lay the sliding capsule over the selected one. */
+interface OptionSpec {
+  key: string;
+  /** Accessibility name (often longer than the visible word). */
   label: string;
+  /** Visible word, when it differs from `label`. */
   caption?: string;
-  /** Omit for an option that opens something (no on/off state to show). */
-  active?: boolean;
-  /** Fill for the lit pill; defaults to the toolbar's selection blue. */
+  /** The submenu this option opens. Options carrying one share the row's single
+   *  sliding capsule; the rest never take it. */
+  sub?: SubmenuKey;
+  /** An independent on/off state (Repeat, Invert) — not a submenu, so it wears
+   *  a capsule of its own rather than moving the shared one. */
+  toggled?: boolean;
+  /** Fill for a toggled option's capsule; defaults to selection blue. */
   tint?: string;
   /** Renders a small swatch of this color before the word — for an option
    *  whose state is a color rather than on/off (the frame's Fill). */
   swatchColor?: RGBLike;
   onPress?: () => void;
+}
+
+// One type-specific option: a word on a capsule, borrowed wholesale from the
+// toolbar's line-mode pushdown (Freehand | Line | Arc) — same 13/600 word, same
+// fully-round capsule, the same selection blue under the one that's on. No
+// glyph: these options name a thing you're about to open or turn on, and the
+// pushdown makes the case that the word alone carries that better than an icon.
+//
+// The SELECTED option's capsule isn't drawn here — the row owns one shared
+// capsule that slides between cells (see `capsuleX`), so this draws only the
+// word. A `toggled` option is the exception: its state is independent of which
+// bar is open, so it carries a static capsule of its own.
+//
+// It keeps the GridButton's flex cell and 48pt height so the row doesn't
+// resize or reflow when a swipe swaps the two pages — only the contents change.
+function OptionPill({ spec, selected, width, compact }: {
+  spec: OptionSpec;
+  /** True when this option's submenu is the open one — colors the word for the
+   *  capsule sliding underneath it. */
+  selected: boolean;
+  /** The row's constant capsule width; 0 before the row has been measured, when
+   *  the word falls back to hugging its own content. */
+  width: number;
   compact: boolean;
 }) {
+  const lit = selected || !!spec.toggled;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={active === undefined ? undefined : { selected: active }}
-      onPress={onPress}
+      accessibilityLabel={spec.label}
+      accessibilityState={spec.sub || spec.toggled !== undefined ? { selected: lit } : undefined}
+      onPress={spec.onPress}
       style={styles.optionCell}
     >
-      <View style={[styles.optionPill, active ? { backgroundColor: tint ?? STATE_ACTIVE } : null]}>
-        {swatchColor ? (
+      <View
+        style={[
+          styles.optionPill,
+          width > 0 ? { width } : null,
+          // Only a toggle paints its own capsule; a selected submenu option is
+          // covered by the shared one sliding under it.
+          spec.toggled ? { backgroundColor: spec.tint ?? STATE_ACTIVE } : null,
+        ]}
+      >
+        {spec.swatchColor ? (
           <View style={styles.optionSwatch}>
-            <ColorSwatchFill color={swatchColor} />
+            <ColorSwatchFill color={spec.swatchColor} />
           </View>
         ) : null}
         <Text
-          style={[styles.optionLabel, compact && styles.optionLabelCompact, active && styles.optionLabelActive]}
+          style={[styles.optionLabel, compact && styles.optionLabelCompact, lit && styles.optionLabelActive]}
           numberOfLines={1}
         >
-          {caption ?? label}
+          {spec.caption ?? spec.label}
         </Text>
       </View>
     </Pressable>
@@ -226,6 +322,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // row follow the finger first, then completes in the drag direction.
   const swapX = useRef(new Animated.Value(0)).current;
   const swapping = useRef(false);
+  // Measured width of the button row — the cell geometry the selection capsule
+  // slides through is derived from it (optionCapsuleLayout).
+  const [rowWidth, setRowWidth] = useState(0);
   // Latest runner + swipe-eligibility, so the once-created PanResponder always
   // uses the current window width and set availability.
   const runSwapRef = useRef<(dir: -1 | 1) => void>(() => {});
@@ -324,12 +423,19 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // carousel swaps it (all via openSubmenu).
   const [textPage, setTextPage] = useState<'font' | 'align'>('font');
   // ── Submenu carousel (Crop / Shadow / Border / Text) ────────────────
-  // The open submenu slides up over the panel; a left/right swipe cycles
-  // forward/back through the available submenus, and a downward swipe dismisses.
-  // Carousel dots at the bottom track the position. The submenus are separate
-  // bars but only one shows at a time, so this drives a single layer: `layerY`
-  // for the vertical open/dismiss, `navX` for the horizontal carousel slide.
-  const submenuSlide = OBJECT_MENU_HEIGHT + safeBottom;
+  // The open submenu stacks ABOVE the panel rather than over it: its bottom
+  // edge abuts the panel's top, so the bar and the options row that summoned it
+  // are both on screen and the lit option says which bar you're looking at. A
+  // left/right swipe cycles forward/back through the available submenus, and a
+  // downward swipe dismisses. The submenus are separate bars but only one shows
+  // at a time, so this drives a single layer: `layerY` for the vertical
+  // open/dismiss, `navX` for the horizontal carousel slide.
+  //
+  // The bar needs no bottom inset of its own — the panel beneath it owns the
+  // home-indicator strip. Its height doubles as its slide distance: pushed down
+  // by exactly that, it sits wholly behind the panel (which draws over it) and
+  // below the screen edge, so it reveals by rising out from under the panel.
+  const barHeight = OBJECT_MENU_HEIGHT;
   const svgFillable = !!model.showSvgOptions && svgHasFill(model.svgSubtype ?? 'stroke');
   const svgEndable = !!model.showSvgOptions && svgHasEndpoints(model.svgSubtype ?? 'stroke');
   const svgOpacityable = !!model.showSvgOptions && svgHasOpacity(model.svgSubtype ?? 'stroke');
@@ -377,8 +483,27 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // change so it can't linger true over a different bar.
   const fontSheetOpenRef = useRef(false);
 
+  /** True while `key`'s bar is the one showing — lights that option's pill, so
+   *  the options row doubles as the carousel's position indicator now that the
+   *  bar no longer covers it. */
+  const subOpen = (key: SubmenuKey) => activeSub === key;
+
+  /** The bar a vector option opens. svgEdit's action names match the submenu
+   *  keys except where the panel has to disambiguate — a shape's `fill` is the
+   *  svgFill bar, not an image's Tint. Named because both the press handler and
+   *  the lit state need it, and they must agree. */
+  const svgActionSubmenu = (action: string): SubmenuKey =>
+    action === 'fill' ? 'svgFill'
+    : action === 'endpoints' ? 'endpoints'
+    : action === 'opacity' ? 'opacity'
+    : 'stroke';
+
   const openSubmenu = (key: SubmenuKey) => {
     fontSheetOpenRef.current = false;
+    // The bar and the row that summoned it are on screen together now, so the
+    // row has to be the TYPE page for its lit option to be visible. A swipe can
+    // still take you to the common actions afterwards.
+    setShowTypeRow(true);
     if (key === 'tint') model.onTintOpenChange?.(true);
     else if (key === 'crop') model.onCropOpenChange?.(true);
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
@@ -422,18 +547,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
       prevSubmenuOpen.current = true;
       setSubmenuMounted(true);
       navX.setValue(0);
-      layerY.setValue(submenuSlide);
+      layerY.setValue(barHeight);
       const anim = Animated.timing(layerY, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true });
       anim.start();
       return () => anim.stop();
     }
     if (!submenuOpen && prevSubmenuOpen.current) {
       prevSubmenuOpen.current = false;
-      const anim = Animated.timing(layerY, { toValue: submenuSlide, duration: PANEL_ANIM_MS, useNativeDriver: true });
+      const anim = Animated.timing(layerY, { toValue: barHeight, duration: PANEL_ANIM_MS, useNativeDriver: true });
       anim.start(({ finished }) => { if (finished) setSubmenuMounted(false); });
       return () => anim.stop();
     }
-  }, [submenuOpen, layerY, navX, submenuSlide]);
+  }, [submenuOpen, layerY, navX, barHeight]);
 
   // Carousel navigation. dir −1 = swipe left → forward (next submenu); +1 =
   // swipe right → back. The current bar slides off in the swipe direction, the
@@ -458,6 +583,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   dismissRef.current = dismissSubmenu;
   const canNavRef = useRef(false);
   canNavRef.current = submenuOrder.length > 1;
+
+  // Every submenu folds away with the panel. This matters more than it used to:
+  // the bar is anchored to the panel's top edge rather than the screen's bottom,
+  // so a panel that hid with one still open would drop the bar into the space it
+  // vacated and leave it sitting on the canvas. The per-type fold-aways below
+  // only cover the bars whose selection stopped supporting them.
+  useEffect(() => {
+    if (!model.visible) dismissRef.current();
+  }, [model.visible]);
 
   const submenuPan = useRef(
     PanResponder.create({
@@ -785,105 +919,124 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
 
   // Type-specific options (images: the image-edit set; text: Edit + Type),
   // null when the selection has none — except a multi-selection, which always
-  // has Layout (appended below).
-  let typeOptions: React.ReactNode[] | null = null;
+  // has Layout (appended below). Described rather than rendered, because the
+  // row needs to know WHICH option is selected to park the sliding capsule
+  // over it; the elements come out of these at render time.
+  let typeSpecs: OptionSpec[] | null = null;
   if (model.showImageEdit) {
-    typeOptions = IMAGE_EDIT_OPTIONS
+    typeSpecs = IMAGE_EDIT_OPTIONS
       .filter((opt) => !multi || (opt.action !== 'replace' && opt.action !== 'crop'))
-      .map((opt) => (
-        <OptionPill key={opt.action} label={opt.label} onPress={() => runImageAction(opt.action)} compact={compact} />
-      ));
+      // Every image action but Replace names a bar, and shares its key.
+      .map((opt) => ({
+        key: opt.action,
+        label: opt.label,
+        sub: opt.action === 'replace' ? undefined : (opt.action as SubmenuKey),
+        onPress: () => runImageAction(opt.action),
+      }));
   } else if (model.showFrameOptions) {
     // Frame options: Background (circular color swatch) · Shadow · Border ·
     // Ungroup. Shadow / Border reuse the image effect bars (the frame submenu
     // carousel). Background opens the shared full-screen color picker.
-    typeOptions = [
-      <OptionPill
-        key="background"
-        label="Background color"
-        caption="Fill"
-        swatchColor={model.frameBackgroundColor}
-        onPress={model.onPickFrameBackground}
-        compact={compact}
-      />,
-      <OptionPill key="shadow" label="Shadow" onPress={toggleShadow} compact={compact} />,
-      <OptionPill key="border" label="Border" onPress={toggleBorder} compact={compact} />,
+    typeSpecs = [
+      {
+        key: 'background',
+        label: 'Background color',
+        caption: 'Fill',
+        swatchColor: model.frameBackgroundColor,
+        onPress: model.onPickFrameBackground,
+      },
+      { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: toggleShadow },
+      { key: 'border', label: 'Border', sub: 'border', onPress: toggleBorder },
     ];
     if (model.onUngroup) {
-      typeOptions.push(<OptionPill key="ungroup" label="Ungroup" onPress={model.onUngroup} compact={compact} />);
+      typeSpecs.push({ key: 'ungroup', label: 'Ungroup', onPress: model.onUngroup });
     }
   } else if (model.showSvgOptions) {
     // Vector selection: the subtype's own option menu (svgEdit.ts). Every
     // subtype offers Stroke — a path IS its stroke; the closed shapes add Fill.
-    typeOptions = svgEditOptions(model.svgSubtype ?? 'stroke').map((opt) => (
-      <OptionPill
-        key={opt.action}
-        label={opt.label}
-        onPress={() => openSubmenu(opt.action === 'fill' ? 'svgFill' : opt.action === 'endpoints' ? 'endpoints' : opt.action === 'opacity' ? 'opacity' : 'stroke')}
-        compact={compact}
-      />
-    ));
+    typeSpecs = svgEditOptions(model.svgSubtype ?? 'stroke').map((opt) => ({
+      key: opt.action,
+      label: opt.label,
+      sub: svgActionSubmenu(opt.action),
+      onPress: () => openSubmenu(svgActionSubmenu(opt.action)),
+    }));
     if (model.onToggleRepeat) {
       // Pattern-mode toggle (tile pattern objects): repeat the tile across
-      // the bounding box instead of scaling it. The one option here that's a
-      // toggle, so the only one that lights — and it keeps Facet's
-      // PATTERN_ACTIVE rather than selection blue, which is what separates
-      // "pattern mode is on" from "this is the selected thing".
-      typeOptions.unshift(
-        <OptionPill
-          key="repeat"
-          label="Repeat"
-          active={model.repeat}
-          tint={PATTERN_ACTIVE}
-          onPress={model.onToggleRepeat}
-          compact={compact}
-        />,
-      );
+      // the bounding box instead of scaling it. A toggle rather than a bar, so
+      // it wears its own capsule instead of taking the sliding one — and it
+      // keeps Facet's PATTERN_ACTIVE, which is what separates "pattern mode is
+      // on" from "this is the bar you're looking at".
+      typeSpecs.unshift({
+        key: 'repeat',
+        label: 'Repeat',
+        toggled: model.repeat,
+        tint: PATTERN_ACTIVE,
+        onPress: model.onToggleRepeat,
+      });
     }
     if (model.onSvgEdit) {
       // Source-editor Edit (e.g. reopen a pattern object's tile editor),
       // ahead of the subtype options.
-      typeOptions.unshift(
-        <OptionPill key="svgEdit" label="Edit" onPress={model.onSvgEdit} compact={compact} />,
-      );
+      typeSpecs.unshift({ key: 'svgEdit', label: 'Edit', onPress: model.onSvgEdit });
     }
   } else if (model.showInvert) {
     // Word sticker (magnetic poetry): the single type-specific option is
     // Invert (dark card ⇄ light card). Content + typography are fixed, so no
     // Edit / Type / Align. It's a toggle, so the lit pill now says what the
     // black/white swatch used to.
-    typeOptions = [
-      <OptionPill key="invert" label="Invert" active={model.inverted} onPress={model.onInvert} compact={compact} />,
-    ];
+    typeSpecs = [{ key: 'invert', label: 'Invert', toggled: model.inverted, onPress: model.onInvert }];
   } else if (model.showEdit || model.showTextStyle) {
     // Edit (content) · Type (opens the Text bar on the Font page) · Align (opens
     // it straight on the Align page). Type / Align both slide the same two-page
     // Text bar up; they differ only in which page it lands on.
-    typeOptions = [];
-    if (model.showEdit) typeOptions.push(<OptionPill key="edit" label="Edit" onPress={model.onEdit} compact={compact} />);
-    if (model.showTextStyle) typeOptions.push(<OptionPill key="type" label="Type" onPress={() => openSubmenu('font')} compact={compact} />);
-    if (model.showTextStyle) typeOptions.push(<OptionPill key="align" label="Align" onPress={() => openSubmenu('align')} compact={compact} />);
+    typeSpecs = [];
+    if (model.showEdit) typeSpecs.push({ key: 'edit', label: 'Edit', onPress: model.onEdit });
+    if (model.showTextStyle) typeSpecs.push({ key: 'type', label: 'Type', sub: 'font', onPress: () => openSubmenu('font') });
+    if (model.showTextStyle) typeSpecs.push({ key: 'align', label: 'Align', sub: 'align', onPress: () => openSubmenu('align') });
   }
   if (showLayout) {
     // Layout closes the set for a multi-selection, whatever its members are —
     // it starts the set outright when they share no type at all. The word keeps
     // it clear of the text Align option (which is about a paragraph's own
     // lines, not where objects sit) now that neither carries a glyph.
-    typeOptions = [
-      ...(typeOptions ?? []),
-      <OptionPill key="layout" label="Layout" onPress={() => openSubmenu('layout')} compact={compact} />,
-    ];
+    typeSpecs = [...(typeSpecs ?? []), { key: 'layout', label: 'Layout', sub: 'layout', onPress: () => openSubmenu('layout') }];
   }
 
   // Only one set shows at a time; a horizontal swipe swaps between them (the
   // dots below track which is showing). Columns stay fixed at the larger set's
   // count so the cells don't resize on swap; empty cells split either side of
   // the smaller set to centre it.
-  const canSwap = !!typeOptions;
+  const canSwap = !!typeSpecs;
   canSwapRef.current = canSwap;
   const showType = canSwap && showTypeRow;
-  const activeButtons = showType ? typeOptions! : row1;
-  const columns = Math.max(row1.length, typeOptions ? typeOptions.length : 0);
+  const columns = Math.max(row1.length, typeSpecs ? typeSpecs.length : 0);
+
+  // ── The sliding selection capsule ───────────────────────────────────
+  // One capsule of one width for the whole row, parked over whichever option
+  // opened the bar you're looking at, and animated between cells when that
+  // changes. Its geometry needs the row's measured width, so it can only be
+  // computed after the first layout pass; until then `width` is 0 and the
+  // capsule isn't drawn.
+  const capsule = optionCapsuleLayout(rowWidth, columns, typeSpecs?.length ?? 0);
+  const selectedOption = typeSpecs
+    ? typeSpecs.findIndex((s) => s.sub !== undefined && subOpen(s.sub))
+    : -1;
+  // Only a shown, measured, selected type row gets a capsule.
+  const capsuleAt = showType && capsule.width > 0 && selectedOption >= 0
+    ? capsule.lefts[selectedOption]
+    : null;
+
+  const activeButtons: React.ReactNode[] = showType
+    ? typeSpecs!.map((spec, i) => (
+        <OptionPill
+          key={spec.key}
+          spec={spec}
+          selected={i === selectedOption}
+          width={capsule.width}
+          compact={compact}
+        />
+      ))
+    : row1;
   const sidePad = optionRowSidePad(columns, activeButtons.length);
 
   // Params tracked by the sliders/pad come from the local draft; color comes
@@ -1052,20 +1205,25 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   return (
     <>
       {submenuMounted ? (
+        // Anchored to the panel's top edge, not the screen's bottom, and it
+        // rides the panel's own show/hide slide (translateY) on top of its
+        // reveal (layerY) so the two never come apart. It sits BELOW the panel
+        // in z-order, which is what lets it hide by sliding down behind it.
         <Animated.View
-          style={[styles.effectBarWrap, { height: submenuSlide, paddingBottom: safeBottom, backgroundColor: BAR_BG, transform: [{ translateY: layerY }] }]}
+          style={[
+            styles.effectBarWrap,
+            {
+              bottom: panelBox.height,
+              height: barHeight,
+              backgroundColor: BAR_BG,
+              transform: [{ translateY: Animated.add(layerY, translateY) }],
+            },
+          ]}
           {...submenuPan.panHandlers}
         >
           <Animated.View style={{ transform: [{ translateX: navX }] }}>
             {activeBarEl}
           </Animated.View>
-          {submenuOrder.length > 1 ? (
-            <View style={[styles.submenuDots, { bottom: submenuDotsBottom(safeBottom, dotsInSafeArea) }]} pointerEvents="none">
-              {submenuOrder.map((k, i) => (
-                <View key={k} style={[styles.dot, i === activeIndex && styles.dotActive]} />
-              ))}
-            </View>
-          ) : null}
         </Animated.View>
       ) : null}
       <View style={styles.clip} pointerEvents="box-none">
@@ -1076,7 +1234,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
             is showing. */}
         <View style={styles.swapArea} {...(canSwap ? swapPan.panHandlers : {})}>
           <Animated.View style={{ transform: [{ translateX: swapX }] }}>
-            <View style={styles.gridRow}>
+            <View style={styles.gridRow} onLayout={(e) => setRowWidth(e.nativeEvent.layout.width)}>
+              {/* The selection capsule, first so it paints under the words. */}
+              <OptionCapsule at={capsuleAt} width={capsule.width} />
               {sidePad > 0 ? <View style={{ flex: sidePad }} /> : null}
               {activeButtons}
               {sidePad > 0 ? <View style={{ flex: sidePad }} /> : null}
@@ -1119,8 +1279,6 @@ const styles = StyleSheet.create({
   dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, paddingTop: 4, paddingBottom: OBJECT_DOTS_BOTTOM },
   dot: { width: OBJECT_DOT_SIZE, height: OBJECT_DOT_SIZE, borderRadius: OBJECT_DOT_SIZE / 2, backgroundColor: PANEL_DOT },
   dotActive: { backgroundColor: ICON_COLOR },
-  // Submenu carousel dots, pinned to the bottom of the slide-up layer.
-  submenuDots: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 },
   // A grid row: equal-width cells (the buttons) flanked by one weighted empty
   // cell per side that centres them, so the common-actions and type-options
   // sets share the same columns (stable cell width across a swap), separated by
@@ -1128,7 +1286,9 @@ const styles = StyleSheet.create({
   gridRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
+    // Shared with optionCapsuleLayout, which reproduces this row's geometry to
+    // place the capsule — the two must agree on the gap.
+    gap: OPTION_ROW_GAP,
     paddingTop: 4,
     paddingBottom: 8,
   },
@@ -1137,14 +1297,25 @@ const styles = StyleSheet.create({
   // The cell keeps the GridButton's flex weight and 48pt height so a page swap
   // can't resize the row; the pill sits centred inside it.
   optionCell: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
-  // The pushdown's capsule: 4pt vertical padding, fully round. It hugs its word
-  // instead of taking that row's fixed 88pt — the option sets run to six items
-  // and their words vary, so a single fixed width would either clip or overflow.
-  // Nothing shifts when the fill moves regardless, since each pill owns a
-  // fixed-width column.
+  // The shared selection capsule, sliding between cells. Absolutely placed
+  // (left 0 + an animated translateX) so it moves without touching layout, and
+  // vertically centred on the 48pt cell under the row's 4pt top padding.
+  optionCapsule: {
+    position: 'absolute',
+    left: 0,
+    top: 4 + (48 - OPTION_CAPSULE_HEIGHT) / 2,
+    height: OPTION_CAPSULE_HEIGHT,
+    borderRadius: 999,
+    backgroundColor: STATE_ACTIVE,
+  },
+  // The word's box, sized to that same constant width so it lands exactly on
+  // the capsule beneath it. Like the pushdown's fixed-width capsule, but taken
+  // from the measured cell (capped at the pushdown's 88) rather than hardcoded:
+  // the option sets run to six items and their words vary, so one hardcoded
+  // width would clip on a phone and float on a desktop.
   optionPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    maxWidth: '100%', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    maxWidth: '100%', height: OPTION_CAPSULE_HEIGHT, paddingHorizontal: 10, borderRadius: 999,
   },
   optionLabel: { flexShrink: 1, color: PUSHDOWN_INACTIVE, fontSize: 13, fontWeight: '600' },
   // Narrow screens pack up to six of these into the row; drop a couple of
@@ -1157,13 +1328,15 @@ const styles = StyleSheet.create({
     width: 12, height: 12, borderRadius: 6, overflow: 'hidden',
     borderWidth: 1, borderColor: PANEL_SWATCH_BORDER,
   },
-  // Full-width, bottom-anchored effect bar (Drop Shadow / Border) that slides
-  // in over the panel.
+  // Full-width effect bar (Drop Shadow / Border / …), anchored so its bottom
+  // edge meets the panel's top — `bottom` is set inline from the panel's
+  // measured height. Its zIndex sits UNDER the panel's (200) so a dismiss
+  // slides it down behind that opaque surface rather than across it, and above
+  // the floating capsules (100) so it can't be overdrawn by them.
   effectBarWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
-    zIndex: 205,
+    zIndex: 195,
   },
 });

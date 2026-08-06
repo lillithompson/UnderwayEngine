@@ -91,16 +91,51 @@ describe('object-properties chrome matches the toolbar', () => {
 
   it('dresses the type-specific options as the toolbar pushdown does', () => {
     const panel = read('ObjectPropertiesPanel.tsx');
+    // The type row is spec-driven (one OptionPill mapped over typeSpecs, so the
+    // row can find WHICH option is selected); the common-actions row keeps its
+    // icon buttons. Both components must still be in play.
     expect(/function OptionPill\(/.test(panel)).toBe(true);
-    // Every type-specific option is a pill; the common-actions row keeps its
-    // icon buttons, so both components must still be in play.
-    expect((panel.match(/<OptionPill/g) ?? []).length).toBeGreaterThanOrEqual(10);
+    expect(/typeSpecs!\.map\(/.test(panel)).toBe(true);
     expect(/<GridButton/.test(panel)).toBe(true);
-    // The three things that make it the pushdown's capsule rather than a new
-    // look: fully-round, the pushdown's inactive grey, selection blue when lit.
+    // The pushdown's capsule rather than a new look: fully-round, the
+    // pushdown's inactive grey, selection blue under the selected one.
     expect(/optionPill: \{[^}]*borderRadius: 999/s.test(panel)).toBe(true);
     expect(/optionLabel: \{[^}]*color: PUSHDOWN_INACTIVE/s.test(panel)).toBe(true);
-    expect(/backgroundColor: tint \?\? STATE_ACTIVE/.test(panel)).toBe(true);
+    expect(/optionCapsule: \{[^}]*backgroundColor: STATE_ACTIVE/s.test(panel)).toBe(true);
+  });
+
+  it('gives the row one sliding capsule, not a fill per option', () => {
+    const panel = read('ObjectPropertiesPanel.tsx');
+    // A single capsule component, rendered once, driven by an offset.
+    expect(/function OptionCapsule\(/.test(panel)).toBe(true);
+    expect((panel.match(/<OptionCapsule/g) ?? []).length).toBe(1);
+    // Constant width: taken from the row's layout, never from the option.
+    expect(/width=\{capsule\.width\}/.test(panel)).toBe(true);
+    // It moves by transform, so sliding costs no layout.
+    expect(/transform: \[\{ translateX: x \}\]/.test(panel)).toBe(true);
+    // Only an independent toggle (Repeat / Invert) still paints its own fill —
+    // a selected submenu option is covered by the shared capsule.
+    expect(/spec\.toggled \? \{ backgroundColor: spec\.tint \?\? STATE_ACTIVE \}/.test(panel)).toBe(true);
+  });
+
+  it('stacks the submenu above the panel rather than over it', () => {
+    const panel = read('ObjectPropertiesPanel.tsx');
+    // Anchored to the panel's top edge, not the screen's bottom. A `bottom: 0`
+    // back in effectBarWrap would put the bar over the options row again.
+    expect(/effectBarWrap: \{[^}]*bottom: 0/s.test(panel)).toBe(false);
+    expect(/bottom: panelBox\.height/.test(panel)).toBe(true);
+    // Under the panel in z-order, which is what lets a dismiss slide it down
+    // behind that opaque surface instead of across it.
+    // (the panel's own z sits on its `clip` wrapper, which is what draws over
+    // the bar — so the bar's must be the smaller of the two.)
+    expect(/effectBarWrap: \{[^}]*zIndex: 195/s.test(panel)).toBe(true);
+    expect(/clip: \{[^}]*zIndex: 200/s.test(panel)).toBe(true);
+    // It rides the panel's show/hide slide on top of its own reveal, so the two
+    // can't come apart mid-animation.
+    expect(/Animated\.add\(layerY, translateY\)/.test(panel)).toBe(true);
+    // The lit option replaced the bar's own carousel dots.
+    expect(/submenuDots/.test(panel)).toBe(false);
+    expect(/const subOpen = \(key: SubmenuKey\) => activeSub === key/.test(panel)).toBe(true);
   });
 
   it('keeps the dark modal surface out of every menu file', () => {

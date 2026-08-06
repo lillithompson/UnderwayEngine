@@ -1,4 +1,4 @@
-import { OBJECT_DOTS_BOTTOM, OBJECT_DOTS_ROW_HEIGHT, objectPanelLayout, optionRowSidePad, submenuDotsBottom } from '../logic/panelLayout';
+import { OBJECT_DOTS_ROW_HEIGHT, objectPanelLayout, optionCapsuleLayout, optionRowSidePad } from '../logic/panelLayout';
 import { OBJECT_PANEL_HEIGHT } from '../theme';
 
 describe('objectPanelLayout', () => {
@@ -54,11 +54,55 @@ describe('optionRowSidePad', () => {
   });
 });
 
-describe('submenuDotsBottom', () => {
-  test('clears the inset when the dots stay above it', () => {
-    expect(submenuDotsBottom(34, false)).toBe(34 + OBJECT_DOTS_BOTTOM);
+
+describe('optionCapsuleLayout', () => {
+  test('one width for every option, so the slide never resizes it', () => {
+    const { width, lefts } = optionCapsuleLayout(600, 6, 6);
+    expect(lefts).toHaveLength(6);
+    // A single width is the whole point — nothing per-option about it.
+    expect(width).toBeGreaterThan(0);
   });
-  test('sits inside the inset when the dots take the strip over', () => {
-    expect(submenuDotsBottom(34, true)).toBe(OBJECT_DOTS_BOTTOM);
+
+  test('a full row lays cells out end to end, first flush left', () => {
+    // 6 cells + 5 gaps of 8 = 40 of gap; (340 - 40) / 6 = 50 per cell.
+    const { width, lefts } = optionCapsuleLayout(340, 6, 6);
+    expect(width).toBe(50); // under the 88 cap, so the capsule takes the cell
+    expect(lefts[0]).toBe(0);
+    expect(lefts[1]).toBe(58); // 50 + 8
+    expect(lefts[5]).toBe(5 * 58);
+  });
+
+  test('caps at the pushdown width and re-centres what it trims', () => {
+    // 3 cells + 2 gaps = 16; (616 - 16) / 3 = 200 per cell, capped to 88.
+    const { width, lefts } = optionCapsuleLayout(616, 3, 3);
+    expect(width).toBe(88);
+    expect(lefts[0]).toBe((200 - 88) / 2); // centred in its cell, not flush
+    expect(lefts[1] - lefts[0]).toBe(208); // still one cell + gap apart
+  });
+
+  test('a padded row offsets by the pad and its gap', () => {
+    // 3 buttons in 6 columns: pad 1.5 units per side, 5 children → 4 gaps = 32.
+    // (332 - 32) / 6 = 50 per cell. Start = 1.5*50 + 8 = 83.
+    const { width, lefts } = optionCapsuleLayout(332, 6, 3);
+    expect(width).toBe(50);
+    expect(lefts[0]).toBe(83);
+    expect(lefts[2]).toBe(83 + 2 * 58);
+  });
+
+  test('the padded row stays centred — both ends leave the same margin', () => {
+    const rowWidth = 332;
+    const { width, lefts } = optionCapsuleLayout(rowWidth, 6, 3);
+    const leftMargin = lefts[0];
+    const rightMargin = rowWidth - (lefts[2] + width);
+    expect(rightMargin).toBeCloseTo(leftMargin, 6);
+  });
+
+  test('yields nothing before the row has been measured', () => {
+    expect(optionCapsuleLayout(0, 6, 3)).toEqual({ width: 0, lefts: [] });
+  });
+
+  test('an empty set yields nothing rather than dividing by zero', () => {
+    expect(optionCapsuleLayout(340, 0, 0)).toEqual({ width: 0, lefts: [] });
+    expect(optionCapsuleLayout(340, 6, 0)).toEqual({ width: 0, lefts: [] });
   });
 });

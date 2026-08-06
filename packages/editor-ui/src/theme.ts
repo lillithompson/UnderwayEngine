@@ -66,10 +66,10 @@ export const PANEL_SWATCH_BORDER = 'rgba(42, 42, 42, 0.45)'; // ring around a co
 export const PANEL_SHEET_BG = 'rgba(246, 246, 246, 0.98)';
 export const PANEL_SHEET_BORDER = 'rgba(42, 42, 42, 0.14)';
 export const PANEL_SHEET_ROW_ACTIVE = 'rgba(42, 42, 42, 0.10)';
-// Every object-property menu — the two-row default panel (actions + type-
-// specific options) and each slide-in effect bar (Shadow/Border/Crop/Text) —
-// shares this one fixed height so the bottom sheet never jumps as you switch
-// between them. Sized to the tallest menu, the Text bar (Font + Weight + Size +
+// Every slide-in effect bar (Shadow/Border/Crop/Text) shares this one fixed
+// height. The bars sit above the properties panel, stacked, so a shared height
+// keeps the bar's TOP edge still as the carousel swaps between them — only the
+// contents change. Sized to the tallest, the Text bar (Font + Weight + Size +
 // Character/Line + Align, the last two now sharing a row):
 //   1 border + 10 top + 22 header + 10 gap + 180 rows + 14 bottom = 237,
 // plus a 3px cushion so font metrics can't clip its last row.
