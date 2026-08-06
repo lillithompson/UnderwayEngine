@@ -63,6 +63,13 @@ export interface CompositionExportOptions {
    *  that lands on a backdrop the page never had. See
    *  {@link CompositionSVGInputs.textColorOverride}. */
   textColorOverride?: RGBColor;
+  /** How to read the stored record — see {@link CompositionIOOptions}. Pass
+   *  `false` for a PAGE-ANCHORED composition, so the export sees the same
+   *  coordinates and `strokeScale` the editor holds. It matters whenever an
+   *  explicit `strokeScale` is supplied: normalization multiplies the stored
+   *  one by the content scale factor, so an absolute override would land at a
+   *  different weight for every page depending on how big its content is. */
+  normalize?: boolean;
 }
 
 /**
@@ -171,7 +178,10 @@ export async function exportCompositionSVG(
   strokeScale?: number,
   options?: CompositionExportOptions,
 ): Promise<string | null> {
-  const partial = await loadCompositionState(compId);
+  const partial = await loadCompositionState(
+    compId,
+    options?.normalize === undefined ? undefined : { normalize: options.normalize },
+  );
   if (!partial) return null;
   return generateCompositionSVGCore({
     name: partial.name ?? 'composition',

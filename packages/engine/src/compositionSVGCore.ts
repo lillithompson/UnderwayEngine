@@ -582,6 +582,10 @@ export async function generateCompositionSVGCore(
   });
   const maskDefs = buildMaskClipDefs(maskMap, groups);
 
+  // Resolved before the frame is measured as well as used to paint, because a
+  // cutout's frame has to allow for the width the strokes will be drawn at.
+  const effectiveStrokeScale = effectiveStrokeMultiplier(normalizeStrokeScale(input.strokeScale));
+
   // Compute the visible bounding box in L0 cells. Each object's full extent
   // is clipped to its ancestor-mask chain (via clipRectToNodeMasks) so the
   // frame bounds only what the mask leaves visible — content hidden by a mask
@@ -613,11 +617,22 @@ export async function generateCompositionSVGCore(
     accept(f, f.cellX, f.cellY, f.cellX + f.cellWidth, f.cellY + f.cellHeight);
   }
   for (const svg of svgObjects) {
+    // A cutout frames on the INKED extent: a stroke is centered on its path,
+    // so a tight geometric frame slices the outermost strokes down their
+    // length (a horizontal line along the top of the bbox loses half its
+    // width). Grow each object's rect by its own stroke half-width — 0 for a
+    // subset with no paths in it, so the text-only recipes are unaffected. A
+    // page export keeps the geometric bounds: its frame is already the page,
+    // and padding it would move every existing freeform export's viewBox.
+    const pad = input.subset
+      ? svgStrokeWidthCells(svg, effectiveStrokeScale, SVG_UNITS_PER_L0_CELL) / 2
+      : 0;
     if (svg.tileMode === 'repeat') {
-      accept(svg, svg.cellX, svg.cellY, svg.cellX + svg.cellWidth, svg.cellY + svg.cellHeight);
+      accept(svg, svg.cellX - pad, svg.cellY - pad,
+        svg.cellX + svg.cellWidth + pad, svg.cellY + svg.cellHeight + pad);
     } else {
       const bb = arcBoundingBox(svg.segments);
-      if (bb) accept(svg, bb.minX, bb.minY, bb.maxX, bb.maxY);
+      if (bb) accept(svg, bb.minX - pad, bb.minY - pad, bb.maxX + pad, bb.maxY + pad);
     }
   }
   for (const img of images) {
@@ -682,7 +697,6 @@ export async function generateCompositionSVGCore(
   // Map insertion order (images → figures → svgs) is the legacy paint order,
   // preserved as the fallback when `sceneOrder` is absent.
   const elementsById = new Map<string, string>();
-  const effectiveStrokeScale = effectiveStrokeMultiplier(normalizeStrokeScale(input.strokeScale));
 
   for (const img of images) {
     if (cancelled?.()) return null;

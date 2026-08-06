@@ -379,3 +379,63 @@ describe('subset text framing', () => {
     expect(viewBoxOf(page!)).toEqual([2 * U, 5 * U, 28 * U, 3.5 * U]);
   });
 });
+
+/** A stroked path. `strokeScale` 0.04 renders 5 × (0.04 × 200) = 40 SVG units
+ *  of width, i.e. 40/256 cells, unless the object carries its own. */
+function makePath(overrides: Partial<SVGObject> & { id: string }): SVGObject {
+  return {
+    color: { r: 0, g: 0, b: 0 },
+    segments: [{ kind: 'line', start: [4, 4], end: [12, 4] }],
+    cellX: 4, cellY: 4, cellWidth: 8, cellHeight: 0,
+    ...overrides,
+  };
+}
+
+describe('cutout stroke padding', () => {
+  const strokeWidthOf = (svg: string) => Number(svg.match(/stroke-width="([^"]*)"/)![1]);
+
+  const cutPaths = async (svgObjects: SVGObject[], strokeScale?: number) => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects,
+      ...(strokeScale === undefined ? {} : { strokeScale }),
+      subset: () => new Set(svgObjects.map((s) => s.id)),
+    }));
+    return { box: viewBoxOf(svg!), width: strokeWidthOf(svg!) };
+  };
+
+  it('grows the frame by the stroke half-width so no stroke is sliced', async () => {
+    // The path runs along y = 4 — the top AND bottom of its geometric bbox, so
+    // a tight frame would cut it down its length, showing half a line.
+    const { box, width } = await cutPaths([makePath({ id: 'svg_1' })]);
+    const half = width / 2;
+    expect(box).toEqual([4 * U - half, 4 * U - half, 8 * U + 2 * half, 2 * half]);
+  });
+
+  it('pads by the width the strokes are actually drawn at', async () => {
+    const thin = await cutPaths([makePath({ id: 'svg_1' })], 0.01);
+    const fat = await cutPaths([makePath({ id: 'svg_1' })], 0.16);
+    expect(fat.width).toBeGreaterThan(thin.width);
+    expect(fat.box[2] - thin.box[2]).toBeCloseTo(fat.width - thin.width, 5);
+  });
+
+  it('uses each object’s own width when it has one', async () => {
+    // A path that visited the Stroke bar keeps its authored width, so the
+    // composition-wide value must not decide its padding.
+    const own = makePath({ id: 'svg_1', stroke: { width: 2 } });
+    const { box } = await cutPaths([own], 0.01);
+    expect(box[0]).toBeCloseTo(4 * U - (2 * U) / 2, 5);
+  });
+
+  it('leaves a page export on the geometric bounds', async () => {
+    // Same rule as the text tightening: cutout only, or every existing
+    // freeform page export's frame would move. Diagonal so neither axis hits
+    // the degenerate-frame guard and the bounds are the segment's own.
+    const diagonal = makePath({
+      id: 'svg_1',
+      segments: [{ kind: 'line', start: [4, 4], end: [12, 10] }],
+      cellHeight: 6,
+    });
+    const svg = await generateCompositionSVGCore(makeInputs({ svgObjects: [diagonal] }));
+    expect(viewBoxOf(svg!)).toEqual([4 * U, 4 * U, 8 * U, 6 * U]);
+  });
+});
