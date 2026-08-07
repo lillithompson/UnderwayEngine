@@ -82,6 +82,27 @@ export interface TextLayoutOptions {
 /** Default line height multiple when `style.lineHeight` is unset. */
 export const DEFAULT_LINE_HEIGHT = 1.2;
 
+/**
+ * Relative slack on the wrap test: a line may exceed `maxWidth` by this
+ * fraction and still count as fitting.
+ *
+ * A text box shrink-wrapped to its own content lands EXACTLY on the wrap
+ * threshold, so `width <= maxWidth` becomes a coin flip decided by bits that
+ * nothing guarantees:
+ *  - `cellWidth` persists as a float32 (compositionBinaryFormat's v44+ text
+ *    bbox), and that round-trip rounds the authored width DOWN as often as up
+ *    — a ~1e-7 shortfall that flips one line into two on reload;
+ *  - the `TextMeasurer` is the host's text engine, and the same string in the
+ *    same face measures a hair differently across them (Blink/Skia on desktop
+ *    web vs. WebKit/CoreText inside the iOS WebView), so a tile authored on
+ *    one wraps on the other.
+ * Both are sub-0.1% effects, so one relative epsilon absorbs them. It is
+ * deliberately far below a real "this word doesn't fit" margin (a wrap the
+ * author intended is a whole word wide), and the visual cost when it does
+ * apply is the last glyph overhanging its box by a fraction of a percent.
+ */
+export const WRAP_EPSILON = 1e-3;
+
 /** Width of a string in world units: sum of per-char advances times size,
  *  plus `size * letterSpacing` per inter-character gap. */
 function measureLine(text: string, style: TextStyle, measurer: TextMeasurer): number {
@@ -96,14 +117,17 @@ function measureLine(text: string, style: TextStyle, measurer: TextMeasurer): nu
 
 /** Greedy word wrap of one explicit line. Breaks at spaces (the breaking
  *  space is consumed); a single word wider than maxWidth overflows on its
- *  own line rather than being split. */
+ *  own line rather than being split. The fit test carries `WRAP_EPSILON` of
+ *  relative slack so a box shrink-wrapped to its own text doesn't wrap on the
+ *  last bit of a float32 bbox or a foreign text engine's metrics. */
 function wrapLine(text: string, style: TextStyle, measurer: TextMeasurer, maxWidth: number): string[] {
   const words = text.split(' ');
   const out: string[] = [];
+  const limit = maxWidth * (1 + WRAP_EPSILON);
   let current = '';
   for (const word of words) {
     const candidate = current.length === 0 ? word : `${current} ${word}`;
-    if (current.length === 0 || measureLine(candidate, style, measurer) <= maxWidth) {
+    if (current.length === 0 || measureLine(candidate, style, measurer) <= limit) {
       current = candidate;
     } else {
       out.push(current);

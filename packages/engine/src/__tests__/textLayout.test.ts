@@ -10,6 +10,7 @@ import {
   defaultMeasurer,
   registerTextMeasurer,
   DEFAULT_LINE_HEIGHT,
+  WRAP_EPSILON,
   TextMeasurer,
 } from '../textLayout';
 import { TextStyle } from '../types';
@@ -69,6 +70,52 @@ describe('word wrap', () => {
   test('no wrap happens when every word fits', () => {
     const layout = layoutText('aa bb', makeStyle(), { measurer: mono, maxWidth: 100 });
     expect(layout.lines.map((l) => l.text)).toEqual(['aa bb']);
+  });
+});
+
+describe('wrap tolerance (WRAP_EPSILON)', () => {
+  // A box shrink-wrapped to its own text sits EXACTLY on the wrap threshold,
+  // so `width <= maxWidth` is decided by bits nothing guarantees: cellWidth
+  // persists as a float32, and the measurer is whichever text engine the host
+  // ships. Sub-0.1% slack absorbs both without loosening a real wrap.
+  const style = makeStyle();
+  const content = 'aa bb';
+  const width = measureTextBbox(content, style, { measurer: mono }).width; // 25
+
+  /** `x` as it comes back out of a float32 bbox field. */
+  const f32 = (x: number) => new Float32Array([x])[0];
+
+  test('a box a float32 rounding below its own text stays one line', () => {
+    // The exact bug: 9.275 world units stored as float32 reads back
+    // 9.274999618530273, so the text no longer "fits" the box it was
+    // shrink-wrapped to and the renderer wraps it.
+    const stored = f32(9.275);
+    expect(stored).toBeLessThan(9.275);
+    const narrow = layoutText('aa bb', makeStyle({ size: 9.275 / 2.5 }), {
+      measurer: mono, maxWidth: stored,
+    });
+    expect(narrow.lines.map((l) => l.text)).toEqual([content]);
+  });
+
+  test('an overflow inside the tolerance stays one line', () => {
+    const layout = layoutText(content, style, {
+      measurer: mono, maxWidth: width * (1 - WRAP_EPSILON / 2),
+    });
+    expect(layout.lines.map((l) => l.text)).toEqual([content]);
+  });
+
+  test('an overflow past the tolerance still wraps', () => {
+    const layout = layoutText(content, style, {
+      measurer: mono, maxWidth: width * (1 - WRAP_EPSILON * 2),
+    });
+    expect(layout.lines.map((l) => l.text)).toEqual(['aa', 'bb']);
+  });
+
+  test('the tolerance is far too small to swallow a real word', () => {
+    // 'bb' is 10 units on a 25-unit line — three orders of magnitude past the
+    // slack, so an authored wrap is never mistaken for metric drift.
+    expect(measureTextBbox('bb', style, { measurer: mono }).width)
+      .toBeGreaterThan(width * WRAP_EPSILON * 100);
   });
 });
 
