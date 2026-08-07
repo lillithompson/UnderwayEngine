@@ -73,6 +73,10 @@ export interface SceneOutlineModel {
   /** Double-tap / double-click a row. The app frames the object (camera
    *  math stays app-side). */
   onFrame(id: string): void;
+  /** Press the "Outline" tab header: frame the WHOLE page, the panel-wide
+   *  counterpart to double-tapping one row. Optional — without it the header
+   *  is inert text, as it was when the tab bar held only a label. */
+  onFrameAll?(): void;
   onClose(): void;
 
   /** Reorder actions surfaced in the RenameModal (Facet parity). Optional —
@@ -558,7 +562,13 @@ export interface GridViewModel {
   /** Current grid level; apps that hide grid controls can omit. */
   gridLevel?: number;
   onSetGridLevel?(level: number): void;
-  onOpenViewSettings(): void;
+  /** Whether snap-to-grid is currently on, inverting the snap capsule. Ignored
+   *  unless `onToggleGridSnap` is set. */
+  gridSnap?: boolean;
+  /** Flip snap-to-grid. The same app preference the settings screen's "Grid
+   *  Snap" row drives — this is the on-canvas shortcut to it. Optional: an app
+   *  that only exposes snap in its settings omits it and gets no capsule. */
+  onToggleGridSnap?(): void;
 }
 
 // ── Color picker ─────────────────────────────────────────────────────

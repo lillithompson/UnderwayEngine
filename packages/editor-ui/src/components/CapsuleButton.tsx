@@ -15,12 +15,17 @@ interface CapsuleButtonProps {
   iconSize: number;
   iconColor: string;
   borderColor: string;
+  /** Fill, defaulting to the dark capsule ground. Overridden by the toggles
+   *  that mark themselves ON by inverting — filling in the accent and going
+   *  dark on the icon and border (see the grid-snap capsule). */
+  backgroundColor?: string;
   enabled?: boolean;
   onPress: () => void;
 }
 
 export function CapsuleButton({
-  label, icon, iconSize, iconColor, borderColor, enabled = true, onPress,
+  label, icon, iconSize, iconColor, borderColor,
+  backgroundColor = CAPSULE_BG, enabled = true, onPress,
 }: CapsuleButtonProps) {
   return (
     <Pressable
@@ -29,7 +34,7 @@ export function CapsuleButton({
       accessibilityState={{ disabled: !enabled }}
       disabled={!enabled}
       onPress={onPress}
-      style={[styles.button, { borderColor, opacity: enabled ? 1 : 0.4 }]}
+      style={[styles.button, { backgroundColor, borderColor, opacity: enabled ? 1 : 0.4 }]}
     >
       <MaterialCommunityIcons name={icon as MCIName} size={iconSize} color={iconColor} />
     </Pressable>
@@ -43,7 +48,8 @@ const styles = StyleSheet.create({
     borderRadius: CAPSULE_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: CAPSULE_BG,
+    // Fill comes from the prop (defaulting to CAPSULE_BG) so there is one
+    // place to change it, not a StyleSheet value an inline override shadows.
     borderWidth: 2,
   },
 });

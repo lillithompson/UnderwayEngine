@@ -1,43 +1,23 @@
+import { createAppPrefStore } from './appPrefStore';
 import { loadShowDimensions, saveShowDimensions } from './persistence';
 
-let value = true;
-const listeners = new Set<() => void>();
-let loaded = false;
+// App-level "Dimensions" preference: the live size HUD on canvas gestures.
+// All the machinery is createAppPrefStore's — this module is only the
+// preference's identity (default, storage keys) and its named exports.
 
-function emit() {
-  for (const listener of listeners) listener();
-}
+const store = createAppPrefStore<boolean>({
+  initial: true,
+  load: loadShowDimensions,
+  save: (v) => { void saveShowDimensions(v); },
+});
 
-export function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  if (!loaded) {
-    loaded = true;
-    loadShowDimensions().then(stored => {
-      if (stored !== value) {
-        value = stored;
-        emit();
-      }
-    });
-  }
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-export function getSnapshot(): boolean {
-  return value;
-}
-
-export function setShowDimensions(next: boolean): void {
-  if (value === next) return;
-  value = next;
-  emit();
-  saveShowDimensions(next);
-}
+export const subscribe = store.subscribe;
+export const getSnapshot = store.getSnapshot;
+export const setShowDimensions = store.set;
+/** Adopt the native settings screen's value at boot (see appPrefStore). */
+export const seedShowDimensionsFromHost = store.seedFromHost;
 
 // Test-only: reset module-local state.
 export function __resetShowDimensionsStoreForTest(initial: boolean = true): void {
-  value = initial;
-  loaded = false;
-  listeners.clear();
+  store.__resetForTest(initial);
 }

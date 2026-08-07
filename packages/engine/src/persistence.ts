@@ -966,6 +966,23 @@ export async function loadGridSnap(): Promise<boolean | null> {
   return JSON.parse(raw) === true;
 }
 
+// ── Grid Weight ────────────────────────────────────────────────────
+
+const GRID_WEIGHT_KEY = 'app_grid_weight';
+
+export async function saveGridWeight(value: number): Promise<void> {
+  await storage.setItem(GRID_WEIGHT_KEY, JSON.stringify(value));
+}
+
+/** null when nothing is stored, so the store keeps its own default rather
+ *  than treating an absent value as 0 (an invisible grid). */
+export async function loadGridWeight(): Promise<number | null> {
+  const raw = await storage.getItem(GRID_WEIGHT_KEY);
+  if (!raw) return null;
+  const parsed = JSON.parse(raw);
+  return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : null;
+}
+
 // ── Show Touches ───────────────────────────────────────────────────
 
 const SHOW_TOUCHES_KEY = 'app_show_touches';

@@ -199,11 +199,20 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
       >
         {/* Tab bar (Facet chrome): a single active Layers tab + close.
             paddingTop = safeTop keeps the background continuous to the top
-            edge while pushing the label/close below the status bar. */}
+            edge while pushing the label/close below the status bar.
+            The tab is pressable when the app supplies onFrameAll: pressing the
+            header frames the whole page, the panel-wide counterpart to
+            double-tapping a row to frame one object. */}
         <View style={[styles.tabBar, { paddingTop: safeTop }]}>
-          <View style={[styles.tab, styles.tabActive]}>
+          <Pressable
+            style={[styles.tab, styles.tabActive]}
+            onPress={model.onFrameAll}
+            disabled={!model.onFrameAll}
+            accessibilityRole={model.onFrameAll ? 'button' : undefined}
+            accessibilityLabel={model.onFrameAll ? 'Frame page' : undefined}
+          >
             <Text style={[styles.tabText, styles.tabTextActive]}>Outline</Text>
-          </View>
+          </Pressable>
           <Pressable style={styles.closeButton} onPress={model.onClose} accessibilityLabel="Close outline">
             <MaterialCommunityIcons name="close" size={18} color={OUTLINE_CLOSE} />
           </Pressable>
