@@ -11,9 +11,14 @@ import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE } from './effectBar';
 
 // The Layout bar: where a MULTI-selection's members sit relative to each
 // other. A sibling of the Stroke / Fill / Endpoints bars sharing their chrome
-// (see effectBar.tsx), with two rows — Horizontal pushes every member to the
-// left edge, the centre line, or the right edge of the selection's combined
-// box; Vertical does the same top / middle / bottom.
+// (see effectBar.tsx), with up to three rows — Horizontal pushes every member
+// to the left edge, the centre line, or the right edge of the selection's
+// combined box; Vertical does the same top / middle / bottom; Arrange reflows
+// them into a grid instead of pushing them at an edge.
+//
+// The Arrange row renders only when the host supplies `onGrid`, and
+// submenuHeight('layout') is told the same thing (`layoutHasGrid`) so the bar
+// layer reserves two rows or three to match.
 //
 // No color swatch in the header (nothing here is colored) and no trash: an
 // align has no state to remove — undo is the way back, the same as any other
@@ -30,10 +35,17 @@ type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 const toCell = (o: AlignOption) => ({ value: o.edge, label: o.label, icon: o.icon as MCIName });
 const H_CELLS = HORIZONTAL_ALIGN_OPTIONS.map(toCell);
 const V_CELLS = VERTICAL_ALIGN_OPTIONS.map(toCell);
+/** The Arrange row's one cell. Alone in its row rather than tacked onto
+ *  Vertical: it is not an align, and a lone cell reads as the action it is. */
+const GRID_CELLS = [
+  { value: 'grid' as const, label: 'Arrange in grid', icon: 'view-grid-outline' as MCIName },
+];
 
-export function LayoutBar({ onAlign, onBack }: {
+export function LayoutBar({ onAlign, onGrid, onBack }: {
   /** Fires once per tap — an align is always a finished edit. */
   onAlign: (edge: AlignEdge) => void;
+  /** Lay the members out as a grid. Omit and the Arrange row doesn't render. */
+  onGrid?: () => void;
   onBack: () => void;
 }) {
   return (
@@ -42,6 +54,9 @@ export function LayoutBar({ onAlign, onBack }: {
       <View style={styles.controls}>
         <ActionRow label="Horizontal" options={H_CELLS} onPress={onAlign} />
         <ActionRow label="Vertical" options={V_CELLS} onPress={onAlign} />
+        {onGrid ? (
+          <ActionRow label="Arrange" options={GRID_CELLS} onPress={onGrid} />
+        ) : null}
       </View>
     </View>
   );

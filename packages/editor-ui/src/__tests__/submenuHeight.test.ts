@@ -92,6 +92,14 @@ describe('submenuHeight', () => {
     expect(SHADOW_PAD_SIZE).toBeGreaterThan(ROW_SLIDER * 3);
   });
 
+  test('the Layout bar grows the Arrange row only when Grid is wired up', () => {
+    const aligns = barOf([ROW_SEGMENTED, ROW_SEGMENTED]);
+    expect(submenuHeight('layout')).toBe(aligns);
+    expect(submenuHeight('layout', { layoutHasGrid: false })).toBe(aligns);
+    expect(submenuHeight('layout', { layoutHasGrid: true }))
+      .toBe(aligns + ROW_SEGMENTED + ROW_GAP);
+  });
+
   test('every submenu reports a real height, not a fallback', () => {
     // A key with no case would fall through; each of these is a whole bar, so
     // none may come back as bare chrome.

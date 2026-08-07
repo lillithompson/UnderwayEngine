@@ -534,6 +534,13 @@ export interface ObjectPropertiesModel {
    *  picks there is no live/commit split — each call is one finished move and
    *  one undo step. */
   onAlign?(edge: AlignEdge): void;
+  /** Lay every selected object out as a grid, anchored at the top-left of the
+   *  selection's combined box, and set each one to identity rotation — a grid
+   *  reads as a grid only if its members are upright. Supplying this adds an
+   *  Arrange row to the Layout bar; leave it unset and the bar keeps its two
+   *  align rows only. Like {@link onAlign}, one call is one finished edit and
+   *  one undo step — the un-rotation rides along in it. */
+  onGrid?(): void;
   onRotate(): void;
   onMirrorH(): void;
   onMirrorV(): void;

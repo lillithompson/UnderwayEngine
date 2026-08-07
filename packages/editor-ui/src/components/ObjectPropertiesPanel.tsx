@@ -523,6 +523,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     // ones its subtype has no answer for.
     borderRows: { radius: true, position: true },
     strokeRows: svgStrokeRows(model.svgSubtype ?? 'stroke'),
+    // The Layout bar grows an Arrange row exactly when the bar will render it.
+    layoutHasGrid: !!model.onGrid,
   });
   const activeSub: SubmenuKey | null =
     model.layoutOpen ? 'layout'
@@ -1180,6 +1182,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     activeBarEl = (
       <LayoutBar
         onAlign={(edge: AlignEdge) => model.onAlign?.(edge)}
+        onGrid={model.onGrid ? () => model.onGrid?.() : undefined}
         onBack={dismissSubmenu}
       />
     );

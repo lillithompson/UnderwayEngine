@@ -81,6 +81,8 @@ export interface SubmenuHeightContext {
   borderRows?: { radius: boolean; position: boolean };
   /** Stroke bar: the same bar, with the rows this vector subtype supports. */
   strokeRows?: { radius: boolean; position: boolean };
+  /** Layout bar: whether the host wired up Grid, which adds the Arrange row. */
+  layoutHasGrid?: boolean;
 }
 
 /** Total height of a stack of rows, including the gaps between them. */
@@ -148,7 +150,11 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'endpoints':
       return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'layout':
-      return standardBar([ROW_SEGMENTED, ROW_SEGMENTED]);
+      // Horizontal and Vertical, plus Arrange when the host offers Grid.
+      return standardBar([
+        ROW_SEGMENTED, ROW_SEGMENTED,
+        ...(ctx.layoutHasGrid ? [ROW_SEGMENTED] : []),
+      ]);
     case 'font':
       // Font pill, Weight segmented, Size slider.
       return standardBar([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER]);
