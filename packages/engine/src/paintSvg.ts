@@ -49,6 +49,67 @@ export function paintToSvg(
   return { defs, fill: `url(#${defId})` };
 }
 
+/** A Gaussian is visually dead by three standard deviations, which is also
+ *  where renderers stop sampling it. Filter regions are sized from this. */
+const BLUR_EXTENT_SIGMAS = 3;
+
+/** The old filter region, kept for callers that pass no box: half the caster's
+ *  bbox on every side. Generous for a big node, nowhere near enough for a
+ *  small one — which is why {@link effectsFilterRegion} exists. */
+const RELATIVE_REGION = ' x="-50%" y="-50%" width="200%" height="200%"';
+
+/** How far a shadow / glow paints beyond the shape casting it, per side, in
+ *  whatever units the effects are expressed in.
+ *
+ *  A filter clips to its region, so a region that doesn't cover this cuts the
+ *  shadow off with a hard straight edge. The blur reaches 3σ in every
+ *  direction; the offset slides that whole disc one way, so only the side it
+ *  moves toward pays for it; a positive spread dilates before the blur (a
+ *  negative one erodes, and can only shrink the reach — treated as 0). */
+export function effectsFilterOutset(
+  effects: NodeEffects,
+): { left: number; right: number; top: number; bottom: number } {
+  const out = { left: 0, right: 0, top: 0, bottom: 0 };
+  const sh = effects.shadow;
+  if (sh) {
+    const reach = BLUR_EXTENT_SIGMAS * Math.max(0, sh.blur) + Math.max(0, sh.spread ?? 0);
+    out.left = reach + Math.max(0, -sh.dx);
+    out.right = reach + Math.max(0, sh.dx);
+    out.top = reach + Math.max(0, -sh.dy);
+    out.bottom = reach + Math.max(0, sh.dy);
+  }
+  const gl = effects.glow;
+  if (gl) {
+    const reach = BLUR_EXTENT_SIGMAS * Math.max(0, gl.radius);
+    out.left = Math.max(out.left, reach);
+    out.right = Math.max(out.right, reach);
+    out.top = Math.max(out.top, reach);
+    out.bottom = Math.max(out.bottom, reach);
+  }
+  return out;
+}
+
+/** A node's bbox in the user space the filter is referenced from. */
+export interface FilterBox { x: number; y: number; width: number; height: number }
+
+/** The `filter` region attributes for `effects` cast by `box`, in user space.
+ *
+ *  Every side gets whichever is larger: what the effect actually reaches, or a
+ *  tenth of the box — the floor is there because the region has to contain the
+ *  SOURCE too, and a source can spill slightly past the bbox it was measured
+ *  from (a centered stroke, an italic glyph's overhang). Without it a node
+ *  whose only effect is a hard-edged offset shadow would clip its own paint. */
+function effectsFilterRegion(effects: NodeEffects, box: FilterBox): string {
+  const o = effectsFilterOutset(effects);
+  const left = Math.max(o.left, box.width * 0.1);
+  const right = Math.max(o.right, box.width * 0.1);
+  const top = Math.max(o.top, box.height * 0.1);
+  const bottom = Math.max(o.bottom, box.height * 0.1);
+  return ' filterUnits="userSpaceOnUse"' +
+    ` x="${fmt(box.x - left)}" y="${fmt(box.y - top)}"` +
+    ` width="${fmt(box.width + left + right)}" height="${fmt(box.height + top + bottom)}"`;
+}
+
 /**
  * Build a `<filter>` def for a node's shadow/glow, or nulls when neither
  * is present (borders need no filter).
@@ -59,10 +120,18 @@ export function paintToSvg(
  * it with the glow color, composites `in`, and merges under the source.
  * When both are present the drop-shadowed source (which includes the
  * source itself) merges over the glow halo.
+ *
+ * Pass `box` — the caster's bbox in the user space the filter is referenced
+ * from — to size the filter region to what the effect actually reaches.
+ * Without it the region is the relative ±50%, which silently guillotines any
+ * shadow that travels further than half the node's own box: fine for a big
+ * image, wrong for a line of text, whose box is a couple of cells tall and
+ * whose shadow is measured in the same cells.
  */
 export function effectsToSvgFilter(
   effects: NodeEffects,
   defId: string,
+  box?: FilterBox,
 ): { defs: string | null; filterRef: string | null } {
   const sh = effects.shadow;
   const gl = effects.glow;
@@ -102,8 +171,9 @@ export function effectsToSvgFilter(
       `<feMerge><feMergeNode in="glow"/><feMergeNode in="${sh ? 'withShadow' : 'SourceGraphic'}"/></feMerge>`,
     );
   }
+  const region = box ? effectsFilterRegion(effects, box) : RELATIVE_REGION;
   const defs =
-    `<filter id="${defId}" x="-50%" y="-50%" width="200%" height="200%" ` +
+    `<filter id="${defId}"${region} ` +
     `color-interpolation-filters="sRGB">${prims.join('')}</filter>`;
   return { defs, filterRef: `url(#${defId})` };
 }

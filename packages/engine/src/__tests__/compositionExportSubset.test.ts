@@ -19,6 +19,16 @@ const U = 256;
  *  font. Mirrors MEASURER_SLACK in compositionSVGCore. */
 const SLACK = 0.04;
 
+/** How far a sticker card's fixed drop shadow paints past the card, in cells.
+ *
+ *  A Gaussian is dead by 3σ, and `STICKER_SHADOW_CELLS.blur` is a CSS blur
+ *  RADIUS — σ is half of it — so the blur alone reaches 1.5× that, plus the
+ *  offset on the side it falls toward. Mirrors `effectsFilterOutset`, which is
+ *  what the exporter sizes both the frame and the filter region from. */
+const STICKER_PAD =
+  1.5 * STICKER_SHADOW_CELLS.blur
+  + Math.max(STICKER_SHADOW_CELLS.dx, STICKER_SHADOW_CELLS.dy);
+
 /**
  * The world box a text node's GLYPHS occupy — what a cutout frames on, as
  * opposed to the (usually much roomier) node bbox. Derived from the same
@@ -197,7 +207,7 @@ describe('subset (cutout) export', () => {
     expect(seen).toEqual(['txt_plain', 'txt_stick']);
     // A sticker's card fills its bbox, so the bbox IS its paint — framed on
     // that, plus room for the card's drop shadow.
-    const pad = Math.max(STICKER_SHADOW_CELLS.dx, STICKER_SHADOW_CELLS.dy) + STICKER_SHADOW_CELLS.blur;
+    const pad = STICKER_PAD;
     expect(viewBoxOf(svg!)).toEqual([
       (10 - pad) * U, (10 - pad) * U, (4 + 2 * pad) * U, (2 + 2 * pad) * U,
     ]);
@@ -431,7 +441,7 @@ describe('subset text framing', () => {
     const rad = (15 * Math.PI) / 180;
     const aabbW = 4 * Math.abs(Math.cos(rad)) + 2 * Math.abs(Math.sin(rad));
     const aabbH = 4 * Math.abs(Math.sin(rad)) + 2 * Math.abs(Math.cos(rad));
-    const pad = Math.max(STICKER_SHADOW_CELLS.dx, STICKER_SHADOW_CELLS.dy) + STICKER_SHADOW_CELLS.blur;
+    const pad = STICKER_PAD;
     expect(w / U).toBeCloseTo(aabbW + 2 * pad, 5);
     expect(h / U).toBeCloseTo(aabbH + 2 * pad, 5);
     // Centered on the card's centre, which rotation leaves fixed.

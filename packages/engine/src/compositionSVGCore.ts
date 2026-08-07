@@ -23,7 +23,7 @@ import { buildMaskClipDefs, wrapWithMaskClip } from './compositionMaskSVG';
 import { effectiveStrokeMultiplier, normalizeStrokeScale } from './strokeScale';
 import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
-import { paintToSvg, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
+import { paintToSvg, effectsFilterOutset, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
 import { overlayPngDataUri, paintBlendCss, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { charColorRuns, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
@@ -255,7 +255,16 @@ function applyNodeEffects(
   if (!effects) return markup;
   const scaled = scaleEffectsToSvgUnits(effects, u);
   let out = markup;
-  const { defs, filterRef } = effectsToSvgFilter(scaled, `fx_${nodeId}`);
+  // The node's box, in the same user space the filter is referenced from —
+  // world for svg/text, the local bitmap frame for images. Sizing the region
+  // to it (rather than to a fixed ±50%) is what stops a shadow reaching past
+  // a small node's own box from being cut off with a hard edge.
+  const { defs, filterRef } = effectsToSvgFilter(scaled, `fx_${nodeId}`, {
+    x: node.cellX * u,
+    y: node.cellY * u,
+    width: node.cellWidth * u,
+    height: node.cellHeight * u,
+  });
   if (defs && filterRef) {
     out = `<defs>${defs}</defs><g filter="${filterRef}">${out}</g>`;
   }
@@ -360,9 +369,22 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
     const bw = STICKER_BORDER_CELLS * u;
     const sh = STICKER_SHADOW_CELLS;
     const filterId = `stk_${text.id}`;
+    // Region sized from the shadow's actual reach, like every other effect
+    // filter here (`applyNodeEffects`): the old relative ±20% is only a few
+    // authored pixels on a small magnet, which clipped the card's shadow with
+    // the same hard edge. `blur` is a CSS radius, so σ is half of it.
+    const stkSigma = (sh.blur / 2) * u;
+    const stkOut = effectsFilterOutset({
+      shadow: {
+        dx: sh.dx * u, dy: sh.dy * u, blur: stkSigma,
+        color: { r: 0, g: 0, b: 0 }, alpha: sh.opacity,
+      },
+    });
     inner +=
-      `<defs><filter id="${filterId}" x="-20%" y="-20%" width="140%" height="140%">` +
-      `<feDropShadow dx="${sh.dx * u}" dy="${sh.dy * u}" stdDeviation="${(sh.blur / 2) * u}"` +
+      `<defs><filter id="${filterId}" filterUnits="userSpaceOnUse"` +
+      ` x="${-stkOut.left}" y="${-stkOut.top}"` +
+      ` width="${tw + stkOut.left + stkOut.right}" height="${th + stkOut.top + stkOut.bottom}">` +
+      `<feDropShadow dx="${sh.dx * u}" dy="${sh.dy * u}" stdDeviation="${stkSigma}"` +
       ` flood-color="#000000" flood-opacity="${sh.opacity}"/></filter></defs>` +
       `<rect x="${bw / 2}" y="${bw / 2}" width="${tw - bw}" height="${th - bw}"` +
       ` fill="${colors.bg}" stroke="${colors.fg}" stroke-width="${bw}"` +
@@ -420,16 +442,26 @@ const MEASURER_SLACK = 0.04;
 function textPaintOutset(text: TextObject): number {
   let out = 0;
   if (text.sticker) {
+    // Measured the same way as the authored shadow below, so the card's fixed
+    // shadow and the filter region that draws it agree. `blur` is a CSS
+    // radius, so σ is half of it.
     const s = STICKER_SHADOW_CELLS;
-    out = Math.max(Math.abs(s.dx), Math.abs(s.dy)) + s.blur;
+    const o = effectsFilterOutset({
+      shadow: {
+        dx: s.dx, dy: s.dy, blur: s.blur / 2,
+        color: { r: 0, g: 0, b: 0 }, alpha: s.opacity,
+      },
+    });
+    out = Math.max(o.left, o.right, o.top, o.bottom);
   }
   const fx = text.effects;
-  if (fx?.shadow) {
-    const reach = Math.max(Math.abs(fx.shadow.dx), Math.abs(fx.shadow.dy))
-      + fx.shadow.blur + (fx.shadow.spread ?? 0);
-    out = Math.max(out, reach);
+  if (fx) {
+    // The same reach the filter region is sized from, so a cutout can't frame
+    // tighter than the shadow the export then draws — that would crop it at
+    // the image edge, which is the other way this shadow gets a hard line.
+    const o = effectsFilterOutset(fx);
+    out = Math.max(out, o.left, o.right, o.top, o.bottom);
   }
-  if (fx?.glow) out = Math.max(out, fx.glow.radius);
   if (fx?.border) {
     const pos = fx.border.position ?? 'center';
     out = Math.max(out, pos === 'outside' ? fx.border.width : pos === 'center' ? fx.border.width / 2 : 0);

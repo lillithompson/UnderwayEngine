@@ -7,6 +7,7 @@
 
 import {
   paintToSvg,
+  effectsFilterOutset,
   effectsToSvgFilter,
   tintToFeColorMatrix,
   borderToSvgRect,
@@ -113,6 +114,93 @@ describe('effectsToSvgFilter', () => {
     const { defs } = effectsToSvgFilter({ shadow, glow }, 'fx3');
     expect(defs).toContain('result="withShadow"');
     expect(defs).toContain('<feMerge><feMergeNode in="glow"/><feMergeNode in="withShadow"/></feMerge>');
+  });
+});
+
+// A filter CLIPS to its region, so a region that doesn't cover the shadow cuts
+// it off with a hard straight edge. The relative ±50% default is half the
+// caster's own box, which is nowhere near enough for a short node — the
+// reported bug: a line of text is ~2 cells tall and its shadow is measured in
+// the same cells, so the blur ran straight off the region and was guillotined.
+describe('effectsFilterOutset', () => {
+  const shadow = { dx: 2, dy: 3, blur: 4, color: { r: 1, g: 2, b: 3 }, alpha: 0.5 };
+  const glow = { radius: 6, color: { r: 255, g: 200, b: 0 }, alpha: 0.8 };
+
+  test('nothing that paints outside the shape needs no outset', () => {
+    expect(effectsFilterOutset({})).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+    // A border is a stroked rect, not a filter primitive.
+    expect(effectsFilterOutset({ border: { width: 4, color: { r: 0, g: 0, b: 0 } } }))
+      .toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+
+  test('the blur reaches three sigma on every side', () => {
+    const o = effectsFilterOutset({ shadow: { ...shadow, dx: 0, dy: 0, blur: 4 } });
+    expect(o).toEqual({ left: 12, right: 12, top: 12, bottom: 12 });
+  });
+
+  test('the offset is paid only on the side it moves toward', () => {
+    // The blur disc slides bodily with the offset: it gains 2 to the right and
+    // LOSES 2 on the left, so padding both sides would be wasted region.
+    const o = effectsFilterOutset({ shadow: { ...shadow, dx: 2, dy: -3, blur: 4 } });
+    expect(o).toEqual({ left: 12, right: 14, top: 15, bottom: 12 });
+  });
+
+  test('a positive spread dilates before the blur; a negative one only shrinks', () => {
+    const grown = effectsFilterOutset({ shadow: { ...shadow, dx: 0, dy: 0, blur: 4, spread: 5 } });
+    expect(grown.left).toBe(17);
+    const eroded = effectsFilterOutset({ shadow: { ...shadow, dx: 0, dy: 0, blur: 4, spread: -5 } });
+    expect(eroded.left).toBe(12); // never less than the blur's own reach
+  });
+
+  test('a glow radiates evenly, and the two effects take the max per side', () => {
+    expect(effectsFilterOutset({ glow: { ...glow, radius: 6 } }))
+      .toEqual({ left: 18, right: 18, top: 18, bottom: 18 });
+    // Shadow reaches 12+2=14 right, glow 18 — the wider wins.
+    const both = effectsFilterOutset({
+      shadow: { ...shadow, dx: 2, dy: 0, blur: 4 }, glow: { ...glow, radius: 6 },
+    });
+    expect(both).toEqual({ left: 18, right: 18, top: 18, bottom: 18 });
+  });
+});
+
+describe('effectsToSvgFilter — filter region', () => {
+  const shadow = { dx: 2, dy: 3, blur: 4, color: { r: 1, g: 2, b: 3 }, alpha: 0.5 };
+  const box = { x: 0, y: 0, width: 100, height: 20 };
+
+  test('without a box it keeps the relative region', () => {
+    // Callers that pass no box (and the old behaviour) are unchanged.
+    expect(effectsToSvgFilter({ shadow }, 'fx').defs)
+      .toContain('x="-50%" y="-50%" width="200%" height="200%"');
+  });
+
+  test('with a box the region is user-space and covers the shadow', () => {
+    const { defs } = effectsToSvgFilter(
+      { shadow: { ...shadow, dx: 0, dy: 10, blur: 4 } }, 'fx', box,
+    );
+    expect(defs).toContain('filterUnits="userSpaceOnUse"');
+    // 12 up (3σ), 22 down (3σ + the offset) — and the box is only 20 tall, so
+    // the old ±50% would have allowed just 10 and sliced the shadow off.
+    expect(defs).toContain('x="-12" y="-12" width="124" height="54"');
+  });
+
+  test('a short node gets the room its shadow needs, not half its own height', () => {
+    // The reported bug, stated as an invariant: whatever the box, the region
+    // must contain every pixel the shadow can reach.
+    const tall = { ...box, height: 2 };
+    const { defs } = effectsToSvgFilter({ shadow: { ...shadow, dx: 0, dy: 30, blur: 4 } }, 'fx', tall);
+    const y = Number(defs!.match(/ y="(-?[\d.]+)"/)![1]);
+    const h = Number(defs!.match(/ height="([\d.]+)"/)![1]);
+    expect(y).toBeLessThanOrEqual(-12); // 3σ above
+    expect(y + h).toBeGreaterThanOrEqual(2 + 30 + 12); // box + offset + 3σ below
+  });
+
+  test('the region never shrinks below a tenth of the box', () => {
+    // It has to contain the SOURCE too, which can spill a little past the bbox
+    // it was measured from (a centered stroke, an italic overhang).
+    const { defs } = effectsToSvgFilter(
+      { shadow: { ...shadow, dx: 0, dy: 0, blur: 0, spread: 0 } }, 'fx', box,
+    );
+    expect(defs).toContain('x="-10" y="-2" width="120" height="24"');
   });
 });
 
