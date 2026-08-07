@@ -31,7 +31,7 @@ export class CompositionRenderer {
     const bufW = gl.drawingBufferWidth;
     const bufH = gl.drawingBufferHeight;
     gl.viewport(0, 0, bufW, bufH);
-    gl.clearColor(0.02, 0.016, 0.031, 1.0);
+    gl.clearColor(0.851, 0.851, 0.851, 1.0); // #D9D9D9 light base
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     gl.enable(gl.BLEND);
@@ -70,7 +70,7 @@ export class CompositionRenderer {
     gl.uniform1f(gl.getUniformLocation(prog, 'u_aspect'), aspect);
     gl.uniform2f(gl.getUniformLocation(prog, 'u_resolution'), viewportW, viewportH);
 
-    gl.uniform3f(gl.getUniformLocation(prog, 'u_bgColor'), 0.02, 0.016, 0.031);
+    gl.uniform3f(gl.getUniformLocation(prog, 'u_bgColor'), 0.851, 0.851, 0.851); // #D9D9D9
     gl.uniform1f(gl.getUniformLocation(prog, 'u_gridIntensity'), gridIntensity);
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

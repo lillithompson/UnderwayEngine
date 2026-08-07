@@ -158,7 +158,9 @@ void main() {
   float by = byTop * byBottom;
   float border = 1.0 - bx * by;
 
-  float lineAlpha = clamp(line * 2.5 * u_gridIntensity, 0.0, 1.0);
+  // gridIntensity maps directly to line opacity: the composition default of
+  // 0.5 yields 50%-opaque grid lines.
+  float lineAlpha = clamp(line * u_gridIntensity, 0.0, 1.0);
   float alpha = max(lineAlpha, border * 0.6);
 
   // Out-of-bounds: discard so margin color shows through
@@ -174,7 +176,7 @@ void main() {
   float r = length(vp);
   float d = pow(smoothstep(0.0, 0.75, r), 1.3);
   vec3 bg = u_bgColor * mix(1.08, 0.78, d);
-  vec3 gridColor = mix(vec3(0.188), vec3(0.5), u_gridIntensity);
+  vec3 gridColor = vec3(0.2); // dark grey grid lines
   vec3 finalColor = mix(bg, gridColor, alpha);
   gl_FragColor = vec4(finalColor, 1.0);
 }
@@ -402,9 +404,11 @@ void main() {
   float line = max(gridLine(uv, fineCount * 0.5, canvasPx),
                    gridLine(uv, fineCount, canvasPx) * fade);
 
-  float alpha = line * 2.5 * u_gridIntensity;
+  // gridIntensity maps directly to line opacity: the composition default of
+  // 0.5 yields 50%-opaque grid lines.
+  float alpha = line * u_gridIntensity;
   if (alpha < 0.01) discard;
-  vec3 color = mix(vec3(0.188), vec3(0.5), u_gridIntensity);
+  vec3 color = vec3(0.2); // dark grey grid lines
   gl_FragColor = vec4(color, alpha);
 }
 `;

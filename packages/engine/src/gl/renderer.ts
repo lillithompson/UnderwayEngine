@@ -147,7 +147,7 @@ export class Renderer {
   // Pushed in from the host (Canvas) so the figure editor tracks the parent
   // composition's "Grid Weight" slider. Defaults to the composition default
   // so standalone use still renders sensibly.
-  gridIntensity: number = 0.3;
+  gridIntensity: number = 0.5;
 
   constructor(gl: WebGLRenderingContext) {
     this.engine = createGLEngine(gl);
@@ -624,7 +624,7 @@ export class Renderer {
     gl.uniform2f(locs.u_resolution, viewportW, viewportH);
     gl.uniform1f(locs.u_shiftX, shiftX);
     gl.uniform1f(locs.u_shiftY, shiftY);
-    gl.uniform3f(locs.u_bgColor, 0.0, 0.0, 0.0);
+    gl.uniform3f(locs.u_bgColor, 0.851, 0.851, 0.851); // #D9D9D9 light base
     gl.uniform1f(locs.u_gridIntensity, this.gridIntensity);
     gl.uniform2f(locs.u_boundsMin, boundsMinU, boundsMinV);
     gl.uniform2f(locs.u_boundsMax, boundsMaxU, boundsMaxV);
