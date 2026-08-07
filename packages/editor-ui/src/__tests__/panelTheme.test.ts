@@ -97,10 +97,13 @@ describe('object-properties chrome matches the toolbar', () => {
     expect(/function OptionPill\(/.test(panel)).toBe(true);
     expect(/typeSpecs!\.map\(/.test(panel)).toBe(true);
     expect(/<GridButton/.test(panel)).toBe(true);
-    // The pushdown's capsule rather than a new look: fully-round, the
-    // pushdown's inactive grey, selection blue under the selected one.
+    // The pushdown's capsule rather than a new look: fully-round, selection
+    // blue under the selected one. The unselected word is the ONE departure —
+    // the pushdown's #a3a3a3 was too light against the panel's #e5e5e5, so it
+    // takes the panel ink ramp's label rung instead of that fixed grey.
     expect(/optionPill: \{[^}]*borderRadius: 999/s.test(panel)).toBe(true);
-    expect(/optionLabel: \{[^}]*color: PUSHDOWN_INACTIVE/s.test(panel)).toBe(true);
+    expect(/optionLabel: \{[^}]*color: PANEL_INK_LABEL/s.test(panel)).toBe(true);
+    expect(/PUSHDOWN_INACTIVE/.test(panel)).toBe(false);
     expect(/optionCapsule: \{[^}]*backgroundColor: STATE_ACTIVE/s.test(panel)).toBe(true);
     // The pushdown's word is 13/600 at every width. A narrow-screen override
     // that shrank it was the one thing keeping the two from matching.

@@ -34,9 +34,9 @@ import {
   PANEL_DOT,
   PANEL_ICON,
   PANEL_INK,
+  PANEL_INK_LABEL,
   PANEL_SWATCH_BORDER,
   PATTERN_ACTIVE,
-  PUSHDOWN_INACTIVE,
   STATE_ACTIVE,
 } from '../theme';
 
@@ -1396,7 +1396,11 @@ const styles = StyleSheet.create({
   // 13/600, the toolbar line-mode pushdown's word, at every width. Narrow
   // screens used to drop this to 11 to keep the longest words whole; matching
   // the pushdown matters more, and a word that outgrows its cell ellipsizes.
-  optionLabel: { flexShrink: 1, color: PUSHDOWN_INACTIVE, fontSize: 13, fontWeight: '600' },
+  // The colour is the one departure from the pushdown: its fixed #a3a3a3 was
+  // struck for the toolbar's three-word row and against the panel's #e5e5e5 it
+  // barely cleared the surface. These are the panel's row labels, so they take
+  // the panel ink ramp's label rung instead.
+  optionLabel: { flexShrink: 1, color: PANEL_INK_LABEL, fontSize: 13, fontWeight: '600' },
   optionLabelActive: { color: '#ffffff' },
   // A color-valued option (the frame's Fill) keeps a small swatch ahead of its
   // word — on/off the pill can say itself, a color it can't.
