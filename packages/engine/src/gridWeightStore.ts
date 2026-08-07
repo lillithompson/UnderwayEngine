@@ -10,7 +10,7 @@ import { loadGridWeight, saveGridWeight } from './persistence';
 
 export const GRID_WEIGHT_MIN = 0;
 export const GRID_WEIGHT_MAX = 1;
-export const GRID_WEIGHT_DEFAULT = 0.5;
+export const GRID_WEIGHT_DEFAULT = 0.75;
 
 /** Clamp to the usable range, rejecting NaN/Infinity from a parsed URL param
  *  or a stored value written by an older build. */
