@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { MODAL_TEXT, PANEL_HAIRLINE } from '../theme';
+import { sliderValueFromX } from '../logic/slider';
 
 // A minimal draggable slider (0–1). Tapping or dragging the track moves the
 // thumb to the touch; `onChange` fires live and `onCommit` on release. Built
@@ -20,15 +21,14 @@ export function Slider({ value, onChange, onCommit, accent = DEFAULT_ACCENT, tra
   const [trackW, setTrackW] = useState(0);
   const trackWRef = useRef(0);
   trackWRef.current = trackW;
+  // Current value, live for the once-created PanResponder's fallback below.
+  const valueRef = useRef(value);
+  valueRef.current = value;
   // Latest handlers, so the once-created PanResponder always calls through.
   const cbRef = useRef({ onChange, onCommit });
   cbRef.current = { onChange, onCommit };
 
-  const valueFromX = (x: number) => {
-    const w = trackWRef.current;
-    if (w <= 0) return 0;
-    return Math.max(0, Math.min(1, x / w));
-  };
+  const valueFromX = (x: number) => sliderValueFromX(x, trackWRef.current, valueRef.current);
 
   const pan = useRef(
     PanResponder.create({
