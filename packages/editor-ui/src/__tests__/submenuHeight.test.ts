@@ -30,7 +30,7 @@ const barOf = (rows: number[]) =>
 // typeSubmenuOrder. Named here so the per-type expectations below read as the
 // product question they are: how tall is a text selection's menu?
 const IMAGE: SubmenuKey[] = ['tint', 'crop', 'shadow', 'border', 'opacity'];
-const TEXT: SubmenuKey[] = ['font', 'align'];
+const TEXT: SubmenuKey[] = ['font', 'align', 'shadow'];
 const FRAME: SubmenuKey[] = ['shadow', 'border'];
 
 describe('submenuHeight', () => {
@@ -134,6 +134,14 @@ describe('typeMenuHeight', () => {
     expect(typeMenuHeight(TEXT)).toBe(submenuHeight('font'));
     const imageAtWorst = typeMenuHeight(IMAGE, { tintType: 'linear' });
     expect(typeMenuHeight(TEXT)).toBeLessThan(imageAtWorst);
+  });
+
+  test("text's Shadow bar fits the height its typography bars already set", () => {
+    // Text gained the image's Drop Shadow bar. Its XY pad is shorter than the
+    // three-row Font/Align bars, so the menu keeps the height it had — adding
+    // the option moves no top edge.
+    expect(submenuHeight('shadow')).toBeLessThan(submenuHeight('font'));
+    expect(typeMenuHeight(TEXT)).toBe(typeMenuHeight(['font', 'align']));
   });
 
   test('an image stands four rows tall — the Border bar sets it', () => {

@@ -53,7 +53,7 @@ import {
 // are drawn differently because they say different kinds of thing: the common
 // actions (rotate / flip / copy / lock / delete) are bare icons, universal
 // enough to need no caption, while the type-specific options (images: tint /
-// crop / shadow / border / opacity; text: edit / type) are word capsules in the
+// crop / shadow / border / opacity; text: edit / type / align / shadow) are word capsules in the
 // toolbar line-mode pushdown's style. A horizontal swipe (either direction)
 // swaps between the two, sliding the row along; the dots below track which is
 // showing.
@@ -111,9 +111,11 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 
 // The slide-up submenus, in carousel order. Image selections cycle through
 // tint / crop / shadow / border / opacity (matching their type-option order);
-// text cycles through font / align (two pages of the Text bar); a vector
-// selection has stroke, plus its subtype's second bar — svgFill on the closed
-// shapes, endpoints on the open paths — plus opacity on the closed shapes.
+// text cycles through font / align (two pages of the Text bar) and then shadow
+// — the SAME Drop Shadow bar an image opens, cast by the glyphs rather than by
+// the box; a vector selection has stroke, plus its subtype's second bar —
+// svgFill on the closed shapes, endpoints on the open paths — plus opacity on
+// the closed shapes.
 // Kept in this order so a left swipe advances the same way the type-option
 // row reads.
 //
@@ -492,7 +494,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
       ? ['tint', 'shadow', 'border', 'opacity']
       : ['tint', 'crop', 'shadow', 'border', 'opacity'])
     : model.showFrameOptions ? ['shadow', 'border']
-    : model.showTextStyle ? ['font', 'align']
+    : model.showTextStyle ? ['font', 'align', 'shadow']
     : model.showSvgOptions
       ? [
           'stroke',
@@ -700,13 +702,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // Fold the effect bars away the moment the selection can no longer use them
   // (or the whole panel hides) so none lingers over the next object's actions.
   // Frames reuse the Shadow / Border bars (but never Crop), so keep those open
-  // while a frame is selected.
+  // while a frame is selected. Shadow and Border part company here: text offers
+  // Shadow but not Border, so a text selection must not drag the Shadow bar
+  // down with a rule written for the pair.
   useEffect(() => {
-    const canEffect = model.showImageEdit || model.showFrameOptions;
-    if (!model.visible || !canEffect) {
-      model.onShadowOpenChange?.(false);
-      model.onBorderOpenChange?.(false);
-    }
+    const canShadow = model.showImageEdit || model.showFrameOptions || model.showTextStyle;
+    const canBorder = model.showImageEdit || model.showFrameOptions;
+    if (!model.visible || !canShadow) model.onShadowOpenChange?.(false);
+    if (!model.visible || !canBorder) model.onBorderOpenChange?.(false);
     if (!model.visible || !model.showImageEdit) {
       model.onCropOpenChange?.(false);
       model.onTintOpenChange?.(false);
@@ -714,7 +717,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     // model.on*OpenChange are stable setters; listing the whole model would
     // re-run this every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showImageEdit, model.showFrameOptions]);
+  }, [model.visible, model.showImageEdit, model.showFrameOptions, model.showTextStyle]);
   // The Opacity bar is shared by images and the closed vector shapes, so it
   // folds away only when the selection is neither (or the panel hides).
   useEffect(() => {
@@ -1050,12 +1053,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     typeSpecs = [{ key: 'invert', label: 'Invert', toggled: model.inverted, onPress: model.onInvert }];
   } else if (model.showEdit || model.showTextStyle) {
     // Edit (content) · Type (opens the Text bar on the Font page) · Align (opens
-    // it straight on the Align page). Type / Align both slide the same two-page
-    // Text bar up; they differ only in which page it lands on.
+    // it straight on the Align page) · Shadow. Type / Align both slide the same
+    // two-page Text bar up; they differ only in which page it lands on. Shadow
+    // is the image's own bar, unchanged — one Drop Shadow control for every
+    // object that can cast one.
     typeSpecs = [];
     if (model.showEdit) typeSpecs.push({ key: 'edit', label: 'Edit', onPress: model.onEdit });
     if (model.showTextStyle) typeSpecs.push({ key: 'type', label: 'Type', sub: 'font', onPress: () => openSubmenu('font') });
     if (model.showTextStyle) typeSpecs.push({ key: 'align', label: 'Align', sub: 'align', onPress: () => openSubmenu('align') });
+    if (model.showTextStyle) typeSpecs.push({ key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: toggleShadow });
   }
   if (showLayout) {
     // Layout closes the set for a multi-selection, whatever its members are —

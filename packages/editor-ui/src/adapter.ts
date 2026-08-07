@@ -316,7 +316,8 @@ export interface ObjectPropertiesModel {
    *  slides the Text bar in over the panel — a two-page carousel of Font
    *  (color / family / weight / size) and Align (character / line spacing /
    *  horizontal + vertical alignment). Sits beside the Edit button (which edits
-   *  the content). */
+   *  the content). It also brings the Shadow option, which opens the SAME Drop
+   *  Shadow bar an image gets (see `shadow` / `onShadow`). */
   showTextStyle?: boolean;
   /** Selection is a word sticker (magnetic poetry): the panel's second row
    *  shows a single Invert toggle instead of the text typography options. The
@@ -434,10 +435,11 @@ export interface ObjectPropertiesModel {
    *  reads the current tint to know which. */
   onPickTintColor?(): void;
   /** Whether the Shadow controls are shown. App-owned so a tap-off dismisses
-   *  them before the panel (same as the Border bar). */
+   *  them before the panel (same as the Border bar). Offered by images, frames
+   *  AND text — the one effect bar all three share. */
   shadowOpen?: boolean;
   onShadowOpenChange?(open: boolean): void;
-  /** The selected image's current shadow (defaults supplied by the app when
+  /** The selected object's current shadow (defaults supplied by the app when
    *  none is set yet), seeding the Shadow controls. */
   shadow?: ShadowModel;
   /** Shadow-controls callback: fires live while dragging (`committed=false`)

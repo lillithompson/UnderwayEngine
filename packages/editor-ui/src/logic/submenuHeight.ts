@@ -57,9 +57,10 @@ export const SHADOW_PAD_SIZE = 106;
 export const CROP_CAPTION_HEIGHT = 21;
 
 /** The slide-up submenus. Image selections cycle through tint / crop / shadow /
- *  border / opacity; text through font / align (two pages of the Text bar); a
- *  vector through stroke plus whichever of svgFill / endpoints / opacity its
- *  subtype has. `layout` rides on a multi-selection rather than on a type. */
+ *  border / opacity; text through font / align (two pages of the Text bar) and
+ *  shadow (the image bar, reused); a vector through stroke plus whichever of
+ *  svgFill / endpoints / opacity its subtype has. `layout` rides on a
+ *  multi-selection rather than on a type. */
 export type SubmenuKey =
   | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
   | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'layout';
