@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
@@ -10,9 +10,11 @@ import {
   OBJECT_DOTS_BOTTOM,
   OBJECT_DOT_SIZE,
   OPTION_CAPSULE_HEIGHT,
+  OPTION_CAPSULE_MAX_WIDTH,
+  OPTION_PILL_PAD,
   OPTION_ROW_GAP,
   objectPanelLayout,
-  optionCapsuleLayout,
+  optionCapsuleLefts,
   optionRowSidePad,
 } from '../logic/panelLayout';
 import { ColorSwatchFill } from './ColorSwatch';
@@ -50,8 +52,8 @@ import {
 // buttons and the carousel dots. It shows one row at a time, and the two pages
 // are drawn differently because they say different kinds of thing: the common
 // actions (rotate / flip / copy / lock / delete) are bare icons, universal
-// enough to need no caption, while the type-specific options (images: replace
-// / tint / crop / shadow / border; text: edit / type) are word capsules in the
+// enough to need no caption, while the type-specific options (images: tint /
+// crop / shadow / border / opacity; text: edit / type) are word capsules in the
 // toolbar line-mode pushdown's style. A horizontal swipe (either direction)
 // swaps between the two, sliding the row along; the dots below track which is
 // showing.
@@ -149,8 +151,10 @@ function GridButton({ label, icon, iconColor, onPress, compact }: {
   );
 }
 
-/** The option row's single selection capsule: one constant width for the whole
- *  row, parked over whichever option opened the bar you're looking at.
+/** The option row's selection capsule, parked over whichever option opened the
+ *  bar you're looking at. It takes that option's own box: the cells size to
+ *  their words, so the capsule RESIZES as it travels rather than holding one
+ *  width for the row.
  *
  *  It SLIDES only when moving between two options. Arriving from nowhere — a
  *  bar opening, or the type row swiping in — it fades up in place instead,
@@ -158,15 +162,22 @@ function GridButton({ label, icon, iconColor, onPress, compact }: {
  *  where it came from. `shown` outlives `at` so the fade-out has something to
  *  animate against.
  *
+ *  Width can't ride the native driver, and mixing drivers on one node lets the
+ *  native side overwrite the JS side's props, so the whole capsule animates in
+ *  JS. It is one small view moving for PANEL_ANIM_MS on a tap — not a
+ *  per-frame cost — and the editor runs as the web bundle, where the native
+ *  driver is a no-op anyway.
+ *
  *  Its own component because the panel returns early when it isn't mounted, and
  *  these hooks must not sit behind that.  */
 function OptionCapsule({ at, width }: {
   /** Left offset of the selected cell, or null when nothing is selected. */
   at: number | null;
-  /** The row's constant capsule width; 0 before the row has been measured. */
+  /** Width of the selected cell; 0 before the row has been measured. */
   width: number;
 }) {
   const x = useRef(new Animated.Value(at ?? 0)).current;
+  const w = useRef(new Animated.Value(width)).current;
   const fade = useRef(new Animated.Value(0)).current;
   const [shown, setShown] = useState(at != null);
   const prevAt = useRef<number | null>(null);
@@ -174,29 +185,35 @@ function OptionCapsule({ at, width }: {
     const from = prevAt.current;
     prevAt.current = at;
     if (at == null) {
-      const anim = Animated.timing(fade, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true });
+      const anim = Animated.timing(fade, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: false });
       anim.start(({ finished }) => { if (finished) setShown(false); });
       return () => anim.stop();
     }
     setShown(true);
     if (from == null) {
       x.setValue(at);
-      const anim = Animated.timing(fade, { toValue: 1, duration: PANEL_ANIM_MS, useNativeDriver: true });
+      w.setValue(width);
+      const anim = Animated.timing(fade, { toValue: 1, duration: PANEL_ANIM_MS, useNativeDriver: false });
       anim.start();
       return () => anim.stop();
     }
     fade.setValue(1);
-    const anim = Animated.timing(x, { toValue: at, duration: PANEL_ANIM_MS, useNativeDriver: true });
+    // Position and width travel together, or the capsule would arrive at the
+    // new option still wearing the old one's width.
+    const anim = Animated.parallel([
+      Animated.timing(x, { toValue: at, duration: PANEL_ANIM_MS, useNativeDriver: false }),
+      Animated.timing(w, { toValue: width, duration: PANEL_ANIM_MS, useNativeDriver: false }),
+    ]);
     anim.start();
     return () => anim.stop();
-  }, [at, x, fade]);
+  }, [at, width, x, w, fade]);
 
   if (!shown || width <= 0) return null;
   return (
     // Untappable, so it can't swallow a press meant for the option it sits on.
     <Animated.View
       pointerEvents="none"
-      style={[styles.optionCapsule, { width, opacity: fade, transform: [{ translateX: x }] }]}
+      style={[styles.optionCapsule, { width: w, opacity: fade, transform: [{ translateX: x }] }]}
     />
   );
 }
@@ -234,16 +251,29 @@ interface OptionSpec {
 // word. A `toggled` option is the exception: its state is independent of which
 // bar is open, so it carries a static capsule of its own.
 //
-// It keeps the GridButton's flex cell and 48pt height so the row doesn't
-// resize or reflow when a swipe swaps the two pages — only the contents change.
-function OptionPill({ spec, selected, width }: {
+// It keeps the GridButton's 48pt height, so a swipe between the two pages
+// doesn't change the row's height — but NOT its equal-width cell. The words
+// vary in length and the icons don't, so equal columns sized by the icon page
+// meant the long words ("Opacity", "Endpoints") ellipsized on a phone while
+// short ones sat in half-empty cells. Here each cell hugs its own word and the
+// row's leftover width is shared out equally between them, so the row is always
+// full and nothing truncates until the words genuinely outgrow the screen.
+// On a wide window a cell stops at OPTION_CAPSULE_MAX_WIDTH — what keeps a
+// three-option set from stretching into slabs, the row centring what it then
+// doesn't fill. That cap comes OFF below COMPACT_MAX_WIDTH: a phone has no
+// width to spare, and spending it all is the whole point there.
+//
+// `onMeasure` reports the width the cell actually took — the capsule that parks
+// over it can't know a word's width without the layout having happened.
+function OptionPill({ spec, selected, compact, onMeasure }: {
   spec: OptionSpec;
   /** True when this option's submenu is the open one — colors the word for the
    *  capsule sliding underneath it. */
   selected: boolean;
-  /** The row's constant capsule width; 0 before the row has been measured, when
-   *  the word falls back to hugging its own content. */
-  width: number;
+  /** Narrow screen: the width cap comes off, so the row is spent in full. */
+  compact: boolean;
+  /** Reports this cell's laid-out width, for the capsule that parks over it. */
+  onMeasure: (key: string, width: number) => void;
 }) {
   const lit = selected || !!spec.toggled;
   return (
@@ -252,12 +282,12 @@ function OptionPill({ spec, selected, width }: {
       accessibilityLabel={spec.label}
       accessibilityState={spec.sub || spec.toggled !== undefined ? { selected: lit } : undefined}
       onPress={spec.onPress}
-      style={styles.optionCell}
+      onLayout={(e) => onMeasure(spec.key, e.nativeEvent.layout.width)}
+      style={[styles.optionCell, compact ? null : styles.optionCellCapped]}
     >
       <View
         style={[
           styles.optionPill,
-          width > 0 ? { width } : null,
           // Only a toggle paints its own capsule; a selected submenu option is
           // covered by the shared one sliding under it.
           spec.toggled ? { backgroundColor: spec.tint ?? STATE_ACTIVE } : null,
@@ -325,9 +355,21 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // row follow the finger first, then completes in the drag direction.
   const swapX = useRef(new Animated.Value(0)).current;
   const swapping = useRef(false);
-  // Measured width of the button row — the cell geometry the selection capsule
-  // slides through is derived from it (optionCapsuleLayout).
+  // Measured width of the button row, and of each type option's cell (keyed by
+  // option key). The cells size themselves to their words, so the selection
+  // capsule takes its width from the layout that actually happened and its
+  // offset from optionCapsuleLefts. Empty until the first layout pass, when
+  // there's nothing for the capsule to sit on and it isn't drawn.
   const [rowWidth, setRowWidth] = useState(0);
+  const [optionWidths, setOptionWidths] = useState<Record<string, number>>({});
+  const onOptionMeasure = useCallback((key: string, width: number) => {
+    setOptionWidths((prev) => {
+      // onLayout fires on every pass; only a real change is worth a re-render
+      // (and sub-pixel jitter would otherwise loop).
+      if (prev[key] !== undefined && Math.abs(prev[key] - width) < 0.5) return prev;
+      return { ...prev, [key]: width };
+    });
+  }, []);
   // Latest runner + swipe-eligibility, so the once-created PanResponder always
   // uses the current window width and set availability.
   const runSwapRef = useRef<(dir: -1 | 1) => void>(() => {});
@@ -362,8 +404,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
 
   // Multi-selection mode: the host applies every edit to ALL selected
   // objects at once. The common row drops Lock (a mixed selection's lock
-  // state is ambiguous), and the image set drops the single-target actions
-  // (Replace swaps one image, Crop frames one image).
+  // state is ambiguous), and the image set drops Crop (it frames one image).
   const multi = model.mode === 'multi';
   // Layout (align the members against their combined box) — the one type
   // option that asks nothing of the members but their boxes, so it rides on
@@ -391,6 +432,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     // none (also keeps a stale swap from leaving an empty row).
     setShowTypeRow(hasTypeOptions);
   }, [typeSig, hasTypeOptions]);
+
+  // A new option set relays out from scratch, so drop the old widths rather
+  // than let a key both sets share (Shadow, Border) size the capsule from the
+  // previous set's layout for a frame.
+  useEffect(() => { setOptionWidths({}); }, [typeSig]);
 
   // Shadow / Border controls each seed a local draft from model.shadow /
   // model.border when they open, then own the tracked params so live previews
@@ -796,13 +842,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     if (action === 'border') { toggleBorder(); return; }
     if (action === 'crop') { toggleCrop(); return; }
     if (action === 'opacity') { toggleOpacity(); return; }
-    // Any other action closes the transient bars.
-    model.onTintOpenChange?.(false);
-    model.onShadowOpenChange?.(false);
-    model.onBorderOpenChange?.(false);
-    model.onCropOpenChange?.(false);
-    model.onOpacityOpenChange?.(false);
-    if (action === 'replace') model.onReplaceImage?.();
   };
 
   // Shadow controls → live preview / commit through the model; the draft stays
@@ -946,12 +985,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   let typeSpecs: OptionSpec[] | null = null;
   if (model.showImageEdit) {
     typeSpecs = IMAGE_EDIT_OPTIONS
-      .filter((opt) => !multi || (opt.action !== 'replace' && opt.action !== 'crop'))
-      // Every image action but Replace names a bar, and shares its key.
+      // Crop is single-target only — a mixed selection has no one frame to fit.
+      .filter((opt) => !multi || opt.action !== 'crop')
+      // Every image action names a bar, and shares its key.
       .map((opt) => ({
         key: opt.action,
         label: opt.label,
-        sub: opt.action === 'replace' ? undefined : (opt.action as SubmenuKey),
+        sub: opt.action as SubmenuKey,
         onPress: () => runImageAction(opt.action),
       }));
   } else if (model.showFrameOptions) {
@@ -1024,35 +1064,39 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   }
 
   // Only one set shows at a time; a horizontal swipe swaps between them (the
-  // dots below track which is showing). Columns stay fixed at the larger set's
-  // count so the cells don't resize on swap; empty cells split either side of
-  // the smaller set to centre it.
+  // dots below track which is showing). The icon row's columns stay fixed at
+  // the larger set's count so the icons keep one size across selections, and
+  // empty cells split either side to centre them; the option row sizes its own
+  // cells to its words instead (OptionPill) and so needs no pad.
   const canSwap = !!typeSpecs;
   canSwapRef.current = canSwap;
   const showType = canSwap && showTypeRow;
   const columns = Math.max(row1.length, typeSpecs ? typeSpecs.length : 0);
 
   // ── The sliding selection capsule ───────────────────────────────────
-  // One capsule of one width for the whole row, parked over whichever option
-  // opened the bar you're looking at, and animated between cells when that
-  // changes. Its geometry needs the row's measured width, so it can only be
-  // computed after the first layout pass; until then `width` is 0 and the
-  // capsule isn't drawn.
-  const capsule = optionCapsuleLayout(rowWidth, columns, typeSpecs?.length ?? 0);
+  // Parked over whichever option opened the bar you're looking at, taking that
+  // cell's own width — the cells size to their words, so it resizes as well as
+  // travels. Widths are measured, offsets reproduced from the row's geometry
+  // (optionCapsuleLefts); both need the first layout pass, and until every cell
+  // has reported there is nothing to sit on and the capsule isn't drawn.
   const selectedOption = typeSpecs
     ? typeSpecs.findIndex((s) => s.sub !== undefined && subOpen(s.sub))
     : -1;
+  const cellWidths = typeSpecs ? typeSpecs.map((s) => optionWidths[s.key] ?? 0) : [];
+  const measured = cellWidths.length > 0 && cellWidths.every((w) => w > 0);
+  const lefts = measured ? optionCapsuleLefts(rowWidth, cellWidths) : [];
   // Only a shown, measured, selected type row gets a capsule.
-  const capsuleAt = showType && capsule.width > 0 && selectedOption >= 0
-    ? capsule.lefts[selectedOption]
-    : null;
+  const litCell = showType && selectedOption >= 0 && lefts.length > 0;
+  const capsuleAt = litCell ? lefts[selectedOption] : null;
+  const capsuleWidth = litCell ? cellWidths[selectedOption] : 0;
 
   const activeButtons: React.ReactNode[] = showType
     ? typeSpecs!.map((spec, i) => (
-        <OptionPill key={spec.key} spec={spec} selected={i === selectedOption} width={capsule.width} />
+        <OptionPill key={spec.key} spec={spec} selected={i === selectedOption} compact={compact} onMeasure={onOptionMeasure} />
       ))
     : row1;
-  const sidePad = optionRowSidePad(columns, activeButtons.length);
+  // The option row fills the width itself; only the icon row is centred by pads.
+  const sidePad = showType ? 0 : optionRowSidePad(columns, activeButtons.length);
 
   // Params tracked by the sliders/pad come from the local draft; color comes
   // from the model (it's changed externally, via the full-screen picker).
@@ -1251,7 +1295,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
           <Animated.View style={{ transform: [{ translateX: swapX }] }}>
             <View style={styles.gridRow} onLayout={(e) => setRowWidth(e.nativeEvent.layout.width)}>
               {/* The selection capsule, first so it paints under the words. */}
-              <OptionCapsule at={capsuleAt} width={capsule.width} />
+              <OptionCapsule at={capsuleAt} width={capsuleWidth} />
               {sidePad > 0 ? <View style={{ flex: sidePad }} /> : null}
               {activeButtons}
               {sidePad > 0 ? <View style={{ flex: sidePad }} /> : null}
@@ -1294,24 +1338,39 @@ const styles = StyleSheet.create({
   dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, paddingTop: 4, paddingBottom: OBJECT_DOTS_BOTTOM },
   dot: { width: OBJECT_DOT_SIZE, height: OBJECT_DOT_SIZE, borderRadius: OBJECT_DOT_SIZE / 2, backgroundColor: PANEL_DOT },
   dotActive: { backgroundColor: ICON_COLOR },
-  // A grid row: equal-width cells (the buttons) flanked by one weighted empty
-  // cell per side that centres them, so the common-actions and type-options
-  // sets share the same columns (stable cell width across a swap), separated by
-  // a gap wide enough that the cells read as distinct buttons, not one strip.
+  // A grid row: cells separated by a gap wide enough that they read as distinct
+  // buttons, not one strip. The common-actions page divides it into equal
+  // columns flanked by one weighted empty cell per side that centres them; the
+  // type-options page sizes each cell to its own word (see optionCell).
+  // `justifyContent` only bites on that second page, and only once every option
+  // has hit its width cap — then the group centres instead of spreading.
   gridRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    // Shared with optionCapsuleLayout, which reproduces this row's geometry to
-    // place the capsule — the two must agree on the gap.
+    justifyContent: 'center',
     gap: OPTION_ROW_GAP,
     paddingTop: 4,
     paddingBottom: 8,
   },
   gridButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
   // ── Type-specific option pills (the toolbar line-mode pushdown's look) ──
-  // The cell keeps the GridButton's flex weight and 48pt height so a page swap
-  // can't resize the row; the pill sits centred inside it.
-  optionCell: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
+  // Variable width: `flexBasis: 'auto'` starts the cell at its own word plus
+  // the pill's padding, and flexGrow shares the row's leftover width equally
+  // between the cells, so the row is always full and a long word gets the room
+  // it needs. Allowed to shrink (ellipsizing) only if the words really can't
+  // fit. Keeps the GridButton's 48pt height so a page swap can't change the
+  // row's height.
+  optionCell: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Wide windows only: stop a short set from stretching into slabs. A phone
+  // keeps every pixel — that's where the words were being clipped.
+  optionCellCapped: { maxWidth: OPTION_CAPSULE_MAX_WIDTH },
   // The shared selection capsule, sliding between cells. Absolutely placed
   // (left 0 + an animated translateX) so it moves without touching layout, and
   // vertically centred on the 48pt cell under the row's 4pt top padding.
@@ -1323,14 +1382,16 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: STATE_ACTIVE,
   },
-  // The word's box, sized to that same constant width so it lands exactly on
-  // the capsule beneath it. Like the pushdown's fixed-width capsule, but taken
-  // from the measured cell (capped at the pushdown's 88) rather than hardcoded:
-  // the option sets run to six items and their words vary, so one hardcoded
-  // width would clip on a phone and float on a desktop.
+  // The word's box: the whole cell, so the pill a toggle paints and the shared
+  // capsule that parks over it are the same box the cell was measured as.
+  // Like the pushdown's capsule, but sized by the word rather than hardcoded —
+  // the option sets run to six items and their words vary, so one fixed width
+  // would clip on a phone and float on a desktop.
+  // `alignSelf: stretch` rather than a width: it fills the cell without being a
+  // percentage, which would confuse the cell's own content-sized flex basis.
   optionPill: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    maxWidth: '100%', height: OPTION_CAPSULE_HEIGHT, paddingHorizontal: 10, borderRadius: 999,
+    alignSelf: 'stretch', height: OPTION_CAPSULE_HEIGHT, paddingHorizontal: OPTION_PILL_PAD, borderRadius: 999,
   },
   // 13/600, the toolbar line-mode pushdown's word, at every width. Narrow
   // screens used to drop this to 11 to keep the longest words whole; matching

@@ -1,16 +1,16 @@
 // The image-edit sub-panel that the ObjectPropertiesPanel's Edit action
 // reveals when an image is selected: the ordered list of image-specific
-// actions plus the swipe-to-dismiss threshold. Kept pure (no react-native)
+// bars plus the swipe-to-dismiss threshold. Kept pure (no react-native)
 // so the option order and dismiss maths are unit-tested in node; the
 // component only owns the animation.
 
-/** The image-specific editing actions, in display order. Replace swaps the
- *  image inside the same container; the rest are visual adjustments. Corner
- *  rounding lives inside the Border panel (its Radius slider), so there is no
- *  standalone Round action. Opacity opens the Opacity bar (whole-image
- *  opacity + edge soften). */
+/** The image-specific editing actions, in display order — all of them visual
+ *  adjustments, each opening its own bar. Corner rounding lives inside the
+ *  Border panel (its Radius slider), so there is no standalone Round action.
+ *  Opacity opens the Opacity bar (whole-image opacity + edge soften).
+ *  Swapping an image's pixels is not an option here: replace-in-place is
+ *  reached by tapping an unfilled photo placeholder, not from this row. */
 export type ImageEditAction =
-  | 'replace'
   | 'tint'
   | 'crop'
   | 'shadow'
@@ -26,7 +26,6 @@ export interface ImageEditOption {
 }
 
 export const IMAGE_EDIT_OPTIONS: readonly ImageEditOption[] = [
-  { action: 'replace', label: 'Replace', icon: 'image-refresh-outline' },
   { action: 'tint', label: 'Tint', icon: 'palette-outline' },
   { action: 'crop', label: 'Crop', icon: 'crop' },
   { action: 'shadow', label: 'Shadow', icon: 'box-shadow' },

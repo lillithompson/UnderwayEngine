@@ -39,65 +39,64 @@ export function objectPanelLayout(safeBottom: number, dotsInSafeArea: boolean): 
   };
 }
 
-/** Flex weight of the empty cell flanking each side of a button row that has
- *  fewer buttons than the row has columns.
+/** Flex weight of the empty cell flanking each side of the COMMON-ACTIONS row
+ *  when it has fewer buttons than the row has columns.
  *
- *  The row holds `columns` equal cells — fixed at the larger page's count so a
- *  swipe between the common actions and the type options can't resize them —
- *  and the smaller page is centred by padding both ends. Returning one
- *  fractional weight per side rather than a whole number of unit cells is the
- *  point: an odd pad (3 text options in 6 columns, 5 image options in 6) has no
- *  whole-cell split, and rounding it left the group sitting half a column left
- *  of centre. Half of an odd pad is 1.5, which flex handles exactly. */
+ *  That row holds `columns` equal cells — fixed at the larger page's count so
+ *  the icons keep one size whatever the selection's option set costs — and is
+ *  centred by padding both ends. Returning one fractional weight per side
+ *  rather than a whole number of unit cells is the point: an odd pad (5 icons
+ *  against 6 options) has no whole-cell split, and rounding it left the group
+ *  sitting half a column left of centre. Half of an odd pad is 1.5, which flex
+ *  handles exactly.
+ *
+ *  The type-options row does NOT use this: its cells size to their own words
+ *  and share out the slack, so it always fills the row (see OptionPill). */
 export function optionRowSidePad(columns: number, buttons: number): number {
   return Math.max(0, columns - buttons) / 2;
 }
 
-/** Gap between cells in the option row. Shared with the row's own style so the
- *  capsule maths and the layout can't disagree about it. */
+/** Gap between cells in the option row. */
 export const OPTION_ROW_GAP = 8;
-/** Capsule width ceiling — the toolbar line-mode pushdown's capsule, so a wide
- *  window doesn't stretch these into slabs. Below it the capsule takes the
- *  whole cell. */
+/** Ceiling on ONE option cell — the toolbar line-mode pushdown's capsule width,
+ *  so a wide window doesn't stretch the words into slabs. It is a ceiling only:
+ *  a cell hugs its own word (plus its share of the row's slack) below this, and
+ *  the row centres the group once every cell has hit the cap. It must stay
+ *  above the longest option word at 13/600 plus OPTION_PILL_PAD either side —
+ *  today's longest is "Endpoints", comfortably inside it — or that word would
+ *  ellipsize on every screen instead of none. */
 export const OPTION_CAPSULE_MAX_WIDTH = 88;
 /** Capsule height: a 13pt word with the pushdown's 4pt vertical padding. */
 export const OPTION_CAPSULE_HEIGHT = 26;
+/** Breathing room either side of an option's word, inside its capsule. The
+ *  floor on a cell's width: a cell is never narrower than its word plus this. */
+export const OPTION_PILL_PAD = 10;
 
-export interface OptionCapsuleLayout {
-  /** One width for every option — the point of the capsule being constant is
-   *  that it can slide between options without resizing on the way. */
-  width: number;
-  /** Left offset of the capsule when option i is selected, one per option. */
-  lefts: number[];
-}
-
-/** Where the sliding selection capsule sits over each option.
+/** Left offset of each option cell, given every cell's laid-out width.
  *
- *  The row is `columns` equal cells (fixed at the larger page's count) plus a
- *  weighted pad at each end; see {@link optionRowSidePad}. One flex unit is
- *  therefore the cell width, and every offset falls out of it. `rowWidth` comes
- *  from the row's own onLayout — 0 before the first measure, which yields a
- *  zero-width capsule the caller can skip drawing. */
-export function optionCapsuleLayout(
+ *  The cells size themselves to their words, so their WIDTHS come from the
+ *  layout (each cell's onLayout) — but their positions can't: onLayout rides a
+ *  ResizeObserver, which says nothing when a cell keeps its width and merely
+ *  moves (every cell at the width cap, and the row widening around them). So
+ *  the offsets are reproduced here from the row's own rules instead: cells in
+ *  order, one `gap` between neighbours, and the group centred in whatever it
+ *  doesn't fill — the same `justifyContent: 'center'` the row carries.
+ *
+ *  `rowWidth` is the row's measured width; 0 (or no widths) before the first
+ *  layout pass, which yields no offsets and a capsule the caller skips. */
+export function optionCapsuleLefts(
   rowWidth: number,
-  columns: number,
-  buttons: number,
+  widths: readonly number[],
   gap: number = OPTION_ROW_GAP,
-  maxWidth: number = OPTION_CAPSULE_MAX_WIDTH,
-): OptionCapsuleLayout {
-  if (rowWidth <= 0 || columns <= 0 || buttons <= 0) return { width: 0, lefts: [] };
-  const sidePad = optionRowSidePad(columns, buttons);
-  // The pads are real children, so they carry gaps of their own.
-  const children = buttons + (sidePad > 0 ? 2 : 0);
-  const gapTotal = Math.max(0, children - 1) * gap;
-  const unit = Math.max(0, rowWidth - gapTotal) / columns;
-  const width = Math.min(unit, maxWidth);
-  // Centre the capsule in its cell, so a capped width stays put rather than
-  // hugging the cell's left edge.
-  const inset = (unit - width) / 2;
-  const start = sidePad > 0 ? sidePad * unit + gap : 0;
-  return {
-    width,
-    lefts: Array.from({ length: buttons }, (_, i) => start + i * (unit + gap) + inset),
-  };
+): number[] {
+  if (rowWidth <= 0 || widths.length === 0) return [];
+  const total = widths.reduce((a, w) => a + w, 0) + gap * (widths.length - 1);
+  // Overfull (the words outgrew the screen and flex shrank them) starts flush
+  // left, exactly as the row does.
+  let x = Math.max(0, (rowWidth - total) / 2);
+  return widths.map((w) => {
+    const left = x;
+    x += w + gap;
+    return left;
+  });
 }

@@ -1,4 +1,4 @@
-import { OBJECT_DOTS_ROW_HEIGHT, objectPanelLayout, optionCapsuleLayout, optionRowSidePad } from '../logic/panelLayout';
+import { OBJECT_DOTS_ROW_HEIGHT, OPTION_ROW_GAP, objectPanelLayout, optionCapsuleLefts, optionRowSidePad } from '../logic/panelLayout';
 import { OBJECT_PANEL_HEIGHT } from '../theme';
 
 describe('objectPanelLayout', () => {
@@ -34,8 +34,8 @@ describe('optionRowSidePad', () => {
 
   test('an odd pad splits in half rather than rounding', () => {
     // The bug this replaced floored the left side and gave the remainder to
-    // the right, leaving the group half a column left of centre. Both real
-    // cases are odd: 3 text options and 5 image options against 6 columns.
+    // the right, leaving the group half a column left of centre. An odd pad is
+    // the common case: 5 icons against a 6-option set.
     expect(optionRowSidePad(6, 5)).toBe(0.5);
     expect(optionRowSidePad(6, 3)).toBe(1.5);
   });
@@ -43,8 +43,8 @@ describe('optionRowSidePad', () => {
   test('the two sides are equal by construction, so the row is centred', () => {
     for (let buttons = 0; buttons <= 8; buttons++) {
       const pad = optionRowSidePad(8, buttons);
-      // Total flex still adds up to the column count, so cell width holds
-      // steady across a swap between the two pages.
+      // Total flex still adds up to the column count, so the icons keep one
+      // size whatever the option set beside them costs.
       expect(pad * 2 + buttons).toBe(Math.max(8, buttons));
     }
   });
@@ -54,55 +54,40 @@ describe('optionRowSidePad', () => {
   });
 });
 
+describe('optionCapsuleLefts', () => {
+  const G = OPTION_ROW_GAP;
 
-describe('optionCapsuleLayout', () => {
-  test('one width for every option, so the slide never resizes it', () => {
-    const { width, lefts } = optionCapsuleLayout(600, 6, 6);
-    expect(lefts).toHaveLength(6);
-    // A single width is the whole point — nothing per-option about it.
-    expect(width).toBeGreaterThan(0);
+  test('lays the cells out in order, one gap apart', () => {
+    // 60 + 8 + 40 + 8 + 100 = 216 in a 216-wide row: no slack, flush left.
+    expect(optionCapsuleLefts(216, [60, 40, 100])).toEqual([0, 68, 116]);
   });
 
-  test('a full row lays cells out end to end, first flush left', () => {
-    // 6 cells + 5 gaps of 8 = 40 of gap; (340 - 40) / 6 = 50 per cell.
-    const { width, lefts } = optionCapsuleLayout(340, 6, 6);
-    expect(width).toBe(50); // under the 88 cap, so the capsule takes the cell
-    expect(lefts[0]).toBe(0);
-    expect(lefts[1]).toBe(58); // 50 + 8
-    expect(lefts[5]).toBe(5 * 58);
+  test('each offset lands on its own cell, whatever the widths', () => {
+    const widths = [30, 88, 52, 71];
+    const lefts = optionCapsuleLefts(400, widths);
+    // Neighbours are exactly one cell + one gap apart — the capsule can't drift
+    // off the word it is meant to sit under.
+    for (let i = 1; i < widths.length; i++) {
+      expect(lefts[i] - lefts[i - 1]).toBeCloseTo(widths[i - 1] + G, 6);
+    }
   });
 
-  test('caps at the pushdown width and re-centres what it trims', () => {
-    // 3 cells + 2 gaps = 16; (616 - 16) / 3 = 200 per cell, capped to 88.
-    const { width, lefts } = optionCapsuleLayout(616, 3, 3);
-    expect(width).toBe(88);
-    expect(lefts[0]).toBe((200 - 88) / 2); // centred in its cell, not flush
-    expect(lefts[1] - lefts[0]).toBe(208); // still one cell + gap apart
+  test('centres the group in a row it does not fill (every cell capped)', () => {
+    // 3 × 88 + 2 gaps = 280 in a 600 row: 160 of slack, half either side.
+    const widths = [88, 88, 88];
+    const lefts = optionCapsuleLefts(600, widths);
+    expect(lefts[0]).toBeCloseTo((600 - 280) / 2, 6);
+    const rightMargin = 600 - (lefts[2] + 88);
+    expect(rightMargin).toBeCloseTo(lefts[0], 6);
   });
 
-  test('a padded row offsets by the pad and its gap', () => {
-    // 3 buttons in 6 columns: pad 1.5 units per side, 5 children → 4 gaps = 32.
-    // (332 - 32) / 6 = 50 per cell. Start = 1.5*50 + 8 = 83.
-    const { width, lefts } = optionCapsuleLayout(332, 6, 3);
-    expect(width).toBe(50);
-    expect(lefts[0]).toBe(83);
-    expect(lefts[2]).toBe(83 + 2 * 58);
+  test('an overfull row starts flush left rather than off the edge', () => {
+    // Shrunk cells that still overrun: never a negative first offset.
+    expect(optionCapsuleLefts(100, [60, 60, 60])[0]).toBe(0);
   });
 
-  test('the padded row stays centred — both ends leave the same margin', () => {
-    const rowWidth = 332;
-    const { width, lefts } = optionCapsuleLayout(rowWidth, 6, 3);
-    const leftMargin = lefts[0];
-    const rightMargin = rowWidth - (lefts[2] + width);
-    expect(rightMargin).toBeCloseTo(leftMargin, 6);
-  });
-
-  test('yields nothing before the row has been measured', () => {
-    expect(optionCapsuleLayout(0, 6, 3)).toEqual({ width: 0, lefts: [] });
-  });
-
-  test('an empty set yields nothing rather than dividing by zero', () => {
-    expect(optionCapsuleLayout(340, 0, 0)).toEqual({ width: 0, lefts: [] });
-    expect(optionCapsuleLayout(340, 6, 0)).toEqual({ width: 0, lefts: [] });
+  test('yields nothing before the row or its cells have been measured', () => {
+    expect(optionCapsuleLefts(0, [40, 40])).toEqual([]);
+    expect(optionCapsuleLefts(340, [])).toEqual([]);
   });
 });

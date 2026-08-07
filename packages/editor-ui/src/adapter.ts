@@ -413,9 +413,6 @@ export interface ObjectPropertiesModel {
   onPickFrameBackground?(): void;
   locked: boolean;
   onEdit(): void;
-  /** Image-edit sub-panel actions (surfaced only when showImageEdit). Each
-   *  is optional so apps can land the UI ahead of the edits themselves. */
-  onReplaceImage?(): void;
   /** Whether the Tint controls are shown. App-owned so a tap-off dismisses
    *  them before the panel (same as the Shadow / Border bars). */
   tintOpen?: boolean;

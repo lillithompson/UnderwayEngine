@@ -108,14 +108,39 @@ describe('object-properties chrome matches the toolbar', () => {
     expect(/optionLabelCompact/.test(panel)).toBe(false);
   });
 
+  it('sizes each option cell to its own word and spends the whole row', () => {
+    const panel = read('ObjectPropertiesPanel.tsx');
+    // Content-sized basis plus an equal share of the leftover width — NOT the
+    // equal columns the icon page uses. Sharing the icons' columns is what
+    // ellipsized "Opacity" and "Endpoints" on a phone while short words sat in
+    // half-empty cells.
+    expect(/optionCell: \{[^}]*flexBasis: 'auto'/s.test(panel)).toBe(true);
+    expect(/optionCell: \{[^}]*flexGrow: 1/s.test(panel)).toBe(true);
+    // Capped on a wide window so the words don't stretch into slabs — and NOT
+    // on a phone, which is the screen that had nothing to spare.
+    expect(/optionCellCapped: \{ maxWidth: OPTION_CAPSULE_MAX_WIDTH \}/.test(panel)).toBe(true);
+    expect(/compact \? null : styles\.optionCellCapped/.test(panel)).toBe(true);
+    // The pill fills whatever the cell became — variable-width backgrounds.
+    expect(/optionPill: \{[^}]*alignSelf: 'stretch'/s.test(panel)).toBe(true);
+    // The row's own pads are the icon page's alone; the options fill it.
+    expect(/const sidePad = showType \? 0 :/.test(panel)).toBe(true);
+    // Widening the cells is the fix, never a smaller word.
+    expect(/optionLabel: \{[^}]*fontSize: 13, fontWeight: '600'/s.test(panel)).toBe(true);
+  });
+
   it('gives the row one sliding capsule, not a fill per option', () => {
     const panel = read('ObjectPropertiesPanel.tsx');
     // A single capsule component, rendered once, driven by an offset.
     expect(/function OptionCapsule\(/.test(panel)).toBe(true);
     expect((panel.match(/<OptionCapsule/g) ?? []).length).toBe(1);
-    // Constant width: taken from the row's layout, never from the option.
-    expect(/width=\{capsule\.width\}/.test(panel)).toBe(true);
-    // It moves by transform, so sliding costs no layout.
+    // It takes the selected option's own box — the cells size to their words,
+    // so one width for the row would be wrong for most of them. Widths are
+    // measured; offsets are reproduced from the row's geometry, because a cell
+    // that moves without resizing never fires onLayout.
+    expect(/width=\{capsuleWidth\}/.test(panel)).toBe(true);
+    expect(/cellWidths\[selectedOption\]/.test(panel)).toBe(true);
+    expect(/optionCapsuleLefts\(rowWidth, cellWidths\)/.test(panel)).toBe(true);
+    // It moves by transform, so travelling costs no layout.
     expect(/transform: \[\{ translateX: x \}\]/.test(panel)).toBe(true);
     // Only an independent toggle (Repeat / Invert) still paints its own fill —
     // a selected submenu option is covered by the shared capsule.
