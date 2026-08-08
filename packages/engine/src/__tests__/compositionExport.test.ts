@@ -67,8 +67,8 @@ describe('exportCompositionSVG — lines', () => {
         },
       ],
       camera: { offsetX: 0, offsetY: 0, zoom: 1 },
-      // strokeScale is the v4+ percentage in [0,1] — 0.04 corresponds to
-      // the legacy default of "8" (= 5 SVG units × 8 = 40 stroke-width).
+      // strokeScale is the v4+ percentage in [0,1]; it is measured in world
+      // cells (STROKE_SCALE_CELLS), so 0.04 draws 0.0125 of a cell.
       strokeScale: 0.04, gridIntensity: 0.5,
     });
 
@@ -77,9 +77,10 @@ describe('exportCompositionSVG — lines', () => {
     // SVG_UNITS_PER_L0_CELL = 256, so segment endpoints map to 0,0 / 8192,0 / 8192,8192
     expect(svg).toContain('<path d="M 0,0 L 8192,0 L 8192,8192"');
     expect(svg).toContain('stroke="rgb(200,100,50)"');
-    // strokeScale (0.04) × MAX_LINE_WIDTH (1000) / SVG_STROKE_WIDTH (5) = 8 multiplier;
-    // applied as SVG_STROKE_WIDTH × multiplier = 40.
-    expect(svg).toContain('stroke-width="40"');
+    // strokeScale (0.04) × STROKE_SCALE_CELLS (5/16) = 0.0125 cells, which at
+    // SVG_UNITS_PER_L0_CELL (256) is 3.2 SVG units — the same world width the
+    // DOM node layer draws it at, which is the point of measuring it in cells.
+    expect(svg).toContain('stroke-width="3.2"');
     expect(svg).toContain('stroke-linecap="round"');
     // Export paths must not use non-scaling-stroke; the thumbnail
     // rasterizer's stroke compensation depends on user-space stroke widths.

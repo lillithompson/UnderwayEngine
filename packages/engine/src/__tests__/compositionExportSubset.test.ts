@@ -477,8 +477,9 @@ describe('subset text framing', () => {
   });
 });
 
-/** A stroked path. `strokeScale` 0.04 renders 5 × (0.04 × 200) = 40 SVG units
- *  of width, i.e. 40/256 cells, unless the object carries its own. */
+/** A stroked path. `strokeScale` 0.04 renders 0.04 × STROKE_SCALE_CELLS =
+ *  0.0125 cells of width, i.e. 3.2 SVG units, unless the object carries its
+ *  own. */
 function makePath(overrides: Partial<SVGObject> & { id: string }): SVGObject {
   return {
     color: { r: 0, g: 0, b: 0 },
@@ -505,7 +506,11 @@ describe('cutout stroke padding', () => {
     // a tight frame would cut it down its length, showing half a line.
     const { box, width } = await cutPaths([makePath({ id: 'svg_1' })]);
     const half = width / 2;
-    expect(box).toEqual([4 * U - half, 4 * U - half, 8 * U + 2 * half, 2 * half]);
+    // Close-to rather than exact: the pad is applied in cells and read back in
+    // SVG units, and the composition-wide width is no longer a dyadic fraction
+    // of a cell, so the round trip lands within float noise rather than on it.
+    const want = [4 * U - half, 4 * U - half, 8 * U + 2 * half, 2 * half];
+    box.forEach((v, i) => expect(v).toBeCloseTo(want[i], 9));
   });
 
   it('pads by the width the strokes are actually drawn at', async () => {

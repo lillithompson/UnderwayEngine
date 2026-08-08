@@ -3,7 +3,8 @@ import { Layer, FileConfig, Pattern, cellPx } from './types';
 import { renderCellToBuffer, sharedCellBuf } from './cells';
 import { saveCompositionThumbnail } from './persistence';
 import { exportCompositionSVG } from './compositionExport';
-import { exportToSVG, multiplyStrokeWidths } from './svgExport';
+import { exportToSVG, multiplyStrokeWidths, SVG_STROKE_WIDTH, SVG_UNITS_PER_L0_CELL } from './svgExport';
+import { strokeScaleForUnits } from './svgStroke';
 import { rasterizeSvgToPixels } from './svgRasterize';
 import { isPaintingActive, onPaintingEnd } from './loadTile';
 import { getThumbnailLineWidth } from './thumbnailLineWidthStore';
@@ -39,9 +40,9 @@ export async function svgToThumbnailDataUri(
   cancelled: () => boolean,
   isCompositionThumbnail: boolean = false,
   /** Composition `strokeScale` value (the user's Line Width setting,
-   *  v4+ semantics: a fraction of MAX_LINE_WIDTH). When provided, the
-   *  stroke multiplier targets the *line* stroke width (= strokeScale ×
-   *  1000 SVG units) rather than the max baked into the SVG. This is
+   *  v4+ semantics: a multiple of STROKE_SCALE_CELLS world cells). When
+   *  provided, the stroke multiplier targets the *line* stroke width rather
+   *  than the max baked into the SVG. This is
    *  invariant under "scale content and strokeScale proportionally", so
    *  a tiny composition with a tiny stroke renders at the same apparent
    *  thumbnail thickness as a full-scale composition with the default
@@ -71,8 +72,8 @@ export async function svgToThumbnailDataUri(
   }
 
   // Dynamic stroke multiplier: target a constant thumbnail stroke width
-  // for the *line* stroke baseline (= strokeScale × MAX_LINE_WIDTH SVG
-  // units, the user's Line Width setting). Picking the baseline this way
+  // for the *line* stroke baseline (the width an object with no stroke block
+  // exports at, from the user's Line Width setting). Picking the baseline this way
   // is invariant under "scale content and strokeScale together" — a
   // small-bbox composition with a small strokeScale renders at the same
   // apparent thumbnail thickness as a full-bbox composition with a
@@ -97,9 +98,11 @@ export async function svgToThumbnailDataUri(
 
   let strokeMultiplier = 1;
   if (isCompositionThumbnail && baseStrokeScale != null && baseStrokeScale > 0) {
-    // Line stroke in SVG units: SVG_STROKE_WIDTH (5) × strokeScale × 200
-    // (= effectiveStrokeMultiplier in engine/strokeScale.ts) = strokeScale × 1000.
-    const baseSw = baseStrokeScale * 1000;
+    // Line stroke in SVG units — the width generateCompositionSVGCore actually
+    // emitted for an object with no stroke block, so it has to be read from
+    // the same helper the exporter uses rather than restated as a literal.
+    const baseSw = SVG_STROKE_WIDTH
+      * strokeScaleForUnits(baseStrokeScale, SVG_UNITS_PER_L0_CELL);
     if (rasterScale > 0) strokeMultiplier = TARGET_PX / (baseSw * rasterScale);
   } else {
     const swMatches = svg.match(/stroke-width="([^"]+)"/g) ?? [];

@@ -5,7 +5,10 @@
  */
 
 import {
+  DOM_PX_PER_CELL,
   roundPathCorners,
+  STROKE_SCALE_CELLS,
+  strokeScaleForUnits,
   svgStrokeCanAlign,
   svgStrokeAlignment,
   svgStrokeRadiusCells,
@@ -13,7 +16,7 @@ import {
   svgStrokeWidthUnits,
   svgSubtype,
 } from '../svgStroke';
-import { SVG_STROKE_WIDTH } from '../svgExport';
+import { SVG_STROKE_WIDTH, SVG_UNITS_PER_L0_CELL } from '../svgExport';
 import { arcRadius } from '../compositionArcMath';
 import { PathSegment, SVGObject } from '../types';
 
@@ -110,6 +113,34 @@ describe('svgStrokeWidthUnits', () => {
 
   it('clamps a negative authored width to zero', () => {
     expect(svgStrokeWidthUnits(obj(rect(), { stroke: { width: -3 } }), 0.2, 16)).toBe(0);
+  });
+});
+
+describe('strokeScaleForUnits', () => {
+  // The fallback width above is a raw number that ignores `unitsPerCell`, so a
+  // caller drawing in anything but the DOM layer's base pixel has to convert or
+  // it renders the same object at a different WORLD width than the canvas.
+  // Getting this wrong is what made exported drawings 12.5× fatter than the
+  // page they were drawn on.
+  const cells = (strokeScale: number, unitsPerCell: number) =>
+    svgStrokeWidthUnits(obj(rect()), strokeScaleForUnits(strokeScale, unitsPerCell), unitsPerCell)
+    / unitsPerCell;
+
+  it('lands the fallback at the same world width in every unit', () => {
+    for (const unitsPerCell of [DOM_PX_PER_CELL, SVG_UNITS_PER_L0_CELL, 1, 1000]) {
+      expect(cells(0.2, unitsPerCell)).toBeCloseTo(0.2 * STROKE_SCALE_CELLS, 9);
+    }
+  });
+
+  it('is the identity for the DOM node layer, whose unit it is defined in', () => {
+    expect(strokeScaleForUnits(0.2, DOM_PX_PER_CELL)).toBeCloseTo(0.2, 9);
+  });
+
+  it('puts a strokeScale of 1.0 at 5/16 of a cell', () => {
+    // A journal page holds strokeScale 1.0, so this is the width every
+    // Reimagine line is drawn and exported at.
+    expect(STROKE_SCALE_CELLS).toBeCloseTo(0.3125, 9);
+    expect(cells(1.0, SVG_UNITS_PER_L0_CELL)).toBeCloseTo(0.3125, 9);
   });
 });
 

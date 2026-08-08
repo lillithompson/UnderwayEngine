@@ -12,7 +12,7 @@ import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
 import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, svgFillPresentation, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
-import { roundPathCorners, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
+import { roundPathCorners, strokeScaleForUnits, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import { chainSegments } from './compositionArcMath';
 import { arcBoundingBox } from './compositionArcHitTest';
@@ -700,7 +700,21 @@ export async function generateCompositionSVGCore(
 
   // Resolved before the frame is measured as well as used to paint, because a
   // cutout's frame has to allow for the width the strokes will be drawn at.
-  const effectiveStrokeScale = effectiveStrokeMultiplier(normalizeStrokeScale(input.strokeScale));
+  const storedStrokeScale = normalizeStrokeScale(input.strokeScale);
+  // SVG objects: the composition-wide fallback width restated in SVG units, so
+  // an object with no stroke block exports at the SAME world width the DOM
+  // node layer draws it at (STROKE_SCALE_CELLS × strokeScale). Passing the
+  // stored scale straight through would measure the DOM layer's base-pixel
+  // number in SVG units and draw the line 1/16 of its width; the old
+  // `effectiveStrokeMultiplier` (×200, MAX_LINE_WIDTH/SVG_STROKE_WIDTH) drew
+  // it 12.5× TOO WIDE — a page stroke came out at 3.9 cells against the
+  // canvas's 0.3125, which is why every exported drawing read as a fat marker
+  // beside the page it was drawn on.
+  const svgStrokeScale = strokeScaleForUnits(storedStrokeScale, SVG_UNITS_PER_L0_CELL);
+  // Figures keep the legacy ×200: their strokes are baked layer geometry, not
+  // the node layer's markup, so they were never on the DOM side of the
+  // mismatch above and nothing here re-weights them.
+  const effectiveStrokeScale = effectiveStrokeMultiplier(storedStrokeScale);
 
   // Compute the visible bounding box in L0 cells. Each object's full extent
   // is clipped to its ancestor-mask chain (via clipRectToNodeMasks) so the
@@ -741,7 +755,7 @@ export async function generateCompositionSVGCore(
     // page export keeps the geometric bounds: its frame is already the page,
     // and padding it would move every existing freeform export's viewBox.
     const pad = input.subset
-      ? svgStrokeWidthCells(svg, effectiveStrokeScale, SVG_UNITS_PER_L0_CELL) / 2
+      ? svgStrokeWidthCells(svg, svgStrokeScale, SVG_UNITS_PER_L0_CELL) / 2
       : 0;
     if (svg.tileMode === 'repeat') {
       accept(svg, svg.cellX - pad, svg.cellY - pad,
@@ -1048,7 +1062,7 @@ export async function generateCompositionSVGCore(
       // path via buildSVGObjectContent) emits the repeating markup — the
       // sparse-override <g>-per-copy expansion or the <pattern> + rect.
       elementsById.set(svg.id, wrapWithMaskClip(applyNodeEffects(
-        buildTiledSVGObjectRegionMarkup(svg, effectiveStrokeScale),
+        buildTiledSVGObjectRegionMarkup(svg, svgStrokeScale),
         svg.effects, svg.id, svg, U,
       ), maskMap, groups, svg));
       continue;
@@ -1058,7 +1072,7 @@ export async function generateCompositionSVGCore(
     // way on the canvas and another in the export. Export draws in SVG units,
     // hence `U` as the unit-per-cell and no non-scaling vector-effect. An
     // object with no stroke block gets exactly the legacy attrs.
-    const strokePres = svgStrokePresentation(svg, effectiveStrokeScale, U);
+    const strokePres = svgStrokePresentation(svg, svgStrokeScale, U);
     const attrs = strokePres.attrs;
     const strokeSegments = strokePres.segments;
     const strokeDefs = strokePres.defs;
@@ -1119,11 +1133,11 @@ export async function generateCompositionSVGCore(
     // Endpoint decorations last, on top of the stroke they cap. Same helper
     // the live DOM layer uses, so an arrow can't point one way on the canvas
     // and another in the export.
-    paths += svgEndpointsMarkup(svg, strokeSegments, svgStrokeWidthCells(svg, effectiveStrokeScale, U));
+    paths += svgEndpointsMarkup(svg, strokeSegments, svgStrokeWidthCells(svg, svgStrokeScale, U));
     // Whole-object opacity + edge soften (the Opacity bar) wrap everything
     // the object drew, INSIDE the node effects so a drop shadow is cast by
     // the already-faded shape. Same helper as the live DOM layer.
-    paths = wrapSVGObjectOpacity(svg, paths, effectiveStrokeScale);
+    paths = wrapSVGObjectOpacity(svg, paths, svgStrokeScale);
     if (paths) {
       // A frame boundary's border is emitted as an overlay over the frame's
       // whole run instead (see frameBorders) — its shadow/glow still belong

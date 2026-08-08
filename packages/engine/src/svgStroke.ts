@@ -30,6 +30,46 @@ export type SVGSubtype = 'line' | 'arc' | 'rectangle' | 'circle' | 'polygon' | '
 
 const EPS = 1e-6;
 
+/**
+ * Design pixels per world cell in the DOM node layer — the app's
+ * `BASE_CELL_PX`, and the same 16 as `stickerStyle`'s `AUTHORED_PX_PER_CELL`
+ * and `paintSvg`'s `BORDER_PT_PER_CELL`.
+ *
+ * It is the unit the composition-wide fallback width below is authored in, so
+ * the engine needs the number to restate that width for a caller drawing in
+ * anything else. See {@link strokeScaleForUnits}.
+ */
+export const DOM_PX_PER_CELL = 16;
+
+/**
+ * World cells the composition-wide `strokeScale` draws per unit — 5/16 of a
+ * cell at `strokeScale` 1.0.
+ *
+ * This is what the canvas has always drawn: {@link svgStrokeWidthUnits}
+ * returns `SVG_STROKE_WIDTH × strokeScale` for an object with no stroke block,
+ * and the DOM node layer reads that in base pixels of which one cell spans
+ * {@link DOM_PX_PER_CELL}. It is also the width the Stroke bar's Width slider
+ * seeds at, so it is the app's own answer to "how wide is this line".
+ */
+export const STROKE_SCALE_CELLS = SVG_STROKE_WIDTH / DOM_PX_PER_CELL;
+
+/**
+ * The composition-wide `strokeScale` restated for a caller that draws in
+ * `unitsPerCell` units instead of the DOM layer's base pixel.
+ *
+ * The fallback branch of {@link svgStrokeWidthUnits} is a raw number that
+ * ignores `unitsPerCell` (an authored `stroke.width`, being in world cells,
+ * does not), so a caller drawing in SVG units gets the DOM layer's number in
+ * ITS units unless it converts — which renders the same object at a different
+ * WORLD width in the export than on the canvas. Passing `strokeScale` through
+ * here lands the fallback at {@link STROKE_SCALE_CELLS} × `strokeScale` cells
+ * for every caller, which is the whole point: a stroke can never render one
+ * way on the canvas and another in the export.
+ */
+export function strokeScaleForUnits(strokeScale: number, unitsPerCell: number): number {
+  return strokeScale * (unitsPerCell / DOM_PX_PER_CELL);
+}
+
 /** True when every segment is axis-aligned (a rectangle drawn by the line
  *  tool, as opposed to an arbitrary 4-sided closed polyline). */
 function allAxisAligned(segments: readonly PathSegment[]): boolean {
@@ -65,8 +105,10 @@ export function svgSubtype(obj: Pick<SVGObject, 'segments' | 'shapeKind'>): SVGS
  * container laid out at `BASE_CELL_PX` per cell, so for it the unit is that
  * base pixel.
  *
- * With no per-object width this is the legacy composition-wide value, so an
- * object that has never visited the Stroke bar renders exactly as before.
+ * With no per-object width this is the legacy composition-wide value — a raw
+ * number that ignores `unitsPerCell`, so a caller whose unit is NOT the DOM
+ * layer's base pixel must convert with {@link strokeScaleForUnits} first or it
+ * will draw the object at a different world width than the canvas does.
  */
 export function svgStrokeWidthUnits(
   obj: Pick<SVGObject, 'stroke'>,
