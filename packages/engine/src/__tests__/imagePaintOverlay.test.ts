@@ -6,8 +6,10 @@
  */
 
 import {
+  blurImagePaintOverlay,
   clonePaintOverlay,
   createImagePaintOverlay,
+  eraseImagePaintOverlay,
   overlayPngDataUri,
   paintBlendCss,
   paintOverlayHasInk,
@@ -75,6 +77,86 @@ describe('stampImagePaintOverlay', () => {
     stampImagePaintOverlay(copy, 8, 6, 4.125, 3.125, 1, RED, 1);
     expect(paintOverlayHasInk(copy)).toBe(true);
     expect(paintOverlayHasInk(o)).toBe(false);
+  });
+});
+
+describe('eraseImagePaintOverlay', () => {
+  test('a full-strength dab lifts a stamped dab back out', () => {
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    stampImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, RED, 1);
+    expect(eraseImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, 1)).toBe(true);
+    const i = (12 * o.cols + 16) * 4;
+    // The disc center saw falloff 1: alpha × (1 − 1) = 0.
+    expect(o.rgba[i + 3]).toBe(0);
+  });
+
+  test('a soft pass thins alpha by strength × falloff', () => {
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    stampImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, RED, 1);
+    eraseImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, 0.5);
+    const i = (12 * o.cols + 16) * 4;
+    expect(o.rgba[i + 3]).toBe(Math.round(255 * 0.5));
+    // Color channels stay as-is — straight alpha carries the erase.
+    expect([o.rgba[i], o.rgba[i + 1], o.rgba[i + 2]]).toEqual([255, 0, 0]);
+  });
+
+  test('changes nothing on an empty layer or at zero strength', () => {
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    expect(eraseImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, 1)).toBe(false);
+    stampImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, RED, 1);
+    expect(eraseImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, 0)).toBe(false);
+  });
+
+  test('only touches texels under the disc', () => {
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    stampImagePaintOverlay(o, 8, 6, 1.125, 3.125, 1, RED, 1);
+    stampImagePaintOverlay(o, 8, 6, 6.125, 3.125, 1, RED, 1);
+    eraseImagePaintOverlay(o, 8, 6, 1.125, 3.125, 1, 1);
+    // The far dab survives untouched.
+    const j = (12 * o.cols + Math.round(6.125 * OVERLAY_TEXELS_PER_CELL)) * 4;
+    expect(o.rgba[j + 3]).toBeGreaterThan(0);
+  });
+});
+
+describe('blurImagePaintOverlay', () => {
+  test('softens a dab peak toward its neighborhood, color intact on an all-red patch', () => {
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    stampImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, RED, 1);
+    expect(blurImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, 1)).toBe(true);
+    const i = (12 * o.cols + 16) * 4;
+    // The 3×3 around the peak carries fainter falloff alphas, so the
+    // average pulls the peak down — but the alpha-weighted color stays red.
+    expect(o.rgba[i + 3]).toBeLessThan(255);
+    expect(o.rgba[i + 3]).toBeGreaterThan(0);
+    expect([o.rgba[i], o.rgba[i + 1], o.rgba[i + 2]]).toEqual([255, 0, 0]);
+  });
+
+  test('feathers cover outward in the dab color, never transparent black', () => {
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    stampImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, RED, 1);
+    // Texel (20, 12) sits past the dab (alpha 0) with an inked neighbor.
+    const j = (12 * o.cols + 20) * 4;
+    expect(o.rgba[j + 3]).toBe(0);
+    blurImagePaintOverlay(o, 8, 6, 5.125, 3.125, 1, 1);
+    expect(o.rgba[j + 3]).toBeGreaterThan(0);
+    expect([o.rgba[j], o.rgba[j + 1], o.rgba[j + 2]]).toEqual([255, 0, 0]);
+  });
+
+  test('reads a pre-stamp snapshot: a centered pass stays symmetric', () => {
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    stampImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, RED, 1);
+    blurImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, 1);
+    // Were the pass cascading in place, the walk order would skew one side.
+    const left = (12 * o.cols + 14) * 4;
+    const right = (12 * o.cols + 18) * 4;
+    expect(o.rgba[left + 3]).toBe(o.rgba[right + 3]);
+  });
+
+  test('changes nothing on an empty layer or at zero strength', () => {
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    expect(blurImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, 1)).toBe(false);
+    stampImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, RED, 1);
+    expect(blurImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, 0)).toBe(false);
   });
 });
 

@@ -48,6 +48,40 @@ export function clonePaintOverlay(overlay: ImagePaintOverlay): ImagePaintOverlay
   return { ...overlay, rgba: new Uint8Array(overlay.rgba) };
 }
 
+/** Walk every texel whose center lies within `radiusCells` of `(lx, ly)`
+ *  (inner-frame world cells): `visit` gets the texel's byte offset into
+ *  `rgba` and its squared center distance. The one disc walk under stamp /
+ *  erase / sample, so all three brushes agree on which texels a dab covers. */
+function forEachTexelInDisc(
+  overlay: ImagePaintOverlay,
+  iwCells: number,
+  ihCells: number,
+  lx: number,
+  ly: number,
+  radiusCells: number,
+  visit: (i: number, distSq: number) => void,
+): void {
+  if (iwCells <= 0 || ihCells <= 0 || radiusCells <= 0) return;
+  const { cols, rows } = overlay;
+  const texW = iwCells / cols;
+  const texH = ihCells / rows;
+  const radiusSq = radiusCells * radiusCells;
+  // Only the texel range the brush disc can reach.
+  const cMin = Math.max(0, Math.floor((lx - radiusCells) / texW));
+  const cMax = Math.min(cols - 1, Math.ceil((lx + radiusCells) / texW));
+  const rMin = Math.max(0, Math.floor((ly - radiusCells) / texH));
+  const rMax = Math.min(rows - 1, Math.ceil((ly + radiusCells) / texH));
+  for (let r = rMin; r <= rMax; r++) {
+    const cy = (r + 0.5) * texH;
+    for (let c = cMin; c <= cMax; c++) {
+      const cx = (c + 0.5) * texW;
+      const distSq = (cx - lx) * (cx - lx) + (cy - ly) * (cy - ly);
+      if (distSq > radiusSq) continue;
+      visit((r * cols + c) * 4, distSq);
+    }
+  }
+}
+
 /**
  * Stamp one brush dab into the overlay: every texel whose center lies within
  * `radiusCells` of `(lx, ly)` (inner-frame world cells) takes the brush color
@@ -67,42 +101,125 @@ export function stampImagePaintOverlay(
   color: RGBColor,
   alpha: number,
 ): boolean {
-  if (iwCells <= 0 || ihCells <= 0 || radiusCells <= 0 || alpha <= 0) return false;
-  const { cols, rows, rgba } = overlay;
-  const texW = iwCells / cols;
-  const texH = ihCells / rows;
+  if (alpha <= 0) return false;
+  const { rgba } = overlay;
   const radiusSq = radiusCells * radiusCells;
-  // Only the texel range the brush disc can reach.
-  const cMin = Math.max(0, Math.floor((lx - radiusCells) / texW));
-  const cMax = Math.min(cols - 1, Math.ceil((lx + radiusCells) / texW));
-  const rMin = Math.max(0, Math.floor((ly - radiusCells) / texH));
-  const rMax = Math.min(rows - 1, Math.ceil((ly + radiusCells) / texH));
   let changed = false;
-  for (let r = rMin; r <= rMax; r++) {
-    const cy = (r + 0.5) * texH;
-    for (let c = cMin; c <= cMax; c++) {
-      const cx = (c + 0.5) * texW;
-      const distSq = (cx - lx) * (cx - lx) + (cy - ly) * (cy - ly);
-      if (distSq > radiusSq) continue;
-      const srcA = alpha * gaussianFalloff(distSq / radiusSq);
-      if (srcA <= 0) continue;
-      const i = (r * cols + c) * 4;
-      // Straight-alpha source-over: the dab composites onto what the stroke
-      // (and earlier strokes) already deposited in this texel.
-      const dstA = rgba[i + 3] / 255;
-      const outA = srcA + dstA * (1 - srcA);
-      const write = (off: number, srcC: number) => {
-        const dstC = rgba[i + off];
-        const v = Math.round((srcC * srcA + dstC * dstA * (1 - srcA)) / outA);
-        if (rgba[i + off] !== v) { rgba[i + off] = v; changed = true; }
-      };
-      write(0, color.r);
-      write(1, color.g);
-      write(2, color.b);
-      const a = Math.round(outA * 255);
-      if (rgba[i + 3] !== a) { rgba[i + 3] = a; changed = true; }
+  forEachTexelInDisc(overlay, iwCells, ihCells, lx, ly, radiusCells, (i, distSq) => {
+    const srcA = alpha * gaussianFalloff(distSq / radiusSq);
+    if (srcA <= 0) return;
+    // Straight-alpha source-over: the dab composites onto what the stroke
+    // (and earlier strokes) already deposited in this texel.
+    const dstA = rgba[i + 3] / 255;
+    const outA = srcA + dstA * (1 - srcA);
+    const write = (off: number, srcC: number) => {
+      const dstC = rgba[i + off];
+      const v = Math.round((srcC * srcA + dstC * dstA * (1 - srcA)) / outA);
+      if (rgba[i + off] !== v) { rgba[i + off] = v; changed = true; }
+    };
+    write(0, color.r);
+    write(1, color.g);
+    write(2, color.b);
+    const a = Math.round(outA * 255);
+    if (rgba[i + 3] !== a) { rgba[i + 3] = a; changed = true; }
+  });
+  return changed;
+}
+
+/**
+ * Erase one brush dab from the overlay: every texel under the disc loses
+ * `strength × gaussianFalloff` of its remaining alpha — the deposit rule run
+ * in reverse, so a full-strength pass lifts a dab back out and a soft pass
+ * only thins it, with the same soft edge a stamp lays down. Color channels
+ * stay as-is (straight alpha: a texel at alpha 0 contributes nothing, and a
+ * later stamp overwrites them source-over anyway). Returns true when any
+ * byte changed, so callers can skip preview refreshes.
+ */
+export function eraseImagePaintOverlay(
+  overlay: ImagePaintOverlay,
+  iwCells: number,
+  ihCells: number,
+  lx: number,
+  ly: number,
+  radiusCells: number,
+  strength: number,
+): boolean {
+  if (strength <= 0) return false;
+  const { rgba } = overlay;
+  const radiusSq = radiusCells * radiusCells;
+  let changed = false;
+  forEachTexelInDisc(overlay, iwCells, ihCells, lx, ly, radiusCells, (i, distSq) => {
+    const a = rgba[i + 3];
+    if (a === 0) return;
+    const v = Math.round(a * (1 - strength * gaussianFalloff(distSq / radiusSq)));
+    if (v !== a) { rgba[i + 3] = v; changed = true; }
+  });
+  return changed;
+}
+
+/**
+ * Blur one brush dab's worth of the overlay: every texel under the disc
+ * moves toward its 3×3 neighborhood average by `strength × gaussianFalloff`
+ * — one soft box-blur step per stamp, so holding or re-passing the brush
+ * keeps softening. The neighborhood color is ALPHA-WEIGHTED (a transparent
+ * neighbor contributes cover, not color), so blurring a dab's edge spreads
+ * its own color outward instead of bleeding transparent black in; alpha
+ * itself averages plainly, which is what feathers the edge. Texels are read
+ * from a pre-stamp snapshot so the pass can't cascade into itself within
+ * one stamp. Returns true when any byte changed, so callers can skip
+ * preview refreshes.
+ */
+export function blurImagePaintOverlay(
+  overlay: ImagePaintOverlay,
+  iwCells: number,
+  ihCells: number,
+  lx: number,
+  ly: number,
+  radiusCells: number,
+  strength: number,
+): boolean {
+  if (strength <= 0) return false;
+  const { cols, rows, rgba } = overlay;
+  const radiusSq = radiusCells * radiusCells;
+  const src = rgba.slice();
+  let changed = false;
+  forEachTexelInDisc(overlay, iwCells, ihCells, lx, ly, radiusCells, (i, distSq) => {
+    const t = strength * gaussianFalloff(distSq / radiusSq);
+    if (t <= 0) return;
+    const idx = i / 4;
+    const r0 = Math.floor(idx / cols);
+    const c0 = idx - r0 * cols;
+    let rSum = 0, gSum = 0, bSum = 0, aSum = 0, n = 0;
+    for (let dr = -1; dr <= 1; dr++) {
+      const rr = r0 + dr;
+      if (rr < 0 || rr >= rows) continue;
+      for (let dc = -1; dc <= 1; dc++) {
+        const cc = c0 + dc;
+        if (cc < 0 || cc >= cols) continue;
+        const j = (rr * cols + cc) * 4;
+        const a = src[j + 3];
+        rSum += src[j] * a;
+        gSum += src[j + 1] * a;
+        bSum += src[j + 2] * a;
+        aSum += a;
+        n++;
+      }
     }
-  }
+    // A fully transparent neighborhood has no color to pull toward — the
+    // texel's own channels stand in (only its alpha, already 0, "moves").
+    const avgR = aSum > 0 ? rSum / aSum : src[i];
+    const avgG = aSum > 0 ? gSum / aSum : src[i + 1];
+    const avgB = aSum > 0 ? bSum / aSum : src[i + 2];
+    const avgA = aSum / n;
+    const write = (off: number, target: number) => {
+      const v = Math.round(src[off] + (target - src[off]) * t);
+      if (rgba[off] !== v) { rgba[off] = v; changed = true; }
+    };
+    write(i, avgR);
+    write(i + 1, avgG);
+    write(i + 2, avgB);
+    write(i + 3, avgA);
+  });
   return changed;
 }
 
