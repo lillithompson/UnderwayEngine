@@ -88,6 +88,14 @@ export interface CompositionExportOptions {
    *  one by the content scale factor, so an absolute override would land at a
    *  different weight for every page depending on how big its content is. */
   normalize?: boolean;
+  /** Uniform breathing margin around the export frame, as a fraction of its
+   *  longer edge — see {@link CompositionSVGInputs.viewBoxPadFraction}. */
+  viewBoxPadFraction?: number;
+  /** Frame SVG objects on their inked extent (geometry + stroke half-width),
+   *  as subset cutouts do — see {@link CompositionSVGInputs.frameInkExtents}.
+   *  For content-framed exports, where the bare geometry slices boundary
+   *  strokes in half. */
+  frameInkExtents?: boolean;
 }
 
 /**
@@ -196,6 +204,14 @@ export async function exportCompositionPNG(
   return `data:image/png;base64,${base64}`;
 }
 
+/** A raster export together with the pixel dimensions it was drawn at, for
+ *  callers that need the artifact's aspect without re-decoding the image. */
+export interface SizedRasterExport {
+  dataUri: string;
+  width: number;
+  height: number;
+}
+
 /**
  * Export the composition as a JPEG data URI at up to `maxDimension` px on the
  * long edge. JPEG (no alpha, white backdrop) is far smaller than PNG for the
@@ -210,9 +226,27 @@ export async function exportCompositionJPEG(
   strokeScale?: number,
   options?: CompositionExportOptions,
 ): Promise<string | null> {
+  const sized = await exportCompositionJPEGSized(compId, maxDimension, quality, strokeScale, options);
+  return sized?.dataUri ?? null;
+}
+
+/**
+ * {@link exportCompositionJPEG}, returning the raster's pixel dimensions
+ * alongside the data URI. For a composition whose export frame is its own
+ * content (no page frame), the aspect isn't knowable up front — this hands it
+ * to the caller without decoding the encoded image back.
+ */
+export async function exportCompositionJPEGSized(
+  compId: string,
+  maxDimension: number,
+  quality: number = 0.82,
+  strokeScale?: number,
+  options?: CompositionExportOptions,
+): Promise<SizedRasterExport | null> {
   const target = await exportCompositionRasterTarget(compId, maxDimension, strokeScale, options);
   if (!target) return null;
-  return rasterizeSvgToJpegDataUri(target.svg, target.width, target.height, quality);
+  const dataUri = await rasterizeSvgToJpegDataUri(target.svg, target.width, target.height, quality);
+  return dataUri ? { dataUri, width: target.width, height: target.height } : null;
 }
 
 /**
@@ -247,6 +281,8 @@ export async function exportCompositionSVG(
     subset: options?.subset,
     textColorOverride: options?.textColorOverride,
     strokeColorOverride: options?.strokeColorOverride,
+    viewBoxPadFraction: options?.viewBoxPadFraction,
+    frameInkExtents: options?.frameInkExtents,
     groups: partial.groups ?? [],
     sceneOrder: partial.sceneOrder,
     strokeScale: strokeScale ?? partial.strokeScale,

@@ -108,6 +108,27 @@ export interface CompositionSVGInputs {
   /** Raw composition-level stroke scale (0–1). Normalized internally. */
   strokeScale?: number;
   /**
+   * Grow the export frame by this fraction of the frame's LONGER edge on
+   * every side — a uniform breathing margin around the content, painted with
+   * the canvas background (which covers the full viewBox) or left
+   * transparent/backdrop-colored when there is none. For exports whose frame
+   * is the tight content union (an unframed freeform page), where the
+   * outermost marks would otherwise touch the image edge. 0/absent keeps the
+   * exact frame every existing export has.
+   */
+  viewBoxPadFraction?: number;
+  /**
+   * Frame each SVG object on its INKED extent — its geometry grown by the
+   * stroke half-width — the way a subset cutout already does. A stroke is
+   * centered on its path, so a frame on the bare geometry slices the
+   * outermost strokes down their length; that is invisible when the frame is
+   * a page (the page is bigger than the ink), but an export framed on the
+   * content union clips exactly half the boundary stroke. Off by default so
+   * page-framed and legacy content-framed exports keep the frame they have
+   * always had.
+   */
+  frameInkExtents?: boolean;
+  /**
    * Draw only part of the scene — a CUTOUT of the composition rather than the
    * page. When set, three things change together, because they are one
    * intent ("give me just these objects, framed on themselves"):
@@ -482,6 +503,32 @@ function rotateAboutCW(x: number, y: number, cx: number, cy: number, deg: number
 }
 
 /**
+ * Axis-aligned bounds of a rect after rotating it `deg` clockwise about
+ * (cx, cy) — the frame-side counterpart of the `rotate()` transform the paint
+ * markup emits for images, texts, and freely-rotated SVG objects. The frame
+ * must measure the corners where the viewer will actually see them: a
+ * rotated node bounded by its unrotated box pokes out of the frame (up to
+ * ~40% of a long shape at 45°), which for a page-pinned export merely hangs
+ * off the page but for a content-framed one is clipped out of the image.
+ * `deg` 0/undefined returns the rect unchanged.
+ */
+function rotatedRectAabb(
+  minX: number, minY: number, maxX: number, maxY: number,
+  deg: number | undefined, cx: number, cy: number,
+): { minX: number; minY: number; maxX: number; maxY: number } {
+  if (!deg) return { minX, minY, maxX, maxY };
+  let rMinX = Infinity, rMinY = Infinity, rMaxX = -Infinity, rMaxY = -Infinity;
+  for (const [x, y] of [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]] as const) {
+    const [wx, wy] = rotateAboutCW(x, y, cx, cy, deg);
+    if (wx < rMinX) rMinX = wx;
+    if (wy < rMinY) rMinY = wy;
+    if (wx > rMaxX) rMaxX = wx;
+    if (wy > rMaxY) rMaxY = wy;
+  }
+  return { minX: rMinX, minY: rMinY, maxX: rMaxX, maxY: rMaxY };
+}
+
+/**
  * The world box a text node actually PAINTS INTO, for cutout framing.
  *
  * A text node's bbox is the box its content is laid out in, and it is usually
@@ -746,39 +793,65 @@ export async function generateCompositionSVGCore(
   for (const f of figures) {
     accept(f, f.cellX, f.cellY, f.cellX + f.cellWidth, f.cellY + f.cellHeight);
   }
+  // Cutouts and ink-framed exports frame on the INKED extent: a stroke is
+  // centered on its path, so a tight geometric frame slices the outermost
+  // strokes down their length (a horizontal line along the top of the bbox
+  // loses half its width). Grow each object's rect by its own stroke
+  // half-width — 0 for a subset with no paths in it, so the text-only
+  // recipes are unaffected. A plain page export keeps the geometric bounds:
+  // its frame is already the page, and padding it would move every existing
+  // freeform export's viewBox — an export that instead frames on its content
+  // opts in via frameInkExtents.
+  const inkFramed = !!input.subset || !!input.frameInkExtents;
   for (const svg of svgObjects) {
-    // A cutout frames on the INKED extent: a stroke is centered on its path,
-    // so a tight geometric frame slices the outermost strokes down their
-    // length (a horizontal line along the top of the bbox loses half its
-    // width). Grow each object's rect by its own stroke half-width — 0 for a
-    // subset with no paths in it, so the text-only recipes are unaffected. A
-    // page export keeps the geometric bounds: its frame is already the page,
-    // and padding it would move every existing freeform export's viewBox.
-    const pad = input.subset
+    const pad = inkFramed
       ? svgStrokeWidthCells(svg, svgStrokeScale, SVG_UNITS_PER_L0_CELL) / 2
       : 0;
-    if (svg.tileMode === 'repeat') {
-      accept(svg, svg.cellX - pad, svg.cellY - pad,
-        svg.cellX + svg.cellWidth + pad, svg.cellY + svg.cellHeight + pad);
-    } else {
-      const bb = arcBoundingBox(svg.segments);
-      if (bb) accept(svg, bb.minX - pad, bb.minY - pad, bb.maxX + pad, bb.maxY + pad);
-    }
+    const raw = svg.tileMode === 'repeat'
+      ? { minX: svg.cellX, minY: svg.cellY,
+          maxX: svg.cellX + svg.cellWidth, maxY: svg.cellY + svg.cellHeight }
+      : arcBoundingBox(svg.segments);
+    if (!raw) continue;
+    // Free rotation is a rotate() about the NODE-BOX center in the emitted
+    // markup (discrete rotation is baked into the segments), so the frame
+    // measures the padded geometry through that same rotation.
+    const r = rotatedRectAabb(
+      raw.minX - pad, raw.minY - pad, raw.maxX + pad, raw.maxY + pad,
+      svg.angleDeg, svg.cellX + svg.cellWidth / 2, svg.cellY + svg.cellHeight / 2,
+    );
+    accept(svg, r.minX, r.minY, r.maxX, r.maxY);
   }
   for (const img of images) {
-    accept(img, img.cellX, img.cellY, img.cellX + img.cellWidth, img.cellY + img.cellHeight);
+    // The markup rotates an image about its box center — free rotation
+    // outermost, then the discrete step; same center, so the angles sum for
+    // the corners' world positions. Mirrors flip within the box and don't
+    // move its bounds.
+    const r = rotatedRectAabb(
+      img.cellX, img.cellY, img.cellX + img.cellWidth, img.cellY + img.cellHeight,
+      (img.angleDeg ?? 0) + (img.rotation ?? 0),
+      img.cellX + img.cellWidth / 2, img.cellY + img.cellHeight / 2,
+    );
+    accept(img, r.minX, r.minY, r.maxX, r.maxY);
   }
   for (const txt of texts) {
     // A cutout frames on the glyphs, not on the box they were laid out in —
-    // see paintedTextBounds. A page export keeps using the node bbox: its
-    // viewBox is the page, and tightening it would move every existing
-    // freeform export's frame.
+    // see paintedTextBounds (which applies the node rotation itself). A page
+    // export keeps using the node bbox: its viewBox is the page, and
+    // tightening it would move every existing freeform export's frame.
     if (input.subset) {
       const b = paintedTextBounds(txt);
       if (b) accept(txt, b.minX, b.minY, b.maxX, b.maxY);
       continue;
     }
-    accept(txt, txt.cellX, txt.cellY, txt.cellX + txt.cellWidth, txt.cellY + txt.cellHeight);
+    // Same rotation story as images: both transforms spin about the box
+    // center in the markup (buildTextSVGContent), so the frame follows the
+    // rotated corners.
+    const r = rotatedRectAabb(
+      txt.cellX, txt.cellY, txt.cellX + txt.cellWidth, txt.cellY + txt.cellHeight,
+      (txt.angleDeg ?? 0) + (txt.rotation ?? 0),
+      txt.cellX + txt.cellWidth / 2, txt.cellY + txt.cellHeight / 2,
+    );
+    accept(txt, r.minX, r.minY, r.maxX, r.maxY);
   }
 
   // Degenerate-frame guard: if masking clipped away every drawn object, fall
@@ -812,6 +885,16 @@ export async function generateCompositionSVGCore(
 
   if (maxCX === minCX) { minCX -= 0.5; maxCX += 0.5; }
   if (maxCY === minCY) { minCY -= 0.5; maxCY += 0.5; }
+
+  // Breathing margin (see viewBoxPadFraction). Applied last — after frame
+  // pinning and the degenerate guards — so it pads whatever frame the rules
+  // above settled on, and sized off the longer edge so the margin is the same
+  // width on all four sides.
+  const padFraction = input.viewBoxPadFraction ?? 0;
+  if (padFraction > 0) {
+    const pad = Math.max(maxCX - minCX, maxCY - minCY) * padFraction;
+    minCX -= pad; minCY -= pad; maxCX += pad; maxCY += pad;
+  }
 
   const U = SVG_UNITS_PER_L0_CELL;
   const vbX = minCX * U;
