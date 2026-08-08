@@ -1213,25 +1213,117 @@ export function assertSceneOrderInvariant(state: CompositionState): void {
   }
 }
 
-/** Reorder selected scene objects to the back or front of `sceneOrder`,
- *  expanding any group membership so groups move as units. Bumps
- *  renderGeneration. */
+/** Parent group of an OUTLINE node: a group's own `parentGroupId`, or a
+ *  leaf's `groupId`. Undefined for a top-level node (or an unknown id). */
+function parentGroupOfNode(state: CompositionState, id: string): string | undefined {
+  const g = (state.groups ?? []).find((x) => x.id === id);
+  if (g) return g.parentGroupId;
+  return getItemGroupId(state, id);
+}
+
+/** True when `id` names a GroupNode rather than a leaf scene object. */
+function isGroupId(state: CompositionState, id: string): boolean {
+  return (state.groups ?? []).some((g) => g.id === id);
+}
+
+/**
+ * Reorder selected scene objects to the back or front, moving whole subtrees
+ * so groups stay contiguous in `sceneOrder`. Bumps renderGeneration. `ids` may
+ * name leaves OR groups (a scene-outline group / frame row).
+ *
+ * `scope` picks what "back" and "front" mean:
+ *
+ * - `'scene'` (default, the canvas selection's meaning): the extremes of the
+ *   whole scene. Each id resolves to its ROOT group, so a nested hierarchy
+ *   travels as one block.
+ * - `'siblings'` (the scene outline's meaning): the extremes of the id's own
+ *   parent container. Send-to-back on a node inside a frame drops it to the
+ *   bottom of that frame instead of hauling the entire frame to the back of
+ *   the page. The scope is the nearest common ancestor group of every id
+ *   (undefined = top level, which is the scene and so behaves like `'scene'`),
+ *   and each id travels as the ancestor-or-self that is a direct child of that
+ *   scope — a node never leaves its parent.
+ *
+ * Sending to back within a group keeps the group's active mask pinned
+ * back-most: for a frame that mask is its boundary rect, which carries the
+ * frame's background fill, so a node dropped behind it would vanish under the
+ * background. Pinning also keeps mask resolution (back-most `isMask` wins)
+ * from silently switching masks.
+ */
 export function reorderSceneObjects(
   state: CompositionState,
   ids: ReadonlySet<string>,
   position: 'back' | 'front',
+  scope: 'scene' | 'siblings' = 'scene',
 ): CompositionState {
   if (ids.size === 0) return state;
-  // Expand to every descendant of the root group of any hit id (including
-  // members of nested sub-groups). Resolving to the ROOT â€” not just the
-  // immediate group â€” is what keeps a nested hierarchy contiguous in
-  // sceneOrder when only one branch is selected.
-  const expanded = new Set(expandIdsToGroups(state, ids));
-  const moved: string[] = [];
-  const rest: string[] = [];
-  for (const id of state.sceneOrder) (expanded.has(id) ? moved : rest).push(id);
-  if (moved.length === 0) return state;
-  const next = position === 'back' ? [...moved, ...rest] : [...rest, ...moved];
+
+  // Container the move happens inside: undefined = the scene itself.
+  let scopeGroupId: string | undefined;
+  if (scope === 'siblings') {
+    // Longest common root→…→parent prefix over every id's ancestor chain.
+    let common: string[] | null = null;
+    for (const id of ids) {
+      const parent = parentGroupOfNode(state, id);
+      const chain = parent
+        ? groupAncestorChain(state.groups ?? [], parent).map((g) => g.id).reverse()
+        : [];
+      if (common === null) { common = chain; continue; }
+      let i = 0;
+      while (i < common.length && i < chain.length && common[i] === chain[i]) i++;
+      common = common.slice(0, i);
+    }
+    scopeGroupId = common && common.length > 0 ? common[common.length - 1] : undefined;
+  }
+
+  // Each id travels as the whole subtree of its ancestor-or-self that sits
+  // directly inside the scope (for scene scope that's its ROOT group, which
+  // is what keeps a nested hierarchy contiguous when one branch is picked).
+  const moved = new Set<string>();
+  for (const id of ids) {
+    let node = id;
+    for (let hops = 0; hops < 100; hops++) {
+      const parent = parentGroupOfNode(state, node);
+      if (parent === scopeGroupId || parent === undefined) break;
+      node = parent;
+    }
+    if (isGroupId(state, node)) for (const m of allDescendantMemberIds(state, node)) moved.add(m);
+    else moved.add(node);
+  }
+  if (moved.size === 0) return state;
+
+  // Slots this move may rewrite: the scope's leaves (all of sceneOrder at
+  // scene scope). Everything outside keeps its exact index.
+  const scopeLeaves = scopeGroupId ? new Set(allDescendantMemberIds(state, scopeGroupId)) : null;
+  const slots: number[] = [];
+  const seq: string[] = [];
+  state.sceneOrder.forEach((id, i) => {
+    if (scopeLeaves && !scopeLeaves.has(id)) return;
+    slots.push(i);
+    seq.push(id);
+  });
+
+  const movedSeq = seq.filter((id) => moved.has(id));
+  if (movedSeq.length === 0) return state;
+  const rest = seq.filter((id) => !moved.has(id));
+
+  let pinnedId: string | undefined;
+  if (position === 'back' && scopeGroupId) {
+    const mask = buildActiveMaskMap(state).get(scopeGroupId);
+    if (mask && !moved.has(mask.id)) pinnedId = mask.id;
+  }
+
+  const reordered = position === 'back'
+    ? [...rest.filter((id) => id === pinnedId), ...movedSeq, ...rest.filter((id) => id !== pinnedId)]
+    : [...rest, ...movedSeq];
+
+  const next = state.sceneOrder.slice();
+  let changed = false;
+  slots.forEach((slot, i) => {
+    if (next[slot] !== reordered[i]) changed = true;
+    next[slot] = reordered[i];
+  });
+  if (!changed) return state;
   return { ...state, sceneOrder: next, renderGeneration: state.renderGeneration + 1 };
 }
 

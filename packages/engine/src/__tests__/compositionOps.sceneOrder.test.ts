@@ -397,6 +397,119 @@ describe('reorderSceneObjects expands groups', () => {
   });
 });
 
+describe("reorderSceneObjects scope: 'siblings'", () => {
+  // A frame (gFrame) holding a boundary rect + three members, plus a loose
+  // figure in front of the whole frame:
+  //   sceneOrder (back→front): boundary, m1, m2, m3, loose
+  function makeFrameState() {
+    return makeState({
+      figures: [
+        makeFigure('m1', { groupId: 'gFrame' }),
+        makeFigure('m2', { groupId: 'gFrame' }),
+        makeFigure('m3', { groupId: 'gFrame' }),
+        makeFigure('loose'),
+      ],
+      svgObjects: [makeSVG('boundary', {
+        groupId: 'gFrame',
+        isMask: true,
+        segments: [
+          { kind: 'line', start: [0, 0], end: [8, 0] },
+          { kind: 'line', start: [8, 0], end: [8, 8] },
+          { kind: 'line', start: [8, 8], end: [0, 8] },
+          { kind: 'line', start: [0, 8], end: [0, 0] },
+        ],
+      })],
+      groups: [{
+        id: 'gFrame', name: 'Frame', isFrame: true,
+        translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
+        rotation: 0, mirrorH: false, mirrorV: false,
+      }],
+      sceneOrder: ['boundary', 'm1', 'm2', 'm3', 'loose'],
+    });
+  }
+
+  test('back sends a frame member to the bottom of the frame, not the page', () => {
+    const next = reorderSceneObjects(makeFrameState(), new Set(['m3']), 'back', 'siblings');
+    // m3 lands behind its siblings but in front of the boundary rect (the
+    // frame's background), and the frame stays behind `loose`.
+    expect(next.sceneOrder).toEqual(['boundary', 'm3', 'm1', 'm2', 'loose']);
+    expect(() => assertSceneOrderInvariant(next)).not.toThrow();
+  });
+
+  test('front brings a frame member to the top of the frame only', () => {
+    const next = reorderSceneObjects(makeFrameState(), new Set(['m1']), 'front', 'siblings');
+    expect(next.sceneOrder).toEqual(['boundary', 'm2', 'm3', 'm1', 'loose']);
+    expect(() => assertSceneOrderInvariant(next)).not.toThrow();
+  });
+
+  test('back on the frame ROW moves the whole frame behind its page siblings', () => {
+    const state = makeState({
+      ...makeFrameState(),
+      sceneOrder: ['loose', 'boundary', 'm1', 'm2', 'm3'],
+    });
+    const next = reorderSceneObjects(state, new Set(['gFrame']), 'back', 'siblings');
+    expect(next.sceneOrder).toEqual(['boundary', 'm1', 'm2', 'm3', 'loose']);
+    expect(() => assertSceneOrderInvariant(next)).not.toThrow();
+  });
+
+  test('scene scope still hauls the whole frame for a member (canvas selection)', () => {
+    const state = makeState({
+      ...makeFrameState(),
+      sceneOrder: ['loose', 'boundary', 'm1', 'm2', 'm3'],
+    });
+    const next = reorderSceneObjects(state, new Set(['m3']), 'back');
+    expect(next.sceneOrder).toEqual(['boundary', 'm1', 'm2', 'm3', 'loose']);
+  });
+
+  test('a member already at the bottom of its frame is a no-op', () => {
+    const state = makeFrameState();
+    expect(reorderSceneObjects(state, new Set(['m1']), 'back', 'siblings')).toBe(state);
+  });
+
+  test('a nested sub-group travels whole and stays inside its parent group', () => {
+    // gOuter: [n1, n2 (in gInner), d1]; loose sits in front of everything.
+    const state = makeState({
+      figures: [
+        makeFigure('n1', { groupId: 'gInner' }),
+        makeFigure('n2', { groupId: 'gInner' }),
+        makeFigure('d1', { groupId: 'gOuter' }),
+        makeFigure('loose'),
+      ],
+      groups: [
+        { id: 'gOuter', name: 'Outer', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },
+        { id: 'gInner', name: 'Inner', parentGroupId: 'gOuter', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },
+      ],
+      sceneOrder: ['n1', 'n2', 'd1', 'loose'],
+    });
+    // Sending the sub-group's member to the front of gInner reorders only the
+    // sub-group; sending the sub-group row to the front lifts it over d1 but
+    // never out of gOuter.
+    expect(reorderSceneObjects(state, new Set(['n1']), 'front', 'siblings').sceneOrder)
+      .toEqual(['n2', 'n1', 'd1', 'loose']);
+    const lifted = reorderSceneObjects(state, new Set(['gInner']), 'front', 'siblings');
+    expect(lifted.sceneOrder).toEqual(['d1', 'n1', 'n2', 'loose']);
+    expect(() => assertSceneOrderInvariant(lifted)).not.toThrow();
+  });
+
+  test('a member of a nested sub-group stays inside that sub-group', () => {
+    const state = makeState({
+      figures: [
+        makeFigure('d1', { groupId: 'gOuter' }),
+        makeFigure('n1', { groupId: 'gInner' }),
+        makeFigure('n2', { groupId: 'gInner' }),
+      ],
+      groups: [
+        { id: 'gOuter', name: 'Outer', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },
+        { id: 'gInner', name: 'Inner', parentGroupId: 'gOuter', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },
+      ],
+      sceneOrder: ['d1', 'n1', 'n2'],
+    });
+    // n2 → back of gInner, which is still in front of d1.
+    expect(reorderSceneObjects(state, new Set(['n2']), 'back', 'siblings').sceneOrder)
+      .toEqual(['d1', 'n2', 'n1']);
+  });
+});
+
 describe('groupFigures op clusters sceneOrder', () => {
   test('grouping non-adjacent members re-flows sceneOrder so they are contiguous', () => {
     const state = makeState({
