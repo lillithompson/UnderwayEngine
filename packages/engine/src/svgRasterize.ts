@@ -14,6 +14,10 @@
  * each other's img.onload / img.src, causing the earlier call's promise to
  * never resolve (15-second timeout). The internal _queue serializes access
  * so at most one call uses the pooled resources at a time.
+ *
+ * Pooling has a second consequence: the element carries the PREVIOUS call's
+ * decoded frame into the next one, so a call must wait for `img.decode()`
+ * and not merely `load` before it draws. See _rasterizeInner.
  */
 
 let _pooledCanvas: HTMLCanvasElement | null = null;
@@ -102,10 +106,35 @@ async function _rasterizeInner<T>(
   try {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('SVG image load timed out')), 15000);
-      img.onload = () => { clearTimeout(timer); resolve(); };
-      img.onerror = () => { clearTimeout(timer); reject(new Error('Failed to load SVG as image')); };
+      // Detach on settle so a late event from THIS src can't also resolve
+      // the next call's promise — the element outlives every call.
+      const settle = (done: () => void) => () => {
+        clearTimeout(timer);
+        img.onload = null;
+        img.onerror = null;
+        done();
+      };
+      img.onload = settle(resolve);
+      img.onerror = settle(() => reject(new Error('Failed to load SVG as image')));
       img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     });
+
+    // `load` only means the bytes arrived. WebKit decodes an SVG <img>
+    // lazily, and until the new frame is ready the POOLED element still
+    // holds the one decoded for the previous call — so drawImage in that
+    // window paints the previous SVG. Every caller here draws the same
+    // document repeatedly (a journal page exported at three sizes, a
+    // figure re-rasterized after an edit), so the stale frame is a
+    // plausible-looking earlier version of the same artwork rather than an
+    // obvious glitch: it is why an entry's thumbnail could come back
+    // showing the page as it was one edit ago. decode() resolves only once
+    // the frame backing THIS src is ready to draw.
+    //
+    // Deliberately not swallowed: a rejected decode means the frame is not
+    // ready, and drawing anyway would produce exactly the stale-image bug
+    // this prevents. Callers treat null as "no image this time" and keep
+    // whatever they had, which is the safe outcome.
+    if (typeof img.decode === 'function') await img.decode();
 
     canvas.width = width;
     canvas.height = height;
