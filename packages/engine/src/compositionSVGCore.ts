@@ -14,7 +14,7 @@ import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, typ
 import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, svgFillPresentation, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
 import { roundPathCorners, strokeScaleForUnits, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
-import { chainSegments } from './compositionArcMath';
+import { rotatePointAboutCW } from './compositionArcMath';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { buildActiveMaskMap, clipRectToNodeMasks } from './compositionMask';
 import { frameGroupIdForNode } from './compositionFrame';
@@ -492,15 +492,9 @@ function textPaintOutset(text: TextObject): number {
 
 /** Rotate (x, y) clockwise by `deg` about (cx, cy) in the y-down world frame —
  *  the forward of {@link unrotatePointForNode}, matching the `rotate()` the
- *  text markup emits. */
-function rotateAboutCW(x: number, y: number, cx: number, cy: number, deg: number): [number, number] {
-  const rad = (deg * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const dx = x - cx;
-  const dy = y - cy;
-  return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
-}
+ *  text markup emits. The shared primitive, so the markup here and the bake in
+ *  compositionMergeObjects can't drift apart on which way a twist turns. */
+const rotateAboutCW = rotatePointAboutCW;
 
 /**
  * Axis-aligned bounds of a rect after rotating it `deg` clockwise about
@@ -1167,9 +1161,13 @@ export async function generateCompositionSVGCore(
     let fillElement = '';
     const fillPres = svgFillPresentation(svg, `grad_${svg.id}`);
     // Fill (and the paint layer's clip) follow the same (possibly
-    // corner-rounded) outline the stroke does.
-    const chained = fillPres || svg.paintOverlay ? chainSegments(strokeSegments) : null;
-    const closedD = chained ? buildPathD(chained) + ' Z' : '';
+    // corner-rounded) outline the stroke does. Built loop by loop, exactly as
+    // the live DOM layer builds it (buildClosedFillPathD): a shape whose
+    // outline is SEVERAL closed loops — a merge of two closed shapes, a union
+    // with a hole — fills every loop under `fill-rule="nonzero"`. Chaining it
+    // into one path instead, as this did, filled nothing at all for those:
+    // they have no single chain, so the export dropped a fill the canvas drew.
+    const closedD = fillPres || svg.paintOverlay ? buildClosedFillPathD(strokeSegments) : '';
     if (fillPres && closedD) {
       fillElement = `${fillPres.defs}<path d="${closedD}" ${fillPres.attrs} stroke="none" fill-rule="nonzero" />`;
     }

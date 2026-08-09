@@ -1,4 +1,4 @@
-import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments } from '../compositionArcMath';
+import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout } from '../compositionArcMath';
 import { computeRectSegments } from '../compositionLineBboxMath';
 import { PathSegment, SVGObject } from '../types';
 
@@ -435,5 +435,39 @@ describe('normalizeClosedSegments', () => {
 
   it('empty input returns empty array', () => {
     expect(normalizeClosedSegments([])).toEqual([]);
+  });
+});
+
+describe('rotatePointAboutCW / rotateSegmentsAbout', () => {
+  it('turns clockwise in the y-down frame', () => {
+    // A quarter turn CW takes the point to the right of the center to the one
+    // below it (y grows downward).
+    const [x, y] = rotatePointAboutCW(1, 0, 0, 0, 90);
+    expect(x).toBeCloseTo(0, 9);
+    expect(y).toBeCloseTo(1, 9);
+  });
+
+  it('leaves the pivot and a full turn alone', () => {
+    expect(rotatePointAboutCW(3, 4, 3, 4, 37)).toEqual([3, 4]);
+    const [x, y] = rotatePointAboutCW(3, 4, 0, 0, 360);
+    expect(x).toBeCloseTo(3, 9);
+    expect(y).toBeCloseTo(4, 9);
+  });
+
+  it('turns an arc whole — center with endpoints, radius intact', () => {
+    const arc: PathSegment = { kind: 'arc', start: [1, 0], end: [0, 1], center: [0, 0] };
+    const [turned] = rotateSegmentsAbout([arc], 0, 0, 90);
+    if (turned.kind !== 'arc') throw new Error('kind must survive');
+    expect(turned.center[0]).toBeCloseTo(0, 9);
+    expect(turned.center[1]).toBeCloseTo(0, 9);
+    expect(arcRadius(turned)).toBeCloseTo(arcRadius(arc), 9);
+    expect(turned.start[0]).toBeCloseTo(0, 9);
+    expect(turned.start[1]).toBeCloseTo(1, 9);
+  });
+
+  it('does not touch the segments it was handed', () => {
+    const segs: PathSegment[] = [{ kind: 'line', start: [0, 0], end: [2, 0] }];
+    rotateSegmentsAbout(segs, 0, 0, 45);
+    expect(segs[0].end).toEqual([2, 0]);
   });
 });

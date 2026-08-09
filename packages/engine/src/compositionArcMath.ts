@@ -189,6 +189,47 @@ export function translateSegments(segments: PathSegment[], dx: number, dy: numbe
   });
 }
 
+/** Rotate a point `deg` CLOCKWISE about (cx, cy) — screen-y-down, matching the
+ *  `rotate()` transform the renderer emits for a freely-rotated node. THE
+ *  free-rotation primitive: the markup layer turns points with it, and
+ *  {@link rotateSegmentsAbout} bakes it into geometry. */
+export function rotatePointAboutCW(
+  x: number, y: number, cx: number, cy: number, deg: number,
+): [number, number] {
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = x - cx;
+  const dy = y - cy;
+  return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+}
+
+/** Segments rotated `deg` clockwise about (cx, cy) — the free rotation BAKED
+ *  into the geometry rather than layered at render time. An arc survives it:
+ *  its endpoints and center turn together, leaving a circular arc of the same
+ *  radius swept the same way. (Quarter turns have their own exact path — see
+ *  the 90°-step rotation in compositionOps — so this is for angles off the
+ *  cardinals.) */
+export function rotateSegmentsAbout(
+  segments: readonly PathSegment[], cx: number, cy: number, deg: number,
+): PathSegment[] {
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const turn = (p: readonly [number, number]): [number, number] => {
+    const dx = p[0] - cx;
+    const dy = p[1] - cy;
+    return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+  };
+  return segments.map(seg => seg.kind === 'arc' ? {
+    kind: 'arc' as const,
+    start: turn(seg.start), end: turn(seg.end), center: turn(seg.center),
+  } : {
+    kind: 'line' as const,
+    start: turn(seg.start), end: turn(seg.end),
+  });
+}
+
 /**
  * Reverse a path segment: swap start and end, preserve center for arcs.
  */
