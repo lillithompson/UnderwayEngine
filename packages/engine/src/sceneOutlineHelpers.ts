@@ -64,18 +64,27 @@ export function nextFigureName(figures: CompositionFigure[], prefix: 'Figure' | 
 
 /**
  * Return the next available group name given existing figures.
+ *
+ * A group's display name lives on its first member, which is why the figures
+ * carry it — but a scene whose objects are svgs, images or texts has no figure
+ * holding it, and every group would come back "Group 1". Pass `groups` (the
+ * GroupNodes, which each carry `name` too) so those scenes number as well.
  */
-export function nextGroupName(figures: CompositionFigure[]): string {
+export function nextGroupName(
+  figures: CompositionFigure[],
+  groups?: readonly { name?: string }[],
+): string {
   let max = 0;
-  for (const f of figures) {
-    if (f.name) {
-      const m = GROUP_NAME_RE.exec(f.name);
-      if (m) {
-        const n = parseInt(m[1], 10);
-        if (n > max) max = n;
-      }
+  const consider = (name: string | undefined) => {
+    if (!name) return;
+    const m = GROUP_NAME_RE.exec(name);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n > max) max = n;
     }
-  }
+  };
+  for (const f of figures) consider(f.name);
+  for (const g of groups ?? []) consider(g.name);
   return `Group ${max + 1}`;
 }
 

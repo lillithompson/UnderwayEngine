@@ -4790,13 +4790,59 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
           lineDirection: recalcLineDirection(s),
         };
       });
+      // Images and texts group exactly as figures and svgs do (see the apply
+      // handler), so they must detach here too — left behind they keep a
+      // `groupId` pointing at the GroupNode this undo is about to delete, and
+      // every later group walk resolves them through a group that no longer
+      // exists. `preGroupName` is the same original name `oldNames` carries;
+      // it backs the entry up when a caller built the op without those slots.
+      const images = (state.images ?? []).map((i) => {
+        if (!idSet.has(i.id)) return i;
+        return {
+          ...i,
+          groupId: undefined,
+          name: op.oldNames[op.figureIds.indexOf(i.id)] ?? i.preGroupName,
+          preGroupName: undefined,
+          localCellX: undefined,
+          localCellY: undefined,
+          localCellWidth: undefined,
+          localCellHeight: undefined,
+          identityCellX: undefined,
+          identityCellY: undefined,
+          identityCellWidth: undefined,
+          identityCellHeight: undefined,
+          rotation: undefined,
+          mirrorH: undefined,
+          mirrorV: undefined,
+        };
+      });
+      const texts = (state.texts ?? []).map((t) => {
+        if (!idSet.has(t.id)) return t;
+        return {
+          ...t,
+          groupId: undefined,
+          name: op.oldNames[op.figureIds.indexOf(t.id)] ?? t.preGroupName,
+          preGroupName: undefined,
+          localCellX: undefined,
+          localCellY: undefined,
+          localCellWidth: undefined,
+          localCellHeight: undefined,
+          identityCellX: undefined,
+          identityCellY: undefined,
+          identityCellWidth: undefined,
+          identityCellHeight: undefined,
+          rotation: undefined,
+          mirrorH: undefined,
+          mirrorV: undefined,
+        };
+      });
       // Detach child groups (restore name from preGroupName, clear parentGroupId).
       let groups = state.groups.map((g) => {
         if (!childGroupSet.has(g.id)) return g;
         return { ...g, parentGroupId: undefined, name: g.preGroupName ?? g.name, preGroupName: undefined };
       });
       groups = groups.filter(g => g.id !== op.groupId);
-      const ungroupResult: CompositionState = { ...state, figures, svgObjects, groups };
+      const ungroupResult: CompositionState = { ...state, figures, svgObjects, images, texts, groups };
       if (childGroupSet.size === 0) return ungroupResult;
       const affectedGroupIds = new Set<string>();
       for (const cid of childGroupSet) {

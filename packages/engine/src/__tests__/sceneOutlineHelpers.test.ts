@@ -88,6 +88,16 @@ describe('nextGroupName', () => {
     const figures = [makeFigure('Figure 3'), makeFigure('Group 2')];
     expect(nextGroupName(figures)).toBe('Group 3');
   });
+
+  // A scene of svgs / images / texts has no figure carrying the group name;
+  // without the GroupNodes every group would come back "Group 1".
+  it('numbers past existing groups in a scene with no figures', () => {
+    expect(nextGroupName([], [{ name: 'Group 1' }, { name: 'Group 2' }])).toBe('Group 3');
+  });
+
+  it('takes the max across figures and groups together', () => {
+    expect(nextGroupName([makeFigure('Group 4')], [{ name: 'Group 2' }])).toBe('Group 5');
+  });
 });
 
 describe('computeFigureDisplayName', () => {
