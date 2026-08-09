@@ -2,7 +2,7 @@ import { OBJECT_PANEL_HEIGHT } from '../theme';
 
 // Bottom-edge layout for the object-properties panel and its submenus.
 //
-// The panel ends in a row of carousel dots (which of its two pages is showing).
+// The panel ends in a row of carousel dots (which of its pages is showing).
 // Where those dots sit depends on the device: on a notched phone they drop
 // *into* the home-indicator strip (the "unsafe" space at the very bottom)
 // rather than sitting above it, so the panel reclaims the dot row's height and
@@ -37,6 +37,58 @@ export function objectPanelLayout(safeBottom: number, dotsInSafeArea: boolean): 
     height: OBJECT_PANEL_HEIGHT - OBJECT_DOTS_ROW_HEIGHT + Math.max(safeBottom, OBJECT_DOTS_ROW_HEIGHT),
     paddingBottom: 0,
   };
+}
+
+// ── Carousel pages ───────────────────────────────────────────────────
+//
+// The panel shows one row at a time and a horizontal swipe cycles through
+// them, a dot each. There are three possible pages, always in this order:
+//
+//   common — the icon row (rotate / mirror / copy / lock / delete). Always
+//            present; it is the one page every selection has.
+//   type   — the options the selection's KIND offers (tint / crop / shadow …),
+//            present when the members share a kind that has any.
+//   multi  — the options the SELECTION offers (Layout · Group · Union),
+//            present only for a multi-selection, and independent of what its
+//            members are: a mixed selection gets this page with no type page.
+//
+// So a single selection keeps its two pages unchanged, and a multi-selection
+// grows the third on the end rather than resorting the two it already had.
+
+export type PanelPage = 'common' | 'type' | 'multi';
+
+/** The pages this selection has, in carousel order. */
+export function objectPanelPages(has: { type?: boolean; multi?: boolean }): PanelPage[] {
+  const pages: PanelPage[] = ['common'];
+  if (has.type) pages.push('type');
+  if (has.multi) pages.push('multi');
+  return pages;
+}
+
+/** Where a new selection lands: on the options it brought with it (its kind's,
+ *  else the selection-level ones), so they're front-and-centre; the common
+ *  actions are the fallback for a selection that offers neither. */
+export function landingPanelPage(pages: readonly PanelPage[]): PanelPage {
+  if (pages.includes('type')) return 'type';
+  if (pages.includes('multi')) return 'multi';
+  return 'common';
+}
+
+/** The page a swipe lands on. `dir` is the direction the CONTENT travels:
+ *  −1 (leftward, out the left edge) advances, +1 goes back. The carousel
+ *  wraps, so with two pages either direction is the toggle it has always been.
+ *  A page no longer in the set (its options went away mid-swipe) steps from
+ *  the start. */
+export function stepPanelPage(
+  pages: readonly PanelPage[],
+  current: PanelPage,
+  dir: -1 | 1,
+): PanelPage {
+  if (pages.length === 0) return 'common';
+  const at = pages.indexOf(current);
+  const from = at >= 0 ? at : 0;
+  const next = (from + (dir === -1 ? 1 : -1) + pages.length) % pages.length;
+  return pages[next];
 }
 
 /** Flex weight of the empty cell flanking each side of the COMMON-ACTIONS row

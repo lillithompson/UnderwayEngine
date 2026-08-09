@@ -3,6 +3,7 @@ import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimension
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, formatPixelSize, swipeDismissDirection } from '../logic/imageEdit';
+import { multiSelectionOptions } from '../logic/multiOptions';
 import { SubmenuKey, typeMenuHeight } from '../logic/submenuHeight';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
@@ -13,9 +14,13 @@ import {
   OPTION_CAPSULE_MAX_WIDTH,
   OPTION_PILL_PAD,
   OPTION_ROW_GAP,
+  PanelPage,
+  landingPanelPage,
   objectPanelLayout,
+  objectPanelPages,
   optionCapsuleLefts,
   optionRowSidePad,
+  stepPanelPage,
 } from '../logic/panelLayout';
 import { ColorSwatchFill } from './ColorSwatch';
 import { ShadowBar } from './ShadowBar';
@@ -44,19 +49,28 @@ import {
 // something is selected — light raised surface (the toolbar's #e5e5e5, so top
 // and bottom chrome match; see PANEL_BG in theme.ts), hairline top border,
 // icon buttons grouped by hairline dividers. Below 500px wide the buttons go
-// compact (24px icons, flex-weighted groups). Group actions (group/ungroup/
-// join/union) render only when the app supplies them (Facet superset;
-// CozyJournal leaves them unset).
+// compact (24px icons, flex-weighted groups). The structural actions
+// (group/ungroup/join, and the boolean union) render only when the app
+// supplies them (Facet superset) — and for a multi-selection Group and Merge
+// move off this row onto the selection's own page (below), because they
+// describe the selection rather than what it is made of.
 //
 // The panel is a compact fixed height (OBJECT_PANEL_HEIGHT) — just one row of
-// buttons and the carousel dots. It shows one row at a time, and the two pages
-// are drawn differently because they say different kinds of thing: the common
-// actions (rotate / flip / copy / lock / delete) are bare icons, universal
-// enough to need no caption, while the type-specific options (images: tint /
-// crop / shadow / border / opacity; text: edit / type / align / shadow) are word capsules in the
-// toolbar line-mode pushdown's style. A horizontal swipe (either direction)
-// swaps between the two, sliding the row along; the dots below track which is
-// showing.
+// buttons and the carousel dots. It shows one row at a time; a horizontal
+// swipe cycles through the pages, sliding the row along, and the dots below
+// track which is showing (logic/panelLayout.ts owns the page order):
+//
+//   common — rotate / flip / copy / lock / delete, as bare icons: universal
+//            enough to need no caption. Every selection has this page.
+//   type   — what the selection's KIND offers (images: tint / crop / shadow /
+//            border / opacity; text: edit / type / align / shadow), as word
+//            capsules in the toolbar line-mode pushdown's style.
+//   multi  — what the SELECTION offers (Layout · Group · Merge), same word
+//            capsules. Multi-selections only, and independent of what the
+//            members are: a mixed selection has this page and no type page.
+//
+// A new selection lands on the leftmost page it brought with it — its type
+// options, else the multi ones — rather than on the common actions.
 //
 // Crop / Shadow / Border / Text open their full editing bar, which STACKS
 // ABOVE this panel rather than covering it — the bar's bottom edge meets the
@@ -320,10 +334,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const { width } = useWindowDimensions();
   const compact = width < COMPACT_MAX_WIDTH;
   const [mounted, setMounted] = useState(model.visible);
-  // Which set the single row shows: false = common actions, true = the
-  // type-specific options. A horizontal swipe flips it; showTypeRow is ignored
-  // when the selection has no type options.
-  const [showTypeRow, setShowTypeRow] = useState(false);
+  // Which page the single row shows — common actions, the selection's type
+  // options, or (multi only) the selection-level ones. A horizontal swipe
+  // cycles. Held as the page's NAME rather than an index so a selection change
+  // that drops a page can't leave the row pointing at a different one; a page
+  // the current selection doesn't have falls back below.
+  const [page, setPage] = useState<PanelPage>('common');
   // The panel rests against the bottom edge. Where a device reports a bottom
   // inset (iOS home indicator / curved corners) the carousel dots sit *in* that
   // strip — nothing there is tappable anyway — and the panel reclaims their
@@ -349,12 +365,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     return () => anim.stop();
   }, [model.visible, translateY, hiddenY]);
 
-  // ── Row swap (common ⇄ type-specific) ───────────────────────────────
+  // ── Row swap (the page carousel) ────────────────────────────────────
   // The visible row slides on a shared translateX. `dir` is the direction the
   // content travels: −1 = leftward (out the left edge, new row in from the
-  // right), +1 = rightward. A swap throws the current row off one edge, flips
-  // the set, then brings the new row in from the opposite edge; a drag lets the
-  // row follow the finger first, then completes in the drag direction.
+  // right) and so forward through the pages, +1 = rightward and back. A swap
+  // throws the current row off one edge, steps the page, then brings the new
+  // row in from the opposite edge; a drag lets the row follow the finger first,
+  // then completes in the drag direction. The carousel wraps, so with two pages
+  // it stays the straight toggle it was.
   const swapX = useRef(new Animated.Value(0)).current;
   const swapping = useRef(false);
   // Measured width of the button row, and of each type option's cell (keyed by
@@ -373,14 +391,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     });
   }, []);
   // Latest runner + swipe-eligibility, so the once-created PanResponder always
-  // uses the current window width and set availability.
+  // uses the current window width and set availability. The page set and the
+  // showing page ride refs for the same reason — both are worked out further
+  // down this render, after the model's option flags.
+  const pagesRef = useRef<PanelPage[]>(['common']);
+  const pageRef = useRef<PanelPage>('common');
   const runSwapRef = useRef<(dir: -1 | 1) => void>(() => {});
   runSwapRef.current = (dir) => {
     if (swapping.current) return;
     swapping.current = true;
     Animated.timing(swapX, { toValue: dir * width, duration: PANEL_ANIM_MS, useNativeDriver: true }).start(({ finished }) => {
       if (!finished) { swapping.current = false; return; }
-      setShowTypeRow((v) => !v);
+      setPage(stepPanelPage(pagesRef.current, pageRef.current, dir));
       swapX.setValue(dir * -width); // place the incoming row just off the opposite edge
       Animated.timing(swapX, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true }).start(() => {
         swapping.current = false;
@@ -405,35 +427,60 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   ).current;
 
   // Multi-selection mode: the host applies every edit to ALL selected
-  // objects at once. The common row drops Lock (a mixed selection's lock
-  // state is ambiguous), and the image set drops Crop (it frames one image).
+  // objects at once — Lock included, member by member. The image set drops
+  // Crop (it frames one image).
   const multi = model.mode === 'multi';
-  // Layout (align the members against their combined box) — the one type
-  // option that asks nothing of the members but their boxes, so it rides on
-  // the selection being multi rather than on what it is made of. A mixed
-  // selection gets it as its ONLY type option; a uniform one gets it appended
-  // to that type's own set. Gated on the host supplying onAlign, like the
-  // other optional actions.
+  // Layout (align the members against their combined box) — a type option that
+  // asks nothing of the members but their boxes, so it rides on the selection
+  // being multi rather than on what it is made of. A mixed selection gets it
+  // (with Group / Merge) as its ONLY type options; a uniform one gets them
+  // appended to that type's own set. Gated on the host supplying onAlign, like
+  // the other optional actions.
   const showLayout = multi && !!model.onAlign;
+  // Group / Merge ride alongside Layout for the same reason: they are things a
+  // SELECTION is, not things its members are. A mixed multi-selection can be
+  // bound into a group or flattened into one object without its members
+  // sharing a kind, so they share Layout's page — words, not the common row's
+  // icons (where a single selection's Facet-side group actions still live).
+  //
+  // Merge is the structural flatten, NOT the boolean union (`onUnion`, which
+  // stays a common-row action): it makes several objects one object and asks
+  // nothing of their geometry.
+  const showGroup = multi && !!model.onGroup;
+  // A selection that IS a group has one option its members' kind can't give
+  // it: the way back out. Ungroup is a TYPE option, alongside whatever the
+  // members share — the same row a frame's Ungroup sits in — and it is the
+  // whole type row for a group of mixed kinds. Group itself drops off the
+  // selection page while it shows (the host stops supplying onGroup), so the
+  // two never contradict each other.
+  const showUngroup = multi && !!model.onUngroup;
+  const showMerge = multi && !!model.onMerge;
 
-  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || showLayout;
-  // Signature of the current selection's type-option set. It changes when the
+  // The two optional carousel pages. `type` is what the selection's KIND
+  // offers (and a multi-selection's members must share a kind to have one);
+  // `multi` is what the SELECTION offers, whatever it is made of.
+  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || showUngroup;
+  const hasMultiOptions = showLayout || showGroup || showMerge;
+  const pages = objectPanelPages({ type: hasTypeOptions, multi: hasMultiOptions });
+  // Signature of the current selection's option pages. It changes when the
   // panel first appears for a selection or the selected object's type changes
   // (image → frame → text …), and empties when the panel hides. The vector
   // subtype is part of it so switching between two vector objects with
   // different menus (a line → a rectangle) re-lands on the type row.
   const typeSig = model.visible
-    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
+    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
     : '';
   const prevTypeSig = useRef('');
+  const landingPage = landingPanelPage(pages);
   useEffect(() => {
     if (typeSig === prevTypeSig.current) return;
     prevTypeSig.current = typeSig;
-    // On each new selection, land on the type-specific options first so they're
-    // front-and-centre; fall back to the common actions when the selection has
-    // none (also keeps a stale swap from leaving an empty row).
-    setShowTypeRow(hasTypeOptions);
-  }, [typeSig, hasTypeOptions]);
+    // On each new selection, land on the options it brought with it so they're
+    // front-and-centre — its kind's if it has any, else the selection-level
+    // ones; fall back to the common actions when it has neither (also keeps a
+    // stale swap from leaving an empty row).
+    setPage(landingPage);
+  }, [typeSig, landingPage]);
 
   // A new option set relays out from scratch, so drop the old widths rather
   // than let a key both sets share (Shadow, Border) size the capsule from the
@@ -572,9 +619,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   const openSubmenu = (key: SubmenuKey) => {
     fontSheetOpenRef.current = false;
     // The bar and the row that summoned it are on screen together now, so the
-    // row has to be the TYPE page for its lit option to be visible. A swipe can
-    // still take you to the common actions afterwards.
-    setShowTypeRow(true);
+    // row has to be the page holding that option for its lit capsule to be
+    // visible — the Layout bar's option lives on the multi page, every other
+    // bar's on the type page. A swipe can still take you elsewhere afterwards
+    // (including onto a page where nothing is lit, which is fine: the bar says
+    // what it is).
+    setPage(key === 'layout' ? 'multi' : 'type');
     if (key === 'tint') model.onTintOpenChange?.(true);
     else if (key === 'crop') model.onCropOpenChange?.(true);
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
@@ -961,31 +1011,34 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     <GridButton key="flipH" label="Mirror H" icon="arrow-left-right" onPress={model.onMirrorH} compact={compact} />,
     <GridButton key="flipV" label="Mirror V" icon="arrow-up-down" onPress={model.onMirrorV} compact={compact} />,
     <GridButton key="copy" label="Duplicate" icon="content-copy" onPress={model.onDuplicate} compact={compact} />,
-    // A multi-selection's common row is rotate / flip / copy / delete only —
-    // Lock is per-object state a mixed group can't answer with one button.
-    ...(multi ? [] : [
-      <GridButton
-        key="lock"
-        label={model.locked ? 'Locked' : 'Lock'}
-        icon={model.locked ? 'lock' : 'lock-open-outline'}
-        iconColor={model.locked ? ICON_COLOR_STRONG : ICON_COLOR}
-        onPress={model.onToggleLock}
-        compact={compact}
-      />,
-    ]),
+    // Lock acts per object, so a multi-selection gets it too: it locks each
+    // member individually. `locked` then means EVERY member is locked (the
+    // host's own reading, so the button's state and what a press does can't
+    // disagree) — a partly-locked selection reads unlocked and one press
+    // finishes the job rather than inverting into a differently-mixed one.
+    <GridButton
+      key="lock"
+      label={model.locked ? 'Locked' : 'Lock'}
+      icon={model.locked ? 'lock' : 'lock-open-outline'}
+      iconColor={model.locked ? ICON_COLOR_STRONG : ICON_COLOR}
+      onPress={model.onToggleLock}
+      compact={compact}
+    />,
     <GridButton key="delete" label="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
   ];
-  if (model.onGroup) row1.push(<GridButton key="group" label="Group" icon="group" onPress={model.onGroup} compact={compact} />);
+  // A multi-selection's Group / Merge live on the selection's own page (words,
+  // beside Layout), not on this icon row — see showGroup / showMerge.
+  if (model.onGroup && !multi) row1.push(<GridButton key="group" label="Group" icon="group" onPress={model.onGroup} compact={compact} />);
   // Frames surface Ungroup in their own type-options row (not the common row),
   // so skip it here when the frame options are showing.
-  if (model.onUngroup && !model.showFrameOptions) row1.push(<GridButton key="ungroup" label="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
+  if (model.onUngroup && !model.showFrameOptions && !multi) row1.push(<GridButton key="ungroup" label="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
   if (model.onJoin) row1.push(<GridButton key="join" label="Join" icon="vector-combine" onPress={model.onJoin} compact={compact} />);
-  if (model.onUnion) row1.push(<GridButton key="union" label="Union" icon="vector-union" onPress={model.onUnion} compact={compact} />);
+  if (model.onUnion && !multi) row1.push(<GridButton key="union" label="Union" icon="vector-union" onPress={model.onUnion} compact={compact} />);
 
-  // Type-specific options (images: the image-edit set; text: Edit + Type),
-  // null when the selection has none — except a multi-selection, which always
-  // has Layout (appended below). Described rather than rendered, because the
-  // row needs to know WHICH option is selected to park the sliding capsule
+  // The type page's options (images: the image-edit set; text: Edit + Type),
+  // null when the selection's kind offers none — a mixed multi-selection, say,
+  // which has no shared kind to ask. Described rather than rendered, because
+  // the row needs to know WHICH option is selected to park the sliding capsule
   // over it; the elements come out of these at render time.
   let typeSpecs: OptionSpec[] | null = null;
   if (model.showImageEdit) {
@@ -1063,23 +1116,45 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     if (model.showTextStyle) typeSpecs.push({ key: 'align', label: 'Align', sub: 'align', onPress: () => openSubmenu('align') });
     if (model.showTextStyle) typeSpecs.push({ key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: toggleShadow });
   }
-  if (showLayout) {
-    // Layout closes the set for a multi-selection, whatever its members are —
-    // it starts the set outright when they share no type at all. The word keeps
-    // it clear of the text Align option (which is about a paragraph's own
-    // lines, not where objects sit) now that neither carries a glyph.
-    typeSpecs = [...(typeSpecs ?? []), { key: 'layout', label: 'Layout', sub: 'layout', onPress: () => openSubmenu('layout') }];
+  if (showUngroup) {
+    // A GROUP is a type of selection, and Ungroup is the option that type has:
+    // it closes the row after whatever the members share, and IS the row when
+    // they share nothing. One press, no bar — like the frame Ungroup it mirrors.
+    typeSpecs = [...(typeSpecs ?? []), { key: 'ungroup', label: 'Ungroup', onPress: model.onUngroup }];
   }
+  // The selection-level options (Layout · Group · Merge) get a page of their
+  // own, after the type page — they belong to the selection rather than to
+  // what it is made of, and a mixed multi-selection has this page and no type
+  // page at all. "Layout" keeps it clear of the text Align option (which is
+  // about a paragraph's own lines, not where objects sit) now that neither
+  // carries a glyph. Only Layout opens a bar; Group and Merge are one press
+  // each, so they never take the sliding capsule — they just fire and leave a
+  // selection that is one thing instead of several.
+  const multiOptions = multiSelectionOptions({ align: showLayout, group: showGroup, merge: showMerge });
+  const multiSpecs: OptionSpec[] | null = multiOptions.length > 0
+    ? multiOptions.map((opt): OptionSpec =>
+        opt.action === 'layout'
+          ? { key: 'layout', label: opt.label, sub: 'layout', onPress: () => openSubmenu('layout') }
+          : { key: opt.action, label: opt.label, onPress: opt.action === 'group' ? model.onGroup : model.onMerge })
+    : null;
 
-  // Only one set shows at a time; a horizontal swipe swaps between them (the
+  // Only one page shows at a time; a horizontal swipe cycles through them (the
   // dots below track which is showing). The icon row's columns stay fixed at
-  // the larger set's count so the icons keep one size across selections, and
-  // empty cells split either side to centre them; the option row sizes its own
+  // the widest page's count so the icons keep one size across selections, and
+  // empty cells split either side to centre them; an option row sizes its own
   // cells to its words instead (OptionPill) and so needs no pad.
-  const canSwap = !!typeSpecs;
+  //
+  // `pages` is worked out from the model's flags up top; the specs below are
+  // what those flags produce, so a page in the list always has a row to show.
+  const shownPage: PanelPage = pages.includes(page) ? page : landingPage;
+  const canSwap = pages.length > 1;
   canSwapRef.current = canSwap;
-  const showType = canSwap && showTypeRow;
-  const columns = Math.max(row1.length, typeSpecs ? typeSpecs.length : 0);
+  pagesRef.current = pages;
+  pageRef.current = shownPage;
+  // The option specs for the page showing (null on the common-actions page).
+  const activeSpecs: OptionSpec[] | null =
+    shownPage === 'type' ? typeSpecs : shownPage === 'multi' ? multiSpecs : null;
+  const columns = Math.max(row1.length, typeSpecs?.length ?? 0, multiSpecs?.length ?? 0);
 
   // ── The sliding selection capsule ───────────────────────────────────
   // Parked over whichever option opened the bar you're looking at, taking that
@@ -1087,24 +1162,24 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
   // travels. Widths are measured, offsets reproduced from the row's geometry
   // (optionCapsuleLefts); both need the first layout pass, and until every cell
   // has reported there is nothing to sit on and the capsule isn't drawn.
-  const selectedOption = typeSpecs
-    ? typeSpecs.findIndex((s) => s.sub !== undefined && subOpen(s.sub))
+  const selectedOption = activeSpecs
+    ? activeSpecs.findIndex((s) => s.sub !== undefined && subOpen(s.sub))
     : -1;
-  const cellWidths = typeSpecs ? typeSpecs.map((s) => optionWidths[s.key] ?? 0) : [];
+  const cellWidths = activeSpecs ? activeSpecs.map((s) => optionWidths[s.key] ?? 0) : [];
   const measured = cellWidths.length > 0 && cellWidths.every((w) => w > 0);
   const lefts = measured ? optionCapsuleLefts(rowWidth, cellWidths) : [];
-  // Only a shown, measured, selected type row gets a capsule.
-  const litCell = showType && selectedOption >= 0 && lefts.length > 0;
+  // Only a measured, selected option row gets a capsule.
+  const litCell = selectedOption >= 0 && lefts.length > 0;
   const capsuleAt = litCell ? lefts[selectedOption] : null;
   const capsuleWidth = litCell ? cellWidths[selectedOption] : 0;
 
-  const activeButtons: React.ReactNode[] = showType
-    ? typeSpecs!.map((spec, i) => (
+  const activeButtons: React.ReactNode[] = activeSpecs
+    ? activeSpecs.map((spec, i) => (
         <OptionPill key={spec.key} spec={spec} selected={i === selectedOption} compact={compact} onMeasure={onOptionMeasure} />
       ))
     : row1;
-  // The option row fills the width itself; only the icon row is centred by pads.
-  const sidePad = showType ? 0 : optionRowSidePad(columns, activeButtons.length);
+  // An option row fills the width itself; only the icon row is centred by pads.
+  const sidePad = activeSpecs ? 0 : optionRowSidePad(columns, activeButtons.length);
 
   // Params tracked by the sliders/pad come from the local draft; color comes
   // from the model (it's changed externally, via the full-screen picker).
@@ -1296,10 +1371,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
       ) : null}
       <View style={styles.clip} pointerEvents="box-none">
         <Animated.View style={[styles.panel, { height: panelBox.height, paddingBottom: panelBox.paddingBottom, transform: [{ translateY }] }]}>
-        {/* A single row of buttons (common actions or type-specific options)
-            that a horizontal swipe slides between. Empty cells flank the
-            buttons to centre the group. Carousel dots below track which page
-            is showing. */}
+        {/* A single row of buttons — the showing page's — that a horizontal
+            swipe slides between. Empty cells flank the buttons to centre the
+            group. Carousel dots below, one per page, track which is showing. */}
         <View style={styles.swapArea} {...(canSwap ? swapPan.panHandlers : {})}>
           <Animated.View style={{ transform: [{ translateX: swapX }] }}>
             <View style={styles.gridRow} onLayout={(e) => setRowWidth(e.nativeEvent.layout.width)}>
@@ -1313,8 +1387,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
         </View>
         {canSwap ? (
           <View style={styles.dotsRow}>
-            <View style={[styles.dot, !showType && styles.dotActive]} />
-            <View style={[styles.dot, showType && styles.dotActive]} />
+            {pages.map((p) => (
+              <View key={p} style={[styles.dot, p === shownPage && styles.dotActive]} />
+            ))}
           </View>
         ) : null}
         </Animated.View>

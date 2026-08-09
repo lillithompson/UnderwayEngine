@@ -302,8 +302,9 @@ export interface OpacityModel {
 export interface ObjectPropertiesModel {
   visible: boolean;
   /** 'multi' marks a multi-selection: the host applies every edit to ALL
-   *  selected objects, the common row drops Lock, and the image options drop
-   *  the single-target actions (Replace / Crop). Default 'single'. */
+   *  selected objects, the image options drop the single-target actions
+   *  (Replace / Crop), and the selection gets a carousel page of its own
+   *  (see {@link onAlign}). Default 'single'. */
   mode?: 'single' | 'multi' | 'group';
   /** Show the Edit action (editable text selected): a second-row button that
    *  invokes onEdit to edit the text content. */
@@ -416,6 +417,11 @@ export interface ObjectPropertiesModel {
   /** Open the full-screen color picker for the frame background (the same
    *  picker the toolbar color tool uses). */
   onPickFrameBackground?(): void;
+  /** Lit state of the common row's Lock button. On a `mode: 'multi'` selection
+   *  this must read TRUE ONLY WHEN EVERY MEMBER IS LOCKED: {@link onToggleLock}
+   *  locks each member individually, and a partly-locked selection should read
+   *  unlocked so one press finishes the job instead of inverting it into a
+   *  differently-mixed one. */
   locked: boolean;
   onEdit(): void;
   /** Whether the Tint controls are shown. App-owned so a tap-off dismisses
@@ -526,15 +532,16 @@ export interface ObjectPropertiesModel {
   layoutOpen?: boolean;
   onLayoutOpenChange?(open: boolean): void;
   /** Align every selected object to one edge (or the centre line) of the
-   *  selection's combined box. Supplying this puts a Layout option in the
-   *  type-options row of a `mode: 'multi'` selection and a Layout page in its
-   *  submenu carousel; leave it unset and neither appears.
+   *  selection's combined box. Supplying this puts a Layout option on the
+   *  selection's own page of a `mode: 'multi'` panel (the third carousel page,
+   *  Layout · Group · Merge) and a Layout page in its submenu carousel; leave
+   *  it unset and neither appears.
    *
-   *  Layout is the only type-option a MIXED multi-selection gets: aligning
-   *  asks nothing of the members but their boxes, so unlike Tint / Stroke /
-   *  Type it doesn't need them to share a kind. Like the Endpoints bar's
-   *  picks there is no live/commit split — each call is one finished move and
-   *  one undo step. */
+   *  That page is what a MIXED multi-selection gets instead of a type page:
+   *  aligning asks nothing of the members but their boxes, so unlike Tint /
+   *  Stroke / Type it doesn't need them to share a kind. Like the Endpoints
+   *  bar's picks there is no live/commit split — each call is one finished
+   *  move and one undo step. */
   onAlign?(edge: AlignEdge): void;
   /** Lay every selected object out as a grid, anchored at the top-left of the
    *  selection's combined box, and set each one to identity rotation — a grid
@@ -549,11 +556,36 @@ export interface ObjectPropertiesModel {
   onDuplicate(): void;
   onToggleLock(): void;
   onDelete(): void;
-  /** Group-only actions (Facet superset; CozyJournal leaves them unset). */
+  /** Structural actions (Facet superset; CozyJournal leaves Ungroup / Join
+   *  unset outside frames).
+   *
+   *  Group and {@link onMerge} belong to the SELECTION rather than to what it
+   *  is made of, like {@link onAlign}: supplying either on a `mode: 'multi'`
+   *  selection puts a word option on the selection's own carousel page —
+   *  Layout · Group · Merge — instead of an icon in the common row. Neither
+   *  opens a bar; one press is one finished edit and one undo step. On a
+   *  single selection Group stays a common-row icon.
+   *
+   *  `onUnion` is the BOOLEAN union — the region operation whose family is
+   *  union / difference / intersect / exclude. It is not Merge and never
+   *  shares its page; it stays a common-row icon wherever a host supplies it. */
   onGroup?(): void;
+  /** Dissolve the selected group. Where it renders depends on the selection:
+   *  a frame puts it in its own type options, and a `mode: 'multi'` selection
+   *  that IS a group gets it as a TYPE option too — closing whatever its
+   *  members share, or standing as the whole type row when they share nothing.
+   *  A host that supplies this for a multi-selection should stop supplying
+   *  {@link onGroup} for it: binding a selection that is already bound is a
+   *  press that does nothing. */
   onUngroup?(): void;
   onJoin?(): void;
   onUnion?(): void;
+  /** Flatten the selected objects into ONE object (`mode: 'multi'` only): one
+   *  row in the scene outline where there were several, selecting and
+   *  transforming as a single thing. Structural, not geometric — it asks
+   *  nothing of the members' shapes, which is what separates it from
+   *  {@link onUnion}. Supplying it puts Merge on the selection's page. */
+  onMerge?(): void;
 }
 
 // ── Undo / redo ──────────────────────────────────────────────────────

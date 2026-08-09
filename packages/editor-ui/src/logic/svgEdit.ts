@@ -51,17 +51,17 @@ const STROKE_ICON: Record<SVGSubtypeKind, string> = {
 /**
  * Whether a subtype offers the Fill bar.
  *
- * A fill needs an enclosed interior to paint, so it is closed-path only — and
- * of the closed subtypes only the three the shape tools author (`rectangle`,
- * from the line tool's rectangle mode, `circle`, from the arc tool's, and
- * `polygon`, from the polygon tool) take it today. `shape` is closed too and
- * is the obvious next candidate, but it also covers join / union results and
- * the preset library, whose fills are authored elsewhere; it stays out until
- * that is reconciled rather than being given a second, competing source of
- * fill.
+ * A fill needs an enclosed interior to paint, so it is CLOSED-PATH ONLY — and
+ * every closed subtype takes it: the three the shape tools author
+ * (`rectangle`, from the line tool's rectangle mode, `circle`, from the arc
+ * tool's, and `polygon`, from the polygon tool) and `shape`, the closed
+ * freeform — a merged pair of strokes that met end to end, a join, a union
+ * result, a preset. What closes is what fills; nothing about how the outline
+ * came to be changes that.
  */
 export function svgHasFill(subtype: SVGSubtypeKind): boolean {
-  return subtype === 'rectangle' || subtype === 'circle' || subtype === 'polygon';
+  return subtype === 'rectangle' || subtype === 'circle'
+    || subtype === 'polygon' || subtype === 'shape';
 }
 
 /**
@@ -80,15 +80,14 @@ export function svgHasEndpoints(subtype: SVGSubtypeKind): boolean {
  * Whether a subtype offers the Opacity bar (whole-object opacity + edge
  * soften).
  *
- * The same closed shapes the Fill bar takes (`rectangle`, `circle`,
- * `polygon`) — softening an edge into transparency needs an enclosed
- * silhouette to fade, and the open paths already read as weightless lines.
- * Kept a separate predicate from {@link svgHasFill} rather than an alias
- * because the two menus answer different questions and are free to diverge
- * (e.g. `shape` could take Opacity before its fill story is reconciled).
+ * The same closed shapes the Fill bar takes — softening an edge into
+ * transparency needs an enclosed silhouette to fade, and the open paths
+ * already read as weightless lines. Kept a separate predicate from
+ * {@link svgHasFill} rather than an alias because the two menus answer
+ * different questions and are free to diverge again.
  */
 export function svgHasOpacity(subtype: SVGSubtypeKind): boolean {
-  return subtype === 'rectangle' || subtype === 'circle' || subtype === 'polygon';
+  return svgHasFill(subtype);
 }
 
 /** The option menu for one vector subtype, in display order. Stroke leads — it

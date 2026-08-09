@@ -91,11 +91,11 @@ describe('object-properties chrome matches the toolbar', () => {
 
   it('dresses the type-specific options as the toolbar pushdown does', () => {
     const panel = read('ObjectPropertiesPanel.tsx');
-    // The type row is spec-driven (one OptionPill mapped over typeSpecs, so the
-    // row can find WHICH option is selected); the common-actions row keeps its
-    // icon buttons. Both components must still be in play.
+    // An options page is spec-driven (one OptionPill mapped over the showing
+    // page's specs, so the row can find WHICH option is selected); the
+    // common-actions page keeps its icon buttons. Both must still be in play.
     expect(/function OptionPill\(/.test(panel)).toBe(true);
-    expect(/typeSpecs!\.map\(/.test(panel)).toBe(true);
+    expect(/activeSpecs\.map\(/.test(panel)).toBe(true);
     expect(/<GridButton/.test(panel)).toBe(true);
     // The pushdown's capsule rather than a new look: fully-round, selection
     // blue under the selected one. The unselected word is the ONE departure —
@@ -125,8 +125,8 @@ describe('object-properties chrome matches the toolbar', () => {
     expect(/compact \? null : styles\.optionCellCapped/.test(panel)).toBe(true);
     // The pill fills whatever the cell became — variable-width backgrounds.
     expect(/optionPill: \{[^}]*alignSelf: 'stretch'/s.test(panel)).toBe(true);
-    // The row's own pads are the icon page's alone; the options fill it.
-    expect(/const sidePad = showType \? 0 :/.test(panel)).toBe(true);
+    // The row's own pads are the icon page's alone; an options page fills it.
+    expect(/const sidePad = activeSpecs \? 0 :/.test(panel)).toBe(true);
     // Widening the cells is the fix, never a smaller word.
     expect(/optionLabel: \{[^}]*fontSize: 13, fontWeight: '600'/s.test(panel)).toBe(true);
   });

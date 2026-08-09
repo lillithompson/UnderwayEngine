@@ -9,8 +9,10 @@ import type { SVGSubtypeKind } from '../adapter';
 
 const SUBTYPES: SVGSubtypeKind[] = ['line', 'arc', 'rectangle', 'circle', 'polygon', 'shape', 'stroke'];
 
-/** The closed subtypes the shape tools author — the ones with Fill/Opacity. */
-const FILLED: SVGSubtypeKind[] = ['rectangle', 'circle', 'polygon'];
+/** Every CLOSED subtype — the ones with Fill/Opacity. What closes is what
+ *  fills: the three the shape tools author, plus `shape`, the closed freeform
+ *  (a merge of strokes that met end to end, a join, a union result, a preset). */
+const FILLED: SVGSubtypeKind[] = ['rectangle', 'circle', 'polygon', 'shape'];
 
 describe('svgEditOptions', () => {
   it('gives every vector subtype a Stroke option — a path is its stroke', () => {
@@ -47,8 +49,10 @@ describe('svgEditOptions', () => {
     }
   });
 
-  it('leaves the closed-but-not-drawn `shape` with Stroke alone', () => {
-    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke']);
+  it('gives the closed freeform `shape` the same interior options as a drawn one', () => {
+    // However the outline came to be — merged, joined, unioned, drawn — a
+    // closed path has an inside to paint.
+    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity']);
   });
 
   it('labels and glyphs the Ends option the same way whichever path it is on', () => {
@@ -115,7 +119,7 @@ describe('svgEditOptions', () => {
 });
 
 describe('svgHasFill', () => {
-  it('is true only for the closed shapes the shape tools author', () => {
+  it('is true for every closed subtype and no open one', () => {
     for (const subtype of FILLED) expect(svgHasFill(subtype)).toBe(true);
     for (const subtype of SUBTYPES.filter((s) => !FILLED.includes(s))) {
       expect(svgHasFill(subtype)).toBe(false);
@@ -124,8 +128,7 @@ describe('svgHasFill', () => {
 
   it('never offers a fill without an inside to align a stroke against', () => {
     // A fill needs an enclosed area, and so does stroke Position — so anything
-    // fillable is necessarily closed. (Not the converse: 'shape' is closed but
-    // has no Fill yet.)
+    // fillable is necessarily closed.
     for (const subtype of SUBTYPES) {
       if (svgHasFill(subtype)) expect(svgStrokeRows(subtype).position).toBe(true);
     }
@@ -140,7 +143,7 @@ describe('svgHasFill', () => {
 });
 
 describe('svgHasOpacity', () => {
-  it('is true only for the closed shapes the shape tools author', () => {
+  it('is true for every closed subtype and no open one', () => {
     for (const subtype of FILLED) expect(svgHasOpacity(subtype)).toBe(true);
     for (const subtype of SUBTYPES.filter((s) => !FILLED.includes(s))) {
       expect(svgHasOpacity(subtype)).toBe(false);
@@ -205,13 +208,12 @@ describe('svgHasEndpoints', () => {
     expect(svgHasEndpoints('shape')).toBe(false);
   });
 
-  it('is the inverse of svgHasFill on every subtype but `shape`', () => {
-    for (const subtype of SUBTYPES.filter((s) => s !== 'shape')) {
+  it('is the exact inverse of svgHasFill — a path is open or it is closed', () => {
+    for (const subtype of SUBTYPES) {
       expect(svgHasEndpoints(subtype)).toBe(!svgHasFill(subtype));
     }
-    // `shape` is closed but its fills are authored elsewhere, so it gets
-    // neither bar (see svgHasFill's note).
-    expect(svgHasFill('shape')).toBe(false);
+    // `shape` closes, so it fills and has no loose end to decorate.
+    expect(svgHasFill('shape')).toBe(true);
     expect(svgHasEndpoints('shape')).toBe(false);
   });
 
