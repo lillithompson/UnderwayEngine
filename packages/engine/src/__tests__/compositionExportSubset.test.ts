@@ -9,7 +9,7 @@
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
 import { DEFAULT_LINE_HEIGHT, layoutText } from '../textLayout';
 import { STICKER_SHADOW_CELLS } from '../stickerStyle';
-import { GroupNode, ImageObject, PathSegment, SVGObject, TextObject } from '../types';
+import { CanvasPaintIsland, GroupNode, ImageObject, PathSegment, SVGObject, TextObject } from '../types';
 
 /** SVG_UNITS_PER_L0_CELL — world cells scale into SVG units by this. */
 const U = 256;
@@ -585,5 +585,93 @@ describe('cutout stroke padding', () => {
     });
     const svg = await generateCompositionSVGCore(makeInputs({ svgObjects: [diagonal] }));
     expect(viewBoxOf(svg!)).toEqual([4 * U, 4 * U, 8 * U, 6 * U]);
+  });
+});
+
+/**
+ * The paint tool's raster layer in a cutout. A cutout drops it with the page
+ * background by default; `canvasPaintInSubset` keeps it, for a recipe whose
+ * subject is the drawing rather than a few nodes lifted off the page.
+ */
+describe('canvas paint in a cutout', () => {
+  /** A 2×2-texel island of solid red at (20, 20), 4 cells across. */
+  function inkIsland(x = 20, y = 20): CanvasPaintIsland {
+    const rgba = new Uint8Array(2 * 2 * 4);
+    for (let i = 0; i < 4; i++) {
+      rgba[i * 4] = 255;
+      rgba[i * 4 + 3] = 255;
+    }
+    return { x, y, widthCells: 4, overlay: { cols: 2, rows: 2, rgba, blend: 'normal' } };
+  }
+
+  const cut = (extra: Partial<CompositionSVGInputs>) =>
+    generateCompositionSVGCore(pageInputs({
+      canvasPaint: [inkIsland()],
+      subset: () => new Set(['txt_1']),
+      ...extra,
+    }));
+
+  it('is dropped by default, like the background', async () => {
+    const svg = await cut({});
+    expect(svg).toBeTruthy();
+    // No <image> at all: the photo was deselected and the raster skipped.
+    expect(svg).not.toContain('<image');
+    // …and it did not widen the frame off the selected line's glyphs.
+    expect(viewBoxOf(svg!)).toEqual(inkViewBox([pageInputs().texts![0]]));
+  });
+
+  it('is drawn, and joins the frame, when the recipe asks for it', async () => {
+    const svg = await cut({ canvasPaintInSubset: true });
+    expect(svg).toContain('<image');
+    expect(svg).toContain('data:image/png;base64,');
+    // The island sits at (20,20)–(24,24) in cells, well right of and below the
+    // text at (4,20), so the frame has to reach it.
+    const [, , w] = viewBoxOf(svg!);
+    expect(w).toBeGreaterThan(inkViewBox([pageInputs().texts![0]])[2]);
+    expect(viewBoxOf(svg!)[2]).toBeCloseTo(24 * U - viewBoxOf(svg!)[0], 5);
+  });
+
+  it('frames on the painted texels, not the island rect', async () => {
+    // Only the top-left texel is inked, so the frame stops at (22, 22) —
+    // halfway across the 4-cell island — rather than at its (24, 24) corner.
+    const island = inkIsland();
+    island.overlay.rgba.fill(0);
+    island.overlay.rgba[0] = 255;
+    island.overlay.rgba[3] = 255;
+    const svg = await generateCompositionSVGCore(pageInputs({
+      canvasPaint: [island],
+      subset: () => new Set(['txt_1']),
+      canvasPaintInSubset: true,
+    }));
+    const [x, , w] = viewBoxOf(svg!);
+    expect(x + w).toBeCloseTo(22 * U, 5);
+  });
+
+  it('gives a page holding nothing but paint a cutout of its own', async () => {
+    // Before, an empty selection meant null and the card fell back to the
+    // page thumb — which is exactly the white-backed image the cutout exists
+    // to avoid. Paint is content, so it exports.
+    const paintOnly = makeInputs({
+      canvasPaint: [inkIsland()],
+      subset: () => new Set<string>(),
+      canvasPaintInSubset: true,
+    });
+    const svg = await generateCompositionSVGCore(paintOnly);
+    expect(svg).toContain('<image');
+    expect(viewBoxOf(svg!)).toEqual([20 * U, 20 * U, 4 * U, 4 * U]);
+
+    // …and still nothing when that page has no paint either.
+    expect(await generateCompositionSVGCore(makeInputs({
+      subset: () => new Set<string>(), canvasPaintInSubset: true,
+    }))).toBeNull();
+  });
+
+  it('leaves a page export drawing it either way', async () => {
+    for (const canvasPaintInSubset of [undefined, true]) {
+      const svg = await generateCompositionSVGCore(makeInputs({
+        canvasPaint: [inkIsland()], canvasPaintInSubset,
+      }));
+      expect(svg).toContain('data:image/png;base64,');
+    }
   });
 });

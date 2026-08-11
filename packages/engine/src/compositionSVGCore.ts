@@ -103,8 +103,22 @@ export interface CompositionSVGInputs {
    *  rect and under every scene element — the same stacking the live GL
    *  pass renders. The islands' painted ink also joins the content bounds,
    *  so a drawing far from the origin still lands inside a content-framed
-   *  export. Skipped for subset cutouts, like the background. */
+   *  export. Skipped for subset cutouts unless
+   *  {@link canvasPaintInSubset} asks for it, like the background. */
   canvasPaint?: CanvasPaintIsland[];
+  /**
+   * Draw {@link canvasPaint} in a SUBSET export too, and let its ink widen the
+   * cutout's frame. Ignored without a `subset` (a page export always draws the
+   * layer).
+   *
+   * A cutout otherwise drops the raster layer along with the background, which
+   * is right for a recipe that lifts a few authored nodes off the page they
+   * were made against — but wrong for one whose cutout IS the drawing, where
+   * brush marks are content the page would be missing without. With it set, a
+   * page holding nothing but paint still exports (the emptiness guards count
+   * the layer's ink), instead of yielding null.
+   */
+  canvasPaintInSubset?: boolean;
   /** Optional font-embedding hook — see {@link SVGFontResolver}. */
   fontResolver?: SVGFontResolver;
   /** Group hierarchy — needed to resolve "Use as mask" clip regions.
@@ -694,7 +708,19 @@ export async function generateCompositionSVGCore(
   let svgObjects = input.svgObjects.filter(shown);
   let images = input.images.filter(shown);
   let texts = (input.texts ?? []).filter(shown);
-  if (figures.length === 0 && svgObjects.length === 0 && images.length === 0 && texts.length === 0) return null;
+
+  // Is the raster paint layer part of this export? Always for a page export;
+  // for a cutout only when the caller asked (canvasPaintInSubset). Its painted
+  // extent is measured once, up here, because it answers two questions: does
+  // this export have any content at all, and where does the frame go.
+  const drawCanvasPaint = !!input.canvasPaint
+    && (!input.subset || !!input.canvasPaintInSubset);
+  const canvasPaintInk = drawCanvasPaint ? canvasPaintInkBounds(input.canvasPaint) : null;
+
+  // Nothing to draw — no objects, and no brush marks either.
+  const noObjects = () =>
+    figures.length === 0 && svgObjects.length === 0 && images.length === 0 && texts.length === 0;
+  if (noObjects() && !canvasPaintInk) return null;
 
   // Active masks resolve from the UNFILTERED svg objects: a hidden mask
   // still clips (invisible-mask behavior) even though it isn't drawn.
@@ -710,7 +736,9 @@ export async function generateCompositionSVGCore(
     svgObjects = svgObjects.filter(kept);
     images = images.filter(kept);
     texts = texts.filter(kept);
-    if (figures.length === 0 && svgObjects.length === 0 && images.length === 0 && texts.length === 0) return null;
+    // The selector chose nothing — but a cutout that carries the paint layer
+    // still has the brush marks to show.
+    if (noObjects() && !canvasPaintInk) return null;
   }
 
   // Ink override for line art. Applied to the DRAWN nodes only, and only to
@@ -873,11 +901,14 @@ export async function generateCompositionSVGCore(
   // bounds, not the island rects — a tile is mostly transparent around a
   // small dab). A page whose only content is raster paint would otherwise
   // frame on nothing, and a content-framed export would slice off any
-  // drawing far from the objects. Cutouts skip the layer entirely, so it
-  // must not widen their frame either.
-  if (input.canvasPaint && !input.subset) {
-    const ink = canvasPaintInkBounds(input.canvasPaint);
-    if (ink) accept({ id: '__canvasPaint__' }, ink.minX, ink.minY, ink.maxX, ink.maxY);
+  // drawing far from the objects. A cutout that skipped the layer must not
+  // widen its frame on it either — hence `canvasPaintInk`, which is null
+  // exactly when the layer isn't being drawn.
+  if (canvasPaintInk) {
+    accept(
+      { id: '__canvasPaint__' },
+      canvasPaintInk.minX, canvasPaintInk.minY, canvasPaintInk.maxX, canvasPaintInk.maxY,
+    );
   }
 
   // Degenerate-frame guard: if masking clipped away every drawn object, fall
@@ -1382,8 +1413,8 @@ export async function generateCompositionSVGCore(
   // the same stacking the live GL pass renders. One <image> per island,
   // each anchored at its own world-cell origin, whatever the viewBox frames.
   let canvasPaintImage = '';
-  if (input.canvasPaint && !input.subset) {
-    for (const isl of input.canvasPaint) {
+  if (drawCanvasPaint) {
+    for (const isl of input.canvasPaint!) {
       const cpX = isl.x * SVG_UNITS_PER_L0_CELL;
       const cpY = isl.y * SVG_UNITS_PER_L0_CELL;
       const cpW = isl.widthCells * SVG_UNITS_PER_L0_CELL;
