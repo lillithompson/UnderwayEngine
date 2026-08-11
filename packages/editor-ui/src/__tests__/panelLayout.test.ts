@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import {
   OBJECT_DOTS_ROW_HEIGHT,
   OPTION_ROW_GAP,
@@ -130,6 +132,46 @@ describe('landingPanelPage', () => {
   test('falls back to the selection page, then to the common actions', () => {
     expect(landingPanelPage(['common', 'multi'])).toBe('multi');
     expect(landingPanelPage(['common'])).toBe('common');
+  });
+
+  test('keeps the page the last selection was on, when this one has it', () => {
+    // Working through a drawing's shadows, the next shape should open on the
+    // shadow row too — re-landing every selection on the type page makes the
+    // carousel something to re-navigate rather than a place to be.
+    expect(landingPanelPage(['common', 'type'], 'common')).toBe('common');
+    expect(landingPanelPage(['common', 'type', 'multi'], 'multi')).toBe('multi');
+    expect(landingPanelPage(['common', 'type'], 'type')).toBe('type');
+  });
+
+  test('cannot keep a page the new selection does not have', () => {
+    // A single selection has no 'multi' page; landing there would be an
+    // empty row.
+    expect(landingPanelPage(['common', 'type'], 'multi')).toBe('type');
+    expect(landingPanelPage(['common'], 'type')).toBe('common');
+  });
+});
+
+// The panel itself has no test renderer here, so the half that decides WHICH
+// page to remember is pinned as source.
+describe('the panel\u2019s memory of the last page', () => {
+  const PANEL = readFileSync(
+    resolve(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'), 'utf8',
+  );
+
+  test('lands each new selection on the remembered page', () => {
+    expect(PANEL).toContain('landingPanelPage(pages, lastPageRef.current)');
+  });
+
+  test('records the page only while a selection is showing', () => {
+    // The row falls back to 'common' as the panel hides; letting that
+    // overwrite the memory would make every selection after a deselect start
+    // over on the type page.
+    expect(PANEL).toContain('if (model.visible) lastPageRef.current = page;');
+  });
+
+  test('records it AFTER the landing effect, so landing reads the old page', () => {
+    expect(PANEL.indexOf('setPage(landingPage);'))
+      .toBeLessThan(PANEL.indexOf('if (model.visible) lastPageRef.current = page;'));
   });
 });
 

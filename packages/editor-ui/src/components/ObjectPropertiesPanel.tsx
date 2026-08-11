@@ -477,16 +477,27 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
     : '';
   const prevTypeSig = useRef('');
-  const landingPage = landingPanelPage(pages);
+  // The page the panel was last showing for a real selection — what the next
+  // one lands on when it has that page too. Recorded only while VISIBLE: the
+  // row falls back to 'common' as the panel hides, and letting that overwrite
+  // the memory would make every selection after a deselect start over.
+  const lastPageRef = useRef<PanelPage>('common');
+  const landingPage = landingPanelPage(pages, lastPageRef.current);
   useEffect(() => {
     if (typeSig === prevTypeSig.current) return;
     prevTypeSig.current = typeSig;
-    // On each new selection, land on the options it brought with it so they're
-    // front-and-centre — its kind's if it has any, else the selection-level
-    // ones; fall back to the common actions when it has neither (also keeps a
-    // stale swap from leaving an empty row).
+    // On each new selection, stay on the page the last one was on when this
+    // one has it; otherwise land on the options it brought with it — its
+    // kind's if it has any, else the selection-level ones; fall back to the
+    // common actions when it has neither (also keeps a stale swap from
+    // leaving an empty row).
     setPage(landingPage);
   }, [typeSig, landingPage]);
+  // After the effect above, so the landing decision reads the PREVIOUS
+  // selection's page rather than the one it just set.
+  useEffect(() => {
+    if (model.visible) lastPageRef.current = page;
+  }, [page, model.visible]);
 
   // A new option set relays out from scratch, so drop the old widths rather
   // than let a key both sets share (Shadow, Border) size the capsule from the

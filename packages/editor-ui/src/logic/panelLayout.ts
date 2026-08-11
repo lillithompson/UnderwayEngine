@@ -65,10 +65,23 @@ export function objectPanelPages(has: { type?: boolean; multi?: boolean }): Pane
   return pages;
 }
 
-/** Where a new selection lands: on the options it brought with it (its kind's,
- *  else the selection-level ones), so they're front-and-centre; the common
- *  actions are the fallback for a selection that offers neither. */
-export function landingPanelPage(pages: readonly PanelPage[]): PanelPage {
+/**
+ * Where a new selection lands.
+ *
+ * `preferred` is the page the panel was showing for the LAST selection, and it
+ * wins whenever the new one has it: someone working through a drawing's
+ * shadows wants the shadow row on the next shape too, and re-landing them on
+ * the type page every time makes the carousel something to re-navigate rather
+ * than a place to be. A page the new selection does not have cannot be kept,
+ * and it falls back to what the selection brought with it — its kind's options
+ * if it has any, else the selection-level ones — with the common actions for a
+ * selection that offers neither.
+ */
+export function landingPanelPage(
+  pages: readonly PanelPage[],
+  preferred?: PanelPage,
+): PanelPage {
+  if (preferred && pages.includes(preferred)) return preferred;
   if (pages.includes('type')) return 'type';
   if (pages.includes('multi')) return 'multi';
   return 'common';
