@@ -1,23 +1,30 @@
-import { CompositionState, ImagePaintOverlay } from '../types';
+import { CanvasPaintIsland, CompositionState } from '../types';
+import { islandHeightCells, islandKey, CANVAS_PAINT_WIDTH_CELLS } from '../canvasPaint';
 import { compSnapStep } from '../compositionCellMath';
 import { createGLEngine, GLEngine } from './context';
 import { QUAD_VERT, INFINITE_GRID_FRAG, CANVAS_PAINT_FRAG } from './shaders';
+
+/** One cached canvas-paint island texture. `src` is the rgba array LAST
+ *  uploaded (committed islands are immutable, so a reference change means
+ *  new bytes); `dirty` covers the one mutable case — the in-stroke working
+ *  copy, whose bytes change under a stable reference. The canvas calls
+ *  invalidateCanvasPaint() with the stamped island keys to flag them. */
+interface PaintTexEntry {
+  tex: WebGLTexture;
+  cols: number;
+  rows: number;
+  src: Uint8Array | null;
+  dirty: boolean;
+}
 
 export class CompositionRenderer {
   private engine: GLEngine;
   private gridProgram: WebGLProgram;
   private paintProgram: WebGLProgram;
   private quadBuffer: WebGLBuffer;
-  // Canvas paint-layer texture cache. `paintSrc` is the rgba array LAST
-  // uploaded (committed layers are immutable, so a reference change means new
-  // bytes); `paintDirty` covers the one mutable case — the in-stroke working
-  // copy, whose bytes change under a stable reference. The canvas calls
-  // invalidateCanvasPaint() after each stamp to flag it.
-  private paintTex: WebGLTexture | null = null;
-  private paintTexCols = 0;
-  private paintTexRows = 0;
-  private paintSrc: Uint8Array | null = null;
-  private paintDirty = false;
+  // Canvas paint island textures, keyed by island origin (islandKey). All
+  // islands are tile-sized, so evicted entries free a bounded 64 KB each.
+  private paintTextures = new Map<string, PaintTexEntry>();
   private paintPremul: Uint8Array | null = null;
 
   constructor(gl: WebGLRenderingContext) {
@@ -60,85 +67,113 @@ export class CompositionRenderer {
 
     this.drawGrid(offsetU, offsetV, camera.zoom, aspect, bufW, bufH, 32 / compSnapStep(gridLevel), gridIntensity);
 
-    // Canvas paint layer: over the grid, under every DOM-rendered scene
+    // Canvas paint islands: over the grid, under every DOM-rendered scene
     // object (the whole world layer stacks above this GL surface).
-    const cp = state.canvasPaint;
-    if (cp && cp.cols > 0 && cp.rows > 0) {
-      this.drawCanvasPaint(cp, offsetU, offsetV, camera.zoom, aspect);
-    }
+    this.drawCanvasPaint(state.canvasPaint, offsetU, offsetV, camera.zoom, aspect);
 
     gl.flush();
     onPostRender?.(gl);
     (gl as any).endFrameEXP?.();
   }
 
-  /** Flag the canvas paint layer's bytes as changed under a stable array
-   *  reference (the in-stroke working copy) — next render re-uploads. */
-  invalidateCanvasPaint(): void {
-    this.paintDirty = true;
+  /** Flag islands' bytes as changed under stable array references (the
+   *  in-stroke working copies) — next render re-uploads those textures.
+   *  With no keys, every cached island is flagged. */
+  invalidateCanvasPaint(keys?: Iterable<string>): void {
+    if (!keys) {
+      for (const entry of this.paintTextures.values()) entry.dirty = true;
+      return;
+    }
+    for (const key of keys) {
+      const entry = this.paintTextures.get(key);
+      if (entry) entry.dirty = true;
+    }
   }
 
-  /** (Re)upload the layer texture when the bytes changed. Uploaded
+  /** (Re)upload one island's texture when its bytes changed. Uploaded
    *  PREMULTIPLIED so the LINEAR upscale can't bleed transparent-black
    *  fringes into a dab's soft edge (the draw blends ONE, 1−srcA). */
-  private uploadCanvasPaint(cp: ImagePaintOverlay): void {
+  private uploadIsland(key: string, isl: CanvasPaintIsland): PaintTexEntry {
     const gl = this.engine.gl;
-    if (!this.paintTex || this.paintTexCols !== cp.cols || this.paintTexRows !== cp.rows) {
-      if (this.paintTex) gl.deleteTexture(this.paintTex);
-      this.paintTex = this.engine.createTexture(cp.cols, cp.rows, null, gl.LINEAR);
-      this.paintTexCols = cp.cols;
-      this.paintTexRows = cp.rows;
-      this.paintSrc = null;
+    const { cols, rows, rgba } = isl.overlay;
+    let entry = this.paintTextures.get(key);
+    if (!entry || entry.cols !== cols || entry.rows !== rows) {
+      if (entry) gl.deleteTexture(entry.tex);
+      entry = {
+        tex: this.engine.createTexture(cols, rows, null, gl.LINEAR),
+        cols, rows, src: null, dirty: false,
+      };
+      this.paintTextures.set(key, entry);
     }
-    if (this.paintSrc === cp.rgba && !this.paintDirty) return;
-    const n = cp.rgba.length;
-    if (!this.paintPremul || this.paintPremul.length !== n) this.paintPremul = new Uint8Array(n);
-    const src = cp.rgba;
+    if (entry.src === rgba && !entry.dirty) return entry;
+    const n = rgba.length;
+    // One reusable scratch — islands are uniformly tile-sized, so this
+    // allocates once and stays.
+    if (!this.paintPremul || this.paintPremul.length < n) this.paintPremul = new Uint8Array(n);
     const dst = this.paintPremul;
     for (let i = 0; i < n; i += 4) {
-      const a = src[i + 3];
+      const a = rgba[i + 3];
       if (a === 0) {
         dst[i] = 0; dst[i + 1] = 0; dst[i + 2] = 0; dst[i + 3] = 0;
       } else if (a === 255) {
-        dst[i] = src[i]; dst[i + 1] = src[i + 1]; dst[i + 2] = src[i + 2]; dst[i + 3] = 255;
+        dst[i] = rgba[i]; dst[i + 1] = rgba[i + 1]; dst[i + 2] = rgba[i + 2]; dst[i + 3] = 255;
       } else {
-        dst[i] = (src[i] * a + 127) / 255 | 0;
-        dst[i + 1] = (src[i + 1] * a + 127) / 255 | 0;
-        dst[i + 2] = (src[i + 2] * a + 127) / 255 | 0;
+        dst[i] = (rgba[i] * a + 127) / 255 | 0;
+        dst[i + 1] = (rgba[i + 1] * a + 127) / 255 | 0;
+        dst[i + 2] = (rgba[i + 2] * a + 127) / 255 | 0;
         dst[i + 3] = a;
       }
     }
-    this.engine.updateTextureRegion(this.paintTex, 0, 0, cp.cols, cp.rows, dst, cp.cols);
-    this.paintSrc = cp.rgba;
-    this.paintDirty = false;
+    this.engine.updateTextureRegion(entry.tex, 0, 0, cols, rows, dst, cols);
+    entry.src = rgba;
+    entry.dirty = false;
+    return entry;
   }
 
   private drawCanvasPaint(
-    cp: ImagePaintOverlay,
+    islands: readonly CanvasPaintIsland[] | undefined,
     offsetU: number,
     offsetV: number,
     zoom: number,
     aspect: number,
   ): void {
-    this.uploadCanvasPaint(cp);
     const gl = this.engine.gl;
+    // Evict textures for islands no longer in the scene (undo of a stroke,
+    // erased-empty prune) so the cache tracks the drawing, not its history.
+    if (this.paintTextures.size > 0) {
+      const live = new Set((islands ?? []).map((i) => islandKey(i.x, i.y)));
+      for (const [key, entry] of this.paintTextures) {
+        if (!live.has(key)) {
+          gl.deleteTexture(entry.tex);
+          this.paintTextures.delete(key);
+        }
+      }
+    }
+    if (!islands || islands.length === 0) return;
+
     const prog = this.paintProgram;
     gl.useProgram(prog);
     this.bindQuad(prog);
-
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.paintTex);
     gl.uniform1i(gl.getUniformLocation(prog, 'u_texture'), 0);
     gl.uniform2f(gl.getUniformLocation(prog, 'u_offset'), offsetU, offsetV);
     gl.uniform1f(gl.getUniformLocation(prog, 'u_zoom'), zoom);
     gl.uniform1f(gl.getUniformLocation(prog, 'u_aspect'), aspect);
-    // 1 layer-UV unit = 32 world cells; square texels make the page height
-    // rows/cols of that (see canvasPaintHeightCells).
-    gl.uniform2f(gl.getUniformLocation(prog, 'u_extent'), 1.0, cp.rows / cp.cols);
+    const rectLoc = gl.getUniformLocation(prog, 'u_rect');
 
-    // Premultiplied source — see uploadCanvasPaint.
+    // Premultiplied sources — see uploadIsland.
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    for (const isl of islands) {
+      const key = islandKey(isl.x, isl.y);
+      const entry = this.uploadIsland(key, isl);
+      gl.bindTexture(gl.TEXTURE_2D, entry.tex);
+      // Island rect in layer-UV space: 1 UV unit = 32 world cells (the
+      // legacy page width — the unit the camera uniforms are expressed in).
+      const u = CANVAS_PAINT_WIDTH_CELLS;
+      gl.uniform4f(rectLoc, isl.x / u, isl.y / u,
+        isl.widthCells / u, islandHeightCells(isl) / u);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
@@ -175,7 +210,8 @@ export class CompositionRenderer {
     const gl = this.engine.gl;
     gl.deleteProgram(this.gridProgram);
     gl.deleteProgram(this.paintProgram);
-    if (this.paintTex) gl.deleteTexture(this.paintTex);
+    for (const entry of this.paintTextures.values()) gl.deleteTexture(entry.tex);
+    this.paintTextures.clear();
     gl.deleteBuffer(this.quadBuffer);
   }
 

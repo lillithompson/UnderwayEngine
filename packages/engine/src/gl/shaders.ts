@@ -94,20 +94,20 @@ void main() {
 `;
 
 /**
- * Canvas paint-layer fragment shader.
- * Draws the composition's canvas raster ({@link CompositionState.canvasPaint})
- * over the page rect, camera-transformed like the grid. The layer texture is
- * uploaded PREMULTIPLIED (see CompositionRenderer.uploadCanvasPaint) so
- * LINEAR sampling can't bleed transparent-black fringes into a dab's soft
- * edge — the draw call pairs it with blendFunc(ONE, ONE_MINUS_SRC_ALPHA).
+ * Canvas paint island fragment shader.
+ * Draws ONE island of the composition's canvas raster
+ * ({@link CompositionState.canvasPaint}), camera-transformed like the grid —
+ * the renderer issues one draw per island. The island texture is uploaded
+ * PREMULTIPLIED (see CompositionRenderer.uploadIsland) so LINEAR sampling
+ * can't bleed transparent-black fringes into a dab's soft edge — the draw
+ * call pairs it with blendFunc(ONE, ONE_MINUS_SRC_ALPHA).
  * Uniforms:
- *   u_texture - premultiplied layer RGBA texture
+ *   u_texture - premultiplied island RGBA texture
  *   u_offset  - camera offset in UV space
  *   u_zoom    - camera zoom
  *   u_aspect  - viewport aspect correction
- *   u_extent  - page rect span in layer UV space: (1.0, rows/cols) — 1 UV
- *               unit = 32 world cells, so the y extent is the page height
- *               over 32 (texels are square)
+ *   u_rect    - island rect in layer UV space (x, y, w, h) — 1 UV unit = 32
+ *               world cells (the unit the camera uniforms use)
  */
 export const CANVAS_PAINT_FRAG = `
 precision mediump float;
@@ -116,7 +116,7 @@ uniform sampler2D u_texture;
 uniform vec2 u_offset;
 uniform float u_zoom;
 uniform float u_aspect;
-uniform vec2 u_extent;
+uniform vec4 u_rect;
 
 void main() {
   vec2 uv = v_uv - 0.5;
@@ -124,12 +124,13 @@ void main() {
   uv = uv / u_zoom - u_offset;
   uv = uv + 0.5;
 
-  // Outside the page rect: nothing to paint.
-  if (uv.x < 0.0 || uv.x > u_extent.x || uv.y < 0.0 || uv.y > u_extent.y) {
+  // Outside this island's rect: nothing to paint.
+  vec2 local = (uv - u_rect.xy) / u_rect.zw;
+  if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) {
     discard;
   }
 
-  vec4 color = texture2D(u_texture, uv / u_extent);
+  vec4 color = texture2D(u_texture, local);
   if (color.a < 0.004) discard;
   gl_FragColor = color;
 }

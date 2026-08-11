@@ -1,5 +1,6 @@
 import storage from './storage';
-import { Layer, CellState, CellTransform, GridLevel, LAYER_PX, Pattern, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, ImagePaintOverlay, BlendMode, PathSegment, RGBColor, SVGDesignTemplate, TextObject, Paint, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
+import { Layer, CellState, CellTransform, GridLevel, LAYER_PX, Pattern, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, CanvasPaintIsland, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, ImagePaintOverlay, BlendMode, PathSegment, RGBColor, SVGDesignTemplate, TextObject, Paint, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
+import { legacyCanvasPaintToIslands, normalizeCanvasPaintIslands } from './canvasPaint';
 import { createCellGrid, rebuildPixelData } from './cells';
 import { bakeFile } from './bake';
 import { exportToSVG } from './svgExport';
@@ -409,11 +410,13 @@ interface CompMeta {
   texts?: TextObject[];
   /** Canvas background paint (v29+); absent = renderer default. */
   background?: Paint;
-  /** The paint tool's canvas raster layer (v50+); absent = never painted.
-   *  Stored in the JSON-safe overlay form (base64 texels) — see
-   *  {@link serializePaintOverlayForMeta} / {@link migratePaintOverlay}.
-   *  Page-anchored (spans the page rect), so it rides through save/load
-   *  untouched by normalization. */
+  /** The paint tool's canvas raster (v50+); absent = never painted. Since
+   *  the island model: an ARRAY of {x, y, widthCells, overlay} islands, the
+   *  overlay in the JSON-safe form (base64 texels). Pre-island saves stored
+   *  one bare page-anchored overlay object; {@link migrateCanvasPaint}
+   *  revives both and re-tiles onto the allocation grid. World-anchored, so
+   *  it rides through save/load untouched by normalization (journal pages
+   *  save with normalize:false). */
   canvasPaint?: unknown;
   /** Unified back→front paint order across every scene-object kind.
    *  Absent on older saves; the loader derives it from the kind arrays in
@@ -533,6 +536,38 @@ function migratePaintOverlay(v: any): ImagePaintOverlay | undefined {
   return { cols, rows, blend, rgba };
 }
 
+/** JSON-safe canvas paint island: origin + span, overlay in the shared
+ *  base64 form. */
+function serializeCanvasPaintIslandForMeta(isl: CanvasPaintIsland): unknown {
+  return {
+    x: isl.x, y: isl.y, widthCells: isl.widthCells,
+    overlay: serializePaintOverlayForMeta(isl.overlay),
+  };
+}
+
+/** Revive the canvas paint raster from either stored shape: the island array
+ *  (current), or the single page-anchored overlay pre-island saves wrote —
+ *  both funneled through the grid normalizer so the stamp path can rely on
+ *  its invariants. Anything unrecognized → undefined. */
+function migrateCanvasPaint(v: any): CanvasPaintIsland[] | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  if (Array.isArray(v)) {
+    const islands: CanvasPaintIsland[] = [];
+    for (const e of v) {
+      if (!e || typeof e !== 'object') continue;
+      const overlay = migratePaintOverlay(e.overlay);
+      const x = Number(e.x);
+      const y = Number(e.y);
+      const widthCells = Number(e.widthCells);
+      if (!overlay || !Number.isFinite(x) || !Number.isFinite(y) || !(widthCells > 0)) continue;
+      islands.push({ x, y, widthCells, overlay });
+    }
+    return normalizeCanvasPaintIslands(islands);
+  }
+  const legacy = migratePaintOverlay(v);
+  return legacy ? legacyCanvasPaintToIslands(legacy) : undefined;
+}
+
 /** Rebuild the sparse per-copy paint Map from its JSON form. New saves store an
  *  entries array (`[[key, {r,g,b}], …]`); older buggy saves stored the Map
  *  flattened to a plain object (data already lost — those yield no overrides).
@@ -640,7 +675,9 @@ export async function saveCompositionState(
       : undefined,
     texts: normalized.texts && normalized.texts.length > 0 ? normalized.texts : undefined,
     background: normalized.background,
-    canvasPaint: state.canvasPaint ? serializePaintOverlayForMeta(state.canvasPaint) : undefined,
+    canvasPaint: state.canvasPaint && state.canvasPaint.length > 0
+      ? state.canvasPaint.map(serializeCanvasPaintIslandForMeta)
+      : undefined,
     sceneOrder: state.sceneOrder.length > 0 ? state.sceneOrder : undefined,
     lastChosenColor: state.lastChosenColor,
     customColors: state.customColors.length > 0 ? state.customColors : undefined,
@@ -785,7 +822,7 @@ export async function loadCompositionState(
     imageBlobs,
     texts: r.texts ?? [],
     background: r.background,
-    canvasPaint: migratePaintOverlay(parsed.canvasPaint),
+    canvasPaint: migrateCanvasPaint(parsed.canvasPaint),
     sceneOrder: parsed.sceneOrder
       ? repairSceneOrder({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [], sceneOrder: parsed.sceneOrder })
       : deriveSceneOrderFromKindArrays({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [] }),

@@ -4608,7 +4608,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
     case 'setBackground':
       return { ...state, background: op.newPaint };
     case 'setCanvasPaint':
-      return { ...state, canvasPaint: op.newLayer };
+      return { ...state, canvasPaint: op.newIslands };
     case 'cleanupLibrary':
       return state;
     default:
@@ -5123,7 +5123,7 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
     case 'setBackground':
       return applyOp(state, { ...op, oldPaint: op.newPaint, newPaint: op.oldPaint });
     case 'setCanvasPaint':
-      return applyOp(state, { ...op, oldLayer: op.newLayer, newLayer: op.oldLayer });
+      return applyOp(state, { ...op, oldIslands: op.newIslands, newIslands: op.oldIslands });
     case 'cleanupLibrary':
       return state;
     default:

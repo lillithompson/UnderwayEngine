@@ -1282,6 +1282,25 @@ export interface ImagePaintOverlay {
   blend: BlendMode;
 }
 
+/**
+ * One sparse raster island of the paint tool's canvas layer (v51+): an
+ * {@link ImagePaintOverlay} bitmap anchored at (x, y) world cells, covering
+ * `widthCells` horizontally — the covered height follows from the texel grid
+ * being square (see canvasPaint.ts `islandHeightCells`). The canvas layer is
+ * a LIST of these, so paint can land anywhere in world space and only
+ * regions that actually hold ink are allocated. Islands the allocator
+ * creates sit on a fixed tile grid and never overlap; loaders normalize
+ * anything else onto it (canvasPaint.ts `normalizeCanvasPaintIslands`).
+ */
+export interface CanvasPaintIsland {
+  /** Origin, world cells. */
+  x: number;
+  y: number;
+  /** Width covered, world cells. */
+  widthCells: number;
+  overlay: ImagePaintOverlay;
+}
+
 /** A gradient tint overlay composited onto an image (design 6a). The overlay
  *  is clipped to the image frame and flattened at export. Non-active fields are
  *  retained so switching Type back restores them (a Solid tint remembers its
@@ -1462,15 +1481,16 @@ export interface CompositionState {
    */
   background?: Paint;
   /**
-   * The paint tool's canvas raster layer (v50+): one RGBA bitmap the brush
-   * stamps into wherever a dab lands on no object, covering the page rect
-   * x ∈ [0, 32] world cells, y ∈ [0, 32·rows/cols] (texels are square, so
-   * the covered height is derivable — see canvasPaint.ts). Always rendered
-   * UNDER every scene object (the GL pass draws it right after the grid),
-   * and deliberately absent from `sceneOrder`, so it never appears in the
-   * Scene Outline. Undefined = never painted.
+   * The paint tool's canvas raster layer (v50+; sparse islands since v51):
+   * RGBA bitmaps the brush stamps into wherever a dab lands on no object.
+   * Sparse and effectively infinite — a dab anywhere in world space
+   * allocates only the tile islands it touches (see canvasPaint.ts). Always
+   * rendered UNDER every scene object (the GL pass draws islands right
+   * after the grid), and deliberately absent from `sceneOrder`, so it never
+   * appears in the Scene Outline. Undefined = never painted; never an
+   * empty array (erased-empty commits as undefined).
    */
-  canvasPaint?: ImagePaintOverlay;
+  canvasPaint?: CanvasPaintIsland[];
   /**
    * The in-progress line currently being drawn while `compTool === 'line'`.
    * On tool toggle-off, finalized into `svgObjects` if valid.
@@ -1864,10 +1884,12 @@ export type CompUndoOp =
   | { op: 'setImageTint'; nodeId: string; oldTint?: ImageTint; newTint?: ImageTint }
   /** Set/replace/clear the canvas background paint (v29+). */
   | { op: 'setBackground'; oldPaint?: Paint; newPaint?: Paint }
-  /** Set/replace/clear the paint tool's canvas raster layer (v50+). One op
-   *  per finished stroke — the whole stroke's dabs land as a single swap so
-   *  undo lifts the stroke, not a dab. */
-  | { op: 'setCanvasPaint'; oldLayer?: ImagePaintOverlay; newLayer?: ImagePaintOverlay };
+  /** Set/replace/clear the paint tool's canvas raster islands (v50+; island
+   *  list since v51). One op per finished stroke — the whole stroke's dabs
+   *  land as a single swap so undo lifts the stroke, not a dab. Structural
+   *  sharing keeps this cheap: islands the stroke didn't touch are the same
+   *  references in both lists. */
+  | { op: 'setCanvasPaint'; oldIslands?: CanvasPaintIsland[]; newIslands?: CanvasPaintIsland[] };
 
 export type CompUndoEntry = CompUndoOp[];
 

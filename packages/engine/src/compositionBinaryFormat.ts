@@ -1,4 +1,5 @@
-﻿import { BlendMode, BorderPosition, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
+﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
+import { legacyCanvasPaintToIslands, normalizeCanvasPaintIslands } from './canvasPaint';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
@@ -384,7 +385,13 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      u8 (0 or 1), then the v48 paint-overlay payload (cols u16 + rows u16
 //      + blend u8 + cols×rows×4 RGBA). Sides exceed the per-object 64 cap
 //      (256 wide at 8 texels/cell) but stay well inside u16.
-const FORMAT_VERSION = 50;
+// v51: `canvasPaint` becomes a SPARSE ISLAND LIST (draw-anywhere canvas).
+//      The v50 hasCanvasPaint byte is replaced by u16 islandCount, then per
+//      island: f32 x + f32 y + f32 widthCells (world cells) followed by the
+//      v48 paint-overlay payload. v50 files read as one page-anchored
+//      island, re-tiled onto the allocation grid on load
+//      (legacyCanvasPaintToIslands).
+const FORMAT_VERSION = 51;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -446,9 +453,9 @@ export interface CompositionBundle {
   texts?: TextObject[];
   /** Canvas background paint (v29+). Undefined = renderer default. */
   background?: Paint;
-  /** The paint tool's page-anchored canvas raster (v50+). Undefined =
-   *  never painted. */
-  canvasPaint?: ImagePaintOverlay;
+  /** The paint tool's canvas raster islands (v50+; island list since v51).
+   *  Undefined = never painted. */
+  canvasPaint?: CanvasPaintIsland[];
 }
 
 export interface DeserializedComposition {
@@ -2729,8 +2736,11 @@ export function serializeComposition(
   // Background paint (v29+) â€” hasBackground byte + optional paint payload.
   totalSize += 1 + (bundle.background ? paintBinarySize(bundle.background) : 0);
 
-  // Canvas paint raster (v50+) â€” hasCanvasPaint byte + optional overlay payload.
-  totalSize += 1 + (bundle.canvasPaint ? paintOverlayBinarySize(bundle.canvasPaint) : 0);
+  // Canvas paint islands (v51+): u16 count + per-island origin/span + overlay.
+  totalSize += 2;
+  for (const isl of bundle.canvasPaint ?? []) {
+    totalSize += 12 + paintOverlayBinarySize(isl.overlay);
+  }
 
   // â”€â”€ Pass 2: write â”€â”€
 
@@ -2974,12 +2984,14 @@ export function serializeComposition(
     out[pos++] = 0;
   }
 
-  // Canvas paint raster (v50+). Final section of the file.
-  if (bundle.canvasPaint) {
-    out[pos++] = 1;
-    pos = writePaintOverlay(view, out, pos, bundle.canvasPaint);
-  } else {
-    out[pos++] = 0;
+  // Canvas paint islands (v51+). Final section of the file.
+  const islands = bundle.canvasPaint ?? [];
+  view.setUint16(pos, islands.length, true); pos += 2;
+  for (const isl of islands) {
+    view.setFloat32(pos, isl.x, true); pos += 4;
+    view.setFloat32(pos, isl.y, true); pos += 4;
+    view.setFloat32(pos, isl.widthCells, true); pos += 4;
+    pos = writePaintOverlay(view, out, pos, isl.overlay);
   }
 
   return out;
@@ -3373,13 +3385,27 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     }
   }
 
-  // Canvas paint raster (v50+) â€” final section. Undefined for older files.
-  let canvasPaint: ImagePaintOverlay | undefined;
-  if (version >= 50 && pos < data.byteLength) {
+  // Canvas paint raster - final section. Undefined for older files. v51+
+  // stores the sparse island list; v50 stored one page-anchored overlay,
+  // converted here onto the island grid so every caller sees one shape.
+  let canvasPaint: CanvasPaintIsland[] | undefined;
+  if (version >= 51 && pos < data.byteLength) {
+    const count = view.getUint16(pos, true); pos += 2;
+    const islands: CanvasPaintIsland[] = [];
+    for (let i = 0; i < count; i++) {
+      const x = view.getFloat32(pos, true); pos += 4;
+      const y = view.getFloat32(pos, true); pos += 4;
+      const widthCells = view.getFloat32(pos, true); pos += 4;
+      const po = readPaintOverlay(view, data, pos);
+      pos = po.pos;
+      islands.push({ x, y, widthCells, overlay: po.overlay });
+    }
+    canvasPaint = normalizeCanvasPaintIslands(islands);
+  } else if (version === 50 && pos < data.byteLength) {
     const hasCanvasPaint = data[pos++];
     if (hasCanvasPaint === 1) {
       const po = readPaintOverlay(view, data, pos);
-      canvasPaint = po.overlay;
+      canvasPaint = legacyCanvasPaintToIslands(po.overlay);
       pos = po.pos;
     }
   }
