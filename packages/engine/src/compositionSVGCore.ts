@@ -23,7 +23,7 @@ import { buildMaskClipDefs, wrapWithMaskClip } from './compositionMaskSVG';
 import { effectiveStrokeMultiplier, normalizeStrokeScale } from './strokeScale';
 import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
-import { paintToSvg, effectsFilterOutset, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
+import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
 import { overlayPngDataUri, paintBlendCss, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { canvasPaintInkBounds, islandHeightCells } from './canvasPaint';
@@ -428,11 +428,12 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
     // Region sized from the shadow's actual reach, like every other effect
     // filter here (`applyNodeEffects`): the old relative ±20% is only a few
     // authored pixels on a small magnet, which clipped the card's shadow with
-    // the same hard edge. `blur` is a CSS radius, so σ is half of it.
-    const stkSigma = (sh.blur / 2) * u;
+    // the same hard edge. The outset takes the CSS radius and converts, so
+    // this hands it the radius and keeps σ only for the primitive itself.
+    const stkSigma = blurSigma(sh.blur) * u;
     const stkOut = effectsFilterOutset({
       shadow: {
-        dx: sh.dx * u, dy: sh.dy * u, blur: stkSigma,
+        dx: sh.dx * u, dy: sh.dy * u, blur: sh.blur * u,
         color: { r: 0, g: 0, b: 0 }, alpha: sh.opacity,
       },
     });
@@ -499,12 +500,12 @@ function textPaintOutset(text: TextObject): number {
   let out = 0;
   if (text.sticker) {
     // Measured the same way as the authored shadow below, so the card's fixed
-    // shadow and the filter region that draws it agree. `blur` is a CSS
-    // radius, so σ is half of it.
+    // shadow and the filter region that draws it agree — both take the CSS
+    // radius and let the outset convert it to σ.
     const s = STICKER_SHADOW_CELLS;
     const o = effectsFilterOutset({
       shadow: {
-        dx: s.dx, dy: s.dy, blur: s.blur / 2,
+        dx: s.dx, dy: s.dy, blur: s.blur,
         color: { r: 0, g: 0, b: 0 }, alpha: s.opacity,
       },
     });

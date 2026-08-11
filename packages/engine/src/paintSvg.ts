@@ -53,6 +53,24 @@ export function paintToSvg(
  *  where renderers stop sampling it. Filter regions are sized from this. */
 const BLUR_EXTENT_SIGMAS = 3;
 
+/**
+ * σ per unit of authored blur.
+ *
+ * `ShadowEffect.blur` and `GlowEffect.radius` are CSS blur RADII — that is how
+ * the panel authors them (its ranges are the design's box-shadow points) and
+ * how the editor previews them, through `text-shadow` / `box-shadow`. CSS
+ * defines a radius R as a Gaussian of standard deviation R/2, so an SVG filter
+ * fed the radius as its `stdDeviation` blurs the shadow twice as wide as the
+ * editor drew it — spread over four times the area, it lands visibly paler.
+ * That is the whole of the "exported shadow is less dark" mismatch.
+ */
+export const BLUR_SIGMA_PER_RADIUS = 0.5;
+
+/** The σ an authored blur radius means, in the same units it came in. */
+export function blurSigma(radius: number): number {
+  return Math.max(0, radius) * BLUR_SIGMA_PER_RADIUS;
+}
+
 /** The old filter region, kept for callers that pass no box: half the caster's
  *  bbox on every side. Generous for a big node, nowhere near enough for a
  *  small one — which is why {@link effectsFilterRegion} exists. */
@@ -72,7 +90,7 @@ export function effectsFilterOutset(
   const out = { left: 0, right: 0, top: 0, bottom: 0 };
   const sh = effects.shadow;
   if (sh) {
-    const reach = BLUR_EXTENT_SIGMAS * Math.max(0, sh.blur) + Math.max(0, sh.spread ?? 0);
+    const reach = BLUR_EXTENT_SIGMAS * blurSigma(sh.blur) + Math.max(0, sh.spread ?? 0);
     out.left = reach + Math.max(0, -sh.dx);
     out.right = reach + Math.max(0, sh.dx);
     out.top = reach + Math.max(0, -sh.dy);
@@ -80,7 +98,7 @@ export function effectsFilterOutset(
   }
   const gl = effects.glow;
   if (gl) {
-    const reach = BLUR_EXTENT_SIGMAS * Math.max(0, gl.radius);
+    const reach = BLUR_EXTENT_SIGMAS * blurSigma(gl.radius);
     out.left = Math.max(out.left, reach);
     out.right = Math.max(out.right, reach);
     out.top = Math.max(out.top, reach);
@@ -149,7 +167,7 @@ export function effectsToSvgFilter(
       const op = spread > 0 ? 'dilate' : 'erode';
       prims.push(
         `<feMorphology in="SourceAlpha" operator="${op}" radius="${fmt(Math.abs(spread))}" result="shSpread"/>`,
-        `<feGaussianBlur in="shSpread" stdDeviation="${fmt(sh.blur)}" result="shBlur"/>`,
+        `<feGaussianBlur in="shSpread" stdDeviation="${fmt(blurSigma(sh.blur))}" result="shBlur"/>`,
         `<feOffset in="shBlur" dx="${fmt(sh.dx)}" dy="${fmt(sh.dy)}" result="shOffset"/>`,
         `<feFlood flood-color="${hex(sh.color)}" flood-opacity="${fmt(sh.alpha)}" result="shColor"/>`,
         `<feComposite in="shColor" in2="shOffset" operator="in" result="shShadow"/>`,
@@ -158,14 +176,14 @@ export function effectsToSvgFilter(
     } else {
       const result = gl ? ' result="withShadow"' : '';
       prims.push(
-        `<feDropShadow dx="${fmt(sh.dx)}" dy="${fmt(sh.dy)}" stdDeviation="${fmt(sh.blur)}" ` +
+        `<feDropShadow dx="${fmt(sh.dx)}" dy="${fmt(sh.dy)}" stdDeviation="${fmt(blurSigma(sh.blur))}" ` +
         `flood-color="${hex(sh.color)}" flood-opacity="${fmt(sh.alpha)}"${result}/>`,
       );
     }
   }
   if (gl) {
     prims.push(
-      `<feGaussianBlur in="SourceAlpha" stdDeviation="${fmt(gl.radius)}" result="glowBlur"/>`,
+      `<feGaussianBlur in="SourceAlpha" stdDeviation="${fmt(blurSigma(gl.radius))}" result="glowBlur"/>`,
       `<feFlood flood-color="${hex(gl.color)}" flood-opacity="${fmt(gl.alpha)}" result="glowColor"/>`,
       `<feComposite in="glowColor" in2="glowBlur" operator="in" result="glow"/>`,
       `<feMerge><feMergeNode in="glow"/><feMergeNode in="${sh ? 'withShadow' : 'SourceGraphic'}"/></feMerge>`,

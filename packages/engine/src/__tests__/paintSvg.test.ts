@@ -93,8 +93,12 @@ describe('effectsToSvgFilter', () => {
     expect(filterRef).toBe('url(#fx1)');
     expect(defs).toContain('<filter id="fx1" x="-50%" y="-50%" width="200%" height="200%"');
     expect(defs).toContain('color-interpolation-filters="sRGB"');
+    // stdDeviation is HALF the authored blur: `blur` is a CSS radius, and CSS
+    // defines a radius R as a Gaussian of σ = R/2 (see blurSigma). Feeding the
+    // radius straight through blurred the export twice as wide as the editor
+    // previewed it, which is why an exported shadow read pale.
     expect(defs).toContain(
-      '<feDropShadow dx="2" dy="3" stdDeviation="4" flood-color="#010203" flood-opacity="0.5"/>',
+      '<feDropShadow dx="2" dy="3" stdDeviation="2" flood-color="#010203" flood-opacity="0.5"/>',
     );
     expect(defs).not.toContain('feGaussianBlur');
     expect(defs).not.toContain('result="withShadow"');
@@ -103,7 +107,8 @@ describe('effectsToSvgFilter', () => {
   test('glow-only blurs SourceAlpha and merges under SourceGraphic', () => {
     const { defs, filterRef } = effectsToSvgFilter({ glow }, 'fx2');
     expect(filterRef).toBe('url(#fx2)');
-    expect(defs).toContain('<feGaussianBlur in="SourceAlpha" stdDeviation="6" result="glowBlur"/>');
+    // Half the authored radius, for the same reason the shadow's is.
+    expect(defs).toContain('<feGaussianBlur in="SourceAlpha" stdDeviation="3" result="glowBlur"/>');
     expect(defs).toContain('<feFlood flood-color="#FFC800" flood-opacity="0.8" result="glowColor"/>');
     expect(defs).toContain('<feComposite in="glowColor" in2="glowBlur" operator="in" result="glow"/>');
     expect(defs).toContain('<feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>');
@@ -134,32 +139,33 @@ describe('effectsFilterOutset', () => {
   });
 
   test('the blur reaches three sigma on every side', () => {
+    // blur 4 is a CSS radius → σ 2 → 3σ = 6.
     const o = effectsFilterOutset({ shadow: { ...shadow, dx: 0, dy: 0, blur: 4 } });
-    expect(o).toEqual({ left: 12, right: 12, top: 12, bottom: 12 });
+    expect(o).toEqual({ left: 6, right: 6, top: 6, bottom: 6 });
   });
 
   test('the offset is paid only on the side it moves toward', () => {
     // The blur disc slides bodily with the offset: it gains 2 to the right and
     // LOSES 2 on the left, so padding both sides would be wasted region.
     const o = effectsFilterOutset({ shadow: { ...shadow, dx: 2, dy: -3, blur: 4 } });
-    expect(o).toEqual({ left: 12, right: 14, top: 15, bottom: 12 });
+    expect(o).toEqual({ left: 6, right: 8, top: 9, bottom: 6 });
   });
 
   test('a positive spread dilates before the blur; a negative one only shrinks', () => {
     const grown = effectsFilterOutset({ shadow: { ...shadow, dx: 0, dy: 0, blur: 4, spread: 5 } });
-    expect(grown.left).toBe(17);
+    expect(grown.left).toBe(11);
     const eroded = effectsFilterOutset({ shadow: { ...shadow, dx: 0, dy: 0, blur: 4, spread: -5 } });
-    expect(eroded.left).toBe(12); // never less than the blur's own reach
+    expect(eroded.left).toBe(6); // never less than the blur's own reach
   });
 
   test('a glow radiates evenly, and the two effects take the max per side', () => {
     expect(effectsFilterOutset({ glow: { ...glow, radius: 6 } }))
-      .toEqual({ left: 18, right: 18, top: 18, bottom: 18 });
-    // Shadow reaches 12+2=14 right, glow 18 — the wider wins.
+      .toEqual({ left: 9, right: 9, top: 9, bottom: 9 });
+    // Shadow reaches 6+2=8 right, glow 9 — the wider wins.
     const both = effectsFilterOutset({
       shadow: { ...shadow, dx: 2, dy: 0, blur: 4 }, glow: { ...glow, radius: 6 },
     });
-    expect(both).toEqual({ left: 18, right: 18, top: 18, bottom: 18 });
+    expect(both).toEqual({ left: 9, right: 9, top: 9, bottom: 9 });
   });
 });
 
@@ -178,9 +184,10 @@ describe('effectsToSvgFilter — filter region', () => {
       { shadow: { ...shadow, dx: 0, dy: 10, blur: 4 } }, 'fx', box,
     );
     expect(defs).toContain('filterUnits="userSpaceOnUse"');
-    // 12 up (3σ), 22 down (3σ + the offset) — and the box is only 20 tall, so
-    // the old ±50% would have allowed just 10 and sliced the shadow off.
-    expect(defs).toContain('x="-12" y="-12" width="124" height="54"');
+    // 6 up (3σ of the σ=2 this radius means), 16 down (3σ + the offset) — and
+    // the box is only 20 tall, so the old ±50% would have allowed just 10 and
+    // sliced the shadow off. Sideways the 10%-of-box floor wins over the 6.
+    expect(defs).toContain('x="-10" y="-6" width="120" height="42"');
   });
 
   test('a short node gets the room its shadow needs, not half its own height', () => {
@@ -190,8 +197,8 @@ describe('effectsToSvgFilter — filter region', () => {
     const { defs } = effectsToSvgFilter({ shadow: { ...shadow, dx: 0, dy: 30, blur: 4 } }, 'fx', tall);
     const y = Number(defs!.match(/ y="(-?[\d.]+)"/)![1]);
     const h = Number(defs!.match(/ height="([\d.]+)"/)![1]);
-    expect(y).toBeLessThanOrEqual(-12); // 3σ above
-    expect(y + h).toBeGreaterThanOrEqual(2 + 30 + 12); // box + offset + 3σ below
+    expect(y).toBeLessThanOrEqual(-6); // 3σ above
+    expect(y + h).toBeGreaterThanOrEqual(2 + 30 + 6); // box + offset + 3σ below
   });
 
   test('the region never shrinks below a tenth of the box', () => {
