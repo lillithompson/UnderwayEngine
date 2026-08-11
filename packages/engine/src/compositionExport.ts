@@ -1,4 +1,4 @@
-import { CompositionFigure, RGBColor } from './types';
+import { CompositionFigure, Paint, RGBColor } from './types';
 import { loadCompositionState, loadFileStateLite, loadClipBox } from './persistence';
 import { loadBakedFigurePng } from './bake';
 import { encodePNG, toBase64 } from './pngcodec';
@@ -72,6 +72,17 @@ export interface CompositionExportOptions {
    *  {@link exportCompositionPNG}: JPEG has no alpha, so a cutout exported as
    *  JPEG lands on a white backdrop. */
   subset?: CompositionSubsetSelector;
+  /**
+   * Background to paint behind the page when the composition record carries
+   * none of its own — for a format whose page IS the bare canvas, so an export
+   * lands on the color the editor showed instead of on the rasterizer's white
+   * (JPEG) or on nothing (PNG). A page with an authored background keeps it.
+   *
+   * Ignored by a `subset` cutout, which drops the background by definition —
+   * so the same call can ask for a backdrop on the page image and still get a
+   * transparent tile.
+   */
+  fallbackBackground?: Paint;
   /** Keep the paint tool's raster layer in a `subset` cutout, framing on its
    *  brush marks along with the selected objects — for a cutout whose subject
    *  is the drawing itself. See
@@ -284,7 +295,7 @@ export async function exportCompositionSVG(
     images: partial.images ?? [],
     imageBlobs: partial.imageBlobs ?? {},
     texts: partial.texts ?? [],
-    background: partial.background,
+    background: partial.background ?? options?.fallbackBackground,
     canvasPaint: partial.canvasPaint,
     fontResolver: options?.fontResolver ?? defaultFontResolver,
     preferOriginalImages: options?.preferOriginalImages,

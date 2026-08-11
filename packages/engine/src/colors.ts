@@ -16,6 +16,18 @@ export const BG_ERROR = '#1a1a2e';
 export const BG_COMPOSITION_SELECTED = '#1a2a3a';
 export const BG_SEPARATOR = '#333333';
 
+/**
+ * The canvas's light base — the grey the grid is drawn on, in both the
+ * composition editor and the figure editor. One definition rather than the
+ * literal repeated at each site: the GL passes want it as a 0..1 triple, and
+ * anything drawing a canvas-colored surface outside GL (an export's backdrop,
+ * a DOM well) wants the hex.
+ */
+export const CANVAS_BASE_GREY = '#D9D9D9';
+export const CANVAS_BASE_GREY_RGB = { r: 0xd9, g: 0xd9, b: 0xd9 } as const;
+export const CANVAS_BASE_GREY_GL: readonly [number, number, number] =
+  [0xd9 / 255, 0xd9 / 255, 0xd9 / 255];
+
 // ─── Text ───
 export const TEXT_PRIMARY = '#ffffff';
 export const TEXT_SECONDARY = '#e5e5e5';

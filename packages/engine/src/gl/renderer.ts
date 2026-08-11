@@ -3,6 +3,7 @@ import { computeBaseCamera } from '../state';
 import { createGLEngine, GLEngine } from './context';
 import { QUAD_VERT, LAYER_FRAG, GRID_FRAG, MIRROR_FRAG, SELECTION_FRAG, CLONE_OVERLAY_FRAG, PATH_SELECTION_FRAG } from './shaders';
 import { mirrorOverlayAxes } from '../canvas-bounds';
+import { CANVAS_BASE_GREY_GL } from '../colors';
 
 /** Cached uniform locations for a shader program */
 interface LayerLocs {
@@ -599,7 +600,7 @@ export class Renderer {
     gl.uniform2f(locs.u_resolution, viewportW, viewportH);
     gl.uniform1f(locs.u_shiftX, shiftX);
     gl.uniform1f(locs.u_shiftY, shiftY);
-    gl.uniform3f(locs.u_bgColor, 0.851, 0.851, 0.851); // #D9D9D9 light base
+    gl.uniform3f(locs.u_bgColor, ...CANVAS_BASE_GREY_GL);
     gl.uniform1f(locs.u_gridIntensity, this.gridIntensity);
     gl.uniform2f(locs.u_boundsMin, boundsMinU, boundsMinV);
     gl.uniform2f(locs.u_boundsMax, boundsMaxU, boundsMaxV);

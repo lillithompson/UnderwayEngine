@@ -3,6 +3,7 @@ import { islandHeightCells, islandKey, CANVAS_PAINT_WIDTH_CELLS } from '../canva
 import { compSnapStep } from '../compositionCellMath';
 import { createGLEngine, GLEngine } from './context';
 import { QUAD_VERT, INFINITE_GRID_FRAG, CANVAS_PAINT_FRAG } from './shaders';
+import { CANVAS_BASE_GREY_GL } from '../colors';
 
 /** One cached canvas-paint island texture. `src` is the rgba array LAST
  *  uploaded (committed islands are immutable, so a reference change means
@@ -55,7 +56,7 @@ export class CompositionRenderer {
     const bufW = gl.drawingBufferWidth;
     const bufH = gl.drawingBufferHeight;
     gl.viewport(0, 0, bufW, bufH);
-    gl.clearColor(0.851, 0.851, 0.851, 1.0); // #D9D9D9 light base
+    gl.clearColor(...CANVAS_BASE_GREY_GL, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     gl.enable(gl.BLEND);
@@ -200,7 +201,7 @@ export class CompositionRenderer {
     gl.uniform1f(gl.getUniformLocation(prog, 'u_aspect'), aspect);
     gl.uniform2f(gl.getUniformLocation(prog, 'u_resolution'), viewportW, viewportH);
 
-    gl.uniform3f(gl.getUniformLocation(prog, 'u_bgColor'), 0.851, 0.851, 0.851); // #D9D9D9
+    gl.uniform3f(gl.getUniformLocation(prog, 'u_bgColor'), ...CANVAS_BASE_GREY_GL);
     gl.uniform1f(gl.getUniformLocation(prog, 'u_gridIntensity'), gridIntensity);
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
