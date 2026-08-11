@@ -1,11 +1,12 @@
 import React, { useRef } from 'react';
-import { PanResponder, StyleSheet, View } from 'react-native';
+import { GestureResponderEvent, PanResponder, StyleSheet, View } from 'react-native';
 import type { ShadowModel } from '../adapter';
 import {
   BAR_BORDER, BAR_PAD_HORIZONTAL, SHADOW_CONTROLS_TOP, SHADOW_PAD_BOTTOM,
   SHADOW_PAD_SIZE, SHADOW_PAD_TOP,
 } from '../logic/submenuHeight';
 import { BAR_BG, CONTROL_ACCENT, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
+import { padOffsetFromTouch } from '../logic/slider';
 
 // The Drop Shadow editing bar (design "2a"): a full-width light bar with a
 // header (title · color swatch · trash), an XY offset pad, and Blur / Spread /
@@ -40,11 +41,18 @@ function XYPad({ dx, dy, onChange, onCommit }: {
 }) {
   const cbRef = useRef({ onChange, onCommit });
   cbRef.current = { onChange, onCommit };
-  const fromTouch = (x: number, y: number): [number, number] => {
-    const clamp = (v: number) => Math.max(0, Math.min(PAD_SIZE, v));
-    const nx = (clamp(x) / PAD_SIZE) * 2 - 1;
-    const ny = (clamp(y) / PAD_SIZE) * 2 - 1;
-    return [nx * MAX_OFFSET, ny * MAX_OFFSET];
+  // Where this gesture has dragged the offset to, and what the release
+  // commits — see the Slider's dragRef for the whole story: an un-locatable
+  // release event plus a props value that is one React batch behind is what
+  // made a released handle spring back to the angle it started at.
+  const dragRef = useRef<[number, number]>([dx, dy]);
+  const draggingRef = useRef(false);
+  if (!draggingRef.current) dragRef.current = [dx, dy];
+  const track = (e: GestureResponderEvent): [number, number] => {
+    dragRef.current = padOffsetFromTouch(
+      e.nativeEvent.locationX, e.nativeEvent.locationY, PAD_SIZE, MAX_OFFSET, dragRef.current,
+    );
+    return dragRef.current;
   };
   const pan = useRef(
     PanResponder.create({
@@ -53,10 +61,10 @@ function XYPad({ dx, dy, onChange, onCommit }: {
       // Keep the touch once the pad is grabbed so the bar's swipe-to-dismiss
       // can't steal it mid-drag (see Slider for the same guard).
       onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (e) => { const [x, y] = fromTouch(e.nativeEvent.locationX, e.nativeEvent.locationY); cbRef.current.onChange(x, y); },
-      onPanResponderMove: (e) => { const [x, y] = fromTouch(e.nativeEvent.locationX, e.nativeEvent.locationY); cbRef.current.onChange(x, y); },
-      onPanResponderRelease: (e) => { const [x, y] = fromTouch(e.nativeEvent.locationX, e.nativeEvent.locationY); cbRef.current.onCommit(x, y); },
-      onPanResponderTerminate: (e) => { const [x, y] = fromTouch(e.nativeEvent.locationX, e.nativeEvent.locationY); cbRef.current.onCommit(x, y); },
+      onPanResponderGrant: (e) => { draggingRef.current = true; const [x, y] = track(e); cbRef.current.onChange(x, y); },
+      onPanResponderMove: (e) => { const [x, y] = track(e); cbRef.current.onChange(x, y); },
+      onPanResponderRelease: () => { draggingRef.current = false; cbRef.current.onCommit(...dragRef.current); },
+      onPanResponderTerminate: () => { draggingRef.current = false; cbRef.current.onCommit(...dragRef.current); },
     }),
   ).current;
   const clampN = (v: number) => Math.max(-1, Math.min(1, v / MAX_OFFSET));

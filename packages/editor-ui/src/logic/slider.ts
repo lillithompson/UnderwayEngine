@@ -1,6 +1,6 @@
-// Pure track-position math for the Slider component, extracted so the
-// non-finite-touch guard below is unit-testable (it isn't reachable through
-// the PanResponder in a headless test).
+// Pure touch→value math for the drag controls (Slider, the Shadow bar's XY
+// offset pad), extracted so the non-finite-touch guard below is unit-testable
+// (it isn't reachable through the PanResponder in a headless test).
 
 const clamp01 = (t: number): number => (t < 0 ? 0 : t > 1 ? 1 : t);
 
@@ -11,8 +11,27 @@ const clamp01 = (t: number): number => (t < 0 ? 0 : t > 1 ? 1 : t);
  *  Feeding that forward set the value to NaN and rendered "NaN%" until the next
  *  move. When the touch is non-finite (or the track hasn't been measured yet),
  *  hold `current` instead — the un-locatable first grant becomes a no-op, not
- *  a NaN. */
+ *  a NaN. Callers pass the value the GESTURE has reached, not the value prop:
+ *  see the Slider's dragRef for why the two are not the same. */
 export function sliderValueFromX(x: number, trackW: number, current: number): number {
   if (trackW <= 0 || !Number.isFinite(x)) return clamp01(current);
   return clamp01(x / trackW);
+}
+
+/** The ±`max` offset a touch at (`x`, `y`) picks out of a `size`-square XY pad,
+ *  centered at the pad's middle. Non-finite touches hold `current`, for the
+ *  same reason (and out of the same event) as {@link sliderValueFromX} — an
+ *  unguarded pad turned an un-locatable release into a NaN offset. */
+export function padOffsetFromTouch(
+  x: number,
+  y: number,
+  size: number,
+  max: number,
+  current: readonly [number, number],
+): [number, number] {
+  if (size <= 0 || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return [current[0], current[1]];
+  }
+  const along = (v: number) => ((v < 0 ? 0 : v > size ? size : v) / size * 2 - 1) * max;
+  return [along(x), along(y)];
 }
