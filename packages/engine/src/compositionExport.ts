@@ -276,6 +276,7 @@ export async function exportCompositionSVG(
     imageBlobs: partial.imageBlobs ?? {},
     texts: partial.texts ?? [],
     background: partial.background,
+    canvasPaint: partial.canvasPaint,
     fontResolver: options?.fontResolver ?? defaultFontResolver,
     preferOriginalImages: options?.preferOriginalImages,
     subset: options?.subset,

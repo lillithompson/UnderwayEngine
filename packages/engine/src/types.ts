@@ -1462,6 +1462,16 @@ export interface CompositionState {
    */
   background?: Paint;
   /**
+   * The paint tool's canvas raster layer (v50+): one RGBA bitmap the brush
+   * stamps into wherever a dab lands on no object, covering the page rect
+   * x ∈ [0, 32] world cells, y ∈ [0, 32·rows/cols] (texels are square, so
+   * the covered height is derivable — see canvasPaint.ts). Always rendered
+   * UNDER every scene object (the GL pass draws it right after the grid),
+   * and deliberately absent from `sceneOrder`, so it never appears in the
+   * Scene Outline. Undefined = never painted.
+   */
+  canvasPaint?: ImagePaintOverlay;
+  /**
    * The in-progress line currently being drawn while `compTool === 'line'`.
    * On tool toggle-off, finalized into `svgObjects` if valid.
    */
@@ -1853,7 +1863,11 @@ export type CompUndoOp =
   /** Set/replace/clear an image's shader-time tint (v29+). */
   | { op: 'setImageTint'; nodeId: string; oldTint?: ImageTint; newTint?: ImageTint }
   /** Set/replace/clear the canvas background paint (v29+). */
-  | { op: 'setBackground'; oldPaint?: Paint; newPaint?: Paint };
+  | { op: 'setBackground'; oldPaint?: Paint; newPaint?: Paint }
+  /** Set/replace/clear the paint tool's canvas raster layer (v50+). One op
+   *  per finished stroke — the whole stroke's dabs land as a single swap so
+   *  undo lifts the stroke, not a dab. */
+  | { op: 'setCanvasPaint'; oldLayer?: ImagePaintOverlay; newLayer?: ImagePaintOverlay };
 
 export type CompUndoEntry = CompUndoOp[];
 

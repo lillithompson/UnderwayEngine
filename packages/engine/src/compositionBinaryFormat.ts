@@ -379,7 +379,12 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      (rectangle / circle / polygon), masked to the outline at render.
 //      Presence rides svg flags4 bit 0x20; payload is LAST in the svg
 //      record, after the v42 opacity block, in the identical v48 layout.
-const FORMAT_VERSION = 49;
+// v50: composition `canvasPaint` — the paint tool's page-anchored canvas
+//      raster. New final section after the background paint: hasCanvasPaint
+//      u8 (0 or 1), then the v48 paint-overlay payload (cols u16 + rows u16
+//      + blend u8 + cols×rows×4 RGBA). Sides exceed the per-object 64 cap
+//      (256 wide at 8 texels/cell) but stay well inside u16.
+const FORMAT_VERSION = 50;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -441,6 +446,9 @@ export interface CompositionBundle {
   texts?: TextObject[];
   /** Canvas background paint (v29+). Undefined = renderer default. */
   background?: Paint;
+  /** The paint tool's page-anchored canvas raster (v50+). Undefined =
+   *  never painted. */
+  canvasPaint?: ImagePaintOverlay;
 }
 
 export interface DeserializedComposition {
@@ -2721,6 +2729,9 @@ export function serializeComposition(
   // Background paint (v29+) â€” hasBackground byte + optional paint payload.
   totalSize += 1 + (bundle.background ? paintBinarySize(bundle.background) : 0);
 
+  // Canvas paint raster (v50+) â€” hasCanvasPaint byte + optional overlay payload.
+  totalSize += 1 + (bundle.canvasPaint ? paintOverlayBinarySize(bundle.canvasPaint) : 0);
+
   // â”€â”€ Pass 2: write â”€â”€
 
   const out = new Uint8Array(totalSize);
@@ -2955,10 +2966,18 @@ export function serializeComposition(
     out[pos++] = c.b;
   }
 
-  // Background paint (v29+). Final section of the file.
+  // Background paint (v29+).
   if (bundle.background) {
     out[pos++] = 1;
     pos = writePaint(view, out, pos, bundle.background);
+  } else {
+    out[pos++] = 0;
+  }
+
+  // Canvas paint raster (v50+). Final section of the file.
+  if (bundle.canvasPaint) {
+    out[pos++] = 1;
+    pos = writePaintOverlay(view, out, pos, bundle.canvasPaint);
   } else {
     out[pos++] = 0;
   }
@@ -3343,7 +3362,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     }
   }
 
-  // Background paint (v29+) â€” final section. Undefined for older files.
+  // Background paint (v29+). Undefined for older files.
   let background: Paint | undefined;
   if (version >= 29 && pos < data.byteLength) {
     const hasBackground = data[pos++];
@@ -3351,6 +3370,17 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       const p = readPaint(view, data, pos);
       background = p.paint;
       pos = p.pos;
+    }
+  }
+
+  // Canvas paint raster (v50+) â€” final section. Undefined for older files.
+  let canvasPaint: ImagePaintOverlay | undefined;
+  if (version >= 50 && pos < data.byteLength) {
+    const hasCanvasPaint = data[pos++];
+    if (hasCanvasPaint === 1) {
+      const po = readPaintOverlay(view, data, pos);
+      canvasPaint = po.overlay;
+      pos = po.pos;
     }
   }
 
@@ -3380,6 +3410,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       customColors,
       texts,
       background,
+      canvasPaint,
     },
     embeddedFiles,
   };

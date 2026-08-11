@@ -409,6 +409,12 @@ interface CompMeta {
   texts?: TextObject[];
   /** Canvas background paint (v29+); absent = renderer default. */
   background?: Paint;
+  /** The paint tool's canvas raster layer (v50+); absent = never painted.
+   *  Stored in the JSON-safe overlay form (base64 texels) — see
+   *  {@link serializePaintOverlayForMeta} / {@link migratePaintOverlay}.
+   *  Page-anchored (spans the page rect), so it rides through save/load
+   *  untouched by normalization. */
+  canvasPaint?: unknown;
   /** Unified back→front paint order across every scene-object kind.
    *  Absent on older saves; the loader derives it from the kind arrays in
    *  the legacy fixed paint order. */
@@ -634,6 +640,7 @@ export async function saveCompositionState(
       : undefined,
     texts: normalized.texts && normalized.texts.length > 0 ? normalized.texts : undefined,
     background: normalized.background,
+    canvasPaint: state.canvasPaint ? serializePaintOverlayForMeta(state.canvasPaint) : undefined,
     sceneOrder: state.sceneOrder.length > 0 ? state.sceneOrder : undefined,
     lastChosenColor: state.lastChosenColor,
     customColors: state.customColors.length > 0 ? state.customColors : undefined,
@@ -778,6 +785,7 @@ export async function loadCompositionState(
     imageBlobs,
     texts: r.texts ?? [],
     background: r.background,
+    canvasPaint: migratePaintOverlay(parsed.canvasPaint),
     sceneOrder: parsed.sceneOrder
       ? repairSceneOrder({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [], sceneOrder: parsed.sceneOrder })
       : deriveSceneOrderFromKindArrays({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [] }),

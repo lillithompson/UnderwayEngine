@@ -59,7 +59,7 @@ function forEachTexelInDisc(
   lx: number,
   ly: number,
   radiusCells: number,
-  visit: (i: number, distSq: number) => void,
+  visit: (i: number, distSq: number, cx: number, cy: number) => void,
 ): void {
   if (iwCells <= 0 || ihCells <= 0 || radiusCells <= 0) return;
   const { cols, rows } = overlay;
@@ -77,7 +77,7 @@ function forEachTexelInDisc(
       const cx = (c + 0.5) * texW;
       const distSq = (cx - lx) * (cx - lx) + (cy - ly) * (cy - ly);
       if (distSq > radiusSq) continue;
-      visit((r * cols + c) * 4, distSq);
+      visit((r * cols + c) * 4, distSq, cx, cy);
     }
   }
 }
@@ -90,6 +90,12 @@ function forEachTexelInDisc(
  * Repeat stamps accumulate toward the brush color at full alpha, which is
  * what makes a slow drag deposit more paint. Returns true when any texel
  * byte actually changed, so callers can skip preview refreshes.
+ *
+ * `blocked` (optional) is the canvas raster's occlusion hook: called with
+ * each texel's byte offset and center (same frame as `lx`/`ly`), a true
+ * return skips the texel entirely — how visible vector objects silhouette
+ * themselves out of a canvas dab (see canvasPaint.ts). Per-object overlays
+ * pass nothing and paint the whole disc.
  */
 export function stampImagePaintOverlay(
   overlay: ImagePaintOverlay,
@@ -100,14 +106,16 @@ export function stampImagePaintOverlay(
   radiusCells: number,
   color: RGBColor,
   alpha: number,
+  blocked?: (i: number, cx: number, cy: number) => boolean,
 ): boolean {
   if (alpha <= 0) return false;
   const { rgba } = overlay;
   const radiusSq = radiusCells * radiusCells;
   let changed = false;
-  forEachTexelInDisc(overlay, iwCells, ihCells, lx, ly, radiusCells, (i, distSq) => {
+  forEachTexelInDisc(overlay, iwCells, ihCells, lx, ly, radiusCells, (i, distSq, cx, cy) => {
     const srcA = alpha * gaussianFalloff(distSq / radiusSq);
     if (srcA <= 0) return;
+    if (blocked && blocked(i, cx, cy)) return;
     // Straight-alpha source-over: the dab composites onto what the stroke
     // (and earlier strokes) already deposited in this texel.
     const dstA = rgba[i + 3] / 255;

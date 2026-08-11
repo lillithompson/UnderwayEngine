@@ -6,7 +6,7 @@
  * with pre-deserialized embedded files.
  */
 
-import { CompositionFigure, FileConfig, SVGObject, ImageObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
+import { CompositionFigure, FileConfig, SVGObject, ImageObject, ImagePaintOverlay, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
 import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
@@ -26,6 +26,7 @@ import { patternFillBackground } from './patternFill';
 import { paintToSvg, effectsFilterOutset, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
 import { overlayPngDataUri, paintBlendCss, shapePaintOverlaySVG } from './imagePaintOverlay';
+import { CANVAS_PAINT_WIDTH_CELLS, canvasPaintHeightCells } from './canvasPaint';
 import { charColorRuns, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
 import { STICKER_BORDER_CELLS, STICKER_SHADOW_CELLS, stickerColors } from './stickerStyle';
 import { resolveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
@@ -97,6 +98,11 @@ export interface CompositionSVGInputs {
    *  painted behind every scene element. Absent = transparent, matching
    *  the pre-v29 export appearance. */
   background?: Paint;
+  /** The paint tool's page-anchored canvas raster (v50+). When set, an
+   *  <image> of the layer is painted over the background rect and under
+   *  every scene element — the same stacking the live GL pass renders.
+   *  Skipped for subset cutouts, like the background. */
+  canvasPaint?: ImagePaintOverlay;
   /** Optional font-embedding hook — see {@link SVGFontResolver}. */
   fontResolver?: SVGFontResolver;
   /** Group hierarchy — needed to resolve "Use as mask" clip regions.
@@ -1340,6 +1346,19 @@ export async function generateCompositionSVGCore(
       `<rect x="${vbX}" y="${vbY}" width="${bboxW}" height="${bboxH}" fill="${p.fill}"${oa} stroke="none"/>`;
   }
 
+  // Canvas paint raster: over the background, under every scene element —
+  // the same stacking the live GL pass renders. Anchored to the page rect
+  // (world origin, 32 cells wide) whatever the viewBox frames.
+  let canvasPaintImage = '';
+  if (input.canvasPaint && !input.subset) {
+    const cp = input.canvasPaint;
+    const cpW = CANVAS_PAINT_WIDTH_CELLS * SVG_UNITS_PER_L0_CELL;
+    const cpH = canvasPaintHeightCells(cp) * SVG_UNITS_PER_L0_CELL;
+    canvasPaintImage =
+      `<image x="0" y="0" width="${cpW}" height="${cpH}"` +
+      ` href="${overlayPngDataUri(cp)}" preserveAspectRatio="none"/>`;
+  }
+
   return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<svg id="${compName}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
@@ -1348,6 +1367,7 @@ export async function generateCompositionSVGCore(
     `fill="none" stroke="white">`,
     ...(fontStyleBlock ? [fontStyleBlock] : []),
     ...(backgroundRect ? [backgroundRect] : []),
+    ...(canvasPaintImage ? [canvasPaintImage] : []),
     ...(maskDefs ? [maskDefs] : []),
     ...allElements,
     `</svg>`,

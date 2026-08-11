@@ -1,12 +1,24 @@
-import { CompositionState } from '../types';
+import { CompositionState, ImagePaintOverlay } from '../types';
 import { compSnapStep } from '../compositionCellMath';
 import { createGLEngine, GLEngine } from './context';
-import { QUAD_VERT, INFINITE_GRID_FRAG } from './shaders';
+import { QUAD_VERT, INFINITE_GRID_FRAG, CANVAS_PAINT_FRAG } from './shaders';
 
 export class CompositionRenderer {
   private engine: GLEngine;
   private gridProgram: WebGLProgram;
+  private paintProgram: WebGLProgram;
   private quadBuffer: WebGLBuffer;
+  // Canvas paint-layer texture cache. `paintSrc` is the rgba array LAST
+  // uploaded (committed layers are immutable, so a reference change means new
+  // bytes); `paintDirty` covers the one mutable case — the in-stroke working
+  // copy, whose bytes change under a stable reference. The canvas calls
+  // invalidateCanvasPaint() after each stamp to flag it.
+  private paintTex: WebGLTexture | null = null;
+  private paintTexCols = 0;
+  private paintTexRows = 0;
+  private paintSrc: Uint8Array | null = null;
+  private paintDirty = false;
+  private paintPremul: Uint8Array | null = null;
 
   constructor(gl: WebGLRenderingContext) {
     this.engine = createGLEngine(gl);
@@ -15,11 +27,16 @@ export class CompositionRenderer {
     const quadVert = compileShader(gl.VERTEX_SHADER, QUAD_VERT);
     const gridFrag = compileShader(gl.FRAGMENT_SHADER, INFINITE_GRID_FRAG);
     this.gridProgram = linkProgram(quadVert, gridFrag);
+    const paintFrag = compileShader(gl.FRAGMENT_SHADER, CANVAS_PAINT_FRAG);
+    this.paintProgram = linkProgram(quadVert, paintFrag);
 
     gl.detachShader(this.gridProgram, quadVert);
     gl.detachShader(this.gridProgram, gridFrag);
+    gl.detachShader(this.paintProgram, quadVert);
+    gl.detachShader(this.paintProgram, paintFrag);
     gl.deleteShader(quadVert);
     gl.deleteShader(gridFrag);
+    gl.deleteShader(paintFrag);
 
     this.quadBuffer = createQuadBuffer();
   }
@@ -43,9 +60,87 @@ export class CompositionRenderer {
 
     this.drawGrid(offsetU, offsetV, camera.zoom, aspect, bufW, bufH, 32 / compSnapStep(gridLevel), gridIntensity);
 
+    // Canvas paint layer: over the grid, under every DOM-rendered scene
+    // object (the whole world layer stacks above this GL surface).
+    const cp = state.canvasPaint;
+    if (cp && cp.cols > 0 && cp.rows > 0) {
+      this.drawCanvasPaint(cp, offsetU, offsetV, camera.zoom, aspect);
+    }
+
     gl.flush();
     onPostRender?.(gl);
     (gl as any).endFrameEXP?.();
+  }
+
+  /** Flag the canvas paint layer's bytes as changed under a stable array
+   *  reference (the in-stroke working copy) — next render re-uploads. */
+  invalidateCanvasPaint(): void {
+    this.paintDirty = true;
+  }
+
+  /** (Re)upload the layer texture when the bytes changed. Uploaded
+   *  PREMULTIPLIED so the LINEAR upscale can't bleed transparent-black
+   *  fringes into a dab's soft edge (the draw blends ONE, 1−srcA). */
+  private uploadCanvasPaint(cp: ImagePaintOverlay): void {
+    const gl = this.engine.gl;
+    if (!this.paintTex || this.paintTexCols !== cp.cols || this.paintTexRows !== cp.rows) {
+      if (this.paintTex) gl.deleteTexture(this.paintTex);
+      this.paintTex = this.engine.createTexture(cp.cols, cp.rows, null, gl.LINEAR);
+      this.paintTexCols = cp.cols;
+      this.paintTexRows = cp.rows;
+      this.paintSrc = null;
+    }
+    if (this.paintSrc === cp.rgba && !this.paintDirty) return;
+    const n = cp.rgba.length;
+    if (!this.paintPremul || this.paintPremul.length !== n) this.paintPremul = new Uint8Array(n);
+    const src = cp.rgba;
+    const dst = this.paintPremul;
+    for (let i = 0; i < n; i += 4) {
+      const a = src[i + 3];
+      if (a === 0) {
+        dst[i] = 0; dst[i + 1] = 0; dst[i + 2] = 0; dst[i + 3] = 0;
+      } else if (a === 255) {
+        dst[i] = src[i]; dst[i + 1] = src[i + 1]; dst[i + 2] = src[i + 2]; dst[i + 3] = 255;
+      } else {
+        dst[i] = (src[i] * a + 127) / 255 | 0;
+        dst[i + 1] = (src[i + 1] * a + 127) / 255 | 0;
+        dst[i + 2] = (src[i + 2] * a + 127) / 255 | 0;
+        dst[i + 3] = a;
+      }
+    }
+    this.engine.updateTextureRegion(this.paintTex, 0, 0, cp.cols, cp.rows, dst, cp.cols);
+    this.paintSrc = cp.rgba;
+    this.paintDirty = false;
+  }
+
+  private drawCanvasPaint(
+    cp: ImagePaintOverlay,
+    offsetU: number,
+    offsetV: number,
+    zoom: number,
+    aspect: number,
+  ): void {
+    this.uploadCanvasPaint(cp);
+    const gl = this.engine.gl;
+    const prog = this.paintProgram;
+    gl.useProgram(prog);
+    this.bindQuad(prog);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.paintTex);
+    gl.uniform1i(gl.getUniformLocation(prog, 'u_texture'), 0);
+    gl.uniform2f(gl.getUniformLocation(prog, 'u_offset'), offsetU, offsetV);
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_zoom'), zoom);
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_aspect'), aspect);
+    // 1 layer-UV unit = 32 world cells; square texels make the page height
+    // rows/cols of that (see canvasPaintHeightCells).
+    gl.uniform2f(gl.getUniformLocation(prog, 'u_extent'), 1.0, cp.rows / cp.cols);
+
+    // Premultiplied source — see uploadCanvasPaint.
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
   private drawGrid(
@@ -79,6 +174,8 @@ export class CompositionRenderer {
   dispose(): void {
     const gl = this.engine.gl;
     gl.deleteProgram(this.gridProgram);
+    gl.deleteProgram(this.paintProgram);
+    if (this.paintTex) gl.deleteTexture(this.paintTex);
     gl.deleteBuffer(this.quadBuffer);
   }
 
