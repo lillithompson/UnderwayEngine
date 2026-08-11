@@ -14,7 +14,7 @@
  */
 
 import { BlendMode, ImagePaintOverlay, RGBColor } from './types';
-import { gaussianFalloff } from './colorBlend';
+import { blendColor, gaussianFalloff } from './colorBlend';
 import { encodePNG, toBase64 } from './pngcodec';
 
 /** Overlay texel density. At the brush's one-grid-step radius this puts a
@@ -82,6 +82,61 @@ function forEachTexelInDisc(
   }
 }
 
+// ── Destructive blending ────────────────────────────────────────────
+// A per-object overlay composites over its image with one CSS blend mode, so
+// its brush deposits the raw color and the renderer does the blending. The
+// CANVAS layer has no such luxury: it is drawn source-over, under every scene
+// object, so a blend mode set on it would do nothing at all. It blends
+// DESTRUCTIVELY instead — each dab reads what is already under it and writes
+// the blended result — which is also what "paint yellow in dodge and watch
+// what is there brighten" means to hand: the color under the brush mutates,
+// rather than a translucent yellow being laid over it.
+
+/** Modes that rewrite a base color outright rather than compositing with it
+ *  (paintBlendCss has no equivalent for them). Facet's rule is that these
+ *  apply ONCE to each thing a stroke touches — lerping invert repeatedly
+ *  converges on mid-grey, and rotating hue every dab of a slow drag spins
+ *  it — so a destructive stamp records what it has already hit. */
+function isUnaryMode(mode: BlendMode): boolean {
+  return mode === 'invert' || mode === 'rotate' || mode === 'randomize';
+}
+
+/** How a dab blends with what is already under it. Omitted (or `normal`)
+ *  keeps the plain source-over deposit every other surface uses. */
+export interface StampBlend {
+  mode: BlendMode;
+  /** What shows through where the layer is still transparent — the page's
+   *  solid background under the canvas layer. Undefined when there is
+   *  nothing knowable there (no background, or a gradient), and a dab on an
+   *  untouched texel then deposits the brush color plainly: there is no
+   *  base to mutate. */
+  beneath?: RGBColor;
+  /** One byte per texel, marking those a unary mode has already rewritten
+   *  this stroke. Owned by the stroke, not the layer. */
+  unaryDone?: Uint8Array;
+}
+
+/** The color a dab is about to mutate: the texel's own paint over whatever
+ *  shows through beneath it, or null when the texel is empty and nothing is
+ *  known to be under it. */
+function baseUnderTexel(
+  rgba: Uint8Array,
+  i: number,
+  dstA: number,
+  beneath: RGBColor | undefined,
+): RGBColor | null {
+  if (dstA >= 1) return { r: rgba[i], g: rgba[i + 1], b: rgba[i + 2] };
+  if (!beneath) return dstA > 0 ? { r: rgba[i], g: rgba[i + 1], b: rgba[i + 2] } : null;
+  // Partly-painted texel: what the eye sees there is the paint over the
+  // background, so that composite is what the brush mutates.
+  const mix = (c: number, b: number) => Math.round(c * dstA + b * (1 - dstA));
+  return {
+    r: mix(rgba[i], beneath.r),
+    g: mix(rgba[i + 1], beneath.g),
+    b: mix(rgba[i + 2], beneath.b),
+  };
+}
+
 /**
  * Stamp one brush dab into the overlay: every texel whose center lies within
  * `radiusCells` of `(lx, ly)` (inner-frame world cells) takes the brush color
@@ -96,6 +151,10 @@ function forEachTexelInDisc(
  * return skips the texel entirely — how visible vector objects silhouette
  * themselves out of a canvas dab (see canvasPaint.ts). Per-object overlays
  * pass nothing and paint the whole disc.
+ *
+ * `blend` (optional) makes the dab destructive rather than a plain deposit —
+ * see the section header above. Per-object overlays pass nothing, because
+ * their blend mode is applied by the renderer.
  */
 export function stampImagePaintOverlay(
   overlay: ImagePaintOverlay,
@@ -107,27 +166,44 @@ export function stampImagePaintOverlay(
   color: RGBColor,
   alpha: number,
   blocked?: (i: number, cx: number, cy: number) => boolean,
+  blend?: StampBlend,
 ): boolean {
   if (alpha <= 0) return false;
   const { rgba } = overlay;
   const radiusSq = radiusCells * radiusCells;
+  const blending = blend && blend.mode !== 'normal' ? blend : undefined;
+  const unary = blending ? isUnaryMode(blending.mode) : false;
   let changed = false;
   forEachTexelInDisc(overlay, iwCells, ihCells, lx, ly, radiusCells, (i, distSq, cx, cy) => {
     const srcA = alpha * gaussianFalloff(distSq / radiusSq);
     if (srcA <= 0) return;
     if (blocked && blocked(i, cx, cy)) return;
+    const dstA = rgba[i + 3] / 255;
+    let src = color;
+    if (blending) {
+      const texel = i >> 2;
+      // A unary mode gets one go at each texel; later dabs of the same
+      // stroke leave it alone rather than inverting it back.
+      if (unary && blending.unaryDone) {
+        if (blending.unaryDone[texel]) return;
+        blending.unaryDone[texel] = 1;
+      }
+      const base = baseUnderTexel(rgba, i, dstA, blending.beneath);
+      // Opacity is the source alpha below, so the blend itself runs at full
+      // strength — the falloff must not be applied to it twice.
+      if (base) src = blendColor(base, color, blending.mode, 1);
+    }
     // Straight-alpha source-over: the dab composites onto what the stroke
     // (and earlier strokes) already deposited in this texel.
-    const dstA = rgba[i + 3] / 255;
     const outA = srcA + dstA * (1 - srcA);
     const write = (off: number, srcC: number) => {
       const dstC = rgba[i + off];
       const v = Math.round((srcC * srcA + dstC * dstA * (1 - srcA)) / outA);
       if (rgba[i + off] !== v) { rgba[i + off] = v; changed = true; }
     };
-    write(0, color.r);
-    write(1, color.g);
-    write(2, color.b);
+    write(0, src.r);
+    write(1, src.g);
+    write(2, src.b);
     const a = Math.round(outA * 255);
     if (rgba[i + 3] !== a) { rgba[i + 3] = a; changed = true; }
   });

@@ -24,7 +24,7 @@
  */
 
 import { CompositionState, ImagePaintOverlay, RGBColor, SVGObject } from './types';
-import { eraseImagePaintOverlay, stampImagePaintOverlay } from './imagePaintOverlay';
+import { eraseImagePaintOverlay, StampBlend, stampImagePaintOverlay } from './imagePaintOverlay';
 import { hiddenGroupIds } from './compositionOps';
 import { pointInClosedPath, svgPathHitsPoint } from './compositionPathHitTest';
 import { svgIsFilled } from './svgPathBuilder';
@@ -169,7 +169,13 @@ function effectiveRadius(layer: Pick<ImagePaintOverlay, 'cols'>, radiusCells: nu
 /** Stamp one canvas dab at world-cell (cellX, cellY): the shared overlay
  *  stamp (same falloff / source-over rules as every other brush surface),
  *  with `mask` dropping the texels visible vector ink occludes. Returns true
- *  when any byte changed, so callers can skip preview refreshes. */
+ *  when any byte changed, so callers can skip preview refreshes.
+ *
+ *  `blend` makes the dab destructive — it mutates the color already under
+ *  the brush instead of laying the brush color over it. The canvas layer is
+ *  drawn source-over under every scene object, so a blend mode has no
+ *  compositing route here and this is the only place it can act; see the
+ *  destructive-blending section of imagePaintOverlay.ts. */
 export function stampCanvasPaint(
   layer: ImagePaintOverlay,
   cellX: number,
@@ -178,6 +184,7 @@ export function stampCanvasPaint(
   color: RGBColor,
   alpha: number,
   mask?: CanvasPaintMask,
+  blend?: StampBlend,
 ): boolean {
   return stampImagePaintOverlay(
     layer,
@@ -189,7 +196,17 @@ export function stampCanvasPaint(
     color,
     alpha,
     mask ? (i, cx, cy) => mask.blockedTexel(i, cx, cy) : undefined,
+    blend,
   );
+}
+
+/** One byte per texel of the layer — the scratch a stroke hands
+ *  {@link StampBlend} so a unary mode (invert / rotate / randomize) rewrites
+ *  each texel once and only once. */
+export function createCanvasPaintUnaryMask(
+  layer: Pick<ImagePaintOverlay, 'cols' | 'rows'>,
+): Uint8Array {
+  return new Uint8Array(layer.cols * layer.rows);
 }
 
 /** Erase one canvas dab — the deposit rule in reverse, unmasked (lifting
