@@ -24,7 +24,9 @@
  */
 
 import { CompositionState, ImagePaintOverlay, RGBColor, SVGObject } from './types';
-import { eraseImagePaintOverlay, StampBlend, stampImagePaintOverlay } from './imagePaintOverlay';
+import {
+  blurImagePaintOverlay, eraseImagePaintOverlay, StampBlend, stampImagePaintOverlay,
+} from './imagePaintOverlay';
 import { hiddenGroupIds } from './compositionOps';
 import { pointInClosedPath, svgPathHitsPoint } from './compositionPathHitTest';
 import { svgIsFilled } from './svgPathBuilder';
@@ -207,6 +209,28 @@ export function createCanvasPaintUnaryMask(
   layer: Pick<ImagePaintOverlay, 'cols' | 'rows'>,
 ): Uint8Array {
   return new Uint8Array(layer.cols * layer.rows);
+}
+
+/** Blur one canvas dab — one box-blur step over the layer's own texels,
+ *  unmasked (softening what is there is fine anywhere). The counterpart to
+ *  the object brushes' blur, which reaches only the objects: without this
+ *  the blur tool passed straight over a painted page and changed nothing. */
+export function blurCanvasPaint(
+  layer: ImagePaintOverlay,
+  cellX: number,
+  cellY: number,
+  radiusCells: number,
+  strength: number,
+): boolean {
+  return blurImagePaintOverlay(
+    layer,
+    CANVAS_PAINT_WIDTH_CELLS,
+    canvasPaintHeightCells(layer),
+    cellX,
+    cellY,
+    effectiveRadius(layer, radiusCells),
+    strength,
+  );
 }
 
 /** Erase one canvas dab — the deposit rule in reverse, unmasked (lifting
