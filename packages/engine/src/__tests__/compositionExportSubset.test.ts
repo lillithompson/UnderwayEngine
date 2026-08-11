@@ -295,6 +295,52 @@ describe('textColorOverride', () => {
   });
 });
 
+describe('dropTextShadow', () => {
+  const shadowed = (extra: Partial<TextObject> = {}) => makeText({
+    id: 'txt_1',
+    effects: { shadow: { dx: 0.1, dy: 0.1, blur: 0.3, spread: 0, alpha: 0.6, color: { r: 0, g: 0, b: 0 } } },
+    ...extra,
+  });
+
+  it('drops the authored shadow the cutout leaves the page behind with', async () => {
+    const kept = await generateCompositionSVGCore(makeInputs({ texts: [shadowed()] }));
+    expect(kept).toContain('feDropShadow');
+    const dropped = await generateCompositionSVGCore(
+      makeInputs({ texts: [shadowed()], dropTextShadow: true }),
+    );
+    expect(dropped).not.toContain('feDropShadow');
+  });
+
+  it('is a no-op on text that never had one', async () => {
+    const plain = makeText({ id: 'txt_1' });
+    expect(await generateCompositionSVGCore(makeInputs({ texts: [plain], dropTextShadow: true })))
+      .toEqual(await generateCompositionSVGCore(makeInputs({ texts: [plain] })));
+  });
+
+  it('leaves a sticker\u2019s fixed card shadow alone', async () => {
+    // That one comes with the card rather than from the author — the DOM
+    // layer draws it the same way, whatever the node\u2019s own effects say.
+    const magnet = makeText({ id: 'txt_1', sticker: true });
+    const dropped = await generateCompositionSVGCore(
+      makeInputs({ texts: [magnet], dropTextShadow: true }),
+    );
+    // `stk_` is the card's own filter, distinct from an authored effect's.
+    expect(dropped).toContain('filter id="stk_txt_1"');
+    expect(dropped).toContain('feDropShadow');
+  });
+
+  it('changes paint only \u2014 the frame is where it was', async () => {
+    const node = shadowed({ content: 'wren' });
+    const plain = await generateCompositionSVGCore(
+      makeInputs({ texts: [node], subset: () => new Set(['txt_1']) }),
+    );
+    const dropped = await generateCompositionSVGCore(makeInputs({
+      texts: [node], subset: () => new Set(['txt_1']), dropTextShadow: true,
+    }));
+    expect(viewBoxOf(dropped!)).toEqual(viewBoxOf(plain!));
+  });
+});
+
 describe('strokeColorOverride', () => {
   const WHITE = { r: 255, g: 255, b: 255 };
 

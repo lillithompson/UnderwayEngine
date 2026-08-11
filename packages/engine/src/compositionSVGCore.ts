@@ -179,6 +179,19 @@ export interface CompositionSVGInputs {
    * into a silhouette.
    */
   strokeColorOverride?: RGBColor;
+  /**
+   * Drop the AUTHORED drop shadow from every text node.
+   *
+   * The `textColorOverride` argument again, for the effect rather than the
+   * ink: a shadow under type was cast to lift it off the page it was written
+   * on. A cutout leaves that page behind, so the shadow arrives on a backdrop
+   * it was never measured against — and at tile size a soft dark halo under
+   * small glyphs is a smudge, not depth.
+   *
+   * A sticker's own fixed card shadow is untouched: it comes with the card
+   * rather than from the author, exactly as the DOM layer treats it.
+   */
+  dropTextShadow?: boolean;
   /** When true, emit each image from its higher-resolution `originalImageId`
    *  blob (falling back to `imageId` when absent). Off by default so cheap
    *  consumers — thumbnails, previews — keep rasterizing the small display
@@ -1254,8 +1267,14 @@ export async function generateCompositionSVGCore(
     if (cancelled?.()) return null;
     const content = buildTextSVGContent(txt, U, input.textColorOverride);
     if (!content) continue;
+    // The authored shadow goes with the page it was cast against — see
+    // dropTextShadow. Only that one: a sticker's fixed card shadow is added
+    // downstream, with the card.
+    const effects = input.dropTextShadow && txt.effects?.shadow
+      ? { ...txt.effects, shadow: undefined }
+      : txt.effects;
     elementsById.set(txt.id, wrapWithMaskClip(
-      applyNodeEffects(content, txt.effects, txt.id, txt, U),
+      applyNodeEffects(content, effects, txt.id, txt, U),
       maskMap, groups, txt,
     ));
   }

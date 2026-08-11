@@ -81,6 +81,10 @@ export interface CompositionExportOptions {
    *  for a cutout that is line art. See
    *  {@link CompositionSVGInputs.strokeColorOverride}. */
   strokeColorOverride?: RGBColor;
+  /** Drop every text node's authored drop shadow — for a cutout that leaves
+   *  behind the page the shadow was cast against. See
+   *  {@link CompositionSVGInputs.dropTextShadow}. */
+  dropTextShadow?: boolean;
   /** How to read the stored record — see {@link CompositionIOOptions}. Pass
    *  `false` for a PAGE-ANCHORED composition, so the export sees the same
    *  coordinates and `strokeScale` the editor holds. It matters whenever an
@@ -282,6 +286,7 @@ export async function exportCompositionSVG(
     subset: options?.subset,
     textColorOverride: options?.textColorOverride,
     strokeColorOverride: options?.strokeColorOverride,
+    dropTextShadow: options?.dropTextShadow,
     viewBoxPadFraction: options?.viewBoxPadFraction,
     frameInkExtents: options?.frameInkExtents,
     groups: partial.groups ?? [],
