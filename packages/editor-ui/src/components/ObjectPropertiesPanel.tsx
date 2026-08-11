@@ -325,11 +325,17 @@ function OptionPill({ spec, selected, compact, onMeasure }: {
   );
 }
 
-export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
+export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight }: {
   model: ObjectPropertiesModel;
   /** Bottom safe-area inset (home indicator). Padded under the bottom-anchored
    *  effect bars so their controls clear it; 0 on non-notched / web. */
   safeBottom?: number;
+  /** Reports how many px of the screen's bottom edge the panel claims — the
+   *  base row when visible, plus the open submenu's layer — so the shell can
+   *  scroll the selection clear of it. Fired with the TARGET height the
+   *  moment visibility / submenu state changes (not after the slide), so a
+   *  camera animation can run alongside the panel's own. 0 when hidden. */
+  onOccludedHeight?: (px: number) => void;
 }) {
   const { width } = useWindowDimensions();
   const compact = width < COMPACT_MAX_WIDTH;
@@ -588,6 +594,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0 }: {
     : model.textStyleOpen ? textPage
     : null;
   const submenuOpen = activeSub != null;
+
+  // Bottom-edge occlusion report — see the prop doc. The submenu layer sits
+  // ON TOP of the base panel (bottom: panelBox.height), so the two heights
+  // add while a bar is open.
+  const occludedPx = model.visible ? panelBox.height + (submenuOpen ? barHeight : 0) : 0;
+  useEffect(() => {
+    onOccludedHeight?.(occludedPx);
+  }, [onOccludedHeight, occludedPx]);
+
   // Keep rendering the last-open bar through the dismiss slide (activeSub goes
   // null the instant it closes, but the bar should stay visible sliding down).
   const lastSubRef = useRef<SubmenuKey | null>(null);
