@@ -1,31 +1,6 @@
-/**
- * Margin gradient fragment shader.
- * Draws a subtle radial vignette over the margin area (outside canvas bounds).
- * Rendered as a fullscreen quad; the grid shader draws an opaque canvas
- * background on top, so this gradient is only visible in the margin.
- */
-export const MARGIN_GRADIENT_FRAG = `
-precision mediump float;
-varying vec2 v_uv;
-uniform float u_aspect;
-uniform float u_locked;
-
-void main() {
-  // Aspect-correct UV so the vignette is circular, not elliptical
-  vec2 uv = v_uv - 0.5;
-  uv.x *= u_aspect;
-
-  float dist = length(uv);
-  // Smooth radial falloff: lighter near center, darker at edges
-  float vignette = smoothstep(0.0, 1.1, dist);
-
-  float baseBright = mix(0.176, 0.15, u_locked);
-  float darkEdge = baseBright * 0.45;
-  float brightness = mix(baseBright, darkEdge, vignette);
-
-  gl_FragColor = vec4(vec3(brightness), 1.0);
-}
-`;
+// The margin (outside the canvas bounds) is the GL clear color — flat black,
+// matching the studio chrome around the canvas. There is no margin pass: the
+// grid shader paints the canvas opaquely on top of the clear.
 
 /** Shared fullscreen quad vertex shader */
 export const QUAD_VERT = `

@@ -1,7 +1,7 @@
 import { EditorState, Layer, LAYER_PX, CELL_COUNTS, coalesceDirtyRects, viewportInsets, effectiveCanvasDims } from '../types';
 import { computeBaseCamera } from '../state';
 import { createGLEngine, GLEngine } from './context';
-import { MARGIN_GRADIENT_FRAG, QUAD_VERT, LAYER_FRAG, GRID_FRAG, MIRROR_FRAG, SELECTION_FRAG, CLONE_OVERLAY_FRAG, PATH_SELECTION_FRAG } from './shaders';
+import { QUAD_VERT, LAYER_FRAG, GRID_FRAG, MIRROR_FRAG, SELECTION_FRAG, CLONE_OVERLAY_FRAG, PATH_SELECTION_FRAG } from './shaders';
 import { mirrorOverlayAxes } from '../canvas-bounds';
 
 /** Cached uniform locations for a shader program */
@@ -102,16 +102,8 @@ interface CloneOverlayLocs {
   a_uv: number;
 }
 
-interface MarginGradientLocs {
-  u_aspect: WebGLUniformLocation | null;
-  u_locked: WebGLUniformLocation | null;
-  a_position: number;
-  a_uv: number;
-}
-
 export class Renderer {
   private engine: GLEngine;
-  private marginGradientProgram: WebGLProgram;
   private layerProgram: WebGLProgram;
   private gridProgram: WebGLProgram;
   private mirrorProgram: WebGLProgram;
@@ -133,7 +125,6 @@ export class Renderer {
   private pathTexGeneration = -1;
 
   // Cached locations
-  private marginGradientLocs: MarginGradientLocs;
   private layerLocs: LayerLocs;
   private gridLocs: GridLocs;
   private mirrorLocs: MirrorLocs;
@@ -155,7 +146,6 @@ export class Renderer {
 
     // Compile shaders
     const quadVert = compileShader(gl.VERTEX_SHADER, QUAD_VERT);
-    const marginGradientFrag = compileShader(gl.FRAGMENT_SHADER, MARGIN_GRADIENT_FRAG);
     const layerFrag = compileShader(gl.FRAGMENT_SHADER, LAYER_FRAG);
     const gridFrag = compileShader(gl.FRAGMENT_SHADER, GRID_FRAG);
     const mirrorFrag = compileShader(gl.FRAGMENT_SHADER, MIRROR_FRAG);
@@ -163,7 +153,6 @@ export class Renderer {
     const cloneOverlayFrag = compileShader(gl.FRAGMENT_SHADER, CLONE_OVERLAY_FRAG);
     const pathSelectionFrag = compileShader(gl.FRAGMENT_SHADER, PATH_SELECTION_FRAG);
 
-    this.marginGradientProgram = linkProgram(quadVert, marginGradientFrag);
     this.layerProgram = linkProgram(quadVert, layerFrag);
     this.gridProgram = linkProgram(quadVert, gridFrag);
     this.mirrorProgram = linkProgram(quadVert, mirrorFrag);
@@ -172,12 +161,12 @@ export class Renderer {
     this.pathSelectionProgram = linkProgram(quadVert, pathSelectionFrag);
 
     const programs = [
-      this.marginGradientProgram, this.layerProgram, this.gridProgram,
+      this.layerProgram, this.gridProgram,
       this.mirrorProgram, this.selectionProgram, this.cloneOverlayProgram,
       this.pathSelectionProgram,
     ];
     const frags = [
-      marginGradientFrag, layerFrag, gridFrag, mirrorFrag,
+      layerFrag, gridFrag, mirrorFrag,
       selectionFrag, cloneOverlayFrag, pathSelectionFrag,
     ];
     for (const prog of programs) gl.detachShader(prog, quadVert);
@@ -190,12 +179,6 @@ export class Renderer {
     this.quadBuffer = createQuadBuffer();
 
     // Cache all uniform and attribute locations once after linking
-    this.marginGradientLocs = {
-      u_aspect: gl.getUniformLocation(this.marginGradientProgram, 'u_aspect'),
-      u_locked: gl.getUniformLocation(this.marginGradientProgram, 'u_locked'),
-      a_position: gl.getAttribLocation(this.marginGradientProgram, 'a_position'),
-      a_uv: gl.getAttribLocation(this.marginGradientProgram, 'a_uv'),
-    };
 
     this.layerLocs = {
       u_texture: gl.getUniformLocation(this.layerProgram, 'u_texture'),
@@ -305,22 +288,14 @@ export class Renderer {
 
     gl.viewport(0, 0, bufW, bufH);
     const activeLayer = activeLayerOverride ?? layers.find((l) => l.id === state.activeLayerId);
-    const locked = activeLayer?.locked ?? false;
-    gl.clearColor(0.290, 0.345, 0.471, 1.0);
+    // Black margin: the figure editor's backdrop matches the studio chrome
+    // around it (PatternStudio's BG_BLACK). The canvas itself is painted
+    // opaquely by the grid pass on top, so the clear only shows in the margin
+    // — no fullscreen quad needed to fill it.
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     const aspect = bufW / (bufH || 1);
-
-    // Draw margin gradient (fullscreen quad; canvas content draws on top)
-    {
-      const prog = this.marginGradientProgram;
-      const locs = this.marginGradientLocs;
-      gl.useProgram(prog);
-      gl.uniform1f(locs.u_aspect, aspect);
-      gl.uniform1f(locs.u_locked, locked ? 1.0 : 0.0);
-      this.bindQuadCached(locs.a_position, locs.a_uv);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    }
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -1071,7 +1046,6 @@ export class Renderer {
       gl.deleteTexture(this.pathTexture);
       this.pathTexture = null;
     }
-    gl.deleteProgram(this.marginGradientProgram);
     gl.deleteProgram(this.layerProgram);
     gl.deleteProgram(this.gridProgram);
     gl.deleteProgram(this.mirrorProgram);
