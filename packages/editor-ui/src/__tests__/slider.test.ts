@@ -1,4 +1,4 @@
-import { padOffsetFromTouch, sliderValueFromX } from '../logic/slider';
+import { brushDotSize, brushSliderValueFromX, padOffsetFromTouch, sliderValueFromX } from '../logic/slider';
 
 describe('sliderValueFromX', () => {
   test('maps a touch to its fraction across the track', () => {
@@ -28,6 +28,40 @@ describe('sliderValueFromX', () => {
   test('clamps the held current value too, so it can never leak out of range', () => {
     expect(sliderValueFromX(NaN, 200, 5)).toBe(1);
     expect(sliderValueFromX(NaN, 200, -2)).toBe(0);
+  });
+});
+
+describe('brushSliderValueFromX', () => {
+  // 260px track, 44px handle: the handle's center runs 22 → 238.
+  test('maps a touch to the handle-center run, not the raw track', () => {
+    expect(brushSliderValueFromX(22, 260, 44, 0.5)).toBe(0);
+    expect(brushSliderValueFromX(130, 260, 44, 0.5)).toBe(0.5);
+    expect(brushSliderValueFromX(238, 260, 44, 0.5)).toBe(1);
+  });
+
+  test('clamps touches on the end caps (where the handle cannot center)', () => {
+    expect(brushSliderValueFromX(0, 260, 44, 0.5)).toBe(0);
+    expect(brushSliderValueFromX(260, 260, 44, 0.5)).toBe(1);
+  });
+
+  test('holds the current value for a non-finite touch or unmeasured track', () => {
+    expect(brushSliderValueFromX(NaN, 260, 44, 0.42)).toBe(0.42);
+    expect(brushSliderValueFromX(130, 0, 44, 0.3)).toBe(0.3);
+    // A track no wider than its handle has no run at all.
+    expect(brushSliderValueFromX(130, 44, 44, 0.6)).toBe(0.6);
+  });
+});
+
+describe('brushDotSize', () => {
+  test('runs linearly from min to max', () => {
+    expect(brushDotSize(0, 6, 34)).toBe(6);
+    expect(brushDotSize(0.5, 6, 34)).toBe(20);
+    expect(brushDotSize(1, 6, 34)).toBe(34);
+  });
+
+  test('never collapses below min or overflows max on out-of-range values', () => {
+    expect(brushDotSize(-1, 6, 34)).toBe(6);
+    expect(brushDotSize(2, 6, 34)).toBe(34);
   });
 });
 

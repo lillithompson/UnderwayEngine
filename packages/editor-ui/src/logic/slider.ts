@@ -35,3 +35,26 @@ export function padOffsetFromTouch(
   const along = (v: number) => ((v < 0 ? 0 : v > size ? size : v) / size * 2 - 1) * max;
   return [along(x), along(y)];
 }
+
+/** The 0–1 value for a touch at `x` px across a brush-size track whose round
+ *  handle is `handle` px wide. Unlike {@link sliderValueFromX}, the handle
+ *  CONTAINS the value readout (the growing dot), so it must stay fully inside
+ *  the track: the usable run is `trackW − handle` and the touch maps to the
+ *  handle's CENTER. Same non-finite-touch guard, same reason. */
+export function brushSliderValueFromX(
+  x: number,
+  trackW: number,
+  handle: number,
+  current: number,
+): number {
+  const run = trackW - handle;
+  if (run <= 0 || !Number.isFinite(x)) return clamp01(current);
+  return clamp01((x - handle / 2) / run);
+}
+
+/** Diameter of the white size dot inside the brush handle at value `t` —
+ *  linear from `min` (a pinprick, never 0: the handle must stay findable) to
+ *  `max` (flush with the handle's inner edge). */
+export function brushDotSize(t: number, min: number, max: number): number {
+  return min + clamp01(t) * (max - min);
+}

@@ -595,6 +595,22 @@ export interface ObjectPropertiesModel {
   onMerge?(): void;
 }
 
+// ── Brush size ───────────────────────────────────────────────────────
+
+export interface BrushSizeModel {
+  /** Up while a raster brush (paint / erase / blur) is armed. The panel
+   *  animates itself in (small bounce) and out on this flag, so hosts just
+   *  flip it — it occupies the bottom-center strip the object-properties
+   *  panel uses, and the host hides that panel while this is up. */
+  visible: boolean;
+  /** Handle position, 0 (smallest) – 1 (largest). The host owns the mapping
+   *  onto an actual brush radius; the control is just a picker. */
+  value: number;
+  /** Fired live while dragging (and once on a tap). No commit variant — brush
+   *  size is a tool setting, not an undoable document edit. */
+  onChange(value: number): void;
+}
+
 // ── Undo / redo ──────────────────────────────────────────────────────
 
 export interface UndoRedoModel {
