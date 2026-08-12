@@ -360,6 +360,27 @@ export interface CanvasStampBlend {
   beneath?: RGBColor;
 }
 
+/**
+ * Per-texel deposit weighting for {@link stampCanvasPaint} — the scene's
+ * occlusion hook. For each island a dab touches, `forIsland` is handed the
+ * island's key, texel count and TILE-SPACE origin, and returns the weight
+ * function the stamp calls per texel: `i` is the texel's byte offset into
+ * that island's rgba, (lx, ly) its center in island-LOCAL cells (add the
+ * origin for the tile-space point). The returned weight is a 0–1 multiplier
+ * on the texel's deposit: 0 where something opaque fully covers the canvas,
+ * a fraction where a partially transparent object lets that share of the
+ * stroke fall through. Implementations should memoize per island — a stroke
+ * revisits the same texels dab after dab.
+ */
+export interface CanvasPaintStampMask {
+  forIsland(
+    key: string,
+    texelCount: number,
+    originX: number,
+    originY: number,
+  ): (i: number, lx: number, ly: number) => number;
+}
+
 function isUnaryMode(mode: BlendMode): boolean {
   return mode === 'invert' || mode === 'rotate' || mode === 'randomize';
 }
@@ -430,6 +451,10 @@ function forEachIslandUnderDab(
  * source-over into the scene, so a blend mode has no compositing route at
  * draw time and this is the only place it can act; see the
  * destructive-blending section of imagePaintOverlay.ts.
+ *
+ * `mask` weights each texel's deposit by what the scene lets through at that
+ * point — see {@link CanvasPaintStampMask}. Omitted, the dab deposits
+ * unweighted everywhere (the erase/blur brushes and unmasked callers).
  */
 export function stampCanvasPaint(
   working: CanvasPaintWorking,
@@ -439,6 +464,7 @@ export function stampCanvasPaint(
   color: RGBColor,
   alpha: number,
   blend?: CanvasStampBlend,
+  mask?: CanvasPaintStampMask,
 ): string[] {
   const radius = effectiveRadius(radiusCells);
   const changed: string[] = [];
@@ -461,7 +487,7 @@ export function stampCanvasPaint(
       radius,
       color,
       alpha,
-      undefined,
+      mask?.forIsland(key, cols * rows, island.x, island.y),
       blend ? { mode: blend.mode, beneath: blend.beneath, unaryDone } : undefined,
     )) {
       changed.push(key);

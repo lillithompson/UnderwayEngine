@@ -146,11 +146,13 @@ function baseUnderTexel(
  * what makes a slow drag deposit more paint. Returns true when any texel
  * byte actually changed, so callers can skip preview refreshes.
  *
- * `blocked` (optional) is the canvas raster's occlusion hook: called with
- * each texel's byte offset and center (same frame as `lx`/`ly`), a true
- * return skips the texel entirely — how visible vector objects silhouette
- * themselves out of a canvas dab (see canvasPaint.ts). Per-object overlays
- * pass nothing and paint the whole disc.
+ * `weight` (optional) is the canvas raster's occlusion hook: called with
+ * each texel's byte offset and center (same frame as `lx`/`ly`), it returns
+ * a 0–1 multiplier on the texel's deposit. 0 skips the texel entirely (an
+ * opaque object fully covers it), a fraction lets that share FALL THROUGH
+ * (a 0.75-opacity object above passes 0.25 of the stroke) — how the scene
+ * silhouettes itself out of a canvas dab (see canvasPaint.ts). Per-object
+ * overlays pass nothing and paint the whole disc.
  *
  * `blend` (optional) makes the dab destructive rather than a plain deposit —
  * see the section header above. Per-object overlays pass nothing, because
@@ -165,7 +167,7 @@ export function stampImagePaintOverlay(
   radiusCells: number,
   color: RGBColor,
   alpha: number,
-  blocked?: (i: number, cx: number, cy: number) => boolean,
+  weight?: (i: number, cx: number, cy: number) => number,
   blend?: StampBlend,
 ): boolean {
   if (alpha <= 0) return false;
@@ -175,9 +177,12 @@ export function stampImagePaintOverlay(
   const unary = blending ? isUnaryMode(blending.mode) : false;
   let changed = false;
   forEachTexelInDisc(overlay, iwCells, ihCells, lx, ly, radiusCells, (i, distSq, cx, cy) => {
-    const srcA = alpha * gaussianFalloff(distSq / radiusSq);
+    let srcA = alpha * gaussianFalloff(distSq / radiusSq);
     if (srcA <= 0) return;
-    if (blocked && blocked(i, cx, cy)) return;
+    if (weight) {
+      srcA *= weight(i, cx, cy);
+      if (srcA <= 0) return;
+    }
     const dstA = rgba[i + 3] / 255;
     let src = color;
     if (blending) {

@@ -358,3 +358,32 @@ describe('shape paintOverlay markup', () => {
     expect(svg).toContain('style="mix-blend-mode:multiply"');
   });
 });
+
+describe('stampImagePaintOverlay weight (occlusion fall-through)', () => {
+  test('a weighted texel takes exactly its share of the deposit', () => {
+    const masked = createImagePaintOverlay(8, 6, 'normal');
+    const halved = createImagePaintOverlay(8, 6, 'normal');
+    stampImagePaintOverlay(masked, 8, 6, 4.125, 3.125, 1, RED, 1, () => 0.5);
+    stampImagePaintOverlay(halved, 8, 6, 4.125, 3.125, 1, RED, 0.5);
+    // Weight 0.5 at full alpha is byte-identical to an unweighted half-alpha
+    // dab — the fall-through share IS a scaled deposit, not a new rule.
+    expect(masked.rgba).toEqual(halved.rgba);
+  });
+
+  test('weight 0 blocks the texel entirely and reports no change', () => {
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    const changed = stampImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, RED, 1, () => 0);
+    expect(changed).toBe(false);
+    expect(paintOverlayHasInk(o)).toBe(false);
+  });
+
+  test('the weight fn is handed each texel center in the stamp frame', () => {
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    // Block the left half of the dab only: the split shows up in the bytes.
+    stampImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, RED, 1, (_i, cx) => (cx < 4.125 ? 0 : 1));
+    const left = (12 * o.cols + 14) * 4;   // center (3.625, 3.125)
+    const right = (12 * o.cols + 18) * 4;  // center (4.625, 3.125)
+    expect(o.rgba[left + 3]).toBe(0);
+    expect(o.rgba[right + 3]).toBeGreaterThan(0);
+  });
+});

@@ -326,3 +326,38 @@ describe('normalizeCanvasPaintIslands', () => {
     expect(normalizeCanvasPaintIslands(undefined)).toBeUndefined();
   });
 });
+
+describe('stampCanvasPaint occlusion mask', () => {
+  const halfMask = { forIsland: () => () => 0.5 };
+
+  it('weights every deposited texel by what the mask lets through', () => {
+    const masked = createCanvasPaintWorking();
+    const plain = createCanvasPaintWorking();
+    stampCanvasPaint(masked, 8 + C, 8 + C, 2, RED, 1, undefined, halfMask);
+    stampCanvasPaint(plain, 8 + C, 8 + C, 2, RED, 0.5);
+    // A 0.5 mask over a full-alpha dab is byte-identical to an unmasked
+    // half-alpha dab: occlusion is a scaled deposit, not a separate pass.
+    expect(commitCanvasPaint(masked)).toEqual(commitCanvasPaint(plain));
+  });
+
+  it('a fully blocking mask deposits nothing — no tiles survive commit', () => {
+    const working = createCanvasPaintWorking();
+    stampCanvasPaint(working, 8 + C, 8 + C, 2, RED, 1, undefined, { forIsland: () => () => 0 });
+    expect(commitCanvasPaint(working)).toBeUndefined();
+  });
+
+  it('hands forIsland each island origin so weights resolve in tile space', () => {
+    const seen: [number, number][] = [];
+    const mask = {
+      forIsland: (_key: string, _n: number, ox: number, oy: number) => {
+        seen.push([ox, oy]);
+        return () => 1;
+      },
+    };
+    const working = createCanvasPaintWorking();
+    // A dab straddling the tile border at x=16 touches two tiles; each must
+    // report its own origin (local texel coords alone would collide).
+    stampCanvasPaint(working, 16, 8 + C, 2, RED, 1, undefined, mask);
+    expect(seen.sort()).toEqual([[0, 0], [16, 0]]);
+  });
+});
