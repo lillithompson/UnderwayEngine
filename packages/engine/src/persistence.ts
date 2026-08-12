@@ -1,6 +1,7 @@
 import storage from './storage';
-import { Layer, CellState, CellTransform, GridLevel, LAYER_PX, Pattern, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, CanvasPaintIsland, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, ImagePaintOverlay, BlendMode, PathSegment, RGBColor, SVGDesignTemplate, TextObject, Paint, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
-import { legacyCanvasPaintToIslands, normalizeCanvasPaintIslands } from './canvasPaint';
+import { Layer, CellState, CellTransform, GridLevel, LAYER_PX, Pattern, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, CanvasPaintIsland, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, ImagePaintOverlay, BlendMode, PaintObject, PathSegment, RGBColor, SVGDesignTemplate, TextObject, Paint, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
+import { normalizeCanvasPaintIslands, paintTilesContentRect } from './canvasPaint';
+import { mintPaintObjectId } from './paintObject';
 import { createCellGrid, rebuildPixelData } from './cells';
 import { bakeFile } from './bake';
 import { exportToSVG } from './svgExport';
@@ -410,14 +411,13 @@ interface CompMeta {
   texts?: TextObject[];
   /** Canvas background paint (v29+); absent = renderer default. */
   background?: Paint;
-  /** The paint tool's canvas raster (v50+); absent = never painted. Since
-   *  the island model: an ARRAY of {x, y, widthCells, overlay} islands, the
-   *  overlay in the JSON-safe form (base64 texels). Pre-island saves stored
-   *  one bare page-anchored overlay object; {@link migrateCanvasPaint}
-   *  revives both and re-tiles onto the allocation grid. World-anchored, so
-   *  it rides through save/load untouched by normalization (journal pages
-   *  save with normalize:false). */
-  canvasPaint?: unknown;
+  /** Paint island scene nodes (v52+): each object's SCALAR fields only —
+   *  the tile bytes live in their own binary key per object (see
+   *  `pntBlobKey`), so the debounced autosave never re-stringifies
+   *  megabytes of raster into this JSON. Older saves' retired global
+   *  `canvasPaint` layer is deliberately ignored on load (breaking
+   *  change: the layer model was replaced by these scene objects). */
+  paintObjects?: unknown[];
   /** Unified back→front paint order across every scene-object kind.
    *  Absent on older saves; the loader derives it from the kind arrays in
    *  the legacy fixed paint order. */
@@ -441,6 +441,98 @@ interface CompMeta {
  *  accumulate until a janitor pass exists. */
 function imgBlobKey(imageId: string): string {
   return `imgblob_${imageId}`;
+}
+
+/** Storage key for a paint island's packed tile bytes. Keyed by the paint
+ *  object's own id — unlike image blobs the bytes are MUTABLE (every stroke
+ *  swaps the tile array), so they are never shared across objects and a
+ *  duplicate must copy under a fresh id. Same janitor caveat as imgblob_:
+ *  deleteCompositionData does not remove these. */
+function pntBlobKey(paintId: string): string {
+  return `pntblob_${paintId}`;
+}
+
+// ── Paint tile pack (binary form of PaintObject.tiles) ─────────────
+//
+// Little-endian: u8 version(1), u16 tileCount, then per tile
+// f32 x, f32 y, f32 widthCells, u16 cols, u16 rows, cols×rows×4 rgba.
+// Tile blend is not stored: island tiles are always 'normal' (brush blend
+// modes bake destructively at stamp time — see canvasPaint.ts).
+
+const PAINT_TILE_PACK_VERSION = 1;
+
+function packPaintTiles(tiles: readonly CanvasPaintIsland[]): Uint8Array {
+  let size = 1 + 2;
+  for (const t of tiles) size += 4 * 3 + 2 + 2 + t.overlay.rgba.length;
+  const out = new Uint8Array(size);
+  const view = new DataView(out.buffer);
+  let pos = 0;
+  view.setUint8(pos, PAINT_TILE_PACK_VERSION); pos += 1;
+  view.setUint16(pos, tiles.length, true); pos += 2;
+  for (const t of tiles) {
+    view.setFloat32(pos, t.x, true); pos += 4;
+    view.setFloat32(pos, t.y, true); pos += 4;
+    view.setFloat32(pos, t.widthCells, true); pos += 4;
+    view.setUint16(pos, t.overlay.cols, true); pos += 2;
+    view.setUint16(pos, t.overlay.rows, true); pos += 2;
+    out.set(t.overlay.rgba, pos); pos += t.overlay.rgba.length;
+  }
+  return out;
+}
+
+function unpackPaintTiles(bytes: Uint8Array): CanvasPaintIsland[] | undefined {
+  if (bytes.length < 3) return undefined;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let pos = 0;
+  const version = view.getUint8(pos); pos += 1;
+  if (version !== PAINT_TILE_PACK_VERSION) return undefined;
+  const count = view.getUint16(pos, true); pos += 2;
+  const tiles: CanvasPaintIsland[] = [];
+  for (let i = 0; i < count; i++) {
+    if (pos + 16 > bytes.length) return undefined;
+    const x = view.getFloat32(pos, true); pos += 4;
+    const y = view.getFloat32(pos, true); pos += 4;
+    const widthCells = view.getFloat32(pos, true); pos += 4;
+    const cols = view.getUint16(pos, true); pos += 2;
+    const rows = view.getUint16(pos, true); pos += 2;
+    const len = cols * rows * 4;
+    if (cols <= 0 || rows <= 0 || pos + len > bytes.length) return undefined;
+    tiles.push({
+      x, y, widthCells,
+      overlay: { cols, rows, rgba: bytes.slice(pos, pos + len), blend: 'normal' },
+    });
+    pos += len;
+  }
+  return tiles;
+}
+
+// Skip-if-unchanged cache for paint blob writes: paintId → the tiles array
+// reference last written. Commits swap the array (tiles are
+// immutable-by-convention), so reference equality is exactly "bytes
+// unchanged" — the debounced autosave then skips untouched islands.
+// globalThis-hosted for the same chunk-duplication reason as the meta cache.
+function _getPaintBlobCache(): Map<string, readonly CanvasPaintIsland[]> {
+  const w = globalThis as any;
+  if (!w.__facetPaintBlobCache) w.__facetPaintBlobCache = new Map<string, readonly CanvasPaintIsland[]>();
+  return w.__facetPaintBlobCache;
+}
+
+/** A paint object's JSON-safe meta form: scalar fields only, tiles omitted
+ *  (they go to the object's own binary key). */
+function serializePaintForMeta(p: PaintObject): unknown {
+  const { tiles: _tiles, ...scalar } = p;
+  return scalar;
+}
+
+/** Revive one paint object's scalar fields from meta. Tiles are hydrated
+ *  separately (loadCompositionState); anything structurally unusable →
+ *  undefined so the object is dropped rather than poisoning the scene. */
+function migratePaintObjectMeta(v: any): Omit<PaintObject, 'tiles'> | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  if (typeof v.id !== 'string' || !v.id.startsWith('pnt_')) return undefined;
+  const nums = [v.cellX, v.cellY, v.cellWidth, v.cellHeight];
+  if (!nums.every((n: any) => Number.isFinite(n))) return undefined;
+  return v as Omit<PaintObject, 'tiles'>;
 }
 
 /** Legacy format with layers — used for migration */
@@ -536,37 +628,6 @@ function migratePaintOverlay(v: any): ImagePaintOverlay | undefined {
   return { cols, rows, blend, rgba };
 }
 
-/** JSON-safe canvas paint island: origin + span, overlay in the shared
- *  base64 form. */
-function serializeCanvasPaintIslandForMeta(isl: CanvasPaintIsland): unknown {
-  return {
-    x: isl.x, y: isl.y, widthCells: isl.widthCells,
-    overlay: serializePaintOverlayForMeta(isl.overlay),
-  };
-}
-
-/** Revive the canvas paint raster from either stored shape: the island array
- *  (current), or the single page-anchored overlay pre-island saves wrote —
- *  both funneled through the grid normalizer so the stamp path can rely on
- *  its invariants. Anything unrecognized → undefined. */
-function migrateCanvasPaint(v: any): CanvasPaintIsland[] | undefined {
-  if (!v || typeof v !== 'object') return undefined;
-  if (Array.isArray(v)) {
-    const islands: CanvasPaintIsland[] = [];
-    for (const e of v) {
-      if (!e || typeof e !== 'object') continue;
-      const overlay = migratePaintOverlay(e.overlay);
-      const x = Number(e.x);
-      const y = Number(e.y);
-      const widthCells = Number(e.widthCells);
-      if (!overlay || !Number.isFinite(x) || !Number.isFinite(y) || !(widthCells > 0)) continue;
-      islands.push({ x, y, widthCells, overlay });
-    }
-    return normalizeCanvasPaintIslands(islands);
-  }
-  const legacy = migratePaintOverlay(v);
-  return legacy ? legacyCanvasPaintToIslands(legacy) : undefined;
-}
 
 /** Rebuild the sparse per-copy paint Map from its JSON form. New saves store an
  *  entries array (`[[key, {r,g,b}], …]`); older buggy saves stored the Map
@@ -642,6 +703,20 @@ export async function saveCompositionState(
     }
   }
 
+  // Persist paint island tile bytes, one binary key per object. Unlike
+  // image bytes these are mutable, but commits swap the whole tiles array,
+  // so a reference-equality cache is exactly "unchanged since last write" —
+  // the debounced autosave then rewrites only islands the user painted.
+  const paintObjects = state.paintObjects ?? [];
+  if (paintObjects.length > 0) {
+    const cache = _getPaintBlobCache();
+    for (const p of paintObjects) {
+      if (cache.get(p.id) === p.tiles) continue;
+      await storage.setBinary(pntBlobKey(p.id), packPaintTiles(p.tiles));
+      cache.set(p.id, p.tiles);
+    }
+  }
+
   // Normalize content into the canonical 32×32 L0 box before serializing
   // (unless the caller opted out — see CompositionIOOptions.normalize).
   // Power-of-2 scaling preserves grid alignment; gridLevel is bumped by k and
@@ -654,6 +729,7 @@ export async function saveCompositionState(
     svgObjects: state.svgObjects,
     images,
     texts: state.texts,
+    paintObjects,
     groups: state.groups,
     gridLevel: state.gridLevel,
     strokeScale: state.strokeScale,
@@ -675,8 +751,8 @@ export async function saveCompositionState(
       : undefined,
     texts: normalized.texts && normalized.texts.length > 0 ? normalized.texts : undefined,
     background: normalized.background,
-    canvasPaint: state.canvasPaint && state.canvasPaint.length > 0
-      ? state.canvasPaint.map(serializeCanvasPaintIslandForMeta)
+    paintObjects: normalized.paintObjects && normalized.paintObjects.length > 0
+      ? normalized.paintObjects.map(serializePaintForMeta)
       : undefined,
     sceneOrder: state.sceneOrder.length > 0 ? state.sceneOrder : undefined,
     lastChosenColor: state.lastChosenColor,
@@ -791,6 +867,30 @@ export async function loadCompositionState(
     }
   }
 
+  // Hydrate paint island tiles from their per-object binary keys. A missing
+  // or unreadable blob drops the object (an island with no tiles has nothing
+  // to show and violates the never-empty invariant) — same corrupt-storage
+  // tolerance as missing image blobs. The stored contentRect is trusted when
+  // sane; otherwise it is re-derived from the tiles' ink bounds.
+  const paintBlobCache = _getPaintBlobCache();
+  const paintObjects: PaintObject[] = [];
+  for (const raw of parsed.paintObjects ?? []) {
+    const scalar = migratePaintObjectMeta(raw);
+    if (!scalar) continue;
+    const bytes = await storage.getBinary(pntBlobKey(scalar.id));
+    const tiles = bytes ? normalizeCanvasPaintIslands(unpackPaintTiles(bytes)) : undefined;
+    if (!tiles || tiles.length === 0) continue;
+    const contentOk = [scalar.contentX, scalar.contentY, scalar.contentW, scalar.contentH]
+      .every((n) => Number.isFinite(n)) && scalar.contentW > 0 && scalar.contentH > 0;
+    const rect = contentOk ? null : paintTilesContentRect(tiles);
+    if (!contentOk && !rect) continue;
+    const p: PaintObject = contentOk
+      ? { ...scalar, tiles }
+      : { ...scalar, tiles, contentX: rect!.x, contentY: rect!.y, contentW: rect!.w, contentH: rect!.h };
+    paintObjects.push(p);
+    paintBlobCache.set(p.id, p.tiles);
+  }
+
   // Migration: pre-normalization (legacy) JSON records may have content
   // outside the canonical 32×32 L0 box. Normalize idempotently — content
   // already in canonical position passes through unchanged (scale=1, k=0).
@@ -804,6 +904,7 @@ export async function loadCompositionState(
     svgObjects,
     images,
     texts,
+    paintObjects,
     groups,
     gridLevel: parsed.gridLevel ?? 1,
     strokeScale: normalizeStrokeScale(parsed.strokeScale),
@@ -822,10 +923,10 @@ export async function loadCompositionState(
     imageBlobs,
     texts: r.texts ?? [],
     background: r.background,
-    canvasPaint: migrateCanvasPaint(parsed.canvasPaint),
+    paintObjects: r.paintObjects ?? [],
     sceneOrder: parsed.sceneOrder
-      ? repairSceneOrder({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [], sceneOrder: parsed.sceneOrder })
-      : deriveSceneOrderFromKindArrays({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [] }),
+      ? repairSceneOrder({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [], paintObjects: r.paintObjects ?? [], sceneOrder: parsed.sceneOrder })
+      : deriveSceneOrderFromKindArrays({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [], paintObjects: r.paintObjects ?? [] }),
     lastChosenColor: parsed.lastChosenColor ?? { r: 255, g: 255, b: 255 },
     customColors: parsed.customColors ?? [],
     // Camera placeholder when content was rescaled — the editor frames
@@ -905,6 +1006,28 @@ export async function duplicateCompositionData(
             : fig.figureKey,
         };
       });
+    }
+  }
+
+  // Paint islands: re-mint each object's id and copy its tile blob under
+  // the fresh key. Unlike image blobs (immutable, shareable by design),
+  // tile bytes are mutable — if the duplicate kept the source ids, the
+  // first stroke in either composition would overwrite the other's paint.
+  if (Array.isArray(parsed.paintObjects) && parsed.paintObjects.length > 0) {
+    const remapped: any[] = [];
+    const idRemap = new Map<string, string>();
+    for (const p of parsed.paintObjects) {
+      if (!p || typeof p !== 'object' || typeof p.id !== 'string') continue;
+      const freshId = mintPaintObjectId();
+      idRemap.set(p.id, freshId);
+      const bytes = await storage.getBinary(pntBlobKey(p.id));
+      if (!bytes) continue;
+      await storage.setBinary(pntBlobKey(freshId), bytes);
+      remapped.push({ ...p, id: freshId });
+    }
+    parsed.paintObjects = remapped.length > 0 ? remapped : undefined;
+    if (Array.isArray(parsed.sceneOrder)) {
+      parsed.sceneOrder = parsed.sceneOrder.map((id: string) => idRemap.get(id) ?? id);
     }
   }
 
@@ -1246,6 +1369,7 @@ export async function exportCompositionBundle(compId: string): Promise<Uint8Arra
       imageBlobs: partial.imageBlobs ?? {},
       texts: partial.texts ?? [],
       background: partial.background,
+      paintObjects: partial.paintObjects ?? [],
       sceneOrder: partial.sceneOrder,
       customColors: partial.customColors ?? [],
     },
@@ -1287,6 +1411,11 @@ export async function importCompositionBundle(data: Uint8Array, fileName?: strin
   const svgObjects: SVGObject[] = meta.svgObjects ?? [];
   const images = meta.images ?? [];
   const texts = meta.texts ?? [];
+  // Re-mint paint island ids: their tile bytes land in per-id binary keys
+  // on save, and an imported copy keeping the source ids would share (and
+  // later clobber) an existing composition's paint blobs.
+  const importedPaints = (meta.paintObjects ?? []).map((p) => ({ ...p, id: mintPaintObjectId() }));
+  const paintIdRemap = new Map((meta.paintObjects ?? []).map((p, i) => [p.id, importedPaints[i].id]));
   const compState: CompositionState = {
     id: compId,
     name: compName,
@@ -1295,6 +1424,7 @@ export async function importCompositionBundle(data: Uint8Array, fileName?: strin
     images,
     imageBlobs: meta.imageBlobs ?? {},
     texts,
+    paintObjects: importedPaints,
     background: meta.background,
     lineDraft: null,
     arcDraft: null,
@@ -1309,8 +1439,11 @@ export async function importCompositionBundle(data: Uint8Array, fileName?: strin
     // a buggy version may have a partial sceneOrder — `repairSceneOrder`
     // backfills any missing ids so the loaded scene matches the data.
     sceneOrder: meta.sceneOrder
-      ? repairSceneOrder({ figures: remappedFigures, svgObjects, images, texts, sceneOrder: meta.sceneOrder })
-      : deriveSceneOrderFromKindArrays({ figures: remappedFigures, svgObjects, images, texts }),
+      ? repairSceneOrder({
+          figures: remappedFigures, svgObjects, images, texts, paintObjects: importedPaints,
+          sceneOrder: meta.sceneOrder.map((id) => paintIdRemap.get(id) ?? id),
+        })
+      : deriveSceneOrderFromKindArrays({ figures: remappedFigures, svgObjects, images, texts, paintObjects: importedPaints }),
     gridLevel: meta.gridLevel,
     strokeScale: meta.strokeScale,
     gridIntensity: meta.gridIntensity ?? 0.5,

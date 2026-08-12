@@ -1,5 +1,5 @@
-﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
-import { legacyCanvasPaintToIslands, normalizeCanvasPaintIslands } from './canvasPaint';
+﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
+import { normalizeCanvasPaintIslands } from './canvasPaint';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
@@ -389,9 +389,23 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      The v50 hasCanvasPaint byte is replaced by u16 islandCount, then per
 //      island: f32 x + f32 y + f32 widthCells (world cells) followed by the
 //      v48 paint-overlay payload. v50 files read as one page-anchored
-//      island, re-tiled onto the allocation grid on load
-//      (legacyCanvasPaintToIslands).
-const FORMAT_VERSION = 51;
+//      island, re-tiled onto the allocation grid on load.
+// v52: PaintObject scene nodes replace the global canvasPaint layer. The
+//      v51 island count is still WRITTEN (always 0) so the section offsets
+//      hold; old files' islands are parsed and DROPPED on read (the layer
+//      model was retired — brushwork is scene objects now). New final
+//      PAINT OBJECTS section after it: u16 count, then per object:
+//      idIdx u16; flags u8 (0x01 mirrorH, 0x02 mirrorV, 0x04 locked,
+//      0x08 hidden, 0x10 hasName, 0x20 hasGroupId, 0x40 hasPreGroupName,
+//      0x80 hasOpacity); flags2 u8 (0x01 hasLocalBbox, 0x02 hasIdentityBbox,
+//      0x04 hasAngleDeg, 0x08 hasEdgeSoften, rotation 2 bits at 0x30);
+//      conditional nameIdx/groupIdIdx/preGroupNameIdx u16 each; bbox
+//      4×f32 (world cells — f32 like island origins, NOT the i16
+//      fixed-point lattice); conditional local bbox 4×f32 + identity bbox
+//      4×f32; contentRect 4×f32 (tile space); conditional opacity f32 +
+//      edgeSoften f32 + angleDeg f32; u16 tileCount, then per tile
+//      f32 x + f32 y + f32 widthCells + the v48 paint-overlay payload.
+const FORMAT_VERSION = 52;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -453,9 +467,9 @@ export interface CompositionBundle {
   texts?: TextObject[];
   /** Canvas background paint (v29+). Undefined = renderer default. */
   background?: Paint;
-  /** The paint tool's canvas raster islands (v50+; island list since v51).
-   *  Undefined = never painted. */
-  canvasPaint?: CanvasPaintIsland[];
+  /** Paint island scene nodes (v52+). Undefined/empty for older bundles;
+   *  v50/v51 files' retired global canvasPaint layer is dropped on read. */
+  paintObjects?: PaintObject[];
 }
 
 export interface DeserializedComposition {
@@ -584,6 +598,16 @@ function buildStringTable(
       add(t.preGroupName);
       add(t.content);
       add(t.style.fontId);
+    }
+  }
+
+  // Paint island strings (v52+)
+  if (bundle.paintObjects) {
+    for (const p of bundle.paintObjects) {
+      add(p.id);
+      add(p.name);
+      add(p.groupId);
+      add(p.preGroupName);
     }
   }
 
@@ -2661,7 +2685,7 @@ export function serializeComposition(
   const rawGroups = bundle.groups ?? [];
   const images = bundle.images ?? [];
   const texts = bundle.texts ?? [];
-  const aliveGroupIds = computeAliveGroupIds(rawGroups, bundle.figures, svgObjects, images, texts);
+  const aliveGroupIds = computeAliveGroupIds(rawGroups, bundle.figures, svgObjects, images, texts, bundle.paintObjects ?? []);
   const groups = aliveGroupIds.size === rawGroups.length
     ? rawGroups
     : rawGroups.filter((g) => aliveGroupIds.has(g.id));
@@ -2737,10 +2761,14 @@ export function serializeComposition(
   totalSize += 1 + (bundle.background ? paintBinarySize(bundle.background) : 0);
 
   // Canvas paint islands (v51+): u16 count + per-island origin/span + overlay.
+  // Since v52 the canvas-island count is always written as 0 — the global
+  // layer is retired (see the v52 changelog).
   totalSize += 2;
-  for (const isl of bundle.canvasPaint ?? []) {
-    totalSize += 12 + paintOverlayBinarySize(isl.overlay);
-  }
+
+  // Paint island scene nodes (v52+). Final section of the file.
+  const paints = bundle.paintObjects ?? [];
+  totalSize += 2; // paintCount
+  for (const p of paints) totalSize += paintObjectBinarySize(p);
 
   // â”€â”€ Pass 2: write â”€â”€
 
@@ -2984,17 +3012,85 @@ export function serializeComposition(
     out[pos++] = 0;
   }
 
-  // Canvas paint islands (v51+). Final section of the file.
-  const islands = bundle.canvasPaint ?? [];
-  view.setUint16(pos, islands.length, true); pos += 2;
-  for (const isl of islands) {
-    view.setFloat32(pos, isl.x, true); pos += 4;
-    view.setFloat32(pos, isl.y, true); pos += 4;
-    view.setFloat32(pos, isl.widthCells, true); pos += 4;
-    pos = writePaintOverlay(view, out, pos, isl.overlay);
+  // Canvas paint islands (v51): the retired global layer. Always 0 since
+  // v52; kept so the section layout after the background stays stable.
+  view.setUint16(pos, 0, true); pos += 2;
+
+  // Paint island scene nodes (v52+). Final section of the file.
+  view.setUint16(pos, paints.length, true); pos += 2;
+  for (const p of paints) {
+    view.setUint16(pos, indexOf.get(p.id) ?? 0, true); pos += 2;
+    let flags = 0;
+    if (p.mirrorH) flags |= 0x01;
+    if (p.mirrorV) flags |= 0x02;
+    if (p.locked) flags |= 0x04;
+    if (p.hidden) flags |= 0x08;
+    if (p.name != null) flags |= 0x10;
+    if (p.groupId != null) flags |= 0x20;
+    if (p.preGroupName != null) flags |= 0x40;
+    if (p.opacity != null) flags |= 0x80;
+    out[pos++] = flags;
+    let flags2 = 0;
+    if (p.localCellX != null) flags2 |= 0x01;
+    if (p.identityCellX != null) flags2 |= 0x02;
+    if (p.angleDeg) flags2 |= 0x04;
+    if (p.edgeSoften != null) flags2 |= 0x08;
+    flags2 |= (ROTATION_TO_BITS[p.rotation ?? 0] & 0x03) << 4;
+    out[pos++] = flags2;
+    if (p.name != null) { view.setUint16(pos, indexOf.get(p.name) ?? 0, true); pos += 2; }
+    if (p.groupId != null) { view.setUint16(pos, indexOf.get(p.groupId) ?? 0, true); pos += 2; }
+    if (p.preGroupName != null) { view.setUint16(pos, indexOf.get(p.preGroupName) ?? 0, true); pos += 2; }
+    view.setFloat32(pos, p.cellX, true); pos += 4;
+    view.setFloat32(pos, p.cellY, true); pos += 4;
+    view.setFloat32(pos, p.cellWidth, true); pos += 4;
+    view.setFloat32(pos, p.cellHeight, true); pos += 4;
+    if (p.localCellX != null) {
+      view.setFloat32(pos, p.localCellX, true); pos += 4;
+      view.setFloat32(pos, p.localCellY ?? 0, true); pos += 4;
+      view.setFloat32(pos, p.localCellWidth ?? 0, true); pos += 4;
+      view.setFloat32(pos, p.localCellHeight ?? 0, true); pos += 4;
+    }
+    if (p.identityCellX != null) {
+      view.setFloat32(pos, p.identityCellX, true); pos += 4;
+      view.setFloat32(pos, p.identityCellY ?? 0, true); pos += 4;
+      view.setFloat32(pos, p.identityCellWidth ?? 0, true); pos += 4;
+      view.setFloat32(pos, p.identityCellHeight ?? 0, true); pos += 4;
+    }
+    view.setFloat32(pos, p.contentX, true); pos += 4;
+    view.setFloat32(pos, p.contentY, true); pos += 4;
+    view.setFloat32(pos, p.contentW, true); pos += 4;
+    view.setFloat32(pos, p.contentH, true); pos += 4;
+    if (p.opacity != null) { view.setFloat32(pos, p.opacity, true); pos += 4; }
+    if (p.edgeSoften != null) { view.setFloat32(pos, p.edgeSoften, true); pos += 4; }
+    if (p.angleDeg) { view.setFloat32(pos, p.angleDeg, true); pos += 4; }
+    view.setUint16(pos, p.tiles.length, true); pos += 2;
+    for (const tile of p.tiles) {
+      view.setFloat32(pos, tile.x, true); pos += 4;
+      view.setFloat32(pos, tile.y, true); pos += 4;
+      view.setFloat32(pos, tile.widthCells, true); pos += 4;
+      pos = writePaintOverlay(view, out, pos, tile.overlay);
+    }
   }
 
   return out;
+}
+
+// ── Paint island size estimation ────────────────────────────────────
+
+function paintObjectBinarySize(p: PaintObject): number {
+  // idIdx(2) + flags(1) + flags2(1) + bbox(16) + contentRect(16)
+  let size = 2 + 1 + 1 + 16 + 16;
+  if (p.name != null) size += 2;
+  if (p.groupId != null) size += 2;
+  if (p.preGroupName != null) size += 2;
+  if (p.localCellX != null) size += 16;
+  if (p.identityCellX != null) size += 16;
+  if (p.opacity != null) size += 4;
+  if (p.edgeSoften != null) size += 4;
+  if (p.angleDeg) size += 4;
+  size += 2; // tileCount
+  for (const tile of p.tiles) size += 12 + paintOverlayBinarySize(tile.overlay);
+  return size;
 }
 
 // â”€â”€ Deserialize â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -3388,25 +3484,81 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
   // Canvas paint raster - final section. Undefined for older files. v51+
   // stores the sparse island list; v50 stored one page-anchored overlay,
   // converted here onto the island grid so every caller sees one shape.
-  let canvasPaint: CanvasPaintIsland[] | undefined;
+  // v50/v51 canvas paint raster: the retired global layer. Parsed only to
+  // advance past its bytes, then DROPPED — the layer model was replaced by
+  // paint island scene objects in v52 (deliberate breaking change; old
+  // files' brushwork does not migrate).
   if (version >= 51 && pos < data.byteLength) {
     const count = view.getUint16(pos, true); pos += 2;
-    const islands: CanvasPaintIsland[] = [];
     for (let i = 0; i < count; i++) {
-      const x = view.getFloat32(pos, true); pos += 4;
-      const y = view.getFloat32(pos, true); pos += 4;
-      const widthCells = view.getFloat32(pos, true); pos += 4;
-      const po = readPaintOverlay(view, data, pos);
-      pos = po.pos;
-      islands.push({ x, y, widthCells, overlay: po.overlay });
+      pos += 12; // f32 x + f32 y + f32 widthCells
+      pos = readPaintOverlay(view, data, pos).pos;
     }
-    canvasPaint = normalizeCanvasPaintIslands(islands);
   } else if (version === 50 && pos < data.byteLength) {
     const hasCanvasPaint = data[pos++];
     if (hasCanvasPaint === 1) {
-      const po = readPaintOverlay(view, data, pos);
-      canvasPaint = legacyCanvasPaintToIslands(po.overlay);
-      pos = po.pos;
+      pos = readPaintOverlay(view, data, pos).pos;
+    }
+  }
+
+  // Paint island scene nodes (v52+). Final section of the file.
+  const paintObjects: PaintObject[] = [];
+  if (version >= 52 && pos < data.byteLength) {
+    const paintCount = view.getUint16(pos, true); pos += 2;
+    for (let i = 0; i < paintCount; i++) {
+      const idIdx = view.getUint16(pos, true); pos += 2;
+      const flags = data[pos++];
+      const flags2 = data[pos++];
+      const p: PaintObject = {
+        id: strings[idIdx],
+        cellX: 0, cellY: 0, cellWidth: 0, cellHeight: 0,
+        tiles: [],
+        contentX: 0, contentY: 0, contentW: 0, contentH: 0,
+      };
+      if (flags & 0x01) p.mirrorH = true;
+      if (flags & 0x02) p.mirrorV = true;
+      if (flags & 0x04) p.locked = true;
+      if (flags & 0x08) p.hidden = true;
+      const rotation = BITS_TO_ROTATION[(flags2 >> 4) & 0x03];
+      if (rotation !== 0) p.rotation = rotation;
+      if (flags & 0x10) { p.name = strings[view.getUint16(pos, true)]; pos += 2; }
+      if (flags & 0x20) { p.groupId = strings[view.getUint16(pos, true)]; pos += 2; }
+      if (flags & 0x40) { p.preGroupName = strings[view.getUint16(pos, true)]; pos += 2; }
+      p.cellX = view.getFloat32(pos, true); pos += 4;
+      p.cellY = view.getFloat32(pos, true); pos += 4;
+      p.cellWidth = view.getFloat32(pos, true); pos += 4;
+      p.cellHeight = view.getFloat32(pos, true); pos += 4;
+      if (flags2 & 0x01) {
+        p.localCellX = view.getFloat32(pos, true); pos += 4;
+        p.localCellY = view.getFloat32(pos, true); pos += 4;
+        p.localCellWidth = view.getFloat32(pos, true); pos += 4;
+        p.localCellHeight = view.getFloat32(pos, true); pos += 4;
+      }
+      if (flags2 & 0x02) {
+        p.identityCellX = view.getFloat32(pos, true); pos += 4;
+        p.identityCellY = view.getFloat32(pos, true); pos += 4;
+        p.identityCellWidth = view.getFloat32(pos, true); pos += 4;
+        p.identityCellHeight = view.getFloat32(pos, true); pos += 4;
+      }
+      p.contentX = view.getFloat32(pos, true); pos += 4;
+      p.contentY = view.getFloat32(pos, true); pos += 4;
+      p.contentW = view.getFloat32(pos, true); pos += 4;
+      p.contentH = view.getFloat32(pos, true); pos += 4;
+      if (flags & 0x80) { p.opacity = view.getFloat32(pos, true); pos += 4; }
+      if (flags2 & 0x08) { p.edgeSoften = view.getFloat32(pos, true); pos += 4; }
+      if (flags2 & 0x04) { p.angleDeg = view.getFloat32(pos, true); pos += 4; }
+      const tileCount = view.getUint16(pos, true); pos += 2;
+      const tiles: CanvasPaintIsland[] = [];
+      for (let t = 0; t < tileCount; t++) {
+        const x = view.getFloat32(pos, true); pos += 4;
+        const y = view.getFloat32(pos, true); pos += 4;
+        const widthCells = view.getFloat32(pos, true); pos += 4;
+        const po = readPaintOverlay(view, data, pos);
+        pos = po.pos;
+        tiles.push({ x, y, widthCells, overlay: po.overlay });
+      }
+      p.tiles = normalizeCanvasPaintIslands(tiles) ?? [];
+      if (p.tiles.length > 0) paintObjects.push(p);
     }
   }
 
@@ -3414,7 +3566,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
   // Older save paths could leave orphans behind when the last member of a
   // group was deleted â€” filter them here so the Scene Outline count and
   // the dev-mode object count agree from the moment the file loads.
-  const aliveGroupIds = computeAliveGroupIds(groups, figures, svgObjects, images, texts);
+  const aliveGroupIds = computeAliveGroupIds(groups, figures, svgObjects, images, texts, paintObjects);
   const prunedGroups = aliveGroupIds.size === groups.length
     ? groups
     : groups.filter((g) => aliveGroupIds.has(g.id));
@@ -3436,7 +3588,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       customColors,
       texts,
       background,
-      canvasPaint,
+      paintObjects: paintObjects.length > 0 ? paintObjects : undefined,
     },
     embeddedFiles,
   };

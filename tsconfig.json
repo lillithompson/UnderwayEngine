@@ -19,6 +19,7 @@
     "paths": {
       "@/engine/*": ["packages/engine/src/*"],
       "@/native-shell/*": ["packages/shell/src/*"],
+      "@/editor-ui/*": ["packages/editor-ui/src/*"],
       "expo-constants": ["shims/expo-constants"],
       "expo-asset": ["shims/expo-asset"],
       "expo-gl": ["shims/expo-gl"],

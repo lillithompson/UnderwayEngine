@@ -71,11 +71,6 @@ export interface CompositionExportOptions {
    *  {@link exportCompositionPNG}: JPEG has no alpha, so a cutout exported as
    *  JPEG lands on a white backdrop. */
   subset?: CompositionSubsetSelector;
-  /** Keep the paint tool's raster layer in a `subset` cutout, framing on its
-   *  brush marks along with the selected objects — for a cutout whose subject
-   *  is the drawing itself. See
-   *  {@link CompositionSVGInputs.canvasPaintInSubset}. */
-  canvasPaintInSubset?: boolean;
   /** Paint every glyph this color instead of its authored one — for a cutout
    *  that lands on a backdrop the page never had. See
    *  {@link CompositionSVGInputs.textColorOverride}. */
@@ -308,11 +303,10 @@ export async function exportCompositionSVG(
     imageBlobs: partial.imageBlobs ?? {},
     texts: partial.texts ?? [],
     background: partial.background,
-    canvasPaint: partial.canvasPaint,
+    paintObjects: partial.paintObjects,
     fontResolver: options?.fontResolver ?? defaultFontResolver,
     preferOriginalImages: options?.preferOriginalImages,
     subset: options?.subset,
-    canvasPaintInSubset: options?.canvasPaintInSubset,
     textColorOverride: options?.textColorOverride,
     strokeColorOverride: options?.strokeColorOverride,
     dropTextShadow: options?.dropTextShadow,

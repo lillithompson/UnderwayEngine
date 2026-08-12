@@ -69,49 +69,6 @@ void main() {
 `;
 
 /**
- * Canvas paint island fragment shader.
- * Draws ONE island of the composition's canvas raster
- * ({@link CompositionState.canvasPaint}), camera-transformed like the grid —
- * the renderer issues one draw per island. The island texture is uploaded
- * PREMULTIPLIED (see CompositionRenderer.uploadIsland) so LINEAR sampling
- * can't bleed transparent-black fringes into a dab's soft edge — the draw
- * call pairs it with blendFunc(ONE, ONE_MINUS_SRC_ALPHA).
- * Uniforms:
- *   u_texture - premultiplied island RGBA texture
- *   u_offset  - camera offset in UV space
- *   u_zoom    - camera zoom
- *   u_aspect  - viewport aspect correction
- *   u_rect    - island rect in layer UV space (x, y, w, h) — 1 UV unit = 32
- *               world cells (the unit the camera uniforms use)
- */
-export const CANVAS_PAINT_FRAG = `
-precision mediump float;
-varying vec2 v_uv;
-uniform sampler2D u_texture;
-uniform vec2 u_offset;
-uniform float u_zoom;
-uniform float u_aspect;
-uniform vec4 u_rect;
-
-void main() {
-  vec2 uv = v_uv - 0.5;
-  uv.y /= u_aspect;
-  uv = uv / u_zoom - u_offset;
-  uv = uv + 0.5;
-
-  // Outside this island's rect: nothing to paint.
-  vec2 local = (uv - u_rect.xy) / u_rect.zw;
-  if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) {
-    discard;
-  }
-
-  vec4 color = texture2D(u_texture, local);
-  if (color.a < 0.004) discard;
-  gl_FragColor = color;
-}
-`;
-
-/**
  * Grid overlay fragment shader.
  * Draws 1px grid lines as a screen-space overlay, independent of cell count.
  * Uniforms:

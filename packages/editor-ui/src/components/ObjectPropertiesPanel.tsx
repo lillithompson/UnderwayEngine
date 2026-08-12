@@ -3,6 +3,7 @@ import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimension
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, formatPixelSize, swipeDismissDirection } from '../logic/imageEdit';
+import { PAINT_EDIT_OPTIONS } from '../logic/paintEdit';
 import { multiSelectionOptions } from '../logic/multiOptions';
 import { SubmenuKey, typeMenuHeight } from '../logic/submenuHeight';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
@@ -465,7 +466,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // The two optional carousel pages. `type` is what the selection's KIND
   // offers (and a multi-selection's members must share a kind to have one);
   // `multi` is what the SELECTION offers, whatever it is made of.
-  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || showUngroup;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || showUngroup;
   const hasMultiOptions = showLayout || showGroup || showMerge;
   const pages = objectPanelPages({ type: hasTypeOptions, multi: hasMultiOptions });
   // Signature of the current selection's option pages. It changes when the
@@ -474,7 +475,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // subtype is part of it so switching between two vector objects with
   // different menus (a line → a rectangle) re-lands on the type row.
   const typeSig = model.visible
-    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
+    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
     : '';
   const prevTypeSig = useRef('');
   // The page the panel was last showing for a real selection — what the next
@@ -559,6 +560,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       : ['tint', 'crop', 'shadow', 'border', 'opacity'])
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'align', 'shadow']
+    : model.showPaintOptions ? ['opacity']
     : model.showSvgOptions
       ? [
           'stroke',
@@ -794,17 +796,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // re-run this every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showImageEdit, model.showFrameOptions, model.showTextStyle]);
-  // The Opacity bar is shared by images and the closed vector shapes, so it
-  // folds away only when the selection is neither (or the panel hides).
+  // The Opacity bar is shared by images, paint islands, and the closed
+  // vector shapes, so it folds away only when the selection is none of
+  // those (or the panel hides).
   useEffect(() => {
-    const canOpacity = model.showImageEdit || svgOpacityable;
+    const canOpacity = model.showImageEdit || model.showPaintOptions || svgOpacityable;
     if ((!model.visible || !canOpacity) && model.opacityOpen) {
       model.onOpacityOpenChange?.(false);
     }
     // model.on* are stable setters; listing the whole model would re-run this
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showImageEdit, svgOpacityable, model.opacityOpen]);
+  }, [model.visible, model.showImageEdit, model.showPaintOptions, svgOpacityable, model.opacityOpen]);
 
   // Seed the shadow / border drafts from the current effect each time the
   // controls open.
@@ -1130,6 +1133,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // Edit / Type / Align. It's a toggle, so the lit pill now says what the
     // black/white swatch used to.
     typeSpecs = [{ key: 'invert', label: 'Invert', toggled: model.inverted, onPress: model.onInvert }];
+  } else if (model.showPaintOptions) {
+    // Paint island: raster brushwork has no Stroke/Fill to edit — its one
+    // option is Opacity, opening the same bar (opacity + soften) an image's
+    // Opacity action does.
+    typeSpecs = PAINT_EDIT_OPTIONS.map((opt) => ({
+      key: opt.action,
+      label: opt.label,
+      sub: opt.action as SubmenuKey,
+      onPress: toggleOpacity,
+    }));
   } else if (model.showEdit || model.showTextStyle) {
     // Edit (content) · Type (opens the Text bar on the Font page) · Align (opens
     // it straight on the Align page) · Shadow. Type / Align both slide the same

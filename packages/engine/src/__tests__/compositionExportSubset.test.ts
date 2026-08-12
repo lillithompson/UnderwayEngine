@@ -9,7 +9,9 @@
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
 import { DEFAULT_LINE_HEIGHT, layoutText } from '../textLayout';
 import { STICKER_SHADOW_CELLS } from '../stickerStyle';
-import { CanvasPaintIsland, GroupNode, ImageObject, PathSegment, SVGObject, TextObject } from '../types';
+import { GroupNode, ImageObject, PaintObject, PathSegment, SVGObject, TextObject } from '../types';
+import { commitCanvasPaint, createCanvasPaintWorking, stampCanvasPaint } from '../canvasPaint';
+import { createPaintObjectFromTiles } from '../paintObject';
 
 /** SVG_UNITS_PER_L0_CELL — world cells scale into SVG units by this. */
 const U = 256;
@@ -589,89 +591,90 @@ describe('cutout stroke padding', () => {
 });
 
 /**
- * The paint tool's raster layer in a cutout. A cutout drops it with the page
- * background by default; `canvasPaintInSubset` keeps it, for a recipe whose
- * subject is the drawing rather than a few nodes lifted off the page.
+ * Paint islands in a cutout. Since v52 brushwork is a scene object like any
+ * other node: a page export draws each island's tiles at its z-slot, and a
+ * cutout includes it exactly when the selector kept its id — the retired
+ * global layer's `canvasPaintInSubset` escape hatch is gone with the layer.
  */
-describe('canvas paint in a cutout', () => {
-  /** A 2×2-texel island of solid red at (20, 20), 4 cells across. */
-  function inkIsland(x = 20, y = 20): CanvasPaintIsland {
-    const rgba = new Uint8Array(2 * 2 * 4);
-    for (let i = 0; i < 4; i++) {
-      rgba[i * 4] = 255;
-      rgba[i * 4 + 3] = 255;
-    }
-    return { x, y, widthCells: 4, overlay: { cols: 2, rows: 2, rgba, blend: 'normal' } };
+describe('paint islands in a cutout', () => {
+  // Texel-center-aligned at density 8 (texel = 1/8 cell): the center texel
+  // sits at distance 0 from the dab, so it takes full alpha.
+  const C = 0.0625;
+
+  /** A committed island the way a real paint session makes one: a full-alpha
+   *  red dab stamped near (20, 20) into a working set, committed, and minted
+   *  into a PaintObject — bbox == contentRect == the dab's ink bounds. */
+  function inkPaint(id = 'pnt_ink'): PaintObject {
+    const working = createCanvasPaintWorking(undefined);
+    stampCanvasPaint(working, 20 + C, 20 + C, 1, { r: 255, g: 0, b: 0 }, 1);
+    const p = createPaintObjectFromTiles(id, commitCanvasPaint(working));
+    if (!p) throw new Error('fixture dab painted nothing');
+    return p;
   }
 
-  const cut = (extra: Partial<CompositionSVGInputs>) =>
-    generateCompositionSVGCore(pageInputs({
-      canvasPaint: [inkIsland()],
-      subset: () => new Set(['txt_1']),
+  /** The page: one text line plus the island. Text-only company on purpose —
+   *  any <image> markup in the output can then only be the island's tiles. */
+  const paintPage = (p: PaintObject, extra: Partial<CompositionSVGInputs> = {}) =>
+    makeInputs({
+      texts: [makeText({ id: 'txt_1', content: 'first', cellX: 4, cellY: 20, cellWidth: 8, cellHeight: 2 })],
+      paintObjects: [p],
+      sceneOrder: ['txt_1', p.id],
       ...extra,
-    }));
+    });
 
-  it('is dropped by default, like the background', async () => {
-    const svg = await cut({});
-    expect(svg).toBeTruthy();
-    // No <image> at all: the photo was deselected and the raster skipped.
-    expect(svg).not.toContain('<image');
-    // …and it did not widen the frame off the selected line's glyphs.
-    expect(viewBoxOf(svg!)).toEqual(inkViewBox([pageInputs().texts![0]]));
-  });
-
-  it('is drawn, and joins the frame, when the recipe asks for it', async () => {
-    const svg = await cut({ canvasPaintInSubset: true });
+  it('a page export draws the island as tile <image> markup', async () => {
+    const svg = await generateCompositionSVGCore(paintPage(inkPaint()));
     expect(svg).toContain('<image');
     expect(svg).toContain('data:image/png;base64,');
-    // The island sits at (20,20)–(24,24) in cells, well right of and below the
-    // text at (4,20), so the frame has to reach it.
-    const [, , w] = viewBoxOf(svg!);
-    expect(w).toBeGreaterThan(inkViewBox([pageInputs().texts![0]])[2]);
-    expect(viewBoxOf(svg!)[2]).toBeCloseTo(24 * U - viewBoxOf(svg!)[0], 5);
   });
 
-  it('frames on the painted texels, not the island rect', async () => {
-    // Only the top-left texel is inked, so the frame stops at (22, 22) —
-    // halfway across the 4-cell island — rather than at its (24, 24) corner.
-    const island = inkIsland();
-    island.overlay.rgba.fill(0);
-    island.overlay.rgba[0] = 255;
-    island.overlay.rgba[3] = 255;
-    const svg = await generateCompositionSVGCore(pageInputs({
-      canvasPaint: [island],
-      subset: () => new Set(['txt_1']),
-      canvasPaintInSubset: true,
-    }));
-    const [x, , w] = viewBoxOf(svg!);
-    expect(x + w).toBeCloseTo(22 * U, 5);
+  it('a cutout drops the island when the selector leaves it out', async () => {
+    const svg = await generateCompositionSVGCore(
+      paintPage(inkPaint(), { subset: () => new Set(['txt_1']) }),
+    );
+    expect(svg).toBeTruthy();
+    // No <image> at all: the island was not selected, so its raster is gone…
+    expect(svg).not.toContain('<image');
+    // …and it did not widen the frame off the selected line's glyphs.
+    expect(viewBoxOf(svg!)).toEqual(inkViewBox([paintPage(inkPaint()).texts![0]]));
   });
 
-  it('gives a page holding nothing but paint a cutout of its own', async () => {
-    // Before, an empty selection meant null and the card fell back to the
-    // page thumb — which is exactly the white-backed image the cutout exists
-    // to avoid. Paint is content, so it exports.
-    const paintOnly = makeInputs({
-      canvasPaint: [inkIsland()],
-      subset: () => new Set<string>(),
-      canvasPaintInSubset: true,
-    });
-    const svg = await generateCompositionSVGCore(paintOnly);
+  it('a cutout draws the island, and frames on it, when its id is selected', async () => {
+    const p = inkPaint();
+    const svg = await generateCompositionSVGCore(
+      paintPage(p, { subset: () => new Set(['txt_1', p.id]) }),
+    );
     expect(svg).toContain('<image');
-    expect(viewBoxOf(svg!)).toEqual([20 * U, 20 * U, 4 * U, 4 * U]);
-
-    // …and still nothing when that page has no paint either.
-    expect(await generateCompositionSVGCore(makeInputs({
-      subset: () => new Set<string>(), canvasPaintInSubset: true,
-    }))).toBeNull();
+    expect(svg).toContain('data:image/png;base64,');
+    // The island's bbox sits around (20, 20), right of the text at (4, 20),
+    // so the frame has to reach its right edge.
+    const [x, , w] = viewBoxOf(svg!);
+    expect(w).toBeGreaterThan(inkViewBox([paintPage(p).texts![0]])[2]);
+    expect(x + w).toBeCloseTo((p.cellX + p.cellWidth) * U, 5);
   });
 
-  it('leaves a page export drawing it either way', async () => {
-    for (const canvasPaintInSubset of [undefined, true]) {
-      const svg = await generateCompositionSVGCore(makeInputs({
-        canvasPaint: [inkIsland()], canvasPaintInSubset,
-      }));
-      expect(svg).toContain('data:image/png;base64,');
-    }
+  it('an export whose only content is a paint island frames on its bbox', async () => {
+    // A page holding nothing but brushwork still exports — the island is a
+    // scene object, so the content union is exactly its bbox (== ink bounds).
+    const p = inkPaint();
+    const page = await generateCompositionSVGCore(makeInputs({
+      paintObjects: [p], sceneOrder: [p.id],
+    }));
+    expect(page).toContain('<image');
+    const box = viewBoxOf(page!);
+    const want = [p.cellX * U, p.cellY * U, p.cellWidth * U, p.cellHeight * U];
+    box.forEach((v, i) => expect(v).toBeCloseTo(want[i], 5));
+
+    // Same island as a self-selected cutout: same content, same frame.
+    const cut = await generateCompositionSVGCore(makeInputs({
+      paintObjects: [p], sceneOrder: [p.id], subset: () => new Set([p.id]),
+    }));
+    expect(cut).toContain('<image');
+    viewBoxOf(cut!).forEach((v, i) => expect(v).toBeCloseTo(want[i], 5));
+
+    // And an empty selection over a paint-only page is an empty scene.
+    expect(await generateCompositionSVGCore(makeInputs({
+      paintObjects: [p], sceneOrder: [p.id], subset: () => new Set<string>(),
+    }))).toBeNull();
   });
 });

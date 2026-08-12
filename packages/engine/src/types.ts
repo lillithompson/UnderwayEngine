@@ -7,7 +7,7 @@ export const LAYER_PX = 2048;
 /** Discriminator for scene-object kinds. Lives in types.ts so the undo
  *  op union can reference it without creating an import cycle with
  *  compositionOps.ts (which is where the per-kind adapters live). */
-export type CompItemKind = 'figure' | 'svg' | 'image' | 'text';
+export type CompItemKind = 'figure' | 'svg' | 'image' | 'text' | 'paint';
 
 /** Grid level determines cell count: L0=32, L1=16, L2=8, L3=4, L4=2, L5=1, L6=0.5 */
 export type GridLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -1188,6 +1188,79 @@ export interface ImageObject {
   identityCellHeight?: number;
 }
 
+/**
+ * A paint island: the raster brush's editable-image scene node (v52+). A
+ * cluster of strokes from one paint session, held as SPARSE raster tiles
+ * with a transparent background. Unlike the retired global canvas layer it
+ * replaces, an island lives in `sceneOrder` — it can be selected, dragged,
+ * reordered, renamed, hidden, locked, grouped, and merged with other
+ * islands. Bbox-only scene node; registers in `SCENE_ADAPTERS` /
+ * `GEOMETRY_ADAPTERS` (id prefix `pnt_`) so generic ops work uniformly.
+ *
+ * ## Tile space vs world space
+ *
+ * `tiles` live in the object's own TILE SPACE — the world-cell frame the
+ * island was painted in. `contentX/Y/W/H` is the rect in tile space that
+ * maps onto the world bbox (`cellX/Y/Width/Height`): rendering stretches
+ * contentRect → bbox exactly like `ImagePaintOverlay` stretches with its
+ * frame, so resize changes `cell*` only and never resamples texels.
+ *
+ * At creation, and for as long as the island can still take session
+ * strokes, tile space == world space: bbox == contentRect, no
+ * rotation/mirror/angle, 1:1 scale (`paintObjectIsUntransformed`). Any
+ * transform requires leaving the paint tool group, which ends the session —
+ * so in-session bbox growth (contentRect == fresh ink bounds) only ever
+ * happens at 1:1, and brush math never needs the general inverse map.
+ *
+ * Tiles are immutable-by-convention like committed islands always were:
+ * strokes clone-on-touch via `CanvasPaintWorking`, commits swap the whole
+ * `tiles` array, and undo entries hold the old array by reference.
+ */
+export interface PaintObject {
+  id: string;
+  name?: string;
+  /** World bbox — single source of truth for move/scale. */
+  cellX: number;
+  cellY: number;
+  cellWidth: number;
+  cellHeight: number;
+  rotation?: 0 | 90 | 180 | 270;
+  /** Free rotation, degrees clockwise about the bbox center, layered on the
+   *  discrete `rotation`/`mirror`. See {@link SVGObject.angleDeg}. */
+  angleDeg?: number;
+  mirrorH?: boolean;
+  mirrorV?: boolean;
+  /** Render opacity in [0, 1]; undefined = opaque. The island's ONLY
+   *  type-specific edit option (no Stroke/Fill — it is raster brushwork). */
+  opacity?: number;
+  /** Edge soften in [0, 1] — rides the shared Opacity bar like images. */
+  edgeSoften?: number;
+  locked?: boolean;
+  hidden?: boolean;
+  groupId?: string;
+  preGroupName?: string;
+  /** Pre-group-transform bbox; only set while groupId is set. */
+  localCellX?: number;
+  localCellY?: number;
+  localCellWidth?: number;
+  localCellHeight?: number;
+  /** Bbox at identity — same stabilization pattern as ImageObject. */
+  identityCellX?: number;
+  identityCellY?: number;
+  identityCellWidth?: number;
+  identityCellHeight?: number;
+  /** Sparse raster content: 16-cell / 128-texel tiles on the shared
+   *  allocation grid (see canvasPaint.ts), in TILE SPACE. Never empty — an
+   *  island erased to no ink is removed from the scene instead. */
+  tiles: CanvasPaintIsland[];
+  /** The tile-space rect mapped onto the bbox (the ink bounds at the last
+   *  in-session stroke). */
+  contentX: number;
+  contentY: number;
+  contentW: number;
+  contentH: number;
+}
+
 // ── Paint, effects, tint, text (v29 additions) ──────────────────────
 
 export interface GradientStop {
@@ -1481,16 +1554,14 @@ export interface CompositionState {
    */
   background?: Paint;
   /**
-   * The paint tool's canvas raster layer (v50+; sparse islands since v51):
-   * RGBA bitmaps the brush stamps into wherever a dab lands on no object.
-   * Sparse and effectively infinite — a dab anywhere in world space
-   * allocates only the tile islands it touches (see canvasPaint.ts). Always
-   * rendered UNDER every scene object (the GL pass draws islands right
-   * after the grid), and deliberately absent from `sceneOrder`, so it never
-   * appears in the Scene Outline. Undefined = never painted; never an
-   * empty array (erased-empty commits as undefined).
+   * Paint island scene nodes (v52+): the raster brush's strokes, grouped
+   * into editable-image objects that live in `sceneOrder` like any other
+   * node. Replaces the retired v50/v51 global `canvasPaint` layer (which
+   * was deliberately outside the scene graph); old saves' canvasPaint is
+   * dropped on load. Optional so pre-paint fixtures and loaders treat
+   * absent and empty the same, mirroring `images`/`texts`.
    */
-  canvasPaint?: CanvasPaintIsland[];
+  paintObjects?: PaintObject[];
   /**
    * The in-progress line currently being drawn while `compTool === 'line'`.
    * On tool toggle-off, finalized into `svgObjects` if valid.
@@ -1605,14 +1676,16 @@ export type CompUndoOp =
    *  the kind's array. When `sceneOrderIndex` is provided, the id is
    *  spliced into sceneOrder at that index (clamped); otherwise it's
    *  appended to the front of paint. Revert: filter it out. */
-  | { op: 'placeObject'; kind: CompItemKind; item: CompositionFigure | SVGObject | ImageObject | TextObject;
+  | { op: 'placeObject'; kind: CompItemKind;
+      item: CompositionFigure | SVGObject | ImageObject | TextObject | PaintObject;
       sceneOrderIndex?: number }
   /** Generic delete for any scene-object kind. Apply: filter the kind's
    *  array by id. `sceneOrderIndex` records the item's original position
    *  in sceneOrder so revert can splice it back at the same z-position.
    *  Revert: append the captured item back into the kind's array at the
    *  recorded sceneOrder index. */
-  | { op: 'removeObject'; kind: CompItemKind; item: CompositionFigure | SVGObject | ImageObject | TextObject;
+  | { op: 'removeObject'; kind: CompItemKind;
+      item: CompositionFigure | SVGObject | ImageObject | TextObject | PaintObject;
       sceneOrderIndex?: number }
   /** Generic lock toggle for any scene-object kind. Apply: set
    *  `item.locked = newValue` for the matching id in whichever array
@@ -1690,7 +1763,8 @@ export type CompUndoOp =
   | { op: 'reparentNode'; nodeId: string; newParentGroupId?: string;
       newSceneOrder: string[]; oldSceneOrder: string[];
       prevFigures?: CompositionFigure[]; prevSVGs?: SVGObject[];
-      prevImages?: ImageObject[]; prevTexts?: TextObject[]; prevGroups?: GroupNode[] }
+      prevImages?: ImageObject[]; prevTexts?: TextObject[]; prevGroups?: GroupNode[];
+      prevPaints?: PaintObject[] }
   | { op: 'renameGroup'; groupId: string; oldName: string; newName: string }
   /** Drop a GroupNode whose member set went empty. Emitted alongside
    *  removeObject ops by `buildRemoveObjectOps` so undo can restore the
@@ -1855,7 +1929,9 @@ export type CompUndoOp =
       oldGroups: GroupNode[]; newGroups: GroupNode[];
       oldSceneOrder: string[]; newSceneOrder: string[];
       // Text collections (v29+); optional so pre-text entries replay.
-      oldTexts?: TextObject[]; newTexts?: TextObject[] }
+      oldTexts?: TextObject[]; newTexts?: TextObject[];
+      // Paint island collections (v52+); optional so older entries replay.
+      oldPaints?: PaintObject[]; newPaints?: PaintObject[] }
   /**
    * Committed text-content change (v29+). The editor's hidden textarea
    * commits on blur/confirm; the engine never sees per-keystroke edits.
@@ -1883,13 +1959,7 @@ export type CompUndoOp =
   /** Set/replace/clear an image's shader-time tint (v29+). */
   | { op: 'setImageTint'; nodeId: string; oldTint?: ImageTint; newTint?: ImageTint }
   /** Set/replace/clear the canvas background paint (v29+). */
-  | { op: 'setBackground'; oldPaint?: Paint; newPaint?: Paint }
-  /** Set/replace/clear the paint tool's canvas raster islands (v50+; island
-   *  list since v51). One op per finished stroke — the whole stroke's dabs
-   *  land as a single swap so undo lifts the stroke, not a dab. Structural
-   *  sharing keeps this cheap: islands the stroke didn't touch are the same
-   *  references in both lists. */
-  | { op: 'setCanvasPaint'; oldIslands?: CanvasPaintIsland[]; newIslands?: CanvasPaintIsland[] };
+  | { op: 'setBackground'; oldPaint?: Paint; newPaint?: Paint };
 
 export type CompUndoEntry = CompUndoOp[];
 

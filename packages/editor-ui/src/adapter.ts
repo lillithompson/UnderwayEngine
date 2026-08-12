@@ -330,6 +330,13 @@ export interface ObjectPropertiesModel {
   inverted?: boolean;
   /** Toggle the selected sticker's inverted color scheme (one undo step). */
   onInvert?(): void;
+  /** Selection is a paint island — the raster brush's editable-image scene
+   *  object. Its ONE type option is Opacity, opening the shared Opacity bar
+   *  (opacity + edge soften) through the same `opacityOpen` /
+   *  `objectOpacity` / `onObjectOpacity` plumbing images use. No Stroke or
+   *  Fill: an island is baked brushwork, not a shape. Mutually exclusive
+   *  with the image / svg / text / frame type-option families. */
+  showPaintOptions?: boolean;
   /** Selection is a vector (SVG) object: the panel's second row shows that
    *  subtype's option menu — see `svgSubtype` for which one, and
    *  `SVG_EDIT_OPTIONS` for the options each subtype offers. Mutually

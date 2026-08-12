@@ -15,6 +15,8 @@ describe('editor-ui scaffold', () => {
     expect(defaultIconForKind('text')).toBe('format-text');
     expect(defaultIconForKind('group')).toBe('group');
     expect(defaultIconForKind('svg')).toBe('vector-polyline');
+    // Paint islands (v52) are raster brushwork — they wear the brush glyph.
+    expect(defaultIconForKind('paint')).toBe('brush');
     expect(defaultIconForKind('nonsense')).toBe('drag-horizontal-variant');
   });
 

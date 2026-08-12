@@ -6,7 +6,7 @@
  * with pre-deserialized embedded files.
  */
 
-import { CanvasPaintIsland, CompositionFigure, FileConfig, SVGObject, ImageObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
+import { CompositionFigure, FileConfig, SVGObject, ImageObject, PaintObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
 import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
@@ -26,7 +26,7 @@ import { patternFillBackground } from './patternFill';
 import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
 import { overlayPngDataUri, paintBlendCss, shapePaintOverlaySVG } from './imagePaintOverlay';
-import { canvasPaintInkBounds, islandHeightCells } from './canvasPaint';
+import { islandHeightCells } from './canvasPaint';
 import { charColorRuns, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
 import { STICKER_BORDER_CELLS, STICKER_SHADOW_CELLS, stickerColors } from './stickerStyle';
 import { resolveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
@@ -65,6 +65,8 @@ export interface CompositionSubsetScene {
   svgObjects: readonly SVGObject[];
   images: readonly ImageObject[];
   texts: readonly TextObject[];
+  /** Paint island scene nodes (v52+). Optional for selector back-compat. */
+  paints?: readonly PaintObject[];
   groups: readonly GroupNode[];
 }
 
@@ -98,27 +100,11 @@ export interface CompositionSVGInputs {
    *  painted behind every scene element. Absent = transparent, matching
    *  the pre-v29 export appearance. */
   background?: Paint;
-  /** The paint tool's canvas raster islands (v50+; sparse islands since
-   *  v51). When set, an <image> per island is painted over the background
-   *  rect and under every scene element — the same stacking the live GL
-   *  pass renders. The islands' painted ink also joins the content bounds,
-   *  so a drawing far from the origin still lands inside a content-framed
-   *  export. Skipped for subset cutouts unless
-   *  {@link canvasPaintInSubset} asks for it, like the background. */
-  canvasPaint?: CanvasPaintIsland[];
-  /**
-   * Draw {@link canvasPaint} in a SUBSET export too, and let its ink widen the
-   * cutout's frame. Ignored without a `subset` (a page export always draws the
-   * layer).
-   *
-   * A cutout otherwise drops the raster layer along with the background, which
-   * is right for a recipe that lifts a few authored nodes off the page they
-   * were made against — but wrong for one whose cutout IS the drawing, where
-   * brush marks are content the page would be missing without. With it set, a
-   * page holding nothing but paint still exports (the emptiness guards count
-   * the layer's ink), instead of yielding null.
-   */
-  canvasPaintInSubset?: boolean;
+  /** Paint island scene nodes (v52+): the raster brush's strokes as
+   *  first-class objects. Each exports as a transform group of tile
+   *  <image>s at its z-slot in `sceneOrder`, exactly like any other node —
+   *  the retired v50/v51 under-everything canvas layer is gone. */
+  paintObjects?: PaintObject[];
   /** Optional font-embedding hook — see {@link SVGFontResolver}. */
   fontResolver?: SVGFontResolver;
   /** Group hierarchy — needed to resolve "Use as mask" clip regions.
@@ -709,19 +695,13 @@ export async function generateCompositionSVGCore(
   let svgObjects = input.svgObjects.filter(shown);
   let images = input.images.filter(shown);
   let texts = (input.texts ?? []).filter(shown);
+  let paints = (input.paintObjects ?? []).filter(shown);
 
-  // Is the raster paint layer part of this export? Always for a page export;
-  // for a cutout only when the caller asked (canvasPaintInSubset). Its painted
-  // extent is measured once, up here, because it answers two questions: does
-  // this export have any content at all, and where does the frame go.
-  const drawCanvasPaint = !!input.canvasPaint
-    && (!input.subset || !!input.canvasPaintInSubset);
-  const canvasPaintInk = drawCanvasPaint ? canvasPaintInkBounds(input.canvasPaint) : null;
-
-  // Nothing to draw — no objects, and no brush marks either.
+  // Nothing to draw.
   const noObjects = () =>
-    figures.length === 0 && svgObjects.length === 0 && images.length === 0 && texts.length === 0;
-  if (noObjects() && !canvasPaintInk) return null;
+    figures.length === 0 && svgObjects.length === 0 && images.length === 0
+    && texts.length === 0 && paints.length === 0;
+  if (noObjects()) return null;
 
   // Active masks resolve from the UNFILTERED svg objects: a hidden mask
   // still clips (invisible-mask behavior) even though it isn't drawn.
@@ -731,15 +711,14 @@ export async function generateCompositionSVGCore(
   // downstream — the bbox union, the viewBox, the background — then sees only
   // this subset, which is what tightens the frame onto it.
   if (input.subset) {
-    const keep = input.subset({ figures, svgObjects, images, texts, groups });
+    const keep = input.subset({ figures, svgObjects, images, texts, paints, groups });
     const kept = (n: { id: string }): boolean => keep.has(n.id);
     figures = figures.filter(kept);
     svgObjects = svgObjects.filter(kept);
     images = images.filter(kept);
     texts = texts.filter(kept);
-    // The selector chose nothing — but a cutout that carries the paint layer
-    // still has the brush marks to show.
-    if (noObjects() && !canvasPaintInk) return null;
+    paints = paints.filter(kept);
+    if (noObjects()) return null;
   }
 
   // Ink override for line art. Applied to the DRAWN nodes only, and only to
@@ -898,18 +877,17 @@ export async function generateCompositionSVGCore(
     accept(txt, r.minX, r.minY, r.maxX, r.maxY);
   }
 
-  // Canvas paint islands join the union on their PAINTED ink (tight texel
-  // bounds, not the island rects — a tile is mostly transparent around a
-  // small dab). A page whose only content is raster paint would otherwise
-  // frame on nothing, and a content-framed export would slice off any
-  // drawing far from the objects. A cutout that skipped the layer must not
-  // widen its frame on it either — hence `canvasPaintInk`, which is null
-  // exactly when the layer isn't being drawn.
-  if (canvasPaintInk) {
-    accept(
-      { id: '__canvasPaint__' },
-      canvasPaintInk.minX, canvasPaintInk.minY, canvasPaintInk.maxX, canvasPaintInk.maxY,
+  for (const p of paints) {
+    // Same rotation story as images: contentRect maps onto the bbox and
+    // both transforms spin about the box center in the markup, so the frame
+    // follows the rotated corners. The bbox is the ink bounds at last
+    // stroke, so a page whose only content is brushwork frames on it.
+    const r = rotatedRectAabb(
+      p.cellX, p.cellY, p.cellX + p.cellWidth, p.cellY + p.cellHeight,
+      (p.angleDeg ?? 0) + (p.rotation ?? 0),
+      p.cellX + p.cellWidth / 2, p.cellY + p.cellHeight / 2,
     );
+    accept(p, r.minX, r.minY, r.maxX, r.maxY);
   }
 
   // Degenerate-frame guard: if masking clipped away every drawn object, fall
@@ -1132,6 +1110,74 @@ export async function generateCompositionSVGCore(
     );
     const imgMarkup = tintDefs + `<g transform="${parts.join(' ')}">${effected}</g>`;
     elementsById.set(img.id, wrapWithMaskClip(imgMarkup, maskMap, groups, img));
+  }
+
+  for (const p of paints) {
+    if (cancelled?.()) return null;
+    if (p.tiles.length === 0 || !(p.contentW > 0) || !(p.contentH > 0)) continue;
+    const w = p.cellWidth * U;
+    const h = p.cellHeight * U;
+    // Inner content frame: dims swapped for 90/270, centered in the bbox —
+    // the orientedInnerStyle recipe the DOM node layer uses, so the export
+    // and the editor rotate the same pixels the same way.
+    const rot = p.rotation ?? 0;
+    const swapped = rot === 90 || rot === 270;
+    const iw = swapped ? h : w;
+    const ih = swapped ? w : h;
+    const cx = w / 2;
+    const cy = h / 2;
+    const parts: string[] = [`translate(${p.cellX * U}, ${p.cellY * U})`];
+    // Free rotation outermost (about the bbox center), then the discrete
+    // rotation + mirror — the image transform recipe.
+    if (p.angleDeg) parts.push(`rotate(${p.angleDeg} ${cx} ${cy})`);
+    if (rot !== 0) parts.push(`rotate(${rot} ${cx} ${cy})`);
+    if (p.mirrorH) parts.push(`translate(${w}, 0) scale(-1, 1)`);
+    if (p.mirrorV) parts.push(`translate(0, ${h}) scale(1, -1)`);
+    // One <image> per sparse tile, positioned by its contentRect-normalized
+    // rect in the inner frame. Export-time PNG encode is fine here — this
+    // path never runs per-frame.
+    let tileImages = '';
+    for (const tile of p.tiles) {
+      const tx = ((tile.x - p.contentX) / p.contentW) * iw;
+      const ty = ((tile.y - p.contentY) / p.contentH) * ih;
+      const tw = (tile.widthCells / p.contentW) * iw;
+      const th = (islandHeightCells(tile) / p.contentH) * ih;
+      tileImages += `<image x="${tx}" y="${ty}" width="${tw}" height="${th}"` +
+        ` href="${overlayPngDataUri(tile.overlay)}" preserveAspectRatio="none"/>`;
+    }
+    const opacityAttr = p.opacity != null && p.opacity < 1 ? ` opacity="${p.opacity}"` : '';
+    // Edge soften: the images' eroded-then-blurred silhouette mask, built in
+    // the INNER frame's coordinates so it stays glued to the tiles through
+    // the centering translate below (see the image loop for the ramp math).
+    let softenDefs = '';
+    let softenAttr = '';
+    const soften = p.edgeSoften != null ? Math.max(0, Math.min(1, p.edgeSoften)) : 0;
+    if (soften > 0 && iw > 0 && ih > 0) {
+      const depth = soften * 0.5 * Math.min(iw, ih);
+      const erode = depth / 2;
+      const sigma = depth / 5;
+      const pad = sigma * 3 + U;
+      const softenFilterId = `softenf_${p.id}`;
+      const softenMaskId = `softenm_${p.id}`;
+      const region = `x="${-pad}" y="${-pad}" width="${iw + 2 * pad}" height="${ih + 2 * pad}"`;
+      softenDefs = `<defs><filter id="${softenFilterId}" filterUnits="userSpaceOnUse" ${region}>`
+        + `<feMorphology operator="erode" radius="${erode}"/>`
+        + `<feGaussianBlur stdDeviation="${sigma}"/></filter>`
+        + `<mask id="${softenMaskId}" maskUnits="userSpaceOnUse" ${region}>`
+        + `<g filter="url(#${softenFilterId})">`
+        + `<rect x="0" y="0" width="${iw}" height="${ih}" fill="white"/></g>`
+        + `</mask></defs>`;
+      softenAttr = ` mask="url(#${softenMaskId})"`;
+    }
+    const maskedTiles = opacityAttr || softenAttr
+      ? softenDefs + `<g${opacityAttr}${softenAttr}>${tileImages}</g>`
+      : tileImages;
+    // Center the inner frame in the bbox (no-op unless dims swapped).
+    const localContent = swapped
+      ? `<g transform="translate(${(w - iw) / 2}, ${(h - ih) / 2})">${maskedTiles}</g>`
+      : maskedTiles;
+    const paintMarkup = `<g transform="${parts.join(' ')}">${localContent}</g>`;
+    elementsById.set(p.id, wrapWithMaskClip(paintMarkup, maskMap, groups, p));
   }
 
   for (const fig of figures) {
@@ -1410,22 +1456,6 @@ export async function generateCompositionSVGCore(
       `<rect x="${vbX}" y="${vbY}" width="${bboxW}" height="${bboxH}" fill="${p.fill}"${oa} stroke="none"/>`;
   }
 
-  // Canvas paint raster: over the background, under every scene element —
-  // the same stacking the live GL pass renders. One <image> per island,
-  // each anchored at its own world-cell origin, whatever the viewBox frames.
-  let canvasPaintImage = '';
-  if (drawCanvasPaint) {
-    for (const isl of input.canvasPaint!) {
-      const cpX = isl.x * SVG_UNITS_PER_L0_CELL;
-      const cpY = isl.y * SVG_UNITS_PER_L0_CELL;
-      const cpW = isl.widthCells * SVG_UNITS_PER_L0_CELL;
-      const cpH = islandHeightCells(isl) * SVG_UNITS_PER_L0_CELL;
-      canvasPaintImage +=
-        `<image x="${cpX}" y="${cpY}" width="${cpW}" height="${cpH}"` +
-        ` href="${overlayPngDataUri(isl.overlay)}" preserveAspectRatio="none"/>`;
-    }
-  }
-
   return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<svg id="${compName}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
@@ -1434,7 +1464,6 @@ export async function generateCompositionSVGCore(
     `fill="none" stroke="white">`,
     ...(fontStyleBlock ? [fontStyleBlock] : []),
     ...(backgroundRect ? [backgroundRect] : []),
-    ...(canvasPaintImage ? [canvasPaintImage] : []),
     ...(maskDefs ? [maskDefs] : []),
     ...allElements,
     `</svg>`,

@@ -1,6 +1,7 @@
 /**
  * Geometry adapter layer: provides a uniform interface for transform
- * operations across the scene-object kinds (figure, svg, image, text).
+ * operations across the scene-object kinds (figure, svg, image, text,
+ * paint).
  *
  * Each adapter wraps existing per-type functions so the algorithm
  * (translate, rotate, mirror, rescale, hitTest) lives in one place
@@ -10,7 +11,7 @@
  * never in the per-frame render loop.
  */
 
-import { CompositionFigure, SVGObject, ImageObject, TextObject, PathSegment, CompItemKind } from './types';
+import { CompositionFigure, SVGObject, ImageObject, PaintObject, TextObject, PathSegment, CompItemKind } from './types';
 import { lineHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
 
@@ -239,140 +240,100 @@ const svgAdapter: GeometryAdapter<SVGObject> = {
   },
 };
 
-// ── Image adapter ───────────────────────────────────────────────────
-
-const imageAdapter: GeometryAdapter<ImageObject> = {
-  kind: 'image',
-
-  computeBbox(img) {
-    return { cellX: img.cellX, cellY: img.cellY, cellWidth: img.cellWidth, cellHeight: img.cellHeight };
-  },
-
-  translate(img, dx, dy) {
-    const next: ImageObject = {
-      ...img,
-      cellX: img.cellX + dx, cellY: img.cellY + dy,
-      identityCellX: undefined, identityCellY: undefined,
-      identityCellWidth: undefined, identityCellHeight: undefined,
-      rotation: undefined, mirrorH: undefined, mirrorV: undefined,
-    };
-    if (img.localCellX !== undefined && img.localCellY !== undefined) {
-      next.localCellX = img.localCellX + dx;
-      next.localCellY = img.localCellY + dy;
-    }
-    return next;
-  },
-
-  rotate90CW(img) {
-    const curRot = img.rotation ?? 0;
-    const newRot = ((curRot + 90) % 360) as 0 | 90 | 180 | 270;
-    const idX = img.identityCellX ?? img.cellX;
-    const idY = img.identityCellY ?? img.cellY;
-    const idW = img.identityCellWidth ?? img.cellWidth;
-    const idH = img.identityCellHeight ?? img.cellHeight;
-    const cx = idX + idW / 2;
-    const cy = idY + idH / 2;
-    const swap = newRot === 90 || newRot === 270;
-    const newW = swap ? idH : idW;
-    const newH = swap ? idW : idH;
-    const atIdentity = newRot === 0;
-    return {
-      ...img,
-      cellX: cx - newW / 2, cellY: cy - newH / 2,
-      cellWidth: newW, cellHeight: newH,
-      rotation: newRot,
-      identityCellX: atIdentity ? undefined : idX,
-      identityCellY: atIdentity ? undefined : idY,
-      identityCellWidth: atIdentity ? undefined : idW,
-      identityCellHeight: atIdentity ? undefined : idH,
-    };
-  },
-
-  mirror(img, screenAxis) {
-    return { ...img, [screenAxis === 'h' ? 'mirrorH' : 'mirrorV']: !(img[screenAxis === 'h' ? 'mirrorH' : 'mirrorV'] ?? false) };
-  },
-
-  rescale(img, _old, newBbox) {
-    return { ...img, ...newBbox };
-  },
-
-  hitTest(img, cellX, cellY, ignoreLock) {
-    if (img.hidden) return false;
-    if (img.locked && !ignoreLock) return false;
-    return cellX >= img.cellX && cellX < img.cellX + img.cellWidth
-      && cellY >= img.cellY && cellY < img.cellY + img.cellHeight;
-  },
-};
-
-// ── Text adapter ────────────────────────────────────────────────────
+// ── Bbox-only adapters (image, text, paint) ─────────────────────────
 //
-// Bbox-only geometry, same transform model as images: `cell*` is the
-// world rect, rotation/mirror are discrete flags, and translate clears
-// the identity stash. Glyph rasters are cached off-node, so none of
-// these operations touch text layout.
+// Images, texts, and paint islands share one transform model: `cell*` is
+// the world rect, rotation/mirror are discrete flags, translate clears
+// the identity stash, and rescale swaps the bbox (content stretches with
+// it — image bitmaps, glyph rasters, and paint tiles are all mapped
+// through their frame at render time). One implementation, typed per
+// kind at the registry.
+//
+// Paint hit-testing note: this bbox test is deliberately coarse — the
+// selected-node sticky re-grab needs the whole bbox to accept. The
+// precise ink-only refinement (so a sparse island's blank space falls
+// through to objects behind it) lives in `findSceneObjectAtCell` via
+// `paintObjectAlphaHitTest`, mirroring how svg path-distance refinement
+// is layered over this adapter's bbox gate.
 
-const textAdapter: GeometryAdapter<TextObject> = {
-  kind: 'text',
+interface BboxOnlyNode extends SceneNodeBase {
+  hidden?: boolean;
+  localCellX?: number;
+  localCellY?: number;
+  identityCellX?: number;
+  identityCellY?: number;
+  identityCellWidth?: number;
+  identityCellHeight?: number;
+}
 
-  computeBbox(txt) {
-    return { cellX: txt.cellX, cellY: txt.cellY, cellWidth: txt.cellWidth, cellHeight: txt.cellHeight };
-  },
+function makeBboxAdapter<T extends BboxOnlyNode>(kind: CompItemKind): GeometryAdapter<T> {
+  return {
+    kind,
 
-  translate(txt, dx, dy) {
-    const next: TextObject = {
-      ...txt,
-      cellX: txt.cellX + dx, cellY: txt.cellY + dy,
-      identityCellX: undefined, identityCellY: undefined,
-      identityCellWidth: undefined, identityCellHeight: undefined,
-      rotation: undefined, mirrorH: undefined, mirrorV: undefined,
-    };
-    if (txt.localCellX !== undefined && txt.localCellY !== undefined) {
-      next.localCellX = txt.localCellX + dx;
-      next.localCellY = txt.localCellY + dy;
-    }
-    return next;
-  },
+    computeBbox(node) {
+      return { cellX: node.cellX, cellY: node.cellY, cellWidth: node.cellWidth, cellHeight: node.cellHeight };
+    },
 
-  rotate90CW(txt) {
-    const curRot = txt.rotation ?? 0;
-    const newRot = ((curRot + 90) % 360) as 0 | 90 | 180 | 270;
-    const idX = txt.identityCellX ?? txt.cellX;
-    const idY = txt.identityCellY ?? txt.cellY;
-    const idW = txt.identityCellWidth ?? txt.cellWidth;
-    const idH = txt.identityCellHeight ?? txt.cellHeight;
-    const cx = idX + idW / 2;
-    const cy = idY + idH / 2;
-    const swap = newRot === 90 || newRot === 270;
-    const newW = swap ? idH : idW;
-    const newH = swap ? idW : idH;
-    const atIdentity = newRot === 0;
-    return {
-      ...txt,
-      cellX: cx - newW / 2, cellY: cy - newH / 2,
-      cellWidth: newW, cellHeight: newH,
-      rotation: newRot,
-      identityCellX: atIdentity ? undefined : idX,
-      identityCellY: atIdentity ? undefined : idY,
-      identityCellWidth: atIdentity ? undefined : idW,
-      identityCellHeight: atIdentity ? undefined : idH,
-    };
-  },
+    translate(node, dx, dy) {
+      const next: T = {
+        ...node,
+        cellX: node.cellX + dx, cellY: node.cellY + dy,
+        identityCellX: undefined, identityCellY: undefined,
+        identityCellWidth: undefined, identityCellHeight: undefined,
+        rotation: undefined, mirrorH: undefined, mirrorV: undefined,
+      };
+      if (node.localCellX !== undefined && node.localCellY !== undefined) {
+        next.localCellX = node.localCellX + dx;
+        next.localCellY = node.localCellY + dy;
+      }
+      return next;
+    },
 
-  mirror(txt, screenAxis) {
-    return { ...txt, [screenAxis === 'h' ? 'mirrorH' : 'mirrorV']: !(txt[screenAxis === 'h' ? 'mirrorH' : 'mirrorV'] ?? false) };
-  },
+    rotate90CW(node) {
+      const curRot = node.rotation ?? 0;
+      const newRot = ((curRot + 90) % 360) as 0 | 90 | 180 | 270;
+      const idX = node.identityCellX ?? node.cellX;
+      const idY = node.identityCellY ?? node.cellY;
+      const idW = node.identityCellWidth ?? node.cellWidth;
+      const idH = node.identityCellHeight ?? node.cellHeight;
+      const cx = idX + idW / 2;
+      const cy = idY + idH / 2;
+      const swap = newRot === 90 || newRot === 270;
+      const newW = swap ? idH : idW;
+      const newH = swap ? idW : idH;
+      const atIdentity = newRot === 0;
+      return {
+        ...node,
+        cellX: cx - newW / 2, cellY: cy - newH / 2,
+        cellWidth: newW, cellHeight: newH,
+        rotation: newRot,
+        identityCellX: atIdentity ? undefined : idX,
+        identityCellY: atIdentity ? undefined : idY,
+        identityCellWidth: atIdentity ? undefined : idW,
+        identityCellHeight: atIdentity ? undefined : idH,
+      };
+    },
 
-  rescale(txt, _old, newBbox) {
-    return { ...txt, ...newBbox };
-  },
+    mirror(node, screenAxis) {
+      return { ...node, [screenAxis === 'h' ? 'mirrorH' : 'mirrorV']: !(node[screenAxis === 'h' ? 'mirrorH' : 'mirrorV'] ?? false) };
+    },
 
-  hitTest(txt, cellX, cellY, ignoreLock) {
-    if (txt.hidden) return false;
-    if (txt.locked && !ignoreLock) return false;
-    return cellX >= txt.cellX && cellX < txt.cellX + txt.cellWidth
-      && cellY >= txt.cellY && cellY < txt.cellY + txt.cellHeight;
-  },
-};
+    rescale(node, _old, newBbox) {
+      return { ...node, ...newBbox };
+    },
+
+    hitTest(node, cellX, cellY, ignoreLock) {
+      if (node.hidden) return false;
+      if (node.locked && !ignoreLock) return false;
+      return cellX >= node.cellX && cellX < node.cellX + node.cellWidth
+        && cellY >= node.cellY && cellY < node.cellY + node.cellHeight;
+    },
+  };
+}
+
+const imageAdapter: GeometryAdapter<ImageObject> = makeBboxAdapter<ImageObject>('image');
+const textAdapter: GeometryAdapter<TextObject> = makeBboxAdapter<TextObject>('text');
+const paintAdapter: GeometryAdapter<PaintObject> = makeBboxAdapter<PaintObject>('paint');
 
 // ── Registry + lookup ───────────────────────────────────────────────
 
@@ -381,6 +342,7 @@ export const GEOMETRY_ADAPTERS: Record<CompItemKind, GeometryAdapter<any>> = {
   svg: svgAdapter,
   image: imageAdapter,
   text: textAdapter,
+  paint: paintAdapter,
 };
 
 /** Resolve the geometry adapter for a given node id. */
@@ -388,6 +350,7 @@ export function adapterForId(id: string): GeometryAdapter<any> {
   if (id.startsWith('svg_')) return GEOMETRY_ADAPTERS.svg;
   if (id.startsWith('img_')) return GEOMETRY_ADAPTERS.image;
   if (id.startsWith('txt_')) return GEOMETRY_ADAPTERS.text;
+  if (id.startsWith('pnt_')) return GEOMETRY_ADAPTERS.paint;
   return GEOMETRY_ADAPTERS.figure;
 }
 

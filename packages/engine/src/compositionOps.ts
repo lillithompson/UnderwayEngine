@@ -1,4 +1,5 @@
-﻿import { BlendMode, CompositionState, CompositionFigure, CompUndoEntry, CompUndoOp, FigureQuad, GroupNode, PaintStrokeDraft, RGBColor, SVGObject, SVGSubpath, PathSegment, ImageObject, TextObject, CompItemKind } from './types';
+﻿import { BlendMode, CompositionState, CompositionFigure, CompUndoEntry, CompUndoOp, FigureQuad, GroupNode, PaintObject, PaintStrokeDraft, RGBColor, SVGObject, SVGSubpath, PathSegment, ImageObject, TextObject, CompItemKind } from './types';
+import { mintPaintObjectId, paintObjectAlphaHitTest } from './paintObject';
 import { lineHitsCell as svgHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { GEOMETRY_ADAPTERS } from './sceneNodeGeometry';
@@ -101,13 +102,15 @@ export type CompItemRef =
   | { kind: 'figure'; item: CompositionFigure }
   | { kind: 'svg';    item: SVGObject }
   | { kind: 'image';  item: ImageObject }
-  | { kind: 'text';   item: TextObject };
+  | { kind: 'text';   item: TextObject }
+  | { kind: 'paint';  item: PaintObject };
 
 /**
- * Single canonical lookup across figures, svgObjects, images, and texts.
- * Selection ids share a namespace (svg ids start with `svg_`, image ids
- * with `img_`, text ids with `txt_`, figures use bare timestamps), so
- * any id resolves to exactly one item.
+ * Single canonical lookup across figures, svgObjects, images, texts, and
+ * paintObjects. Selection ids share a namespace (svg ids start with
+ * `svg_`, image ids with `img_`, text ids with `txt_`, paint islands with
+ * `pnt_`, figures use bare timestamps), so any id resolves to exactly one
+ * item.
  */
 export function findItem(state: CompositionState, id: string): CompItemRef | null {
   const fig = state.figures.find(f => f.id === id);
@@ -118,6 +121,8 @@ export function findItem(state: CompositionState, id: string): CompItemRef | nul
   if (img) return { kind: 'image', item: img };
   const txt = (state.texts ?? []).find(t => t.id === id);
   if (txt) return { kind: 'text', item: txt };
+  const pnt = (state.paintObjects ?? []).find(p => p.id === id);
+  if (pnt) return { kind: 'paint', item: pnt };
   return null;
 }
 
@@ -554,10 +559,10 @@ function sameShape(
 
 // â”€â”€ Scene object adapter registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
-// Every scene-object kind (figure, svg, image, text) registers an adapter
-// here so that ordering / locking / deleting / undo loop uniformly over
-// all kinds. Adding a new kind = adding one entry here plus the field on
-// CompositionState.
+// Every scene-object kind (figure, svg, image, text, paint) registers an
+// adapter here so that ordering / locking / deleting / undo loop uniformly
+// over all kinds. Adding a new kind = adding one entry here plus the field
+// on CompositionState.
 
 export interface SceneObjectBase { id: string; locked?: boolean; hidden?: boolean; groupId?: string; name?: string; }
 
@@ -591,7 +596,8 @@ export function offsetPathSegment(seg: PathSegment, dx: number, dy: number): Pat
 export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
   {
     kind: 'figure',
-    matchesId: (id) => !id.startsWith('svg_') && !id.startsWith('img_') && !id.startsWith('txt_'),
+    matchesId: (id) =>
+      !id.startsWith('svg_') && !id.startsWith('img_') && !id.startsWith('txt_') && !id.startsWith('pnt_'),
     getArray: (s) => s.figures,
     setArray: (s, arr) => ({ ...s, figures: arr as CompositionFigure[] }),
     cloneItem: (item) => {
@@ -725,6 +731,40 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         identityCellX: txt.identityCellX !== undefined ? txt.identityCellX + dx : undefined,
         identityCellY: txt.identityCellY !== undefined ? txt.identityCellY + dy : undefined,
         name: txt.name ? txt.name + ' copy' : undefined,
+        groupId: newGroupId,
+        locked: false,
+      } as SceneObjectBase;
+    },
+  },
+  {
+    kind: 'paint',
+    matchesId: (id) => id.startsWith('pnt_'),
+    getArray: (s) => s.paintObjects ?? [],
+    setArray: (s, arr) => ({ ...s, paintObjects: arr as PaintObject[] }),
+    // Tiles are immutable-by-convention (strokes clone-on-touch, commits
+    // swap the array), so a snapshot only needs its own array — the tile
+    // objects themselves can be shared.
+    cloneItem: (item) => {
+      const p = item as PaintObject;
+      return { ...p, tiles: [...p.tiles] } as SceneObjectBase;
+    },
+    mintId: mintPaintObjectId,
+    cloneWithOffset: (item, dx, dy, newId, newGroupId) => {
+      const p = item as PaintObject;
+      // Tiles and contentRect stay put — the contentRect→bbox mapping
+      // carries the pixels, so offsetting the bbox alone translates the
+      // copy (it renders identically, one bbox over).
+      return {
+        ...p,
+        id: newId,
+        tiles: [...p.tiles],
+        cellX: p.cellX + dx,
+        cellY: p.cellY + dy,
+        localCellX: p.localCellX !== undefined ? p.localCellX + dx : undefined,
+        localCellY: p.localCellY !== undefined ? p.localCellY + dy : undefined,
+        identityCellX: p.identityCellX !== undefined ? p.identityCellX + dx : undefined,
+        identityCellY: p.identityCellY !== undefined ? p.identityCellY + dy : undefined,
+        name: p.name ? p.name + ' copy' : undefined,
         groupId: newGroupId,
         locked: false,
       } as SceneObjectBase;
@@ -896,7 +936,8 @@ export function buildDuplicateOps(
 export function buildRemoveObjectOp(
   state: CompositionState,
   id: string,
-): { op: 'removeObject'; kind: CompItemKind; item: CompositionFigure | SVGObject | ImageObject | TextObject;
+): { op: 'removeObject'; kind: CompItemKind;
+     item: CompositionFigure | SVGObject | ImageObject | TextObject | PaintObject;
      sceneOrderIndex?: number } | null {
   for (const adapter of SCENE_ADAPTERS) {
     const item = adapter.getArray(state).find((x) => x.id === id);
@@ -905,7 +946,7 @@ export function buildRemoveObjectOp(
       return {
         op: 'removeObject',
         kind: adapter.kind,
-        item: adapter.cloneItem(item) as CompositionFigure | SVGObject | ImageObject | TextObject,
+        item: adapter.cloneItem(item) as CompositionFigure | SVGObject | ImageObject | TextObject | PaintObject,
         ...(sceneOrderIndex >= 0 ? { sceneOrderIndex } : {}),
       };
     }
@@ -922,6 +963,7 @@ export function computeAliveGroupIds(
   svgObjects: readonly { groupId?: string }[],
   images: readonly { groupId?: string }[],
   texts: readonly { groupId?: string }[],
+  paints: readonly { groupId?: string }[] = [],
 ): Set<string> {
   const byId = new Map(groups.map((g) => [g.id, g]));
   const alive = new Set<string>();
@@ -936,6 +978,7 @@ export function computeAliveGroupIds(
   for (const s of svgObjects) markChain(s.groupId);
   for (const i of images) markChain(i.groupId);
   for (const t of texts) markChain(t.groupId);
+  for (const p of paints) markChain(p.groupId);
   return alive;
 }
 
@@ -950,6 +993,7 @@ export function pruneEmptyGroups(state: CompositionState): CompositionState {
     state.svgObjects,
     state.images ?? [],
     state.texts ?? [],
+    state.paintObjects ?? [],
   );
   if (alive.size === state.groups.length) return state;
   return { ...state, groups: state.groups.filter((g) => alive.has(g.id)) };
@@ -972,6 +1016,7 @@ export function withGroupPruning(
     post.svgObjects,
     post.images ?? [],
     post.texts ?? [],
+    post.paintObjects ?? [],
   );
   const prunes: CompUndoOp[] = [];
   for (const g of post.groups) {
@@ -1035,7 +1080,7 @@ export function clearGroupLocals(item: any, kind: CompItemKind): void {
     item.rotation = undefined;
     item.mirrorH = undefined;
     item.mirrorV = undefined;
-  } else if (kind === 'image' || kind === 'text') {
+  } else if (kind === 'image' || kind === 'text' || kind === 'paint') {
     item.identityCellX = undefined;
     item.identityCellY = undefined;
     item.identityCellWidth = undefined;
@@ -1062,12 +1107,14 @@ export function deriveSceneOrderFromKindArrays(state: {
   svgObjects: readonly { id: string; groupId?: string }[];
   images?: readonly { id: string; groupId?: string }[];
   texts?: readonly { id: string; groupId?: string }[];
+  paintObjects?: readonly { id: string; groupId?: string }[];
 }): string[] {
   const order: string[] = [];
   for (const i of state.images ?? []) order.push(i.id);
   for (const f of state.figures) order.push(f.id);
   for (const s of state.svgObjects) order.push(s.id);
   for (const t of state.texts ?? []) order.push(t.id);
+  for (const p of state.paintObjects ?? []) order.push(p.id);
   return enforceGroupContiguity(order, gatherGroupMemberIds(state));
 }
 
@@ -1081,6 +1128,7 @@ export function repairSceneOrder(state: {
   svgObjects: readonly { id: string; groupId?: string }[];
   images?: readonly { id: string; groupId?: string }[];
   texts?: readonly { id: string; groupId?: string }[];
+  paintObjects?: readonly { id: string; groupId?: string }[];
   sceneOrder: readonly string[];
 }): string[] {
   const present = new Set(state.sceneOrder);
@@ -1093,6 +1141,7 @@ export function repairSceneOrder(state: {
   append(state.figures);
   append(state.svgObjects);
   append(state.texts);
+  append(state.paintObjects);
   return enforceGroupContiguity(repaired, gatherGroupMemberIds(state));
 }
 
@@ -1104,6 +1153,7 @@ function gatherGroupMemberIds(state: {
   svgObjects: readonly { id: string; groupId?: string }[];
   images?: readonly { id: string; groupId?: string }[];
   texts?: readonly { id: string; groupId?: string }[];
+  paintObjects?: readonly { id: string; groupId?: string }[];
   groups?: readonly GroupNode[];
 }): Map<string, string[]> {
   // Pre-compute root for each group.
@@ -2165,6 +2215,7 @@ export function findSceneObjectAtCell(
   for (const s of state.svgObjects) lookup.set(s.id, { kind: 'svg', node: s });
   for (const i of state.images ?? []) lookup.set(i.id, { kind: 'image', node: i });
   for (const t of state.texts ?? []) lookup.set(t.id, { kind: 'text', node: t });
+  for (const p of state.paintObjects ?? []) lookup.set(p.id, { kind: 'paint', node: p });
 
   // Zoom-dependent tolerance for SVG path hit testing (squared).
   const toleranceCells = computeHitToleranceCells(state.viewport, state.camera);
@@ -2246,7 +2297,17 @@ export function findSceneObjectAtCell(
     const [hx, hy] = hit;
 
     // Bbox hit confirmed.
-    if (kind !== 'svg') return { kind, id };  // figure/image: bbox is definitive
+    if (kind === 'paint') {
+      // A selected island is bbox-definitive (mirrors the selected-SVG rule
+      // below — normal selection is already covered by the sticky pre-pass,
+      // this fires on the ignoreLock path). Otherwise only inked texels
+      // take the hit, so the blank space of a sparse island falls through
+      // to whatever sits behind it.
+      if (state.selectedFigureIds.has(id)) return { kind, id };
+      if (paintObjectAlphaHitTest(node, hx, hy, toleranceCells)) return { kind, id };
+      continue;
+    }
+    if (kind !== 'svg') return { kind, id };  // figure/image/text: bbox is definitive
 
     // SVG: tiled objects fill their region, so bbox is definitive.
     if (node.tileMode === 'repeat') return { kind, id };
@@ -2462,6 +2523,7 @@ export function allDescendantMemberIds(state: CompositionState, groupId: string)
     ...state.svgObjects.filter(s => s.groupId && groupSet.has(s.groupId)).map(s => s.id),
     ...(state.images ?? []).filter(i => i.groupId && groupSet.has(i.groupId)).map(i => i.id),
     ...(state.texts ?? []).filter(t => t.groupId && groupSet.has(t.groupId)).map(t => t.id),
+    ...(state.paintObjects ?? []).filter(p => p.groupId && groupSet.has(p.groupId)).map(p => p.id),
   ];
 }
 
@@ -2708,19 +2770,26 @@ export function materializeGroupMembers(state: CompositionState, groupId: string
   });
   const stateImages: ImageObject[] = state.images ?? [];
   const images = stateImages.map((i) => {
-    const next = materializeImageMember(i, chain, groupId);
+    const next = materializeBboxMember(i, chain, groupId);
     if (next === null) return i;
     changed = true;
     return next;
   });
   const stateTexts: TextObject[] = state.texts ?? [];
   const texts = stateTexts.map((t) => {
-    const next = materializeTextMember(t, chain, groupId);
+    const next = materializeBboxMember(t, chain, groupId);
     if (next === null) return t;
     changed = true;
     return next;
   });
-  let next = changed ? { ...state, figures, svgObjects, images, texts } : state;
+  const statePaints: PaintObject[] = state.paintObjects ?? [];
+  const paints = statePaints.map((p) => {
+    const next = materializeBboxMember(p, chain, groupId);
+    if (next === null) return p;
+    changed = true;
+    return next;
+  });
+  let next = changed ? { ...state, figures, svgObjects, images, texts, paintObjects: paints } : state;
   // Recurse into child groups so their members' world coords also reflect
   // any ancestor transform change.
   for (const child of next.groups) {
@@ -2915,6 +2984,7 @@ function setLeafGroupId(
     svgObjects: state.svgObjects.map((s) => (s.id !== id ? s : toTop ? { ...s, ...clearSvg } : { ...s, groupId })),
     images: (state.images ?? []).map((i) => (i.id !== id ? i : toTop ? { ...i, ...clearBbox } : { ...i, groupId })),
     texts: (state.texts ?? []).map((t) => (t.id !== id ? t : toTop ? { ...t, ...clearBbox } : { ...t, groupId })),
+    paintObjects: (state.paintObjects ?? []).map((p) => (p.id !== id ? p : toTop ? { ...p, ...clearBbox } : { ...p, groupId })),
   };
 }
 
@@ -3049,8 +3119,13 @@ function reconcileGroupLocalsForGroups(
       creationBox: newCreationBox,
     };
   });
-  const stateImages: ImageObject[] = state.images ?? [];
-  const images = stateImages.map((i) => {
+  // Bbox-only kinds (images, texts, paint islands) reconcile identically:
+  // inverse the bbox through the chain into `localCell*`, nothing else.
+  const reconcileBboxLocals = <T extends {
+    groupId?: string;
+    cellX: number; cellY: number; cellWidth: number; cellHeight: number;
+    localCellX?: number; localCellY?: number; localCellWidth?: number; localCellHeight?: number;
+  }>(items: readonly T[]): T[] => items.map((i) => {
     if (!i.groupId) return i;
     if (targetGroupIds && !targetGroupIds.has(i.groupId)) return i;
     const chain = groupAncestorChain(state.groups, i.groupId);
@@ -3066,24 +3141,10 @@ function reconcileGroupLocalsForGroups(
       localCellWidth: local.cellWidth, localCellHeight: local.cellHeight,
     };
   });
-  const stateTexts: TextObject[] = state.texts ?? [];
-  const texts = stateTexts.map((t) => {
-    if (!t.groupId) return t;
-    if (targetGroupIds && !targetGroupIds.has(t.groupId)) return t;
-    const chain = groupAncestorChain(state.groups, t.groupId);
-    if (chain.length === 0) return t;
-    const local = inverseChainedGroupTransform(chain, {
-      cellX: t.cellX, cellY: t.cellY, cellWidth: t.cellWidth, cellHeight: t.cellHeight,
-    });
-    if (t.localCellX === local.cellX && t.localCellY === local.cellY &&
-        t.localCellWidth === local.cellWidth && t.localCellHeight === local.cellHeight) return t;
-    changed = true;
-    return { ...t,
-      localCellX: local.cellX, localCellY: local.cellY,
-      localCellWidth: local.cellWidth, localCellHeight: local.cellHeight,
-    };
-  });
-  return changed ? { ...state, figures, svgObjects, images, texts } : state;
+  const images = reconcileBboxLocals(state.images ?? []);
+  const texts = reconcileBboxLocals(state.texts ?? []);
+  const paints = reconcileBboxLocals(state.paintObjects ?? []);
+  return changed ? { ...state, figures, svgObjects, images, texts, paintObjects: paints } : state;
 }
 
 /** Re-derive a figure member's world `cell*` (and tile dim if it tiles)
@@ -3193,16 +3254,19 @@ function materializeSVGMember(
   return { ...s, segments: newSegs, subpaths: newSubs, ...bb };
 }
 
-/** Re-derive an image member's world bbox + orientation from its
+/** Re-derive a bbox-only member's (image / text / paint island) world bbox + orientation from its
  *  `localCell*` composed with the group transform. Bbox-only â€” no
  *  vertex/segment list to materialize. World rotation/mirror is the
- *  composition of the group's orientation with the image's intrinsic
+ *  composition of the group's orientation with the member's intrinsic
  *  orientation, mirroring `materializeFigureMember` minus the
- *  quad-transform pass. Returns `null` when the image isn't in the
+ *  quad-transform pass. Returns `null` when the member isn't in the
  *  group, has no local rect, or already matches the derived state. */
-function materializeImageMember(
-  i: ImageObject, chain: readonly GroupNode[], groupId: string,
-): ImageObject | null {
+function materializeBboxMember<T extends {
+  groupId?: string;
+  cellX: number; cellY: number; cellWidth: number; cellHeight: number;
+  rotation?: 0 | 90 | 180 | 270; mirrorH?: boolean; mirrorV?: boolean;
+  localCellX?: number; localCellY?: number; localCellWidth?: number; localCellHeight?: number;
+}>(i: T, chain: readonly GroupNode[], groupId: string): T | null {
   if (i.groupId !== groupId) return null;
   if (i.localCellX === undefined || i.localCellY === undefined
     || i.localCellWidth === undefined || i.localCellHeight === undefined) return null;
@@ -3225,42 +3289,6 @@ function materializeImageMember(
   ) return null;
   return {
     ...i,
-    cellX: w.cellX, cellY: w.cellY,
-    cellWidth: w.cellWidth, cellHeight: w.cellHeight,
-    rotation: world.rotation,
-    mirrorH: world.mirrorH,
-    mirrorV: world.mirrorV,
-  };
-}
-
-/** Re-derive a text member's world bbox + orientation from its
- *  `localCell*` composed with the group transform. Bbox-only, exactly
- *  the image member's model â€” text carries no vertex geometry. */
-function materializeTextMember(
-  t: TextObject, chain: readonly GroupNode[], groupId: string,
-): TextObject | null {
-  if (t.groupId !== groupId) return null;
-  if (t.localCellX === undefined || t.localCellY === undefined
-    || t.localCellWidth === undefined || t.localCellHeight === undefined) return null;
-  const w = applyChainedGroupTransform(chain, {
-    cellX: t.localCellX, cellY: t.localCellY,
-    cellWidth: t.localCellWidth, cellHeight: t.localCellHeight,
-  });
-  const local: Orientation = {
-    rotation: t.rotation ?? 0,
-    mirrorH: t.mirrorH ?? false,
-    mirrorV: t.mirrorV ?? false,
-  };
-  const world = composeChainedOrientations(chain, local);
-  if (
-    t.cellX === w.cellX && t.cellY === w.cellY &&
-    t.cellWidth === w.cellWidth && t.cellHeight === w.cellHeight &&
-    (t.rotation ?? 0) === world.rotation &&
-    (t.mirrorH ?? false) === world.mirrorH &&
-    (t.mirrorV ?? false) === world.mirrorV
-  ) return null;
-  return {
-    ...t,
     cellX: w.cellX, cellY: w.cellY,
     cellWidth: w.cellWidth, cellHeight: w.cellHeight,
     rotation: world.rotation,
@@ -4176,6 +4204,19 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           localCellHeight: t.cellHeight,
         };
       });
+      const paints = (state.paintObjects ?? []).map((p) => {
+        if (!looseIdSet.has(p.id)) return p;
+        return {
+          ...p,
+          groupId: op.groupId,
+          preGroupName: p.name,
+          name: p.id === namedNodeId ? op.groupName : undefined,
+          localCellX: p.cellX,
+          localCellY: p.cellY,
+          localCellWidth: p.cellWidth,
+          localCellHeight: p.cellHeight,
+        };
+      });
       // Nest child groups by setting parentGroupId, saving their name.
       let groups: GroupNode[] = state.groups.map((g) => {
         if (!childGroupSet.has(g.id)) return g;
@@ -4190,7 +4231,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         ];
       }
       // Re-cluster members in sceneOrder so the new group is contiguous.
-      return reflowSceneOrderForGroups({ ...state, figures, svgObjects, images, texts, groups });
+      return reflowSceneOrderForGroups({ ...state, figures, svgObjects, images, texts, paintObjects: paints, groups });
     }
     case 'ungroupFigures': {
       const ungroupNode = state.groups.find(g => g.id === op.groupId);
@@ -4284,6 +4325,25 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           mirrorV: undefined,
         } : t
       );
+      const paints = (state.paintObjects ?? []).map((p) =>
+        p.groupId === op.groupId ? {
+          ...p,
+          groupId: undefined,
+          name: p.preGroupName,
+          preGroupName: undefined,
+          localCellX: undefined,
+          localCellY: undefined,
+          localCellWidth: undefined,
+          localCellHeight: undefined,
+          identityCellX: undefined,
+          identityCellY: undefined,
+          identityCellWidth: undefined,
+          identityCellHeight: undefined,
+          rotation: undefined,
+          mirrorH: undefined,
+          mirrorV: undefined,
+        } : p
+      );
       // Detach child groups from the parent and restore their names.
       let groups = state.groups.map((g) => {
         if (!childGroupSet.has(g.id)) return g;
@@ -4297,7 +4357,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       // (e.g. on move) recomputes world from stale locals through the
       // shortened chain, producing wrong positions. We target only the
       // affected groups to avoid perturbing unrelated items.
-      const result: CompositionState = { ...state, figures, svgObjects, images, texts, groups };
+      const result: CompositionState = { ...state, figures, svgObjects, images, texts, paintObjects: paints, groups };
       if (childGroupSet.size === 0) return result;
       // Collect all group IDs that descend from the detached children.
       const affectedGroupIds = new Set<string>();
@@ -4552,6 +4612,8 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         // Absent = pre-text entry; leave texts untouched so old undo
         // entries replay without wiping v29 content.
         ...(op.newTexts !== undefined ? { texts: op.newTexts } : {}),
+        // Same contract for paint islands (v52+).
+        ...(op.newPaints !== undefined ? { paintObjects: op.newPaints } : {}),
         renderGeneration: state.renderGeneration + 1,
       };
     case 'setText': {
@@ -4607,8 +4669,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
     }
     case 'setBackground':
       return { ...state, background: op.newPaint };
-    case 'setCanvasPaint':
-      return { ...state, canvasPaint: op.newIslands };
     case 'cleanupLibrary':
       return state;
     default:
@@ -4838,13 +4898,33 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
           mirrorV: undefined,
         };
       });
+      const paints = (state.paintObjects ?? []).map((p) => {
+        if (!idSet.has(p.id)) return p;
+        return {
+          ...p,
+          groupId: undefined,
+          name: op.oldNames[op.figureIds.indexOf(p.id)] ?? p.preGroupName,
+          preGroupName: undefined,
+          localCellX: undefined,
+          localCellY: undefined,
+          localCellWidth: undefined,
+          localCellHeight: undefined,
+          identityCellX: undefined,
+          identityCellY: undefined,
+          identityCellWidth: undefined,
+          identityCellHeight: undefined,
+          rotation: undefined,
+          mirrorH: undefined,
+          mirrorV: undefined,
+        };
+      });
       // Detach child groups (restore name from preGroupName, clear parentGroupId).
       let groups = state.groups.map((g) => {
         if (!childGroupSet.has(g.id)) return g;
         return { ...g, parentGroupId: undefined, name: g.preGroupName ?? g.name, preGroupName: undefined };
       });
       groups = groups.filter(g => g.id !== op.groupId);
-      const ungroupResult: CompositionState = { ...state, figures, svgObjects, images, texts, groups };
+      const ungroupResult: CompositionState = { ...state, figures, svgObjects, images, texts, paintObjects: paints, groups };
       if (childGroupSet.size === 0) return ungroupResult;
       const affectedGroupIds = new Set<string>();
       for (const cid of childGroupSet) {
@@ -4926,6 +5006,7 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         svgObjects: byId(state.svgObjects, op.prevSVGs),
         images: byId(state.images ?? [], op.prevImages),
         texts: byId(state.texts ?? [], op.prevTexts),
+        paintObjects: byId(state.paintObjects ?? [], op.prevPaints),
         groups: byId(state.groups, op.prevGroups),
         sceneOrder: [...op.oldSceneOrder],
       };
@@ -5099,7 +5180,8 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         oldImages: op.newImages, newImages: op.oldImages,
         oldGroups: op.newGroups, newGroups: op.oldGroups,
         oldSceneOrder: op.newSceneOrder, newSceneOrder: op.oldSceneOrder,
-        oldTexts: op.newTexts, newTexts: op.oldTexts });
+        oldTexts: op.newTexts, newTexts: op.oldTexts,
+        oldPaints: op.newPaints, newPaints: op.oldPaints });
     case 'setText':
       return applyOp(state, { ...op,
         oldContent: op.newContent, newContent: op.oldContent,
@@ -5122,8 +5204,6 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
       return applyOp(state, { ...op, oldTint: op.newTint, newTint: op.oldTint });
     case 'setBackground':
       return applyOp(state, { ...op, oldPaint: op.newPaint, newPaint: op.oldPaint });
-    case 'setCanvasPaint':
-      return applyOp(state, { ...op, oldIslands: op.newIslands, newIslands: op.oldIslands });
     case 'cleanupLibrary':
       return state;
     default:

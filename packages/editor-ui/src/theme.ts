@@ -125,6 +125,7 @@ export function defaultIconForKind(kind: string): string {
     case 'svg': return 'vector-polyline';
     case 'image': return 'image-outline';
     case 'text': return 'format-text';
+    case 'paint': return 'brush';
     case 'figure': return 'drag-horizontal-variant';
     default: return 'drag-horizontal-variant';
   }

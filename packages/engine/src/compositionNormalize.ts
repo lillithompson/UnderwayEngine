@@ -3,6 +3,7 @@ import {
   GroupNode,
   ImageObject,
   Paint,
+  PaintObject,
   PathSegment,
   SVGObject,
   SVGSubpath,
@@ -72,6 +73,7 @@ export function computeContentBBox(
   images: ImageObject[] | undefined,
   texts?: TextObject[],
   groups?: readonly GroupNode[],
+  paints?: PaintObject[],
 ): ContentBBox | null {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   let any = false;
@@ -146,6 +148,17 @@ export function computeContentBBox(
       if (t.cellY < minY) minY = t.cellY;
       if (t.cellX + t.cellWidth > maxX) maxX = t.cellX + t.cellWidth;
       if (t.cellY + t.cellHeight > maxY) maxY = t.cellY + t.cellHeight;
+    }
+  }
+
+  if (paints) {
+    for (const p of paints) {
+      if (p.hidden || inHiddenGroup(p.groupId) || frameOf(p.groupId)) continue;
+      any = true;
+      if (p.cellX < minX) minX = p.cellX;
+      if (p.cellY < minY) minY = p.cellY;
+      if (p.cellX + p.cellWidth > maxX) maxX = p.cellX + p.cellWidth;
+      if (p.cellY + p.cellHeight > maxY) maxY = p.cellY + p.cellHeight;
     }
   }
 
@@ -261,59 +274,38 @@ function transformSVGObject(tr: AffineTransform, svg: SVGObject): SVGObject {
   return out;
 }
 
-function transformImage(tr: AffineTransform, img: ImageObject): ImageObject {
-  const [cellX, cellY] = applyTransformXY(tr, img.cellX, img.cellY);
-  const out: ImageObject = {
-    ...img,
+/** Bbox-only node transform, shared by images, texts, and paint islands.
+ *  All three carry world, local, and identity bboxes but no free-form
+ *  geometry. Content payloads (image pixels, glyph rasters, paint tiles +
+ *  their object-local contentRect) are not touched: they are laid out
+ *  against the node bbox at render time, so they ride the transform. */
+function transformBboxNode<T extends {
+  cellX: number; cellY: number; cellWidth: number; cellHeight: number;
+  localCellX?: number; localCellY?: number; localCellWidth?: number; localCellHeight?: number;
+  identityCellX?: number; identityCellY?: number; identityCellWidth?: number; identityCellHeight?: number;
+}>(tr: AffineTransform, node: T): T {
+  const [cellX, cellY] = applyTransformXY(tr, node.cellX, node.cellY);
+  const out: T = {
+    ...node,
     cellX,
     cellY,
-    cellWidth: img.cellWidth * tr.scale,
-    cellHeight: img.cellHeight * tr.scale,
+    cellWidth: node.cellWidth * tr.scale,
+    cellHeight: node.cellHeight * tr.scale,
   };
-  if (img.localCellX !== undefined && img.localCellY !== undefined) {
-    const [lx, ly] = applyTransformXY(tr, img.localCellX, img.localCellY);
+  if (node.localCellX !== undefined && node.localCellY !== undefined) {
+    const [lx, ly] = applyTransformXY(tr, node.localCellX, node.localCellY);
     out.localCellX = lx;
     out.localCellY = ly;
   }
-  if (img.localCellWidth !== undefined) out.localCellWidth = img.localCellWidth * tr.scale;
-  if (img.localCellHeight !== undefined) out.localCellHeight = img.localCellHeight * tr.scale;
-  if (img.identityCellX !== undefined && img.identityCellY !== undefined) {
-    const [ix, iy] = applyTransformXY(tr, img.identityCellX, img.identityCellY);
+  if (node.localCellWidth !== undefined) out.localCellWidth = node.localCellWidth * tr.scale;
+  if (node.localCellHeight !== undefined) out.localCellHeight = node.localCellHeight * tr.scale;
+  if (node.identityCellX !== undefined && node.identityCellY !== undefined) {
+    const [ix, iy] = applyTransformXY(tr, node.identityCellX, node.identityCellY);
     out.identityCellX = ix;
     out.identityCellY = iy;
   }
-  if (img.identityCellWidth !== undefined) out.identityCellWidth = img.identityCellWidth * tr.scale;
-  if (img.identityCellHeight !== undefined) out.identityCellHeight = img.identityCellHeight * tr.scale;
-  return out;
-}
-
-/** Same bbox-only shape as `transformImage` â€” text nodes carry world,
- *  local, and identity bboxes but no free-form geometry. Style fields
- *  (size, letterSpacing, lineHeight) are not touched here; like image
- *  pixels, glyph rasters are laid out against the node bbox. */
-function transformText(tr: AffineTransform, text: TextObject): TextObject {
-  const [cellX, cellY] = applyTransformXY(tr, text.cellX, text.cellY);
-  const out: TextObject = {
-    ...text,
-    cellX,
-    cellY,
-    cellWidth: text.cellWidth * tr.scale,
-    cellHeight: text.cellHeight * tr.scale,
-  };
-  if (text.localCellX !== undefined && text.localCellY !== undefined) {
-    const [lx, ly] = applyTransformXY(tr, text.localCellX, text.localCellY);
-    out.localCellX = lx;
-    out.localCellY = ly;
-  }
-  if (text.localCellWidth !== undefined) out.localCellWidth = text.localCellWidth * tr.scale;
-  if (text.localCellHeight !== undefined) out.localCellHeight = text.localCellHeight * tr.scale;
-  if (text.identityCellX !== undefined && text.identityCellY !== undefined) {
-    const [ix, iy] = applyTransformXY(tr, text.identityCellX, text.identityCellY);
-    out.identityCellX = ix;
-    out.identityCellY = iy;
-  }
-  if (text.identityCellWidth !== undefined) out.identityCellWidth = text.identityCellWidth * tr.scale;
-  if (text.identityCellHeight !== undefined) out.identityCellHeight = text.identityCellHeight * tr.scale;
+  if (node.identityCellWidth !== undefined) out.identityCellWidth = node.identityCellWidth * tr.scale;
+  if (node.identityCellHeight !== undefined) out.identityCellHeight = node.identityCellHeight * tr.scale;
   return out;
 }
 
@@ -337,6 +329,9 @@ export interface NormalizableInput {
   images?: ImageObject[];
   /** Text scene nodes (v29+). Bboxes normalize like image bboxes. */
   texts?: TextObject[];
+  /** Paint island scene nodes (v52+). Bboxes normalize like image bboxes;
+   *  tiles and contentRect are object-local and pass through untouched. */
+  paintObjects?: PaintObject[];
   groups: GroupNode[];
   gridLevel: number;
   strokeScale: number;
@@ -351,6 +346,7 @@ export interface NormalizeResult {
   svgObjects: SVGObject[];
   images: ImageObject[] | undefined;
   texts: TextObject[] | undefined;
+  paintObjects: PaintObject[] | undefined;
   groups: GroupNode[];
   gridLevel: number;
   strokeScale: number;
@@ -396,7 +392,7 @@ export interface NormalizeResult {
  * the viewport is known).
  */
 export function normalizeComposition(input: NormalizableInput): NormalizeResult {
-  const bbox = computeContentBBox(input.figures, input.svgObjects, input.images, input.texts, input.groups);
+  const bbox = computeContentBBox(input.figures, input.svgObjects, input.images, input.texts, input.groups, input.paintObjects);
 
   if (!bbox) {
     return {
@@ -404,6 +400,7 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
       svgObjects: input.svgObjects,
       images: input.images,
       texts: input.texts,
+      paintObjects: input.paintObjects,
       groups: input.groups,
       gridLevel: input.gridLevel,
       strokeScale: input.strokeScale,
@@ -474,6 +471,7 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
       svgObjects: input.svgObjects,
       images: input.images,
       texts: input.texts,
+      paintObjects: input.paintObjects,
       groups: input.groups,
       gridLevel: input.gridLevel,
       strokeScale: input.strokeScale,
@@ -519,6 +517,7 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
       svgObjects: input.svgObjects,
       images: input.images,
       texts: input.texts,
+      paintObjects: input.paintObjects,
       groups: input.groups,
       gridLevel: input.gridLevel,
       strokeScale: input.strokeScale,
@@ -539,8 +538,9 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
   return {
     figures: input.figures.map(f => transformFigure(tr, f)),
     svgObjects: input.svgObjects.map(s => transformSVGObject(tr, s)),
-    images: input.images ? input.images.map(i => transformImage(tr, i)) : input.images,
-    texts: input.texts ? input.texts.map(t => transformText(tr, t)) : input.texts,
+    images: input.images ? input.images.map(i => transformBboxNode(tr, i)) : input.images,
+    texts: input.texts ? input.texts.map(t => transformBboxNode(tr, t)) : input.texts,
+    paintObjects: input.paintObjects ? input.paintObjects.map(p => transformBboxNode(tr, p)) : input.paintObjects,
     groups: input.groups.map(g => transformGroup(tr, g)),
     gridLevel: input.gridLevel + k,
     strokeScale: input.strokeScale * scale,

@@ -1,6 +1,7 @@
 import {
   CompositionState,
   CompUndoEntry,
+  PaintObject,
   PathSegment,
   SVGObject,
   SVGSubpath,
@@ -13,6 +14,7 @@ import {
   computeSVGBbox,
   mergeIdsIntoSceneOrder,
 } from './compositionOps';
+import { canMergePaintObjects, mergePaintObjects, mintPaintObjectId } from './paintObject';
 
 /**
  * Merge (flatten): make ONE svg object out of several. A structural operation
@@ -200,6 +202,72 @@ export function buildMergeEntry(
       oldImages: state.images ?? [], newImages: next.images ?? [],
       oldGroups: state.groups, newGroups: next.groups,
       oldSceneOrder: state.sceneOrder, newSceneOrder: next.sceneOrder,
+    }],
+    resultId: result.id,
+  };
+}
+
+// ── Paint islands ───────────────────────────────────────────────────
+
+/** The selection's paint islands in back-to-front order, or null when the
+ *  selection holds anything that isn't a paint island or the islands can't
+ *  flatten. Paint merges never mix kinds: raster brushwork can't join an
+ *  svg flatten, and vice versa. */
+function resolvePaintMergeSelection(
+  state: CompositionState,
+  selectedIds: ReadonlySet<string>,
+): PaintObject[] | null {
+  const paints = (state.paintObjects ?? []).filter((p) => selectedIds.has(p.id));
+  if (paints.length !== selectedIds.size) return null;
+  const rank = new Map(state.sceneOrder.map((id, i) => [id, i]));
+  paints.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+  return canMergePaintObjects(paints) ? paints : null;
+}
+
+/** True when the given selection is ≥2 paint islands that can flatten. */
+export function canMergePaintSelection(
+  state: CompositionState,
+  selectedIds: ReadonlySet<string>,
+): boolean {
+  return resolvePaintMergeSelection(state, selectedIds) !== null;
+}
+
+/**
+ * Build the undo entry that replaces the selected paint islands with the
+ * single island they flatten into (source-over in z-order, per-island
+ * opacity baked — see {@link mergePaintObjects}), at the front-most
+ * source's z-slot. Null when the selection isn't an all-paint flatten.
+ */
+export function buildMergePaintEntry(
+  state: CompositionState,
+  selectedIds: ReadonlySet<string>,
+): { entry: CompUndoEntry; resultId: string } | null {
+  const sources = resolvePaintMergeSelection(state, selectedIds);
+  if (!sources) return null;
+
+  const sourceIds = sources.map((s) => s.id);
+  // Spend the sources first so any group they emptied is pruned before the
+  // result lands (the merged island never claims a group — its resample is
+  // baked world geometry with no pre-group locals to carry).
+  const cleaned = applyCompOps(state, buildRemoveObjectOps(state, sourceIds));
+  const result = mergePaintObjects(sources, mintPaintObjectId());
+  if (!result) return null;
+
+  const next: CompositionState = {
+    ...cleaned,
+    paintObjects: [...(cleaned.paintObjects ?? []), result],
+    sceneOrder: mergeIdsIntoSceneOrder(state.sceneOrder, new Set(sourceIds), result.id),
+  };
+
+  return {
+    entry: [{
+      op: 'replaceScene',
+      oldFigures: state.figures, newFigures: next.figures,
+      oldSVGObjects: state.svgObjects, newSVGObjects: next.svgObjects,
+      oldImages: state.images ?? [], newImages: next.images ?? [],
+      oldGroups: state.groups, newGroups: next.groups,
+      oldSceneOrder: state.sceneOrder, newSceneOrder: next.sceneOrder,
+      oldPaints: state.paintObjects ?? [], newPaints: next.paintObjects ?? [],
     }],
     resultId: result.id,
   };
