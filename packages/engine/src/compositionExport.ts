@@ -1,8 +1,7 @@
-import { CompositionFigure, Paint, RGBColor } from './types';
+import { CompositionFigure, RGBColor } from './types';
 import { loadCompositionState, loadFileStateLite, loadClipBox } from './persistence';
 import { loadBakedFigurePng } from './bake';
-import { encodePNG, toBase64 } from './pngcodec';
-import { rasterizeSvgToPixels, rasterizeSvgToJpegDataUri } from './svgRasterize';
+import { rasterizeSvgToJpegDataUri, rasterizeSvgToPngDataUri } from './svgRasterize';
 import {
   generateCompositionSVGCore,
   type CompositionFigureLoadResult,
@@ -72,17 +71,6 @@ export interface CompositionExportOptions {
    *  {@link exportCompositionPNG}: JPEG has no alpha, so a cutout exported as
    *  JPEG lands on a white backdrop. */
   subset?: CompositionSubsetSelector;
-  /**
-   * Background to paint behind the page when the composition record carries
-   * none of its own — for a format whose page IS the bare canvas, so an export
-   * lands on the color the editor showed instead of on the rasterizer's white
-   * (JPEG) or on nothing (PNG). A page with an authored background keeps it.
-   *
-   * Ignored by a `subset` cutout, which drops the background by definition —
-   * so the same call can ask for a backdrop on the page image and still get a
-   * transparent tile.
-   */
-  fallbackBackground?: Paint;
   /** Keep the paint tool's raster layer in a `subset` cutout, framing on its
    *  brush marks along with the selected objects — for a cutout whose subject
    *  is the drawing itself. See
@@ -161,19 +149,14 @@ export async function storageFigureLoader(
  *  Exported alongside {@link storageFigureLoader} for the same reason. */
 export const storageFigurePngLoader = loadFigurePngDataUri;
 
-/**
- * Export a composition as a PNG data URI.
- * Generates SVG via exportCompositionSVG, then rasterizes to pixels
- * at the correct aspect ratio fitting within maxDimension.
- *
- * The v29 visual features (text nodes, gradient fills, shadow/glow/border
- * filters, image feColorMatrix tints, background paint) need no special
- * handling here: they are emitted as standard SVG by the generator and
- * the browser's own SVG renderer rasterizes them in rasterizeSvgToPixels.
- * The one gap is fonts — pass `options.fontResolver` so families are
- * embedded as @font-face data URIs (a detached <img> cannot see fonts
- * registered on the page).
- */
+// The v29 visual features (text nodes, gradient fills, shadow/glow/border
+// filters, image feColorMatrix tints, background paint) need no special
+// handling in any of the exporters below: they are emitted as standard SVG by
+// the generator and the browser's own SVG renderer rasterizes them. The one
+// gap is fonts — pass `options.fontResolver` so families are embedded as
+// @font-face data URIs (a detached <img> cannot see fonts registered on the
+// page).
+
 /**
  * Export the composition's SVG and compute the output raster dimensions that
  * fit within `maxDimension` while preserving the SVG's aspect ratio. Shared
@@ -207,23 +190,6 @@ async function exportCompositionRasterTarget(
   return { svg, width, height };
 }
 
-export async function exportCompositionPNG(
-  compId: string,
-  maxDimension: number,
-  strokeScale?: number,
-  options?: CompositionExportOptions,
-): Promise<string | null> {
-  const target = await exportCompositionRasterTarget(compId, maxDimension, strokeScale, options);
-  if (!target) return null;
-
-  const pixels = await rasterizeSvgToPixels(target.svg, target.width, target.height);
-  if (!pixels) return null;
-
-  const pngBytes = encodePNG(pixels, target.width, target.height);
-  const base64 = toBase64(pngBytes);
-  return `data:image/png;base64,${base64}`;
-}
-
 /** A raster export together with the pixel dimensions it was drawn at, for
  *  callers that need the artifact's aspect without re-decoding the image. */
 export interface SizedRasterExport {
@@ -232,12 +198,60 @@ export interface SizedRasterExport {
   height: number;
 }
 
+/** Frame the export, then encode it — the one body behind all four raster
+ *  exporters below, so the framing rules (aspect fit, "nothing to draw" →
+ *  null) cannot differ between PNG and JPEG. */
+async function exportCompositionRaster(
+  compId: string,
+  maxDimension: number,
+  strokeScale: number | undefined,
+  options: CompositionExportOptions | undefined,
+  encode: (svg: string, width: number, height: number) => Promise<string | null>,
+): Promise<SizedRasterExport | null> {
+  const target = await exportCompositionRasterTarget(compId, maxDimension, strokeScale, options);
+  if (!target) return null;
+  const dataUri = await encode(target.svg, target.width, target.height);
+  return dataUri ? { dataUri, width: target.width, height: target.height } : null;
+}
+
+/**
+ * Export the composition as a PNG data URI at up to `maxDimension` px on the
+ * long edge, alpha intact — nothing is painted where the composition draws
+ * nothing, so the artifact composites onto whatever shows it.
+ */
+export async function exportCompositionPNG(
+  compId: string,
+  maxDimension: number,
+  strokeScale?: number,
+  options?: CompositionExportOptions,
+): Promise<string | null> {
+  const sized = await exportCompositionPNGSized(compId, maxDimension, strokeScale, options);
+  return sized?.dataUri ?? null;
+}
+
+/**
+ * {@link exportCompositionPNG}, returning the raster's pixel dimensions
+ * alongside the data URI — the alpha-preserving counterpart of
+ * {@link exportCompositionJPEGSized}, for a composition whose export frame is
+ * its own content and whose aspect therefore isn't knowable up front.
+ */
+export async function exportCompositionPNGSized(
+  compId: string,
+  maxDimension: number,
+  strokeScale?: number,
+  options?: CompositionExportOptions,
+): Promise<SizedRasterExport | null> {
+  return exportCompositionRaster(
+    compId, maxDimension, strokeScale, options, rasterizeSvgToPngDataUri);
+}
+
 /**
  * Export the composition as a JPEG data URI at up to `maxDimension` px on the
- * long edge. JPEG (no alpha, white backdrop) is far smaller than PNG for the
- * journal's photographic/paper artifacts, which matters because these images
- * ride the WebView bridge. `quality` is 0..1 (default 0.82). Pair with
- * `options.preferOriginalImages` so embedded photos sample the full-res copy.
+ * long edge. Far smaller than PNG for a photographic artifact, at the cost of
+ * alpha: JPEG has none, so the frame is flood-filled white first and an export
+ * that draws nothing in a corner lands on a white block there. `quality` is
+ * 0..1 (default 0.82). Pair with `options.preferOriginalImages` so embedded
+ * photos sample the full-res copy.
  */
 export async function exportCompositionJPEG(
   compId: string,
@@ -263,10 +277,8 @@ export async function exportCompositionJPEGSized(
   strokeScale?: number,
   options?: CompositionExportOptions,
 ): Promise<SizedRasterExport | null> {
-  const target = await exportCompositionRasterTarget(compId, maxDimension, strokeScale, options);
-  if (!target) return null;
-  const dataUri = await rasterizeSvgToJpegDataUri(target.svg, target.width, target.height, quality);
-  return dataUri ? { dataUri, width: target.width, height: target.height } : null;
+  return exportCompositionRaster(compId, maxDimension, strokeScale, options, (svg, w, h) =>
+    rasterizeSvgToJpegDataUri(svg, w, h, quality));
 }
 
 /**
@@ -295,7 +307,7 @@ export async function exportCompositionSVG(
     images: partial.images ?? [],
     imageBlobs: partial.imageBlobs ?? {},
     texts: partial.texts ?? [],
-    background: partial.background ?? options?.fallbackBackground,
+    background: partial.background,
     canvasPaint: partial.canvasPaint,
     fontResolver: options?.fontResolver ?? defaultFontResolver,
     preferOriginalImages: options?.preferOriginalImages,

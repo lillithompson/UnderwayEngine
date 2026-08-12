@@ -475,13 +475,11 @@ describe('exportCompositionSVG — path endpoints', () => {
 });
 
 /**
- * `fallbackBackground`: a backdrop for a page that carries none of its own —
- * a format whose page is the bare canvas, so an export lands on the color the
- * editor showed rather than on the JPEG rasterizer's white.
+ * An export paints a background only where the page itself has one. There is
+ * no backdrop option to hand it: a page that draws nothing in a corner exports
+ * nothing there, and whatever shows the artifact shows through.
  */
-describe('exportCompositionSVG — fallback background', () => {
-  const GREY = { kind: 'solid' as const, color: { r: 0xd9, g: 0xd9, b: 0xd9 } };
-
+describe('exportCompositionSVG — background', () => {
   function seed(id: string, background?: unknown) {
     storage[`comp_meta_${id}`] = JSON.stringify({
       name: 'Bare',
@@ -498,33 +496,27 @@ describe('exportCompositionSVG — fallback background', () => {
     });
   }
 
-  it('paints it behind a page that has no background of its own', async () => {
+  it('leaves a page with no background of its own transparent', async () => {
     seed('bare1');
-    expect(await exportCompositionSVG('bare1')).not.toContain('#D9D9D9');
-    const svg = await exportCompositionSVG('bare1', undefined, undefined, {
-      fallbackBackground: GREY,
-    });
-    expect(svg).toContain('#D9D9D9');
+    const svg = await exportCompositionSVG('bare1');
+    expect(svg).toBeTruthy();
+    // The only rect a background would emit; the line art is a <path>.
+    expect(svg).not.toContain('<rect');
   });
 
-  it('never overrides the page’s own background', async () => {
+  it('paints the page’s own background — that is content, not a backdrop', async () => {
     seed('bare2', { kind: 'solid', color: { r: 244, g: 243, b: 241 } });
-    const svg = await exportCompositionSVG('bare2', undefined, undefined, {
-      fallbackBackground: GREY,
-    });
-    expect(svg).toContain('#F4F3F1');
-    expect(svg).not.toContain('#D9D9D9');
+    expect(await exportCompositionSVG('bare2')).toContain('#F4F3F1');
   });
 
-  it('is dropped by a cutout, so the tile stays transparent', async () => {
-    // What lets one call ask for a grey page image and a transparent Today
-    // tile: a subset export drops the background, fallback or authored.
-    seed('bare3');
+  it('drops even an authored background from a cutout', async () => {
+    // A cutout is its objects and nothing else — the page it was lifted off
+    // is exactly what it leaves behind.
+    seed('bare3', { kind: 'solid', color: { r: 244, g: 243, b: 241 } });
     const svg = await exportCompositionSVG('bare3', undefined, undefined, {
-      fallbackBackground: GREY,
       subset: () => new Set(['svg_a']),
     });
     expect(svg).toBeTruthy();
-    expect(svg).not.toContain('#D9D9D9');
+    expect(svg).not.toContain('#F4F3F1');
   });
 });

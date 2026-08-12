@@ -66,11 +66,30 @@ export function rasterizeSvgToPixels(
 }
 
 /**
+ * Rasterize an SVG to a PNG data URI, alpha intact: the canvas is left
+ * transparent, so the export covers only what the composition draws.
+ *
+ * The encoder is the browser's own, unlike {@link rasterizeSvgToPixels} +
+ * `encodePNG`, which writes STORED (uncompressed) deflate blocks — fine for a
+ * handful of tile pixels, ruinous at page size (a 1080² frame is 4.6 MB of raw
+ * RGBA before base64). Every PNG export routes through here for that reason.
+ */
+export function rasterizeSvgToPngDataUri(
+  svg: string,
+  width: number,
+  height: number,
+): Promise<string | null> {
+  const job = _queue.then(() => _rasterizeInner(svg, width, height, false, (canvas) =>
+    canvas.toDataURL('image/png')));
+  _queue = job.catch(() => {});
+  return job;
+}
+
+/**
  * Rasterize an SVG to a JPEG data URI. JPEG has no alpha channel, so the
  * canvas is flood-filled opaque white before the SVG is drawn — a
  * transparent composition would otherwise composite over black. `quality`
- * is 0..1. Used for the journal's card + full-view images, where JPEG's far
- * smaller bytes (vs PNG) keep the WebView-bridge payload bounded.
+ * is 0..1.
  */
 export function rasterizeSvgToJpegDataUri(
   svg: string,
