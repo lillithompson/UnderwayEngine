@@ -16,6 +16,24 @@ export interface CameraRollResult {
 }
 
 /**
+ * Write raw base64 bytes to a file in the cache directory and return its
+ * `file://` uri, overwriting any previous file of that name.
+ *
+ * Every native hand-off of an image the app holds in memory starts here — the
+ * photo-library save below, and the share sheet (shareImage.ts) — because both
+ * OS APIs take a file, not bytes. One implementation so the two can't come to
+ * disagree about encoding or overwrite behaviour. Throws on a filesystem
+ * failure; callers turn that into their own result shape.
+ */
+export function writeCacheFile(base64Data: string, filename: string): string {
+  const { Paths, File: FSFile } = require('expo-file-system');
+  const file = new FSFile(Paths.cache, filename);
+  file.create({ overwrite: true });
+  file.write(base64Data, { encoding: 'base64' });
+  return file.uri;
+}
+
+/**
  * Write raw base64 image bytes to a cache file and add it to the photo
  * library, prompting for permission first. Never throws — every failure
  * comes back as `{ success: false, error }` so callers can decide whether to
@@ -29,7 +47,6 @@ export async function saveBase64ToCameraRoll(
   filename: string,
 ): Promise<CameraRollResult> {
   try {
-    const { Paths, File: FSFile } = require('expo-file-system');
     const MediaLibrary = require('expo-media-library');
 
     const { status } = await MediaLibrary.requestPermissionsAsync();
@@ -37,11 +54,7 @@ export async function saveBase64ToCameraRoll(
       return { success: false, error: 'permission_denied' };
     }
 
-    const file = new FSFile(Paths.cache, filename);
-    file.create({ overwrite: true });
-    file.write(base64Data, { encoding: 'base64' });
-
-    await MediaLibrary.saveToLibraryAsync(file.uri);
+    await MediaLibrary.saveToLibraryAsync(writeCacheFile(base64Data, filename));
     return { success: true };
   } catch (e) {
     console.warn('Save to camera roll failed:', e);
