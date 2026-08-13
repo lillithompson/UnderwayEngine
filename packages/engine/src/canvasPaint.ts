@@ -352,12 +352,12 @@ function effectiveRadius(radiusCells: number): number {
 }
 
 /** How a canvas dab blends with what is already under it. Omitted (or
- *  `normal`) keeps the plain source-over deposit. `beneath` is what shows
- *  through still-transparent texels — see imagePaintOverlay's StampBlend;
- *  the per-stroke unary scratch is managed by the working set. */
+ *  `normal`) keeps the plain source-over deposit; any other mode is
+ *  MUTATE-ONLY — it edits existing paint's color and never deposits new
+ *  ink (see imagePaintOverlay's blending section). The per-stroke unary
+ *  scratch is managed by the working set. */
 export interface CanvasStampBlend {
   mode: BlendMode;
-  beneath?: RGBColor;
 }
 
 /**
@@ -449,8 +449,10 @@ function forEachIslandUnderDab(
  * `blend` makes the dab destructive — it mutates the color already under the
  * brush instead of laying the brush color over it. An island renders
  * source-over into the scene, so a blend mode has no compositing route at
- * draw time and this is the only place it can act; see the
- * destructive-blending section of imagePaintOverlay.ts.
+ * draw time and this is the only place it can act. Mutate-only: a
+ * non-normal dab edits existing paint and deposits nothing on empty space,
+ * so it also never allocates a tile — like the eraser, there is nothing for
+ * it to do where no island exists. See imagePaintOverlay's blending section.
  *
  * `mask` weights each texel's deposit by what the scene lets through at that
  * point — see {@link CanvasPaintStampMask}. Omitted, the dab deposits
@@ -467,8 +469,9 @@ export function stampCanvasPaint(
   mask?: CanvasPaintStampMask,
 ): string[] {
   const radius = effectiveRadius(radiusCells);
+  const mutateOnly = !!blend && blend.mode !== 'normal';
   const changed: string[] = [];
-  forEachIslandUnderDab(working, cellX, cellY, radius, true, (island, key) => {
+  forEachIslandUnderDab(working, cellX, cellY, radius, !mutateOnly, (island, key) => {
     const { cols, rows } = island.overlay;
     let unaryDone: Uint8Array | undefined;
     if (blend && isUnaryMode(blend.mode)) {
@@ -488,7 +491,7 @@ export function stampCanvasPaint(
       color,
       alpha,
       mask?.forIsland(key, cols * rows, island.x, island.y),
-      blend ? { mode: blend.mode, beneath: blend.beneath, unaryDone } : undefined,
+      blend ? { mode: blend.mode, unaryDone } : undefined,
     )) {
       changed.push(key);
     }

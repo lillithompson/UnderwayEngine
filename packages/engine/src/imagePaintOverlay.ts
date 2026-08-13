@@ -91,6 +91,12 @@ function forEachTexelInDisc(
 // the blended result — which is also what "paint yellow in dodge and watch
 // what is there brighten" means to hand: the color under the brush mutates,
 // rather than a translucent yellow being laid over it.
+//
+// And it MUTATES ONLY: a non-normal dab edits paint that already exists —
+// its RGB drifts toward the blended result at the dab's strength while its
+// alpha stays exactly where it was — and an empty texel takes nothing at
+// all. Dodge brightens the stroke under the brush; it never deposits a
+// dodged wash onto bare canvas. Only 'normal' lays new paint down.
 
 /** Modes that rewrite a base color outright rather than compositing with it
  *  (paintBlendCss has no equivalent for them). Facet's rule is that these
@@ -102,39 +108,13 @@ function isUnaryMode(mode: BlendMode): boolean {
 }
 
 /** How a dab blends with what is already under it. Omitted (or `normal`)
- *  keeps the plain source-over deposit every other surface uses. */
+ *  keeps the plain source-over deposit every other surface uses; any other
+ *  mode is MUTATE-ONLY — see the section header above. */
 export interface StampBlend {
   mode: BlendMode;
-  /** What shows through where the layer is still transparent — the page's
-   *  solid background under the canvas layer. Undefined when there is
-   *  nothing knowable there (no background, or a gradient), and a dab on an
-   *  untouched texel then deposits the brush color plainly: there is no
-   *  base to mutate. */
-  beneath?: RGBColor;
   /** One byte per texel, marking those a unary mode has already rewritten
    *  this stroke. Owned by the stroke, not the layer. */
   unaryDone?: Uint8Array;
-}
-
-/** The color a dab is about to mutate: the texel's own paint over whatever
- *  shows through beneath it, or null when the texel is empty and nothing is
- *  known to be under it. */
-function baseUnderTexel(
-  rgba: Uint8Array,
-  i: number,
-  dstA: number,
-  beneath: RGBColor | undefined,
-): RGBColor | null {
-  if (dstA >= 1) return { r: rgba[i], g: rgba[i + 1], b: rgba[i + 2] };
-  if (!beneath) return dstA > 0 ? { r: rgba[i], g: rgba[i + 1], b: rgba[i + 2] } : null;
-  // Partly-painted texel: what the eye sees there is the paint over the
-  // background, so that composite is what the brush mutates.
-  const mix = (c: number, b: number) => Math.round(c * dstA + b * (1 - dstA));
-  return {
-    r: mix(rgba[i], beneath.r),
-    g: mix(rgba[i + 1], beneath.g),
-    b: mix(rgba[i + 2], beneath.b),
-  };
 }
 
 /**
@@ -155,8 +135,10 @@ function baseUnderTexel(
  * overlays pass nothing and paint the whole disc.
  *
  * `blend` (optional) makes the dab destructive rather than a plain deposit —
- * see the section header above. Per-object overlays pass nothing, because
- * their blend mode is applied by the renderer.
+ * and mutate-only: it edits the RGB of texels that already hold paint,
+ * leaves their alpha untouched, and skips empty texels entirely. See the
+ * section header above. Per-object overlays pass nothing, because their
+ * blend mode is applied by the renderer.
  */
 export function stampImagePaintOverlay(
   overlay: ImagePaintOverlay,
@@ -184,8 +166,10 @@ export function stampImagePaintOverlay(
       if (srcA <= 0) return;
     }
     const dstA = rgba[i + 3] / 255;
-    let src = color;
     if (blending) {
+      // Mutate-only: nothing under the brush here, nothing to blend — the
+      // dab deposits no new color.
+      if (dstA <= 0) return;
       const texel = i >> 2;
       // A unary mode gets one go at each texel; later dabs of the same
       // stroke leave it alone rather than inverting it back.
@@ -193,10 +177,21 @@ export function stampImagePaintOverlay(
         if (blending.unaryDone[texel]) return;
         blending.unaryDone[texel] = 1;
       }
-      const base = baseUnderTexel(rgba, i, dstA, blending.beneath);
-      // Opacity is the source alpha below, so the blend itself runs at full
+      const base = { r: rgba[i], g: rgba[i + 1], b: rgba[i + 2] };
+      // Opacity is the drift weight below, so the blend itself runs at full
       // strength — the falloff must not be applied to it twice.
-      if (base) src = blendColor(base, color, blending.mode, 1);
+      const src = blendColor(base, color, blending.mode, 1);
+      // The texel's RGB drifts toward the blended result at the dab's
+      // strength; its alpha stays exactly where it was — the stroke edits
+      // paint, it never thickens or thins it.
+      const drift = (off: number, srcC: number) => {
+        const v = Math.round(srcC * srcA + rgba[i + off] * (1 - srcA));
+        if (rgba[i + off] !== v) { rgba[i + off] = v; changed = true; }
+      };
+      drift(0, src.r);
+      drift(1, src.g);
+      drift(2, src.b);
+      return;
     }
     // Straight-alpha source-over: the dab composites onto what the stroke
     // (and earlier strokes) already deposited in this texel.
@@ -206,9 +201,9 @@ export function stampImagePaintOverlay(
       const v = Math.round((srcC * srcA + dstC * dstA * (1 - srcA)) / outA);
       if (rgba[i + off] !== v) { rgba[i + off] = v; changed = true; }
     };
-    write(0, src.r);
-    write(1, src.g);
-    write(2, src.b);
+    write(0, color.r);
+    write(1, color.g);
+    write(2, color.b);
     const a = Math.round(outA * 255);
     if (rgba[i + 3] !== a) { rgba[i + 3] = a; changed = true; }
   });

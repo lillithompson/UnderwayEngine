@@ -197,7 +197,7 @@ describe('unary blend modes', () => {
     const committed = commitCanvasPaint(paint)!;
 
     const invert = createCanvasPaintWorking(committed);
-    const blend = { mode: 'invert' as const, beneath: undefined };
+    const blend = { mode: 'invert' as const };
     stampCanvasPaint(invert, 8 + C, 8 + C, 2, RED, 1, blend);
     const once = islandAt(composeCanvasPaint(invert), 8 + C, 8 + C)!;
     const value = once.overlay.rgba[texelOffset(once, 8 + C, 8 + C)];
@@ -359,5 +359,56 @@ describe('stampCanvasPaint occlusion mask', () => {
     // report its own origin (local texel coords alone would collide).
     stampCanvasPaint(working, 16, 8 + C, 2, RED, 1, undefined, mask);
     expect(seen.sort()).toEqual([[0, 0], [16, 0]]);
+  });
+});
+
+describe('non-normal blends mutate existing paint only', () => {
+  const BLUE = { r: 0, g: 0, b: 255 };
+  const YELLOW = { r: 255, g: 255, b: 0 };
+
+  it('a blend dab on empty canvas deposits nothing — and allocates nothing', () => {
+    const working = createCanvasPaintWorking();
+    expect(stampCanvasPaint(working, 8 + C, 8 + C, 2, YELLOW, 1, { mode: 'multiply' }))
+      .toEqual([]);
+    expect(working.touched.size).toBe(0);
+    expect(commitCanvasPaint(working)).toBeUndefined();
+  });
+
+  it('dodge edits the color under the brush without touching its alpha', () => {
+    const working = createCanvasPaintWorking();
+    stampCanvasPaint(working, 8 + C, 8 + C, 2, BLUE, 0.5);
+    const before = composeCanvasPaint(working);
+    const isl = islandAt(before, 8 + C, 8 + C)!;
+    const i = texelOffset(isl, 8 + C, 8 + C);
+    const alphaBefore = isl.overlay.rgba[i + 3];
+    expect(alphaBefore).toBeGreaterThan(0);
+    expect(alphaBefore).toBeLessThan(255); // half-strength paint: the edit
+    // must not thicken it toward full coverage.
+
+    stampCanvasPaint(working, 8 + C, 8 + C, 2, YELLOW, 1, { mode: 'dodge' });
+    const after = islandAt(composeCanvasPaint(working), 8 + C, 8 + C)!;
+    // Dodging yellow blows out the channels the brush has; blue survives.
+    expect(after.overlay.rgba[i]).toBeGreaterThan(0);
+    expect(after.overlay.rgba[i + 1]).toBeGreaterThan(0);
+    expect(after.overlay.rgba[i + 2]).toBe(255);
+    // Alpha untouched — the stroke edited paint, it laid none down.
+    expect(after.overlay.rgba[i + 3]).toBe(alphaBefore);
+  });
+
+  it('the mutate rule stops at the ink edge — texels past it stay empty', () => {
+    const working = createCanvasPaintWorking();
+    stampCanvasPaint(working, 8 + C, 8 + C, 1, BLUE, 1);
+    // A much wider dodge dab centered on the same spot reaches plenty of
+    // empty texels; none of them may take paint.
+    stampCanvasPaint(working, 8 + C, 8 + C, 6, YELLOW, 1, { mode: 'dodge' });
+    expect(alphaAt(composeCanvasPaint(working), 8 + C + 4, 8 + C)).toBe(0);
+  });
+
+  it("blend { mode: 'normal' } still deposits like a plain dab", () => {
+    const plain = createCanvasPaintWorking();
+    const normal = createCanvasPaintWorking();
+    stampCanvasPaint(plain, 8 + C, 8 + C, 2, BLUE, 0.5);
+    stampCanvasPaint(normal, 8 + C, 8 + C, 2, BLUE, 0.5, { mode: 'normal' });
+    expect(commitCanvasPaint(normal)).toEqual(commitCanvasPaint(plain));
   });
 });
