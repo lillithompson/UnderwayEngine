@@ -50,6 +50,11 @@ import { RenameModal } from './RenameModal';
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 const icon = (glyph: string) => glyph as MCIName;
 
+/** Slop around the row's drag handle. The handle is icon-sized by design —
+ *  the name beside it belongs to tap/rename — but a thumb is not, so the
+ *  grabbable area reaches past the glyph without moving anything. */
+const DRAG_HANDLE_HIT_SLOP = { top: 0, bottom: 0, left: 10, right: 10 } as const;
+
 interface SceneOutlinePanelProps {
   model: SceneOutlineModel;
   // Status-bar / notch inset (points). The panel background is full-bleed to
@@ -135,6 +140,17 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
+        // The rows live inside a ScrollView, whose NATIVE pan recognizer
+        // competes with this one for the same vertical drag. Losing that
+        // race is what made rows feel impossible to grab (the list scrolled
+        // instead) and what dropped finished reorders on the floor: the
+        // steal arrives as onPanResponderTerminate, which resets the drag
+        // WITHOUT committing it, so the row springs back as though the edit
+        // never happened. Refusing to hand the gesture back — and blocking
+        // the native responder outright — is what keeps a drag that started
+        // on the handle a drag until the finger lifts.
+        onPanResponderTerminationRequest: () => false,
+        onShouldBlockNativeResponder: () => true,
         onPanResponderGrant: () => {
           dragDyRef.current = 0;
           dragDxRef.current = 0;
@@ -289,7 +305,15 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                     ) : (
                       <View style={styles.chevron} />
                     )}
-                    <View style={styles.dragHandle} {...getResponder(index).panHandlers}>
+                    {/* The kind icon IS the drag handle. Its hit area is
+                        widened past the glyph (hitSlop, no layout change) so
+                        a thumb aimed at the icon lands on it rather than on
+                        the scrolling list beside it. */}
+                    <View
+                      style={styles.dragHandle}
+                      hitSlop={DRAG_HANDLE_HIT_SLOP}
+                      {...getResponder(index).panHandlers}
+                    >
                       <MaterialCommunityIcons name={icon(glyph)} size={18} color={OUTLINE_ICON} />
                     </View>
                     <Pressable
