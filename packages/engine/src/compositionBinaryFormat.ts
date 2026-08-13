@@ -1,4 +1,4 @@
-﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, RGBColor, TextObject, TextStyle, TextAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
+﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, RGBColor, TextObject, TextStyle, TextAlign, TextVAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
 import { normalizeCanvasPaintIslands } from './canvasPaint';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
@@ -203,6 +203,8 @@ import { compSnapStep } from './compositionCellMath';
 //     if hasStroke:        width f32 + r u8 + g u8 + b u8
 //     if hasWeight:        weight u8 (0 light, 1 regular, 2 semibold, 3 bold)
 //     if hasEffects (flags2): shared EFFECTS payload above
+//     if hasVAlign (flags2 0x40, v53+): vAlign u8 (0 top, 1 middle,
+//       2 bottom) — LAST in the record, after the char-colour block
 //
 // BACKGROUND SECTION (v29+) â€” written after the custom colors section
 //   (the final section of the file).
@@ -405,7 +407,14 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      4×f32; contentRect 4×f32 (tile space); conditional opacity f32 +
 //      edgeSoften f32 + angleDeg f32; u16 tileCount, then per tile
 //      f32 x + f32 y + f32 widthCells + the v48 paint-overlay payload.
-const FORMAT_VERSION = 52;
+// v53: text records persist `style.vAlign` (flags2 0x40 + a trailing enum
+//      byte). It had never been written at all, so every text that went
+//      through a save/load — a .tile export, a page template — came back
+//      top-aligned however it had been authored: a magnetic-poetry word rose
+//      off the middle of its card onto the top edge the moment the page was
+//      reopened. Older files set no bit and read back unchanged (absent),
+//      which is what they have always meant.
+const FORMAT_VERSION = 53;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -888,6 +897,15 @@ const TFLAG2_HAS_ANGLE = 0x08;
 const TFLAG2_FIXED_SIZE = 0x10;
 // v47+: per-character brush colors payload present (last in the record).
 const TFLAG2_HAS_CHAR_COLORS = 0x20;
+// v53+: a trailing byte carrying the VERTICAL alignment enum. The style
+// flags byte was already full (bold/italic/stroke/spacing/lineHeight/align/
+// weight fill all eight bits), so vAlign rides its own presence bit here and
+// one byte at the very end of the record. Files written before v53 never set
+// it and read back exactly as they did — which is also the bug this fixed:
+// vAlign was simply never written, so every text that had been saved and
+// reopened fell back to top-aligned, and a word sticker's centred word rose
+// off its card's middle onto the top edge.
+const TFLAG2_HAS_VALIGN = 0x40;
 // v29+ text style flag bits.
 const TSTYLE_BOLD = 0x01;
 const TSTYLE_ITALIC = 0x02;
@@ -904,6 +922,8 @@ const BITS_TO_ALIGN: (TextAlign | undefined)[] = [undefined, 'left', 'center', '
 // it, so older saves read back unchanged.
 const TSTYLE_HAS_WEIGHT = 0x80;
 const WEIGHT_TO_BITS: Record<FontWeight, number> = { light: 0, regular: 1, semibold: 2, bold: 3 };
+const VALIGN_TO_BITS: Record<TextVAlign, number> = { top: 0, middle: 1, bottom: 2 };
+const BITS_TO_VALIGN: (TextVAlign | undefined)[] = ['top', 'middle', 'bottom'];
 const BITS_TO_WEIGHT: FontWeight[] = ['light', 'regular', 'semibold', 'bold'];
 
 // v29+ image tint mode byte.
@@ -2407,6 +2427,7 @@ function textBinarySize(text: TextObject): number {
   if (text.angleDeg) size += 2; // v31+ free rotation (i16)
   const charColorCount = countCharColors(text.style.charColors);
   if (charColorCount > 0) size += 2 + charColorCount * 5; // v47+ count + (idx u16, rgb)
+  if (text.style.vAlign != null) size += 1; // v53+ vAlign enum
   return size;
 }
 
@@ -2446,6 +2467,7 @@ function writeText(
   if (text.fixedSize) flags2 |= TFLAG2_FIXED_SIZE;
   const charColorCount = countCharColors(text.style.charColors);
   if (charColorCount > 0) flags2 |= TFLAG2_HAS_CHAR_COLORS;
+  if (text.style.vAlign != null) flags2 |= TFLAG2_HAS_VALIGN;
   out[pos++] = flags2;
 
   out[pos++] = ROTATION_TO_BITS[text.rotation ?? 0] & 0x03;
@@ -2513,6 +2535,11 @@ function writeText(
       out[pos++] = c.g & 0xff;
       out[pos++] = c.b & 0xff;
     }
+  }
+
+  // v53+ vertical alignment, last in the record.
+  if (text.style.vAlign != null) {
+    out[pos++] = VALIGN_TO_BITS[text.style.vAlign] & 0xff;
   }
 
   return pos;
@@ -2636,6 +2663,13 @@ function readText(
       charColors[idx] = { r: cr, g: cg, b: cb };
     }
     style.charColors = charColors;
+  }
+  // v53+ vertical alignment, last in the record. Presence-gated like the
+  // fields above: nothing before v53 set the bit, so older files read back
+  // with vAlign absent — which is what they have always meant.
+  if (flags2 & TFLAG2_HAS_VALIGN) {
+    const vAlign = BITS_TO_VALIGN[data[pos++] & 0x03];
+    if (vAlign != null) style.vAlign = vAlign;
   }
 
   return { text, pos };
