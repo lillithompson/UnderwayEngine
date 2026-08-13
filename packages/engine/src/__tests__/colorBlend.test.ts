@@ -204,47 +204,33 @@ describe('blendColor', () => {
     });
   });
 
+  // The randomness belongs to the STROKE, not to this function: the brush
+  // walks smoothly between random colours as it is dragged (app-side
+  // paintBrush.ts) and hands the current one in as `brush`, so a random
+  // stroke reads as a line drifting through colour rather than as per-pixel
+  // confetti. Here the mode simply deposits what it is given.
   describe('randomize mode', () => {
     it('opacity 0 returns base unchanged', () => {
       expect(blendColor(red, blue, 'randomize', 0)).toEqual(red);
       expect(blendColor(mid, green, 'randomize', 0)).toEqual(mid);
     });
 
-    it('opacity 1 produces a fully random color (ignores brush)', () => {
-      // Mock Math.random to return deterministic values.
-      const spy = jest.spyOn(Math, 'random')
-        .mockReturnValueOnce(0.5)   // r = 128
-        .mockReturnValueOnce(0.25)  // g = 64
-        .mockReturnValueOnce(0.75); // b = 192
-      const out = blendColor(red, blue, 'randomize', 1);
-      expect(out).toEqual(rgb(128, 64, 192));
-      spy.mockRestore();
+    it('opacity 1 lands the colour the stroke is carrying', () => {
+      expect(blendColor(red, blue, 'randomize', 1)).toEqual(blue);
+      expect(blendColor(mid, green, 'randomize', 1)).toEqual(green);
     });
 
-    it('opacity 0.5 lerps halfway from base to random color', () => {
-      const spy = jest.spyOn(Math, 'random')
-        .mockReturnValueOnce(0)     // r = 0
-        .mockReturnValueOnce(1 - 1/256) // g = 255
-        .mockReturnValueOnce(0.5);  // b = 128
-      // base = (255, 0, 0), random = (0, 255, 128)
-      // lerp at 0.5: (128, 128, 64)
-      const out = blendColor(red, white, 'randomize', 0.5);
-      expect(out).toEqual(rgb(128, 128, 64));
-      spy.mockRestore();
+    it('opacity 0.5 lerps halfway toward it, like any composing mode', () => {
+      // base (255, 0, 0) → brush (255, 255, 255), halfway = (255, 128, 128).
+      expect(blendColor(red, white, 'randomize', 0.5)).toEqual(rgb(255, 128, 128));
     });
 
-    it('produces valid 0-255 integer channels', () => {
+    it('rolls no dice of its own — the same call twice is the same colour', () => {
+      // The old behaviour rolled per call, which is what made a dragged
+      // stroke come out as noise instead of a line.
+      const first = blendColor(mid, red, 'randomize', 1);
       for (let i = 0; i < 20; i++) {
-        const out = blendColor(mid, red, 'randomize', 1);
-        expect(out.r).toBeGreaterThanOrEqual(0);
-        expect(out.r).toBeLessThanOrEqual(255);
-        expect(out.g).toBeGreaterThanOrEqual(0);
-        expect(out.g).toBeLessThanOrEqual(255);
-        expect(out.b).toBeGreaterThanOrEqual(0);
-        expect(out.b).toBeLessThanOrEqual(255);
-        expect(Number.isInteger(out.r)).toBe(true);
-        expect(Number.isInteger(out.g)).toBe(true);
-        expect(Number.isInteger(out.b)).toBe(true);
+        expect(blendColor(mid, red, 'randomize', 1)).toEqual(first);
       }
     });
   });

@@ -101,11 +101,13 @@ function applyBlend(base: RGBColor, brush: RGBColor, mode: BlendMode, opacity: n
       return { r, g, b };
     }
     case 'randomize':
-      return {
-        r: Math.floor(Math.random() * 256),
-        g: Math.floor(Math.random() * 256),
-        b: Math.floor(Math.random() * 256),
-      };
+      // The randomness is the STROKE's, not the pixel's: the brush walks
+      // smoothly between random colours as it is dragged (the caller owns
+      // that walk and hands the current colour in as `brush`), so a random
+      // stroke reads as a line drifting through colour rather than as
+      // per-pixel confetti. Nothing to compute here — deposit what the
+      // brush is carrying.
+      return brush;
     case 'hue': {
       const [, sBase, vBase] = rgbToHsv(base.r, base.g, base.b);
       const [hBrush] = rgbToHsv(brush.r, brush.g, brush.b);
