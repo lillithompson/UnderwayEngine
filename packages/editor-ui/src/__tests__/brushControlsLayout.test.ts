@@ -28,6 +28,32 @@ describe('the stack sits one row lower than the panel it replaced', () => {
   });
 });
 
+// Each row shows the value in the currency it controls: SIZE as a width,
+// STRENGTH as an opacity. A dot that merely grew would say nothing about how
+// much paint a dab lays down.
+describe('each handle reads out the thing its row controls', () => {
+  it('gives size a diameter and strength an opacity', () => {
+    expect(SRC).toContain('label="Size" readout="diameter"');
+    expect(SRC).toContain('label="Strength" readout="opacity"');
+  });
+
+  it('draws the strength wash at full size, varying only its opacity', () => {
+    // Clear at the left end, solid at the right — so the readout has to be
+    // the opacity, not the size, of the disc.
+    const branch = /\{readout === 'diameter' \? \([\s\S]*?\)\}/.exec(SRC)?.[0] ?? '';
+    expect(branch).toContain('width: dot');           // the size row still grows
+    expect(branch).toContain('styles.wash, { opacity: v }'); // the strength row fades
+    const wash = /wash: \{[\s\S]*?\n  \},/.exec(SRC)?.[0] ?? '';
+    expect(wash).toContain('width: DOT_MAX');
+    expect(wash).toContain('height: DOT_MAX');
+  });
+
+  it('feathers the wash out to nothing at its rim', () => {
+    expect(SRC).toContain('radial-gradient(circle at 50% 50%');
+    expect(SRC).toContain('rgba(255,255,255,0) 100%');
+  });
+});
+
 describe('a row names itself inside its own track', () => {
   it('is left-justified within the pill, not floated off to its side', () => {
     const label = /label: \{[\s\S]*?\n  \},/.exec(SRC)?.[0] ?? '';
