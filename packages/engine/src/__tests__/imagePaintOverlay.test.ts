@@ -158,6 +158,62 @@ describe('blurImagePaintOverlay', () => {
     stampImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, RED, 1);
     expect(blurImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, 0)).toBe(false);
   });
+
+  // The kernel opens up with the brush's radius AND its strength, so the
+  // control that says how hard the brush presses says how far colour travels.
+  // A hard edge is the readable case: how far past it cover reaches is how
+  // wide the pass reached.
+
+  /** A hard-edged red block filling the left half of a 16-cell-wide layer. */
+  const halfBlock = () => {
+    const o = createImagePaintOverlay(16, 4, 'normal');
+    for (let r = 0; r < o.rows; r++) {
+      for (let c = 0; c < o.cols / 2; c++) {
+        const i = (r * o.cols + c) * 4;
+        o.rgba[i] = 255;
+        o.rgba[i + 3] = 255;
+      }
+    }
+    return o;
+  };
+
+  /** How many texels past the edge took colour on the middle row. */
+  const spread = (o: ImagePaintOverlay) => {
+    const r = Math.floor(o.rows / 2);
+    let n = 0;
+    for (let c = o.cols / 2; c < o.cols; c++) {
+      if (o.rgba[(r * o.cols + c) * 4 + 3] === 0) break;
+      n++;
+    }
+    return n;
+  };
+
+  test('a stronger brush carries colour further than a light one', () => {
+    // Same dab, same size — only the strength differs.
+    const light = halfBlock();
+    const hard = halfBlock();
+    const cx = 8; // the block's edge, mid-layer
+    blurImagePaintOverlay(light, 16, 4, cx, 2, 4, 0.2);
+    blurImagePaintOverlay(hard, 16, 4, cx, 2, 4, 1);
+    expect(spread(hard)).toBeGreaterThan(spread(light));
+  });
+
+  test('a big brush carries it further than a small one at the same strength', () => {
+    const small = halfBlock();
+    const big = halfBlock();
+    blurImagePaintOverlay(small, 16, 4, 8, 2, 0.5, 1);
+    blurImagePaintOverlay(big, 16, 4, 8, 2, 4, 1);
+    expect(spread(big)).toBeGreaterThan(spread(small));
+  });
+
+  test('the small end is still the plain 3×3 box it always was', () => {
+    // A one-cell brush spans four texels at this density, which rounds the
+    // kernel to a single texel: the 3×3 box this pass used at every size
+    // before it learned to open up.
+    const o = halfBlock();
+    blurImagePaintOverlay(o, 16, 4, 8, 2, 1, 1);
+    expect(spread(o)).toBe(1);
+  });
 });
 
 describe('overlayPngDataUri', () => {

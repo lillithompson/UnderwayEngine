@@ -241,17 +241,54 @@ export function eraseImagePaintOverlay(
   return changed;
 }
 
+/** Share of the brush RADIUS the blur kernel spans at full strength. A
+ *  quarter is enough that one pass of a big brush visibly softens what it
+ *  covers, while still leaving the dab's own shape readable. */
+const BLUR_KERNEL_FRACTION = 0.25;
+
+/** Ceiling on the kernel, in texels. Each surface blurs within ITSELF (a
+ *  paint island's tiles don't read their neighbours — see canvasPaint), so
+ *  an unbounded kernel would make that seam visible at tile borders. One
+ *  cell's worth of texels is a strong blur and a seam small against a
+ *  128-texel tile. */
+const BLUR_MAX_KERNEL_TEXELS = 8;
+
+/** Taps per axis across the kernel. Fixed, so a wide blur costs no more
+ *  reads than a narrow one; at the small end the spacing collapses to 1 and
+ *  these are the plain 3×3 neighbours. */
+const BLUR_TAPS = 5;
+
+/** Reusable pre-stamp snapshot for {@link blurImagePaintOverlay}. The pass
+ *  needs the bytes as they were before this dab, and it runs per dab per
+ *  surface — a fresh copy each time is a 64 KB allocation inside a pointer
+ *  move that already fans out into dozens of dabs. Grown on demand, never
+ *  shrunk, and never live across a call (the blur is synchronous). */
+let blurScratch = new Uint8Array(0);
+
+function blurSource(rgba: Uint8Array): Uint8Array {
+  if (blurScratch.length < rgba.length) blurScratch = new Uint8Array(rgba.length);
+  blurScratch.set(rgba);
+  return blurScratch;
+}
+
 /**
  * Blur one brush dab's worth of the overlay: every texel under the disc
- * moves toward its 3×3 neighborhood average by `strength × gaussianFalloff`
- * — one soft box-blur step per stamp, so holding or re-passing the brush
- * keeps softening. The neighborhood color is ALPHA-WEIGHTED (a transparent
- * neighbor contributes cover, not color), so blurring a dab's edge spreads
- * its own color outward instead of bleeding transparent black in; alpha
- * itself averages plainly, which is what feathers the edge. Texels are read
- * from a pre-stamp snapshot so the pass can't cascade into itself within
- * one stamp. Returns true when any byte changed, so callers can skip
- * preview refreshes.
+ * moves toward its NEIGHBORHOOD average by `strength × gaussianFalloff` —
+ * one soft box-blur step per stamp, so holding or re-passing the brush keeps
+ * softening.
+ *
+ * How far that neighborhood reaches is the brush's own radius scaled by its
+ * STRENGTH ({@link BLUR_KERNEL_FRACTION}, capped at {@link
+ * BLUR_MAX_KERNEL_TEXELS}): a big brush at full strength pulls colour across
+ * a whole cell in one pass, a light touch nudges neighbours. At the small end
+ * the kernel is the 3×3 box this pass used at every size before.
+ *
+ * The neighborhood color is ALPHA-WEIGHTED (a transparent neighbor
+ * contributes cover, not color), so blurring a dab's edge spreads its own
+ * color outward instead of bleeding transparent black in; alpha itself
+ * averages plainly, which is what feathers the edge. Texels are read from a
+ * pre-stamp snapshot so the pass can't cascade into itself within one stamp.
+ * Returns true when any byte changed, so callers can skip preview refreshes.
  */
 export function blurImagePaintOverlay(
   overlay: ImagePaintOverlay,
@@ -265,7 +302,20 @@ export function blurImagePaintOverlay(
   if (strength <= 0) return false;
   const { cols, rows, rgba } = overlay;
   const radiusSq = radiusCells * radiusCells;
-  const src = rgba.slice();
+  const src = blurSource(rgba);
+  // How far the kernel reaches, in texels — the brush's own size opened up
+  // by its STRENGTH, so the control that says how hard the brush presses is
+  // what says how far colour travels. A one-texel kernel (the small end, and
+  // what this pass always used) is the 3×3 box it has always been.
+  const texPerCell = iwCells > 0 ? cols / iwCells : 1;
+  const k = Math.max(1, Math.min(
+    BLUR_MAX_KERNEL_TEXELS,
+    Math.round(radiusCells * texPerCell * BLUR_KERNEL_FRACTION * strength),
+  ));
+  // Taps are spread ACROSS the kernel rather than packed, so a wide blur
+  // costs the same handful of reads as a narrow one — the pass runs per dab,
+  // and a stroke fans one pointer move into dozens of them.
+  const step = Math.max(1, Math.ceil(k / ((BLUR_TAPS - 1) / 2)));
   let changed = false;
   forEachTexelInDisc(overlay, iwCells, ihCells, lx, ly, radiusCells, (i, distSq) => {
     const t = strength * gaussianFalloff(distSq / radiusSq);
@@ -274,10 +324,10 @@ export function blurImagePaintOverlay(
     const r0 = Math.floor(idx / cols);
     const c0 = idx - r0 * cols;
     let rSum = 0, gSum = 0, bSum = 0, aSum = 0, n = 0;
-    for (let dr = -1; dr <= 1; dr++) {
+    for (let dr = -k; dr <= k; dr += step) {
       const rr = r0 + dr;
       if (rr < 0 || rr >= rows) continue;
-      for (let dc = -1; dc <= 1; dc++) {
+      for (let dc = -k; dc <= k; dc += step) {
         const cc = c0 + dc;
         if (cc < 0 || cc >= cols) continue;
         const j = (rr * cols + cc) * 4;
