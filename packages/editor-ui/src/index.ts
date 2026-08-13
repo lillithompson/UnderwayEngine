@@ -25,7 +25,7 @@ export { RenameModal } from './components/RenameModal';
 export { CapsuleButton } from './components/CapsuleButton';
 export { TopBar } from './components/TopBar';
 export { UndoRedoPanel } from './components/UndoRedoPanel';
-export { BrushSizePanel } from './components/BrushSizePanel';
+export { BrushControlsPanel } from './components/BrushControlsPanel';
 export { GridQuickActionPanel } from './components/GridQuickActionPanel';
 export { ObjectPropertiesPanel } from './components/ObjectPropertiesPanel';
 export { ColorPickerModal } from './components/ColorPickerModal';

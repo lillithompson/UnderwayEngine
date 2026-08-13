@@ -595,20 +595,25 @@ export interface ObjectPropertiesModel {
   onMerge?(): void;
 }
 
-// ── Brush size ───────────────────────────────────────────────────────
+// ── Brush controls ───────────────────────────────────────────────────
 
-export interface BrushSizeModel {
+export interface BrushControlsModel {
   /** Up while a raster brush (paint / erase / blur) is armed. The panel
    *  animates itself in (small bounce) and out on this flag, so hosts just
    *  flip it — it occupies the bottom-center strip the object-properties
    *  panel uses, and the host hides that panel while this is up. */
   visible: boolean;
-  /** Handle position, 0 (smallest) – 1 (largest). The host owns the mapping
-   *  onto an actual brush radius; the control is just a picker. */
-  value: number;
-  /** Fired live while dragging (and once on a tap). No commit variant — brush
-   *  size is a tool setting, not an undoable document edit. */
-  onChange(value: number): void;
+  /** Size handle position, 0 (smallest) – 1 (largest). The host owns the
+   *  mapping onto an actual brush radius; the control is just a picker. */
+  size: number;
+  /** Strength handle position, 0 (nothing lands) – 1 (full deposit) — how
+   *  much paint a dab lays down, how much the eraser lifts, how far a blur
+   *  step carries. Read straight as the stroke's opacity. */
+  strength: number;
+  /** Both fire live while dragging (and once on a tap). No commit variants —
+   *  brush settings are tool state, not undoable document edits. */
+  onSize(value: number): void;
+  onStrength(value: number): void;
 }
 
 // ── Undo / redo ──────────────────────────────────────────────────────
