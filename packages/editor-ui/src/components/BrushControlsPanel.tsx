@@ -26,8 +26,17 @@ const DOT_MIN = 6;
 const DOT_MAX = HANDLE - 10;
 const ROW_GAP = 8;
 const BOTTOM_MARGIN = 20;
-/** Gap between a row's track and the name that fades in beside it. */
-const LABEL_GAP = 10;
+/**
+ * How far the whole stack sits BELOW the panel margin: exactly one row, so
+ * the top slider takes the spot the single slider used to hold and the
+ * bottom one drops past it. On a phone that puts the lower handle over the
+ * home-indicator strip, which is deliberate — the controls are meant to sit
+ * at the very bottom edge, out of the artwork's way. Floored at the window
+ * edge below, so a device with no bottom inset can't push it off-screen.
+ */
+const ROW_DROP = HANDLE + ROW_GAP;
+/** Inset of a row's name from the left end of its track. */
+const LABEL_INSET = 16;
 /** Fully clears bottom margin + both rows + any home-indicator inset. */
 const HIDDEN_Y = HANDLE * 2 + ROW_GAP + BOTTOM_MARGIN + 80;
 
@@ -87,8 +96,11 @@ function BrushSliderRow({ label, value, onChange }: {
   return (
     <View style={styles.row} {...pan.panHandlers}>
       <Animated.View style={[styles.ground, { opacity: heldFade }]} />
-      {/* Anchored by its RIGHT edge just outside the track, so a longer name
-          grows leftward and the track itself stays centered on screen. */}
+      {/* Inside the track, left-justified over its dark ground — it appears
+          with that ground and reads as part of the control rather than as a
+          caption floating on the artwork beside it. The handle passes over
+          it at the low end of the range, which is the cost of putting it
+          where the pill is. */}
       <Animated.Text style={[styles.label, { opacity: heldFade }]} pointerEvents="none">
         {label}
       </Animated.Text>
@@ -133,7 +145,10 @@ export function BrushControlsPanel({ model, safeBottom = 0 }: {
 
   if (!mounted) return null;
   return (
-    <View style={[styles.wrap, { bottom: safeBottom + BOTTOM_MARGIN }]} pointerEvents="box-none">
+    <View
+      style={[styles.wrap, { bottom: Math.max(0, safeBottom + BOTTOM_MARGIN - ROW_DROP) }]}
+      pointerEvents="box-none"
+    >
       <Animated.View style={{ transform: [{ translateY: rise }] }}>
         <BrushSliderRow label="Size" value={model.size} onChange={model.onSize} />
         <View style={{ height: ROW_GAP }} />
@@ -167,12 +182,12 @@ const styles = StyleSheet.create({
   },
   label: {
     position: 'absolute',
-    right: TRACK_W + LABEL_GAP,
+    left: LABEL_INSET,
     color: MODAL_TEXT,
     fontSize: 13,
     fontWeight: '600',
-    // The name floats over the artwork, not over the panel's ground, so it
-    // carries its own contrast.
+    // The ground behind it is translucent, so the name keeps a little
+    // contrast of its own for the times it lands over bright artwork.
     textShadowColor: 'rgba(0, 0, 0, 0.65)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
