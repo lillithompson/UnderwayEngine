@@ -80,6 +80,74 @@ describe('stampImagePaintOverlay', () => {
   });
 });
 
+// ROTATE turns the hue of what is already there. Its strength is the ANGLE,
+// not a lerp weight: drifting a rotated hue back toward its base would cut
+// the chord across the colour circle and grey the texel out, which is the
+// one thing the mode exists to avoid.
+describe('stampImagePaintOverlay rotate', () => {
+  /** A layer holding one fully-opaque saturated red texel at (0, 0). */
+  const redTexel = () => {
+    const o = createImagePaintOverlay(4, 4, 'normal');
+    o.rgba[0] = 255; o.rgba[1] = 0; o.rgba[2] = 0; o.rgba[3] = 255;
+    return o;
+  };
+
+  const hueOf = (o: ImagePaintOverlay) => {
+    const [r, g, b] = [o.rgba[0], o.rgba[1], o.rgba[2]];
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    if (max === min) return 0;
+    const d = max - min;
+    const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return ((h * 60) % 360 + 360) % 360;
+  };
+
+  const sat = (o: ImagePaintOverlay) => {
+    const max = Math.max(o.rgba[0], o.rgba[1], o.rgba[2]);
+    const min = Math.min(o.rgba[0], o.rgba[1], o.rgba[2]);
+    return max === 0 ? 0 : (max - min) / max;
+  };
+
+  test('a full-strength dab turns the hue the whole step', () => {
+    const o = redTexel();
+    // Dab centred on the texel so the falloff is 1 and strength alone counts.
+    stampImagePaintOverlay(o, 4, 4, 0.125, 0.125, 1, RED, 1, undefined, { mode: 'rotate' });
+    expect(hueOf(o)).toBeCloseTo(30, 0); // red (0°) → orange
+  });
+
+  test('half the strength turns it half as far', () => {
+    const o = redTexel();
+    stampImagePaintOverlay(o, 4, 4, 0.125, 0.125, 1, RED, 0.5, undefined, { mode: 'rotate' });
+    expect(hueOf(o)).toBeCloseTo(15, 0);
+  });
+
+  test('keeps the colour saturated instead of greying it out', () => {
+    // The bug this guards: lerping toward the rotated colour at less than
+    // full weight desaturates, so a light rotate used to wash the paint out.
+    const o = redTexel();
+    stampImagePaintOverlay(o, 4, 4, 0.125, 0.125, 1, RED, 0.5, undefined, { mode: 'rotate' });
+    expect(sat(o)).toBeCloseTo(1, 2);
+  });
+
+  test('leaves alpha alone and never paints bare canvas', () => {
+    const o = redTexel();
+    stampImagePaintOverlay(o, 4, 4, 0.125, 0.125, 1, RED, 1, undefined, { mode: 'rotate' });
+    expect(o.rgba[3]).toBe(255);
+    // A texel the dab covers but that holds no paint stays empty.
+    const empty = createImagePaintOverlay(4, 4, 'normal');
+    expect(stampImagePaintOverlay(empty, 4, 4, 0.125, 0.125, 1, RED, 1, undefined, { mode: 'rotate' }))
+      .toBe(false);
+  });
+
+  test('turns each texel once per stroke, not once per dab', () => {
+    const o = redTexel();
+    const blend = { mode: 'rotate' as const, unaryDone: new Uint8Array(o.cols * o.rows) };
+    stampImagePaintOverlay(o, 4, 4, 0.125, 0.125, 1, RED, 1, undefined, blend);
+    const once = hueOf(o);
+    stampImagePaintOverlay(o, 4, 4, 0.125, 0.125, 1, RED, 1, undefined, blend);
+    expect(hueOf(o)).toBeCloseTo(once, 6);
+  });
+});
+
 describe('eraseImagePaintOverlay', () => {
   test('a full-strength dab lifts a stamped dab back out', () => {
     const o = createImagePaintOverlay(8, 6, 'normal');

@@ -14,7 +14,7 @@
  */
 
 import { BlendMode, ImagePaintOverlay, RGBColor } from './types';
-import { blendColor, gaussianFalloff } from './colorBlend';
+import { blendColor, blendFoldsOpacity, gaussianFalloff } from './colorBlend';
 import { encodePNG, toBase64 } from './pngcodec';
 
 /** Overlay texel density. At the brush's one-grid-step radius this puts a
@@ -178,6 +178,22 @@ export function stampImagePaintOverlay(
         blending.unaryDone[texel] = 1;
       }
       const base = { r: rgba[i], g: rgba[i + 1], b: rgba[i + 2] };
+      if (blendFoldsOpacity(blending.mode)) {
+        // ROTATE: the strength IS the angle. Hand it the dab's own weight —
+        // brush strength × falloff — so a light touch turns the hue a little
+        // and a firm one turns it the full step, then write the result
+        // STRAIGHT. Drifting toward it instead would cut the chord across
+        // the colour circle and grey the texel out, which is exactly what
+        // this mode exists to avoid.
+        const src = blendColor(base, color, blending.mode, srcA);
+        const put = (off: number, srcC: number) => {
+          if (rgba[i + off] !== srcC) { rgba[i + off] = srcC; changed = true; }
+        };
+        put(0, src.r);
+        put(1, src.g);
+        put(2, src.b);
+        return;
+      }
       // Opacity is the drift weight below, so the blend itself runs at full
       // strength — the falloff must not be applied to it twice.
       const src = blendColor(base, color, blending.mode, 1);

@@ -9,6 +9,20 @@ const clamp255 = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : v);
 const HUE_ROTATE_STEP_DEG = 30;
 
 /**
+ * Modes whose `opacity` argument drives the EFFECT itself rather than a lerp
+ * toward the result — currently just `rotate`, where it is the hue angle.
+ *
+ * Callers that apply their own weighting (a brush dab's falloff, say) must
+ * ask before deciding what to pass: for these modes the strength belongs in
+ * the opacity argument and the result is used as-is, because lerping a
+ * rotated hue back toward its base cuts across the colour circle and
+ * desaturates toward grey — the very thing the rotate mode exists to avoid.
+ */
+export function blendFoldsOpacity(mode: BlendMode): boolean {
+  return mode === 'rotate';
+}
+
+/**
  * Blend `brush` over `base` under the given blend mode (Photoshop/SVG-style
  * separable and HSL modes), then
  * linearly interpolate toward the blended result by `opacity`. Channel
@@ -31,7 +45,7 @@ export function blendColor(
   opacity: number,
 ): RGBColor {
   const t = clamp01(opacity);
-  if (mode === 'rotate') {
+  if (blendFoldsOpacity(mode)) {
     // Opacity is folded into the rotation angle by applyBlend; skip the
     // RGB lerp so the result stays on the hue circle at full S/V.
     return applyBlend(base, brush, mode, t);
