@@ -5,18 +5,22 @@ import { CAPSULE_SIZE, MODAL_TEXT, PANEL_ANIM_MS, WHITE_25 } from '../theme';
 import { brushDotSize, brushSliderValueFromX } from '../logic/slider';
 
 // Floating brush controls (Procreate Pocket's size slider as the model): a
-// stack of two sliders — SIZE over STRENGTH — each a single round handle
+// stack of two sliders — STRENGTH over SIZE — each a single round handle
 // riding a bottom-center track. The handle is a capsule button's twin
 // (CAPSULE_SIZE round, dark outline) with a translucent grey fill, and what
 // sits INSIDE it is the value readout, each row showing the thing it
 // actually controls:
 //
-//   SIZE      a white dot whose DIAMETER grows toward the right — the width
-//             of the mark the brush will make.
 //   STRENGTH  a soft white wash whose OPACITY grows toward the right, clear
 //             at the left end and solid at the right — how much paint a dab
 //             lays down. A dot that merely grew would say nothing about
 //             opacity; this shows the value in the same currency.
+//   SIZE      a white dot whose DIAMETER grows toward the right — the width
+//             of the mark the brush will make.
+//
+// Strength takes the UPPER row deliberately: the lower one hangs over the
+// home-indicator strip (see ROW_DROP), which is fine for a control you set
+// once and coarse, and wrong for the one reached for mid-painting.
 //
 // At rest only the handles show; grabbing one fades in that row's track pill
 // AND its name, so the control stays out of the artwork's way while idle and
@@ -37,7 +41,8 @@ const ROW_GAP = 8;
 const BOTTOM_MARGIN = 20;
 /**
  * How far the whole stack sits BELOW the panel margin: exactly one row, so
- * the top slider takes the spot the single slider used to hold and the
+ * the top slider (STRENGTH) takes the spot the single slider used to hold —
+ * inside the safe area, where it stays comfortably reachable — and the
  * bottom one drops past it. On a phone that puts the lower handle over the
  * home-indicator strip, which is deliberate — the controls are meant to sit
  * at the very bottom edge, out of the artwork's way. Floored at the window
@@ -174,11 +179,11 @@ export function BrushControlsPanel({ model, safeBottom = 0 }: {
     >
       <Animated.View style={{ transform: [{ translateY: rise }] }}>
         <FloatingSliderRow
-          label="Size" readout="diameter" value={model.size} onChange={model.onSize}
+          label="Strength" readout="opacity" value={model.strength} onChange={model.onStrength}
         />
         <View style={{ height: ROW_GAP }} />
         <FloatingSliderRow
-          label="Strength" readout="opacity" value={model.strength} onChange={model.onStrength}
+          label="Size" readout="diameter" value={model.size} onChange={model.onSize}
         />
       </Animated.View>
     </View>

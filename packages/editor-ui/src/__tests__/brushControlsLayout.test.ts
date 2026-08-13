@@ -15,10 +15,19 @@ const SRC = readFileSync(
 describe('the stack sits one row lower than the panel it replaced', () => {
   it('drops by exactly a row plus its gap', () => {
     // "The top one should be where the bottom one currently is": the whole
-    // stack moves down by one row, so the SIZE slider lands on the spot the
+    // stack moves down by one row, so the TOP slider lands on the spot the
     // single slider used to hold.
     expect(SRC).toContain('const ROW_DROP = HANDLE + ROW_GAP;');
     expect(SRC).toContain('safeBottom + BOTTOM_MARGIN - ROW_DROP');
+  });
+
+  it('puts STRENGTH on the upper row, inside the safe area', () => {
+    // The lower row hangs over the home-indicator strip by design, so the
+    // control reached for mid-painting takes the upper one. Rendered order
+    // IS stacking order here (a plain column), so first child = on top.
+    const stack = /<Animated\.View style=\{\{ transform[\s\S]*?<\/Animated\.View>/.exec(SRC)?.[0] ?? '';
+    expect(stack).toContain('label="Strength"');
+    expect(stack.indexOf('label="Strength"')).toBeLessThan(stack.indexOf('label="Size"'));
   });
 
   it('accepts the home-indicator strip but not the window edge', () => {
