@@ -48,16 +48,17 @@ const ROW_DROP = HANDLE + ROW_GAP;
 const LABEL_INSET = 16;
 /** The strength wash: solid at the centre, feathering out to nothing at the
  *  rim, so the handle reads as a soft dab of paint rather than a flat disc.
- *  Its whole opacity is the value (see {@link BrushSliderRow}). */
+ *  Its whole opacity is the value (see {@link FloatingSliderRow}). */
 const STRENGTH_WASH =
   'radial-gradient(circle at 50% 50%, #ffffff 0%, rgba(255,255,255,0.9) 45%, rgba(255,255,255,0) 100%)';
 /** Fully clears bottom margin + both rows + any home-indicator inset. */
 const HIDDEN_Y = HANDLE * 2 + ROW_GAP + BOTTOM_MARGIN + 80;
 
-/** One slider: ground pill, name, and the handle whose dot reads the value.
- *  Both rows are the same control — only the label and the value it carries
- *  differ. */
-function BrushSliderRow({ label, value, onChange, readout }: {
+/** One slider: ground pill, name, and the handle whose readout shows the
+ *  value. Exported as the package's one floating-slider look — any control
+ *  that should "mirror the brush slider" (the Poser stage's turn slider)
+ *  uses THIS row rather than growing a lookalike that drifts. */
+export function FloatingSliderRow({ label, value, onChange, readout }: {
   label: string;
   value: number;
   onChange: (value: number) => void;
@@ -172,11 +173,11 @@ export function BrushControlsPanel({ model, safeBottom = 0 }: {
       pointerEvents="box-none"
     >
       <Animated.View style={{ transform: [{ translateY: rise }] }}>
-        <BrushSliderRow
+        <FloatingSliderRow
           label="Size" readout="diameter" value={model.size} onChange={model.onSize}
         />
         <View style={{ height: ROW_GAP }} />
-        <BrushSliderRow
+        <FloatingSliderRow
           label="Strength" readout="opacity" value={model.strength} onChange={model.onStrength}
         />
       </Animated.View>
