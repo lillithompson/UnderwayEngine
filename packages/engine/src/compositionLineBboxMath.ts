@@ -213,13 +213,18 @@ export function computeRectSegments(
 }
 
 /**
- * Produce `sides` line segments forming a closed regular polygon inscribed
- * in the circle that fits the box with opposite corners (sx, sy) and
- * (ex, ey) — center at the box's midpoint, radius half its shorter side
- * (for the square box the polygon tool drags, that IS the inscribed
- * circle). The first vertex sits at the top (12 o'clock) and winding is
- * clockwise in screen-y-down coords, matching {@link computeRectSegments}
- * and computeCircleSegments.
+ * Produce `sides` line segments forming a closed polygon inscribed in the
+ * box with opposite corners (sx, sy) and (ex, ey): center at the box's
+ * midpoint, vertices on the box's inscribed ELLIPSE (half-width out along
+ * x, half-height along y). The first vertex sits at the top (12 o'clock)
+ * and winding is clockwise in screen-y-down coords, matching {@link
+ * computeRectSegments} and computeCircleSegments.
+ *
+ * A SQUARE box gives the regular polygon — the two radii coincide, so this
+ * is the inscribed circle — which is what the polygon tool drags with Grid
+ * Snap on and what every non-tool caller passes. A non-square box (snap
+ * off, freeform creation) gives that same polygon stretched to fill it, so
+ * the shape matches the box the finger drew.
  *
  * Each vertex is computed once and its coordinates reused for both the
  * incoming end and the outgoing start, so consecutive endpoints compare
@@ -233,11 +238,12 @@ export function computeRegularPolygonSegments(
   const n = Math.max(3, Math.round(sides));
   const cx = (sx + ex) / 2;
   const cy = (sy + ey) / 2;
-  const r = Math.min(Math.abs(ex - sx), Math.abs(ey - sy)) / 2;
+  const rx = Math.abs(ex - sx) / 2;
+  const ry = Math.abs(ey - sy) / 2;
   const verts: [number, number][] = [];
   for (let i = 0; i < n; i++) {
     const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-    verts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+    verts.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)]);
   }
   const segments: PathSegment[] = [];
   for (let i = 0; i < n; i++) {
