@@ -18,9 +18,14 @@ import { brushDotSize, brushSliderValueFromX } from '../logic/slider';
 //   SIZE      a white dot whose DIAMETER grows toward the right — the width
 //             of the mark the brush will make.
 //
-// Strength takes the UPPER row deliberately: the lower one hangs over the
-// home-indicator strip (see ROW_DROP), which is fine for a control you set
-// once and coarse, and wrong for the one reached for mid-painting.
+// The whole stack stands clear of the home-indicator strip: the LOWER row
+// takes the spot the properties panel's own controls hold (safeBottom +
+// BOTTOM_MARGIN), and the upper one rides a row above it. Both are inside
+// the safe area, so neither handle competes with the system's swipe strip —
+// on native iOS a handle down there is a gesture fight every time.
+//
+// Strength keeps the UPPER row: it is the one reached for mid-painting, and
+// the further from the screen edge the easier it is to grab in a hurry.
 //
 // At rest only the handles show; grabbing one fades in that row's track pill
 // AND its name, so the control stays out of the artwork's way while idle and
@@ -39,16 +44,6 @@ const DOT_MIN = 6;
 const DOT_MAX = HANDLE - 10;
 const ROW_GAP = 8;
 const BOTTOM_MARGIN = 20;
-/**
- * How far the whole stack sits BELOW the panel margin: exactly one row, so
- * the top slider (STRENGTH) takes the spot the single slider used to hold —
- * inside the safe area, where it stays comfortably reachable — and the
- * bottom one drops past it. On a phone that puts the lower handle over the
- * home-indicator strip, which is deliberate — the controls are meant to sit
- * at the very bottom edge, out of the artwork's way. Floored at the window
- * edge below, so a device with no bottom inset can't push it off-screen.
- */
-const ROW_DROP = HANDLE + ROW_GAP;
 /** Inset of a row's name from the left end of its track. */
 const LABEL_INSET = 16;
 /** The strength wash: solid at the centre, feathering out to nothing at the
@@ -174,7 +169,7 @@ export function BrushControlsPanel({ model, safeBottom = 0 }: {
   if (!mounted) return null;
   return (
     <View
-      style={[styles.wrap, { bottom: Math.max(0, safeBottom + BOTTOM_MARGIN - ROW_DROP) }]}
+      style={[styles.wrap, { bottom: safeBottom + BOTTOM_MARGIN }]}
       pointerEvents="box-none"
     >
       <Animated.View style={{ transform: [{ translateY: rise }] }}>

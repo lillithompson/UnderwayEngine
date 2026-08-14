@@ -12,28 +12,30 @@ const SRC = readFileSync(
   'utf8',
 );
 
-describe('the stack sits one row lower than the panel it replaced', () => {
-  it('drops by exactly a row plus its gap', () => {
-    // "The top one should be where the bottom one currently is": the whole
-    // stack moves down by one row, so the TOP slider lands on the spot the
-    // single slider used to hold.
-    expect(SRC).toContain('const ROW_DROP = HANDLE + ROW_GAP;');
-    expect(SRC).toContain('safeBottom + BOTTOM_MARGIN - ROW_DROP');
+describe('both rows stand inside the safe area', () => {
+  it('rests the LOWER row on the panel margin, so neither hangs off the edge', () => {
+    // The stack used to be dropped a row (ROW_DROP), which put the lower
+    // handle over the home-indicator strip — a gesture fight on native iOS
+    // every time it was grabbed. Both rows now sit above the inset: the
+    // lower one takes the spot the upper one used to hold.
+    expect(SRC).toContain('bottom: safeBottom + BOTTOM_MARGIN');
+    expect(SRC).not.toContain('ROW_DROP');
   });
 
-  it('puts STRENGTH on the upper row, inside the safe area', () => {
-    // The lower row hangs over the home-indicator strip by design, so the
-    // control reached for mid-painting takes the upper one. Rendered order
-    // IS stacking order here (a plain column), so first child = on top.
+  it('puts STRENGTH on the upper row', () => {
+    // It is the control reached for mid-painting, so it takes the row
+    // furthest from the screen edge. Rendered order IS stacking order here
+    // (a plain column), so first child = on top.
     const stack = /<Animated\.View style=\{\{ transform[\s\S]*?<\/Animated\.View>/.exec(SRC)?.[0] ?? '';
     expect(stack).toContain('label="Strength"');
     expect(stack.indexOf('label="Strength"')).toBeLessThan(stack.indexOf('label="Size"'));
   });
 
-  it('accepts the home-indicator strip but not the window edge', () => {
-    // Overlapping the unsafe area is deliberate; sliding off-screen on a
-    // device with no bottom inset is not.
-    expect(SRC).toContain('Math.max(0, safeBottom + BOTTOM_MARGIN - ROW_DROP)');
+  it('still clears the screen entirely when it hides', () => {
+    // The stack sits a row higher than it did, so the hidden offset has to
+    // cover the margin, BOTH rows and the inset — otherwise a handle stays
+    // parked at the bottom of the artwork while the panel is "away".
+    expect(SRC).toContain('const HIDDEN_Y = HANDLE * 2 + ROW_GAP + BOTTOM_MARGIN + 80;');
   });
 });
 
