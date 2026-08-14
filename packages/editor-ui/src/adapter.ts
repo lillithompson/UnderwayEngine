@@ -3,6 +3,7 @@
 // Type-only React import (erased at build): the module stays runtime-pure so
 // node tests can import it without a renderer.
 import type React from 'react';
+import type { RigPart, RigSliderKey } from './logic/rigEdit';
 //
 // The whole point of "project agnostic": components never import engine
 // types or touch a CompositionState. They receive a normalized view model
@@ -337,6 +338,32 @@ export interface ObjectPropertiesModel {
    *  Fill: an island is baked brushwork, not a shape. Mutually exclusive
    *  with the image / svg / text / frame type-option families. */
   showPaintOptions?: boolean;
+  /** Selection is a POSEABLE RIG (a Figgie mannequin). Its type options are
+   *  the parts a slider can shape — Hands · Feet · Spine — plus the IK
+   *  toggle, rather than the Stroke / Fill / Opacity a plain vector offers:
+   *  a rig's silhouette is baked from its pose, so those three have nothing
+   *  to act on. Mutually exclusive with the other type-option families, and
+   *  checked BEFORE showSvgOptions (a rig's figure is an svg object).
+   *  See `logic/rigEdit.ts`. */
+  showRigOptions?: boolean;
+  /** Every rig slider's position, 0..1 (see `restRigSliders`). The host owns
+   *  these: they are NOT read back from the pose — a hand posed finger by
+   *  finger has no single "fistness" — so they rest until touched, and the
+   *  host shapes the pose only when one moves. */
+  rigSliders?: Record<RigSliderKey, number>;
+  /** A rig slider moved: live while dragging (`committed=false`), once on
+   *  release (`committed=true`, one undo step). */
+  onRigSlider?(key: RigSliderKey, value: number, committed: boolean): void;
+  /** Return one part's sliders — and the joints they own — to rest. */
+  onResetRigPart?(part: RigPart): void;
+  /** Which rig part bar is open, if any (app-owned, like the effect bars). */
+  rigPartOpen?: RigPart | null;
+  onRigPartOpenChange?(part: RigPart | null): void;
+  /** Whether grabbing a wrist / ankle reaches by bending the elbow / knee
+   *  (IK on) or swings just that bone (off). Rendered as a toggle beside the
+   *  part options — it belongs to posing, not to any one part. */
+  rigIk?: boolean;
+  onToggleRigIk?(): void;
   /** Selection is a vector (SVG) object: the panel's second row shows that
    *  subtype's option menu — see `svgSubtype` for which one, and
    *  `SVG_EDIT_OPTIONS` for the options each subtype offers. Mutually

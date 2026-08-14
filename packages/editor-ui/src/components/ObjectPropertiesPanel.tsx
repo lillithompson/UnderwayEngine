@@ -27,6 +27,9 @@ import { ColorSwatchFill } from './ColorSwatch';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
 import { OpacityBar } from './OpacityBar';
+import { RigPoseBar } from './RigPoseBar';
+import { RIG_PART_OPTIONS, restRigSliders } from '../logic/rigEdit';
+import type { RigPart } from '../logic/rigEdit';
 import { CropBar } from './CropBar';
 import { TextBar } from './TextBar';
 import { TintBar } from './TintBar';
@@ -466,7 +469,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // The two optional carousel pages. `type` is what the selection's KIND
   // offers (and a multi-selection's members must share a kind to have one);
   // `multi` is what the SELECTION offers, whatever it is made of.
-  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || showUngroup;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showRigOptions || showUngroup;
   const hasMultiOptions = showLayout || showGroup || showMerge;
   const pages = objectPanelPages({ type: hasTypeOptions, multi: hasMultiOptions });
   // Signature of the current selection's option pages. It changes when the
@@ -561,6 +564,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'align', 'shadow']
     : model.showPaintOptions ? ['opacity']
+    // A rig's parts, in the order its options row lists them. Checked
+    // before showSvgOptions: a rig's figure IS an svg object, and the
+    // vector bars have nothing to act on for a baked silhouette.
+    : model.showRigOptions ? ['rigHands', 'rigFeet', 'rigSpine']
     : model.showSvgOptions
       ? [
           'stroke',
@@ -604,6 +611,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     : model.strokeOpen ? 'stroke'
     : model.svgFillOpen ? 'svgFill'
     : model.endpointsOpen ? 'endpoints'
+    : model.rigPartOpen === 'hands' ? 'rigHands'
+    : model.rigPartOpen === 'feet' ? 'rigFeet'
+    : model.rigPartOpen === 'spine' ? 'rigSpine'
     : model.textStyleOpen ? textPage
     : null;
   const submenuOpen = activeSub != null;
@@ -662,6 +672,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     else if (key === 'svgFill') model.onSvgFillOpenChange?.(true);
     else if (key === 'endpoints') model.onEndpointsOpenChange?.(true);
     else if (key === 'layout') model.onLayoutOpenChange?.(true);
+    else if (key === 'rigHands') model.onRigPartOpenChange?.('hands');
+    else if (key === 'rigFeet') model.onRigPartOpenChange?.('feet');
+    else if (key === 'rigSpine') model.onRigPartOpenChange?.('spine');
     else if (key === 'font' || key === 'align') {
       // Both text pages ride the single textStyleOpen flag; the page state
       // picks which one shows (drives the carousel between them).
@@ -681,6 +694,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     model.onEndpointsOpenChange?.(false);
     model.onLayoutOpenChange?.(false);
     model.onTextStyleOpenChange?.(false);
+    model.onRigPartOpenChange?.(null);
   };
 
   const [submenuMounted, setSubmenuMounted] = useState(false);
@@ -1099,6 +1113,26 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     if (model.onUngroup) {
       typeSpecs.push({ key: 'ungroup', label: 'Ungroup', onPress: model.onUngroup });
     }
+  } else if (model.showRigOptions) {
+    // Poseable rig: the PARTS a slider can shape, plus the IK toggle. No
+    // Stroke / Fill / Opacity — the figure's silhouette is baked from its
+    // pose, so none of the three has anything to act on.
+    typeSpecs = RIG_PART_OPTIONS.map((opt) => ({
+      key: opt.part,
+      label: opt.label,
+      sub: opt.sub,
+      onPress: () => openSubmenu(opt.sub),
+    }));
+    if (model.onToggleRigIk) {
+      // Posing behaviour, not a part — so it wears its own capsule rather
+      // than taking the row's sliding one (like the vector Repeat toggle).
+      typeSpecs.push({
+        key: 'ik',
+        label: 'IK',
+        toggled: !!model.rigIk,
+        onPress: model.onToggleRigIk,
+      });
+    }
   } else if (model.showSvgOptions) {
     // Vector selection: the subtype's own option menu (svgEdit.ts). Every
     // subtype offers Stroke — a path IS its stroke; the closed shapes add Fill.
@@ -1347,6 +1381,19 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onBack={dismissSubmenu}
         onRemove={removeStroke}
         onPickColor={() => model.onPickStrokeColor?.()}
+      />
+    );
+  } else if (displaySub === 'rigHands' || displaySub === 'rigFeet' || displaySub === 'rigSpine') {
+    const part: RigPart =
+      displaySub === 'rigHands' ? 'hands' : displaySub === 'rigFeet' ? 'feet' : 'spine';
+    activeBarEl = (
+      <RigPoseBar
+        part={part}
+        values={model.rigSliders ?? restRigSliders()}
+        onChange={(key, v) => model.onRigSlider?.(key, v, false)}
+        onCommit={(key, v) => model.onRigSlider?.(key, v, true)}
+        onBack={dismissSubmenu}
+        onReset={() => model.onResetRigPart?.(part)}
       />
     );
   } else if (displaySub === 'opacity') {
