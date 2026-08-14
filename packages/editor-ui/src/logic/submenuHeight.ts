@@ -64,9 +64,9 @@ export const CROP_CAPTION_HEIGHT = 21;
 export type SubmenuKey =
   | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
   | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'layout'
-  // The poseable rig's parts: two sliders each for the hands and feet,
-  // three for the spine.
-  | 'rigHands' | 'rigFeet' | 'rigSpine';
+  // The poseable rig's parts: the whole figure (three axes plus the IK
+  // switch), two sliders each for the hands and feet, three for the spine.
+  | 'rigRoot' | 'rigHands' | 'rigFeet' | 'rigSpine';
 
 /** The current state of everything that changes a bar's row count. Values are
  *  optional so a caller can describe only the bars its selection can open; a
@@ -157,6 +157,9 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return standardBar([ROW_SLIDER, ROW_SLIDER, HINT_HEIGHT]);
     case 'rigSpine':
       return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, HINT_HEIGHT]);
+    case 'rigRoot':
+      // X, Y and Z, over the IK switch and the line under it.
+      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, HINT_HEIGHT]);
     case 'endpoints':
       return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'layout':

@@ -3,13 +3,15 @@ import type { SubmenuKey } from './submenuHeight';
 // The poseable rig's type-specific options: the PARTS of the figure a
 // slider can shape, rather than the Stroke / Fill / Opacity a vector
 // object offers. A rig's silhouette is baked from its pose, so those three
-// have nothing to act on — Hands, Feet and Spine are what it can actually
-// change.
+// have nothing to act on — the figure as a whole, its hands, its feet and
+// its spine are what it can actually change.
 //
-// Each part opens a bar of sliders (RigPoseBar). The IK toggle rides
-// alongside them as an independent on/off option, not a bar.
+// Each part opens a bar of sliders (RigPoseBar). The first of them, RIG,
+// is the whole mannequin: the three axes it can be stood on, and the IK
+// switch — which belongs with the posing controls rather than floating
+// beside them, since what it changes is what a joint drag does.
 
-export type RigPart = 'hands' | 'feet' | 'spine';
+export type RigPart = 'rig' | 'hands' | 'feet' | 'spine';
 
 export interface RigPartOption {
   part: RigPart;
@@ -18,6 +20,7 @@ export interface RigPartOption {
 }
 
 export const RIG_PART_OPTIONS: readonly RigPartOption[] = [
+  { part: 'rig', label: 'Rig', sub: 'rigRoot' },
   { part: 'hands', label: 'Hands', sub: 'rigHands' },
   { part: 'feet', label: 'Feet', sub: 'rigFeet' },
   { part: 'spine', label: 'Spine', sub: 'rigSpine' },
@@ -34,11 +37,19 @@ export interface RigSliderSpec {
 }
 
 export type RigSliderKey =
+  | 'spinX' | 'spinY' | 'spinZ'
   | 'handL' | 'handR'
   | 'footL' | 'footR'
   | 'bend' | 'twist' | 'lean';
 
 const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
+  // The root joint's own rotation — every other bone hangs off it, so
+  // these three turn the whole figure without disturbing its pose.
+  rig: [
+    { key: 'spinX', label: 'X', ends: ['back', 'forward'], centered: true },
+    { key: 'spinY', label: 'Y', ends: ['left', 'right'], centered: true },
+    { key: 'spinZ', label: 'Z', ends: ['left', 'right'], centered: true },
+  ],
   hands: [
     { key: 'handL', label: 'Left', ends: ['flat', 'fist'] },
     { key: 'handR', label: 'Right', ends: ['flat', 'fist'] },
@@ -63,6 +74,9 @@ export function rigPartSliders(part: RigPart): readonly RigSliderSpec[] {
  *  figure. (Nothing is applied until the user moves one; a hand posed
  *  finger by finger has no single "fistness" to read back.) */
 export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
+  spinX: 0.5, // upright, facing front
+  spinY: 0.5,
+  spinZ: 0.5,
   handL: 0, // flat
   handR: 0,
   footL: 1, // flat
@@ -74,6 +88,7 @@ export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
 
 /** The part a slider belongs to. */
 export function rigSliderPart(key: RigSliderKey): RigPart {
+  if (key === 'spinX' || key === 'spinY' || key === 'spinZ') return 'rig';
   if (key === 'handL' || key === 'handR') return 'hands';
   if (key === 'footL' || key === 'footR') return 'feet';
   return 'spine';
@@ -84,8 +99,16 @@ export function rigPartTitle(part: RigPart): string {
   return part.toUpperCase();
 }
 
+/** Whether this part's bar carries the IK switch — the RIG bar does, since
+ *  what the switch changes (what a joint drag moves) is a property of the
+ *  whole figure rather than of any one part. */
+export function rigPartHasIk(part: RigPart): boolean {
+  return part === 'rig';
+}
+
 export function rigPartHint(part: RigPart): string {
   switch (part) {
+    case 'rig': return 'Turns the whole figure; the pose rides along.';
     case 'hands': return 'Slide right to close the hand into a fist.';
     case 'feet': return 'Slide left to point the toes, right for a flat foot.';
     case 'spine':
