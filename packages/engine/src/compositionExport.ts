@@ -1,4 +1,4 @@
-import { CompositionFigure, RGBColor } from './types';
+import { CompositionFigure, CompositionState, RGBColor } from './types';
 import { loadCompositionState, loadFileStateLite, loadClipBox } from './persistence';
 import { loadBakedFigurePng } from './bake';
 import { rasterizeSvgToJpegDataUri, rasterizeSvgToPngDataUri } from './svgRasterize';
@@ -53,6 +53,40 @@ export function setDefaultSVGFontResolver(resolver: SVGFontResolver | undefined)
  */
 export function getDefaultSVGFontResolver(): SVGFontResolver | undefined {
   return defaultFontResolver;
+}
+
+/** A rewrite of the loaded scene, applied just before it becomes markup —
+ *  see {@link setExportSceneTransform}. */
+export type ExportSceneTransform =
+  (scene: Partial<CompositionState>) => Partial<CompositionState>;
+
+/** Host-registered scene rewrite — see {@link setExportSceneTransform}. */
+let exportSceneTransform: ExportSceneTransform | undefined;
+
+/**
+ * Register a last-pass rewrite of every storage-backed export's scene: the
+ * loaded record goes through it on its way into the SVG generator.
+ *
+ * For host content kinds the engine knows nothing about — a composite of
+ * ordinary nodes plus a hidden record, say — whose DRAWN form depends on a
+ * host setting that can change after the page was last baked. Such a host
+ * re-derives that geometry here and every rasterizing path (journal entry
+ * images, page thumbnails, file and zip export) picks it up at once,
+ * instead of each remembering to ask.
+ *
+ * Purely cosmetic by contract: the transform sees a copy on its way out and
+ * nothing it returns is written back to storage. Keep it SYNCHRONOUS and
+ * cheap — it runs once per export, and there are three per saved page.
+ */
+export function setExportSceneTransform(fn: ExportSceneTransform | undefined): void {
+  exportSceneTransform = fn;
+}
+
+/** The transform {@link setExportSceneTransform} registered, for a caller
+ *  driving {@link generateCompositionSVGCore} directly — the same reason
+ *  {@link getDefaultSVGFontResolver} is readable. */
+export function getExportSceneTransform(): ExportSceneTransform | undefined {
+  return exportSceneTransform;
 }
 
 /** Optional knobs for the storage-backed export wrappers. */
@@ -290,11 +324,14 @@ export async function exportCompositionSVG(
   strokeScale?: number,
   options?: CompositionExportOptions,
 ): Promise<string | null> {
-  const partial = await loadCompositionState(
+  const loaded = await loadCompositionState(
     compId,
     options?.normalize === undefined ? undefined : { normalize: options.normalize },
   );
-  if (!partial) return null;
+  if (!loaded) return null;
+  // The host's last word on how its own content draws (rig sketch vs
+  // classic, say) — see setExportSceneTransform.
+  const partial = exportSceneTransform ? exportSceneTransform(loaded) : loaded;
   return generateCompositionSVGCore({
     name: partial.name ?? 'composition',
     figures: partial.figures ?? [],

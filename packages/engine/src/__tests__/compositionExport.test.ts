@@ -1,4 +1,6 @@
-import { exportCompositionSVG } from '../compositionExport';
+import {
+  exportCompositionSVG, getExportSceneTransform, setExportSceneTransform,
+} from '../compositionExport';
 
 const storage: Record<string, string | Uint8Array> = {};
 
@@ -518,5 +520,49 @@ describe('exportCompositionSVG — background', () => {
     });
     expect(svg).toBeTruthy();
     expect(svg).not.toContain('#F4F3F1');
+  });
+});
+
+describe('the host’s scene transform', () => {
+  // The last word on how host content draws (a rig's sketch vs its baked
+  // silhouette): every storage-backed export runs the loaded record through
+  // it, and nothing it returns goes back to storage.
+  function seed(key: string): void {
+    storage[`comp_meta_${key}`] = JSON.stringify({
+      name: 'Transformed',
+      figures: [],
+      svgObjects: [{
+        id: 'svg_a',
+        segments: [{ kind: 'line', start: [0, 0], end: [32, 32] }],
+        color: { r: 10, g: 20, b: 30 },
+        cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+      }],
+      camera: { offsetX: 0, offsetY: 0, zoom: 1 },
+      strokeScale: 0.04, gridIntensity: 0.5,
+    });
+  }
+
+  afterEach(() => setExportSceneTransform(undefined));
+
+  it('rewrites what the export draws, without touching the record', async () => {
+    seed('xform');
+    setExportSceneTransform((scene) => ({
+      ...scene,
+      svgObjects: (scene.svgObjects ?? []).map((o) => ({
+        ...o, color: { r: 200, g: 0, b: 0 },
+      })),
+    }));
+    expect(await exportCompositionSVG('xform')).toContain('rgb(200,0,0)');
+    // Registered once, honoured every time; and unregistering restores the
+    // authored drawing, so the stored page was never the thing rewritten.
+    expect(await exportCompositionSVG('xform')).toContain('rgb(200,0,0)');
+    setExportSceneTransform(undefined);
+    expect(await exportCompositionSVG('xform')).toContain('rgb(10,20,30)');
+  });
+
+  it('is readable by a host driving the SVG core itself', () => {
+    const fn = (scene: any) => scene;
+    setExportSceneTransform(fn);
+    expect(getExportSceneTransform()).toBe(fn);
   });
 });
