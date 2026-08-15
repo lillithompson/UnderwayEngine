@@ -151,16 +151,17 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return standardBar(cropRows(ctx.cropMode), ctx.cropHasResolution ? CROP_CAPTION_HEIGHT : 0);
     case 'opacity':
       return standardBar([ROW_SLIDER, ROW_SLIDER]);
+    // The four rig pages carry NO hint line — see RigPoseBar — so each is a
+    // row shorter than the count of its controls would otherwise make it.
     case 'rigHands':
     case 'rigFeet':
-      // Left and Right, each with its own Twist, plus the line saying which
-      // way the sliders run.
-      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, HINT_HEIGHT]);
+      // Left and Right, each with its own Twist.
+      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
     case 'rigSpine':
-      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, HINT_HEIGHT]);
+      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
     case 'rigRoot':
-      // X, Y and Z, over the IK switch and the line under it.
-      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, HINT_HEIGHT]);
+      // X, Y and Z, over the IK switch.
+      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
     case 'endpoints':
       return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'layout':

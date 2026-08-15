@@ -1,16 +1,22 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { RigPart, RigSliderKey } from '../logic/rigEdit';
-import { rigPartHasIk, rigPartHint, rigPartSliders, rigPartTitle } from '../logic/rigEdit';
+import { rigPartHasIk, rigPartSliders, rigPartTitle } from '../logic/rigEdit';
 import {
   BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP, ROW_GAP,
 } from '../logic/submenuHeight';
-import { BAR_BG, EffectBarHeader, HAIRLINE, Hint, SegmentedRow, SliderRow } from './effectBar';
+import { BAR_BG, EffectBarHeader, HAIRLINE, SegmentedRow, SliderRow } from './effectBar';
 
-// The rig's pose bar: one part per page (RIG · HANDS · FEET · SPINE), a
-// slider per control, and a line saying which way the track runs. The
-// whole figure turns on three axes, the hands close into fists, the feet
-// point or flatten, the spine bends / twists / leans from a centered rest.
+// The rig's pose bar: one part per page (RIG · HANDS · FEET · SPINE) and a
+// slider per control. The whole figure turns on three axes, the hands close
+// into fists and roll at the wrist, the feet point or flatten and swivel at
+// the ankle, the spine bends / twists / leans from a centered rest.
+//
+// No hint line under the controls, unlike the other bars. These pages carry
+// the most rows in the editor, they stand over the figure being posed, and
+// a slider named 'Bend' running between two labelled ends has already said
+// what a sentence underneath would repeat. Dropping it takes a row off
+// every one of the four.
 //
 // The RIG page also carries the IK switch: what it changes is what a drag
 // on a wrist or an ankle does, which belongs with the posing controls
@@ -62,7 +68,6 @@ export function RigPoseBar({ part, values, onChange, onCommit, onBack, onReset, 
             onChange={(v) => { if ((v === 'on') !== !!ik) onToggleIk(); }}
           />
         ) : null}
-        <Hint>{rigPartHint(part)}</Hint>
       </View>
     </View>
   );

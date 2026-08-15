@@ -8,7 +8,7 @@ import { join } from 'path';
 import {
   RIG_PART_OPTIONS, RIG_SLIDER_REST, restRigSliders, rigPartHasIk, rigPartSliders, rigSliderPart,
 } from '../logic/rigEdit';
-import { submenuHeight } from '../logic/submenuHeight';
+import { ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, submenuHeight } from '../logic/submenuHeight';
 
 const SRC = readFileSync(
   join(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'),
@@ -23,15 +23,28 @@ describe('the rig option set', () => {
   });
 
   it('sizes each bar to the rows it renders', () => {
-    // Left and Right plus a Twist each for the hands and feet, three
-    // sliders + a hint for the spine, and the RIG bar adds the IK switch on
-    // top of its three.
+    // Left and Right plus a Twist each for the hands and feet, three sliders
+    // for the spine, and the RIG bar adds the IK switch on top of its three.
     expect(submenuHeight('rigHands')).toBe(submenuHeight('rigFeet'));
     expect(submenuHeight('rigHands')).toBeGreaterThan(submenuHeight('rigSpine'));
     expect(rigPartSliders('rig')).toHaveLength(3);
     expect(rigPartSliders('spine')).toHaveLength(3);
     expect(rigPartSliders('hands')).toHaveLength(4);
     expect(rigPartSliders('feet')).toHaveLength(4);
+  });
+
+  it('runs no hint line under any of the four, and is shorter for it', () => {
+    // These are the tallest pages in the editor, they stand over the figure
+    // being posed, and a slider named 'Bend' between two labelled ends has
+    // already said what a sentence underneath would repeat.
+    const BAR = readFileSync(join(__dirname, '..', 'components', 'RigPoseBar.tsx'), 'utf8');
+    expect(BAR).not.toContain('Hint');
+    // Height follows: each page is its control rows and the bar's chrome,
+    // with no line of prose reserved below them.
+    expect(submenuHeight('rigSpine'))
+      .toBe(submenuHeight('rigRoot') - ROW_SEGMENTED - ROW_GAP);
+    expect(submenuHeight('rigHands'))
+      .toBe(submenuHeight('rigSpine') + ROW_SLIDER + ROW_GAP);
   });
 
   it('gives each hand and foot a centred Twist beside its own slider', () => {

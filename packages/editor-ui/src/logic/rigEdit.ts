@@ -120,16 +120,6 @@ export function rigPartHasIk(part: RigPart): boolean {
   return part === 'rig';
 }
 
-export function rigPartHint(part: RigPart): string {
-  switch (part) {
-    case 'rig': return 'Turns the whole figure; the pose rides along.';
-    case 'hands': return 'Close the hand into a fist; Twist rolls the wrist.';
-    case 'feet': return 'Point or flatten the foot; Twist swivels the ankle.';
-    case 'spine':
-    default: return 'Center is straight; each slider bends both ways.';
-  }
-}
-
 /** A fresh set of slider positions (every part at rest). */
 export function restRigSliders(): Record<RigSliderKey, number> {
   return { ...RIG_SLIDER_REST };
