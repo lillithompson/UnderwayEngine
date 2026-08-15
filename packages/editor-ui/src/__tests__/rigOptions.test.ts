@@ -6,9 +6,9 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  RIG_PART_OPTIONS, RIG_SLIDER_REST, restRigSliders, rigPartHasIk, rigPartSliders, rigSliderPart,
+  RIG_PART_OPTIONS, RIG_SLIDER_REST, restRigSliders, rigPartSliders, rigSliderPart,
 } from '../logic/rigEdit';
-import { ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, submenuHeight } from '../logic/submenuHeight';
+import { ROW_GAP, ROW_SLIDER, submenuHeight } from '../logic/submenuHeight';
 
 const SRC = readFileSync(
   join(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'),
@@ -23,9 +23,10 @@ describe('the rig option set', () => {
   });
 
   it('sizes each bar to the rows it renders', () => {
-    // Left and Right plus a Twist each for the hands and feet, three sliders
-    // for the spine, and the RIG bar adds the IK switch on top of its three.
+    // Left and Right plus a Twist each for the hands and feet; three sliders
+    // apiece for the spine and for the whole figure's three axes.
     expect(submenuHeight('rigHands')).toBe(submenuHeight('rigFeet'));
+    expect(submenuHeight('rigRoot')).toBe(submenuHeight('rigSpine'));
     expect(submenuHeight('rigHands')).toBeGreaterThan(submenuHeight('rigSpine'));
     expect(rigPartSliders('rig')).toHaveLength(3);
     expect(rigPartSliders('spine')).toHaveLength(3);
@@ -33,16 +34,17 @@ describe('the rig option set', () => {
     expect(rigPartSliders('feet')).toHaveLength(4);
   });
 
-  it('runs no hint line under any of the four, and is shorter for it', () => {
-    // These are the tallest pages in the editor, they stand over the figure
-    // being posed, and a slider named 'Bend' between two labelled ends has
-    // already said what a sentence underneath would repeat.
+  it('is sliders and nothing else — no hint line, no IK switch', () => {
+    // These pages are the tallest in the editor and they stand over the very
+    // figure being posed, so everything that is not a control has come off
+    // them: the line of prose under the sliders, and the reach-vs-swing
+    // switch that used to sit on the RIG page.
     const BAR = readFileSync(join(__dirname, '..', 'components', 'RigPoseBar.tsx'), 'utf8');
-    expect(BAR).not.toContain('Hint');
-    // Height follows: each page is its control rows and the bar's chrome,
-    // with no line of prose reserved below them.
-    expect(submenuHeight('rigSpine'))
-      .toBe(submenuHeight('rigRoot') - ROW_SEGMENTED - ROW_GAP);
+    expect(BAR).not.toContain('<Hint>');
+    expect(BAR).not.toContain('SegmentedRow');
+    expect(BAR).not.toContain('onToggleIk');
+    // Height follows: every page is exactly its slider rows plus the bar's
+    // own chrome, with nothing reserved below them.
     expect(submenuHeight('rigHands'))
       .toBe(submenuHeight('rigSpine') + ROW_SLIDER + ROW_GAP);
   });
@@ -101,16 +103,15 @@ describe('the panel', () => {
     expect(SRC).toContain("['rigRoot', 'rigHands', 'rigFeet', 'rigSpine']");
   });
 
-  it('carries the IK switch INSIDE the Rig bar, not as an option of its own', () => {
-    // What it changes is what a joint drag does — posing behaviour, so it
-    // belongs with the posing controls rather than beside them.
-    expect(rigPartHasIk('rig')).toBe(true);
-    expect(rigPartHasIk('hands')).toBe(false);
-    expect(SRC).toContain('ik={model.rigIk}');
-    expect(SRC).toContain('onToggleIk={model.onToggleRigIk}');
-    expect(SRC).not.toContain('toggled: !!model.rigIk,');
-    const BAR = readFileSync(join(__dirname, '..', 'components', 'RigPoseBar.tsx'), 'utf8');
-    expect(BAR).toContain('rigPartHasIk(part) && onToggleIk');
+  it('offers no IK switch anywhere — not on a bar, not as an option', () => {
+    // Reaching with a whole chain is not offered: a drag swings the one bone
+    // under the finger. The host's flag survives (rigIkStore, off) so the
+    // behaviour can be handed back without rebuilding it, but nothing in the
+    // panel reaches it, and the model carries no field for it.
+    expect(SRC).not.toContain('model.rigIk');
+    expect(SRC).not.toContain('onToggleRigIk');
+    const ADAPTER = readFileSync(join(__dirname, '..', 'adapter.ts'), 'utf8');
+    expect(ADAPTER).not.toContain('rigIk');
   });
 
   it('opens and dismisses the part bars through the host’s flag', () => {

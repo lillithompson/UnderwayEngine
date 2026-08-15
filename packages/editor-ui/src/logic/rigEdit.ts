@@ -7,9 +7,7 @@ import type { SubmenuKey } from './submenuHeight';
 // its spine are what it can actually change.
 //
 // Each part opens a bar of sliders (RigPoseBar). The first of them, RIG,
-// is the whole mannequin: the three axes it can be stood on, and the IK
-// switch — which belongs with the posing controls rather than floating
-// beside them, since what it changes is what a joint drag does.
+// is the whole mannequin: the three axes it can be stood on.
 
 export type RigPart = 'rig' | 'hands' | 'feet' | 'spine';
 
@@ -108,16 +106,9 @@ export function rigSliderPart(key: RigSliderKey): RigPart {
   return 'spine';
 }
 
-/** The bar's title, and the line under its sliders. */
+/** The bar's title. */
 export function rigPartTitle(part: RigPart): string {
   return part.toUpperCase();
-}
-
-/** Whether this part's bar carries the IK switch — the RIG bar does, since
- *  what the switch changes (what a joint drag moves) is a property of the
- *  whole figure rather than of any one part. */
-export function rigPartHasIk(part: RigPart): boolean {
-  return part === 'rig';
 }
 
 /** A fresh set of slider positions (every part at rest). */

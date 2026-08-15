@@ -359,11 +359,6 @@ export interface ObjectPropertiesModel {
   /** Which rig part bar is open, if any (app-owned, like the effect bars). */
   rigPartOpen?: RigPart | null;
   onRigPartOpenChange?(part: RigPart | null): void;
-  /** Whether grabbing a wrist / ankle reaches by bending the elbow / knee
-   *  (IK on) or swings just that bone (off). Rendered as a toggle beside the
-   *  part options — it belongs to posing, not to any one part. */
-  rigIk?: boolean;
-  onToggleRigIk?(): void;
   /** Selection is a vector (SVG) object: the panel's second row shows that
    *  subtype's option menu — see `svgSubtype` for which one, and
    *  `SVG_EDIT_OPTIONS` for the options each subtype offers. Mutually
