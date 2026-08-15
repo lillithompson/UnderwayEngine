@@ -153,8 +153,9 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return standardBar([ROW_SLIDER, ROW_SLIDER]);
     case 'rigHands':
     case 'rigFeet':
-      // Left and Right, plus the line saying which way the slider runs.
-      return standardBar([ROW_SLIDER, ROW_SLIDER, HINT_HEIGHT]);
+      // Left and Right, each with its own Twist, plus the line saying which
+      // way the sliders run.
+      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, HINT_HEIGHT]);
     case 'rigSpine':
       return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, HINT_HEIGHT]);
     case 'rigRoot':

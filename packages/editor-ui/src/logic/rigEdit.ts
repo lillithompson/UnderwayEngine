@@ -38,8 +38,8 @@ export interface RigSliderSpec {
 
 export type RigSliderKey =
   | 'spinX' | 'spinY' | 'spinZ'
-  | 'handL' | 'handR'
-  | 'footL' | 'footR'
+  | 'handL' | 'handR' | 'wristTwistL' | 'wristTwistR'
+  | 'footL' | 'footR' | 'ankleTwistL' | 'ankleTwistR'
   | 'bend' | 'twist' | 'lean';
 
 const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
@@ -50,13 +50,21 @@ const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
     { key: 'spinY', label: 'Y', ends: ['left', 'right'], centered: true },
     { key: 'spinZ', label: 'Z', ends: ['left', 'right'], centered: true },
   ],
+  // Each hand and foot gets a second, CENTERED slider: the roll of the
+  // joint it hangs off, which the curl and the flex leave alone. They are
+  // paired under the part they belong to rather than given a bar of their
+  // own — a hand is one thing to pose, however many ways it moves.
   hands: [
     { key: 'handL', label: 'Left', ends: ['flat', 'fist'] },
     { key: 'handR', label: 'Right', ends: ['flat', 'fist'] },
+    { key: 'wristTwistL', label: 'Left Twist', ends: ['in', 'out'], centered: true },
+    { key: 'wristTwistR', label: 'Right Twist', ends: ['in', 'out'], centered: true },
   ],
   feet: [
     { key: 'footL', label: 'Left', ends: ['pointed', 'flat'] },
     { key: 'footR', label: 'Right', ends: ['pointed', 'flat'] },
+    { key: 'ankleTwistL', label: 'Left Twist', ends: ['in', 'out'], centered: true },
+    { key: 'ankleTwistR', label: 'Right Twist', ends: ['in', 'out'], centered: true },
   ],
   spine: [
     { key: 'bend', label: 'Bend', ends: ['back', 'forward'], centered: true },
@@ -79,8 +87,12 @@ export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
   spinZ: 0.5,
   handL: 0, // flat
   handR: 0,
+  wristTwistL: 0.5, // unrolled
+  wristTwistR: 0.5,
   footL: 1, // flat
   footR: 1,
+  ankleTwistL: 0.5,
+  ankleTwistR: 0.5,
   bend: 0.5, // straight
   twist: 0.5,
   lean: 0.5,
@@ -90,7 +102,9 @@ export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
 export function rigSliderPart(key: RigSliderKey): RigPart {
   if (key === 'spinX' || key === 'spinY' || key === 'spinZ') return 'rig';
   if (key === 'handL' || key === 'handR') return 'hands';
+  if (key === 'wristTwistL' || key === 'wristTwistR') return 'hands';
   if (key === 'footL' || key === 'footR') return 'feet';
+  if (key === 'ankleTwistL' || key === 'ankleTwistR') return 'feet';
   return 'spine';
 }
 
@@ -109,8 +123,8 @@ export function rigPartHasIk(part: RigPart): boolean {
 export function rigPartHint(part: RigPart): string {
   switch (part) {
     case 'rig': return 'Turns the whole figure; the pose rides along.';
-    case 'hands': return 'Slide right to close the hand into a fist.';
-    case 'feet': return 'Slide left to point the toes, right for a flat foot.';
+    case 'hands': return 'Close the hand into a fist; Twist rolls the wrist.';
+    case 'feet': return 'Point or flatten the foot; Twist swivels the ankle.';
     case 'spine':
     default: return 'Center is straight; each slider bends both ways.';
   }

@@ -6,7 +6,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  RIG_PART_OPTIONS, restRigSliders, rigPartHasIk, rigPartSliders, rigSliderPart,
+  RIG_PART_OPTIONS, RIG_SLIDER_REST, restRigSliders, rigPartHasIk, rigPartSliders, rigSliderPart,
 } from '../logic/rigEdit';
 import { submenuHeight } from '../logic/submenuHeight';
 
@@ -23,22 +23,42 @@ describe('the rig option set', () => {
   });
 
   it('sizes each bar to the rows it renders', () => {
-    // Two sliders + a hint for the hands and feet, three + a hint for the
-    // spine, and the RIG bar adds the IK switch on top of its three — so
-    // the bars grow in that order.
+    // Left and Right plus a Twist each for the hands and feet, three
+    // sliders + a hint for the spine, and the RIG bar adds the IK switch on
+    // top of its three.
     expect(submenuHeight('rigHands')).toBe(submenuHeight('rigFeet'));
-    expect(submenuHeight('rigSpine')).toBeGreaterThan(submenuHeight('rigHands'));
-    expect(submenuHeight('rigRoot')).toBeGreaterThan(submenuHeight('rigSpine'));
+    expect(submenuHeight('rigHands')).toBeGreaterThan(submenuHeight('rigSpine'));
     expect(rigPartSliders('rig')).toHaveLength(3);
     expect(rigPartSliders('spine')).toHaveLength(3);
-    expect(rigPartSliders('hands')).toHaveLength(2);
+    expect(rigPartSliders('hands')).toHaveLength(4);
+    expect(rigPartSliders('feet')).toHaveLength(4);
+  });
+
+  it('gives each hand and foot a centred Twist beside its own slider', () => {
+    // The curl / flex slider runs one way from rest; the twist runs BOTH
+    // ways from the middle, since a joint rolls either direction.
+    for (const [part, first] of [['hands', 'handL'], ['feet', 'footL']] as const) {
+      const specs = rigPartSliders(part);
+      expect(specs.map((s) => s.key)).toEqual([
+        first, first.replace('L', 'R'),
+        part === 'hands' ? 'wristTwistL' : 'ankleTwistL',
+        part === 'hands' ? 'wristTwistR' : 'ankleTwistR',
+      ]);
+      for (const spec of specs.slice(2)) {
+        expect(spec.centered).toBe(true);
+        expect(spec.label).toContain('Twist');
+        expect(RIG_SLIDER_REST[spec.key]).toBe(0.5);
+      }
+    }
   });
 
   it('rests every slider where the figure rests', () => {
     const rest = restRigSliders();
     expect(rest).toEqual({
       spinX: 0.5, spinY: 0.5, spinZ: 0.5,
-      handL: 0, handR: 0, footL: 1, footR: 1, bend: 0.5, twist: 0.5, lean: 0.5,
+      handL: 0, handR: 0, wristTwistL: 0.5, wristTwistR: 0.5,
+      footL: 1, footR: 1, ankleTwistL: 0.5, ankleTwistR: 0.5,
+      bend: 0.5, twist: 0.5, lean: 0.5,
     });
     for (const key of Object.keys(rest) as (keyof typeof rest)[]) {
       expect(rigPartSliders(rigSliderPart(key)).some((s) => s.key === key)).toBe(true);
