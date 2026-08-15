@@ -187,9 +187,38 @@ export const storageFigurePngLoader = loadFigurePngDataUri;
 // page).
 
 /**
+ * Re-head an exported SVG so its own width/height ARE the pixels it is about
+ * to be rasterized into. The viewBox is untouched, so nothing about the
+ * drawing changes — only the size the document says it is.
+ *
+ * This matters because of how the raster path works: the string goes into a
+ * detached `<img>` and is then drawn onto a canvas with
+ * `drawImage(img, 0, 0, w, h)`. WebKit rasterizes an SVG image ONCE, at the
+ * size the document declares, and `drawImage` then scales that bitmap —
+ * vector art does not get re-rendered at the destination size the way the
+ * naming suggests. The generator declares `viewBox / 10`, which for a page
+ * is about 595 px, so the 1080 px viewer image was a 1.8x blow-up of a
+ * 595 px raster: soft edges, and stepped bands anywhere the page holds a
+ * smooth ramp (a paint overlay stretched across a shape is exactly that,
+ * which is where it showed up first).
+ */
+function svgAtRasterSize(svg: string, width: number, height: number): string {
+  const open = svg.indexOf('<svg');
+  if (open < 0) return svg;
+  const close = svg.indexOf('>', open);
+  if (close < 0) return svg;
+  const tag = svg.slice(open, close)
+    .replace(/\swidth="[^"]*"/, ` width="${width}"`)
+    .replace(/\sheight="[^"]*"/, ` height="${height}"`);
+  return svg.slice(0, open) + tag + svg.slice(close);
+}
+
+/**
  * Export the composition's SVG and compute the output raster dimensions that
  * fit within `maxDimension` while preserving the SVG's aspect ratio. Shared
  * by the PNG and JPEG exporters. Returns null when there's nothing to draw.
+ *
+ * The SVG comes back sized to those dimensions — see {@link svgAtRasterSize}.
  */
 async function exportCompositionRasterTarget(
   compId: string,
@@ -216,7 +245,7 @@ async function exportCompositionRasterTarget(
     height = Math.round(maxDimension);
     width = Math.round(maxDimension * (svgW / svgH));
   }
-  return { svg, width, height };
+  return { svg: svgAtRasterSize(svg, width, height), width, height };
 }
 
 /** A raster export together with the pixel dimensions it was drawn at, for

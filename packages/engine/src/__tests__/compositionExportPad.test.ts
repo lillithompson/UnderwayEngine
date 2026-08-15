@@ -231,3 +231,49 @@ describe('exportCompositionJPEGSized', () => {
       .toBe('data:image/jpeg;base64,AQID');
   });
 });
+
+describe('the SVG handed to the rasterizer', () => {
+  /** The width/height the SVG document declares itself to be. */
+  const declared = (svg: string): [number, number] => {
+    const tag = svg.slice(svg.indexOf('<svg'), svg.indexOf('>', svg.indexOf('<svg')));
+    return [
+      parseFloat(/\swidth="([^"]*)"/.exec(tag)![1]),
+      parseFloat(/\sheight="([^"]*)"/.exec(tag)![1]),
+    ];
+  };
+
+  it('declares itself at the PIXELS it is about to be drawn into', async () => {
+    // The bug this fixes: the generator declares viewBox/10 — about 595 px
+    // for a page — and the raster path then drew that into a 1080 px canvas.
+    // WebKit rasterizes an SVG <img> once, at the size the document claims,
+    // and drawImage scales the bitmap from there: the viewer image was a
+    // 1.8x blow-up of a 595 px raster, soft at every edge and stepped
+    // wherever the page held a smooth ramp.
+    seedWide('rastersize');
+    await exportCompositionJPEGSized('rastersize', 1080, 0.8, undefined, { normalize: false });
+    const [svg, w, h] = rasterizeSvgToJpegDataUri.mock.calls[0];
+    expect([w, h]).toEqual([1080, 540]);
+    expect(declared(svg)).toEqual([1080, 540]);
+  });
+
+  it('leaves the viewBox — and so the drawing — exactly as it was', async () => {
+    // Only the size the document claims changes. Re-heading it must not move
+    // or rescale a single coordinate.
+    seedWide('rasterframe');
+    const plain = await exportCompositionSVG('rasterframe', undefined, undefined, { normalize: false });
+    await exportCompositionJPEGSized('rasterframe', 1080, 0.8, undefined, { normalize: false });
+    const [svg] = rasterizeSvgToJpegDataUri.mock.calls[0];
+    expect(parseViewBox(svg)).toEqual(parseViewBox(plain!));
+    expect(svg.slice(svg.indexOf('>', svg.indexOf('<svg')))).toBe(
+      plain!.slice(plain!.indexOf('>', plain!.indexOf('<svg'))),
+    );
+  });
+
+  it('still hands the plain .svg export its own natural size', async () => {
+    // The file a user shares is a document, not a bitmap — it keeps the
+    // generator's units and scales to whatever opens it.
+    seedWide('rasterfile');
+    const svg = await exportCompositionSVG('rasterfile', undefined, undefined, { normalize: false });
+    expect(declared(svg!)).toEqual([819.2, 409.6]);
+  });
+});
