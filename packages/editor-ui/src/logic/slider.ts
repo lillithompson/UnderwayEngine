@@ -58,3 +58,19 @@ export function brushSliderValueFromX(
 export function brushDotSize(t: number, min: number, max: number): number {
   return min + clamp01(t) * (max - min);
 }
+
+/** Whether a touch gesture belongs to a value control at all.
+ *
+ *  It does only while ONE finger is down. Two and three fingers mean the
+ *  canvas's undo and redo taps, and those land wherever the hand happens to
+ *  be — which, with the brush sliders floating over the artwork, is often
+ *  right on a slider. A control that took the first of those fingers both
+ *  swallowed the gesture and jumped its own value on the way, so an undo
+ *  came out as a change in brush size.
+ *
+ *  Used twice per control: to refuse the gesture outright when a second
+ *  finger is already down, and to ABANDON one already in flight when a
+ *  second finger joins it (the two rarely land in the same event). */
+export function isSingleTouchGesture(numberActiveTouches: number): boolean {
+  return numberActiveTouches <= 1;
+}

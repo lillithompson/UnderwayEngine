@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Platform, StyleSheet, View } from 'react-native';
 import type { BrushControlsModel } from '../adapter';
 import { CAPSULE_SIZE, MODAL_TEXT, PANEL_ANIM_MS, WHITE_25 } from '../theme';
-import { brushDotSize, brushSliderValueFromX } from '../logic/slider';
+import { brushDotSize, brushSliderValueFromX, isSingleTouchGesture } from '../logic/slider';
 
 // Floating brush controls (Procreate Pocket's size slider as the model): a
 // stack of two sliders — STRENGTH over SIZE — each a single round handle
@@ -84,26 +84,52 @@ export function FloatingSliderRow({ label, value, onChange, readout }: {
     dragRef.current = brushSliderValueFromX(x, TRACK_W, HANDLE, dragRef.current);
     return dragRef.current;
   };
+  // Where the value stood when this gesture began, and whether the gesture
+  // has been given up on: a second finger means the canvas's undo tap, and
+  // the row hands back what it took rather than keeping the jump.
+  const grabbedRef = useRef(value);
+  const abandonedRef = useRef(false);
+  const letGo = () => {
+    draggingRef.current = false;
+    abandonedRef.current = false;
+    fadeHeld(0);
+  };
   const pan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      // Only ever a one-finger control — see isSingleTouchGesture.
+      onStartShouldSetPanResponder: (_e, g) => isSingleTouchGesture(g.numberActiveTouches),
+      onMoveShouldSetPanResponder: (_e, g) => isSingleTouchGesture(g.numberActiveTouches),
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => {
         draggingRef.current = true;
+        abandonedRef.current = false;
+        grabbedRef.current = dragRef.current;
         fadeHeld(1);
         cbRef.current(track(e.nativeEvent.locationX));
       },
-      onPanResponderMove: (e) => cbRef.current(track(e.nativeEvent.locationX)),
+      onPanResponderMove: (e, g) => {
+        if (abandonedRef.current) return;
+        if (!isSingleTouchGesture(g.numberActiveTouches)) {
+          // A second finger arrived after we took the first: put the value
+          // back where it was and sit the rest of the gesture out.
+          abandonedRef.current = true;
+          draggingRef.current = false;
+          dragRef.current = grabbedRef.current;
+          fadeHeld(0);
+          cbRef.current(grabbedRef.current);
+          return;
+        }
+        cbRef.current(track(e.nativeEvent.locationX));
+      },
       onPanResponderRelease: () => {
-        draggingRef.current = false;
-        fadeHeld(0);
-        cbRef.current(dragRef.current);
+        const gave = abandonedRef.current;
+        letGo();
+        if (!gave) cbRef.current(dragRef.current);
       },
       onPanResponderTerminate: () => {
-        draggingRef.current = false;
-        fadeHeld(0);
-        cbRef.current(dragRef.current);
+        const gave = abandonedRef.current;
+        letGo();
+        if (!gave) cbRef.current(dragRef.current);
       },
     }),
   ).current;

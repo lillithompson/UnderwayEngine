@@ -83,3 +83,29 @@ describe('a row names itself inside its own track', () => {
     expect(SRC).toContain('pointerEvents="none"');
   });
 });
+
+describe('a two-finger tap belongs to the canvas, not to a slider', () => {
+  it('refuses a gesture that already has a second finger down', () => {
+    // Undo and redo are two- and three-finger taps on the canvas, and they
+    // land wherever the hand is — often right on these sliders, which float
+    // over the artwork. Taking that gesture both swallowed the undo and
+    // jumped the brush size on the way.
+    expect(SRC).toContain(
+      'onStartShouldSetPanResponder: (_e, g) => isSingleTouchGesture(g.numberActiveTouches)',
+    );
+    expect(SRC).toContain(
+      'onMoveShouldSetPanResponder: (_e, g) => isSingleTouchGesture(g.numberActiveTouches)',
+    );
+  });
+
+  it('hands back what it took when a second finger joins one in flight', () => {
+    // The two fingers rarely land in the same event, so refusing at the
+    // start is not enough on its own: the row must also give up a gesture
+    // it has already grabbed, and put the value back where it found it.
+    expect(SRC).toContain('if (!isSingleTouchGesture(g.numberActiveTouches))');
+    expect(SRC).toContain('dragRef.current = grabbedRef.current;');
+    expect(SRC).toContain('cbRef.current(grabbedRef.current);');
+    // …and an abandoned gesture must not fire the value again on release.
+    expect(SRC).toContain('if (!gave) cbRef.current(dragRef.current);');
+  });
+});

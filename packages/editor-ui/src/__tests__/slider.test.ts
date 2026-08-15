@@ -1,4 +1,6 @@
-import { brushDotSize, brushSliderValueFromX, padOffsetFromTouch, sliderValueFromX } from '../logic/slider';
+import {
+  brushDotSize, brushSliderValueFromX, isSingleTouchGesture, padOffsetFromTouch, sliderValueFromX,
+} from '../logic/slider';
 
 describe('sliderValueFromX', () => {
   test('maps a touch to its fraction across the track', () => {
@@ -88,5 +90,19 @@ describe('padOffsetFromTouch', () => {
 
   test('holds it before the pad has been measured', () => {
     expect(padOffsetFromTouch(50, 50, 0, 1.5, HELD)).toEqual(HELD);
+  });
+});
+
+describe('isSingleTouchGesture', () => {
+  test('a value control answers to one finger and no more', () => {
+    expect(isSingleTouchGesture(1)).toBe(true);
+    expect(isSingleTouchGesture(2)).toBe(false);
+    expect(isSingleTouchGesture(3)).toBe(false);
+  });
+
+  test('treats an empty gesture as one — a release must never read as multi', () => {
+    // The last finger up can report zero touches; that has to fall on the
+    // "ours" side or a normal drag would abandon itself at the end.
+    expect(isSingleTouchGesture(0)).toBe(true);
   });
 });
