@@ -84,6 +84,62 @@ describe('a row names itself inside its own track', () => {
   });
 });
 
+/**
+ * A row moves only by its handle being picked up. These sliders float over
+ * the artwork with invisible tracks, so "tap anywhere to jump there" turned
+ * every stray touch near the bottom of the screen into a silent change of
+ * brush size, brush strength or rig turn.
+ */
+describe('only the handle moves a row', () => {
+  const grant = /onPanResponderGrant: \(e\) => \{[\s\S]*?\n      \},/.exec(SRC)?.[0] ?? '';
+  const move = /onPanResponderMove: \(e, g\) => \{[\s\S]*?\n      \},/.exec(SRC)?.[0] ?? '';
+
+  it('decides on contact whether the handle was grabbed', () => {
+    expect(SRC).toContain('brushSliderGrabsHandle');
+    expect(grant).toContain('takeHold(e.nativeEvent.locationX)');
+  });
+
+  it('does not change the value just for being touched', () => {
+    // Picking a handle up is not an edit — the value stays where it was
+    // until the finger travels. (It lights the row up, and nothing else.)
+    expect(grant).toContain('fadeHeld(1)');
+    expect(grant).not.toContain('cbRef.current(');
+  });
+
+  it('ignores every move of a gesture that missed the handle', () => {
+    expect(move).toContain('if (!takeHold(e.nativeEvent.locationX)) return;');
+    // …and the miss is only decided once, so a drag that started ON the
+    // handle keeps it however far off the track it wanders.
+    expect(SRC).toContain('if (grabsRef.current === null) {');
+  });
+
+  it('fires nothing on release when nothing was grabbed', () => {
+    expect(SRC).toContain('const gave = abandonedRef.current || !grabsRef.current;');
+  });
+
+  it('drags from where the handle was held, so the value never jumps', () => {
+    // Grab the handle's left rim and it stays under that rim: the touch's
+    // offset from the handle's centre is kept for the whole gesture.
+    expect(SRC).toContain('grabOffsetRef.current = x - (dragRef.current * (TRACK_W - HANDLE) + HANDLE / 2)');
+    expect(SRC).toContain('x - grabOffsetRef.current, TRACK_W, HANDLE, dragRef.current');
+  });
+
+  it('still eats the touch it ignores', () => {
+    // The rows sit over the artwork: letting a miss fall through would put a
+    // brush dab under the control the finger was reaching for.
+    expect(SRC).toContain(
+      'onStartShouldSetPanResponder: (_e, g) => isSingleTouchGesture(g.numberActiveTouches)',
+    );
+  });
+
+  it('starts every gesture undecided', () => {
+    // Left over from the last drag, a stale `true` would let a tap move the
+    // value again — the exact bug this rule exists to kill.
+    expect(grant).toContain('grabsRef.current = null;');
+    expect(SRC).toMatch(/const letGo = \(\) => \{[\s\S]*?grabsRef\.current = null;/);
+  });
+});
+
 describe('a two-finger tap belongs to the canvas, not to a slider', () => {
   it('refuses a gesture that already has a second finger down', () => {
     // Undo and redo are two- and three-finger taps on the canvas, and they

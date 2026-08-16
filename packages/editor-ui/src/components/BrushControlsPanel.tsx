@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Platform, StyleSheet, View } from 'react-native';
 import type { BrushControlsModel } from '../adapter';
 import { CAPSULE_SIZE, MODAL_TEXT, PANEL_ANIM_MS, WHITE_25 } from '../theme';
-import { brushDotSize, brushSliderValueFromX, isSingleTouchGesture } from '../logic/slider';
+import {
+  brushDotSize, brushSliderGrabsHandle, brushSliderValueFromX, isSingleTouchGesture,
+} from '../logic/slider';
 
 // Floating brush controls (Procreate Pocket's size slider as the model): a
 // stack of two sliders — STRENGTH over SIZE — each a single round handle
@@ -30,6 +32,11 @@ import { brushDotSize, brushSliderValueFromX, isSingleTouchGesture } from '../lo
 // At rest only the handles show; grabbing one fades in that row's track pill
 // AND its name, so the control stays out of the artwork's way while idle and
 // says what it is the moment you touch it.
+//
+// A row moves ONLY by its handle being picked up and dragged. Tapping the
+// track does nothing — see brushSliderGrabsHandle. The touch is still eaten
+// (these rows float over the artwork; letting a miss through would paint a
+// dab under the control), it just doesn't move anything.
 //
 // The panel swaps places with the object-properties panel (the host hides
 // that panel whenever this one is up), so it enters the way panels leave:
@@ -80,8 +87,37 @@ export function FloatingSliderRow({ label, value, onChange, readout }: {
   const cbRef = useRef(onChange);
   cbRef.current = onChange;
 
+  // THE HANDLE IS THE CONTROL. A touch anywhere else in the row is swallowed
+  // and ignored — see brushSliderGrabsHandle for why tapping to a value was
+  // wrong here, and why the answer can be "not yet known" on the first grant.
+  // `null` = undecided; the first locatable event settles it.
+  const grabsRef = useRef<boolean | null>(null);
+  // Where the finger sat on the handle when it was picked up, in px from the
+  // handle's centre. Held for the whole drag so the value never jumps: grab
+  // the handle's left rim and it stays under that rim.
+  const grabOffsetRef = useRef(0);
+  /** Decide (once) whether this gesture picked the handle up, and if so from
+   *  where. Returns whether the gesture is live. */
+  const takeHold = (x: number) => {
+    if (grabsRef.current === null) {
+      const hit = brushSliderGrabsHandle(x, TRACK_W, HANDLE, dragRef.current);
+      if (hit === null) return false; // un-locatable touch: ask again next event
+      grabsRef.current = hit;
+      if (!hit) {
+        // Not the handle. Let the row go quiet again — it lit up on contact,
+        // before there was anything to measure the touch against.
+        draggingRef.current = false;
+        fadeHeld(0);
+        return false;
+      }
+      grabOffsetRef.current = x - (dragRef.current * (TRACK_W - HANDLE) + HANDLE / 2);
+    }
+    return grabsRef.current;
+  };
   const track = (x: number) => {
-    dragRef.current = brushSliderValueFromX(x, TRACK_W, HANDLE, dragRef.current);
+    dragRef.current = brushSliderValueFromX(
+      x - grabOffsetRef.current, TRACK_W, HANDLE, dragRef.current,
+    );
     return dragRef.current;
   };
   // Where the value stood when this gesture began, and whether the gesture
@@ -92,6 +128,8 @@ export function FloatingSliderRow({ label, value, onChange, readout }: {
   const letGo = () => {
     draggingRef.current = false;
     abandonedRef.current = false;
+    grabsRef.current = null;
+    grabOffsetRef.current = 0;
     fadeHeld(0);
   };
   const pan = useRef(
@@ -103,9 +141,15 @@ export function FloatingSliderRow({ label, value, onChange, readout }: {
       onPanResponderGrant: (e) => {
         draggingRef.current = true;
         abandonedRef.current = false;
+        grabsRef.current = null;
         grabbedRef.current = dragRef.current;
+        // Lit on contact, dropped again by takeHold if the touch turns out to
+        // have missed the handle — the row is what says "you have hold of me",
+        // and it can only be honest once the touch has been located.
         fadeHeld(1);
-        cbRef.current(track(e.nativeEvent.locationX));
+        // Picking the handle up is NOT a change: the value stays exactly where
+        // it was until the finger travels.
+        takeHold(e.nativeEvent.locationX);
       },
       onPanResponderMove: (e, g) => {
         if (abandonedRef.current) return;
@@ -116,18 +160,19 @@ export function FloatingSliderRow({ label, value, onChange, readout }: {
           draggingRef.current = false;
           dragRef.current = grabbedRef.current;
           fadeHeld(0);
-          cbRef.current(grabbedRef.current);
+          if (grabsRef.current) cbRef.current(grabbedRef.current);
           return;
         }
+        if (!takeHold(e.nativeEvent.locationX)) return;
         cbRef.current(track(e.nativeEvent.locationX));
       },
       onPanResponderRelease: () => {
-        const gave = abandonedRef.current;
+        const gave = abandonedRef.current || !grabsRef.current;
         letGo();
         if (!gave) cbRef.current(dragRef.current);
       },
       onPanResponderTerminate: () => {
-        const gave = abandonedRef.current;
+        const gave = abandonedRef.current || !grabsRef.current;
         letGo();
         if (!gave) cbRef.current(dragRef.current);
       },

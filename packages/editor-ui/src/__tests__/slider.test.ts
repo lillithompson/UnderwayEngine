@@ -1,5 +1,7 @@
 import {
-  brushDotSize, brushSliderValueFromX, isSingleTouchGesture, padOffsetFromTouch, sliderValueFromX,
+  BRUSH_HANDLE_GRAB_SLOP,
+  brushDotSize, brushSliderGrabsHandle, brushSliderValueFromX, isSingleTouchGesture,
+  padOffsetFromTouch, sliderValueFromX,
 } from '../logic/slider';
 
 describe('sliderValueFromX', () => {
@@ -51,6 +53,44 @@ describe('brushSliderValueFromX', () => {
     expect(brushSliderValueFromX(130, 0, 44, 0.3)).toBe(0.3);
     // A track no wider than its handle has no run at all.
     expect(brushSliderValueFromX(130, 44, 44, 0.6)).toBe(0.6);
+  });
+});
+
+describe('brushSliderGrabsHandle', () => {
+  // Same 260/44 geometry: the handle's LEFT edge runs 0 → 216.
+  const grabs = (x: number, value: number) => brushSliderGrabsHandle(x, 260, 44, value);
+
+  test('a touch on the handle is a grab, wherever the handle is sitting', () => {
+    expect(grabs(22, 0)).toBe(true);       // centred on it at the left end
+    expect(grabs(130, 0.5)).toBe(true);    // …and in the middle
+    expect(grabs(238, 1)).toBe(true);      // …and at the right end
+  });
+
+  test('a touch on the bare track is not — tapping cannot set the value', () => {
+    // The whole point: the handle sits at the left end and a tap lands far
+    // down the track. Before this it jumped the value there.
+    expect(grabs(200, 0)).toBe(false);
+    expect(grabs(20, 1)).toBe(false);
+    // Just past the handle's rim (plus its slop) on either side.
+    expect(grabs(108 - BRUSH_HANDLE_GRAB_SLOP - 1, 0.5)).toBe(false);
+    expect(grabs(152 + BRUSH_HANDLE_GRAB_SLOP + 1, 0.5)).toBe(false);
+  });
+
+  test('a near-miss at the rim still counts — a fingertip is wider than a point', () => {
+    expect(grabs(108 - BRUSH_HANDLE_GRAB_SLOP, 0.5)).toBe(true);
+    expect(grabs(152 + BRUSH_HANDLE_GRAB_SLOP, 0.5)).toBe(true);
+  });
+
+  test('an un-locatable touch is undecided, not a miss', () => {
+    // react-native-web's first grant reports NaN; answering "miss" there
+    // would make the first drag after a panel appears do nothing.
+    expect(grabs(NaN, 0.5)).toBeNull();
+    expect(brushSliderGrabsHandle(130, 44, 44, 0.5)).toBeNull();
+  });
+
+  test('an out-of-range value is clamped, like the layout that draws it', () => {
+    expect(grabs(22, -1)).toBe(true);
+    expect(grabs(238, 4)).toBe(true);
   });
 });
 

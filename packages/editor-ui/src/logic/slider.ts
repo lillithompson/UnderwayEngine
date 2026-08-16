@@ -52,6 +52,48 @@ export function brushSliderValueFromX(
   return clamp01((x - handle / 2) / run);
 }
 
+/** How far outside the handle a touch still counts as having grabbed it.
+ *  A fingertip covers far more than the single point the platform reports,
+ *  so a touch landing a few px off the rim was aimed at the handle. Small
+ *  enough that the rest of the track is emphatically not the handle. */
+export const BRUSH_HANDLE_GRAB_SLOP = 8;
+
+/**
+ * Whether a touch at `x` px across the track GRABBED the handle — the only
+ * way a brush-style slider moves.
+ *
+ * These sliders float over the artwork with their tracks invisible until
+ * held, so "tap anywhere to jump there" made every stray touch near the
+ * bottom of the screen a silent change to brush size or rig turn — the value
+ * moved without anyone reaching for it. Requiring the handle makes the
+ * control a thing you pick up: a tap does nothing at all, and a drag starts
+ * from where the value already is.
+ *
+ * The handle is `handle` px wide, its left edge at `value × (trackW −
+ * handle)` — the layout {@link brushSliderValueFromX} inverts — widened by
+ * {@link BRUSH_HANDLE_GRAB_SLOP} at both ends. Only the across-track axis is
+ * tested: the row is exactly one handle tall, so anything inside it is level
+ * with the handle already.
+ *
+ * A non-finite `x` is NOT a miss — it is the un-locatable first grant
+ * react-native-web hands out before it has measured the row (see
+ * {@link brushSliderValueFromX}). Answering "no" there would make the first
+ * drag of a freshly shown panel dead. It returns null for "can't tell yet",
+ * and the caller decides on the first locatable event instead.
+ */
+export function brushSliderGrabsHandle(
+  x: number,
+  trackW: number,
+  handle: number,
+  value: number,
+): boolean | null {
+  if (!Number.isFinite(x)) return null;
+  const run = trackW - handle;
+  if (run <= 0) return null;
+  const left = clamp01(value) * run;
+  return x >= left - BRUSH_HANDLE_GRAB_SLOP && x <= left + handle + BRUSH_HANDLE_GRAB_SLOP;
+}
+
 /** Diameter of the white size dot inside the brush handle at value `t` —
  *  linear from `min` (a pinprick, never 0: the handle must stay findable) to
  *  `max` (flush with the handle's inner edge). */
