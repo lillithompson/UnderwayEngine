@@ -15,7 +15,8 @@ import {
   CANVAS_ISLAND_CELLS, CANVAS_ISLAND_TEXELS, canvasPaintBytes, canvasPaintHasInk,
   canvasPaintInkBounds, blurCanvasPaint, commitCanvasPaint, composeCanvasPaint,
   createCanvasPaintWorking, eraseCanvasPaint, islandHeightCells, islandKey,
-  normalizeCanvasPaintIslands, paintTileAlphaAt, paintTilesContentRect, stampCanvasPaint,
+  normalizeCanvasPaintIslands, paintTileAlphaAt, paintTilesContentRect, smudgeCanvasPaint,
+  stampCanvasPaint,
 } from '../canvasPaint';
 import { CanvasPaintIsland, RGBColor } from '../types';
 
@@ -187,6 +188,97 @@ describe('erase, blur and compose/commit', () => {
     // Undo entries hold committed tiles by reference, so a stroke that never
     // touched a tile must hand back the SAME object, not a copy.
     expect(untouched).toBe(committed.find((isl) => isl.x !== 0));
+  });
+});
+
+describe('smudgeCanvasPaint — the push brush\'s raster half', () => {
+  /** Colour at tile-space (x, y), or null where nothing is allocated. */
+  const rgbaAt = (islands: readonly CanvasPaintIsland[] | undefined, x: number, y: number) => {
+    const isl = islandAt(islands, x, y);
+    if (!isl) return null;
+    const i = texelOffset(isl, x, y);
+    return [isl.overlay.rgba[i], isl.overlay.rgba[i + 1], isl.overlay.rgba[i + 2],
+      isl.overlay.rgba[i + 3]];
+  };
+
+  it('drags paint along under the brush, leaving its old place thinner', () => {
+    const paint = createCanvasPaintWorking(undefined);
+    stampCanvasPaint(paint, 4 + C, 8 + C, 1, RED, 1);
+    const committed = commitCanvasPaint(paint)!;
+    const before = alphaAt(committed, 5, 8 + C);
+
+    const push = createCanvasPaintWorking(committed);
+    // Ten dabs walking +x, each carrying an eighth of a cell — a stroke, the
+    // way the brush actually arrives.
+    for (let i = 0; i < 10; i++) {
+      smudgeCanvasPaint(push, 4 + C + i * 0.125, 8 + C, 1, 1, 0.125, 0);
+    }
+    const after = composeCanvasPaint(push);
+    // Paint arrived ahead of where the blob ended…
+    expect(alphaAt(after, 5, 8 + C)).toBeGreaterThan(before);
+    // …and it is the blob's own colour that arrived, not some average.
+    const [r, g, b] = rgbaAt(after, 5, 8 + C)!;
+    expect(r).toBeGreaterThan(g + 100);
+    expect(b).toBeLessThan(60);
+    // …while the trailing edge gave some up.
+    expect(alphaAt(after, 3.8, 8 + C)).toBeLessThan(alphaAt(committed, 3.8, 8 + C) - 20);
+  });
+
+  it('carries paint across a tile seam without a join showing', () => {
+    // Blur may treat each tile as its own world; a smudge may not, or every
+    // stroke would draw the 16-cell tile grid over itself. The dab reads
+    // whichever tile actually holds the source texel.
+    const seam = CANVAS_ISLAND_CELLS; // the first boundary, cell 16
+    const paint = createCanvasPaintWorking(undefined);
+    stampCanvasPaint(paint, seam - 0.5, 8 + C, 0.5, RED, 1);
+    const committed = commitCanvasPaint(paint)!;
+    expect(committed).toHaveLength(1); // all of it in the low tile
+
+    const push = createCanvasPaintWorking(committed);
+    for (let i = 0; i < 8; i++) {
+      smudgeCanvasPaint(push, seam - 0.5 + i * 0.125, 8 + C, 0.5, 1, 0.125, 0);
+    }
+    const after = composeCanvasPaint(push);
+    // Paint crossed into the neighbouring tile, which the pass allocated.
+    expect(after.length).toBe(2);
+    expect(alphaAt(after, seam + 0.1, 8 + C)).toBeGreaterThan(0);
+  });
+
+  it('does not cascade: one dab moves paint by its own delta, not the disc', () => {
+    // The trap in reading one texel to write another. Walked the wrong way,
+    // a single dab drags the leading colour the whole width of the brush.
+    const paint = createCanvasPaintWorking(undefined);
+    stampCanvasPaint(paint, 8 + C, 8 + C, 0.5, RED, 1);
+    const committed = commitCanvasPaint(paint)!;
+
+    const push = createCanvasPaintWorking(committed);
+    smudgeCanvasPaint(push, 8 + C, 8 + C, 2, 1, 0.25, 0);
+    const after = composeCanvasPaint(push);
+    // The blob reached x ≈ 8.6; one dab carrying a quarter cell can put
+    // paint a little past that and no further. A cascading pass would have
+    // dragged the leading colour the whole two-cell width of the brush.
+    expect(alphaAt(after, 9.0, 8 + C)).toBe(0);
+    expect(alphaAt(after, 10, 8 + C)).toBe(0);
+    expect(alphaAt(after, 8.8, 8 + C)).toBeLessThan(40);
+  });
+
+  it('is inert without a delta, or without strength', () => {
+    const paint = createCanvasPaintWorking(undefined);
+    stampCanvasPaint(paint, 8 + C, 8 + C, 1, RED, 1);
+    const committed = commitCanvasPaint(paint)!;
+    const push = createCanvasPaintWorking(committed);
+    expect(smudgeCanvasPaint(push, 8 + C, 8 + C, 1, 1, 0, 0)).toEqual([]);
+    expect(smudgeCanvasPaint(push, 8 + C, 8 + C, 1, 0, 1, 1)).toEqual([]);
+    expect(push.touched.size).toBe(0);
+  });
+
+  it('leaves nothing behind on bare canvas', () => {
+    // Tiles the disc covers are allocated so paint can be pushed OUT into
+    // them; ones the smear never reaches prune away at commit, exactly as a
+    // never-painted tile does.
+    const push = createCanvasPaintWorking(undefined);
+    smudgeCanvasPaint(push, 8 + C, 8 + C, 2, 1, 0.5, 0);
+    expect(commitCanvasPaint(push)).toBeUndefined();
   });
 });
 

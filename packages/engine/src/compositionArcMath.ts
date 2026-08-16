@@ -231,6 +231,53 @@ export function rotateSegmentsAbout(
 }
 
 /**
+ * Segments through an arbitrary point WARP — a map that need not be affine,
+ * which is what the push brush is: every point moves by a falloff that
+ * depends on where it is, so one end of a segment can travel while the other
+ * stays put.
+ *
+ * Lines survive that untouched: move the two endpoints and a straight
+ * segment is still a straight segment. An ARC does not. Its three points
+ * satisfy an invariant — a quarter circle, so `|C−S| = |C−E|` and the corner
+ * at C is square — and a warp that moves them by different amounts breaks it,
+ * leaving geometry the renderer, the hit-test and the exporter all read
+ * differently. So an arc's center is not warped, it is REBUILT from the
+ * warped chord: for a quarter arc the two candidate centers are the corners
+ * of the square on that chord, and the one on the side the arc already
+ * bulged toward keeps it sweeping the way it did. The arc bends and swells
+ * with the stroke and stays an arc.
+ *
+ * A degenerate chord (both ends warped onto the same point) has no center to
+ * pick, so the arc collapses to a line rather than emitting a NaN.
+ *
+ * Shared endpoints stay shared for free: the warp is a function of POSITION,
+ * so two segments meeting at a point are handed the same point and get back
+ * the same answer. A pushed path never comes apart at its joins.
+ */
+export function warpSegments(
+  segments: readonly PathSegment[],
+  warp: (x: number, y: number) => [number, number],
+): PathSegment[] {
+  return segments.map((seg): PathSegment => {
+    const start = warp(seg.start[0], seg.start[1]);
+    const end = warp(seg.end[0], seg.end[1]);
+    if (seg.kind === 'line') return { kind: 'line', start, end };
+    const mx = (start[0] + end[0]) / 2;
+    const my = (start[1] + end[1]) / 2;
+    const hx = (end[0] - start[0]) / 2;
+    const hy = (end[1] - start[1]) / 2;
+    if (!(hx * hx + hy * hy > 0)) return { kind: 'line', start, end };
+    // The two square corners on the chord, and the one that keeps the sweep.
+    const was = computeSweepFlag(seg.start, seg.end, seg.center);
+    const a: [number, number] = [mx + hy, my - hx];
+    const center = computeSweepFlag(start, end, a) === was
+      ? a
+      : [mx - hy, my + hx] as [number, number];
+    return { kind: 'arc', start, end, center };
+  });
+}
+
+/**
  * Reverse a path segment: swap start and end, preserve center for arcs.
  */
 export function reverseSegment(seg: PathSegment): PathSegment {

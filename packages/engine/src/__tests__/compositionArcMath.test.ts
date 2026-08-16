@@ -1,4 +1,4 @@
-import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout } from '../compositionArcMath';
+import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout, warpSegments } from '../compositionArcMath';
 import { computeRectSegments } from '../compositionLineBboxMath';
 import { PathSegment, SVGObject } from '../types';
 
@@ -469,5 +469,77 @@ describe('rotatePointAboutCW / rotateSegmentsAbout', () => {
     const segs: PathSegment[] = [{ kind: 'line', start: [0, 0], end: [2, 0] }];
     rotateSegmentsAbout(segs, 0, 0, 45);
     expect(segs[0].end).toEqual([2, 0]);
+  });
+});
+
+describe('warpSegments', () => {
+  /** A push-brush-shaped warp: everything within `radius` of (cx, cy) moves
+   *  by `(dx, dy)` scaled by a linear falloff, everything outside stays. */
+  const push = (cx: number, cy: number, radius: number, dx: number, dy: number) =>
+    (x: number, y: number): [number, number] => {
+      const t = Math.hypot(x - cx, y - cy) / radius;
+      const w = t >= 1 ? 0 : 1 - t;
+      return [x + dx * w, y + dy * w];
+    };
+
+  it('moves a line\'s ends by what the warp says at each of them', () => {
+    const segs: PathSegment[] = [{ kind: 'line', start: [0, 0], end: [10, 0] }];
+    // Centred on the left end with a reach of 4: that end takes the whole
+    // push, the far end is outside and takes none. A straight segment is
+    // still a straight segment either way.
+    const out = warpSegments(segs, push(0, 0, 4, 0, 3));
+    expect(out[0].kind).toBe('line');
+    expect(out[0].start).toEqual([0, 3]);
+    expect(out[0].end).toEqual([10, 0]);
+  });
+
+  it('keeps a shared join shared — a pushed path never comes apart', () => {
+    // The warp is a function of POSITION, so two segments handed the same
+    // point get back the same answer. This is the whole reason the brush
+    // can move path points at all.
+    const segs: PathSegment[] = [
+      { kind: 'line', start: [0, 0], end: [5, 0] },
+      { kind: 'line', start: [5, 0], end: [10, 0] },
+    ];
+    const out = warpSegments(segs, push(5, 0, 6, 1, -2));
+    expect(out[0].end).toEqual(out[1].start);
+  });
+
+  it('an arc stays an arc: quarter-circle invariant and sweep both hold', () => {
+    // Its center is REBUILT from the warped chord rather than warped, since
+    // a falloff that moves the three points unequally would leave geometry
+    // no renderer, hit-test or exporter could agree on.
+    const seg: PathSegment = { kind: 'arc', start: [0, 0], end: [4, 4], center: [0, 4] };
+    const was = computeSweepFlag(seg.start, seg.end, seg.center);
+    const [out] = warpSegments([seg], push(0, 0, 5, 2, 1));
+    expect(out.kind).toBe('arc');
+    if (out.kind !== 'arc') return;
+    // Moved…
+    expect(out.start[0]).toBeGreaterThan(0);
+    // …still a quarter circle…
+    expect(arcRadius({ start: out.start, center: out.center }))
+      .toBeCloseTo(arcRadius({ start: out.end, center: out.center }), 9);
+    const ax = out.start[0] - out.center[0];
+    const ay = out.start[1] - out.center[1];
+    const bx = out.end[0] - out.center[0];
+    const by = out.end[1] - out.center[1];
+    expect(ax * bx + ay * by).toBeCloseTo(0, 9); // square corner at C
+    // …and bulging the way it did.
+    expect(computeSweepFlag(out.start, out.end, out.center)).toBe(was);
+  });
+
+  it('leaves geometry alone where the warp is the identity', () => {
+    const segs: PathSegment[] = [
+      { kind: 'line', start: [0, 0], end: [1, 1] },
+      { kind: 'arc', start: [0, 0], end: [4, 4], center: [0, 4] },
+    ];
+    expect(warpSegments(segs, (x, y) => [x, y])).toEqual(segs);
+  });
+
+  it('collapses an arc whose chord the warp pinched to nothing', () => {
+    // No chord, no center to pick — a line beats emitting NaN.
+    const seg: PathSegment = { kind: 'arc', start: [0, 0], end: [4, 4], center: [0, 4] };
+    const [out] = warpSegments([seg], () => [2, 2]);
+    expect(out).toEqual({ kind: 'line', start: [2, 2], end: [2, 2] });
   });
 });

@@ -37,6 +37,7 @@
  */
 
 import { BlendMode, CanvasPaintIsland, RGBColor } from './types';
+import { gaussianFalloff } from './colorBlend';
 import {
   blurImagePaintOverlay, clonePaintOverlay, eraseImagePaintOverlay, paintOverlayHasInk,
   stampImagePaintOverlay,
@@ -413,9 +414,26 @@ function workingIsland(
   return fresh;
 }
 
+/** The working tile at (tx, ty) FOR READING — the stroke's copy if it has
+ *  one, else the committed tile, and no clone either way. The smudge pass
+ *  reads its neighbours through this: cloning a tile just to sample it
+ *  would mark it touched and drag an unchanged 64 KB copy through the
+ *  commit. */
+function readIsland(
+  working: CanvasPaintWorking, tx: number, ty: number,
+): CanvasPaintIsland | undefined {
+  const key = islandKey(tileOrigin(tx), tileOrigin(ty));
+  return working.touched.get(key) ?? working.baseByKey.get(key);
+}
+
 /** Walk every tile the dab disc's AABB touches, handing `visit` the working
  *  island (or null — see {@link workingIsland}) plus its key. The one tile
- *  walk under stamp / erase / blur, so all three agree on coverage. */
+ *  walk under stamp / erase / blur / smudge, so they all agree on coverage.
+ *
+ *  `order` walks an axis backwards (−1) instead of forwards. Only the smudge
+ *  passes it, and for a reason it cannot do without: that pass READS one
+ *  texel to write another, and walking away from where it reads is what
+ *  keeps a dab from cascading into itself across a tile seam. */
 function forEachIslandUnderDab(
   working: CanvasPaintWorking,
   cellX: number,
@@ -423,11 +441,22 @@ function forEachIslandUnderDab(
   radius: number,
   allocate: boolean,
   visit: (island: CanvasPaintIsland, key: string) => void,
+  order: readonly [number, number] = [1, 1],
 ): void {
   const tx0 = Math.floor((cellX - radius) / CANVAS_ISLAND_CELLS);
   const tx1 = Math.floor((cellX + radius) / CANVAS_ISLAND_CELLS);
   const ty0 = Math.floor((cellY - radius) / CANVAS_ISLAND_CELLS);
   const ty1 = Math.floor((cellY + radius) / CANVAS_ISLAND_CELLS);
+  if (order[0] < 0 || order[1] < 0) {
+    const [sx, sy] = order;
+    for (let ty = sy < 0 ? ty1 : ty0; sy < 0 ? ty >= ty0 : ty <= ty1; ty += sy < 0 ? -1 : 1) {
+      for (let tx = sx < 0 ? tx1 : tx0; sx < 0 ? tx >= tx0 : tx <= tx1; tx += sx < 0 ? -1 : 1) {
+        const island = workingIsland(working, tx, ty, allocate);
+        if (island) visit(island, islandKey(island.x, island.y));
+      }
+    }
+    return;
+  }
   for (let ty = ty0; ty <= ty1; ty++) {
     for (let tx = tx0; tx <= tx1; tx++) {
       const island = workingIsland(working, tx, ty, allocate);
@@ -544,5 +573,144 @@ export function blurCanvasPaint(
       changed.push(key);
     }
   });
+  return changed;
+}
+
+/**
+ * SMUDGE one canvas dab: every texel under the disc pulls in the colour from
+ * `(x − dx·w, y − dy·w)`, `w` being the brush's own falloff times its
+ * strength, and drifts toward it by that same `w`. Paint is dragged along
+ * under the finger — hard in the middle of the brush, not at all at the rim,
+ * so a stroke smears what it crosses instead of depositing anything. It is
+ * the raster half of the push brush; the vector half warps path points
+ * (compositionArcMath's warpSegments) and the rig half moves joints.
+ *
+ * Two things this pass does that the others do not.
+ *
+ * It READS ACROSS TILE SEAMS. Blur is allowed to treat each tile as its own
+ * little world — softening within one costs a seam nobody can see — but a
+ * smudge that could not carry colour over a tile boundary would draw a
+ * visible 16-cell grid over every stroke, so the source texel is looked up
+ * in whatever tile actually holds it ({@link readIsland}).
+ *
+ * And it walks AWAY from where it reads. Reading one texel to write another
+ * means a dab can cascade into itself — smearing the same colour along the
+ * whole disc — unless the source is always a texel this dab has not written
+ * yet. Since the source sits at `−delta` from its destination, walking each
+ * axis in the direction the paint is travelling, from the far end back,
+ * guarantees exactly that: tiles first (`order`), then rows and columns
+ * inside each. No snapshot, no scratch buffer, no allocation per dab.
+ *
+ * Tiles under the disc ARE allocated, so paint can be pushed out into empty
+ * space; ones the smear never fills are pruned at commit like any other
+ * empty tile. Returns the keys of tiles whose bytes changed.
+ */
+export function smudgeCanvasPaint(
+  working: CanvasPaintWorking,
+  cellX: number,
+  cellY: number,
+  radiusCells: number,
+  strength: number,
+  dxCells: number,
+  dyCells: number,
+): string[] {
+  if (!(strength > 0)) return [];
+  if (!(Math.abs(dxCells) > 0) && !(Math.abs(dyCells) > 0)) return [];
+  const radius = effectiveRadius(radiusCells);
+  const radiusSq = radius * radius;
+  const texel = 1 / CANVAS_PAINT_TEXELS_PER_CELL;
+  const changed: string[] = [];
+  // Every tile shares one texel lattice, so a global texel index resolves to
+  // whichever tile holds it — including none, off the painted plane.
+  const texelAt = (gx: number, gy: number): { rgba: Uint8Array; i: number } | null => {
+    const tx = Math.floor(gx / CANVAS_ISLAND_TEXELS);
+    const ty = Math.floor(gy / CANVAS_ISLAND_TEXELS);
+    const isl = readIsland(working, tx, ty);
+    if (!isl) return null;
+    const c = gx - tx * CANVAS_ISLAND_TEXELS;
+    const r = gy - ty * CANVAS_ISLAND_TEXELS;
+    return { rgba: isl.overlay.rgba, i: (r * isl.overlay.cols + c) * 4 };
+  };
+  // BILINEAR, and it has to be. The source sits `delta × falloff` behind its
+  // destination, so across one disc the offset ranges continuously from the
+  // full delta down to nothing — and nearest-neighbour sampling rounds most
+  // of that back onto the destination texel itself, which leaves the middle
+  // of the brush smearing and its skirt frozen in stepped rings. Reading
+  // between texels makes the smear continuous, at four taps a texel.
+  const sample = (x: number, y: number): [number, number, number, number] | null => {
+    const fx = x * CANVAS_PAINT_TEXELS_PER_CELL - 0.5;
+    const fy = y * CANVAS_PAINT_TEXELS_PER_CELL - 0.5;
+    const c0 = Math.floor(fx);
+    const r0 = Math.floor(fy);
+    const u = fx - c0;
+    const v = fy - r0;
+    let r = 0, g = 0, b = 0, a = 0, cover = 0;
+    for (let dr = 0; dr < 2; dr++) {
+      for (let dc = 0; dc < 2; dc++) {
+        const w = (dc ? u : 1 - u) * (dr ? v : 1 - v);
+        if (!(w > 0)) continue;
+        const t = texelAt(c0 + dc, r0 + dr);
+        if (!t) continue; // off the plane: transparent, contributing nothing
+        const ta = t.rgba[t.i + 3];
+        a += ta * w;
+        // Colour is alpha-weighted, so a transparent neighbour lends cover
+        // rather than black — the same rule the blur pass averages by.
+        const cw = ta * w;
+        r += t.rgba[t.i] * cw;
+        g += t.rgba[t.i + 1] * cw;
+        b += t.rgba[t.i + 2] * cw;
+        cover += cw;
+      }
+    }
+    if (cover <= 0) return a > 0 ? [0, 0, 0, a] : null;
+    return [r / cover, g / cover, b / cover, a];
+  };
+  const stepX = dxCells >= 0 ? -1 : 1;
+  const stepY = dyCells >= 0 ? -1 : 1;
+  forEachIslandUnderDab(working, cellX, cellY, radius, true, (island, key) => {
+    const { cols, rows, rgba } = island.overlay;
+    // The disc in this tile's own texel indices.
+    const lx = cellX - island.x;
+    const ly = cellY - island.y;
+    const cMin = Math.max(0, Math.floor((lx - radius) / texel));
+    const cMax = Math.min(cols - 1, Math.ceil((lx + radius) / texel));
+    const rMin = Math.max(0, Math.floor((ly - radius) / texel));
+    const rMax = Math.min(rows - 1, Math.ceil((ly + radius) / texel));
+    let touched = false;
+    for (let r = stepY < 0 ? rMax : rMin; stepY < 0 ? r >= rMin : r <= rMax; r += stepY) {
+      const ty = (r + 0.5) * texel;
+      for (let c = stepX < 0 ? cMax : cMin; stepX < 0 ? c >= cMin : c <= cMax; c += stepX) {
+        const tx = (c + 0.5) * texel;
+        const distSq = (tx - lx) * (tx - lx) + (ty - ly) * (ty - ly);
+        if (distSq > radiusSq) continue;
+        const w = strength * gaussianFalloff(distSq / radiusSq);
+        if (!(w > 0)) continue;
+        const src = sample(island.x + tx - dxCells * w, island.y + ty - dyCells * w);
+        const i = (r * cols + c) * 4;
+        // Nothing behind the brush: the texel drifts toward empty, which is
+        // what pulling paint off the trailing edge of a smear looks like.
+        const sa = src ? src[3] : 0;
+        const da = rgba[i + 3];
+        if (sa === 0 && da === 0) continue;
+        // Colour mixes ALPHA-WEIGHTED, the way the blur pass averages its
+        // neighbourhood: these are straight-alpha texels, so lerping RGB
+        // toward a transparent source would drag black in and smear a red
+        // stroke into a dark grey one.
+        const ws = sa * w;
+        const wd = da * (1 - w);
+        const total = ws + wd;
+        if (total > 0) {
+          for (let ch = 0; ch < 3; ch++) {
+            const s = sa === 0 ? rgba[i + ch] : src![ch];
+            const v = Math.round((s * ws + rgba[i + ch] * wd) / total);
+            if (rgba[i + ch] !== v) { rgba[i + ch] = v; touched = true; }
+          }
+        }
+        const a = Math.round(da + (sa - da) * w);
+        if (rgba[i + 3] !== a) { rgba[i + 3] = a; touched = true; }
+      }
+    }
+    if (touched) changed.push(key);
+  }, [stepX, stepY]);
   return changed;
 }
