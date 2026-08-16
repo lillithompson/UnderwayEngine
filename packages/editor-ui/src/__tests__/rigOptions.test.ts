@@ -10,6 +10,7 @@ import {
   rigPartSubmenu, rigSliderPart,
 } from '../logic/rigEdit';
 import { ROW_GAP, ROW_SLIDER, submenuHeight } from '../logic/submenuHeight';
+import type { SubmenuKey } from '../logic/submenuHeight';
 
 const SRC = readFileSync(
   join(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'),
@@ -88,9 +89,10 @@ describe('the rig option set', () => {
     // On an effect bar the trash removes something that was ADDED — a
     // shadow, a border — and the object is itself again. A rig has no such
     // layer: every slider is a posture the figure is always in, so a trash
-    // could only mean "back to rest", which the sliders already reach. It
-    // also reset the whole page, untouched sliders included, so one tap
-    // flattened a pair of hands posed finger by finger.
+    // could only mean "this part back to rest" — and it reset the whole
+    // page, untouched sliders included, so one tap flattened a pair of
+    // hands posed finger by finger. Resetting is offered over the WHOLE
+    // figure instead, from the options row (see below).
     const BAR = readFileSync(join(__dirname, '..', 'components', 'RigPoseBar.tsx'), 'utf8');
     expect(BAR).not.toContain('onRemove');
     expect(BAR).not.toContain('onReset');
@@ -100,6 +102,19 @@ describe('the rig option set', () => {
     expect(SRC).not.toContain('onResetRigPart');
     const ADAPTER = readFileSync(join(__dirname, '..', 'adapter.ts'), 'utf8');
     expect(ADAPTER).not.toContain('onResetRigPart');
+  });
+
+  it('ends the row with Reset — an action, not another bar', () => {
+    // It opens nothing, so it carries no `sub`: pressing it never slides a
+    // page up and never lights as the carousel's position. It follows the
+    // parts rather than leading them, since it is the way OUT of a pose.
+    expect(SRC).toContain("typeSpecs.push({ key: 'resetRig', label: 'Reset', onPress: model.onResetRig });");
+    expect(SRC.indexOf("key: 'resetRig'"))
+      .toBeGreaterThan(SRC.indexOf('typeSpecs = RIG_PART_OPTIONS.map'));
+    // Rendered only when the host wires it — a locked rig offers no reset.
+    expect(SRC).toContain('if (model.onResetRig) {');
+    // And it is not a submenu key, so it is nowhere in the rig's carousel.
+    expect(RIG_PART_OPTIONS.some((o) => o.sub === ('resetRig' as SubmenuKey))).toBe(false);
   });
 
   it('gives each hand and foot a centred Twist beside its own slider', () => {

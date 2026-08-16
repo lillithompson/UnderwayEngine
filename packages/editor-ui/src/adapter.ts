@@ -339,8 +339,8 @@ export interface ObjectPropertiesModel {
    *  with the image / svg / text / frame type-option families. */
   showPaintOptions?: boolean;
   /** Selection is a POSEABLE RIG (a Figgie mannequin). Its type options are
-   *  the parts a slider can shape — Hands · Feet · Spine — plus the IK
-   *  toggle, rather than the Stroke / Fill / Opacity a plain vector offers:
+   *  the parts a slider can shape — Rig · Hands · Feet · Spine · Head, plus
+   *  Reset — rather than the Stroke / Fill / Opacity a plain vector offers:
    *  a rig's silhouette is baked from its pose, so those three have nothing
    *  to act on. Mutually exclusive with the other type-option families, and
    *  checked BEFORE showSvgOptions (a rig's figure is an svg object).
@@ -357,6 +357,20 @@ export interface ObjectPropertiesModel {
   /** Which rig part bar is open, if any (app-owned, like the effect bars). */
   rigPartOpen?: RigPart | null;
   onRigPartOpenChange?(part: RigPart | null): void;
+  /** Stand the figure back up: the rest pose, facing front, and every slider
+   *  back to its rest position. The LAST option in the rig's row, after the
+   *  parts — one action rather than a bar, so it needs no submenu.
+   *
+   *  It is offered here, over the whole figure, and nowhere else. The part
+   *  bars deliberately carry no trash of their own: on an effect bar a trash
+   *  removes something that was ADDED and leaves the object itself, but every
+   *  rig slider is a posture the figure is always in, so a per-bar reset
+   *  could only mean "this part back to rest" — and it reset the sliders
+   *  nobody had touched along with it, flattening a pair of hands posed
+   *  finger by finger. Whole-figure is the one reading with no such trap: it
+   *  means what it says, and it is one undo step away. Only rendered when the
+   *  host sets it; ignored unless `showRigOptions`. */
+  onResetRig?(): void;
   /** Selection is a vector (SVG) object: the panel's second row shows that
    *  subtype's option menu — see `svgSubtype` for which one, and
    *  `SVG_EDIT_OPTIONS` for the options each subtype offers. Mutually

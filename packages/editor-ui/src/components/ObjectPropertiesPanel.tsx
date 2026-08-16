@@ -1122,6 +1122,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       sub: opt.sub,
       onPress: () => openSubmenu(opt.sub),
     }));
+    if (model.onResetRig) {
+      // Last, after the parts, and an action rather than a bar — it opens
+      // nothing, so it carries no `sub` and never lights as the carousel's
+      // position. See onResetRig for why the reset is offered over the whole
+      // figure and not inside each part's bar.
+      typeSpecs.push({ key: 'resetRig', label: 'Reset', onPress: model.onResetRig });
+    }
   } else if (model.showSvgOptions) {
     // Vector selection: the subtype's own option menu (svgEdit.ts). Every
     // subtype offers Stroke — a path IS its stroke; the closed shapes add Fill.
