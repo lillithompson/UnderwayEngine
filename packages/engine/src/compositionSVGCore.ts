@@ -182,6 +182,28 @@ export interface CompositionSVGInputs {
    */
   strokeColorOverride?: RGBColor;
   /**
+   * Repaint every PAINT ISLAND in this color, whatever colors were brushed
+   * into it, keeping each texel's alpha — so the brushwork keeps its shape,
+   * its softness and its pressure, and loses only its hue.
+   *
+   * The `strokeColorOverride` argument for the raster brush: a cutout of the
+   * marks on a page lands on the card's colored tint well, and a stroke laid
+   * down to read against the paper goes muddy or clashes there. The two are
+   * separate knobs because a page's line art and its brushwork are separate
+   * decisions — a format may want its pen strokes left alone and its paint
+   * flattened, or the reverse.
+   *
+   * Blend modes are already baked into the texels (the brush composites at
+   * stamp time), so there is nothing left here for a recolor to disagree with:
+   * whatever the stroke ended up looking like, it ends up this color.
+   *
+   * Image and shape paint OVERLAYS are exempt. Those are paint applied TO an
+   * object — a wash over a photo, a scribble inside a shape — and the object
+   * they sit on comes along with the cutout, so their color was chosen against
+   * a backdrop that did not get left behind.
+   */
+  paintColorOverride?: RGBColor;
+  /**
    * Drop the AUTHORED drop shadow from every text node.
    *
    * The `textColorOverride` argument again, for the effect rather than the
@@ -1135,7 +1157,10 @@ export async function generateCompositionSVGCore(
     if (p.mirrorV) parts.push(`translate(0, ${h}) scale(1, -1)`);
     // One <image> per sparse tile, positioned by its contentRect-normalized
     // rect in the inner frame. Export-time PNG encode is fine here — this
-    // path never runs per-frame.
+    // path never runs per-frame, which is also why an ink override can be
+    // done in the TEXELS (exact, and no filter for the rasterizer to get
+    // wrong) rather than as an SVG color matrix over them.
+    const paintInk = input.paintColorOverride;
     let tileImages = '';
     for (const tile of p.tiles) {
       const tx = ((tile.x - p.contentX) / p.contentW) * iw;
@@ -1143,7 +1168,7 @@ export async function generateCompositionSVGCore(
       const tw = (tile.widthCells / p.contentW) * iw;
       const th = (islandHeightCells(tile) / p.contentH) * ih;
       tileImages += `<image x="${tx}" y="${ty}" width="${tw}" height="${th}"` +
-        ` href="${overlayPngDataUri(tile.overlay)}" preserveAspectRatio="none"/>`;
+        ` href="${overlayPngDataUri(tile.overlay, paintInk)}" preserveAspectRatio="none"/>`;
     }
     const opacityAttr = p.opacity != null && p.opacity < 1 ? ` opacity="${p.opacity}"` : '';
     // Edge soften: the images' eroded-then-blurred silhouette mask, built in

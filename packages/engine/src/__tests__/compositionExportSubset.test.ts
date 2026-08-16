@@ -9,8 +9,9 @@
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
 import { DEFAULT_LINE_HEIGHT, layoutText } from '../textLayout';
 import { STICKER_SHADOW_CELLS } from '../stickerStyle';
-import { GroupNode, ImageObject, PaintObject, PathSegment, SVGObject, TextObject } from '../types';
+import { GroupNode, ImageObject, PaintObject, PathSegment, RGBColor, SVGObject, TextObject } from '../types';
 import { commitCanvasPaint, createCanvasPaintWorking, stampCanvasPaint } from '../canvasPaint';
+import { overlayPngDataUri } from '../imagePaintOverlay';
 import { createPaintObjectFromTiles } from '../paintObject';
 
 /** SVG_UNITS_PER_L0_CELL — world cells scale into SVG units by this. */
@@ -676,5 +677,57 @@ describe('paint islands in a cutout', () => {
     expect(await generateCompositionSVGCore(makeInputs({
       paintObjects: [p], sceneOrder: [p.id], subset: () => new Set<string>(),
     }))).toBeNull();
+  });
+
+  /**
+   * `paintColorOverride` — the raster brush's `strokeColorOverride`. The
+   * assertions compare whole data URIs against overlays inked by hand: the
+   * encoder is deterministic, so equality pins the exact texels emitted.
+   */
+  describe('an ink override repaints the brushwork', () => {
+    const WHITE: RGBColor = { r: 255, g: 255, b: 255 };
+
+    /** `tiles` recolored the way the override should recolor them: painted
+     *  texels take `ink`, empty ones stay empty, alphas are untouched. */
+    const inkedHrefs = (p: PaintObject, ink: RGBColor) =>
+      p.tiles.map((tile) => {
+        const rgba = new Uint8Array(tile.overlay.rgba);
+        for (let i = 0; i < rgba.length; i += 4) {
+          if (rgba[i + 3] === 0) continue;
+          rgba[i] = ink.r;
+          rgba[i + 1] = ink.g;
+          rgba[i + 2] = ink.b;
+        }
+        return `href="${overlayPngDataUri({ ...tile.overlay, rgba })}"`;
+      });
+
+    it('emits every tile in the override color, whatever was brushed', async () => {
+      const p = inkPaint();
+      const svg = await generateCompositionSVGCore(
+        paintPage(p, { paintColorOverride: WHITE }),
+      );
+      expect(svg).toBeTruthy();
+      for (const href of inkedHrefs(p, WHITE)) expect(svg).toContain(href);
+      // The red the fixture actually painted is nowhere in the output.
+      for (const tile of p.tiles) {
+        expect(svg).not.toContain(`href="${overlayPngDataUri(tile.overlay)}"`);
+      }
+    });
+
+    it('leaves the tiles alone when no override is given', async () => {
+      const p = inkPaint();
+      const svg = await generateCompositionSVGCore(paintPage(p));
+      for (const tile of p.tiles) {
+        expect(svg).toContain(`href="${overlayPngDataUri(tile.overlay)}"`);
+      }
+    });
+
+    it('does not touch the island it was handed', async () => {
+      // The scene is the caller's; an export reads it and mints new bytes.
+      const p = inkPaint();
+      const before = p.tiles.map((t) => Array.from(t.overlay.rgba));
+      await generateCompositionSVGCore(paintPage(p, { paintColorOverride: WHITE }));
+      p.tiles.forEach((t, i) => expect(Array.from(t.overlay.rgba)).toEqual(before[i]));
+    });
   });
 });

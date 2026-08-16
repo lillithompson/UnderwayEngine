@@ -114,6 +114,10 @@ export interface CompositionExportOptions {
    *  for a cutout that is line art. See
    *  {@link CompositionSVGInputs.strokeColorOverride}. */
   strokeColorOverride?: RGBColor;
+  /** Repaint every paint island in this color, texel alphas kept — the same
+   *  intent as `strokeColorOverride` for the raster brush's marks. See
+   *  {@link CompositionSVGInputs.paintColorOverride}. */
+  paintColorOverride?: RGBColor;
   /** Drop every text node's authored drop shadow — for a cutout that leaves
    *  behind the page the shadow was cast against. See
    *  {@link CompositionSVGInputs.dropTextShadow}. */
@@ -375,6 +379,7 @@ export async function exportCompositionSVG(
     subset: options?.subset,
     textColorOverride: options?.textColorOverride,
     strokeColorOverride: options?.strokeColorOverride,
+    paintColorOverride: options?.paintColorOverride,
     dropTextShadow: options?.dropTextShadow,
     viewBoxPadFraction: options?.viewBoxPadFraction,
     frameInkExtents: options?.frameInkExtents,

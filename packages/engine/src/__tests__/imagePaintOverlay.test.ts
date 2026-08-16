@@ -28,6 +28,7 @@ import { buildSVGObjectContent } from '../svgPathBuilder';
 import { ImageObject, ImagePaintOverlay, RGBColor, SVGObject } from '../types';
 
 const RED: RGBColor = { r: 255, g: 0, b: 0 };
+const WHITE: RGBColor = { r: 255, g: 255, b: 255 };
 
 describe('createImagePaintOverlay', () => {
   test('sizes the grid at OVERLAY_TEXELS_PER_CELL, clamped to [4, 64]', () => {
@@ -298,6 +299,36 @@ describe('overlayPngDataUri', () => {
       (bytes[off] << 24) | (bytes[off + 1] << 16) | (bytes[off + 2] << 8) | bytes[off + 3];
     expect(be32(16)).toBe(o.cols);
     expect(be32(20)).toBe(o.rows);
+  });
+
+  test('an ink override repaints painted texels and keeps every alpha', () => {
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    // A soft dab: a full-alpha middle and a skirt of partial ones — the shape
+    // the override has to preserve.
+    stampImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, RED, 1);
+
+    // What the override should produce, built by hand: same alphas, white RGB
+    // wherever there is paint, untouched zeroes where there is none.
+    const want = clonePaintOverlay(o);
+    for (let i = 0; i < want.rgba.length; i += 4) {
+      if (want.rgba[i + 3] === 0) continue;
+      want.rgba[i] = 255;
+      want.rgba[i + 1] = 255;
+      want.rgba[i + 2] = 255;
+    }
+    expect(overlayPngDataUri(o, WHITE)).toBe(overlayPngDataUri(want));
+    // …and it really is a change: the authored red encodes differently.
+    expect(overlayPngDataUri(o, WHITE)).not.toBe(overlayPngDataUri(o));
+    // The overlay itself is untouched — an export must not edit the scene.
+    expect(o.rgba[(12 * o.cols + 16) * 4]).toBe(255);
+    expect(o.rgba[(12 * o.cols + 16) * 4 + 1]).toBe(0);
+  });
+
+  test('an ink override over empty texels leaves the layer transparent', () => {
+    // Filling invisible texels with a color would only cost bytes; a blank
+    // layer must encode identically with and without the override.
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    expect(overlayPngDataUri(o, WHITE)).toBe(overlayPngDataUri(o));
   });
 });
 

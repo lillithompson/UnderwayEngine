@@ -380,10 +380,31 @@ export function paintOverlayHasInk(overlay: ImagePaintOverlay): boolean {
   return false;
 }
 
-/** The PNG data URI both renderers draw the layer from — the engine's own
- *  encoder (pngcodec), so node tests and exports need no canvas. */
-export function overlayPngDataUri(overlay: ImagePaintOverlay): string {
-  return `data:image/png;base64,${toBase64(encodePNG(overlay.rgba, overlay.cols, overlay.rows))}`;
+/**
+ * The PNG data URI both renderers draw the layer from — the engine's own
+ * encoder (pngcodec), so node tests and exports need no canvas.
+ *
+ * `ink` repaints every texel that holds paint in that one color, keeping each
+ * one's ALPHA: the layer's shape — where the brush went and how hard it
+ * pressed — survives exactly, only its hue is replaced. It is the raster
+ * counterpart of `strokeColorOverride`, for an export that lands on a backdrop
+ * the page never had; nothing on the editing path passes it. Texels the brush
+ * never touched (alpha 0) are left as zeroes rather than filled with an
+ * invisible color, so the PNG stays as compressible as it was.
+ */
+export function overlayPngDataUri(overlay: ImagePaintOverlay, ink?: RGBColor): string {
+  let { rgba } = overlay;
+  if (ink) {
+    const inked = new Uint8Array(rgba);
+    for (let i = 0; i < inked.length; i += 4) {
+      if (inked[i + 3] === 0) continue;
+      inked[i] = ink.r;
+      inked[i + 1] = ink.g;
+      inked[i + 2] = ink.b;
+    }
+    rgba = inked;
+  }
+  return `data:image/png;base64,${toBase64(encodePNG(rgba, overlay.cols, overlay.rows))}`;
 }
 
 /**
