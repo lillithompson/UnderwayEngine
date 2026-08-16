@@ -1390,7 +1390,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onChange={(key, v) => model.onRigSlider?.(key, v, false)}
         onCommit={(key, v) => model.onRigSlider?.(key, v, true)}
         onBack={dismissSubmenu}
-        onReset={() => model.onResetRigPart?.(part)}
       />
     );
   } else if (displaySub === 'opacity') {

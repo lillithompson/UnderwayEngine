@@ -49,6 +49,24 @@ describe('the rig option set', () => {
       .toBe(submenuHeight('rigSpine') + ROW_SLIDER + ROW_GAP);
   });
 
+  it('has no trash in its header, on any of the four pages', () => {
+    // On an effect bar the trash removes something that was ADDED — a
+    // shadow, a border — and the object is itself again. A rig has no such
+    // layer: every slider is a posture the figure is always in, so a trash
+    // could only mean "back to rest", which the sliders already reach. It
+    // also reset the whole page, untouched sliders included, so one tap
+    // flattened a pair of hands posed finger by finger.
+    const BAR = readFileSync(join(__dirname, '..', 'components', 'RigPoseBar.tsx'), 'utf8');
+    expect(BAR).not.toContain('onRemove');
+    expect(BAR).not.toContain('onReset');
+    // The header still carries the title and the way back out.
+    expect(BAR).toContain('<EffectBarHeader title={rigPartTitle(part)} chevron onBack={onBack} />');
+    // …and the panel hands the bar nothing to reset with.
+    expect(SRC).not.toContain('onResetRigPart');
+    const ADAPTER = readFileSync(join(__dirname, '..', 'adapter.ts'), 'utf8');
+    expect(ADAPTER).not.toContain('onResetRigPart');
+  });
+
   it('gives each hand and foot a centred Twist beside its own slider', () => {
     // The curl / flex slider runs one way from rest; the twist runs BOTH
     // ways from the middle, since a joint rolls either direction.

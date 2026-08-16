@@ -27,28 +27,27 @@ import { BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
 //
 // The sliders do NOT read the figure's current pose — a hand posed finger
 // by finger has no single "fistness" — so they sit at their rest positions
-// until touched, and the host only shapes the pose once one moves. The
-// trash returns this part's sliders to rest (one undo step), the same
-// reset-rather-than-delete the Opacity and Stroke bars use.
+// until touched, and the host only shapes the pose once one moves.
+//
+// And NO TRASH in the header, unlike the effect bars. On those it removes
+// something that was ADDED — a shadow, a border, a tint — and the object is
+// itself again without it. A rig has no such layer: every slider here is a
+// posture the figure is always in, so a trash could only mean "back to
+// rest", which is a pose like any other and one the sliders already reach.
+// It also reset the WHOLE page, the sliders nobody had touched included, so
+// one tap flattened a pair of hands that had been posed finger by finger.
+// Undoing a pose is what undo is for.
 
-export function RigPoseBar({ part, values, onChange, onCommit, onBack, onReset }: {
+export function RigPoseBar({ part, values, onChange, onCommit, onBack }: {
   part: RigPart;
   values: Record<RigSliderKey, number>;
   onChange: (key: RigSliderKey, value: number) => void;
   onCommit: (key: RigSliderKey, value: number) => void;
   onBack: () => void;
-  /** Return this part to its rest posture. */
-  onReset: () => void;
 }) {
   return (
     <View style={styles.bar}>
-      <EffectBarHeader
-        title={rigPartTitle(part)}
-        chevron
-        removeLabel={`Reset ${part}`}
-        onBack={onBack}
-        onRemove={onReset}
-      />
+      <EffectBarHeader title={rigPartTitle(part)} chevron onBack={onBack} />
       <View style={styles.controls}>
         {rigPartSliders(part).map((spec) => (
           <SliderRow

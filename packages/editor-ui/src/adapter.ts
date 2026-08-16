@@ -354,8 +354,6 @@ export interface ObjectPropertiesModel {
   /** A rig slider moved: live while dragging (`committed=false`), once on
    *  release (`committed=true`, one undo step). */
   onRigSlider?(key: RigSliderKey, value: number, committed: boolean): void;
-  /** Return one part's sliders — and the joints they own — to rest. */
-  onResetRigPart?(part: RigPart): void;
   /** Which rig part bar is open, if any (app-owned, like the effect bars). */
   rigPartOpen?: RigPart | null;
   onRigPartOpenChange?(part: RigPart | null): void;
