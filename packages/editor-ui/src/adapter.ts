@@ -630,6 +630,12 @@ export interface BrushControlsModel {
    *  much paint a dab lays down, how much the eraser lifts, how far a blur
    *  step carries. Read straight as the stroke's opacity. */
   strength: number;
+  /** Draw the Strength row at all. Default (omitted) is yes; pass false for
+   *  a brush whose strength is already on screen somewhere else, so the
+   *  panel is one slider tall instead of two. Size keeps its place either
+   *  way — the stack stands on the bottom edge, so the row that goes is the
+   *  one above. */
+  showStrength?: boolean;
   /** Both fire live while dragging (and once on a tap). No commit variants —
    *  brush settings are tool state, not undoable document edits. */
   onSize(value: number): void;

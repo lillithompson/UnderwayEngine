@@ -27,7 +27,11 @@ import {
 // on native iOS a handle down there is a gesture fight every time.
 //
 // Strength keeps the UPPER row: it is the one reached for mid-painting, and
-// the further from the screen edge the easier it is to grab in a hurry.
+// the further from the screen edge the easier it is to grab in a hurry. It
+// is also the row a host can DROP (BrushControlsModel.showStrength) for a
+// brush that carries its strength somewhere else — the stack stands on the
+// bottom edge, so Size stays exactly where it is and the panel is simply
+// one row shorter.
 //
 // At rest only the handles show; grabbing one fades in that row's track pill
 // AND its name, so the control stays out of the artwork's way while idle and
@@ -244,10 +248,17 @@ export function BrushControlsPanel({ model, safeBottom = 0 }: {
       pointerEvents="box-none"
     >
       <Animated.View style={{ transform: [{ translateY: rise }] }}>
-        <FloatingSliderRow
-          label="Strength" readout="opacity" value={model.strength} onChange={model.onStrength}
-        />
-        <View style={{ height: ROW_GAP }} />
+        {/* A host can drop STRENGTH (showStrength) when that brush carries
+            it elsewhere. The stack stands on the bottom edge, so Size holds
+            its place and the empty row above it simply isn't there. */}
+        {model.showStrength === false ? null : (
+          <>
+            <FloatingSliderRow
+              label="Strength" readout="opacity" value={model.strength} onChange={model.onStrength}
+            />
+            <View style={{ height: ROW_GAP }} />
+          </>
+        )}
         <FloatingSliderRow
           label="Size" readout="diameter" value={model.size} onChange={model.onSize}
         />

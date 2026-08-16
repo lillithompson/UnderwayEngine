@@ -31,6 +31,24 @@ describe('both rows stand inside the safe area', () => {
     expect(stack.indexOf('label="Strength"')).toBeLessThan(stack.indexOf('label="Size"'));
   });
 
+  it('drops the STRENGTH row on request, leaving Size where it was', () => {
+    // A host whose brush carries its strength elsewhere (the paint brush's
+    // is its color's own Opacity) asks for one slider instead of two. The
+    // stack stands on the bottom edge, so the row that goes is the one
+    // ABOVE Size — and Size, the row a finger reaches for by position, does
+    // not move.
+    expect(SRC).toContain('model.showStrength === false ? null : (');
+    const stack = /<Animated\.View style=\{\{ transform[\s\S]*?<\/Animated\.View>/.exec(SRC)?.[0] ?? '';
+    // Strength and the gap under it are inside the conditional; Size is not.
+    const conditional = /\{model\.showStrength === false \? null : \([\s\S]*?\)\}/.exec(stack)?.[0] ?? '';
+    expect(conditional).toContain('label="Strength"');
+    expect(conditional).toContain('height: ROW_GAP');
+    expect(conditional).not.toContain('label="Size"');
+    // The wrap still stands on the bottom margin, which is what keeps Size
+    // in place when the row above it disappears.
+    expect(SRC).toContain('bottom: safeBottom + BOTTOM_MARGIN');
+  });
+
   it('still clears the screen entirely when it hides', () => {
     // The stack sits a row higher than it did, so the hidden offset has to
     // cover the margin, BOTH rows and the inset — otherwise a handle stays
