@@ -100,6 +100,57 @@ export function paintObjectIsUntransformed(p: PaintObject): boolean {
 }
 
 /**
+ * Can this island's FRAME absorb a change of content rect — can its tiles
+ * cover more (or less) ground without the paint already in it moving on
+ * screen?
+ *
+ * Only when the tile→world map is axis-aligned: a translation and a
+ * per-axis stretch, which is what an island that has been moved or resized
+ * still has. Then a content rect that grows by so many tile cells grows the
+ * bbox by that many times the axis scale, and every existing texel lands
+ * exactly where it did.
+ *
+ * A rotated, mirrored or grouped island cannot. Its bbox is an axis-aligned
+ * rect with the turn layered about the rect's CENTRE, so growing the rect
+ * asymmetrically moves that centre, and moving the pivot moves every pixel
+ * hung off it. Callers bound their writes to the existing content instead
+ * (see the push brush).
+ */
+export function paintObjectCanGrow(p: PaintObject): boolean {
+  return !p.rotation && !p.angleDeg && !p.mirrorH && !p.mirrorV && !p.groupId
+    && p.contentW > 0 && p.contentH > 0;
+}
+
+/**
+ * The island re-framed around a new tile-space content rect, with every
+ * texel it already holds left exactly where it is drawn: the bbox moves and
+ * stretches by the same axis scale the content rect did.
+ *
+ * Returns the island unchanged when the rect is the one it already has, and
+ * null when its frame cannot take the change ({@link paintObjectCanGrow}).
+ * The push brush is the one caller — it is the only pass that can carry
+ * paint OUTSIDE the ink bounds the object was framed to.
+ */
+export function growPaintObjectToContent(
+  p: PaintObject,
+  rect: { x: number; y: number; w: number; h: number },
+): PaintObject | null {
+  if (!paintObjectCanGrow(p)) return null;
+  if (rect.x === p.contentX && rect.y === p.contentY
+    && rect.w === p.contentW && rect.h === p.contentH) return p;
+  const sx = p.cellWidth / p.contentW;
+  const sy = p.cellHeight / p.contentH;
+  return {
+    ...p,
+    cellX: p.cellX + (rect.x - p.contentX) * sx,
+    cellY: p.cellY + (rect.y - p.contentY) * sy,
+    cellWidth: rect.w * sx,
+    cellHeight: rect.h * sy,
+    contentX: rect.x, contentY: rect.y, contentW: rect.w, contentH: rect.h,
+  };
+}
+
+/**
  * Precise hit refinement for the scene walk: does the island have ink at
  * (or within `toleranceCells` of) the query point? The point arrives in
  * the node's angleDeg-UNROTATED frame — `findSceneObjectAtCell` rotates

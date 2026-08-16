@@ -604,6 +604,12 @@ export function blurCanvasPaint(
  * Tiles under the disc ARE allocated, so paint can be pushed out into empty
  * space; ones the smear never fills are pruned at commit like any other
  * empty tile. Returns the keys of tiles whose bytes changed.
+ *
+ * `bounds` (tile-space rect) fences the writes in. Its caller is an island
+ * whose frame cannot be re-framed around more content — a rotated one — so
+ * paint smeared past the rect it is drawn through would simply vanish;
+ * fencing it piles up at the edge instead, which is at least what the user
+ * can see happening. Reads are never fenced: colour may come from anywhere.
  */
 export function smudgeCanvasPaint(
   working: CanvasPaintWorking,
@@ -613,6 +619,7 @@ export function smudgeCanvasPaint(
   strength: number,
   dxCells: number,
   dyCells: number,
+  bounds?: { x: number; y: number; w: number; h: number },
 ): string[] {
   if (!(strength > 0)) return [];
   if (!(Math.abs(dxCells) > 0) && !(Math.abs(dyCells) > 0)) return [];
@@ -672,10 +679,16 @@ export function smudgeCanvasPaint(
     // The disc in this tile's own texel indices.
     const lx = cellX - island.x;
     const ly = cellY - island.y;
-    const cMin = Math.max(0, Math.floor((lx - radius) / texel));
-    const cMax = Math.min(cols - 1, Math.ceil((lx + radius) / texel));
-    const rMin = Math.max(0, Math.floor((ly - radius) / texel));
-    const rMax = Math.min(rows - 1, Math.ceil((ly + radius) / texel));
+    let cMin = Math.max(0, Math.floor((lx - radius) / texel));
+    let cMax = Math.min(cols - 1, Math.ceil((lx + radius) / texel));
+    let rMin = Math.max(0, Math.floor((ly - radius) / texel));
+    let rMax = Math.min(rows - 1, Math.ceil((ly + radius) / texel));
+    if (bounds) {
+      cMin = Math.max(cMin, Math.ceil((bounds.x - island.x) / texel));
+      cMax = Math.min(cMax, Math.floor((bounds.x + bounds.w - island.x) / texel) - 1);
+      rMin = Math.max(rMin, Math.ceil((bounds.y - island.y) / texel));
+      rMax = Math.min(rMax, Math.floor((bounds.y + bounds.h - island.y) / texel) - 1);
+    }
     let touched = false;
     for (let r = stepY < 0 ? rMax : rMin; stepY < 0 ? r >= rMin : r <= rMax; r += stepY) {
       const ty = (r + 0.5) * texel;

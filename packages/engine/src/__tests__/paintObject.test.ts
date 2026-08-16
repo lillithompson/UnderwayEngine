@@ -25,10 +25,12 @@ import {
 import {
   canMergePaintObjects,
   createPaintObjectFromTiles,
+  growPaintObjectToContent,
   mergePaintObjects,
   mintPaintObjectId,
   paintLocalFrame,
   paintObjectAlphaHitTest,
+  paintObjectCanGrow,
   paintObjectIsUntransformed,
 } from '../paintObject';
 import {
@@ -456,5 +458,63 @@ describe('buildMergePaintEntry', () => {
     const state = makeState([a]);
     expect(canMergePaintSelection(state, new Set(['pnt_a']))).toBe(false);
     expect(buildMergePaintEntry(state, new Set(['pnt_a']))).toBeNull();
+  });
+});
+
+describe('re-framing an island around more content (the push brush)', () => {
+  /** An island at bbox (10,20,4,4) whose tiles cover content (0,0,8,8) —
+   *  moved and scaled away from 1:1, which is what any island the user has
+   *  dragged looks like. */
+  const moved = (extra: Partial<PaintObject> = {}): PaintObject => ({
+    id: 'pnt_1', tiles: [],
+    cellX: 10, cellY: 20, cellWidth: 4, cellHeight: 4,
+    contentX: 0, contentY: 0, contentW: 8, contentH: 8,
+    ...extra,
+  });
+
+  it('grows the bbox by the same axis scale the content grew by', () => {
+    // Half a world cell per tile cell here, so two tile cells of fresh
+    // smear on the left is one world cell of bbox.
+    const out = growPaintObjectToContent(moved(), { x: -2, y: 0, w: 10, h: 12 })!;
+    expect(out.cellX).toBe(9);
+    expect(out.cellY).toBe(20);
+    expect(out.cellWidth).toBe(5);
+    expect(out.cellHeight).toBe(6);
+    expect([out.contentX, out.contentY, out.contentW, out.contentH]).toEqual([-2, 0, 10, 12]);
+  });
+
+  it('leaves every texel exactly where it was drawn', () => {
+    // The point of the axis-scale rule: re-framing may not move the paint.
+    const before = moved();
+    const after = growPaintObjectToContent(before, { x: -2, y: -4, w: 12, h: 14 })!;
+    for (const [tx, ty] of [[0, 0], [8, 8], [3, 5]] as const) {
+      const a = paintLocalFrame(before);
+      const b = paintLocalFrame(after);
+      // Same tile point ⇒ same world point, so invert through both frames
+      // by checking a world point maps to the same tile coordinates.
+      const world: [number, number] = [10 + tx * 0.5, 20 + ty * 0.5];
+      const [ax, ay] = a.toTile(world[0], world[1]);
+      const [bx, by] = b.toTile(world[0], world[1]);
+      expect(bx).toBeCloseTo(ax, 9);
+      expect(by).toBeCloseTo(ay, 9);
+    }
+  });
+
+  it('is a no-op for the rect the island already has', () => {
+    const p = moved();
+    expect(growPaintObjectToContent(p, { x: 0, y: 0, w: 8, h: 8 })).toBe(p);
+  });
+
+  it('refuses a frame that cannot take it — the pivot would move', () => {
+    // A turned island's bbox carries its rotation about the rect's centre,
+    // so growing the rect moves that centre and drags every pixel with it.
+    expect(paintObjectCanGrow(moved({ angleDeg: 12 }))).toBe(false);
+    expect(paintObjectCanGrow(moved({ rotation: 90 }))).toBe(false);
+    expect(paintObjectCanGrow(moved({ mirrorH: true }))).toBe(false);
+    expect(paintObjectCanGrow(moved({ groupId: 'g1' }))).toBe(false);
+    expect(growPaintObjectToContent(moved({ angleDeg: 12 }), { x: 0, y: 0, w: 9, h: 9 }))
+      .toBeNull();
+    // A moved-and-scaled island still can — that is the common case.
+    expect(paintObjectCanGrow(moved())).toBe(true);
   });
 });
