@@ -201,26 +201,39 @@ export function computeOvalSegments(
   sx: number, sy: number,
   ex: number, ey: number,
 ): PathSegment[] {
-  const w = Math.abs(ex - sx);
-  const h = Math.abs(ey - sy);
-  if (w === h) return computeCircleSegments(sx, sy, ex, ey);
+  return Math.abs(ex - sx) === Math.abs(ey - sy)
+    ? computeCircleSegments(sx, sy, ex, ey)
+    : computeEllipsePolyline(sx, sy, ex, ey);
+}
+
+/**
+ * The POLYLINE form of the oval, whatever the box's aspect — including a
+ * square one, where it is a circle drawn as line segments.
+ *
+ * {@link computeOvalSegments} is what a caller drawing a shape wants; this
+ * is for the caller about to STRETCH one. A circle resized off square has to
+ * shed its arcs before the per-axis map touches it (each arc's radius would
+ * end up disagreeing with its endpoints), and it sheds them into the exact
+ * circle it already is — drawn this way — so nothing moves on the way past
+ * and the map turns it into a true ellipse.
+ */
+export function computeEllipsePolyline(
+  sx: number, sy: number,
+  ex: number, ey: number,
+): PathSegment[] {
   const cx = (sx + ex) / 2;
   const cy = (sy + ey) / 2;
-  const rx = w / 2;
-  const ry = h / 2;
-  const out: PathSegment[] = [];
+  const rx = Math.abs(ex - sx) / 2;
+  const ry = Math.abs(ey - sy) / 2;
   // Start at −90° (the top) so the cardinal points land exactly on the box's
   // edge midpoints, which is what makes the AABB the box.
   const at = (i: number): [number, number] => {
     const a = -Math.PI / 2 + (i * 2 * Math.PI) / ELLIPSE_POLYLINE_SEGMENTS;
     return [cx + rx * Math.cos(a), cy + ry * Math.sin(a)];
   };
+  const out: PathSegment[] = [];
   for (let i = 0; i < ELLIPSE_POLYLINE_SEGMENTS; i++) {
-    out.push({
-      kind: 'line',
-      start: at(i),
-      end: at((i + 1) % ELLIPSE_POLYLINE_SEGMENTS),
-    });
+    out.push({ kind: 'line', start: at(i), end: at((i + 1) % ELLIPSE_POLYLINE_SEGMENTS) });
   }
   return out;
 }

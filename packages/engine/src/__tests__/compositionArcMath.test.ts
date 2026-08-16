@@ -1,4 +1,4 @@
-import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout, warpSegments, computeOvalSegments, ELLIPSE_POLYLINE_SEGMENTS } from '../compositionArcMath';
+import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout, warpSegments, computeOvalSegments, computeEllipsePolyline, ELLIPSE_POLYLINE_SEGMENTS } from '../compositionArcMath';
 import { computeRectSegments } from '../compositionLineBboxMath';
 import { PathSegment, SVGObject } from '../types';
 
@@ -591,5 +591,36 @@ describe('computeOvalSegments', () => {
 
   it('takes a drag from either corner the same way', () => {
     expect(computeOvalSegments(20, 8, 0, 0)).toEqual(computeOvalSegments(0, 0, 20, 8));
+  });
+});
+
+describe('computeEllipsePolyline', () => {
+  it('is the polyline form even for a SQUARE box — a circle in segments', () => {
+    // What a resize needs: a circle has to shed its arcs BEFORE a per-axis
+    // map touches them, and it sheds them into the exact circle it already
+    // is, so nothing moves on the way past.
+    const segs = computeEllipsePolyline(0, 0, 8, 8);
+    expect(segs).toHaveLength(ELLIPSE_POLYLINE_SEGMENTS);
+    expect(segs.every((s) => s.kind === 'line')).toBe(true);
+    for (const s of segs) {
+      expect(Math.hypot(s.start[0] - 4, s.start[1] - 4)).toBeCloseTo(4, 9);
+    }
+    // …unlike computeOvalSegments, which keeps a square box's arcs.
+    expect(computeOvalSegments(0, 0, 8, 8).every((s) => s.kind === 'arc')).toBe(true);
+  });
+
+  it('maps into an exact ellipse under a per-axis stretch', () => {
+    // The whole point: the polyline survives the map that broke the arcs.
+    const before = computeEllipsePolyline(0, 0, 8, 8);
+    const stretched = before.map((s) => ({
+      ...s,
+      start: [s.start[0] * 2, s.start[1] * 0.5] as [number, number],
+      end: [s.end[0] * 2, s.end[1] * 0.5] as [number, number],
+    }));
+    for (const s of stretched) {
+      const dx = (s.start[0] - 8) / 8;
+      const dy = (s.start[1] - 2) / 2;
+      expect(dx * dx + dy * dy).toBeCloseTo(1, 9);
+    }
   });
 });
