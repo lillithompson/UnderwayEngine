@@ -1,4 +1,4 @@
-import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout, warpSegments } from '../compositionArcMath';
+import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout, warpSegments, computeOvalSegments, ELLIPSE_POLYLINE_SEGMENTS } from '../compositionArcMath';
 import { computeRectSegments } from '../compositionLineBboxMath';
 import { PathSegment, SVGObject } from '../types';
 
@@ -541,5 +541,55 @@ describe('warpSegments', () => {
     const seg: PathSegment = { kind: 'arc', start: [0, 0], end: [4, 4], center: [0, 4] };
     const [out] = warpSegments([seg], () => [2, 2]);
     expect(out).toEqual({ kind: 'line', start: [2, 2], end: [2, 2] });
+  });
+});
+
+describe('computeOvalSegments', () => {
+  it('is the exact 4-arc circle when the box is square', () => {
+    expect(computeOvalSegments(0, 0, 8, 8)).toEqual(computeCircleSegments(0, 0, 8, 8));
+  });
+
+  it('is a smooth polyline ellipse when it is not', () => {
+    // Four circular arcs around a rectangle are not an ellipse: each is
+    // handed a start and an end at different distances from its own centre,
+    // so the renderer stretches its one radius to reach and the shape comes
+    // out kinked. That is the half-computed circle a non-square drag drew.
+    const segs = computeOvalSegments(0, 0, 20, 8);
+    expect(segs).toHaveLength(ELLIPSE_POLYLINE_SEGMENTS);
+    expect(segs.every((s) => s.kind === 'line')).toBe(true);
+  });
+
+  it('closes, and touches all four edges of the box exactly', () => {
+    const segs = computeOvalSegments(0, 0, 20, 8);
+    for (let i = 0; i < segs.length; i++) {
+      expect(segs[i].end).toEqual(segs[(i + 1) % segs.length].start);
+    }
+    const xs = segs.map((s) => s.start[0]);
+    const ys = segs.map((s) => s.start[1]);
+    expect(Math.min(...xs)).toBeCloseTo(0, 9);
+    expect(Math.max(...xs)).toBeCloseTo(20, 9);
+    expect(Math.min(...ys)).toBeCloseTo(0, 9);
+    expect(Math.max(...ys)).toBeCloseTo(8, 9);
+  });
+
+  it('really is an ellipse — every vertex satisfies its equation', () => {
+    const segs = computeOvalSegments(-6, 2, 14, 12);
+    const cx = 4, cy = 7, rx = 10, ry = 5;
+    for (const s of segs) {
+      const dx = (s.start[0] - cx) / rx;
+      const dy = (s.start[1] - cy) / ry;
+      expect(dx * dx + dy * dy).toBeCloseTo(1, 9);
+    }
+  });
+
+  it('is smooth enough that no chord reads as a flat', () => {
+    // The sag of a chord against the true curve, worst case, as a share of
+    // the radius: a thousandth is far under a pixel at any zoom offered.
+    const r = 1 - Math.cos(Math.PI / ELLIPSE_POLYLINE_SEGMENTS);
+    expect(r).toBeLessThan(0.005);
+  });
+
+  it('takes a drag from either corner the same way', () => {
+    expect(computeOvalSegments(20, 8, 0, 0)).toEqual(computeOvalSegments(0, 0, 20, 8));
   });
 });

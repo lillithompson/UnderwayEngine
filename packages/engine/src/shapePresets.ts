@@ -15,7 +15,7 @@
 
 import { PathSegment, RGBColor, Paint, SVGObject } from './types';
 import { computeRectSegments } from './compositionLineBboxMath';
-import { computeCircleSegments } from './compositionArcMath';
+import { computeOvalSegments } from './compositionArcMath';
 import type { Bbox } from './sceneNodeGeometry';
 
 export type ShapePresetKind =
@@ -42,8 +42,6 @@ export interface ShapePresetOptions {
   tailCorner?: 'bottomLeft' | 'bottomRight';
 }
 
-/** Line segments count used for the non-square ellipse approximation. */
-const ELLIPSE_POLYLINE_SEGMENTS = 32;
 
 /** Fraction of bbox height reserved for the speech-bubble tail. */
 const BUBBLE_TAIL_HEIGHT_FRAC = 0.25;
@@ -192,22 +190,9 @@ export function buildShapePreset(
       break;
     }
     case 'ellipse':
-      if (bbox.cellWidth === bbox.cellHeight) {
-        // Square bbox: exact circle from 4 quarter arcs.
-        segments = computeCircleSegments(x0, y0, x1, y1);
-      } else {
-        // Circular arcs cannot represent an ellipse; approximate with a
-        // polyline. Start at -90° so all 4 cardinal points are sampled
-        // (32 divides evenly) and the AABB exactly matches the bbox.
-        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-        const rx = bbox.cellWidth / 2, ry = bbox.cellHeight / 2;
-        const pts: [number, number][] = [];
-        for (let i = 0; i < ELLIPSE_POLYLINE_SEGMENTS; i++) {
-          const angle = -Math.PI / 2 + (i * 2 * Math.PI) / ELLIPSE_POLYLINE_SEGMENTS;
-          pts.push([cx + rx * Math.cos(angle), cy + ry * Math.sin(angle)]);
-        }
-        segments = loopToSegments(pts);
-      }
+      // Arcs where the box is square, a polyline where it is not — the one
+      // oval builder, shared with the arc tool's circle mode.
+      segments = computeOvalSegments(x0, y0, x1, y1);
       break;
     case 'star':
       segments = starSegments(bbox, options?.points ?? 5, options?.innerRatio ?? 0.45);

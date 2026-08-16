@@ -173,6 +173,58 @@ export function computeCircleSegments(
   ];
 }
 
+/** Line segments a non-square oval is drawn with. 32 divides by 4, so the
+ *  four cardinal points are all sampled and the polyline's AABB is exactly
+ *  the box asked for; at that count the flat of each chord is under a
+ *  thousandth of the radius, which no zoom this editor offers can show. */
+export const ELLIPSE_POLYLINE_SEGMENTS = 32;
+
+/**
+ * A closed OVAL inscribed in the box with opposite corners (sx, sy) and
+ * (ex, ey): the exact 4-arc circle when that box is square, and a polyline
+ * ellipse when it is not.
+ *
+ * The split is forced by what an arc segment IS — a quarter circle with one
+ * radius (`A r,r` in the markup it becomes). Four of them around a
+ * rectangular box are not an ellipse and not anything else either: each arc
+ * is handed a start and an end at different distances from its own centre,
+ * so the renderer stretches the radius to reach and the shape comes out
+ * kinked, which is the "half-computed circle" a non-square drag used to
+ * draw. A polyline can be an ellipse exactly, and — unlike arcs — it also
+ * survives being stretched afterwards, since every point simply maps.
+ *
+ * The square case keeps its arcs so that a circle is still a circle at any
+ * zoom, still the shape `isCircleSegments` recognises, and still exports as
+ * two arc commands rather than thirty-two line ones.
+ */
+export function computeOvalSegments(
+  sx: number, sy: number,
+  ex: number, ey: number,
+): PathSegment[] {
+  const w = Math.abs(ex - sx);
+  const h = Math.abs(ey - sy);
+  if (w === h) return computeCircleSegments(sx, sy, ex, ey);
+  const cx = (sx + ex) / 2;
+  const cy = (sy + ey) / 2;
+  const rx = w / 2;
+  const ry = h / 2;
+  const out: PathSegment[] = [];
+  // Start at −90° (the top) so the cardinal points land exactly on the box's
+  // edge midpoints, which is what makes the AABB the box.
+  const at = (i: number): [number, number] => {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / ELLIPSE_POLYLINE_SEGMENTS;
+    return [cx + rx * Math.cos(a), cy + ry * Math.sin(a)];
+  };
+  for (let i = 0; i < ELLIPSE_POLYLINE_SEGMENTS; i++) {
+    out.push({
+      kind: 'line',
+      start: at(i),
+      end: at((i + 1) % ELLIPSE_POLYLINE_SEGMENTS),
+    });
+  }
+  return out;
+}
+
 /**
  * Translate all points in an arc's segments by (dx, dy).
  */
