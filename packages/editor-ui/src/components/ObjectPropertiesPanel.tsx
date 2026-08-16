@@ -28,8 +28,9 @@ import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
 import { OpacityBar } from './OpacityBar';
 import { RigPoseBar } from './RigPoseBar';
-import { RIG_PART_OPTIONS, restRigSliders } from '../logic/rigEdit';
-import type { RigPart } from '../logic/rigEdit';
+import {
+  RIG_PART_OPTIONS, restRigSliders, rigPartOfSubmenu, rigPartSubmenu,
+} from '../logic/rigEdit';
 import { CropBar } from './CropBar';
 import { TextBar } from './TextBar';
 import { TintBar } from './TintBar';
@@ -567,7 +568,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // A rig's parts, in the order its options row lists them. Checked
     // before showSvgOptions: a rig's figure IS an svg object, and the
     // vector bars have nothing to act on for a baked silhouette.
-    : model.showRigOptions ? ['rigRoot', 'rigHands', 'rigFeet', 'rigSpine']
+    : model.showRigOptions ? RIG_PART_OPTIONS.map((o) => o.sub)
     : model.showSvgOptions
       ? [
           'stroke',
@@ -611,10 +612,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     : model.strokeOpen ? 'stroke'
     : model.svgFillOpen ? 'svgFill'
     : model.endpointsOpen ? 'endpoints'
-    : model.rigPartOpen === 'rig' ? 'rigRoot'
-    : model.rigPartOpen === 'hands' ? 'rigHands'
-    : model.rigPartOpen === 'feet' ? 'rigFeet'
-    : model.rigPartOpen === 'spine' ? 'rigSpine'
+    : model.rigPartOpen ? rigPartSubmenu(model.rigPartOpen)
     : model.textStyleOpen ? textPage
     : null;
   const submenuOpen = activeSub != null;
@@ -673,10 +671,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     else if (key === 'svgFill') model.onSvgFillOpenChange?.(true);
     else if (key === 'endpoints') model.onEndpointsOpenChange?.(true);
     else if (key === 'layout') model.onLayoutOpenChange?.(true);
-    else if (key === 'rigRoot') model.onRigPartOpenChange?.('rig');
-    else if (key === 'rigHands') model.onRigPartOpenChange?.('hands');
-    else if (key === 'rigFeet') model.onRigPartOpenChange?.('feet');
-    else if (key === 'rigSpine') model.onRigPartOpenChange?.('spine');
+    else if (rigPartOfSubmenu(key)) model.onRigPartOpenChange?.(rigPartOfSubmenu(key));
     else if (key === 'font' || key === 'align') {
       // Both text pages ride the single textStyleOpen flag; the page state
       // picks which one shows (drives the carousel between them).
@@ -1117,7 +1112,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     }
   } else if (model.showRigOptions) {
     // Poseable rig: the PARTS a slider can shape — the whole figure first,
-    // then its hands, feet and spine. No Stroke / Fill / Opacity: the
+    // then its hands, feet, spine and head. No Stroke / Fill / Opacity: the
     // figure's silhouette is baked from its pose, so none of the three has
     // anything to act on. The IK switch is not an option of its own; it
     // lives on the RIG bar, with the rest of the posing controls.
@@ -1377,15 +1372,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onPickColor={() => model.onPickStrokeColor?.()}
       />
     );
-  } else if (displaySub === 'rigRoot' || displaySub === 'rigHands'
-    || displaySub === 'rigFeet' || displaySub === 'rigSpine') {
-    const part: RigPart =
-      displaySub === 'rigRoot' ? 'rig'
-      : displaySub === 'rigHands' ? 'hands'
-      : displaySub === 'rigFeet' ? 'feet' : 'spine';
+  } else if (displaySub && rigPartOfSubmenu(displaySub)) {
     activeBarEl = (
       <RigPoseBar
-        part={part}
+        part={rigPartOfSubmenu(displaySub)!}
         values={model.rigSliders ?? restRigSliders()}
         onChange={(key, v) => model.onRigSlider?.(key, v, false)}
         onCommit={(key, v) => model.onRigSlider?.(key, v, true)}

@@ -7,16 +7,17 @@ import {
 } from '../logic/submenuHeight';
 import { BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
 
-// The rig's pose bar: one part per page (RIG · HANDS · FEET · SPINE) and a
-// slider per control. The whole figure turns on three axes, the hands close
-// into fists and roll at the wrist, the feet point or flatten and swivel at
-// the ankle, the spine bends / twists / leans from a centered rest.
+// The rig's pose bar: one part per page (RIG · HANDS · FEET · SPINE · HEAD)
+// and a slider per control. The whole figure turns on three axes, the hands
+// close into fists and roll at the wrist, the feet point or flatten and
+// swivel at the ankle, the spine bends / twists / leans from a centered
+// rest, and the head nods and shakes on its own.
 //
 // No hint line under the controls, unlike the other bars. These pages carry
 // the most rows in the editor, they stand over the figure being posed, and
 // a slider named 'Bend' running between two labelled ends has already said
 // what a sentence underneath would repeat. Dropping it takes a row off
-// every one of the four.
+// every one of them.
 //
 // No IK switch either. Reaching with a whole chain — the elbow bending so
 // the hand lands where the finger is — is not offered any more: a drag

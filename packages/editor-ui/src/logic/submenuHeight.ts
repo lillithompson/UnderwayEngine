@@ -65,8 +65,9 @@ export type SubmenuKey =
   | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
   | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'layout'
   // The poseable rig's parts: the whole figure (three axes plus the IK
-  // switch), two sliders each for the hands and feet, three for the spine.
-  | 'rigRoot' | 'rigHands' | 'rigFeet' | 'rigSpine';
+  // switch), two sliders each for the hands and feet, three for the spine,
+  // two for the head.
+  | 'rigRoot' | 'rigHands' | 'rigFeet' | 'rigSpine' | 'rigHead';
 
 /** The current state of everything that changes a bar's row count. Values are
  *  optional so a caller can describe only the bars its selection can open; a
@@ -151,8 +152,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return standardBar(cropRows(ctx.cropMode), ctx.cropHasResolution ? CROP_CAPTION_HEIGHT : 0);
     case 'opacity':
       return standardBar([ROW_SLIDER, ROW_SLIDER]);
-    // The four rig pages are sliders and nothing else — no hint line and no
-    // IK switch (see RigPoseBar) — so each stands exactly as tall as the
+    // The rig pages are sliders and nothing else — no hint line and no IK
+    // switch (see RigPoseBar) — so each stands exactly as tall as the
     // controls it renders.
     case 'rigHands':
     case 'rigFeet':
@@ -162,6 +163,9 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'rigRoot':
       // Bend / Twist / Lean, and the three axes the figure stands on.
       return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
+    case 'rigHead':
+      // Nod and Shake.
+      return standardBar([ROW_SLIDER, ROW_SLIDER]);
     case 'endpoints':
       return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'layout':

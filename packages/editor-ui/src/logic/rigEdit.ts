@@ -9,7 +9,7 @@ import type { SubmenuKey } from './submenuHeight';
 // Each part opens a bar of sliders (RigPoseBar). The first of them, RIG,
 // is the whole mannequin: the three axes it can be stood on.
 
-export type RigPart = 'rig' | 'hands' | 'feet' | 'spine';
+export type RigPart = 'rig' | 'hands' | 'feet' | 'spine' | 'head';
 
 export interface RigPartOption {
   part: RigPart;
@@ -22,7 +22,21 @@ export const RIG_PART_OPTIONS: readonly RigPartOption[] = [
   { part: 'hands', label: 'Hands', sub: 'rigHands' },
   { part: 'feet', label: 'Feet', sub: 'rigFeet' },
   { part: 'spine', label: 'Spine', sub: 'rigSpine' },
+  { part: 'head', label: 'Head', sub: 'rigHead' },
 ];
+
+/** The bar a part opens, and the part a bar belongs to — the SAME pairing,
+ *  read both ways off the one table above. The panel needs both directions
+ *  (a press opens a bar; the open bar says which part to render), and it
+ *  used to spell each out as its own chain of ifs, which meant three lists
+ *  of parts to keep in step and three places to forget when one was added. */
+export function rigPartSubmenu(part: RigPart): SubmenuKey {
+  return RIG_PART_OPTIONS.find((o) => o.part === part)!.sub;
+}
+
+export function rigPartOfSubmenu(sub: SubmenuKey): RigPart | null {
+  return RIG_PART_OPTIONS.find((o) => o.sub === sub)?.part ?? null;
+}
 
 /** The sliders one part offers, in order, with the reading each end has.
  *  `centered` sliders sit at 0.5 for "straight" and run both ways. */
@@ -38,7 +52,8 @@ export type RigSliderKey =
   | 'spinX' | 'spinY' | 'spinZ'
   | 'handL' | 'handR' | 'wristTwistL' | 'wristTwistR'
   | 'footL' | 'footR' | 'ankleTwistL' | 'ankleTwistR'
-  | 'bend' | 'twist' | 'lean';
+  | 'bend' | 'twist' | 'lean'
+  | 'nod' | 'shake';
 
 const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
   // The root joint's own rotation — every other bone hangs off it, so
@@ -69,6 +84,13 @@ const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
     { key: 'twist', label: 'Twist', ends: ['left', 'right'], centered: true },
     { key: 'lean', label: 'Lean', ends: ['left', 'right'], centered: true },
   ],
+  // The head on its own, which the Spine bar cannot give: a bend there
+  // curves the WHOLE column and takes the head along at the end of it, so
+  // there is no way to tip a face without stooping the body to do it.
+  head: [
+    { key: 'nod', label: 'Nod', ends: ['up', 'down'], centered: true },
+    { key: 'shake', label: 'Shake', ends: ['left', 'right'], centered: true },
+  ],
 };
 
 export function rigPartSliders(part: RigPart): readonly RigSliderSpec[] {
@@ -94,16 +116,20 @@ export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
   bend: 0.5, // straight
   twist: 0.5,
   lean: 0.5,
+  nod: 0.5, // facing level
+  shake: 0.5,
 };
 
-/** The part a slider belongs to. */
+/** The part a slider belongs to — read off the same table the bars render
+ *  from, so a slider can never be listed under one part and answer for
+ *  another. */
 export function rigSliderPart(key: RigSliderKey): RigPart {
-  if (key === 'spinX' || key === 'spinY' || key === 'spinZ') return 'rig';
-  if (key === 'handL' || key === 'handR') return 'hands';
-  if (key === 'wristTwistL' || key === 'wristTwistR') return 'hands';
-  if (key === 'footL' || key === 'footR') return 'feet';
-  if (key === 'ankleTwistL' || key === 'ankleTwistR') return 'feet';
-  return 'spine';
+  for (const { part } of RIG_PART_OPTIONS) {
+    if (PART_SLIDERS[part].some((spec) => spec.key === key)) return part;
+  }
+  // Unreachable: PART_SLIDERS covers every RigSliderKey (the exhaustiveness
+  // test pins it). A key added to the union and to no bar lands here.
+  return 'rig';
 }
 
 /** The bar's title. */
