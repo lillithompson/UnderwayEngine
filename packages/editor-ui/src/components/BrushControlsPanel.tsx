@@ -54,7 +54,15 @@ const TRACK_W = 260;
 const DOT_MIN = 6;
 const DOT_MAX = HANDLE - 10;
 const ROW_GAP = 8;
-const BOTTOM_MARGIN = 20;
+/**
+ * How far the BOTTOM slider stands off the safe area — the seat of the
+ * whole floating-slider look, exported because it is shared: the Poser
+ * stage's own column (Turn, Push) stands on the same line, so switching
+ * between the paint brush and a rig leaves the slider under the thumb
+ * exactly where it was.
+ */
+export const FLOATING_SLIDER_BOTTOM = 20;
+const BOTTOM_MARGIN = FLOATING_SLIDER_BOTTOM;
 /** Inset of a row's name from the left end of its track. */
 const LABEL_INSET = 16;
 /** The strength wash: solid at the centre, feathering out to nothing at the
