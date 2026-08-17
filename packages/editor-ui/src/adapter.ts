@@ -358,8 +358,10 @@ export interface ObjectPropertiesModel {
   rigPartOpen?: RigPart | null;
   onRigPartOpenChange?(part: RigPart | null): void;
   /** Stand the figure back up: the rest pose, facing front, and every slider
-   *  back to its rest position. The LAST option in the rig's row, after the
-   *  parts — one action rather than a bar, so it needs no submenu.
+   *  back to its rest position. It sits at the FOOT OF THE RIG BAR — the page
+   *  that is already about the figure as a whole — rather than in the options
+   *  row: the row is a row of pages to open, and an action wedged among them
+   *  opened nothing and lit nothing when pressed.
    *
    *  It is offered here, over the whole figure, and nowhere else. The part
    *  bars deliberately carry no trash of their own: on an effect bar a trash

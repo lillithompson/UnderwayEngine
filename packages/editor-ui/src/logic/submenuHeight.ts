@@ -64,9 +64,9 @@ export const CROP_CAPTION_HEIGHT = 21;
 export type SubmenuKey =
   | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
   | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'layout'
-  // The poseable rig's parts: the whole figure (three axes plus the IK
-  // switch), two sliders each for the hands and feet, three for the spine,
-  // two for the head.
+  // The poseable rig's parts: the whole figure (three axes, plus the Reset
+  // that stands it back up), two sliders each for the hands and feet, three
+  // for the spine, two for the head.
   | 'rigRoot' | 'rigHands' | 'rigFeet' | 'rigSpine' | 'rigHead';
 
 /** The current state of everything that changes a bar's row count. Values are
@@ -88,6 +88,9 @@ export interface SubmenuHeightContext {
   strokeRows?: { radius: boolean; position: boolean };
   /** Layout bar: whether the host wired up Grid, which adds the Arrange row. */
   layoutHasGrid?: boolean;
+  /** RIG bar: whether the host wired up Reset, which adds its row. A locked
+   *  rig offers none, and its bar is three sliders tall. */
+  rigCanReset?: boolean;
 }
 
 /** Total height of a stack of rows, including the gaps between them. */
@@ -160,9 +163,16 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // Left and Right, each with its own Twist.
       return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
     case 'rigSpine':
-    case 'rigRoot':
-      // Bend / Twist / Lean, and the three axes the figure stands on.
+      // Bend / Twist / Lean.
       return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
+    case 'rigRoot':
+      // The three axes the figure stands on, and — when the host offers it —
+      // the Reset that puts the whole figure back at rest. It lives on THIS
+      // page because this is the page about the figure as a whole.
+      return standardBar([
+        ROW_SLIDER, ROW_SLIDER, ROW_SLIDER,
+        ...(ctx.rigCanReset ? [ROW_SEGMENTED] : []),
+      ]);
     case 'rigHead':
       // Nod and Shake.
       return standardBar([ROW_SLIDER, ROW_SLIDER]);

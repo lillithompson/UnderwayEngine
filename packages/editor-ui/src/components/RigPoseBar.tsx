@@ -5,7 +5,7 @@ import { rigPartSliders, rigPartTitle } from '../logic/rigEdit';
 import {
   BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP, ROW_GAP,
 } from '../logic/submenuHeight';
-import { BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
+import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
 
 // The rig's pose bar: one part per page (RIG · HANDS · FEET · SPINE · HEAD)
 // and a slider per control. The whole figure turns on three axes, the hands
@@ -26,6 +26,13 @@ import { BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
 // (rigIkStore, off), so the behaviour can be handed back without rebuilding
 // it; nothing in the UI turns it on.
 //
+// RESET lives at the foot of the RIG page, and only there: it puts the WHOLE
+// figure back — rest pose, facing front, every slider at rest — so it belongs
+// on the page about the figure as a whole rather than beside the hands or the
+// spine. Its row says so out loud ("Whole figure"), because a button sitting
+// under three sliders otherwise reads as resetting those three. It renders
+// only when the host wires it, so a locked rig offers none.
+//
 // The sliders do NOT read the figure's current pose — a hand posed finger
 // by finger has no single "fistness" — so they sit at their rest positions
 // until touched, and the host only shapes the pose once one moves.
@@ -37,14 +44,18 @@ import { BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
 // rest", which is a pose like any other and one the sliders already reach.
 // It also reset the WHOLE page, the sliders nobody had touched included, so
 // one tap flattened a pair of hands that had been posed finger by finger.
-// Undoing a pose is what undo is for.
+// Standing the figure up is offered ONCE, over the whole rig, as the labelled
+// Reset row above — not as a per-page trash whose scope you have to guess.
 
-export function RigPoseBar({ part, values, onChange, onCommit, onBack }: {
+export function RigPoseBar({ part, values, onChange, onCommit, onBack, onReset }: {
   part: RigPart;
   values: Record<RigSliderKey, number>;
   onChange: (key: RigSliderKey, value: number) => void;
   onCommit: (key: RigSliderKey, value: number) => void;
   onBack: () => void;
+  /** Stand the whole figure back up — see above. Offered on the RIG page
+   *  alone, and only when the host passes it. */
+  onReset?: () => void;
 }) {
   return (
     <View style={styles.bar}>
@@ -58,10 +69,15 @@ export function RigPoseBar({ part, values, onChange, onCommit, onBack }: {
             apply={(t, committed) => (committed ? onCommit : onChange)(spec.key, t)}
           />
         ))}
+        {part === 'rig' && onReset ? (
+          <ActionRow label="Whole figure" options={RESET_OPTION} onPress={onReset} />
+        ) : null}
       </View>
     </View>
   );
 }
+
+const RESET_OPTION = [{ value: 'reset' as const, label: 'Reset' }];
 
 const styles = StyleSheet.create({
   bar: {

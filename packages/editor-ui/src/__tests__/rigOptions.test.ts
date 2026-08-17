@@ -9,7 +9,7 @@ import {
   RIG_PART_OPTIONS, RIG_SLIDER_REST, restRigSliders, rigPartOfSubmenu, rigPartSliders,
   rigPartSubmenu, rigSliderPart,
 } from '../logic/rigEdit';
-import { ROW_GAP, ROW_SLIDER, submenuHeight } from '../logic/submenuHeight';
+import { ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, submenuHeight } from '../logic/submenuHeight';
 import type { SubmenuKey } from '../logic/submenuHeight';
 
 const SRC = readFileSync(
@@ -95,7 +95,10 @@ describe('the rig option set', () => {
     // figure instead, from the options row (see below).
     const BAR = readFileSync(join(__dirname, '..', 'components', 'RigPoseBar.tsx'), 'utf8');
     expect(BAR).not.toContain('onRemove');
-    expect(BAR).not.toContain('onReset');
+    // The RIG page's Reset is not a trash and is not per-part: it is a
+    // labelled row saying "whole figure" (see below), and no other page has
+    // one.
+    expect(BAR).not.toContain('removeLabel');
     // The header still carries the title and the way back out.
     expect(BAR).toContain('<EffectBarHeader title={rigPartTitle(part)} chevron onBack={onBack} />');
     // …and the panel hands the bar nothing to reset with.
@@ -104,17 +107,34 @@ describe('the rig option set', () => {
     expect(ADAPTER).not.toContain('onResetRigPart');
   });
 
-  it('ends the row with Reset — an action, not another bar', () => {
-    // It opens nothing, so it carries no `sub`: pressing it never slides a
-    // page up and never lights as the carousel's position. It follows the
-    // parts rather than leading them, since it is the way OUT of a pose.
-    expect(SRC).toContain("typeSpecs.push({ key: 'resetRig', label: 'Reset', onPress: model.onResetRig });");
-    expect(SRC.indexOf("key: 'resetRig'"))
-      .toBeGreaterThan(SRC.indexOf('typeSpecs = RIG_PART_OPTIONS.map'));
-    // Rendered only when the host wires it — a locked rig offers no reset.
-    expect(SRC).toContain('if (model.onResetRig) {');
-    // And it is not a submenu key, so it is nowhere in the rig's carousel.
+  it('is the parts and nothing else — Reset is not one of them', () => {
+    // The row is a row of PAGES: every option opens a bar and lights as the
+    // carousel's position. Reset opened nothing and lit nothing, so it sat in
+    // that row as a button that behaved like no other; it lives at the foot of
+    // the RIG bar now, the page already about the whole figure.
+    expect(SRC).toContain('typeSpecs = RIG_PART_OPTIONS.map');
+    expect(SRC).not.toContain("key: 'resetRig'");
     expect(RIG_PART_OPTIONS.some((o) => o.sub === ('resetRig' as SubmenuKey))).toBe(false);
+    // The bar takes it instead, and only when the host wires it — a locked
+    // rig offers no reset.
+    expect(SRC).toContain('onReset={model.onResetRig}');
+    const BAR = readFileSync(join(__dirname, '..', 'components', 'RigPoseBar.tsx'), 'utf8');
+    expect(BAR).toContain("{part === 'rig' && onReset ? (");
+    // It says whose reset it is: under three sliders, an unlabelled button
+    // would read as resetting those three.
+    expect(BAR).toContain('<ActionRow label="Whole figure" options={RESET_OPTION} onPress={onReset} />');
+  });
+
+  it('makes room for that row on the RIG page, and only there', () => {
+    // The bar's height is counted from what it will render, like the Layout
+    // bar's Arrange row: no Reset wired, no row, no room reserved.
+    const withReset = submenuHeight('rigRoot', { rigCanReset: true });
+    expect(withReset).toBe(submenuHeight('rigRoot') + ROW_SEGMENTED + ROW_GAP);
+    expect(submenuHeight('rigRoot')).toBe(submenuHeight('rigSpine'));
+    // The other pages are untouched by the flag — the reset is not theirs.
+    for (const sub of ['rigHands', 'rigFeet', 'rigSpine', 'rigHead'] as const) {
+      expect(submenuHeight(sub, { rigCanReset: true })).toBe(submenuHeight(sub));
+    }
   });
 
   it('gives each hand and foot a centred Twist beside its own slider', () => {

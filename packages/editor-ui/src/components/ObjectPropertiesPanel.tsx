@@ -601,6 +601,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     strokeRows: svgStrokeRows(model.svgSubtype ?? 'stroke'),
     // The Layout bar grows an Arrange row exactly when the bar will render it.
     layoutHasGrid: !!model.onGrid,
+    // …and the RIG bar its Reset row, on the same rule.
+    rigCanReset: !!model.onResetRig,
   });
   const activeSub: SubmenuKey | null =
     model.layoutOpen ? 'layout'
@@ -1116,19 +1118,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // figure's silhouette is baked from its pose, so none of the three has
     // anything to act on. The IK switch is not an option of its own; it
     // lives on the RIG bar, with the rest of the posing controls.
+    // Reset is NOT one of them: standing the figure back up is a thing you do
+    // to the whole rig, so it rides at the foot of the RIG bar (RigPoseBar),
+    // the page that is already about the figure as a whole — rather than
+    // taking a slot in a row of pages you can open.
     typeSpecs = RIG_PART_OPTIONS.map((opt) => ({
       key: opt.part,
       label: opt.label,
       sub: opt.sub,
       onPress: () => openSubmenu(opt.sub),
     }));
-    if (model.onResetRig) {
-      // Last, after the parts, and an action rather than a bar — it opens
-      // nothing, so it carries no `sub` and never lights as the carousel's
-      // position. See onResetRig for why the reset is offered over the whole
-      // figure and not inside each part's bar.
-      typeSpecs.push({ key: 'resetRig', label: 'Reset', onPress: model.onResetRig });
-    }
   } else if (model.showSvgOptions) {
     // Vector selection: the subtype's own option menu (svgEdit.ts). Every
     // subtype offers Stroke — a path IS its stroke; the closed shapes add Fill.
@@ -1387,6 +1386,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onChange={(key, v) => model.onRigSlider?.(key, v, false)}
         onCommit={(key, v) => model.onRigSlider?.(key, v, true)}
         onBack={dismissSubmenu}
+        onReset={model.onResetRig}
       />
     );
   } else if (displaySub === 'opacity') {
