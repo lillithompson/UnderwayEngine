@@ -105,6 +105,42 @@ export function groupPatternTiles(
     .map(([connections, list]) => ({ connections, tiles: list }));
 }
 
+// ── Tile sets (the family filter) ───────────────────────────────────
+
+/** One toggleable tile set of the Tools bar's Sets page: a sprite family,
+ *  the capitalized word the chip shows, and whether it is currently on.
+ *  Off sets vanish from the Tiles menu and from what Random may pick. */
+export interface PatternTileSetRow {
+  family: string;
+  label: string;
+  enabled: boolean;
+}
+
+/** The sets a fresh editor starts with — Angular and Curved on, every
+ *  other family off. */
+export const PATTERN_DEFAULT_TILE_SETS: readonly string[] = ['angular', 'curved'];
+
+/** The chip word for a family: its name, capitalized. */
+export function patternTileSetLabel(family: string): string {
+  return family.charAt(0).toUpperCase() + family.slice(1);
+}
+
+/** Build the Sets page's rows from the host's family list and its enabled
+ *  set — deduped, alphabetical, so the chips sit in a stable order. */
+export function patternTileSetRows(
+  families: Iterable<string>,
+  enabled: ReadonlySet<string>,
+): PatternTileSetRow[] {
+  const seen = new Set<string>();
+  const rows: PatternTileSetRow[] = [];
+  for (const family of families) {
+    if (seen.has(family)) continue;
+    seen.add(family);
+    rows.push({ family, label: patternTileSetLabel(family), enabled: enabled.has(family) });
+  }
+  return rows.sort((a, b) => a.family.localeCompare(b.family));
+}
+
 // ── The Tools bar ───────────────────────────────────────────────────
 
 /** The pattern sub-tool a canvas press paints with, as the panel speaks of

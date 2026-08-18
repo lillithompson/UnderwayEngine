@@ -611,6 +611,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     layoutHasGrid: !!model.onGrid,
     // …and the RIG bar its Reset row, on the same rule.
     rigCanReset: !!model.onResetRig,
+    // The pattern Tools bar grows its Sets row (and chip page) when the
+    // host offers a tile-set filter.
+    patternTileSetCount: model.patternTileSets?.length ?? 0,
   });
   const activeSub: SubmenuKey | null =
     model.layoutOpen ? 'layout'

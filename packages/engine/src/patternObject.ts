@@ -181,12 +181,16 @@ const IDENTITY: CellTransform = DEFAULT_TRANSFORM;
  * The edits are relative to `p` as passed — during a drag stroke the
  * caller applies each batch to a working copy and hands the updated
  * object to the next call, so later picks see earlier stamps.
+ *
+ * `excludedFamilies` narrows what the random brush may pick (the app's
+ * tile-set filter); stamping a specific tile ignores it.
  */
 export function patternApplyToolAt(
   p: PatternObject,
   x: number,
   y: number,
   tool: PatternSubTool,
+  excludedFamilies?: Set<string>,
 ): PatternCellEdit[] {
   if (x < 0 || y < 0 || x >= p.cols || y >= p.rows) return [];
   const layer = buildPatternLayerView(p);
@@ -206,7 +210,7 @@ export function patternApplyToolAt(
       primary = pickRandomCompatibleSprite(
         x, y, layer, [layer],
         patternAllowsBorderConnections(p),
-        undefined, undefined,
+        excludedFamilies, undefined,
         cfg.widthL0, cfg.heightL0,
         undefined, symmetry,
       );
@@ -243,6 +247,7 @@ export function patternApplyToolAt(
 export function patternReconcileEdits(
   p: PatternObject,
   borderOnly: boolean = false,
+  excludedFamilies?: Set<string>,
 ): PatternCellEdit[] {
   const layer = buildPatternLayerView(p);
   const flags = patternSymmetryFlags(p);
@@ -251,7 +256,7 @@ export function patternReconcileEdits(
     [layer], [layer],
     patternAllowsBorderConnections(p),
     new Map(),
-    undefined,
+    excludedFamilies,
     flags.mirrorH, flags.mirrorV, flags.mirrorRotate,
     cfg.widthL0, cfg.heightL0,
     borderOnly,
@@ -284,6 +289,7 @@ export function patternReconcileEdits(
 export function patternFloodEdits(
   p: PatternObject,
   tool: PatternSubTool,
+  excludedFamilies?: Set<string>,
 ): PatternCellEdit[] {
   const effective: PatternSubTool = tool.kind === 'tile' ? tool : { kind: 'random' };
   let working = p;
@@ -291,7 +297,7 @@ export function patternFloodEdits(
   for (let y = 0; y < p.rows; y++) {
     for (let x = 0; x < p.cols; x++) {
       if (patternCellAt(working, x, y) != null) continue;
-      const fillable = patternApplyToolAt(working, x, y, effective)
+      const fillable = patternApplyToolAt(working, x, y, effective, excludedFamilies)
         .filter((e) => e.oldState == null);
       if (fillable.length === 0) continue;
       working = applyPatternCellEdits(working, fillable);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { ObjectPropertiesModel } from '../adapter';
 import {
@@ -12,7 +12,7 @@ import {
   groupPatternTiles,
 } from '../logic/patternEdit';
 import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
-import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, SegmentedRow } from './effectBar';
+import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, MultiToggleRow, SegmentedRow } from './effectBar';
 
 // The pattern object's three submenu bars — siblings of the effect bars,
 // sharing their chrome and row grammar (effectBar.tsx):
@@ -78,9 +78,39 @@ export function PatternToolsBar({ model, onBack }: {
   model: ObjectPropertiesModel;
   onBack: () => void;
 }) {
+  // The bar's second page: the tile-set filter the Sets row's 'Tiles'
+  // button opens (Facet's Randomization Settings, as chip rows). Local —
+  // it is a view of the same bar, not another submenu.
+  const [showSets, setShowSets] = useState(false);
   const tool = model.patternTool === 'random' || model.patternTool === 'erase'
     ? model.patternTool
     : ('' as 'random'); // a tile is armed — neither brush cell lights
+  const sets = model.patternTileSets ?? [];
+  if (showSets) {
+    // Chips in rows of three, then the Done row back to the tools.
+    const chipRows: (typeof sets)[] = [];
+    for (let i = 0; i < sets.length; i += 3) chipRows.push(sets.slice(i, i + 3));
+    return (
+      <View style={styles.bar}>
+        <EffectBarHeader title={barTitle('tools')} chevron onBack={onBack} />
+        <View style={styles.controls}>
+          {chipRows.map((row, i) => (
+            <MultiToggleRow
+              key={i}
+              label={i === 0 ? 'Sets' : ' '}
+              options={row.map((s) => ({ value: s.family, label: s.label, active: s.enabled }))}
+              onToggle={(family) => model.onPatternToggleTileSet?.(family)}
+            />
+          ))}
+          <ActionRow
+            label=" "
+            options={[{ value: 'done' as const, label: 'Done' }]}
+            onPress={() => setShowSets(false)}
+          />
+        </View>
+      </View>
+    );
+  }
   return (
     <View style={styles.bar}>
       <EffectBarHeader title={barTitle('tools')} chevron onBack={onBack} />
@@ -108,6 +138,13 @@ export function PatternToolsBar({ model, onBack }: {
             if (allow !== (model.patternAllowBorder !== false)) model.onPatternToggleBorder?.();
           }}
         />
+        {sets.length > 0 && (
+          <ActionRow
+            label="Sets"
+            options={[{ value: 'tiles' as const, label: 'Tiles' }]}
+            onPress={() => setShowSets(true)}
+          />
+        )}
       </View>
     </View>
   );

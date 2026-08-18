@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
+  PATTERN_DEFAULT_TILE_SETS,
   PATTERN_EDIT_OPTIONS,
   PATTERN_GRID_ACTIONS,
   PATTERN_SYMMETRY_ENTRIES,
@@ -10,6 +11,8 @@ import {
   patternActionSubmenu,
   patternSymmetryForKey,
   patternSymmetryKey,
+  patternTileSetLabel,
+  patternTileSetRows,
 } from '../logic/patternEdit';
 import { submenuHeight } from '../logic/submenuHeight';
 
@@ -105,6 +108,37 @@ describe('the panel offers the pattern type page', () => {
     // The pattern's pages plus the vectors' Stroke bar ride the carousel.
     expect(order).toContain('model.showPatternOptions');
     expect(order).toContain("'stroke' as const");
+  });
+});
+
+describe('the tile-set filter', () => {
+  it('defaults to Angular and Curved on', () => {
+    expect([...PATTERN_DEFAULT_TILE_SETS]).toEqual(['angular', 'curved']);
+  });
+
+  it('builds deduped, alphabetical chip rows with capitalized labels', () => {
+    const rows = patternTileSetRows(
+      ['curved', 'angular', 'petal', 'curved', 'cloud'],
+      new Set(['angular', 'curved']),
+    );
+    expect(rows).toEqual([
+      { family: 'angular', label: 'Angular', enabled: true },
+      { family: 'cloud', label: 'Cloud', enabled: false },
+      { family: 'curved', label: 'Curved', enabled: true },
+      { family: 'petal', label: 'Petal', enabled: false },
+    ]);
+    expect(patternTileSetLabel('craftsman')).toBe('Craftsman');
+  });
+
+  it('the Tools bar grows to hold whichever page is taller', () => {
+    const plain = submenuHeight('patternTools');
+    const withSets = submenuHeight('patternTools', { patternTileSetCount: 5 });
+    // Five sets: main page is 4 rows (Brush/Grid/Borders/Sets); the chip
+    // page is 2 chip rows + Done = 3 — the main page wins.
+    expect(withSets).toBeGreaterThan(plain);
+    // Ten sets: the chip page (4 rows + Done) overtakes the main page.
+    expect(submenuHeight('patternTools', { patternTileSetCount: 10 }))
+      .toBeGreaterThan(withSets);
   });
 });
 

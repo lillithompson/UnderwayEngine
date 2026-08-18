@@ -248,6 +248,36 @@ export function ActionRow<T extends string>({ label, options, onPress }: {
   );
 }
 
+/** One row of independent ON/OFF chips: {@link SegmentedRow}'s layout, but
+ *  every cell lights on its own — the row answers several yes/no questions
+ *  rather than one multiple-choice one (the pattern Tools bar's tile-set
+ *  filter is the case this exists for). */
+export function MultiToggleRow<T extends string>({ label, options, onToggle }: {
+  label: string;
+  options: readonly { value: T; label: string; active: boolean }[];
+  onToggle: (v: T) => void;
+}) {
+  return (
+    <View style={styles.segmentedRow}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <View style={styles.segmented}>
+        {options.map((o) => (
+          <Pressable
+            key={o.value}
+            onPress={() => onToggle(o.value)}
+            style={[styles.segment, o.active && styles.segmentActive]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: o.active }}
+            accessibilityLabel={o.label}
+          >
+            <Text style={[styles.segmentText, o.active && styles.segmentTextActive]} numberOfLines={1}>{o.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 /** Two segmented controls sharing one row, split down the middle — the
  *  segmented sibling of {@link DualSliderRow}, for a bar that has the same
  *  choice to offer about two related things (the Endpoints bar's per-end cap).

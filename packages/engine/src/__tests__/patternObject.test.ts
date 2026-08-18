@@ -225,6 +225,53 @@ describe('patternFloodEdits', () => {
   });
 });
 
+describe('the tile-set filter (excludedFamilies)', () => {
+  // The mock registry has two families; excluding 'test' leaves exactly one
+  // sprite, so every random pick is forced and the assertions are exact.
+  const ONLY_TEST2 = new Set(['test']);
+
+  test('a random brush press never picks from an excluded family', () => {
+    const edits = patternApplyToolAt(makePattern(3, 3), 1, 1, { kind: 'random' }, ONLY_TEST2);
+    expect(edits).toHaveLength(1);
+    expect(edits[0].newState).toMatchObject({ spriteId: 'test2/tile_00100010' });
+  });
+
+  test('a random flood fills entirely from the enabled sets', () => {
+    const filled = applyPatternCellEdits(
+      makePattern(3, 2),
+      patternFloodEdits(makePattern(3, 2), { kind: 'random' }, ONLY_TEST2),
+    );
+    for (const cell of filled.cells) {
+      expect(cell).toMatchObject({ spriteId: 'test2/tile_00100010' });
+    }
+  });
+
+  test('stamping a specific tile ignores the filter', () => {
+    const edits = patternApplyToolAt(
+      makePattern(2, 2), 0, 0, { kind: 'tile', spriteId: 'test/tile_00000000' }, ONLY_TEST2,
+    );
+    expect(edits[0].newState).toMatchObject({ spriteId: 'test/tile_00000000' });
+  });
+
+  test('reconcile replacements stay inside the enabled sets', () => {
+    // The mismatched interior pair from the reconcile suite above — 8-way
+    // against blank — forces replacements. With 'test2' excluded, every
+    // fix must come from 'test'. (Excluding 'test' instead would leave
+    // reconcile with no satisfying candidate, and it fixes nothing — it
+    // never erases — which is also the contract.)
+    let p = withCell(makePattern(4, 4), 1, 1, spriteCell('test/tile_11111111'));
+    p = withCell(p, 2, 1, spriteCell('test/tile_00000000'));
+    const edits = patternReconcileEdits(p, false, new Set(['test2']));
+    expect(edits.length).toBeGreaterThan(0);
+    for (const e of edits) {
+      if (e.newState?.type === 'sprite') {
+        expect(e.newState.spriteId.startsWith('test/')).toBe(true);
+      }
+    }
+    expect(patternReconcileEdits(p, false, ONLY_TEST2)).toHaveLength(0);
+  });
+});
+
 describe('patternClearEdits', () => {
   test('clears every filled cell and round-trips through revert', () => {
     let p = withCell(makePattern(3, 3), 0, 0, spriteCell('test/tile_00000000'));

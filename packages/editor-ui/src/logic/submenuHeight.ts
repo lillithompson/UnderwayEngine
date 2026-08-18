@@ -98,6 +98,10 @@ export interface SubmenuHeightContext {
   /** RIG bar: whether the host wired up Reset, which adds its row. A locked
    *  rig offers none, and its bar is three sliders tall. */
   rigCanReset?: boolean;
+  /** Pattern Tools bar: how many tile sets the filter offers. Nonzero adds
+   *  the Sets row, and sizes the bar to whichever of its two pages (tools /
+   *  the chip grid) stands taller. */
+  patternTileSetCount?: number;
 }
 
 /** Total height of a stack of rows, including the gaps between them. */
@@ -188,9 +192,16 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'patternTiles':
       // The scrolling tile strip, one row tall.
       return standardBar([PATTERN_TILE_STRIP]);
-    case 'patternTools':
-      // Brush (Random / Erase), Grid actions (Reconcile / Clear), Borders.
-      return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
+    case 'patternTools': {
+      // Brush, Grid actions, Borders — plus the Sets row when the host
+      // offers a tile-set filter. Its second page (chip rows of three,
+      // then Done) may stand taller; the bar reserves the taller of the
+      // two so flipping pages never moves its top edge.
+      const setCount = ctx.patternTileSetCount ?? 0;
+      const mainRows = setCount > 0 ? 4 : 3;
+      const setsRows = setCount > 0 ? Math.ceil(setCount / 3) + 1 : 0;
+      return standardBar(new Array(Math.max(mainRows, setsRows)).fill(ROW_SEGMENTED));
+    }
     case 'patternSymmetry':
       // The mode grid as three segmented rows of four (Off rides row 3).
       return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);

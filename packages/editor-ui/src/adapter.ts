@@ -369,6 +369,13 @@ export interface ObjectPropertiesModel {
    *  connect), and its toggle (one undo step). */
   patternAllowBorder?: boolean;
   onPatternToggleBorder?(): void;
+  /** The tile-set filter (the Tools bar's Sets page): one chip per sprite
+   *  family. Off sets are hidden from the Tiles menu and excluded from
+   *  Random's picks. App-owned session state, not part of the document. */
+  patternTileSets?: import('./logic/patternEdit').PatternTileSetRow[];
+  /** Toggle one tile set on/off. The host keeps the LAST enabled set on —
+   *  an empty filter would leave Random with nothing to pick. */
+  onPatternToggleTileSet?(family: string): void;
   /** Selection is a POSEABLE RIG (a Figgie mannequin). Its type options are
    *  the parts a slider can shape — Rig · Hands · Feet · Spine · Head, plus
    *  Reset — rather than the Stroke / Fill / Opacity a plain vector offers:
