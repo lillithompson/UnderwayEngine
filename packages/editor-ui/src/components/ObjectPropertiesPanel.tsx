@@ -603,6 +603,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     svgFillType: (svgFillDraft ?? model.svgFill ?? DEFAULT_TINT_MODEL).type,
     cropMode: (cropDraft ?? model.framing ?? DEFAULT_FRAMING_MODEL).mode,
     cropHasResolution: formatPixelSize(model.imagePixelSize) !== null,
+    // …and its Replace row on the same rule.
+    cropCanReplace: !!model.onReplaceImage,
     // The image / frame border offers every row; a vector's stroke drops the
     // ones its subtype has no answer for.
     borderRows: { radius: true, position: true },
@@ -1444,6 +1446,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         pixelSize={model.imagePixelSize}
         onChange={(f) => applyFraming(f, false)}
         onCommit={(f) => applyFraming(f, true)}
+        onReplace={model.onReplaceImage}
         onBack={dismissSubmenu}
       />
     );

@@ -567,6 +567,16 @@ export interface ObjectPropertiesModel {
    *  informational line at the bottom of the Crop bar. Omitted (or
    *  non-positive) when the host doesn't know it — the line is then hidden. */
   imagePixelSize?: { width: number; height: number };
+  /**
+   * Swap the selected image's pixels for a newly picked file, keeping the
+   * node, its box and its place in the scene. Surfaced as the Crop bar's
+   * Replace action; absent → the row is not offered.
+   *
+   * The host opens a file picker here, so it MUST be called straight out of
+   * the press: WebKit only shows the dialog while the gesture's activation
+   * is still live, and anything awaited first loses it.
+   */
+  onReplaceImage?(): void;
   /** Selected image's current corner rounding, a fraction (0–0.5) of the
    *  shorter side — seeds the Border panel's Radius slider. */
   cornerRadius?: number;

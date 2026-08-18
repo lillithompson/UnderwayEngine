@@ -6,7 +6,7 @@ import { PANEL_INK_MUTED } from '../theme';
 import {
   BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP, ROW_GAP,
 } from '../logic/submenuHeight';
-import { BAR_BG, EffectBarHeader, HAIRLINE, Hint, SegmentedRow, SliderRow } from './effectBar';
+import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, Hint, SegmentedRow, SliderRow } from './effectBar';
 
 // The Crop / framing bar (design "4a"): a full-width light bar with a header
 // (chevron · CROP) and a Mode segmented row (Fill / Fit / Crop / Tile)
@@ -38,7 +38,7 @@ const RATIOS: readonly { value: ImageCropRatio; label: string }[] = [
   { value: 'sixteenNine', label: '16:9' },
 ];
 
-export function CropBar({ framing, pixelSize, onChange, onCommit, onBack }: {
+export function CropBar({ framing, pixelSize, onChange, onCommit, onReplace, onBack }: {
   framing: FramingModel;
   /** Source resolution of the image being framed, shown at the bottom. */
   pixelSize?: { width: number; height: number };
@@ -46,6 +46,9 @@ export function CropBar({ framing, pixelSize, onChange, onCommit, onBack }: {
   onChange: (f: FramingModel) => void;
   /** Commit as one undo step (slider release, mode / ratio change). */
   onCommit: (f: FramingModel) => void;
+  /** Swap the pixels, keeping the node and its box. Omitted → no Replace
+   *  row. Fired straight out of the press (it opens a file picker). */
+  onReplace?: () => void;
   onBack: () => void;
 }) {
   const resolution = formatPixelSize(pixelSize);
@@ -115,6 +118,18 @@ export function CropBar({ framing, pixelSize, onChange, onCommit, onBack }: {
               apply={(t, c) => set({ tileGap: t * TILE_GAP_MAX }, c)}
             />
           </>
+        ) : null}
+        {/* Last, and in every mode: the rows above are about the FRAME, this
+            one is about what's in it. It sits next to the resolution caption
+            because those two are the bar's only lines about the source image
+            — and an ActionRow because replacing is something you do, not a
+            state the image is in. */}
+        {onReplace ? (
+          <ActionRow
+            label="Image"
+            options={[{ value: 'replace' as const, label: 'Replace' }]}
+            onPress={onReplace}
+          />
         ) : null}
       </View>
       {resolution ? (

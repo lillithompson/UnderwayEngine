@@ -81,6 +81,16 @@ describe('submenuHeight', () => {
       .toBe(crop - CROP_CAPTION_HEIGHT);
   });
 
+  test('the Crop bar grows a row for Replace, in every mode', () => {
+    // Replace is about the image rather than the frame, so it rides every
+    // mode — and a host that doesn't wire it up doesn't reserve its room.
+    for (const cropMode of ['fill', 'fit', 'crop', 'tile'] as const) {
+      const without = submenuHeight('crop', { cropMode });
+      const to = submenuHeight('crop', { cropMode, cropCanReplace: true });
+      expect(to - without).toBe(ROW_SEGMENTED + ROW_GAP);
+    }
+  });
+
   test('the Shadow bar is sized by its XY pad, not by the sliders beside it', () => {
     // Its pad sits alongside three sliders rather than above them, so the
     // taller column wins — and it pads differently from the stacked bars.

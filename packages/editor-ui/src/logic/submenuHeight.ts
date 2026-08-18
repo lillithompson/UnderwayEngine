@@ -89,6 +89,8 @@ export interface SubmenuHeightContext {
   cropMode?: ImageFramingMode;
   /** Crop bar: the source-resolution caption only renders when it's known. */
   cropHasResolution?: boolean;
+  /** Crop bar: whether the host wired up Replace, which adds its row. */
+  cropCanReplace?: boolean;
   /** Border bar: which optional rows the image / frame border shows. */
   borderRows?: { radius: boolean; position: boolean };
   /** Stroke bar: the same bar, with the rows this vector subtype supports. */
@@ -140,14 +142,16 @@ function borderRows(rows: { radius: boolean; position: boolean } = { radius: tru
   ];
 }
 
-/** Crop rows: Mode, then whatever that mode asks for. */
-function cropRows(mode: ImageFramingMode = 'fill'): number[] {
+/** Crop rows: Mode, then whatever that mode asks for, then — when the host
+ *  offers it — the Replace action, which every mode shows. */
+function cropRows(mode: ImageFramingMode = 'fill', canReplace = false): number[] {
+  const replace = canReplace ? [ROW_SEGMENTED] : [];
   switch (mode) {
-    case 'fit': return [ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT];
-    case 'crop': return [ROW_SEGMENTED, ROW_SEGMENTED, ROW_SLIDER];
-    case 'tile': return [ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER];
+    case 'fit': return [ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT, ...replace];
+    case 'crop': return [ROW_SEGMENTED, ROW_SEGMENTED, ROW_SLIDER, ...replace];
+    case 'tile': return [ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER, ...replace];
     case 'fill':
-    default: return [ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT];
+    default: return [ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT, ...replace];
   }
 }
 
@@ -163,7 +167,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'stroke':
       return standardBar(borderRows(ctx.strokeRows));
     case 'crop':
-      return standardBar(cropRows(ctx.cropMode), ctx.cropHasResolution ? CROP_CAPTION_HEIGHT : 0);
+      return standardBar(
+        cropRows(ctx.cropMode, ctx.cropCanReplace),
+        ctx.cropHasResolution ? CROP_CAPTION_HEIGHT : 0,
+      );
     case 'opacity':
       return standardBar([ROW_SLIDER, ROW_SLIDER]);
     // The rig pages are sliders and nothing else — no hint line and no IK
