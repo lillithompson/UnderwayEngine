@@ -14,6 +14,7 @@
 import { CompositionFigure, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, PathSegment, CompItemKind } from './types';
 import { lineHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
+import { flattenArcSegment } from './compositionArcMath';
 
 // Lazy-loaded to break circular dependency with compositionOps.ts
 function getCompositionOps() {
@@ -35,7 +36,20 @@ function svgBbox(segments: ReadonlyArray<PathSegment>): { cellX: number; cellY: 
   return { cellX: bb.minX, cellY: bb.minY, cellWidth: bb.maxX - bb.minX, cellHeight: bb.maxY - bb.minY };
 }
 
-function rescaleSegs(
+/** Relative slack on "both axes scaled by the same factor" — the two
+ *  factors are float quotients of coordinates that have themselves been
+ *  through float scaling, so an exactly-uniform resize can land a few ulps
+ *  apart and must not be read as a stretch. */
+const UNIFORM_SCALE_EPS = 1e-9;
+
+/**
+ * Map a segment chain from `oldBbox` onto `newBbox` with independent x/y
+ * factors. THE one implementation — the geometry adapters map `segments`
+ * and each subpath through it, and `compositionOps.rescaleSVGToBbox` is a
+ * re-export of it, so a stretch cannot mean two different things depending
+ * on which door it came through.
+ */
+export function rescaleSegs(
   segments: ReadonlyArray<PathSegment>,
   oldBbox: Bbox, newBbox: Bbox,
 ): PathSegment[] {
@@ -45,7 +59,19 @@ function rescaleSegs(
     newBbox.cellX + (pt[0] - oldBbox.cellX) * sx,
     newBbox.cellY + (pt[1] - oldBbox.cellY) * sy,
   ];
-  return segments.map(seg => seg.kind === 'arc'
+  // A STRETCH can't keep an arc an arc: its three points infer one radius,
+  // and per-axis mapping leaves that radius disagreeing with the endpoints
+  // (see flattenArcSegment). Shed the arcs into the polyline of the curve
+  // they already are first, and the stretch turns them into true elliptical
+  // arcs instead of kinked ones — which is what lets a MERGED object, whose
+  // concatenated segments are a mix no uniform-scale rule guards, be
+  // stretched smoothly at all.
+  //
+  // A uniform scale maps all three points by one factor, so the radius
+  // stays honest: those arcs are kept exact, and a circle is still a circle.
+  const uniform = Math.abs(sx - sy) <= Math.max(Math.abs(sx), Math.abs(sy)) * UNIFORM_SCALE_EPS;
+  const source = uniform ? segments : segments.flatMap(flattenArcSegment);
+  return source.map(seg => seg.kind === 'arc'
     ? { kind: 'arc', start: mapPt(seg.start), end: mapPt(seg.end), center: mapPt(seg.center) }
     : { kind: 'line', start: mapPt(seg.start), end: mapPt(seg.end) }
   );

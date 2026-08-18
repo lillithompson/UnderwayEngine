@@ -3,7 +3,7 @@ import { mintPaintObjectId, paintObjectAlphaHitTest } from './paintObject';
 import { mintPatternObjectId, applyPatternCellEdits } from './patternObject';
 import { lineHitsCell as svgHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
-import { GEOMETRY_ADAPTERS } from './sceneNodeGeometry';
+import { GEOMETRY_ADAPTERS, rescaleSegs } from './sceneNodeGeometry';
 import { nextGroupName } from './sceneOutlineHelpers';
 import { svgPathHitsPoint, computeHitToleranceCells } from './compositionPathHitTest';
 import { buildActiveMaskMap, getAncestorMasks, getGroupMaskChain, pointPassesMasks, clipRectToNodeMasks, getNodeClipMasks } from './compositionMask';
@@ -1513,23 +1513,12 @@ export function computeSVGBbox(
 /** Rescale segments to fit within newBbox. Each segment point is mapped
  *  proportionally: `new = newMin + (old - oldMin) * (newSize / oldSize)`.
  *  Degenerate axes (oldSize === 0) translate by the bbox shift instead of
- *  scaling. Pure float math; the bbox is the source of truth. */
-export function rescaleSVGToBbox(
-  segments: ReadonlyArray<PathSegment>,
-  oldBbox: { cellX: number; cellY: number; cellWidth: number; cellHeight: number },
-  newBbox: { cellX: number; cellY: number; cellWidth: number; cellHeight: number },
-): PathSegment[] {
-  const sx = oldBbox.cellWidth  > 0 ? newBbox.cellWidth  / oldBbox.cellWidth  : 1;
-  const sy = oldBbox.cellHeight > 0 ? newBbox.cellHeight / oldBbox.cellHeight : 1;
-  const mapPt = (pt: [number, number]): [number, number] => [
-    newBbox.cellX + (pt[0] - oldBbox.cellX) * sx,
-    newBbox.cellY + (pt[1] - oldBbox.cellY) * sy,
-  ];
-  return segments.map(seg => seg.kind === 'arc'
-    ? { kind: 'arc', start: mapPt(seg.start), end: mapPt(seg.end), center: mapPt(seg.center) }
-    : { kind: 'line', start: mapPt(seg.start), end: mapPt(seg.end) }
-  );
-}
+ *  scaling. A stretch (sx ≠ sy) sheds arcs into polylines first, since an
+ *  arc's three points infer one radius that per-axis mapping would break —
+ *  see `rescaleSegs`, which this is the long-standing name for. Kept as one
+ *  implementation: the two used to be identical copies, and a fix to either
+ *  left the other deforming arcs. */
+export const rescaleSVGToBbox = rescaleSegs;
 
 /** Local-bbox accessor variant â€” returns the same data under the
  *  `localCell*` key names so it can be spread into a reducer update

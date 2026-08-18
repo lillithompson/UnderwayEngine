@@ -239,6 +239,42 @@ export function computeEllipsePolyline(
 }
 
 /**
+ * The polyline an arc becomes when it has to survive a NON-UNIFORM map.
+ *
+ * Same bind as {@link computeEllipsePolyline}, one segment down: an arc is
+ * (start, end, center) with ONE radius inferred from them, so scaling the
+ * axes by different factors maps those three points independently and
+ * leaves the radius disagreeing with its own endpoints — not an ellipse
+ * (the format can't express one), just broken geometry. Sampled into lines
+ * FIRST, every point simply maps, and the stretched curve is a true
+ * elliptical arc.
+ *
+ * Sampling is uniform in angle on the arc it already is, so no point moves
+ * on the way past, and at {@link ELLIPSE_POLYLINE_SEGMENTS} per full turn a
+ * flattened circle is exactly the polyline circle that function draws. The
+ * literal `start` / `end` are reused rather than recomputed, so a chain's
+ * joins stay bit-exact and a closed path stays closed.
+ *
+ * Lines (and a degenerate zero-sweep arc) hand themselves back.
+ */
+export function flattenArcSegment(seg: PathSegment): PathSegment[] {
+  if (seg.kind !== 'arc') return [seg];
+  const { da } = arcAngles(seg);
+  const step = (2 * Math.PI) / ELLIPSE_POLYLINE_SEGMENTS;
+  const pieces = Math.max(1, Math.ceil(Math.abs(da) / step));
+  const out: PathSegment[] = [];
+  let prev: [number, number] = [seg.start[0], seg.start[1]];
+  for (let i = 1; i <= pieces; i++) {
+    const next: [number, number] = i === pieces
+      ? [seg.end[0], seg.end[1]]
+      : piecePointAt(seg, i / pieces);
+    out.push({ kind: 'line', start: prev, end: next });
+    prev = next;
+  }
+  return out;
+}
+
+/**
  * Translate all points in an arc's segments by (dx, dy).
  */
 export function translateSegments(segments: PathSegment[], dx: number, dy: number): PathSegment[] {

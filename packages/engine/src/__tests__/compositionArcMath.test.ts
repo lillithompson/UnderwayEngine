@@ -1,4 +1,4 @@
-import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout, warpSegments, computeOvalSegments, computeEllipsePolyline, ELLIPSE_POLYLINE_SEGMENTS } from '../compositionArcMath';
+import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout, warpSegments, computeOvalSegments, computeEllipsePolyline, flattenArcSegment, ELLIPSE_POLYLINE_SEGMENTS } from '../compositionArcMath';
 import { computeRectSegments } from '../compositionLineBboxMath';
 import { PathSegment, SVGObject } from '../types';
 
@@ -622,5 +622,58 @@ describe('computeEllipsePolyline', () => {
       const dy = (s.start[1] - 2) / 2;
       expect(dx * dx + dy * dy).toBeCloseTo(1, 9);
     }
+  });
+});
+
+describe('flattenArcSegment', () => {
+  // A quarter circle: radius 4, centered at the origin, top → right.
+  const quarter: PathSegment = { kind: 'arc', start: [0, -4], end: [4, 0], center: [0, 0] };
+
+  it('hands back a line (or anything else) untouched', () => {
+    const line: PathSegment = { kind: 'line', start: [0, 0], end: [3, 5] };
+    expect(flattenArcSegment(line)).toEqual([line]);
+  });
+
+  it('samples at the ellipse polyline density — a quarter turn is a quarter of it', () => {
+    expect(flattenArcSegment(quarter)).toHaveLength(ELLIPSE_POLYLINE_SEGMENTS / 4);
+    // A full circle's four quarters flatten to exactly the polyline count.
+    const circle = computeCircleSegments(-4, -4, 4, 4);
+    const flat = circle.flatMap(flattenArcSegment);
+    expect(flat).toHaveLength(ELLIPSE_POLYLINE_SEGMENTS);
+  });
+
+  it('is all lines, every vertex on the original circle', () => {
+    for (const seg of flattenArcSegment(quarter)) {
+      expect(seg.kind).toBe('line');
+      expect(Math.hypot(seg.start[0], seg.start[1])).toBeCloseTo(4, 9);
+      expect(Math.hypot(seg.end[0], seg.end[1])).toBeCloseTo(4, 9);
+    }
+  });
+
+  it('reuses the exact endpoints, so a chain keeps its joins and stays closed', () => {
+    const flat = flattenArcSegment(quarter);
+    expect(flat[0].start).toEqual([0, -4]);
+    expect(flat[flat.length - 1].end).toEqual([4, 0]);
+    // Consecutive pieces share a vertex exactly (no 1e-6 drift at the seams).
+    for (let i = 1; i < flat.length; i++) expect(flat[i].start).toEqual(flat[i - 1].end);
+    // …and the flattened full circle is still a closed path.
+    expect(isClosedPath(computeCircleSegments(-4, -4, 4, 4).flatMap(flattenArcSegment))).toBe(true);
+  });
+
+  it('scales its piece count with the sweep', () => {
+    // A half turn gets twice a quarter's pieces.
+    const half: PathSegment = { kind: 'arc', start: [0, -4], end: [0, 4], center: [0, 0] };
+    expect(flattenArcSegment(half)).toHaveLength(ELLIPSE_POLYLINE_SEGMENTS / 2);
+  });
+
+  it('reads a coincident-endpoint arc as the full turn arcAngles calls it', () => {
+    // Not a special case of its own: `arcAngles` resolves a zero-length
+    // chord to a 2π sweep, and hit-testing, area and sub-segmenting all
+    // already read that arc the same way. (It is exactly the shape
+    // isCircleSegments refuses to judge from one segment.)
+    const closed: PathSegment = { kind: 'arc', start: [4, 0], end: [4, 0], center: [0, 0] };
+    const flat = flattenArcSegment(closed);
+    expect(flat).toHaveLength(ELLIPSE_POLYLINE_SEGMENTS);
+    for (const seg of flat) expect(Math.hypot(seg.start[0], seg.start[1])).toBeCloseTo(4, 9);
   });
 });
