@@ -8,8 +8,10 @@ import {
   patternCellAt,
   patternClearEdits,
   patternFloodEdits,
+  patternCellTint,
   patternIsEmpty,
   patternReconcileEdits,
+  tintedPatternCell,
 } from '../patternObject';
 import { bakePatternElements, patternSVGView } from '../patternObjectRender';
 import { gatherConstraints, getRenderedSignature } from '../connectivity';
@@ -509,6 +511,37 @@ describe('pattern SVG bake', () => {
         expect(y).toBeLessThanOrEqual(p.cellY + p.cellHeight + 1e-6);
       }
     }
+  });
+
+  // What makes the colour brush work on a pattern at all: the ink lives on
+  // the CELL, and the layer the bake reads carries it through — the exporter
+  // then writes it into that tile's strokes (svgExport's tint substitution).
+  //
+  // The substitution itself is not asserted here: a sprite cell bakes to
+  // nothing in this environment (no tile SVG sources, which is why the bake
+  // tests above use colour cells), so there is no markup to inspect.
+  test('a cell’s ink reaches the layer the bake reads', () => {
+    const tinted = withCell(
+      makePattern(2, 2), 0, 0,
+      tintedPatternCell(spriteCell('test/tile_10001000'), { r: 200, g: 40, b: 40 }),
+    );
+    const cell = buildPatternLayerView(tinted).cells[0][0];
+    expect(cell).toMatchObject({
+      type: 'sprite', spriteId: 'test/tile_10001000', tintR: 200, tintG: 40, tintB: 40,
+    });
+  });
+
+  test('tintedPatternCell inks a sprite and refuses anything else', () => {
+    const cell = spriteCell('test/tile_00000000');
+    expect(patternCellTint(cell)).toBeNull();
+    expect(patternCellTint(tintedPatternCell(cell, { r: 1, g: 2, b: 3 })))
+      .toEqual({ r: 1, g: 2, b: 3 });
+    // A colour cell already IS a colour; an empty one has no tile to ink.
+    const filled = colorCell(9, 8, 7);
+    expect(tintedPatternCell(filled, { r: 1, g: 2, b: 3 })).toBe(filled);
+    expect(tintedPatternCell(null, { r: 1, g: 2, b: 3 })).toBeNull();
+    // …and a colour cell reports the colour it draws in.
+    expect(patternCellTint(filled)).toEqual({ r: 9, g: 8, b: 7 });
   });
 
   test('view is memoized per object identity', () => {

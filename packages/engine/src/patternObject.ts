@@ -27,6 +27,7 @@ import {
   PatternObject,
   PatternSymmetry,
   PATTERN_SYMMETRY_OFF,
+  RGBColor,
 } from './types';
 import {
   cellStatesEqual,
@@ -385,6 +386,86 @@ export function patternCellAtWorldPoint(
   const y = Math.floor(cy * p.rows);
   if (x < 0 || y < 0 || x >= p.cols || y >= p.rows) return null;
   return { x, y };
+}
+
+/** How finely {@link patternCellsInBrush} samples the brush disc, as a
+ *  fraction of its radius, and the ceiling on samples per axis. Fine enough
+ *  that no cell the brush meaningfully covers is missed; capped so a brush
+ *  spanning a whole grid stays bounded arithmetic. */
+const BRUSH_SAMPLE_STEPS = 6;
+const BRUSH_SAMPLE_MAX = 32;
+
+/**
+ * The pattern cells a round brush of `radiusCells` centred on
+ * (worldX, worldY) covers — the pattern's answer to `brushHitsSegments`,
+ * and in the same shape: a flat cell index plus the squared world distance
+ * from the brush centre, which the caller turns into the Gaussian falloff.
+ *
+ * Works by SAMPLING the disc and mapping each sample with
+ * {@link patternCellAtWorldPoint}, rather than mapping cells forward into
+ * the world. That keeps ONE implementation of a mapping that is not simple —
+ * it inverts a discrete rotation, two mirrors, and (in repeat mode) the tile
+ * wrap that makes one cell appear all over the region. A forward twin would
+ * be the thing that drifts.
+ *
+ * The distance recorded for a cell is the nearest sample that landed in it,
+ * so a cell straddling the brush edge reads as the near edge it really is.
+ * Sampling can clip a cell the disc only grazes; there the falloff is
+ * already ~0, so nothing visible is lost.
+ */
+export function patternCellsInBrush(
+  p: PatternObject,
+  worldX: number,
+  worldY: number,
+  radiusCells: number,
+): { index: number; distSq: number }[] {
+  if (!(radiusCells > 0)) {
+    const hit = patternCellAtWorldPoint(p, worldX, worldY);
+    return hit ? [{ index: hit.y * p.cols + hit.x, distSq: 0 }] : [];
+  }
+  // One sample per BRUSH_SAMPLE_STEPS of the radius, refined so a cell
+  // smaller than that still gets sampled — capped either way.
+  const cellW = (p.tileMode === 'repeat' ? p.tileWidthL0 ?? p.cellWidth : p.cellWidth) / p.cols;
+  const cellH = (p.tileMode === 'repeat' ? p.tileHeightL0 ?? p.cellHeight : p.cellHeight) / p.rows;
+  const fine = Math.max(Math.min(cellW, cellH) / 2, (2 * radiusCells) / BRUSH_SAMPLE_MAX);
+  const step = Math.max(Math.min(radiusCells / BRUSH_SAMPLE_STEPS, fine), 1e-6);
+  const nearest = new Map<number, number>();
+  const consider = (x: number, y: number) => {
+    const dx = x - worldX;
+    const dy = y - worldY;
+    const distSq = dx * dx + dy * dy;
+    if (distSq > radiusCells * radiusCells) return;
+    const hit = patternCellAtWorldPoint(p, x, y);
+    if (!hit) return;
+    const index = hit.y * p.cols + hit.x;
+    const prev = nearest.get(index);
+    if (prev === undefined || distSq < prev) nearest.set(index, distSq);
+  };
+  consider(worldX, worldY);
+  for (let y = worldY - radiusCells; y <= worldY + radiusCells; y += step) {
+    for (let x = worldX - radiusCells; x <= worldX + radiusCells; x += step) {
+      consider(x, y);
+    }
+  }
+  return [...nearest].map(([index, distSq]) => ({ index, distSq }));
+}
+
+/** The same cell with a brushed ink on it — the one way a pattern cell
+ *  carries a colour of its own. Only a SPRITE cell can be tinted: a 'color'
+ *  cell already is a colour, and would be recoloured outright. */
+export function tintedPatternCell(cell: CellState, color: RGBColor): CellState {
+  if (!cell || cell.type !== 'sprite') return cell;
+  return { ...cell, tintR: color.r, tintG: color.g, tintB: color.b };
+}
+
+/** The colour a cell currently draws in, or null when it draws in the
+ *  object's own ink (an untinted sprite). */
+export function patternCellTint(cell: CellState): RGBColor | null {
+  if (!cell) return null;
+  if (cell.type === 'color') return { r: cell.r, g: cell.g, b: cell.b };
+  return cell.tintR != null
+    ? { r: cell.tintR, g: cell.tintG ?? 0, b: cell.tintB ?? 0 }
+    : null;
 }
 
 // The SVG bake (cells → derived SVGObject view for render/export) lives in
