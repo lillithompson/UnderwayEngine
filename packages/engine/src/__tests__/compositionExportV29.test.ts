@@ -150,13 +150,30 @@ describe('generateCompositionSVGCore — text nodes', () => {
     expect(svg).not.toContain('font-weight');
   });
 
-  it('applies rotation and mirror like image nodes', async () => {
+  it('rotates about the bbox center, then works in the content box', async () => {
     const svg = await generateCompositionSVGCore(makeInputs({
       texts: [makeText({ content: 'spin', rotation: 90, mirrorH: true })],
     }));
-    // rotate about the bbox center (10×4 cells → 1280, 512), then mirror.
+    // Rotation still pivots on the WORLD bbox center (10×4 cells → 1280, 512).
     expect(svg).toContain(`rotate(90 ${(10 * U) / 2} ${(4 * U) / 2})`);
+    // …then the content is drawn in the box a quarter turn UN-swaps back to —
+    // 4×10 here — centered in the world box, which is where the DOM layer's
+    // oriented wrapper puts it. Without that step the turned card is rotated
+    // clean out of its own bbox.
+    expect(svg).toContain(`translate(${(10 * U - 4 * U) / 2}, ${(4 * U - 10 * U) / 2})`);
+    // The mirror flips within the CONTENT box, so it uses that box's width.
+    expect(svg).toContain(`translate(${4 * U}, 0) scale(-1, 1)`);
+  });
+
+  it('leaves an unturned node’s transform exactly as it was', async () => {
+    // The content box equals the world box without a quarter turn, so the
+    // centering step is skipped entirely — every existing page composes the
+    // transform it always did.
+    const svg = await generateCompositionSVGCore(makeInputs({
+      texts: [makeText({ content: 'flat', mirrorH: true })],
+    }));
     expect(svg).toContain(`translate(${10 * U}, 0) scale(-1, 1)`);
+    expect(svg).not.toContain('translate(0, 0)');
   });
 
   it('sticker emits the card background behind the text, filling the bbox', async () => {

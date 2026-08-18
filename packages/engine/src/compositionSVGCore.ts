@@ -28,7 +28,7 @@ import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, tintToF
 import { tintFillToPaint } from './imageTintFill';
 import { overlayPngDataUri, paintBlendCss, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { islandHeightCells } from './canvasPaint';
-import { charColorRuns, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
+import { charColorRuns, contentBoxCells, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
 import { STICKER_BORDER_CELLS, STICKER_SHADOW_CELLS, stickerColors } from './stickerStyle';
 import { resolveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
 
@@ -398,6 +398,14 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
   const tw = text.cellWidth * u;
   const th = text.cellHeight * u;
 
+  // The CONTENT box: the world box with a quarter turn's axis swap undone,
+  // because the card and the type are drawn un-turned and rotated into place
+  // (contentBoxCells). Equal to the world box unless `rotation` is 90/270, so
+  // an untilted node composes exactly the transform it always did.
+  const content = contentBoxCells(text);
+  const cw = content.width * u;
+  const ch = content.height * u;
+
   // Node transform — same pattern as image nodes: position, then rotate
   // about the bbox center, then mirror within the bbox.
   const parts: string[] = [`translate(${tx}, ${ty})`];
@@ -406,16 +414,22 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
   if (text.angleDeg) parts.push(`rotate(${text.angleDeg} ${tw / 2} ${th / 2})`);
   const rot = text.rotation ?? 0;
   if (rot !== 0) parts.push(`rotate(${rot} ${tw / 2} ${th / 2})`);
-  if (text.mirrorH) parts.push(`translate(${tw}, 0) scale(-1, 1)`);
-  if (text.mirrorV) parts.push(`translate(0, ${th}) scale(1, -1)`);
+  // …then step into the content box, centered in the world box — the same
+  // place the DOM layer's oriented wrapper sits. A no-op without a quarter
+  // turn; with one it is what puts the turned card back over its own bbox
+  // instead of leaving it rotated out of it.
+  if (cw !== tw || ch !== th) parts.push(`translate(${(tw - cw) / 2}, ${(th - ch) / 2})`);
+  // Mirrors are within the CONTENT box, which is what they flip.
+  if (text.mirrorH) parts.push(`translate(${cw}, 0) scale(-1, 1)`);
+  if (text.mirrorV) parts.push(`translate(0, ${ch}) scale(1, -1)`);
 
   // A sticker's node bbox IS its card: the scaffold already grew the box by
   // the interior margin on every side, so the text lays out against the full
-  // bbox here exactly as it does in the DOM layer. Insetting again would
+  // box here exactly as it does in the DOM layer. Insetting again would
   // wrap earlier than the editor does.
   const layout = layoutText(text.content, style, {
-    maxWidth: text.cellWidth,
-    maxHeight: text.cellHeight,
+    maxWidth: content.width,
+    maxHeight: content.height,
   });
 
   const fontSize = style.size * u;
@@ -472,10 +486,10 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
     inner +=
       `<defs><filter id="${filterId}" filterUnits="userSpaceOnUse"` +
       ` x="${-stkOut.left}" y="${-stkOut.top}"` +
-      ` width="${tw + stkOut.left + stkOut.right}" height="${th + stkOut.top + stkOut.bottom}">` +
+      ` width="${cw + stkOut.left + stkOut.right}" height="${ch + stkOut.top + stkOut.bottom}">` +
       `<feDropShadow dx="${sh.dx * u}" dy="${sh.dy * u}" stdDeviation="${stkSigma}"` +
       ` flood-color="#000000" flood-opacity="${sh.opacity}"/></filter></defs>` +
-      `<rect x="${bw / 2}" y="${bw / 2}" width="${tw - bw}" height="${th - bw}"` +
+      `<rect x="${bw / 2}" y="${bw / 2}" width="${cw - bw}" height="${ch - bw}"` +
       ` fill="${colors.bg}" stroke="${colors.fg}" stroke-width="${bw}"` +
       ` filter="url(#${filterId})"/>`;
   }
@@ -613,12 +627,19 @@ function paintedTextBounds(
 ): { minX: number; minY: number; maxX: number; maxY: number } | null {
   const tw = text.cellWidth;
   const th = text.cellHeight;
-  // Local paint rect. A sticker's card fills the bbox; plain text covers only
-  // its laid-out lines. The layout call mirrors buildTextSVGContent's exactly,
-  // so the two can't disagree about where the glyphs land.
-  let lx = 0, ly = 0, rx = tw, by = th;
+  // The content box the paint actually lands in — the world box unless a
+  // quarter turn swapped its axes (see buildTextSVGContent, whose transform
+  // this walks).
+  const content = contentBoxCells(text);
+  const cw = content.width;
+  const ch = content.height;
+  // Local paint rect. A sticker's card fills its content box; plain text
+  // covers only its laid-out lines. The layout call mirrors
+  // buildTextSVGContent's exactly, so the two can't disagree about where the
+  // glyphs land.
+  let lx = 0, ly = 0, rx = cw, by = ch;
   if (!text.sticker) {
-    const layout = layoutText(text.content, text.style, { maxWidth: tw, maxHeight: th });
+    const layout = layoutText(text.content, text.style, { maxWidth: cw, maxHeight: ch });
     const lineHeight = text.style.size * (text.style.lineHeight ?? DEFAULT_LINE_HEIGHT);
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const line of layout.lines) {
@@ -641,13 +662,16 @@ function paintedTextBounds(
   }
 
   // Through the node transform, in the order buildTextSVGContent composes it:
-  // mirrors innermost, then the discrete rotation, then the free rotation.
+  // mirrors innermost (within the CONTENT box), then the step out to the
+  // world box, then the discrete rotation, then the free rotation.
   const cx = tw / 2;
   const cy = th / 2;
   const rot = text.rotation ?? 0;
   const toWorld = (x: number, y: number): [number, number] => {
-    if (text.mirrorV) y = th - y;
-    if (text.mirrorH) x = tw - x;
+    if (text.mirrorV) y = ch - y;
+    if (text.mirrorH) x = cw - x;
+    x += (tw - cw) / 2;
+    y += (th - ch) / 2;
     if (rot) [x, y] = rotateAboutCW(x, y, cx, cy, rot);
     if (text.angleDeg) [x, y] = rotateAboutCW(x, y, cx, cy, text.angleDeg);
     return [text.cellX + x, text.cellY + y];

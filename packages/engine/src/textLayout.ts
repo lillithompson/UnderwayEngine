@@ -144,6 +144,31 @@ function wrapLine(text: string, style: TextStyle, measurer: TextMeasurer, maxWid
  * ('left' default) relative to `maxWidth` when wrapping, else the widest
  * line; `y` is each line's top offset.
  */
+/**
+ * The box a node's CONTENT is laid out and drawn in, in cells.
+ *
+ * A quarter turn swaps a node's WORLD box — `rotate90CW` records the turned
+ * rectangle as `cellWidth`/`cellHeight`, because that is the space the node
+ * now occupies on the page — but the content inside is still drawn in the
+ * un-turned box and then rotated into place. A wide word magnet stood on end
+ * has a world box 2 wide and 8 tall, and a card and a line of type that are
+ * still 8 by 2.
+ *
+ * Both renderers ask for this box, which is the point: the canvas laid its
+ * sticker card out in it while handing the TEXT the world box instead, so a
+ * turned magnet drew its words wrapped to the card's short side and offset
+ * from the card they belong to. One answer, one place.
+ */
+export function contentBoxCells(node: {
+  cellWidth: number;
+  cellHeight: number;
+  rotation?: 0 | 90 | 180 | 270;
+}): { width: number; height: number } {
+  return node.rotation === 90 || node.rotation === 270
+    ? { width: node.cellHeight, height: node.cellWidth }
+    : { width: node.cellWidth, height: node.cellHeight };
+}
+
 export function layoutText(content: string, style: TextStyle, opts?: TextLayoutOptions): TextLayout {
   const measurer = opts?.measurer ?? registeredMeasurer;
   const maxWidth = opts?.maxWidth;
