@@ -1,5 +1,5 @@
 import storage from './storage';
-import { Layer, CellState, CellTransform, GridLevel, LAYER_PX, Pattern, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, CanvasPaintIsland, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, ImagePaintOverlay, BlendMode, PaintObject, PathSegment, RGBColor, SVGDesignTemplate, TextObject, Paint, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
+import { Layer, CellState, GridLevel, LAYER_PX, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, CanvasPaintIsland, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, ImagePaintOverlay, BlendMode, PaintObject, PatternObject, PathSegment, RGBColor, SVGDesignTemplate, TextObject, Paint, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
 import { normalizeCanvasPaintIslands, paintTilesContentRect } from './canvasPaint';
 import { mintPaintObjectId } from './paintObject';
 import { createCellGrid, rebuildPixelData } from './cells';
@@ -215,146 +215,6 @@ export async function loadClipBox(fileId: string): Promise<ClipBox | null> {
   return JSON.parse(raw);
 }
 
-// ── Global Patterns ─────────────────────────────────────────────────
-
-const PATTERNS_KEY = 'app_patterns';
-
-export async function saveGlobalPatterns(patterns: Pattern[]): Promise<void> {
-  await storage.setItem(PATTERNS_KEY, JSON.stringify(patterns));
-}
-
-export async function loadGlobalPatterns(): Promise<Pattern[]> {
-  const raw = await storage.getItem(PATTERNS_KEY);
-  if (!raw) return [];
-  return JSON.parse(raw);
-}
-
-// ── Excluded Families (App-Level) ────────────────────────────────────
-
-const EXCLUDED_FAMILIES_KEY = 'app_excluded_families';
-
-export async function saveExcludedFamilies(excluded: Set<string>): Promise<void> {
-  await storage.setItem(EXCLUDED_FAMILIES_KEY, JSON.stringify(Array.from(excluded)));
-}
-
-export async function loadExcludedFamilies(): Promise<Set<string> | null> {
-  const raw = await storage.getItem(EXCLUDED_FAMILIES_KEY);
-  if (!raw) return null;
-  return new Set(JSON.parse(raw));
-}
-
-// ── Allow Border Connections (App-Level) ─────────────────────────────
-
-const ALLOW_BORDER_KEY = 'app_allow_border_connections';
-
-export async function saveAllowBorderConnections(value: boolean): Promise<void> {
-  await storage.setItem(ALLOW_BORDER_KEY, JSON.stringify(value));
-}
-
-export async function loadAllowBorderConnections(): Promise<boolean | null> {
-  const raw = await storage.getItem(ALLOW_BORDER_KEY);
-  if (raw == null) return null;
-  return JSON.parse(raw);
-}
-
-// ── Multires Fill ────────────────────────────────────────────────────
-
-const MULTIRES_FILL_KEY = 'app_multires_fill';
-
-export async function saveMultiresFill(value: boolean): Promise<void> {
-  await storage.setItem(MULTIRES_FILL_KEY, JSON.stringify(value));
-}
-
-export async function loadMultiresFill(): Promise<boolean | null> {
-  const raw = await storage.getItem(MULTIRES_FILL_KEY);
-  if (raw == null) return null;
-  return JSON.parse(raw);
-}
-
-// ── Deep Edit ───────────────────────────────────────────────────────
-
-const DEEP_EDIT_KEY = 'app_deep_edit';
-
-export async function saveDeepEdit(value: boolean): Promise<void> {
-  await storage.setItem(DEEP_EDIT_KEY, JSON.stringify(value));
-}
-
-export async function loadDeepEdit(): Promise<boolean | null> {
-  const raw = await storage.getItem(DEEP_EDIT_KEY);
-  if (raw == null) return null;
-  return JSON.parse(raw);
-}
-
-// ── Copy Selection ──────────────────────────────────────────────────
-
-const COPY_SELECTION_KEY = 'app_copy_selection';
-
-export async function saveCopySelection(value: boolean): Promise<void> {
-  await storage.setItem(COPY_SELECTION_KEY, JSON.stringify(value));
-}
-
-export async function loadCopySelection(): Promise<boolean | null> {
-  const raw = await storage.getItem(COPY_SELECTION_KEY);
-  if (raw == null) return null;
-  return JSON.parse(raw);
-}
-
-// ── Auto Highlight ──────────────────────────────────────────────────
-
-const AUTO_HIGHLIGHT_KEY = 'app_auto_highlight';
-
-export async function saveAutoHighlight(value: boolean): Promise<void> {
-  await storage.setItem(AUTO_HIGHLIGHT_KEY, JSON.stringify(value));
-}
-
-export async function loadAutoHighlight(): Promise<boolean | null> {
-  const raw = await storage.getItem(AUTO_HIGHLIGHT_KEY);
-  if (raw == null) return null;
-  return JSON.parse(raw);
-}
-
-// ── Expand Figures on Recolor ───────────────────────────────────────
-
-const EXPAND_FIGURES_ON_RECOLOR_KEY = 'app_expand_figures_on_recolor';
-
-export async function saveExpandFiguresOnRecolor(value: boolean): Promise<void> {
-  await storage.setItem(EXPAND_FIGURES_ON_RECOLOR_KEY, JSON.stringify(value));
-}
-
-export async function loadExpandFiguresOnRecolor(): Promise<boolean | null> {
-  const raw = await storage.getItem(EXPAND_FIGURES_ON_RECOLOR_KEY);
-  if (raw == null) return null;
-  return JSON.parse(raw);
-}
-
-
-// ── Mirror Settings (App-Level) ──────────────────────────────────────
-
-const MIRROR_KEY = 'app_mirror_settings';
-
-export interface MirrorSettings {
-  mirrorH: boolean;
-  mirrorV: boolean;
-  mirrorRotate: boolean;
-  mirrorQuad: boolean;
-  mirrorRow: boolean;
-  mirrorCol: boolean;
-  mirrorDiag1: boolean;
-  mirrorDiag2: boolean;
-  mirrorDiagBoth: boolean;
-  mirrorStar: boolean;
-}
-
-export async function saveMirrorSettings(settings: MirrorSettings): Promise<void> {
-  await storage.setItem(MIRROR_KEY, JSON.stringify(settings));
-}
-
-export async function loadMirrorSettings(): Promise<MirrorSettings | null> {
-  const raw = await storage.getItem(MIRROR_KEY);
-  if (raw == null) return null;
-  return JSON.parse(raw);
-}
-
 // ── Compositions ─────────────────────────────────────────────────────
 
 const COMPOSITIONS_KEY = 'compositions';
@@ -418,6 +278,9 @@ interface CompMeta {
    *  `canvasPaint` layer is deliberately ignored on load (breaking
    *  change: the layer model was replaced by these scene objects). */
   paintObjects?: unknown[];
+  /** Inline tile-pattern scene nodes (v54+); absent on older saves.
+   *  JSON-safe as-is (plain cell-state objects, no Maps / binary). */
+  patternObjects?: PatternObject[];
   /** Unified back→front paint order across every scene-object kind.
    *  Absent on older saves; the loader derives it from the kind arrays in
    *  the legacy fixed paint order. */
@@ -533,6 +396,31 @@ function migratePaintObjectMeta(v: any): Omit<PaintObject, 'tiles'> | undefined 
   const nums = [v.cellX, v.cellY, v.cellWidth, v.cellHeight];
   if (!nums.every((n: any) => Number.isFinite(n))) return undefined;
   return v as Omit<PaintObject, 'tiles'>;
+}
+
+/** Revive pattern objects from meta. Structurally unusable records are
+ *  dropped rather than poisoning the scene; cells arrays are clamped to
+ *  cols×rows and non-object entries become empty cells. */
+function sanitizePatternObjects(raw: unknown): PatternObject[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PatternObject[] = [];
+  for (const v of raw as any[]) {
+    if (!v || typeof v !== 'object') continue;
+    if (typeof v.id !== 'string' || !v.id.startsWith('pat_')) continue;
+    const nums = [v.cellX, v.cellY, v.cellWidth, v.cellHeight];
+    if (!nums.every((n: any) => Number.isFinite(n))) continue;
+    const cols = Math.floor(v.cols), rows = Math.floor(v.rows);
+    if (!(cols >= 1 && cols <= 16 && rows >= 1 && rows <= 16)) continue;
+    const cells: CellState[] = new Array(cols * rows).fill(null);
+    if (Array.isArray(v.cells)) {
+      for (let i = 0; i < Math.min(v.cells.length, cells.length); i++) {
+        const c = v.cells[i];
+        if (c && typeof c === 'object' && (c.type === 'sprite' || c.type === 'color')) cells[i] = c;
+      }
+    }
+    out.push({ ...v, cols, rows, cells });
+  }
+  return out;
 }
 
 /** Legacy format with layers — used for migration */
@@ -730,6 +618,7 @@ export async function saveCompositionState(
     images,
     texts: state.texts,
     paintObjects,
+    patternObjects: state.patternObjects,
     groups: state.groups,
     gridLevel: state.gridLevel,
     strokeScale: state.strokeScale,
@@ -753,6 +642,9 @@ export async function saveCompositionState(
     background: normalized.background,
     paintObjects: normalized.paintObjects && normalized.paintObjects.length > 0
       ? normalized.paintObjects.map(serializePaintForMeta)
+      : undefined,
+    patternObjects: normalized.patternObjects && normalized.patternObjects.length > 0
+      ? normalized.patternObjects
       : undefined,
     sceneOrder: state.sceneOrder.length > 0 ? state.sceneOrder : undefined,
     lastChosenColor: state.lastChosenColor,
@@ -899,12 +791,14 @@ export async function loadCompositionState(
   // to the content bbox would move objects around the page on every open.
   const groups = parsed.groups ?? [];
   const texts: TextObject[] = parsed.texts ?? [];
+  const patternObjects = sanitizePatternObjects(parsed.patternObjects);
   const normalizeInput = {
     figures,
     svgObjects,
     images,
     texts,
     paintObjects,
+    patternObjects,
     groups,
     gridLevel: parsed.gridLevel ?? 1,
     strokeScale: normalizeStrokeScale(parsed.strokeScale),
@@ -924,9 +818,10 @@ export async function loadCompositionState(
     texts: r.texts ?? [],
     background: r.background,
     paintObjects: r.paintObjects ?? [],
+    patternObjects: r.patternObjects ?? [],
     sceneOrder: parsed.sceneOrder
-      ? repairSceneOrder({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [], paintObjects: r.paintObjects ?? [], sceneOrder: parsed.sceneOrder })
-      : deriveSceneOrderFromKindArrays({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [], paintObjects: r.paintObjects ?? [] }),
+      ? repairSceneOrder({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [], paintObjects: r.paintObjects ?? [], patternObjects: r.patternObjects ?? [], sceneOrder: parsed.sceneOrder })
+      : deriveSceneOrderFromKindArrays({ figures: r.figures, svgObjects: r.svgObjects, images: r.images ?? [], texts: r.texts ?? [], paintObjects: r.paintObjects ?? [], patternObjects: r.patternObjects ?? [] }),
     lastChosenColor: parsed.lastChosenColor ?? { r: 255, g: 255, b: 255 },
     customColors: parsed.customColors ?? [],
     // Camera placeholder when content was rescaled — the editor frames
@@ -1037,53 +932,6 @@ export async function duplicateCompositionData(
     await storage.setItem(compThumbKey(newId), thumb);
   }
   return thumb;
-}
-
-// ── Tile Prefs (Favorites & Per-Tile Transforms) ─────────────────────
-
-const TILE_PREFS_KEY = 'app_tile_prefs';
-
-export interface TilePrefs {
-  favorites: string[];
-  transforms: Record<string, CellTransform>;
-}
-
-export async function saveTilePrefs(prefs: TilePrefs): Promise<void> {
-  await storage.setItem(TILE_PREFS_KEY, JSON.stringify(prefs));
-}
-
-export async function loadTilePrefs(): Promise<TilePrefs | null> {
-  const raw = await storage.getItem(TILE_PREFS_KEY);
-  if (!raw) return null;
-  return JSON.parse(raw);
-}
-
-// ── App-Level Color Palette ─────────────────────────────────────────
-
-const APP_PALETTE_KEY = 'app_color_palette';
-
-export async function saveAppPalette(palette: [number, number, number][]): Promise<void> {
-  await storage.setItem(APP_PALETTE_KEY, JSON.stringify(palette));
-}
-
-export async function loadAppPalette(): Promise<[number, number, number][] | null> {
-  const raw = await storage.getItem(APP_PALETTE_KEY);
-  if (!raw) return null;
-  return JSON.parse(raw);
-}
-
-// ── Developer Mode ──────────────────────────────────────────────────
-
-const DEV_MODE_KEY = 'app_dev_mode';
-
-export async function saveDevMode(enabled: boolean): Promise<void> {
-  await storage.setItem(DEV_MODE_KEY, JSON.stringify(enabled));
-}
-
-export async function loadDevMode(): Promise<boolean> {
-  const raw = await storage.getItem(DEV_MODE_KEY);
-  if (!raw) return false;
-  return JSON.parse(raw) === true;
 }
 
 // ── Thumbnail Line Width ───────────────────────────────────────────
@@ -1370,6 +1218,7 @@ export async function exportCompositionBundle(compId: string): Promise<Uint8Arra
       texts: partial.texts ?? [],
       background: partial.background,
       paintObjects: partial.paintObjects ?? [],
+      patternObjects: partial.patternObjects ?? [],
       sceneOrder: partial.sceneOrder,
       customColors: partial.customColors ?? [],
     },
@@ -1416,6 +1265,7 @@ export async function importCompositionBundle(data: Uint8Array, fileName?: strin
   // later clobber) an existing composition's paint blobs.
   const importedPaints = (meta.paintObjects ?? []).map((p) => ({ ...p, id: mintPaintObjectId() }));
   const paintIdRemap = new Map((meta.paintObjects ?? []).map((p, i) => [p.id, importedPaints[i].id]));
+  const patternObjects = meta.patternObjects ?? [];
   const compState: CompositionState = {
     id: compId,
     name: compName,
@@ -1425,6 +1275,7 @@ export async function importCompositionBundle(data: Uint8Array, fileName?: strin
     imageBlobs: meta.imageBlobs ?? {},
     texts,
     paintObjects: importedPaints,
+    patternObjects,
     background: meta.background,
     lineDraft: null,
     arcDraft: null,
@@ -1440,10 +1291,10 @@ export async function importCompositionBundle(data: Uint8Array, fileName?: strin
     // backfills any missing ids so the loaded scene matches the data.
     sceneOrder: meta.sceneOrder
       ? repairSceneOrder({
-          figures: remappedFigures, svgObjects, images, texts, paintObjects: importedPaints,
+          figures: remappedFigures, svgObjects, images, texts, paintObjects: importedPaints, patternObjects,
           sceneOrder: meta.sceneOrder.map((id) => paintIdRemap.get(id) ?? id),
         })
-      : deriveSceneOrderFromKindArrays({ figures: remappedFigures, svgObjects, images, texts, paintObjects: importedPaints }),
+      : deriveSceneOrderFromKindArrays({ figures: remappedFigures, svgObjects, images, texts, paintObjects: importedPaints, patternObjects }),
     gridLevel: meta.gridLevel,
     strokeScale: meta.strokeScale,
     gridIntensity: meta.gridIntensity ?? 0.5,

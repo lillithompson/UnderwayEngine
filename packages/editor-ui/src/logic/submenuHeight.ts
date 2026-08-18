@@ -56,6 +56,10 @@ export const SHADOW_PAD_SIZE = 106;
  *  11pt line. */
 export const CROP_CAPTION_HEIGHT = 21;
 
+/** The pattern Tiles bar's horizontally-scrolled tile strip: a 56pt tile
+ *  row plus its 15pt section captions above. */
+export const PATTERN_TILE_STRIP = 71;
+
 /** The slide-up submenus. Image selections cycle through tint / crop / shadow /
  *  border / opacity; text through font / align (two pages of the Text bar) and
  *  shadow (the image bar, reused); a vector through stroke plus whichever of
@@ -67,7 +71,10 @@ export type SubmenuKey =
   // The poseable rig's parts: the whole figure (three axes, plus the Reset
   // that stands it back up), two sliders each for the hands and feet, three
   // for the spine, two for the head.
-  | 'rigRoot' | 'rigHands' | 'rigFeet' | 'rigSpine' | 'rigHead';
+  | 'rigRoot' | 'rigHands' | 'rigFeet' | 'rigSpine' | 'rigHead'
+  // A pattern object's three pages: the tile menu, the grid tools, and the
+  // painting-symmetry grid.
+  | 'patternTiles' | 'patternTools' | 'patternSymmetry';
 
 /** The current state of everything that changes a bar's row count. Values are
  *  optional so a caller can describe only the bars its selection can open; a
@@ -177,6 +184,15 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // Nod and Shake.
       return standardBar([ROW_SLIDER, ROW_SLIDER]);
     case 'endpoints':
+      return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
+    case 'patternTiles':
+      // The scrolling tile strip, one row tall.
+      return standardBar([PATTERN_TILE_STRIP]);
+    case 'patternTools':
+      // Brush (Random / Erase), Grid actions (Reconcile / Clear), Borders.
+      return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
+    case 'patternSymmetry':
+      // The mode grid as three segmented rows of four (Off rides row 3).
       return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'layout':
       // Horizontal and Vertical, plus Arrange when the host offers Grid.

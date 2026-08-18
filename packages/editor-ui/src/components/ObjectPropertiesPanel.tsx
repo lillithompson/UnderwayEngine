@@ -4,6 +4,9 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, ImageEditAction, formatPixelSize, swipeDismissDirection } from '../logic/imageEdit';
 import { PAINT_EDIT_OPTIONS } from '../logic/paintEdit';
+import {
+  PATTERN_EDIT_OPTIONS, patternActionOfSubmenu, patternActionSubmenu,
+} from '../logic/patternEdit';
 import { multiSelectionOptions } from '../logic/multiOptions';
 import { SubmenuKey, typeMenuHeight } from '../logic/submenuHeight';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
@@ -36,6 +39,7 @@ import { TextBar } from './TextBar';
 import { TintBar } from './TintBar';
 import { EndpointsBar } from './EndpointsBar';
 import { LayoutBar } from './LayoutBar';
+import { PatternSymmetryBar, PatternTilesBar, PatternToolsBar } from './PatternBars';
 import { BAR_BG } from './effectBar';
 import {
   PANEL_ANIM_MS,
@@ -470,7 +474,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // The two optional carousel pages. `type` is what the selection's KIND
   // offers (and a multi-selection's members must share a kind to have one);
   // `multi` is what the SELECTION offers, whatever it is made of.
-  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showRigOptions || showUngroup;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showRigOptions || showUngroup;
   const hasMultiOptions = showLayout || showGroup || showMerge;
   const pages = objectPanelPages({ type: hasTypeOptions, multi: hasMultiOptions });
   // Signature of the current selection's option pages. It changes when the
@@ -479,7 +483,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // subtype is part of it so switching between two vector objects with
   // different menus (a line → a rectangle) re-lands on the type row.
   const typeSig = model.visible
-    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
+    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showPatternOptions ? 'P' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
     : '';
   const prevTypeSig = useRef('');
   // The page the panel was last showing for a real selection — what the next
@@ -565,6 +569,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'align', 'shadow']
     : model.showPaintOptions ? ['opacity']
+    // A pattern object's pages, in the order its options row lists them,
+    // plus the Stroke bar its baked tile paths share with the vectors.
+    : model.showPatternOptions
+      ? [...PATTERN_EDIT_OPTIONS.map((o) => patternActionSubmenu(o.action)), 'stroke' as const]
     // A rig's parts, in the order its options row lists them. Checked
     // before showSvgOptions: a rig's figure IS an svg object, and the
     // vector bars have nothing to act on for a baked silhouette.
@@ -615,6 +623,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     : model.svgFillOpen ? 'svgFill'
     : model.endpointsOpen ? 'endpoints'
     : model.rigPartOpen ? rigPartSubmenu(model.rigPartOpen)
+    : model.patternBarOpen ? patternActionSubmenu(model.patternBarOpen)
     : model.textStyleOpen ? textPage
     : null;
   const submenuOpen = activeSub != null;
@@ -674,6 +683,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     else if (key === 'endpoints') model.onEndpointsOpenChange?.(true);
     else if (key === 'layout') model.onLayoutOpenChange?.(true);
     else if (rigPartOfSubmenu(key)) model.onRigPartOpenChange?.(rigPartOfSubmenu(key));
+    else if (patternActionOfSubmenu(key)) model.onPatternBarOpenChange?.(patternActionOfSubmenu(key));
     else if (key === 'font' || key === 'align') {
       // Both text pages ride the single textStyleOpen flag; the page state
       // picks which one shows (drives the carousel between them).
@@ -694,6 +704,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     model.onLayoutOpenChange?.(false);
     model.onTextStyleOpenChange?.(false);
     model.onRigPartOpenChange?.(null);
+    model.onPatternBarOpenChange?.(null);
   };
 
   const [submenuMounted, setSubmenuMounted] = useState(false);
@@ -882,13 +893,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     }
     prevSvgFillOpen.current = !!model.svgFillOpen;
   }, [model.svgFillOpen, model.svgFill]);
-  // Fold the Stroke bar away the moment the selection is no longer a vector
-  // object (or the panel hides), so it never lingers over the next object. The
-  // Fill and Endpoints bars go with it, and also whenever the new vector
-  // selection is a subtype that doesn't offer that one — a shape with no
-  // interior to fill, or a closed one with no loose end to decorate.
+  // Fold the Stroke bar away the moment the selection no longer offers it —
+  // a vector object or a PATTERN (whose tiles share the bar) — or the panel
+  // hides, so it never lingers over the next object. The Fill and Endpoints
+  // bars go with it, and also whenever the new vector selection is a subtype
+  // that doesn't offer that one — a shape with no interior to fill, or a
+  // closed one with no loose end to decorate.
+  const strokeable = !!model.showSvgOptions || !!model.showPatternOptions;
   useEffect(() => {
-    if ((!model.visible || !model.showSvgOptions) && model.strokeOpen) {
+    if ((!model.visible || !strokeable) && model.strokeOpen) {
       model.onStrokeOpenChange?.(false);
     }
     if ((!model.visible || !svgFillable) && model.svgFillOpen) {
@@ -900,7 +913,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // model.on* are stable setters; listing the whole model would re-run this
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showSvgOptions, model.strokeOpen, svgFillable, model.svgFillOpen, svgEndable, model.endpointsOpen]);
+  }, [model.visible, strokeable, model.strokeOpen, svgFillable, model.svgFillOpen, svgEndable, model.endpointsOpen]);
   // Fold the Layout bar away as soon as the selection stops being a multi one
   // (a tap that drops it to a single object, or clears it), so it never
   // lingers over an object it has nothing to say about.
@@ -1172,6 +1185,28 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       sub: opt.action as SubmenuKey,
       onPress: toggleOpacity,
     }));
+  } else if (model.showPatternOptions) {
+    // Inline tile pattern: its three pages (Tiles / Tools / Symmetry), plus
+    // the same Repeat toggle the legacy tiled vectors wear — a toggle rather
+    // than a bar, in Facet's PATTERN_ACTIVE, exactly as on the svg branch.
+    typeSpecs = PATTERN_EDIT_OPTIONS.map((opt) => ({
+      key: opt.action,
+      label: opt.label,
+      sub: patternActionSubmenu(opt.action),
+      onPress: () => openSubmenu(patternActionSubmenu(opt.action)),
+    }));
+    // The same Stroke bar the vectors get (its open-path form: Width +
+    // Dash), pointed at the pattern's own stroke block.
+    typeSpecs.push({ key: 'stroke', label: 'Stroke', sub: 'stroke', onPress: () => openSubmenu('stroke') });
+    if (model.onToggleRepeat) {
+      typeSpecs.unshift({
+        key: 'repeat',
+        label: 'Repeat',
+        toggled: model.repeat,
+        tint: PATTERN_ACTIVE,
+        onPress: model.onToggleRepeat,
+      });
+    }
   } else if (model.showEdit || model.showTextStyle) {
     // Edit (content) · Type (opens the Text bar on the Font page) · Align (opens
     // it straight on the Align page) · Shadow. Type / Align both slide the same
@@ -1409,6 +1444,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onBack={dismissSubmenu}
       />
     );
+  } else if (displaySub === 'patternTiles') {
+    activeBarEl = <PatternTilesBar model={model} onBack={dismissSubmenu} />;
+  } else if (displaySub === 'patternTools') {
+    activeBarEl = <PatternToolsBar model={model} onBack={dismissSubmenu} />;
+  } else if (displaySub === 'patternSymmetry') {
+    activeBarEl = <PatternSymmetryBar model={model} onBack={dismissSubmenu} />;
   } else if (displaySub === 'font' || displaySub === 'align') {
     activeBarEl = (
       <TextBar

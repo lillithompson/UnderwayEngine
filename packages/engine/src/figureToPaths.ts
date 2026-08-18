@@ -137,7 +137,7 @@ export function transformSegmentAroundCenter(
   return { kind: 'line', start: t(seg.start), end: t(seg.end) };
 }
 
-function convertCachedSVGToColoredSegments(
+export function convertCachedSVGToColoredSegments(
   cached: CachedFigureSVG,
   fig: CompositionFigure,
 ): ColoredSegments[] {

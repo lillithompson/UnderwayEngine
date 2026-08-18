@@ -72,7 +72,7 @@ function makeState(parts: Partial<CompositionState> = {}): CompositionState {
 describe('SCENE_ADAPTERS', () => {
   test('one adapter per kind', () => {
     const kinds = SCENE_ADAPTERS.map((a) => a.kind).sort();
-    expect(kinds).toEqual(['figure', 'image', 'paint', 'svg', 'text']);
+    expect(kinds).toEqual(['figure', 'image', 'paint', 'pattern', 'svg', 'text']);
   });
 
   test('matchesId routes ids by namespace', () => {
@@ -87,6 +87,7 @@ describe('SCENE_ADAPTERS', () => {
     // namespace must be excluded from it explicitly — a paint id landing in
     // the figure adapter would route paint ops at the wrong kind array.
     expect(figureA.matchesId('pnt_1')).toBe(false);
+    expect(figureA.matchesId('pat_1')).toBe(false);
     expect(svgA.matchesId('svg_1')).toBe(true);
     expect(svgA.matchesId('img_1')).toBe(false);
     expect(imgA.matchesId('img_1')).toBe(true);

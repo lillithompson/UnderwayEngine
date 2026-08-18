@@ -708,6 +708,18 @@ export function buildSVGObjectContent(
   obj: SVGObject,
   strokeScale: number,
   unitsPerCell: number,
+  opts?: {
+    /** Default true — the DOM node layer's convention: strokes carry
+     *  `vector-effect="non-scaling-stroke"` with widths in the layer's
+     *  base pixels. Pass false to stroke in USER-SPACE units instead (the
+     *  caller then passes SVG units + a strokeScaleForUnits-converted
+     *  scale, like the exporter's own flat path). The pattern node layer
+     *  needs this: its tiled (repeat) markup can only stroke in user
+     *  space, and WKWebView resolves non-scaling strokes against the
+     *  device CTM — so under camera zoom the two conventions disagree and
+     *  a repeat toggle visibly changed the line weight. */
+    nonScaling?: boolean;
+  },
 ): string {
   if (obj.segments.length === 0) return '';
   // Pattern mode: the stored segments are one tile; render the repeating
@@ -716,7 +728,7 @@ export function buildSVGObjectContent(
   // buildTiledSVGObjectRegionMarkup.
   if (obj.tileMode === 'repeat') return buildTiledSVGObjectRegionMarkup(obj, strokeScale, unitsPerCell);
   const radius = svgStrokeRadiusCells(obj);
-  const { defs, attrs, segments } = svgStrokePresentation(obj, strokeScale, unitsPerCell, { nonScaling: true });
+  const { defs, attrs, segments } = svgStrokePresentation(obj, strokeScale, unitsPerCell, { nonScaling: opts?.nonScaling ?? true });
 
   let result = defs;
 

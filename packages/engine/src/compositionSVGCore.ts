@@ -6,7 +6,8 @@
  * with pre-deserialized embedded files.
  */
 
-import { CompositionFigure, FileConfig, SVGObject, ImageObject, PaintObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
+import { CompositionFigure, FileConfig, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
+import { patternSVGView } from './patternObjectRender';
 import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
@@ -105,6 +106,11 @@ export interface CompositionSVGInputs {
    *  <image>s at its z-slot in `sceneOrder`, exactly like any other node —
    *  the retired v50/v51 under-everything canvas layer is gone. */
   paintObjects?: PaintObject[];
+  /** Inline tile-pattern scene nodes (v54+). Each exports through its
+   *  derived SVGObject view (patternSVGView) at its z-slot in
+   *  `sceneOrder` — the same markup the canvas renders, tiled region
+   *  included. Empty patterns export as nothing. */
+  patternObjects?: PatternObject[];
   /** Optional font-embedding hook — see {@link SVGFontResolver}. */
   fontResolver?: SVGFontResolver;
   /** Group hierarchy — needed to resolve "Use as mask" clip regions.
@@ -718,6 +724,15 @@ export async function generateCompositionSVGCore(
   let images = input.images.filter(shown);
   let texts = (input.texts ?? []).filter(shown);
   let paints = (input.paintObjects ?? []).filter(shown);
+
+  // Patterns export through their derived SVGObject views (same id, so
+  // sceneOrder / subset / mask resolution all see them as svg nodes —
+  // exactly what the canvas renders). Empty patterns bake to null and
+  // export as nothing.
+  for (const p of (input.patternObjects ?? []).filter(shown)) {
+    const view = patternSVGView(p);
+    if (view) svgObjects.push(view);
+  }
 
   // Nothing to draw.
   const noObjects = () =>

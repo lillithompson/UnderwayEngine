@@ -338,6 +338,37 @@ export interface ObjectPropertiesModel {
    *  Fill: an island is baked brushwork, not a shape. Mutually exclusive
    *  with the image / svg / text / frame type-option families. */
   showPaintOptions?: boolean;
+  /** Selection is an inline tile PATTERN object. Its type options are the
+   *  pattern's three pages — Tiles (the connection-grouped tile menu),
+   *  Tools (brush arming + grid actions + the border-connections rule) and
+   *  Symmetry (the painting-mirror grid) — plus the same Repeat toggle the
+   *  legacy tiled vectors wear (via `repeat` / `onToggleRepeat`). Mutually
+   *  exclusive with the other type-option families. */
+  showPatternOptions?: boolean;
+  /** Which pattern bar is open, if any (app-owned, like the effect bars). */
+  patternBarOpen?: import('./logic/patternEdit').PatternEditAction | null;
+  onPatternBarOpenChange?(bar: import('./logic/patternEdit').PatternEditAction | null): void;
+  /** The active symmetry mode's grid key, or 'off' (see patternSymmetryKey). */
+  patternSymmetry?: string;
+  /** A symmetry mode was picked ('off' clears). One undo step. */
+  onPatternSymmetry?(key: string): void;
+  /** The tile menu, host-baked (sprite ids + data-URI thumbnails). */
+  patternTiles?: import('./logic/patternEdit').PatternTileRow[];
+  /** The armed pattern sub-tool, and — when it is 'tile' — which tile. */
+  patternTool?: import('./logic/patternEdit').PatternPanelTool;
+  patternActiveTileId?: string | null;
+  /** Arm a specific tile as the painting sub-tool. */
+  onPatternPickTile?(id: string): void;
+  /** Arm the random brush / eraser as the painting sub-tool. */
+  onPatternArmTool?(tool: 'random' | 'erase'): void;
+  /** Run a grid action (flood fills every empty cell with the armed tile —
+   *  or random picks when no tile is armed; reconcile heals mismatched
+   *  connections; clear empties the grid). One undo step each. */
+  onPatternGridAction?(action: import('./logic/patternEdit').PatternGridAction): void;
+  /** The pattern's border-connections rule (true = grid edges may
+   *  connect), and its toggle (one undo step). */
+  patternAllowBorder?: boolean;
+  onPatternToggleBorder?(): void;
   /** Selection is a POSEABLE RIG (a Figgie mannequin). Its type options are
    *  the parts a slider can shape — Rig · Hands · Feet · Spine · Head, plus
    *  Reset — rather than the Stroke / Fill / Opacity a plain vector offers:

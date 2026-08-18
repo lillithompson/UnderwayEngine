@@ -16,6 +16,7 @@ export * from './logic/eyedropper';
 export * from './logic/imageEdit';
 export * from './logic/svgEdit';
 export * from './logic/rigEdit';
+export * from './logic/patternEdit';
 export * from './logic/layout';
 export * from './logic/multiOptions';
 export * from './logic/tint';

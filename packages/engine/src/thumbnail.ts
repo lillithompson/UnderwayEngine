@@ -1,6 +1,5 @@
 import storage from './storage';
-import { Layer, FileConfig, Pattern, cellPx } from './types';
-import { renderCellToBuffer, sharedCellBuf } from './cells';
+import { Layer, FileConfig } from './types';
 import { saveCompositionThumbnail } from './persistence';
 import { exportCompositionSVG } from './compositionExport';
 import { exportToSVG, multiplyStrokeWidths, SVG_STROKE_WIDTH, SVG_UNITS_PER_L0_CELL } from './svgExport';
@@ -183,75 +182,6 @@ export async function svgToThumbnailDataUri(
   const pngBytes = encodePNG(pixels, thumbW, thumbH);
   const base64 = toBase64(pngBytes);
   return `data:image/png;base64,${base64}`;
-}
-
-// ── Pattern Thumbnail ───────────────────────────────────────────────────
-
-const PATTERN_THUMB_SIZE = 64;
-
-export function generatePatternThumbnail(pattern: Pattern): string {
-  const { pxWidth, pxHeight, entries } = pattern;
-  if (entries.length === 0) {
-    // Empty pattern — return a transparent 1x1 PNG
-    const empty = new Uint8Array(4);
-    const png = encodePNG(empty, 1, 1);
-    return `data:image/png;base64,${toBase64(png)}`;
-  }
-
-  // Determine scale to fit pattern into PATTERN_THUMB_SIZE x PATTERN_THUMB_SIZE
-  const scale = Math.min(PATTERN_THUMB_SIZE / pxWidth, PATTERN_THUMB_SIZE / pxHeight);
-  const outW = Math.max(1, Math.round(pxWidth * scale));
-  const outH = Math.max(1, Math.round(pxHeight * scale));
-
-  const buf = new Uint8Array(outW * outH * 4); // initialized to 0 (transparent)
-
-  for (const entry of entries) {
-    const entryCellPx = cellPx(entry.level);
-    const byteLen = renderCellToBuffer(entry.state, entryCellPx, entry.level);
-    if (byteLen === 0) continue;
-    const cellBuf = sharedCellBuf;
-
-    // Destination rect in the output buffer
-    const dstX = Math.round(entry.pxOffX * scale);
-    const dstY = Math.round(entry.pxOffY * scale);
-    const dstW = Math.max(1, Math.round(entryCellPx * scale));
-    const dstH = dstW; // cells are square
-
-    // Stamp scaled pixels using nearest-neighbor sampling
-    for (let py = 0; py < dstH; py++) {
-      const outY = dstY + py;
-      if (outY < 0 || outY >= outH) continue;
-      const srcY = Math.floor(py * entryCellPx / dstH);
-      for (let px = 0; px < dstW; px++) {
-        const outX = dstX + px;
-        if (outX < 0 || outX >= outW) continue;
-        const srcX = Math.floor(px * entryCellPx / dstW);
-        const si = (srcY * entryCellPx + srcX) * 4;
-        const di = (outY * outW + outX) * 4;
-        const srcA = cellBuf[si + 3];
-        if (srcA === 0) continue;
-        // Alpha composite (source over)
-        const dstA = buf[di + 3];
-        if (dstA === 0) {
-          buf[di] = cellBuf[si];
-          buf[di + 1] = cellBuf[si + 1];
-          buf[di + 2] = cellBuf[si + 2];
-          buf[di + 3] = srcA;
-        } else {
-          const sa = srcA / 255;
-          const da = dstA / 255;
-          const outA = sa + da * (1 - sa);
-          buf[di] = (cellBuf[si] * sa + buf[di] * da * (1 - sa)) / outA;
-          buf[di + 1] = (cellBuf[si + 1] * sa + buf[di + 1] * da * (1 - sa)) / outA;
-          buf[di + 2] = (cellBuf[si + 2] * sa + buf[di + 2] * da * (1 - sa)) / outA;
-          buf[di + 3] = outA * 255;
-        }
-      }
-    }
-  }
-
-  const pngBytes = encodePNG(buf, outW, outH);
-  return `data:image/png;base64,${toBase64(pngBytes)}`;
 }
 
 // ── Thumbnail event listeners ───────────────────────────────────────────

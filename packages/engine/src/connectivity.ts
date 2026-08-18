@@ -38,7 +38,7 @@ function _setCell(layer: Layer, cellX: number, cellY: number, state: CellState |
   if (cellX === -1) { if (layer.edgeColLeft) layer.edgeColLeft[cellY] = state; return; }
   layer.cells[cellY][cellX] = state;
 }
-function cellStatesEqual(a: CellState | null, b: CellState | null): boolean {
+export function cellStatesEqual(a: CellState | null, b: CellState | null): boolean {
   if (a === b) return true;
   if (a == null || b == null) return false;
   if (a.type !== b.type) return false;

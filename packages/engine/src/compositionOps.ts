@@ -1,5 +1,6 @@
-﻿import { BlendMode, CompositionState, CompositionFigure, CompUndoEntry, CompUndoOp, FigureQuad, GroupNode, PaintObject, PaintStrokeDraft, RGBColor, SVGObject, SVGSubpath, PathSegment, ImageObject, TextObject, CompItemKind } from './types';
+﻿import { BlendMode, CompositionState, CompositionFigure, CompUndoEntry, CompUndoOp, FigureQuad, GroupNode, PaintObject, PatternObject, PaintStrokeDraft, RGBColor, SVGObject, SVGSubpath, PathSegment, ImageObject, TextObject, CompItemKind } from './types';
 import { mintPaintObjectId, paintObjectAlphaHitTest } from './paintObject';
+import { mintPatternObjectId, applyPatternCellEdits } from './patternObject';
 import { lineHitsCell as svgHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { GEOMETRY_ADAPTERS } from './sceneNodeGeometry';
@@ -103,7 +104,8 @@ export type CompItemRef =
   | { kind: 'svg';    item: SVGObject }
   | { kind: 'image';  item: ImageObject }
   | { kind: 'text';   item: TextObject }
-  | { kind: 'paint';  item: PaintObject };
+  | { kind: 'paint';  item: PaintObject }
+  | { kind: 'pattern'; item: PatternObject };
 
 /**
  * Single canonical lookup across figures, svgObjects, images, texts, and
@@ -123,6 +125,8 @@ export function findItem(state: CompositionState, id: string): CompItemRef | nul
   if (txt) return { kind: 'text', item: txt };
   const pnt = (state.paintObjects ?? []).find(p => p.id === id);
   if (pnt) return { kind: 'paint', item: pnt };
+  const pat = (state.patternObjects ?? []).find(p => p.id === id);
+  if (pat) return { kind: 'pattern', item: pat };
   return null;
 }
 
@@ -597,7 +601,7 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
   {
     kind: 'figure',
     matchesId: (id) =>
-      !id.startsWith('svg_') && !id.startsWith('img_') && !id.startsWith('txt_') && !id.startsWith('pnt_'),
+      !id.startsWith('svg_') && !id.startsWith('img_') && !id.startsWith('txt_') && !id.startsWith('pnt_') && !id.startsWith('pat_'),
     getArray: (s) => s.figures,
     setArray: (s, arr) => ({ ...s, figures: arr as CompositionFigure[] }),
     cloneItem: (item) => {
@@ -758,6 +762,37 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         ...p,
         id: newId,
         tiles: [...p.tiles],
+        cellX: p.cellX + dx,
+        cellY: p.cellY + dy,
+        localCellX: p.localCellX !== undefined ? p.localCellX + dx : undefined,
+        localCellY: p.localCellY !== undefined ? p.localCellY + dy : undefined,
+        identityCellX: p.identityCellX !== undefined ? p.identityCellX + dx : undefined,
+        identityCellY: p.identityCellY !== undefined ? p.identityCellY + dy : undefined,
+        name: p.name ? p.name + ' copy' : undefined,
+        groupId: newGroupId,
+        locked: false,
+      } as SceneObjectBase;
+    },
+  },
+  {
+    kind: 'pattern',
+    matchesId: (id) => id.startsWith('pat_'),
+    getArray: (s) => s.patternObjects ?? [],
+    setArray: (s, arr) => ({ ...s, patternObjects: arr as PatternObject[] }),
+    // Cells are immutable-by-convention (every edit swaps the array), so a
+    // snapshot only needs its own cells array.
+    cloneItem: (item) => {
+      const p = item as PatternObject;
+      return { ...p, cells: [...p.cells], ...(p.symmetry ? { symmetry: { ...p.symmetry } } : null) } as SceneObjectBase;
+    },
+    mintId: mintPatternObjectId,
+    cloneWithOffset: (item, dx, dy, newId, newGroupId) => {
+      const p = item as PatternObject;
+      return {
+        ...p,
+        id: newId,
+        cells: [...p.cells],
+        ...(p.symmetry ? { symmetry: { ...p.symmetry } } : null),
         cellX: p.cellX + dx,
         cellY: p.cellY + dy,
         localCellX: p.localCellX !== undefined ? p.localCellX + dx : undefined,
@@ -964,6 +999,7 @@ export function computeAliveGroupIds(
   images: readonly { groupId?: string }[],
   texts: readonly { groupId?: string }[],
   paints: readonly { groupId?: string }[] = [],
+  patterns: readonly { groupId?: string }[] = [],
 ): Set<string> {
   const byId = new Map(groups.map((g) => [g.id, g]));
   const alive = new Set<string>();
@@ -979,6 +1015,7 @@ export function computeAliveGroupIds(
   for (const i of images) markChain(i.groupId);
   for (const t of texts) markChain(t.groupId);
   for (const p of paints) markChain(p.groupId);
+  for (const p of patterns) markChain(p.groupId);
   return alive;
 }
 
@@ -994,6 +1031,7 @@ export function pruneEmptyGroups(state: CompositionState): CompositionState {
     state.images ?? [],
     state.texts ?? [],
     state.paintObjects ?? [],
+    state.patternObjects ?? [],
   );
   if (alive.size === state.groups.length) return state;
   return { ...state, groups: state.groups.filter((g) => alive.has(g.id)) };
@@ -1017,6 +1055,7 @@ export function withGroupPruning(
     post.images ?? [],
     post.texts ?? [],
     post.paintObjects ?? [],
+    post.patternObjects ?? [],
   );
   const prunes: CompUndoOp[] = [];
   for (const g of post.groups) {
@@ -1080,7 +1119,7 @@ export function clearGroupLocals(item: any, kind: CompItemKind): void {
     item.rotation = undefined;
     item.mirrorH = undefined;
     item.mirrorV = undefined;
-  } else if (kind === 'image' || kind === 'text' || kind === 'paint') {
+  } else if (kind === 'image' || kind === 'text' || kind === 'paint' || kind === 'pattern') {
     item.identityCellX = undefined;
     item.identityCellY = undefined;
     item.identityCellWidth = undefined;
@@ -1108,6 +1147,7 @@ export function deriveSceneOrderFromKindArrays(state: {
   images?: readonly { id: string; groupId?: string }[];
   texts?: readonly { id: string; groupId?: string }[];
   paintObjects?: readonly { id: string; groupId?: string }[];
+  patternObjects?: readonly { id: string; groupId?: string }[];
 }): string[] {
   const order: string[] = [];
   for (const i of state.images ?? []) order.push(i.id);
@@ -1115,6 +1155,7 @@ export function deriveSceneOrderFromKindArrays(state: {
   for (const s of state.svgObjects) order.push(s.id);
   for (const t of state.texts ?? []) order.push(t.id);
   for (const p of state.paintObjects ?? []) order.push(p.id);
+  for (const p of state.patternObjects ?? []) order.push(p.id);
   return enforceGroupContiguity(order, gatherGroupMemberIds(state));
 }
 
@@ -1129,6 +1170,7 @@ export function repairSceneOrder(state: {
   images?: readonly { id: string; groupId?: string }[];
   texts?: readonly { id: string; groupId?: string }[];
   paintObjects?: readonly { id: string; groupId?: string }[];
+  patternObjects?: readonly { id: string; groupId?: string }[];
   sceneOrder: readonly string[];
 }): string[] {
   const present = new Set(state.sceneOrder);
@@ -1142,6 +1184,7 @@ export function repairSceneOrder(state: {
   append(state.svgObjects);
   append(state.texts);
   append(state.paintObjects);
+  append(state.patternObjects);
   return enforceGroupContiguity(repaired, gatherGroupMemberIds(state));
 }
 
@@ -1154,6 +1197,7 @@ function gatherGroupMemberIds(state: {
   images?: readonly { id: string; groupId?: string }[];
   texts?: readonly { id: string; groupId?: string }[];
   paintObjects?: readonly { id: string; groupId?: string }[];
+  patternObjects?: readonly { id: string; groupId?: string }[];
   groups?: readonly GroupNode[];
 }): Map<string, string[]> {
   // Pre-compute root for each group.
@@ -1176,6 +1220,7 @@ function gatherGroupMemberIds(state: {
   collect(state.svgObjects);
   if (state.images) collect(state.images);
   if (state.texts) collect(state.texts);
+  if (state.patternObjects) collect(state.patternObjects);
   return result;
 }
 
@@ -2216,6 +2261,7 @@ export function findSceneObjectAtCell(
   for (const i of state.images ?? []) lookup.set(i.id, { kind: 'image', node: i });
   for (const t of state.texts ?? []) lookup.set(t.id, { kind: 'text', node: t });
   for (const p of state.paintObjects ?? []) lookup.set(p.id, { kind: 'paint', node: p });
+  for (const p of state.patternObjects ?? []) lookup.set(p.id, { kind: 'pattern', node: p });
 
   // Zoom-dependent tolerance for SVG path hit testing (squared).
   const toleranceCells = computeHitToleranceCells(state.viewport, state.camera);
@@ -2307,7 +2353,7 @@ export function findSceneObjectAtCell(
       if (paintObjectAlphaHitTest(node, hx, hy, toleranceCells)) return { kind, id };
       continue;
     }
-    if (kind !== 'svg') return { kind, id };  // figure/image/text: bbox is definitive
+    if (kind !== 'svg') return { kind, id };  // figure/image/text/pattern: bbox is definitive
 
     // SVG: tiled objects fill their region, so bbox is definitive.
     if (node.tileMode === 'repeat') return { kind, id };
@@ -2524,6 +2570,7 @@ export function allDescendantMemberIds(state: CompositionState, groupId: string)
     ...(state.images ?? []).filter(i => i.groupId && groupSet.has(i.groupId)).map(i => i.id),
     ...(state.texts ?? []).filter(t => t.groupId && groupSet.has(t.groupId)).map(t => t.id),
     ...(state.paintObjects ?? []).filter(p => p.groupId && groupSet.has(p.groupId)).map(p => p.id),
+    ...(state.patternObjects ?? []).filter(p => p.groupId && groupSet.has(p.groupId)).map(p => p.id),
   ];
 }
 
@@ -2789,7 +2836,14 @@ export function materializeGroupMembers(state: CompositionState, groupId: string
     changed = true;
     return next;
   });
-  let next = changed ? { ...state, figures, svgObjects, images, texts, paintObjects: paints } : state;
+  const statePatterns: PatternObject[] = state.patternObjects ?? [];
+  const patterns = statePatterns.map((p) => {
+    const next = materializeBboxMember(p, chain, groupId);
+    if (next === null) return p;
+    changed = true;
+    return next;
+  });
+  let next = changed ? { ...state, figures, svgObjects, images, texts, paintObjects: paints, patternObjects: patterns } : state;
   // Recurse into child groups so their members' world coords also reflect
   // any ancestor transform change.
   for (const child of next.groups) {
@@ -2985,6 +3039,7 @@ function setLeafGroupId(
     images: (state.images ?? []).map((i) => (i.id !== id ? i : toTop ? { ...i, ...clearBbox } : { ...i, groupId })),
     texts: (state.texts ?? []).map((t) => (t.id !== id ? t : toTop ? { ...t, ...clearBbox } : { ...t, groupId })),
     paintObjects: (state.paintObjects ?? []).map((p) => (p.id !== id ? p : toTop ? { ...p, ...clearBbox } : { ...p, groupId })),
+    patternObjects: (state.patternObjects ?? []).map((p) => (p.id !== id ? p : toTop ? { ...p, ...clearBbox } : { ...p, groupId })),
   };
 }
 
@@ -3144,7 +3199,8 @@ function reconcileGroupLocalsForGroups(
   const images = reconcileBboxLocals(state.images ?? []);
   const texts = reconcileBboxLocals(state.texts ?? []);
   const paints = reconcileBboxLocals(state.paintObjects ?? []);
-  return changed ? { ...state, figures, svgObjects, images, texts, paintObjects: paints } : state;
+  const patterns = reconcileBboxLocals(state.patternObjects ?? []);
+  return changed ? { ...state, figures, svgObjects, images, texts, paintObjects: paints, patternObjects: patterns } : state;
 }
 
 /** Re-derive a figure member's world `cell*` (and tile dim if it tiles)
@@ -4129,7 +4185,23 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         const svgObjects = state.svgObjects.map(s => s.id === op.figureId ? { ...s, ...tileUpdate } : s);
         return { ...state, svgObjects };
       }
+      if (state.patternObjects?.some(p => p.id === op.figureId)) {
+        const patternObjects = state.patternObjects.map(p => p.id === op.figureId ? { ...p, ...tileUpdate } : p);
+        return { ...state, patternObjects };
+      }
       return state;
+    }
+    case 'editPatternCells': {
+      const patternObjects = (state.patternObjects ?? []).map(p =>
+        p.id === op.patternId ? applyPatternCellEdits(p, op.edits, 'apply') : p);
+      return { ...state, patternObjects };
+    }
+    case 'setPatternSettings': {
+      const patternObjects = (state.patternObjects ?? []).map(p =>
+        p.id === op.patternId
+          ? { ...p, symmetry: op.newSymmetry, allowBorderConnections: op.newAllowBorderConnections }
+          : p);
+      return { ...state, patternObjects };
     }
     case 'groupFigures': {
       const childGroupSet = new Set(op.childGroupIds ?? []);
@@ -4217,6 +4289,19 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           localCellHeight: p.cellHeight,
         };
       });
+      const patterns = (state.patternObjects ?? []).map((p) => {
+        if (!looseIdSet.has(p.id)) return p;
+        return {
+          ...p,
+          groupId: op.groupId,
+          preGroupName: p.name,
+          name: p.id === namedNodeId ? op.groupName : undefined,
+          localCellX: p.cellX,
+          localCellY: p.cellY,
+          localCellWidth: p.cellWidth,
+          localCellHeight: p.cellHeight,
+        };
+      });
       // Nest child groups by setting parentGroupId, saving their name.
       let groups: GroupNode[] = state.groups.map((g) => {
         if (!childGroupSet.has(g.id)) return g;
@@ -4231,7 +4316,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         ];
       }
       // Re-cluster members in sceneOrder so the new group is contiguous.
-      return reflowSceneOrderForGroups({ ...state, figures, svgObjects, images, texts, paintObjects: paints, groups });
+      return reflowSceneOrderForGroups({ ...state, figures, svgObjects, images, texts, paintObjects: paints, patternObjects: patterns, groups });
     }
     case 'ungroupFigures': {
       const ungroupNode = state.groups.find(g => g.id === op.groupId);
@@ -4344,6 +4429,25 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           mirrorV: undefined,
         } : p
       );
+      const patterns = (state.patternObjects ?? []).map((p) =>
+        p.groupId === op.groupId ? {
+          ...p,
+          groupId: undefined,
+          name: p.preGroupName,
+          preGroupName: undefined,
+          localCellX: undefined,
+          localCellY: undefined,
+          localCellWidth: undefined,
+          localCellHeight: undefined,
+          identityCellX: undefined,
+          identityCellY: undefined,
+          identityCellWidth: undefined,
+          identityCellHeight: undefined,
+          rotation: undefined,
+          mirrorH: undefined,
+          mirrorV: undefined,
+        } : p
+      );
       // Detach child groups from the parent and restore their names.
       let groups = state.groups.map((g) => {
         if (!childGroupSet.has(g.id)) return g;
@@ -4357,7 +4461,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       // (e.g. on move) recomputes world from stale locals through the
       // shortened chain, producing wrong positions. We target only the
       // affected groups to avoid perturbing unrelated items.
-      const result: CompositionState = { ...state, figures, svgObjects, images, texts, paintObjects: paints, groups };
+      const result: CompositionState = { ...state, figures, svgObjects, images, texts, paintObjects: paints, patternObjects: patterns, groups };
       if (childGroupSet.size === 0) return result;
       // Collect all group IDs that descend from the detached children.
       const affectedGroupIds = new Set<string>();
@@ -4614,6 +4718,8 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         ...(op.newTexts !== undefined ? { texts: op.newTexts } : {}),
         // Same contract for paint islands (v52+).
         ...(op.newPaints !== undefined ? { paintObjects: op.newPaints } : {}),
+        // …and for patterns (v54+).
+        ...(op.newPatterns !== undefined ? { patternObjects: op.newPatterns } : {}),
         renderGeneration: state.renderGeneration + 1,
       };
     case 'setText': {
@@ -4798,6 +4904,18 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         newCellX: op.oldCellX, newCellY: op.oldCellY,
         newCellWidth: op.oldCellWidth, newCellHeight: op.oldCellHeight,
       });
+    case 'editPatternCells': {
+      const patternObjects = (state.patternObjects ?? []).map(p =>
+        p.id === op.patternId ? applyPatternCellEdits(p, op.edits, 'revert') : p);
+      return { ...state, patternObjects };
+    }
+    case 'setPatternSettings':
+      return applyOp(state, {
+        op: 'setPatternSettings', patternId: op.patternId,
+        oldSymmetry: op.newSymmetry, newSymmetry: op.oldSymmetry,
+        oldAllowBorderConnections: op.newAllowBorderConnections,
+        newAllowBorderConnections: op.oldAllowBorderConnections,
+      });
     case 'groupFigures': {
       // Undo group: clear groupId, identity, locals, and restore original
       // names. Also remove the GroupNode and detach any child groups.
@@ -4918,13 +5036,33 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
           mirrorV: undefined,
         };
       });
+      const patterns = (state.patternObjects ?? []).map((p) => {
+        if (!idSet.has(p.id)) return p;
+        return {
+          ...p,
+          groupId: undefined,
+          name: op.oldNames[op.figureIds.indexOf(p.id)] ?? p.preGroupName,
+          preGroupName: undefined,
+          localCellX: undefined,
+          localCellY: undefined,
+          localCellWidth: undefined,
+          localCellHeight: undefined,
+          identityCellX: undefined,
+          identityCellY: undefined,
+          identityCellWidth: undefined,
+          identityCellHeight: undefined,
+          rotation: undefined,
+          mirrorH: undefined,
+          mirrorV: undefined,
+        };
+      });
       // Detach child groups (restore name from preGroupName, clear parentGroupId).
       let groups = state.groups.map((g) => {
         if (!childGroupSet.has(g.id)) return g;
         return { ...g, parentGroupId: undefined, name: g.preGroupName ?? g.name, preGroupName: undefined };
       });
       groups = groups.filter(g => g.id !== op.groupId);
-      const ungroupResult: CompositionState = { ...state, figures, svgObjects, images, texts, paintObjects: paints, groups };
+      const ungroupResult: CompositionState = { ...state, figures, svgObjects, images, texts, paintObjects: paints, patternObjects: patterns, groups };
       if (childGroupSet.size === 0) return ungroupResult;
       const affectedGroupIds = new Set<string>();
       for (const cid of childGroupSet) {
@@ -5007,6 +5145,7 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         images: byId(state.images ?? [], op.prevImages),
         texts: byId(state.texts ?? [], op.prevTexts),
         paintObjects: byId(state.paintObjects ?? [], op.prevPaints),
+        patternObjects: byId(state.patternObjects ?? [], op.prevPatterns),
         groups: byId(state.groups, op.prevGroups),
         sceneOrder: [...op.oldSceneOrder],
       };
@@ -5181,7 +5320,8 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         oldGroups: op.newGroups, newGroups: op.oldGroups,
         oldSceneOrder: op.newSceneOrder, newSceneOrder: op.oldSceneOrder,
         oldTexts: op.newTexts, newTexts: op.oldTexts,
-        oldPaints: op.newPaints, newPaints: op.oldPaints });
+        oldPaints: op.newPaints, newPaints: op.oldPaints,
+        oldPatterns: op.newPatterns, newPatterns: op.oldPatterns });
     case 'setText':
       return applyOp(state, { ...op,
         oldContent: op.newContent, newContent: op.oldContent,

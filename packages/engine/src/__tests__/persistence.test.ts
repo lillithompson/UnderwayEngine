@@ -1,7 +1,6 @@
-import { saveFileState, loadFileState, saveTilePrefs, loadTilePrefs, importFileData, exportFileData, FileMeta, duplicateCompositionData, saveClipBox, loadClipBox } from '../persistence';
-import { Layer, CellState, CellTransform, LAYER_PX, cellPx } from '../types';
-import { applyCellEdit } from '../cells';
-import { makeLayer } from './test-utils';
+import { saveFileState, loadFileState, importFileData, exportFileData, FileMeta, duplicateCompositionData, saveClipBox, loadClipBox } from '../persistence';
+import { Layer, CellState, LAYER_PX, cellPx } from '../types';
+import { makeLayer, setCellForTest } from './test-utils';
 import { clearBinaryCache } from '../binaryFormat';
 
 jest.mock('../bake', () => ({
@@ -61,8 +60,8 @@ describe('Persistence', () => {
   test('save and load rebuilds pixel data from cells', async () => {
     const layer = makeLayer('l1', 2, 0);
     const color: CellState = { type: 'color', r: 42, g: 128, b: 200, transform: { mirrorH: false, mirrorV: false, rotation: 0 } };
-    applyCellEdit(layer, 0, 0, color);
-    applyCellEdit(layer, 3, 5, color);
+    setCellForTest(layer, 0, 0, color);
+    setCellForTest(layer, 3, 5, color);
 
     await saveFileState('file1', [layer], 'l1');
     const loaded = await loadFileState('file1');
@@ -81,8 +80,8 @@ describe('Persistence', () => {
     const layer = makeLayer('l1', 2, 0);
     const color1: CellState = { type: 'color', r: 10, g: 20, b: 30, transform: { mirrorH: false, mirrorV: false, rotation: 0 } };
     const color2: CellState = { type: 'color', r: 100, g: 200, b: 255, transform: { mirrorH: true, mirrorV: false, rotation: 90 } };
-    applyCellEdit(layer, 0, 0, color1);
-    applyCellEdit(layer, 7, 7, color2);
+    setCellForTest(layer, 0, 0, color1);
+    setCellForTest(layer, 7, 7, color2);
 
     await saveFileState('file2', [layer], 'l1');
     const loaded = await loadFileState('file2');
@@ -98,8 +97,8 @@ describe('Persistence', () => {
     const layer1 = makeLayer('a', 2, 0);
     const layer2 = makeLayer('b', 1, 1);
     const color: CellState = { type: 'color', r: 50, g: 60, b: 70, transform: { mirrorH: false, mirrorV: false, rotation: 0 } };
-    applyCellEdit(layer1, 2, 2, color);
-    applyCellEdit(layer2, 5, 5, color);
+    setCellForTest(layer1, 2, 2, color);
+    setCellForTest(layer2, 5, 5, color);
 
     await saveFileState('file3', [layer1, layer2], 'b');
     const loaded = await loadFileState('file3');
@@ -122,7 +121,7 @@ describe('Persistence', () => {
   test('only stores metadata key, not per-layer pixel data', async () => {
     const layer = makeLayer('l1', 2, 0);
     const color: CellState = { type: 'color', r: 1, g: 2, b: 3, transform: { mirrorH: false, mirrorV: false, rotation: 0 } };
-    applyCellEdit(layer, 0, 0, color);
+    setCellForTest(layer, 0, 0, color);
 
     await saveFileState('file4', [layer], 'l1');
 
@@ -193,7 +192,7 @@ describe('Persistence', () => {
   test('load evicts byte cache so re-edits are not stale', async () => {
     const layer = makeLayer('l1', 2, 0);
     const red: CellState = { type: 'color', r: 255, g: 0, b: 0, transform: { mirrorH: false, mirrorV: false, rotation: 0 } };
-    applyCellEdit(layer, 0, 0, red);
+    setCellForTest(layer, 0, 0, red);
     // cellsGeneration is now 1 after one edit
     await saveFileState('cacheTest', [layer], 'l1');
 
@@ -205,7 +204,7 @@ describe('Persistence', () => {
 
     // Make 1 edit — generation goes back to 1, matching session 1's cached generation
     const blue: CellState = { type: 'color', r: 0, g: 0, b: 255, transform: { mirrorH: false, mirrorV: false, rotation: 0 } };
-    applyCellEdit(layer2, 0, 0, blue);
+    setCellForTest(layer2, 0, 0, blue);
 
     // Save — must NOT return stale (red) bytes
     await saveFileState('cacheTest', [layer2], 'l1');
@@ -352,26 +351,6 @@ describe('importFileData', () => {
   });
 });
 
-describe('TilePrefs Persistence', () => {
-  test('saveTilePrefs and loadTilePrefs round-trip', async () => {
-    const xform: CellTransform = { rotation: 90, mirrorH: true, mirrorV: false };
-    await saveTilePrefs({
-      favorites: ['sprite_a', 'sprite_b'],
-      transforms: { sprite_a: xform },
-    });
-
-    const loaded = await loadTilePrefs();
-    expect(loaded).not.toBeNull();
-    expect(loaded!.favorites).toEqual(['sprite_a', 'sprite_b']);
-    expect(loaded!.transforms.sprite_a).toEqual(xform);
-  });
-
-  test('loadTilePrefs returns null when no data saved', async () => {
-    const loaded = await loadTilePrefs();
-    expect(loaded).toBeNull();
-  });
-});
-
 describe('duplicateCompositionData', () => {
   beforeEach(() => {
     for (const key of Object.keys(storage)) delete storage[key];
@@ -414,7 +393,7 @@ describe('duplicateCompositionData', () => {
     // Source figure file: a single painted cell, persisted as binary.
     const layer = makeLayer('lA', 2, 0);
     const red: CellState = { type: 'color', r: 200, g: 10, b: 10, transform: { mirrorH: false, mirrorV: false, rotation: 0 } };
-    applyCellEdit(layer, 0, 0, red);
+    setCellForTest(layer, 0, 0, red);
     await saveFileState('src-fig-1', [layer], 'lA');
 
     // Register the figure in the global files list so name lookup succeeds.
@@ -458,7 +437,7 @@ describe('duplicateCompositionData', () => {
     // fresh bytes via saveFileState); the source figure must be unaffected.
     const editedLayer = makeLayer('lA', 2, 0);
     const blue: CellState = { type: 'color', r: 10, g: 20, b: 230, transform: { mirrorH: false, mirrorV: false, rotation: 0 } };
-    applyCellEdit(editedLayer, 1, 1, blue);
+    setCellForTest(editedLayer, 1, 1, blue);
     await saveFileState(dupA.fileId, [editedLayer], 'lA');
 
     const sourceLoaded = await loadFileState('src-fig-1');

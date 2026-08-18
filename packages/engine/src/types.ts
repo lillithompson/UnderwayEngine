@@ -7,7 +7,7 @@ export const LAYER_PX = 2048;
 /** Discriminator for scene-object kinds. Lives in types.ts so the undo
  *  op union can reference it without creating an import cycle with
  *  compositionOps.ts (which is where the per-kind adapters live). */
-export type CompItemKind = 'figure' | 'svg' | 'image' | 'text' | 'paint';
+export type CompItemKind = 'figure' | 'svg' | 'image' | 'text' | 'paint' | 'pattern';
 
 /** Grid level determines cell count: L0=32, L1=16, L2=8, L3=4, L4=2, L5=1, L6=0.5 */
 export type GridLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -130,29 +130,6 @@ export interface Layer {
   edgeCorner: CellState | null;
 }
 
-export type SelectionMode = 'rect' | 'path';
-
-export type ToolType = 'random' | 'erase' | 'sprite' | 'color' | 'select' | 'pattern' | 'draw' | 'clone';
-
-export type SelectionSubTool = 'move' | 'zoom' | 'rotate' | 'mirrorH' | 'mirrorV';
-
-export interface Selection {
-  startCellX: number;
-  startCellY: number;
-  endCellX: number;
-  endCellY: number;
-  level: GridLevel;
-}
-
-export interface MovePreview {
-  deltaCellX: number;
-  deltaCellY: number;
-}
-
-export interface RotatePreview {
-  rotation: 0 | 90 | 180 | 270;
-}
-
 export const COLOR_PALETTE: readonly [number, number, number][] = [
   [255, 255, 255], // #FFFFFF (white — default active color)
   [244,  63,  94], // #F43F5E
@@ -169,24 +146,6 @@ export const MAX_PALETTE_SIZE = 50;
 
 export function getPaletteColor(index: number): [number, number, number] {
   return COLOR_PALETTE[index % COLOR_PALETTE.length];
-}
-
-export interface Tool {
-  type: ToolType;
-  /** For color tool: index into COLOR_PALETTE */
-  colorIndex?: number;
-  /** For sprite tool: which sprite to stamp */
-  spriteId?: string;
-  /** For sprite tool: rotation in degrees */
-  rotation?: 0 | 90 | 180 | 270;
-  /** For sprite tool: horizontal mirror */
-  mirrorH?: boolean;
-  /** For sprite tool: vertical mirror */
-  mirrorV?: boolean;
-  /** Custom RGB from color picker (overrides colorIndex when present) */
-  customColorR?: number;
-  customColorG?: number;
-  customColorB?: number;
 }
 
 export interface Camera {
@@ -356,112 +315,6 @@ export function coalesceDirtyRects(layer: Layer): void {
   layer.dirtyRectCount = write + 1;
 }
 
-export interface PatternEntry {
-  level: GridLevel;
-  pxOffX: number;
-  pxOffY: number;
-  state: CellState; // non-null
-}
-
-export interface Pattern {
-  id: string;
-  name: string;
-  coarsestLevel: GridLevel;
-  pxWidth: number;
-  pxHeight: number;
-  entries: PatternEntry[];
-  thumbnail?: string;
-}
-
-export interface EditorState {
-  fileConfig: FileConfig;
-  layers: Layer[];
-  activeLayerId: string;
-  tool: Tool;
-  /** The active drawing tool, preserved across select/pattern mode switches */
-  drawTool: Tool;
-  camera: Camera;
-  viewport: Viewport;
-  /** Incremented on every state change to trigger re-render */
-  renderGeneration: number;
-  /** Incremented only when sprite atlases upgrade — used for thumbnail cache invalidation */
-  atlasGeneration: number;
-  /** Cell edits produced by the last APPLY_TOOL action */
-  lastCellEdits: CellEdit[];
-  /** Mirror drawing: horizontal axis (left/right) */
-  mirrorH: boolean;
-  /** Mirror drawing: vertical axis (top/bottom) */
-  mirrorV: boolean;
-  /** Rotate drawing: 4-fold rotational symmetry (each quadrant rotated 90°) */
-  mirrorRotate: boolean;
-  /** Quad symmetry: 4 internally-symmetric quadrants reflected to each other */
-  mirrorQuad: boolean;
-  /** Row symmetry: 4 quadrants, each with V-axis mirror only, reflected to all quadrants */
-  mirrorRow: boolean;
-  /** Column symmetry: 4 quadrants, each with H-axis mirror only, reflected to all quadrants */
-  mirrorCol: boolean;
-  /** Diagonal symmetry: main diagonal (top-left to bottom-right) */
-  mirrorDiag1: boolean;
-  /** Diagonal symmetry: anti-diagonal (top-right to bottom-left) */
-  mirrorDiag2: boolean;
-  /** Diagonal symmetry: both diagonals */
-  mirrorDiagBoth: boolean;
-  /** Star symmetry: 8-fold D4 (H + V + both diagonals + rotations) */
-  mirrorStar: boolean;
-  /** Current region selection */
-  selection: Selection | null;
-  /** Active sub-tool for selection mode */
-  selectionSubTool: SelectionSubTool | null;
-  /** Preview offset for move operation */
-  movePreview: MovePreview | null;
-  /** Preview for rotate operation */
-  rotatePreview: RotatePreview | null;
-  /** When true, selection ops affect active layer + finer layers; when false, only active layer */
-  deepEdit: boolean;
-  /** When true, selection move/rotate preserve source cells and write to destinations (copy instead of move) */
-  copySelection: boolean;
-  /** When true, selecting a layer automatically sets it as the highlighted layer */
-  autoHighlight: boolean;
-  /** Saved patterns */
-  patterns: Pattern[];
-  /** Currently selected pattern for painting */
-  activePatternId: string | null;
-  /** Rotation applied when painting with active pattern */
-  activePatternRotation: 0 | 90 | 180 | 270;
-  /** Origin cell for pattern tiling alignment */
-  patternOrigin: { cellX: number; cellY: number } | null;
-  /** Whether border/empty cells allow connections (true = unconstrained, false = forced 00000000) */
-  allowBorderConnections: boolean;
-  /** When true, random flood fill distributes across multiple resolution layers */
-  multiresFill: boolean;
-  /** Tile families excluded from random tool selection */
-  excludedFamilies: Set<string>;
-  /** Clone tool: visible-grid index of the source cell */
-  cloneSourceIndex: number | null;
-  /** Clone tool: visible-grid index of the currently sampled cell */
-  cloneSampleIndex: number | null;
-  /** Clone tool: visible-grid index of the anchor point */
-  cloneAnchorIndex: number | null;
-  /** Clone tool: visible-grid index of the paint cursor */
-  cloneCursorIndex: number | null;
-  /** Which selection sub-mode is active: rect (default) or path */
-  selectionMode: SelectionMode;
-  /** Flat cell indices (y * cellCount + x) at pathLevel for path selection */
-  pathIndices: Set<number>;
-  /** Resolution at which path indices are stored */
-  pathLevel: GridLevel;
-  /** Bumped when pathIndices changes, to avoid re-uploading GPU texture every frame */
-  pathGeneration: number;
-  /** Cached L0 expansion of pathIndices for GPU overlay */
-  pathL0Indices: Set<number> | null;
-  /** Whether a canvas resize drag is in progress */
-  resizingCanvas: boolean;
-  /** Active color RGB — applied as default tint when placing sprites */
-  activeColorR: number;
-  activeColorG: number;
-  activeColorB: number;
-}
-
 // ── Cell Metadata ─────────────────────────────────────────────────────
 
 export type CellTransform = {
@@ -498,49 +351,11 @@ export type CellState =
   | { type: 'color'; r: number; g: number; b: number; transform: CellTransform }
   | { type: 'sprite'; spriteId: string; transform: CellTransform; tintR?: number; tintG?: number; tintB?: number };
 
-export type CellEdit = {
-  layerId: string;
-  cellX: number;
-  cellY: number;
-  oldState: CellState;
-  newState: CellState;
-};
-
-export type LayerSnapshot = {
-  id: string;
-  name: string;
-  level: GridLevel;
-  visible: boolean;
-  opacity: number;
-  order: number;
-  shiftX: 0 | 0.5;
-  shiftY: 0 | 0.5;
-  locked: boolean;
-  cells: (CellState | null)[][];
-  edgeRowTop: (CellState | null)[] | null;
-  edgeColLeft: (CellState | null)[] | null;
-  edgeCorner: CellState | null;
-};
-
+/** A cell rewrite, as connectivity's reconcile sweep reports its fixes.
+ *  (The layered tile-editor undo model this union used to carry went with
+ *  that editor; the 'cell' variant is the one shape still produced.) */
 export type UndoOp =
-  | { op: 'cell'; layerId: string; cellX: number; cellY: number; oldState: CellState; newState: CellState }
-  | { op: 'addLayer'; layer: LayerSnapshot }
-  | { op: 'removeLayer'; layer: LayerSnapshot; index: number }
-  | { op: 'renameLayer'; layerId: string; oldName: string; newName: string }
-  | { op: 'reorderLayer'; layerId: string; oldOrder: number; newOrder: number }
-  | { op: 'toggleVisibility'; layerId: string; oldVisible: boolean }
-  | { op: 'setActiveLayer'; oldActiveId: string; newActiveId: string }
-  | { op: 'renameFile'; oldName: string; newName: string }
-  | { op: 'clearAll'; layerSnapshots: LayerSnapshot[] }
-  | { op: 'setShift'; layerId: string; oldShiftX: 0|0.5; oldShiftY: 0|0.5; newShiftX: 0|0.5; newShiftY: 0|0.5 }
-  | { op: 'toggleLock'; layerId: string; oldLocked: boolean }
-  | { op: 'clearLayer'; layerId: string; layerSnapshot: LayerSnapshot }
-  | { op: 'shrinkwrap'; oldWidthL0: number; oldHeightL0: number; newWidthL0: number; newHeightL0: number; oldOriginL0X: number; oldOriginL0Y: number; newOriginL0X: number; newOriginL0Y: number; layerCellsBefore: { layerId: string; cells: (CellState | null)[][] }[]; layerShiftsBefore?: { layerId: string; shiftX: 0 | 0.5; shiftY: 0 | 0.5 }[] }
-  | { op: 'resizeCanvas'; oldWidthL0: number; oldHeightL0: number; newWidthL0: number; newHeightL0: number; oldOriginL0X: number; oldOriginL0Y: number; newOriginL0X: number; newOriginL0Y: number; layerCellsBefore?: { layerId: string; cells: (CellState | null)[][] }[]; shiftL0X?: number; shiftL0Y?: number }
-  | { op: 'upscale'; oldWidthL0: number; oldHeightL0: number; newWidthL0: number; newHeightL0: number; oldOriginL0X: number; oldOriginL0Y: number; newOriginL0X: number; newOriginL0Y: number; oldClipBox: ClipBox | null; newClipBox: ClipBox | null; shiftL0X: number; shiftL0Y: number; layerSnapshotsBefore: LayerSnapshot[]; activeLayerIdBefore: string }
-  | { op: 'setClipBox'; oldClipBox: ClipBox | null; newClipBox: ClipBox | null };
-
-export type UndoEntry = UndoOp[];
+  | { op: 'cell'; layerId: string; cellX: number; cellY: number; oldState: CellState; newState: CellState };
 
 // ── Composition Types ────────────────────────────────────────────────
 
@@ -1261,6 +1076,104 @@ export interface PaintObject {
   contentH: number;
 }
 
+// ── Pattern objects (v54) ───────────────────────────────────────────
+
+/**
+ * Symmetry flags for pattern-cell painting. Structurally identical to
+ * paintMirror's MirrorFlags (defined here so types.ts stays import-free);
+ * exactly one mode is active at a time — the symmetry picker grid is
+ * exclusive. All-false = symmetry off.
+ */
+export interface PatternSymmetry {
+  mirrorH: boolean;
+  mirrorV: boolean;
+  mirrorRotate: boolean;
+  mirrorQuad: boolean;
+  mirrorRow: boolean;
+  mirrorCol: boolean;
+  mirrorDiag1: boolean;
+  mirrorDiag2: boolean;
+  mirrorDiagBoth: boolean;
+  mirrorStar: boolean;
+}
+
+export const PATTERN_SYMMETRY_OFF: PatternSymmetry = {
+  mirrorH: false, mirrorV: false, mirrorRotate: false, mirrorQuad: false,
+  mirrorRow: false, mirrorCol: false, mirrorDiag1: false, mirrorDiag2: false,
+  mirrorDiagBoth: false, mirrorStar: false,
+};
+
+/**
+ * A tile-pattern scene node (v54+): a single-resolution grid of tile cells
+ * (≤ 16×16) edited inline on the main canvas — no separate editor, no
+ * layers, no tile-file store. Cells live directly on the object; the
+ * renderer bakes them to SVG markup on edit (see patternObject.ts).
+ *
+ * Before any cell is filled the object renders as nothing (an empty
+ * rectangle with no fill and no border); hit testing is bbox-definitive
+ * regardless, so an empty pattern is still tappable/selectable.
+ */
+export interface PatternObject {
+  id: string;
+  name?: string;
+  /** World bbox. In repeat mode this is the repeating REGION; the intrinsic
+   *  tile size lives in tileWidthL0/tileHeightL0 (same model as SVGObject). */
+  cellX: number;
+  cellY: number;
+  cellWidth: number;
+  cellHeight: number;
+  /** Grid resolution — number of tile cells per axis, 1..16. Fixed at
+   *  creation from the dragged region. */
+  cols: number;
+  rows: number;
+  /** Row-major cell states, length cols*rows. CellState already includes
+   *  null (empty). Reuses the tile-editor cell model so connectivity and
+   *  the SVG bake operate on it unchanged. */
+  cells: CellState[];
+  /** Painting symmetry (the Symmetry properties bar). Undefined = off. */
+  symmetry?: PatternSymmetry;
+  /** Border-connection rule for connectivity (the Tools bar switch).
+   *  Undefined = true (borders may connect), matching the old editor. */
+  allowBorderConnections?: boolean;
+  /** When 'repeat', the cols×rows tile block repeats within the bbox
+   *  region. Same fields + semantics as SVGObject's tile mode so toggle /
+   *  resize / render logic is shared. */
+  tileMode?: 'repeat';
+  tileWidthL0?: number;
+  tileHeightL0?: number;
+  tileOffsetXL0?: number;
+  tileOffsetYL0?: number;
+  rotation?: 0 | 90 | 180 | 270;
+  /** Free rotation, degrees CW about the bbox center. See SVGObject.angleDeg. */
+  angleDeg?: number;
+  mirrorH?: boolean;
+  mirrorV?: boolean;
+  /** Whole-object render opacity in [0, 1]; undefined = opaque. */
+  opacity?: number;
+  /** Per-object stroke overrides — width / dash for the baked tile paths,
+   *  the same block SVGObject carries (the Stroke bar authors it). Always
+   *  seeded with an explicit world-cell `width` at creation: an authored
+   *  width renders through the same world-based formula in BOTH the flat
+   *  and the tiled (repeat) markup, so toggling repeat can never change
+   *  the drawn line weight. Undefined (older records) falls back to the
+   *  composition-wide strokeScale, exactly like an SVGObject. */
+  stroke?: SVGStroke;
+  locked?: boolean;
+  hidden?: boolean;
+  groupId?: string;
+  preGroupName?: string;
+  /** Pre-group-transform bbox; only set while groupId is set. */
+  localCellX?: number;
+  localCellY?: number;
+  localCellWidth?: number;
+  localCellHeight?: number;
+  /** Bbox at identity — same stabilization pattern as ImageObject. */
+  identityCellX?: number;
+  identityCellY?: number;
+  identityCellWidth?: number;
+  identityCellHeight?: number;
+}
+
 // ── Paint, effects, tint, text (v29 additions) ──────────────────────
 
 export interface GradientStop {
@@ -1563,6 +1476,12 @@ export interface CompositionState {
    */
   paintObjects?: PaintObject[];
   /**
+   * Tile-pattern scene nodes (v54+): single-resolution tile grids edited
+   * inline on the canvas. Optional so pre-pattern fixtures and loaders
+   * treat absent and empty the same, mirroring `images`/`texts`.
+   */
+  patternObjects?: PatternObject[];
+  /**
    * The in-progress line currently being drawn while `compTool === 'line'`.
    * On tool toggle-off, finalized into `svgObjects` if valid.
    */
@@ -1677,7 +1596,7 @@ export type CompUndoOp =
    *  spliced into sceneOrder at that index (clamped); otherwise it's
    *  appended to the front of paint. Revert: filter it out. */
   | { op: 'placeObject'; kind: CompItemKind;
-      item: CompositionFigure | SVGObject | ImageObject | TextObject | PaintObject;
+      item: CompositionFigure | SVGObject | ImageObject | TextObject | PaintObject | PatternObject;
       sceneOrderIndex?: number }
   /** Generic delete for any scene-object kind. Apply: filter the kind's
    *  array by id. `sceneOrderIndex` records the item's original position
@@ -1685,7 +1604,7 @@ export type CompUndoOp =
    *  Revert: append the captured item back into the kind's array at the
    *  recorded sceneOrder index. */
   | { op: 'removeObject'; kind: CompItemKind;
-      item: CompositionFigure | SVGObject | ImageObject | TextObject | PaintObject;
+      item: CompositionFigure | SVGObject | ImageObject | TextObject | PaintObject | PatternObject;
       sceneOrderIndex?: number }
   /** Generic lock toggle for any scene-object kind. Apply: set
    *  `item.locked = newValue` for the matching id in whichever array
@@ -1764,7 +1683,7 @@ export type CompUndoOp =
       newSceneOrder: string[]; oldSceneOrder: string[];
       prevFigures?: CompositionFigure[]; prevSVGs?: SVGObject[];
       prevImages?: ImageObject[]; prevTexts?: TextObject[]; prevGroups?: GroupNode[];
-      prevPaints?: PaintObject[] }
+      prevPaints?: PaintObject[]; prevPatterns?: PatternObject[] }
   | { op: 'renameGroup'; groupId: string; oldName: string; newName: string }
   /** Drop a GroupNode whose member set went empty. Emitted alongside
    *  removeObject ops by `buildRemoveObjectOps` so undo can restore the
@@ -1790,6 +1709,18 @@ export type CompUndoOp =
   | { op: 'cleanupLibrary'; removedFileIds: string[]; oldGroups: { id: string; name: string; fileIds: string[] }[] }
   // ── SVG ops ───────────────────────────────────────────────────────────
   | { op: 'createSVG'; svg: SVGObject }
+  /** Edit tile cells of a PatternObject. Apply: for each edit, set
+   *  `cells[index] = newState`. Revert: set `cells[index] = oldState`.
+   *  One op carries a whole stroke (or a reconcile/clear sweep) so it
+   *  round-trips as a single undo step. */
+  | { op: 'editPatternCells'; patternId: string;
+      edits: { index: number; oldState: CellState; newState: CellState }[] }
+  /** Change a PatternObject's editing settings (symmetry mode and/or the
+   *  border-connections rule). Full before/after snapshots of both fields;
+   *  `undefined` symmetry = off, `undefined` allowBorderConnections = true. */
+  | { op: 'setPatternSettings'; patternId: string;
+      oldSymmetry: PatternSymmetry | undefined; newSymmetry: PatternSymmetry | undefined;
+      oldAllowBorderConnections: boolean | undefined; newAllowBorderConnections: boolean | undefined }
   | { op: 'editSVGSegments'; svgId: string;
       oldSegments: PathSegment[]; newSegments: PathSegment[];
       /** null = clear localSegments; undefined = don't touch; array = set */
@@ -1931,7 +1862,9 @@ export type CompUndoOp =
       // Text collections (v29+); optional so pre-text entries replay.
       oldTexts?: TextObject[]; newTexts?: TextObject[];
       // Paint island collections (v52+); optional so older entries replay.
-      oldPaints?: PaintObject[]; newPaints?: PaintObject[] }
+      oldPaints?: PaintObject[]; newPaints?: PaintObject[];
+      // Pattern collections (v54+); optional on the same rule.
+      oldPatterns?: PatternObject[]; newPatterns?: PatternObject[] }
   /**
    * Committed text-content change (v29+). The editor's hidden textarea
    * commits on blur/confirm; the engine never sees per-keystroke edits.

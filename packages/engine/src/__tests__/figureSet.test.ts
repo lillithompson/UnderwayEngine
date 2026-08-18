@@ -1,7 +1,6 @@
 import { saveFileState, loadFileState, exportFileData, importFileData } from '../persistence';
 import { CellState } from '../types';
-import { applyCellEdit } from '../cells';
-import { makeLayer } from './test-utils';
+import { makeLayer, setCellForTest } from './test-utils';
 import { clearBinaryCache } from '../binaryFormat';
 
 // Mock storage
@@ -52,7 +51,7 @@ describe('Figure Set (.facet)', () => {
 
   async function createTestFile(fileId: string, name: string): Promise<void> {
     const layer = makeLayer('l1', 2, 0);
-    applyCellEdit(layer, 0, 0, color);
+    setCellForTest(layer, 0, 0, color);
     await saveFileState(fileId, [layer], 'l1');
     // Add to files list
     const raw = storage['files'];
@@ -141,7 +140,7 @@ describe('Figure Set (.facet)', () => {
 
   test('round-trip preserves clipBox set on the source figure', async () => {
     const layer = makeLayer('l1', 2, 0);
-    applyCellEdit(layer, 0, 0, color);
+    setCellForTest(layer, 0, 0, color);
     const clipBox = { clipL0X: 4, clipL0Y: 8, clipL0W: 16, clipL0H: 12 };
     await saveFileState('f_clip', [layer], 'l1', 32, 32, 0, 0, clipBox);
     const filesRaw = storage['files'];

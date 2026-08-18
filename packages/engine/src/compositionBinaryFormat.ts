@@ -1,4 +1,4 @@
-﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, RGBColor, TextObject, TextStyle, TextAlign, TextVAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
+﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CellState, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, PatternObject, PatternSymmetry, RGBColor, TextObject, TextStyle, TextAlign, TextVAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
 import { normalizeCanvasPaintIslands } from './canvasPaint';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
@@ -414,7 +414,29 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      off the middle of its card onto the top edge the moment the page was
 //      reopened. Older files set no bit and read back unchanged (absent),
 //      which is what they have always meant.
-const FORMAT_VERSION = 53;
+// v54: PATTERN OBJECTS section (the inline tile-pattern scene nodes that
+//      replace the retired pattern-studio SVGObject bakes). New final
+//      section after paint objects: u16 count, then per object:
+//      idIdx u16; flags u8 (0x01 mirrorH, 0x02 mirrorV, 0x04 locked,
+//      0x08 hidden, 0x10 hasName, 0x20 hasGroupId, 0x40 hasPreGroupName,
+//      0x80 hasOpacity); flags2 u8 (0x01 hasLocalBbox, 0x02 hasIdentityBbox,
+//      0x04 hasAngleDeg, 0x08 hasSymmetry, rotation 2 bits at 0x30);
+//      flags3 u8 (0x01 repeat — tileW/H f32 pair follows the bbox blocks,
+//      0x02 hasTileOffsetX, 0x04 hasTileOffsetY, 0x08 borderConnectionsOff,
+//      0x10 hasStroke — the v35 SVG stroke payload follows the tile fields);
+//      conditional nameIdx/groupIdIdx/preGroupNameIdx u16 each; bbox 4×f32
+//      (world cells); conditional local bbox 4×f32 + identity bbox 4×f32;
+//      conditional opacity f32 + angleDeg f32; conditional tileWidthL0 f32 +
+//      tileHeightL0 f32 + tileOffsetXL0 f32 + tileOffsetYL0 f32; conditional
+//      stroke payload (writeSVGStroke); cols u8 +
+//      rows u8; conditional symmetry u16 (10-bit flag set, bit order
+//      H,V,Rotate,Quad,Row,Col,Diag1,Diag2,DiagBoth,Star); u16 filledCount,
+//      then per filled cell: index u16; cellFlags u8 (rotation 2 bits at
+//      0x03, 0x04 mirrorH, 0x08 mirrorV, 0x10 isColor, 0x20 hasTint);
+//      sprite cells: spriteIdIdx u16 (+ r,g,b u8×3 when hasTint);
+//      color cells: r,g,b u8×3. Older readers never see the section
+//      (version-gated); older files simply have no patterns.
+const FORMAT_VERSION = 54;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -479,6 +501,9 @@ export interface CompositionBundle {
   /** Paint island scene nodes (v52+). Undefined/empty for older bundles;
    *  v50/v51 files' retired global canvasPaint layer is dropped on read. */
   paintObjects?: PaintObject[];
+  /** Inline tile-pattern scene nodes (v54+). Undefined/empty for older
+   *  bundles. */
+  patternObjects?: PatternObject[];
 }
 
 export interface DeserializedComposition {
@@ -617,6 +642,20 @@ function buildStringTable(
       add(p.name);
       add(p.groupId);
       add(p.preGroupName);
+    }
+  }
+
+  // Pattern object strings (v54+) — sprite ids ride the string table so a
+  // tile used across many cells is stored once.
+  if (bundle.patternObjects) {
+    for (const p of bundle.patternObjects) {
+      add(p.id);
+      add(p.name);
+      add(p.groupId);
+      add(p.preGroupName);
+      for (const cell of p.cells) {
+        if (cell?.type === 'sprite') add(cell.spriteId);
+      }
     }
   }
 
@@ -2719,7 +2758,7 @@ export function serializeComposition(
   const rawGroups = bundle.groups ?? [];
   const images = bundle.images ?? [];
   const texts = bundle.texts ?? [];
-  const aliveGroupIds = computeAliveGroupIds(rawGroups, bundle.figures, svgObjects, images, texts, bundle.paintObjects ?? []);
+  const aliveGroupIds = computeAliveGroupIds(rawGroups, bundle.figures, svgObjects, images, texts, bundle.paintObjects ?? [], bundle.patternObjects ?? []);
   const groups = aliveGroupIds.size === rawGroups.length
     ? rawGroups
     : rawGroups.filter((g) => aliveGroupIds.has(g.id));
@@ -2799,10 +2838,15 @@ export function serializeComposition(
   // layer is retired (see the v52 changelog).
   totalSize += 2;
 
-  // Paint island scene nodes (v52+). Final section of the file.
+  // Paint island scene nodes (v52+).
   const paints = bundle.paintObjects ?? [];
   totalSize += 2; // paintCount
   for (const p of paints) totalSize += paintObjectBinarySize(p);
+
+  // Pattern objects (v54+). Final section of the file.
+  const patterns = bundle.patternObjects ?? [];
+  totalSize += 2; // patternCount
+  for (const p of patterns) totalSize += patternObjectBinarySize(p);
 
   // â”€â”€ Pass 2: write â”€â”€
 
@@ -3106,7 +3150,155 @@ export function serializeComposition(
     }
   }
 
+  // Pattern objects (v54+)
+  view.setUint16(pos, patterns.length, true); pos += 2;
+  for (const p of patterns) {
+    view.setUint16(pos, indexOf.get(p.id) ?? 0, true); pos += 2;
+    let flags = 0;
+    if (p.mirrorH) flags |= 0x01;
+    if (p.mirrorV) flags |= 0x02;
+    if (p.locked) flags |= 0x04;
+    if (p.hidden) flags |= 0x08;
+    if (p.name != null) flags |= 0x10;
+    if (p.groupId != null) flags |= 0x20;
+    if (p.preGroupName != null) flags |= 0x40;
+    if (p.opacity != null) flags |= 0x80;
+    out[pos++] = flags;
+    let flags2 = 0;
+    if (p.localCellX != null) flags2 |= 0x01;
+    if (p.identityCellX != null) flags2 |= 0x02;
+    if (p.angleDeg) flags2 |= 0x04;
+    if (p.symmetry != null) flags2 |= 0x08;
+    flags2 |= (ROTATION_TO_BITS[p.rotation ?? 0] & 0x03) << 4;
+    out[pos++] = flags2;
+    let flags3 = 0;
+    if (p.tileMode === 'repeat') flags3 |= 0x01;
+    if (p.tileOffsetXL0 != null) flags3 |= 0x02;
+    if (p.tileOffsetYL0 != null) flags3 |= 0x04;
+    if (p.allowBorderConnections === false) flags3 |= 0x08;
+    if (hasSVGStroke(p.stroke)) flags3 |= 0x10;
+    out[pos++] = flags3;
+    if (p.name != null) { view.setUint16(pos, indexOf.get(p.name) ?? 0, true); pos += 2; }
+    if (p.groupId != null) { view.setUint16(pos, indexOf.get(p.groupId) ?? 0, true); pos += 2; }
+    if (p.preGroupName != null) { view.setUint16(pos, indexOf.get(p.preGroupName) ?? 0, true); pos += 2; }
+    view.setFloat32(pos, p.cellX, true); pos += 4;
+    view.setFloat32(pos, p.cellY, true); pos += 4;
+    view.setFloat32(pos, p.cellWidth, true); pos += 4;
+    view.setFloat32(pos, p.cellHeight, true); pos += 4;
+    if (p.localCellX != null) {
+      view.setFloat32(pos, p.localCellX, true); pos += 4;
+      view.setFloat32(pos, p.localCellY ?? 0, true); pos += 4;
+      view.setFloat32(pos, p.localCellWidth ?? 0, true); pos += 4;
+      view.setFloat32(pos, p.localCellHeight ?? 0, true); pos += 4;
+    }
+    if (p.identityCellX != null) {
+      view.setFloat32(pos, p.identityCellX, true); pos += 4;
+      view.setFloat32(pos, p.identityCellY ?? 0, true); pos += 4;
+      view.setFloat32(pos, p.identityCellWidth ?? 0, true); pos += 4;
+      view.setFloat32(pos, p.identityCellHeight ?? 0, true); pos += 4;
+    }
+    if (p.opacity != null) { view.setFloat32(pos, p.opacity, true); pos += 4; }
+    if (p.angleDeg) { view.setFloat32(pos, p.angleDeg, true); pos += 4; }
+    if (p.tileMode === 'repeat') {
+      view.setFloat32(pos, p.tileWidthL0 ?? p.cellWidth, true); pos += 4;
+      view.setFloat32(pos, p.tileHeightL0 ?? p.cellHeight, true); pos += 4;
+    }
+    if (p.tileOffsetXL0 != null) { view.setFloat32(pos, p.tileOffsetXL0, true); pos += 4; }
+    if (p.tileOffsetYL0 != null) { view.setFloat32(pos, p.tileOffsetYL0, true); pos += 4; }
+    if (hasSVGStroke(p.stroke)) pos = writeSVGStroke(view, out, pos, p.stroke!);
+    out[pos++] = p.cols;
+    out[pos++] = p.rows;
+    if (p.symmetry != null) {
+      view.setUint16(pos, packPatternSymmetry(p.symmetry), true); pos += 2;
+    }
+    const filled: { index: number; cell: NonNullable<CellState> }[] = [];
+    for (let i = 0; i < p.cells.length; i++) {
+      const cell = p.cells[i];
+      if (cell != null) filled.push({ index: i, cell });
+    }
+    view.setUint16(pos, filled.length, true); pos += 2;
+    for (const { index, cell } of filled) {
+      view.setUint16(pos, index, true); pos += 2;
+      let cellFlags = ROTATION_TO_BITS[cell.transform.rotation] & 0x03;
+      if (cell.transform.mirrorH) cellFlags |= 0x04;
+      if (cell.transform.mirrorV) cellFlags |= 0x08;
+      const hasTint = cell.type === 'sprite' && cell.tintR != null;
+      if (cell.type === 'color') cellFlags |= 0x10;
+      if (hasTint) cellFlags |= 0x20;
+      out[pos++] = cellFlags;
+      if (cell.type === 'sprite') {
+        view.setUint16(pos, indexOf.get(cell.spriteId) ?? 0, true); pos += 2;
+        if (hasTint) {
+          out[pos++] = cell.tintR ?? 0;
+          out[pos++] = cell.tintG ?? 0;
+          out[pos++] = cell.tintB ?? 0;
+        }
+      } else {
+        out[pos++] = cell.r;
+        out[pos++] = cell.g;
+        out[pos++] = cell.b;
+      }
+    }
+  }
+
   return out;
+}
+
+// ── Pattern object encoding helpers ─────────────────────────────────
+
+/** Bit order matches the v54 changelog: H,V,Rotate,Quad,Row,Col,Diag1,
+ *  Diag2,DiagBoth,Star (bit 0 → bit 9). */
+function packPatternSymmetry(s: PatternSymmetry): number {
+  return (s.mirrorH ? 0x001 : 0)
+    | (s.mirrorV ? 0x002 : 0)
+    | (s.mirrorRotate ? 0x004 : 0)
+    | (s.mirrorQuad ? 0x008 : 0)
+    | (s.mirrorRow ? 0x010 : 0)
+    | (s.mirrorCol ? 0x020 : 0)
+    | (s.mirrorDiag1 ? 0x040 : 0)
+    | (s.mirrorDiag2 ? 0x080 : 0)
+    | (s.mirrorDiagBoth ? 0x100 : 0)
+    | (s.mirrorStar ? 0x200 : 0);
+}
+
+function unpackPatternSymmetry(bits: number): PatternSymmetry {
+  return {
+    mirrorH: (bits & 0x001) !== 0,
+    mirrorV: (bits & 0x002) !== 0,
+    mirrorRotate: (bits & 0x004) !== 0,
+    mirrorQuad: (bits & 0x008) !== 0,
+    mirrorRow: (bits & 0x010) !== 0,
+    mirrorCol: (bits & 0x020) !== 0,
+    mirrorDiag1: (bits & 0x040) !== 0,
+    mirrorDiag2: (bits & 0x080) !== 0,
+    mirrorDiagBoth: (bits & 0x100) !== 0,
+    mirrorStar: (bits & 0x200) !== 0,
+  };
+}
+
+function patternObjectBinarySize(p: PatternObject): number {
+  // idIdx(2) + flags(1) + flags2(1) + flags3(1) + bbox(16) + cols/rows(2)
+  let size = 2 + 1 + 1 + 1 + 16 + 2;
+  if (p.name != null) size += 2;
+  if (p.groupId != null) size += 2;
+  if (p.preGroupName != null) size += 2;
+  if (p.localCellX != null) size += 16;
+  if (p.identityCellX != null) size += 16;
+  if (p.opacity != null) size += 4;
+  if (p.angleDeg) size += 4;
+  if (p.tileMode === 'repeat') size += 8;
+  if (p.tileOffsetXL0 != null) size += 4;
+  if (p.tileOffsetYL0 != null) size += 4;
+  if (hasSVGStroke(p.stroke)) size += strokeBinarySize(p.stroke!);
+  if (p.symmetry != null) size += 2;
+  size += 2; // filledCount
+  for (const cell of p.cells) {
+    if (cell == null) continue;
+    size += 3; // index(2) + cellFlags(1)
+    if (cell.type === 'sprite') size += 2 + (cell.tintR != null ? 3 : 0);
+    else size += 3;
+  }
+  return size;
 }
 
 // ── Paint island size estimation ────────────────────────────────────
@@ -3596,11 +3788,96 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     }
   }
 
+  // Pattern objects (v54+). Final section of the file.
+  const patternObjects: PatternObject[] = [];
+  if (version >= 54 && pos < data.byteLength) {
+    const patternCount = view.getUint16(pos, true); pos += 2;
+    for (let pi = 0; pi < patternCount; pi++) {
+      const id = strings[view.getUint16(pos, true)]; pos += 2;
+      const flags = data[pos++];
+      const flags2 = data[pos++];
+      const flags3 = data[pos++];
+      const p: PatternObject = {
+        id,
+        cellX: 0, cellY: 0, cellWidth: 0, cellHeight: 0,
+        cols: 1, rows: 1, cells: [],
+      };
+      if (flags & 0x01) p.mirrorH = true;
+      if (flags & 0x02) p.mirrorV = true;
+      if (flags & 0x04) p.locked = true;
+      if (flags & 0x08) p.hidden = true;
+      const rot = BITS_TO_ROTATION[(flags2 >> 4) & 0x03];
+      if (rot !== 0) p.rotation = rot;
+      if (flags & 0x10) { p.name = strings[view.getUint16(pos, true)]; pos += 2; }
+      if (flags & 0x20) { p.groupId = strings[view.getUint16(pos, true)]; pos += 2; }
+      if (flags & 0x40) { p.preGroupName = strings[view.getUint16(pos, true)]; pos += 2; }
+      p.cellX = view.getFloat32(pos, true); pos += 4;
+      p.cellY = view.getFloat32(pos, true); pos += 4;
+      p.cellWidth = view.getFloat32(pos, true); pos += 4;
+      p.cellHeight = view.getFloat32(pos, true); pos += 4;
+      if (flags2 & 0x01) {
+        p.localCellX = view.getFloat32(pos, true); pos += 4;
+        p.localCellY = view.getFloat32(pos, true); pos += 4;
+        p.localCellWidth = view.getFloat32(pos, true); pos += 4;
+        p.localCellHeight = view.getFloat32(pos, true); pos += 4;
+      }
+      if (flags2 & 0x02) {
+        p.identityCellX = view.getFloat32(pos, true); pos += 4;
+        p.identityCellY = view.getFloat32(pos, true); pos += 4;
+        p.identityCellWidth = view.getFloat32(pos, true); pos += 4;
+        p.identityCellHeight = view.getFloat32(pos, true); pos += 4;
+      }
+      if (flags & 0x80) { p.opacity = view.getFloat32(pos, true); pos += 4; }
+      if (flags2 & 0x04) { p.angleDeg = view.getFloat32(pos, true); pos += 4; }
+      if (flags3 & 0x01) {
+        p.tileMode = 'repeat';
+        p.tileWidthL0 = view.getFloat32(pos, true); pos += 4;
+        p.tileHeightL0 = view.getFloat32(pos, true); pos += 4;
+      }
+      if (flags3 & 0x02) { p.tileOffsetXL0 = view.getFloat32(pos, true); pos += 4; }
+      if (flags3 & 0x04) { p.tileOffsetYL0 = view.getFloat32(pos, true); pos += 4; }
+      if (flags3 & 0x08) p.allowBorderConnections = false;
+      if (flags3 & 0x10) {
+        const s = readSVGStroke(view, data, pos);
+        p.stroke = s.stroke;
+        pos = s.pos;
+      }
+      p.cols = data[pos++];
+      p.rows = data[pos++];
+      if (flags2 & 0x08) {
+        p.symmetry = unpackPatternSymmetry(view.getUint16(pos, true)); pos += 2;
+      }
+      p.cells = new Array(p.cols * p.rows).fill(null);
+      const filledCount = view.getUint16(pos, true); pos += 2;
+      for (let ci = 0; ci < filledCount; ci++) {
+        const index = view.getUint16(pos, true); pos += 2;
+        const cellFlags = data[pos++];
+        const transform = {
+          rotation: BITS_TO_ROTATION[cellFlags & 0x03],
+          mirrorH: (cellFlags & 0x04) !== 0,
+          mirrorV: (cellFlags & 0x08) !== 0,
+        };
+        let cell: CellState;
+        if (cellFlags & 0x10) {
+          cell = { type: 'color', r: data[pos++], g: data[pos++], b: data[pos++], transform };
+        } else {
+          const spriteId = strings[view.getUint16(pos, true)]; pos += 2;
+          cell = { type: 'sprite', spriteId, transform };
+          if (cellFlags & 0x20) {
+            cell = { ...cell, tintR: data[pos++], tintG: data[pos++], tintB: data[pos++] };
+          }
+        }
+        if (index < p.cells.length) p.cells[index] = cell;
+      }
+      patternObjects.push(p);
+    }
+  }
+
   // Drop GroupNodes whose subtree carries no surviving leaf members.
   // Older save paths could leave orphans behind when the last member of a
   // group was deleted â€” filter them here so the Scene Outline count and
   // the dev-mode object count agree from the moment the file loads.
-  const aliveGroupIds = computeAliveGroupIds(groups, figures, svgObjects, images, texts, paintObjects);
+  const aliveGroupIds = computeAliveGroupIds(groups, figures, svgObjects, images, texts, paintObjects, patternObjects);
   const prunedGroups = aliveGroupIds.size === groups.length
     ? groups
     : groups.filter((g) => aliveGroupIds.has(g.id));
@@ -3623,6 +3900,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       texts,
       background,
       paintObjects: paintObjects.length > 0 ? paintObjects : undefined,
+      patternObjects: patternObjects.length > 0 ? patternObjects : undefined,
     },
     embeddedFiles,
   };

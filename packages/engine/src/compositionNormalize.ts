@@ -5,6 +5,7 @@ import {
   Paint,
   PaintObject,
   PathSegment,
+  PatternObject,
   SVGObject,
   SVGSubpath,
   TextObject,
@@ -74,6 +75,7 @@ export function computeContentBBox(
   texts?: TextObject[],
   groups?: readonly GroupNode[],
   paints?: PaintObject[],
+  patterns?: PatternObject[],
 ): ContentBBox | null {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   let any = false;
@@ -153,6 +155,17 @@ export function computeContentBBox(
 
   if (paints) {
     for (const p of paints) {
+      if (p.hidden || inHiddenGroup(p.groupId) || frameOf(p.groupId)) continue;
+      any = true;
+      if (p.cellX < minX) minX = p.cellX;
+      if (p.cellY < minY) minY = p.cellY;
+      if (p.cellX + p.cellWidth > maxX) maxX = p.cellX + p.cellWidth;
+      if (p.cellY + p.cellHeight > maxY) maxY = p.cellY + p.cellHeight;
+    }
+  }
+
+  if (patterns) {
+    for (const p of patterns) {
       if (p.hidden || inHiddenGroup(p.groupId) || frameOf(p.groupId)) continue;
       any = true;
       if (p.cellX < minX) minX = p.cellX;
@@ -309,6 +322,19 @@ function transformBboxNode<T extends {
   return out;
 }
 
+/** Pattern node transform: the bbox rides transformBboxNode; the repeat
+ *  tile size / offset are world-cell lengths, so they scale like the SVG
+ *  tile fields. The cell grid itself is object-local (cols/rows/cells)
+ *  and passes through untouched. */
+function transformPatternObject(tr: AffineTransform, p: PatternObject): PatternObject {
+  const out = transformBboxNode(tr, p);
+  if (p.tileWidthL0 !== undefined) out.tileWidthL0 = p.tileWidthL0 * tr.scale;
+  if (p.tileHeightL0 !== undefined) out.tileHeightL0 = p.tileHeightL0 * tr.scale;
+  if (p.tileOffsetXL0 !== undefined) out.tileOffsetXL0 = p.tileOffsetXL0 * tr.scale;
+  if (p.tileOffsetYL0 !== undefined) out.tileOffsetYL0 = p.tileOffsetYL0 * tr.scale;
+  return out;
+}
+
 function transformGroup(tr: AffineTransform, group: GroupNode): GroupNode {
   // translateX/Y are world-space positions of the group origin — go
   // through the affine. scaleX/Y are dimensionless multipliers applied
@@ -332,6 +358,10 @@ export interface NormalizableInput {
   /** Paint island scene nodes (v52+). Bboxes normalize like image bboxes;
    *  tiles and contentRect are object-local and pass through untouched. */
   paintObjects?: PaintObject[];
+  /** Pattern scene nodes (v54+). Bboxes normalize like image bboxes; the
+   *  cell grid is object-local; repeat-mode tile fields scale like the
+   *  SVG tile fields. */
+  patternObjects?: PatternObject[];
   groups: GroupNode[];
   gridLevel: number;
   strokeScale: number;
@@ -347,6 +377,7 @@ export interface NormalizeResult {
   images: ImageObject[] | undefined;
   texts: TextObject[] | undefined;
   paintObjects: PaintObject[] | undefined;
+  patternObjects: PatternObject[] | undefined;
   groups: GroupNode[];
   gridLevel: number;
   strokeScale: number;
@@ -392,7 +423,7 @@ export interface NormalizeResult {
  * the viewport is known).
  */
 export function normalizeComposition(input: NormalizableInput): NormalizeResult {
-  const bbox = computeContentBBox(input.figures, input.svgObjects, input.images, input.texts, input.groups, input.paintObjects);
+  const bbox = computeContentBBox(input.figures, input.svgObjects, input.images, input.texts, input.groups, input.paintObjects, input.patternObjects);
 
   if (!bbox) {
     return {
@@ -401,6 +432,7 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
       images: input.images,
       texts: input.texts,
       paintObjects: input.paintObjects,
+      patternObjects: input.patternObjects,
       groups: input.groups,
       gridLevel: input.gridLevel,
       strokeScale: input.strokeScale,
@@ -472,6 +504,7 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
       images: input.images,
       texts: input.texts,
       paintObjects: input.paintObjects,
+      patternObjects: input.patternObjects,
       groups: input.groups,
       gridLevel: input.gridLevel,
       strokeScale: input.strokeScale,
@@ -518,6 +551,7 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
       images: input.images,
       texts: input.texts,
       paintObjects: input.paintObjects,
+      patternObjects: input.patternObjects,
       groups: input.groups,
       gridLevel: input.gridLevel,
       strokeScale: input.strokeScale,
@@ -541,6 +575,7 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
     images: input.images ? input.images.map(i => transformBboxNode(tr, i)) : input.images,
     texts: input.texts ? input.texts.map(t => transformBboxNode(tr, t)) : input.texts,
     paintObjects: input.paintObjects ? input.paintObjects.map(p => transformBboxNode(tr, p)) : input.paintObjects,
+    patternObjects: input.patternObjects ? input.patternObjects.map(p => transformPatternObject(tr, p)) : input.patternObjects,
     groups: input.groups.map(g => transformGroup(tr, g)),
     gridLevel: input.gridLevel + k,
     strokeScale: input.strokeScale * scale,

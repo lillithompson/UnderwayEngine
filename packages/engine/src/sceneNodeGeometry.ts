@@ -11,7 +11,7 @@
  * never in the per-frame render loop.
  */
 
-import { CompositionFigure, SVGObject, ImageObject, PaintObject, TextObject, PathSegment, CompItemKind } from './types';
+import { CompositionFigure, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, PathSegment, CompItemKind } from './types';
 import { lineHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
 
@@ -335,6 +335,28 @@ const imageAdapter: GeometryAdapter<ImageObject> = makeBboxAdapter<ImageObject>(
 const textAdapter: GeometryAdapter<TextObject> = makeBboxAdapter<TextObject>('text');
 const paintAdapter: GeometryAdapter<PaintObject> = makeBboxAdapter<PaintObject>('paint');
 
+// Patterns are bbox-shaped, with one repeat-mode wrinkle: resizing a
+// repeating pattern resizes the REGION while the intrinsic tile stays
+// put, so an origin-edge resize compensates the tile-grid offset to keep
+// the pattern fixed in world space (same rule as the SVG adapter's
+// tileMode branch).
+const patternBboxAdapter = makeBboxAdapter<PatternObject>('pattern');
+const patternAdapter: GeometryAdapter<PatternObject> = {
+  ...patternBboxAdapter,
+  rescale(node, oldBbox, newBbox) {
+    if (node.tileMode === 'repeat') {
+      const dx = newBbox.cellX - node.cellX;
+      const dy = newBbox.cellY - node.cellY;
+      const newOx = (node.tileOffsetXL0 ?? 0) - dx;
+      const newOy = (node.tileOffsetYL0 ?? 0) - dy;
+      return { ...node, ...newBbox,
+        tileOffsetXL0: newOx === 0 ? undefined : newOx,
+        tileOffsetYL0: newOy === 0 ? undefined : newOy };
+    }
+    return patternBboxAdapter.rescale(node, oldBbox, newBbox);
+  },
+};
+
 // ── Registry + lookup ───────────────────────────────────────────────
 
 export const GEOMETRY_ADAPTERS: Record<CompItemKind, GeometryAdapter<any>> = {
@@ -343,6 +365,7 @@ export const GEOMETRY_ADAPTERS: Record<CompItemKind, GeometryAdapter<any>> = {
   image: imageAdapter,
   text: textAdapter,
   paint: paintAdapter,
+  pattern: patternAdapter,
 };
 
 /** Resolve the geometry adapter for a given node id. */
@@ -351,6 +374,7 @@ export function adapterForId(id: string): GeometryAdapter<any> {
   if (id.startsWith('img_')) return GEOMETRY_ADAPTERS.image;
   if (id.startsWith('txt_')) return GEOMETRY_ADAPTERS.text;
   if (id.startsWith('pnt_')) return GEOMETRY_ADAPTERS.paint;
+  if (id.startsWith('pat_')) return GEOMETRY_ADAPTERS.pattern;
   return GEOMETRY_ADAPTERS.figure;
 }
 

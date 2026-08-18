@@ -1,12 +1,21 @@
 import {
   Layer,
-  EditorState,
   GridLevel,
   LAYER_PX,
+  CellState,
   initDirtyRects,
-  makeViewport,
 } from '../types';
-import { createCellGrid } from '../cells';
+import { createCellGrid, rebuildPixelData } from '../cells';
+
+/**
+ * Test helper: set a cell on a layer and re-render its pixel data.
+ * Replaces the removed editor-side applyCellEdit for test setup.
+ */
+export function setCellForTest(layer: Layer, cellX: number, cellY: number, state: CellState): void {
+  layer.cells[cellY][cellX] = state;
+  layer.cellsGeneration++;
+  rebuildPixelData(layer);
+}
 
 export function makeLayer(id: string, level: GridLevel = 0, order: number = 0): Layer {
   const data = new Uint8Array(LAYER_PX * LAYER_PX * 4);
@@ -32,56 +41,3 @@ export function makeLayer(id: string, level: GridLevel = 0, order: number = 0): 
   };
 }
 
-export function makeState(layers?: Layer[], overrides?: Partial<EditorState>): EditorState {
-  const ls = layers ?? [makeLayer('test', 0, 0)];
-  return {
-    fileConfig: { id: 'test-file', name: 'Test' },
-    layers: ls,
-    activeLayerId: ls[0].id,
-    tool: { type: 'color', colorIndex: 0 },
-    drawTool: { type: 'color', colorIndex: 0 },
-    camera: { offsetX: 0, offsetY: 0, zoom: 1 },
-    viewport: makeViewport(800, 600),
-    renderGeneration: 0,
-    atlasGeneration: 0,
-    lastCellEdits: [],
-    mirrorH: false,
-    mirrorV: false,
-    mirrorRotate: false,
-    mirrorQuad: false,
-    mirrorRow: false,
-    mirrorCol: false,
-    mirrorDiag1: false,
-    mirrorDiag2: false,
-    mirrorDiagBoth: false,
-    mirrorStar: false,
-    selection: null,
-    selectionSubTool: 'move',
-    movePreview: null,
-    rotatePreview: null,
-    deepEdit: true,
-    copySelection: false,
-    autoHighlight: false,
-    patterns: [],
-    activePatternId: null,
-    activePatternRotation: 0,
-    patternOrigin: null,
-    allowBorderConnections: true,
-    multiresFill: false,
-    excludedFamilies: new Set(),
-    cloneSourceIndex: null,
-    cloneSampleIndex: null,
-    cloneAnchorIndex: null,
-    cloneCursorIndex: null,
-    selectionMode: 'rect',
-    pathIndices: new Set(),
-    pathLevel: 0,
-    pathGeneration: 0,
-    pathL0Indices: null,
-    resizingCanvas: false,
-    activeColorR: 255,
-    activeColorG: 255,
-    activeColorB: 255,
-    ...overrides,
-  };
-}
