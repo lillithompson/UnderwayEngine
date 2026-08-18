@@ -409,6 +409,87 @@ describe('strokeColorOverride', () => {
     expect(svg).toContain('stroke="rgb(255,255,255)"');
   });
 
+  it('floods the fills of an object the silhouette selector names', async () => {
+    // A picture made ONLY of fills — a baked rig — sits out the line override
+    // entirely, because the rule that spares fills spares the whole object.
+    // Naming it inks those fills too, so it reads as a white silhouette
+    // instead of the one authored-color shape left in a whited cutout.
+    const rigLike = makeSvg({
+      id: 'svg_rig',
+      subpaths: [
+        { segments: closedSquare, color: { r: 214, g: 176, b: 130 }, fill: true },
+        { segments: closedSquare, color: { r: 190, g: 150, b: 110 }, fill: true },
+      ],
+      cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+    });
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [rigLike],
+      strokeColorOverride: WHITE,
+      silhouette: () => new Set(['svg_rig']),
+    }));
+    expect(svg).not.toContain('fill="rgb(214,176,130)"');
+    expect(svg).not.toContain('fill="rgb(190,150,110)"');
+    expect(svg!.match(/fill="rgb\(255,255,255\)"/g)).toHaveLength(2);
+  });
+
+  it('floods only the objects it names — a drawing keeps its colored-in areas', async () => {
+    const rigLike = makeSvg({
+      id: 'svg_rig',
+      subpaths: [{ segments: closedSquare, color: { r: 214, g: 176, b: 130 }, fill: true }],
+      cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+    });
+    const drawing = makeSvg({
+      id: 'svg_1',
+      segments: closedSquare,
+      cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+      fillColor: { r: 120, g: 160, b: 200 },
+    });
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [rigLike, drawing],
+      strokeColorOverride: WHITE,
+      silhouette: () => new Set(['svg_rig']),
+    }));
+    expect(svg).toContain('fill="rgb(255,255,255)"'); // the rig
+    expect(svg).toContain('fill="rgb(120,160,200)"'); // the drawing, untouched
+  });
+
+  it('is inert without a stroke override — it says how far the ink reaches', async () => {
+    const rigLike = makeSvg({
+      id: 'svg_rig',
+      subpaths: [{ segments: closedSquare, color: { r: 214, g: 176, b: 130 }, fill: true }],
+      cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+    });
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [rigLike],
+      silhouette: () => new Set(['svg_rig']),
+    }));
+    expect(svg).toContain('fill="rgb(214,176,130)"');
+  });
+
+  it('resolves from the UNFILTERED scene, so a hidden marker node still names it', async () => {
+    // What marks an object as a silhouette is often a node that is never
+    // drawn — a rig is known by its HIDDEN record text — so a selector shown
+    // only the drawn subset would find nothing to name.
+    const rigLike = makeSvg({
+      id: 'svg_rig',
+      subpaths: [{ segments: closedSquare, color: { r: 214, g: 176, b: 130 }, fill: true }],
+      cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+    });
+    const marker = makeText({ id: 'txt_marker', name: 'marks:svg_rig', hidden: true });
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [rigLike],
+      texts: [marker],
+      subset: () => new Set(['svg_rig']),
+      strokeColorOverride: WHITE,
+      silhouette: (scene) => new Set(
+        scene.texts
+          .filter((t) => t.name?.startsWith('marks:'))
+          .map((t) => t.name!.slice('marks:'.length)),
+      ),
+    }));
+    expect(svg).toContain('fill="rgb(255,255,255)"');
+  });
+
   it('leaves text to textColorOverride', async () => {
     // The two overrides are separate decisions: a cutout of line art has no
     // glyphs to repaint, and one of type has no strokes.

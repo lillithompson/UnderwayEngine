@@ -682,11 +682,24 @@ export function svgStrokePresentation(
  * A fill keeps its authored paint because it is an AREA, not a line: flooding
  * it too would turn line art into a silhouette, and it reads against the
  * backdrop on its own the way a hairline stroke doesn't.
+ *
+ * `floodFills` asks for exactly that silhouette, for an object whose picture
+ * IS its fills — a baked Figgie rig is nothing but filled subpaths, so the
+ * plain override slides off it and leaves a tan mannequin sitting in an
+ * otherwise white cutout. Callers name those objects one at a time (see
+ * `CompositionSVGInputs.silhouette`) rather than flipping the rule for
+ * everything, because for ordinary line art the rule is right.
  */
-export function withSVGObjectStrokeColor(obj: SVGObject, color: RGBColor): SVGObject {
+export function withSVGObjectStrokeColor(
+  obj: SVGObject,
+  color: RGBColor,
+  opts?: { floodFills?: boolean },
+): SVGObject {
   const out: SVGObject = { ...obj, color };
   if (obj.subpaths) {
-    out.subpaths = obj.subpaths.map((sub) => (sub.fill ? sub : { ...sub, color }));
+    out.subpaths = obj.subpaths.map((sub) => (
+      sub.fill && !opts?.floodFills ? sub : { ...sub, color }
+    ));
   }
   if (obj.segmentOverrides && obj.segmentOverrides.size > 0) {
     const overrides = new Map<number, RGBColor>();

@@ -184,9 +184,27 @@ export interface CompositionSVGInputs {
    *
    * FILLS keep their authored paint. A fill is an area, not a line — it reads
    * against the well on its own, and flooding it too would collapse a drawing
-   * into a silhouette.
+   * into a silhouette. See {@link silhouette} for the objects that WANT that.
    */
   strokeColorOverride?: RGBColor;
+  /**
+   * Objects whose FILLS take `strokeColorOverride` as well — the silhouette
+   * the fill rule above refuses by default.
+   *
+   * It exists for pictures made ONLY of fills, where "leave the areas alone"
+   * means "leave the whole object alone": a baked Figgie rig is a stack of
+   * filled subpaths with not one stroke among them, so the line override
+   * slides straight off and a tan mannequin sits in a cutout that whited
+   * everything drawn around it. Naming those objects — rather than flooding
+   * every fill — keeps a drawing's coloured-in areas from collapsing into
+   * blocks in the same pass.
+   *
+   * Selected the same way as {@link subset}, by a host callback given the
+   * scene, because which objects those are is the host's question (the engine
+   * has no notion of a rig). No-op without `strokeColorOverride`: this says
+   * how far that ink reaches, not what it is.
+   */
+  silhouette?: CompositionSubsetSelector;
   /**
    * Repaint every PAINT ISLAND in this color, whatever colors were brushed
    * into it, keeping each texel's alpha — so the brushwork keeps its shape,
@@ -765,7 +783,27 @@ export async function generateCompositionSVGCore(
   // keeps the tiled, subpath and endpoint markup from each needing its own
   // notion of the override.
   const strokeInk = input.strokeColorOverride;
-  if (strokeInk) svgObjects = svgObjects.map((s) => withSVGObjectStrokeColor(s, strokeInk));
+  if (strokeInk) {
+    // …and the objects that are nothing BUT fills take it on those too, or
+    // they'd sit out the override entirely (see `silhouette`).
+    //
+    // Asked of the UNFILTERED scene, the same rule the masks below follow:
+    // what marks an object as one of these is often a node that is never
+    // drawn — a rig is known by its hidden record node — so a selector shown
+    // only the drawn subset would find nothing to name. Narrowing still
+    // happens, because only the objects actually being drawn are mapped.
+    const flooded = input.silhouette?.({
+      figures: input.figures,
+      svgObjects: input.svgObjects,
+      images: input.images,
+      texts: input.texts ?? [],
+      paints: input.paintObjects ?? [],
+      groups,
+    });
+    svgObjects = svgObjects.map((s) => withSVGObjectStrokeColor(
+      s, strokeInk, flooded?.has(s.id) ? { floodFills: true } : undefined,
+    ));
+  }
 
   const maskMap = buildActiveMaskMap({
     groups,
