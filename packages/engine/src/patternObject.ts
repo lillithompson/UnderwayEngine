@@ -278,14 +278,25 @@ export function patternReconcileEdits(
 }
 
 /**
- * Flood the grid: fill every EMPTY cell, leaving placed tiles alone. A
- * specific armed tile stamps into each empty; anything else floods with
- * the random brush — each pick made against the working grid in scan
- * order, so connectivity constraints from placed tiles AND earlier flood
- * picks are honored, and the finished grid is consistent. Symmetry rides
- * along through patternApplyToolAt (mirror partners are filled with
- * mirrored states), restricted to still-empty partners so the flood never
- * overwrites what was already there.
+ * Flood the grid: REPLACE it wholesale with the armed sub-tool. The grid
+ * is cleared first and then filled from empty, so what comes out is the
+ * armed tool's own pattern rather than a fill that had to fit itself
+ * around whatever happened to be there — a specific armed tile gives a
+ * grid of that tile, and the random brush re-rolls the whole thing.
+ *
+ * Anything that isn't a specific tile (the eraser included) floods random:
+ * an eraser flood would just be Clear, which is its own button.
+ *
+ * Filling runs in scan order against a working grid, so each random pick
+ * honors the connectivity constraints of the picks before it and the
+ * finished grid is self-consistent. Symmetry rides along through
+ * patternApplyToolAt — mirror partners take mirrored states, and are
+ * restricted to still-empty cells so a partner already filled this pass
+ * keeps the state its own turn gave it.
+ *
+ * The returned edits are relative to `p`, diffed at the end: a cell the
+ * flood happens to leave exactly as it found it contributes nothing, so
+ * re-flooding with the same tile is a no-op (and builds no undo step).
  */
 export function patternFloodEdits(
   p: PatternObject,
@@ -293,8 +304,7 @@ export function patternFloodEdits(
   excludedFamilies?: Set<string>,
 ): PatternCellEdit[] {
   const effective: PatternSubTool = tool.kind === 'tile' ? tool : { kind: 'random' };
-  let working = p;
-  const all: PatternCellEdit[] = [];
+  let working = applyPatternCellEdits(p, patternClearEdits(p));
   for (let y = 0; y < p.rows; y++) {
     for (let x = 0; x < p.cols; x++) {
       if (patternCellAt(working, x, y) != null) continue;
@@ -302,12 +312,16 @@ export function patternFloodEdits(
         .filter((e) => e.oldState == null);
       if (fillable.length === 0) continue;
       working = applyPatternCellEdits(working, fillable);
-      // Each edit fills a distinct empty cell (filled cells are skipped and
-      // never re-visited), so indices never collide — plain append.
-      all.push(...fillable);
     }
   }
-  return all;
+  const edits: PatternCellEdit[] = [];
+  for (let i = 0; i < p.cells.length; i++) {
+    const oldState = p.cells[i] ?? null;
+    const newState = working.cells[i] ?? null;
+    if (cellStatesEqual(oldState, newState)) continue;
+    edits.push({ index: i, oldState, newState });
+  }
+  return edits;
 }
 
 /** Clear every filled cell. */

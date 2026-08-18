@@ -158,8 +158,9 @@ export const PATTERN_ARM_TOOLS: readonly { tool: 'random' | 'erase'; label: stri
 export type PatternGridAction = 'flood' | 'reconcile' | 'clear';
 
 /** The Tools bar's one-press ACTIONS (they run on the whole grid now).
- *  Flood fills every empty cell — with the armed tile when one is
- *  selected, else with connectivity-respecting random picks. */
+ *  Flood REPLACES the grid with the armed choice: a selected tile fills
+ *  every cell, mirrored to the symmetry mode; Random (or the eraser) wipes
+ *  the grid and re-rolls it with connectivity-respecting picks. */
 export const PATTERN_GRID_ACTIONS: readonly { action: PatternGridAction; label: string }[] = [
   { action: 'flood', label: 'Flood' },
   { action: 'reconcile', label: 'Reconcile' },

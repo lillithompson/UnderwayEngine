@@ -186,27 +186,32 @@ describe('patternReconcileEdits', () => {
 });
 
 describe('patternFloodEdits', () => {
-  test('a specific armed tile stamps into every empty cell, leaving placed tiles alone', () => {
+  test('a specific armed tile REPLACES the grid, placed tiles included', () => {
     let p = withCell(makePattern(3, 3), 1, 1, spriteCell('test/tile_11111111'));
     const edits = patternFloodEdits(p, { kind: 'tile', spriteId: 'test/tile_00000000' });
-    expect(edits).toHaveLength(8); // 9 cells minus the one already placed
-    expect(edits.every((e) => e.oldState == null)).toBe(true);
+    expect(edits).toHaveLength(9); // every cell, not just the 8 empties
+    // The one placed cell reports its real prior state, so undo restores it.
+    const overwritten = edits.find((e) => e.index === 1 * 3 + 1)!;
+    expect(overwritten.oldState).toMatchObject({ spriteId: 'test/tile_11111111' });
     p = applyPatternCellEdits(p, edits);
-    expect(patternCellAt(p, 1, 1)).toMatchObject({ spriteId: 'test/tile_11111111' });
-    expect(patternCellAt(p, 0, 0)).toMatchObject({ spriteId: 'test/tile_00000000' });
     expect(p.cells.every((c) => c != null)).toBe(true);
+    for (const cell of p.cells) {
+      expect(cell).toMatchObject({ spriteId: 'test/tile_00000000' });
+    }
   });
 
-  test('random flood (and the erase fallback) fills the grid consistently', () => {
+  test('random flood (and the erase fallback) clears and re-rolls the whole grid', () => {
     for (const tool of [{ kind: 'random' as const }, { kind: 'erase' as const }]) {
-      let p = withCell(makePattern(4, 4), 0, 0, spriteCell('test/tile_00100010'));
+      let p = withCell(makePattern(4, 4), 0, 0, spriteCell('test/tile_11111111'));
       p = applyPatternCellEdits(p, patternFloodEdits(p, tool));
       expect(p.cells.every((c) => c != null)).toBe(true);
       // Every pick was made against the working grid, so the finished
       // grid satisfies its own connectivity constraints.
       assertPatternReconciled(p);
-      // The placed seed survives the flood.
-      expect(patternCellAt(p, 0, 0)).toMatchObject({ spriteId: 'test/tile_00100010' });
+      // The seed did NOT survive: the re-roll started from an empty grid,
+      // and tile_11111111 has no compatible neighbour in the mock registry
+      // so a consistent re-fill could never have chosen it.
+      expect(patternCellAt(p, 0, 0)).not.toMatchObject({ spriteId: 'test/tile_11111111' });
     }
   });
 
@@ -220,10 +225,18 @@ describe('patternFloodEdits', () => {
       .toBe(!(left as { transform: { mirrorH: boolean } }).transform.mirrorH);
   });
 
-  test('a full grid floods nothing', () => {
+  test('re-flooding the same tile is a no-op; random re-rolls a full grid', () => {
     let p = makePattern(2, 2);
-    p = applyPatternCellEdits(p, patternFloodEdits(p, { kind: 'tile', spriteId: 'test/tile_00000000' }));
-    expect(patternFloodEdits(p, { kind: 'random' })).toHaveLength(0);
+    const tile = { kind: 'tile' as const, spriteId: 'test/tile_00000000' };
+    p = applyPatternCellEdits(p, patternFloodEdits(p, tile));
+    // Every cell already holds exactly what the flood would write, so the
+    // diff comes out empty and the caller builds no undo step.
+    expect(patternFloodEdits(p, tile)).toHaveLength(0);
+    // Random is not blocked by a full grid the way the old empties-only
+    // flood was: it wipes and re-rolls into a consistent grid.
+    const rolled = applyPatternCellEdits(p, patternFloodEdits(p, { kind: 'random' }));
+    expect(rolled.cells.every((c) => c != null)).toBe(true);
+    assertPatternReconciled(rolled);
   });
 });
 

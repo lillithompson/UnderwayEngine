@@ -361,8 +361,8 @@ export interface ObjectPropertiesModel {
   onPatternPickTile?(id: string): void;
   /** Arm the random brush / eraser as the painting sub-tool. */
   onPatternArmTool?(tool: 'random' | 'erase'): void;
-  /** Run a grid action (flood fills every empty cell with the armed tile —
-   *  or random picks when no tile is armed; reconcile heals mismatched
+  /** Run a grid action (flood replaces the whole grid with the armed tile —
+   *  or a random re-roll when no tile is armed; reconcile heals mismatched
    *  connections; clear empties the grid). One undo step each. */
   onPatternGridAction?(action: import('./logic/patternEdit').PatternGridAction): void;
   /** The pattern's border-connections rule (true = grid edges may
