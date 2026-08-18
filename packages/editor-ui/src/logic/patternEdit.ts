@@ -90,7 +90,9 @@ export interface PatternTileRow {
 }
 
 /** Group the tile menu by connection count, ascending, skipping empty
- *  counts — the old TilePalette's horizontally scrolled sections. */
+ *  counts — the old TilePalette's horizontally scrolled sections. The full
+ *  menu is now the takeover modal's business; the Tiles bar itself shows
+ *  only the recent grid (see recentPatternTiles). */
 export function groupPatternTiles(
   tiles: readonly PatternTileRow[],
 ): { connections: number; tiles: PatternTileRow[] }[] {
@@ -103,6 +105,53 @@ export function groupPatternTiles(
   return [...byCount.entries()]
     .sort(([a], [b]) => a - b)
     .map(([connections, list]) => ({ connections, tiles: list }));
+}
+
+// ── The Tiles bar's button grid ─────────────────────────────────────
+
+/** How many recently-used tiles the Tiles bar keeps on its grid. */
+export const PATTERN_RECENT_TILES = 5;
+
+/** The grid is four buttons wide, and holds exactly eight: Random, Erase,
+ *  the five recent tiles, and the '...' that opens the full menu — two
+ *  rows, always, so the bar's height never moves. */
+export const PATTERN_TILE_GRID_COLUMNS = 4;
+
+/** Move `id` to the head of the most-recently-used list, dropping any
+ *  earlier appearance and trimming to PATTERN_RECENT_TILES. */
+export function pushRecentPatternTile(
+  recent: readonly string[],
+  id: string,
+): string[] {
+  return [id, ...recent.filter((r) => r !== id)].slice(0, PATTERN_RECENT_TILES);
+}
+
+/** The tiles the grid shows: the remembered ones the menu still offers —
+ *  a tile whose set was switched off drops out rather than arming a brush
+ *  Random can't reach — padded from the head of `offered` so a user who
+ *  has picked nothing yet still finds five tiles under their thumb.
+ *  Returns fewer than five only when the menu itself holds fewer. */
+export function recentPatternTiles(
+  recent: readonly string[],
+  offered: readonly PatternTileRow[],
+): PatternTileRow[] {
+  const byId = new Map(offered.map((t) => [t.id, t]));
+  const rows: PatternTileRow[] = [];
+  const seen = new Set<string>();
+  const take = (row: PatternTileRow | undefined) => {
+    if (!row || seen.has(row.id)) return;
+    seen.add(row.id);
+    rows.push(row);
+  };
+  for (const id of recent) {
+    if (rows.length === PATTERN_RECENT_TILES) return rows;
+    take(byId.get(id));
+  }
+  for (const row of offered) {
+    if (rows.length === PATTERN_RECENT_TILES) break;
+    take(row);
+  }
+  return rows;
 }
 
 // ── Tile sets (the family filter) ───────────────────────────────────
@@ -147,8 +196,10 @@ export function patternTileSetRows(
  *  it. 'tile' is selected implicitly by picking a tile in the Tiles bar. */
 export type PatternPanelTool = 'random' | 'erase' | 'tile';
 
-/** The Tools bar's two ARMING choices (what the next press paints) — the
- *  'tile' arm lives in the Tiles bar, on the tile itself. */
+/** The two ARMING choices that aren't a tile. They lead the Tiles bar's
+ *  grid, beside the recent tiles, because all three answer the same
+ *  question — what does the next canvas press paint? — and exactly one of
+ *  the grid's buttons is lit at a time. */
 export const PATTERN_ARM_TOOLS: readonly { tool: 'random' | 'erase'; label: string }[] = [
   { tool: 'random', label: 'Random' },
   { tool: 'erase', label: 'Erase' },

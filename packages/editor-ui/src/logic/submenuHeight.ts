@@ -56,9 +56,16 @@ export const SHADOW_PAD_SIZE = 106;
  *  11pt line. */
 export const CROP_CAPTION_HEIGHT = 21;
 
-/** The pattern Tiles bar's horizontally-scrolled tile strip: a 56pt tile
- *  row plus its 15pt section captions above. */
-export const PATTERN_TILE_STRIP = 71;
+/** One square button of the pattern Tiles bar's arming grid, and the gap
+ *  between them. Four fit across a phone's bar, which is what makes the
+ *  grid's eight buttons (Random, Erase, five recent tiles, '...') exactly
+ *  two rows — see PATTERN_TILE_GRID_COLUMNS. */
+export const PATTERN_TILE_BUTTON = 56;
+export const PATTERN_TILE_GRID_GAP = 8;
+
+/** The whole arming grid: two rows of buttons with one gap between. */
+export const PATTERN_TILE_GRID =
+  PATTERN_TILE_BUTTON * 2 + PATTERN_TILE_GRID_GAP;
 
 /** The slide-up submenus. Image selections cycle through tint / crop / shadow /
  *  border / opacity; text through font / align (two pages of the Text bar) and
@@ -197,15 +204,16 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'endpoints':
       return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'patternTiles':
-      // The scrolling tile strip, one row tall.
-      return standardBar([PATTERN_TILE_STRIP]);
+      // The arming grid: two rows of square buttons.
+      return standardBar([PATTERN_TILE_GRID]);
     case 'patternTools': {
-      // Brush, Grid actions, Borders — plus the Sets row when the host
-      // offers a tile-set filter. Its second page (chip rows of three,
-      // then Done) may stand taller; the bar reserves the taller of the
-      // two so flipping pages never moves its top edge.
+      // Grid actions and Borders — plus the Sets row when the host offers
+      // a tile-set filter. (Random and Erase left for the Tiles bar, where
+      // they sit beside the tiles they compete with.) Its second page
+      // (chip rows of three, then Done) may stand taller; the bar reserves
+      // the taller of the two so flipping pages never moves its top edge.
       const setCount = ctx.patternTileSetCount ?? 0;
-      const mainRows = setCount > 0 ? 4 : 3;
+      const mainRows = setCount > 0 ? 3 : 2;
       const setsRows = setCount > 0 ? Math.ceil(setCount / 3) + 1 : 0;
       return standardBar(new Array(Math.max(mainRows, setsRows)).fill(ROW_SEGMENTED));
     }

@@ -1,12 +1,18 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
+  PATTERN_ARM_TOOLS,
   PATTERN_DEFAULT_TILE_SETS,
   PATTERN_EDIT_OPTIONS,
   PATTERN_GRID_ACTIONS,
+  PATTERN_RECENT_TILES,
   PATTERN_SYMMETRY_ENTRIES,
   PATTERN_SYMMETRY_FLAGS_OFF,
+  PATTERN_TILE_GRID_COLUMNS,
+  type PatternTileRow,
   groupPatternTiles,
+  pushRecentPatternTile,
+  recentPatternTiles,
   patternActionOfSubmenu,
   patternActionSubmenu,
   patternSymmetryForKey,
@@ -133,12 +139,66 @@ describe('the tile-set filter', () => {
   it('the Tools bar grows to hold whichever page is taller', () => {
     const plain = submenuHeight('patternTools');
     const withSets = submenuHeight('patternTools', { patternTileSetCount: 5 });
-    // Five sets: main page is 4 rows (Brush/Grid/Borders/Sets); the chip
-    // page is 2 chip rows + Done = 3 — the main page wins.
+    // No sets: Grid and Borders, two rows (Random and Erase moved to the
+    // Tiles bar). Five sets: the Sets row makes three, and the chip page
+    // (2 chip rows + Done) ties it.
     expect(withSets).toBeGreaterThan(plain);
     // Ten sets: the chip page (4 rows + Done) overtakes the main page.
     expect(submenuHeight('patternTools', { patternTileSetCount: 10 }))
       .toBeGreaterThan(withSets);
+  });
+});
+
+describe("the Tiles bar's arming grid", () => {
+  const tile = (id: string): PatternTileRow => ({ id, connections: 0, uri: `u:${id}` });
+  const MENU = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(tile);
+
+  it('the grid is eight buttons in four columns — two rows, always', () => {
+    // Random + Erase + the recents + '...'. The Tiles bar's height is
+    // reserved on that count, so if any of the three changes, so must
+    // PATTERN_TILE_GRID.
+    expect(PATTERN_ARM_TOOLS.length + PATTERN_RECENT_TILES + 1)
+      .toBe(PATTERN_TILE_GRID_COLUMNS * 2);
+  });
+
+  it('a fresh session is backed by the head of the menu', () => {
+    expect(recentPatternTiles([], MENU).map((t) => t.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('a pick moves to the head and the padding fills in behind it', () => {
+    const recent = pushRecentPatternTile([], 'g');
+    expect(recentPatternTiles(recent, MENU).map((t) => t.id))
+      .toEqual(['g', 'a', 'b', 'c', 'd']);
+  });
+
+  it('re-picking a remembered tile promotes it rather than duplicating it', () => {
+    let recent: readonly string[] = [];
+    for (const id of ['a', 'b', 'c', 'a']) recent = pushRecentPatternTile(recent, id);
+    expect(recent).toEqual(['a', 'c', 'b']);
+    expect(recentPatternTiles(recent, MENU).map((t) => t.id))
+      .toEqual(['a', 'c', 'b', 'd', 'e']);
+  });
+
+  it('remembers only the last five', () => {
+    let recent: readonly string[] = [];
+    for (const id of ['a', 'b', 'c', 'd', 'e', 'f']) recent = pushRecentPatternTile(recent, id);
+    expect(recent).toEqual(['f', 'e', 'd', 'c', 'b']);
+  });
+
+  it('drops a remembered tile whose set was switched off, and backfills', () => {
+    // 'f' and 'g' are gone from the menu — the grid must not offer a brush
+    // the filter has taken away, so they fall out and the menu pads back up.
+    let recent: readonly string[] = [];
+    for (const id of ['f', 'g', 'a']) recent = pushRecentPatternTile(recent, id);
+    const narrowed = MENU.filter((t) => t.id !== 'f' && t.id !== 'g');
+    expect(recentPatternTiles(recent, narrowed).map((t) => t.id))
+      .toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('shows fewer than five only when the menu itself holds fewer', () => {
+    expect(recentPatternTiles(['b'], MENU.slice(0, 3)).map((t) => t.id))
+      .toEqual(['b', 'a', 'c']);
+    expect(recentPatternTiles(['x'], [])).toEqual([]);
   });
 });
 
@@ -157,5 +217,44 @@ describe('the tile menu grouping', () => {
 
   it('is empty for an empty menu', () => {
     expect(groupPatternTiles([])).toEqual([]);
+  });
+});
+
+// The bars are react-native and never render in node, so their wiring is
+// pinned by source. What this guards: Random and Erase moving out of the
+// Tools bar is only half the change — if they don't land in the Tiles
+// grid, the pattern tool loses its eraser entirely.
+describe('the Tiles bar carries the arming grid', () => {
+  const SRC = readFileSync(resolve(__dirname, '..', 'components', 'PatternBars.tsx'), 'utf8');
+  const tilesBar = SRC.slice(
+    SRC.indexOf('export function PatternTilesBar'),
+    SRC.indexOf('export function PatternToolsBar'),
+  );
+  const toolsBar = SRC.slice(
+    SRC.indexOf('export function PatternToolsBar'),
+    SRC.indexOf('export function PatternSymmetryBar'),
+  );
+
+  it('arms Random and Erase from the Tiles bar, not the Tools bar', () => {
+    expect(tilesBar).toContain('PATTERN_ARM_TOOLS.map');
+    expect(tilesBar).toContain('model.onPatternArmTool?.(t.tool)');
+    expect(toolsBar).not.toContain('PATTERN_ARM_TOOLS');
+    expect(toolsBar).not.toContain('onPatternArmTool');
+  });
+
+  it('shows the recents, not the whole menu, and lights exactly one button', () => {
+    expect(tilesBar).toContain('model.patternRecentTiles ?? []');
+    expect(tilesBar).toContain("const activeId = tool === 'tile' ? model.patternActiveTileId ?? null : null");
+    // A tile's square lights on its own id; the two word buttons light on
+    // the armed kind — so whichever is in hand, one and only one is lit.
+    expect(tilesBar).toContain('const active = t.id === activeId;');
+    expect(tilesBar).toContain('const active = tool === t.tool;');
+  });
+
+  it("the '...' button opens the takeover, which arms and dismisses", () => {
+    expect(tilesBar).toContain('onPress={() => setShowAll(true)}');
+    expect(tilesBar).toContain('<PatternTileModal');
+    expect(tilesBar).toContain('tiles={model.patternTiles ?? []}');
+    expect(tilesBar).toContain('onPick={(id) => { setShowAll(false); model.onPatternPickTile?.(id); }}');
   });
 });

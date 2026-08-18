@@ -352,12 +352,18 @@ export interface ObjectPropertiesModel {
   patternSymmetry?: string;
   /** A symmetry mode was picked ('off' clears). One undo step. */
   onPatternSymmetry?(key: string): void;
-  /** The tile menu, host-baked (sprite ids + data-URI thumbnails). */
+  /** The whole tile menu, host-baked (sprite ids + data-URI thumbnails).
+   *  Only the '...' takeover shows all of it; the bar shows the recents. */
   patternTiles?: import('./logic/patternEdit').PatternTileRow[];
+  /** The five tiles the Tiles bar's grid offers — the host's
+   *  most-recently-used list, resolved against `patternTiles` (see
+   *  recentPatternTiles). App-owned session state, not the document's. */
+  patternRecentTiles?: import('./logic/patternEdit').PatternTileRow[];
   /** The armed pattern sub-tool, and — when it is 'tile' — which tile. */
   patternTool?: import('./logic/patternEdit').PatternPanelTool;
   patternActiveTileId?: string | null;
-  /** Arm a specific tile as the painting sub-tool. */
+  /** Arm a specific tile as the painting sub-tool. The host is also what
+   *  files the tile at the head of its recent list. */
   onPatternPickTile?(id: string): void;
   /** Arm the random brush / eraser as the painting sub-tool. */
   onPatternArmTool?(tool: 'random' | 'erase'): void;

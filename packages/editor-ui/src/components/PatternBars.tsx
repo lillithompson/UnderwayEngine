@@ -1,29 +1,30 @@
 import React, { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ObjectPropertiesModel } from '../adapter';
 import {
   BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP,
-  PATTERN_TILE_STRIP, ROW_GAP,
+  PATTERN_TILE_BUTTON, PATTERN_TILE_GRID_GAP, ROW_GAP,
 } from '../logic/submenuHeight';
 import {
   PATTERN_ARM_TOOLS,
   PATTERN_GRID_ACTIONS,
   PATTERN_SYMMETRY_ENTRIES,
-  groupPatternTiles,
 } from '../logic/patternEdit';
 import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
 import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, MultiToggleRow, SegmentedRow } from './effectBar';
+import { PatternTileModal } from './PatternTileModal';
 
 // The pattern object's three submenu bars — siblings of the effect bars,
 // sharing their chrome and row grammar (effectBar.tsx):
 //
-//   • Tiles    — the horizontally scrolled tile menu, sectioned by how many
-//                of a tile's 8 connection points are live (the old
-//                TilePalette's grouping). Tapping a tile ARMS it: the next
-//                canvas press inside the pattern stamps that tile.
-//   • Tools    — the brush row (Random / Erase arm the sub-tool), the grid
-//                actions (Reconcile / Clear run now, one undo step each),
-//                and the Borders rule connectivity honors at the grid edge.
+//   • Tiles    — the ARMING grid: Random, Erase, the five most recently
+//                used tiles, and a '...' that takes over the screen with
+//                the whole menu. Exactly one button is lit, because all
+//                eight answer one question — what does the next canvas
+//                press paint?
+//   • Tools    — the grid actions (Flood / Reconcile / Clear run now, one
+//                undo step each), the Borders rule connectivity honors at
+//                the grid edge, and the tile-set filter.
 //   • Symmetry — the painting-mirror grid (the old symmetry modal's modes),
 //                exclusive, with Off closing the set.
 
@@ -35,41 +36,69 @@ export function PatternTilesBar({ model, onBack }: {
   model: ObjectPropertiesModel;
   onBack: () => void;
 }) {
-  const groups = groupPatternTiles(model.patternTiles ?? []);
-  const activeId = model.patternTool === 'tile' ? model.patternActiveTileId : null;
+  const [showAll, setShowAll] = useState(false);
+  const tool = model.patternTool;
+  const activeId = tool === 'tile' ? model.patternActiveTileId ?? null : null;
+  const recent = model.patternRecentTiles ?? [];
+  // Random, Erase, the recent tiles, then '...' — laid out as a grid four
+  // buttons wide (PATTERN_TILE_GRID_COLUMNS), so the eight fill two rows
+  // exactly and the bar's height is the same whatever is in hand.
   return (
     <View style={styles.bar}>
       <EffectBarHeader title={barTitle('tiles')} chevron onBack={onBack} />
       <View style={styles.controls}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ height: PATTERN_TILE_STRIP }}
-        >
-          {groups.map((g) => (
-            <View key={g.connections} style={styles.tileSection}>
-              <Text style={styles.tileCaption}>{g.connections}</Text>
-              <View style={styles.tileRow}>
-                {g.tiles.map((t) => {
-                  const active = t.id === activeId;
-                  return (
-                    <Pressable
-                      key={t.id}
-                      onPress={() => model.onPatternPickTile?.(t.id)}
-                      style={[styles.tile, active && styles.tileActive]}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      accessibilityLabel={t.id}
-                    >
-                      <Image source={{ uri: t.uri }} style={styles.tileImage} />
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-          ))}
-        </ScrollView>
+        <View style={styles.tileGrid}>
+          {PATTERN_ARM_TOOLS.map((t) => {
+            const active = tool === t.tool;
+            return (
+              <Pressable
+                key={t.tool}
+                onPress={() => model.onPatternArmTool?.(t.tool)}
+                style={[styles.tile, active && styles.tileActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={t.label}
+              >
+                <Text style={[styles.tileWord, active && styles.tileWordActive]}>
+                  {t.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {recent.map((t) => {
+            const active = t.id === activeId;
+            return (
+              <Pressable
+                key={t.id}
+                onPress={() => model.onPatternPickTile?.(t.id)}
+                style={[styles.tile, active && styles.tileActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={t.id}
+              >
+                <Image source={{ uri: t.uri }} style={styles.tileImage} />
+              </Pressable>
+            );
+          })}
+          <Pressable
+            onPress={() => setShowAll(true)}
+            style={styles.tile}
+            accessibilityRole="button"
+            accessibilityLabel="All tiles"
+          >
+            <Text style={styles.tileWord}>•••</Text>
+          </Pressable>
+        </View>
       </View>
+      <PatternTileModal
+        visible={showAll}
+        tiles={model.patternTiles ?? []}
+        activeId={activeId}
+        // Picking IS the confirmation: arm the tile (which also files it at
+        // the head of the recent grid, host-side) and get out of the way.
+        onPick={(id) => { setShowAll(false); model.onPatternPickTile?.(id); }}
+        onClose={() => setShowAll(false)}
+      />
     </View>
   );
 }
@@ -82,9 +111,6 @@ export function PatternToolsBar({ model, onBack }: {
   // button opens (Facet's Randomization Settings, as chip rows). Local —
   // it is a view of the same bar, not another submenu.
   const [showSets, setShowSets] = useState(false);
-  const tool = model.patternTool === 'random' || model.patternTool === 'erase'
-    ? model.patternTool
-    : ('' as 'random'); // a tile is armed — neither brush cell lights
   const sets = model.patternTileSets ?? [];
   if (showSets) {
     // Chips in rows of three, then the Done row back to the tools.
@@ -115,12 +141,6 @@ export function PatternToolsBar({ model, onBack }: {
     <View style={styles.bar}>
       <EffectBarHeader title={barTitle('tools')} chevron onBack={onBack} />
       <View style={styles.controls}>
-        <SegmentedRow
-          label="Brush"
-          options={PATTERN_ARM_TOOLS.map((t) => ({ value: t.tool, label: t.label }))}
-          value={tool}
-          onChange={(t) => model.onPatternArmTool?.(t)}
-        />
         <ActionRow
           label="Grid"
           options={PATTERN_GRID_ACTIONS.map((a) => ({ value: a.action, label: a.label }))}
@@ -182,7 +202,7 @@ export function PatternSymmetryBar({ model, onBack }: {
   );
 }
 
-const TILE = 44;
+const TILE = PATTERN_TILE_BUTTON;
 
 const styles = StyleSheet.create({
   bar: {
@@ -194,14 +214,9 @@ const styles = StyleSheet.create({
     paddingBottom: BAR_PAD_BOTTOM,
   },
   controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
-  tileSection: { marginRight: 14 },
-  tileCaption: {
-    color: PANEL_INK_DIM,
-    fontSize: 11,
-    lineHeight: 15,
-    marginBottom: 0,
-  },
-  tileRow: { flexDirection: 'row', gap: 6 },
+  // Fixed-size squares that wrap: four fit a phone's bar width, so the
+  // eight buttons make the two rows submenuHeight reserves for them.
+  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: PATTERN_TILE_GRID_GAP },
   tile: {
     width: TILE,
     height: TILE,
@@ -212,6 +227,11 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: 'transparent',
   },
+  // Border-only, as the old tile strip lit its pick: the thumbnails are
+  // baked in PANEL_INK, and filling the square with STATE_ACTIVE would
+  // tint the very artwork the button exists to show.
   tileActive: { borderColor: STATE_ACTIVE },
-  tileImage: { width: TILE - 8, height: TILE - 8 },
+  tileImage: { width: TILE - 12, height: TILE - 12 },
+  tileWord: { color: PANEL_INK_DIM, fontSize: 11, fontWeight: '600' },
+  tileWordActive: { color: PANEL_INK },
 });
