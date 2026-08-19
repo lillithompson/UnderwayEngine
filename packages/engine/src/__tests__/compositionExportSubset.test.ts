@@ -9,7 +9,7 @@
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
 import { DEFAULT_LINE_HEIGHT, layoutText } from '../textLayout';
 import { STICKER_SHADOW_CELLS } from '../stickerStyle';
-import { GroupNode, ImageObject, PaintObject, PathSegment, RGBColor, SVGObject, TextObject } from '../types';
+import { CellState, DEFAULT_TRANSFORM, GroupNode, ImageObject, PaintObject, PathSegment, PatternObject, RGBColor, SVGObject, TextObject } from '../types';
 import { commitCanvasPaint, createCanvasPaintWorking, stampCanvasPaint } from '../canvasPaint';
 import { overlayPngDataUri } from '../imagePaintOverlay';
 import { createPaintObjectFromTiles } from '../paintObject';
@@ -810,5 +810,58 @@ describe('paint islands in a cutout', () => {
       await generateCompositionSVGCore(paintPage(p, { paintColorOverride: WHITE }));
       p.tiles.forEach((t, i) => expect(Array.from(t.overlay.rgba)).toEqual(before[i]));
     });
+  });
+});
+
+describe('strokeColorOverride on a pattern', () => {
+  const WHITE = { r: 255, g: 255, b: 255 };
+  const RED = { r: 200, g: 30, b: 30 };
+
+  function cell(): CellState {
+    return { type: 'color', r: RED.r, g: RED.g, b: RED.b, transform: { ...DEFAULT_TRANSFORM } };
+  }
+  function pat(): PatternObject {
+    return {
+      id: 'pat_1', cellX: 2, cellY: 2, cellWidth: 4, cellHeight: 4,
+      cols: 2, rows: 2, cells: [cell(), cell(), cell(), cell()],
+    };
+  }
+
+  it('inks the pattern with the line art instead of sparing it', async () => {
+    // The bug this pins: a pattern's tiles bake to closed FILL paths, and
+    // the override spares fills (an area keeps its authored paint) — so on
+    // the Today card every pattern sat out the whitening in its own colours
+    // while the pen lines beside it went white. A pattern's picture IS its
+    // ink, so it floods, exactly as a rig silhouette does.
+    const svg = await generateCompositionSVGCore(makeInputs({
+      patternObjects: [pat()],
+      strokeColorOverride: WHITE,
+    }));
+    expect(svg).not.toContain('fill="rgb(200,30,30)"');
+    expect(svg).toContain('fill="rgb(255,255,255)"');
+  });
+
+  it('leaves the pattern alone when no override is asked for', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({ patternObjects: [pat()] }));
+    expect(svg).toContain('fill="rgb(200,30,30)"');
+  });
+
+  it('still spares an ORDINARY shape\'s fill', async () => {
+    // The flood is for patterns, not a change to the general rule: a
+    // drawing's coloured-in areas must survive the override.
+    const tri: PathSegment[] = [
+      { kind: 'line', start: [4, 4], end: [12, 4] },
+      { kind: 'line', start: [12, 4], end: [12, 14] },
+      { kind: 'line', start: [12, 14], end: [4, 4] },
+    ];
+    const filled = {
+      id: 'svg_1', segments: tri, color: { r: 10, g: 20, b: 30 },
+      cellX: 4, cellY: 4, cellWidth: 8, cellHeight: 10,
+      subpaths: [{ segments: tri, color: RED, fill: true }],
+    } as unknown as SVGObject;
+    const svg = await generateCompositionSVGCore(
+      makeInputs({ svgObjects: [filled], strokeColorOverride: WHITE }),
+    );
+    expect(svg).toContain('rgb(200,30,30)');
   });
 });

@@ -771,9 +771,13 @@ export async function generateCompositionSVGCore(
   // sceneOrder / subset / mask resolution all see them as svg nodes —
   // exactly what the canvas renders). Empty patterns bake to null and
   // export as nothing.
+  const patternViewIds = new Set<string>();
   for (const p of (input.patternObjects ?? []).filter(shown)) {
     const view = patternSVGView(p);
-    if (view) svgObjects.push(view);
+    if (view) {
+      svgObjects.push(view);
+      patternViewIds.add(view.id);
+    }
   }
 
   // Nothing to draw.
@@ -824,8 +828,16 @@ export async function generateCompositionSVGCore(
       paints: input.paintObjects ?? [],
       groups,
     });
+    // A PATTERN is flooded without being named. Its whole picture is the ink
+    // of its tiles — there is no authored fill underneath to preserve, and
+    // the bake happens to emit closed tiles as fill paths, so sparing them
+    // (the ordinary rule for an area) left every pattern sitting out the
+    // override in its own colours while the pen lines beside it went white.
+    // Flooding one loses nothing, for the same reason it loses nothing on a
+    // rig: the picture IS the silhouette.
     svgObjects = svgObjects.map((s) => withSVGObjectStrokeColor(
-      s, strokeInk, flooded?.has(s.id) ? { floodFills: true } : undefined,
+      s, strokeInk,
+      flooded?.has(s.id) || patternViewIds.has(s.id) ? { floodFills: true } : undefined,
     ));
   }
 
