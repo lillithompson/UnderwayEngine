@@ -15,6 +15,7 @@ import {
   mergeIdsIntoSceneOrder,
 } from './compositionOps';
 import { canMergePaintObjects, mergePaintObjects, mintPaintObjectId } from './paintObject';
+import { patternSVGView } from './patternObjectRender';
 
 /**
  * Merge (flatten): make ONE svg object out of several. A structural operation
@@ -36,10 +37,15 @@ import { canMergePaintObjects, mergePaintObjects, mintPaintObjectId } from './pa
  * fills and paint overlays are object-level too, so a source carrying one
  * keeps its geometry and loses that paint.
  *
- * What cannot merge: pattern tiles and pattern-filled masks (a tiling is not
- * an outline), and — at the selection level — text, images and figures. Those
- * are not svg objects, and a merge that quietly left one behind would read as
- * a bug.
+ * What CAN merge besides svg objects: a pattern object, which joins as the
+ * svg view it already bakes to (see resolveMergeSelection). The result is an
+ * ordinary vector, so the tile grid is spent along with it.
+ *
+ * What cannot merge: a REPEATING tiling — a pattern object in repeat mode, a
+ * pattern-filled mask, a legacy tiled vector — because a tiling is not an
+ * outline and flattening one would collapse it to a single tile. Nor, at the
+ * selection level, text, images or figures: those are not svg objects, and a
+ * merge that quietly left one behind would read as a bug.
  */
 
 /** A source's segments in the space they are DRAWN in.
@@ -143,7 +149,15 @@ export function mergedSVGObject(
 
 /** What a selection resolves to for Merge: its svg objects in back-to-front
  *  order, or null when the selection holds something that cannot be flattened
- *  into an svg object (text, an image, a figure, a pattern). */
+ *  into an svg object (text, an image, a figure).
+ *
+ *  A PATTERN joins as the svg object it already bakes to. Nothing special
+ *  happens to it: `patternSVGView` is the same derived view the canvas draws
+ *  and the exporter writes, so what merges is exactly what was on screen,
+ *  cells and per-cell inks and all. After the merge it is an ordinary vector
+ *  — which is the point of flattening, and also the trade: the tile grid
+ *  underneath it is spent, and Tiles / Tools / Symmetry have nothing left to
+ *  edit. */
 function resolveMergeSelection(
   state: CompositionState,
   selectedIds: ReadonlySet<string>,
@@ -153,9 +167,21 @@ function resolveMergeSelection(
   for (const text of state.texts ?? []) if (selectedIds.has(text.id)) return null;
 
   const rank = new Map(state.sceneOrder.map((id, i) => [id, i]));
-  const sources = state.svgObjects
-    .filter((svg) => selectedIds.has(svg.id))
-    .sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+  const sources: SVGObject[] = state.svgObjects.filter((svg) => selectedIds.has(svg.id));
+  for (const pat of state.patternObjects ?? []) {
+    if (!selectedIds.has(pat.id)) continue;
+    const view = patternSVGView(pat);
+    // An EMPTY pattern bakes to nothing. Merging would spend it and get no
+    // geometry back, leaving the selection quietly one object short — which
+    // this module calls a bug, so the whole merge is refused instead.
+    // (A REPEAT-mode pattern is refused too, one level down: its view wears
+    // `tileMode`, and canMergeObjects has always held that a tiling is not
+    // an outline. Flattening one would collapse the repeat to a single
+    // tile.)
+    if (!view) return null;
+    sources.push(view);
+  }
+  sources.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
   return canMergeObjects(sources) ? sources : null;
 }
 
@@ -202,6 +228,11 @@ export function buildMergeEntry(
       oldImages: state.images ?? [], newImages: next.images ?? [],
       oldGroups: state.groups, newGroups: next.groups,
       oldSceneOrder: state.sceneOrder, newSceneOrder: next.sceneOrder,
+      // A merged-in pattern is SPENT — its grid is gone and its picture now
+      // lives in the result's segments. Leaving the patterns unnamed here
+      // would apply the removal to nothing, so the flattened pattern would
+      // go on drawing itself underneath the vector it had become.
+      oldPatterns: state.patternObjects ?? [], newPatterns: next.patternObjects ?? [],
     }],
     resultId: result.id,
   };

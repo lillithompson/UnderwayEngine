@@ -1,11 +1,15 @@
 import {
+  CellState,
   CompositionState,
+  DEFAULT_TRANSFORM,
   GroupNode,
   PathSegment,
+  PatternObject,
   RGBColor,
   SVGObject,
   makeViewport,
 } from '../types';
+import { patternSVGView } from '../patternObjectRender';
 import {
   applyCompOps,
   revertCompOps,
@@ -283,5 +287,101 @@ describe('buildMergeEntry', () => {
     const state = makeState([makeSVG('a', square(0, 0, 10))], ['a']);
     expect(canMergeSelection(state, state.selectedFigureIds)).toBe(false);
     expect(buildMergeEntry(state, state.selectedFigureIds)).toBeNull();
+  });
+});
+
+// A pattern object joins a merge as the svg view it already bakes to, so a
+// flattened pattern is exactly the picture that was on screen. Colour cells
+// throughout: a SPRITE cell bakes to nothing in this environment (no tile
+// vector sources), which is why every bake-dependent test here uses colours.
+describe('merging a pattern with a vector', () => {
+  function colorCell(): CellState {
+    return { type: 'color', r: 200, g: 30, b: 30, transform: { ...DEFAULT_TRANSFORM } };
+  }
+
+  function makePattern(id: string, over: Partial<PatternObject> = {}): PatternObject {
+    return {
+      id, cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2, cols: 2, rows: 2,
+      cells: new Array(4).fill(null).map(colorCell),
+      ...over,
+    };
+  }
+
+  function stateWith(
+    svgObjects: SVGObject[],
+    patternObjects: PatternObject[],
+    selected: string[],
+  ): CompositionState {
+    const base = makeState(svgObjects, selected);
+    return {
+      ...base,
+      patternObjects,
+      sceneOrder: [...svgObjects.map((s) => s.id), ...patternObjects.map((p) => p.id)],
+    };
+  }
+
+  const LINE = makeSVG('svg_a', [line([0, 0], [10, 0])]);
+
+  it('merges, and the result is ONE svg object — the pattern is spent', () => {
+    const pat = makePattern('pat_1');
+    const state = stateWith([LINE], [pat], []);
+    const ids = new Set(['svg_a', 'pat_1']);
+    expect(canMergeSelection(state, ids)).toBe(true);
+
+    const built = buildMergeEntry(state, ids)!;
+    const after = applyCompOps(state, built.entry);
+    expect(after.patternObjects ?? []).toHaveLength(0);
+    expect(after.svgObjects.map((s) => s.id)).toEqual([built.resultId]);
+    expect(after.sceneOrder).toEqual([built.resultId]);
+
+    // The pattern's baked geometry came along: the merged object holds the
+    // line's segments AND the pattern view's.
+    const patSegs = patternSVGView(pat)!.segments.length;
+    const merged = after.svgObjects[0];
+    expect(patSegs).toBeGreaterThan(0);
+    expect(merged.segments.length).toBe(LINE.segments.length + patSegs);
+
+    // …and undo puts the pattern back as a pattern, not as a vector.
+    const back = revertCompOps(after, built.entry);
+    expect((back.patternObjects ?? []).map((p) => p.id)).toEqual(['pat_1']);
+    expect(back.svgObjects.map((s) => s.id)).toEqual(['svg_a']);
+  });
+
+  it('two patterns merge with each other', () => {
+    const state = stateWith(
+      [], [makePattern('pat_1'), makePattern('pat_2', { cellX: 4 })], [],
+    );
+    const built = buildMergeEntry(state, new Set(['pat_1', 'pat_2']))!;
+    const after = applyCompOps(state, built.entry);
+    expect(after.patternObjects ?? []).toHaveLength(0);
+    expect(after.svgObjects).toHaveLength(1);
+  });
+
+  it('refuses a REPEATING pattern — a tiling is not an outline', () => {
+    // Flattening one would collapse the whole repeat down to a single tile,
+    // silently changing the picture.
+    const state = stateWith([LINE], [makePattern('pat_1', {
+      tileMode: 'repeat', tileWidthL0: 1, tileHeightL0: 1,
+    })], []);
+    expect(canMergeSelection(state, new Set(['svg_a', 'pat_1']))).toBe(false);
+    expect(buildMergeEntry(state, new Set(['svg_a', 'pat_1']))).toBeNull();
+  });
+
+  it('refuses an EMPTY pattern rather than quietly spending it', () => {
+    // It bakes to nothing, so merging would consume an object and get no
+    // geometry back — the selection would come out one object short.
+    const state = stateWith([LINE], [makePattern('pat_1', {
+      cells: new Array(4).fill(null),
+    })], []);
+    expect(canMergeSelection(state, new Set(['svg_a', 'pat_1']))).toBe(false);
+  });
+
+  it('still refuses a selection holding a text, image or figure', () => {
+    const state = stateWith([LINE], [makePattern('pat_1')], []);
+    const withText: CompositionState = {
+      ...state,
+      texts: [{ id: 'txt_1', cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1 } as never],
+    };
+    expect(canMergeSelection(withText, new Set(['pat_1', 'txt_1']))).toBe(false);
   });
 });
