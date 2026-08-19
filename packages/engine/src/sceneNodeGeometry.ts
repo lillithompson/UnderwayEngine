@@ -361,14 +361,78 @@ const imageAdapter: GeometryAdapter<ImageObject> = makeBboxAdapter<ImageObject>(
 const textAdapter: GeometryAdapter<TextObject> = makeBboxAdapter<TextObject>('text');
 const paintAdapter: GeometryAdapter<PaintObject> = makeBboxAdapter<PaintObject>('paint');
 
-// Patterns are bbox-shaped, with one repeat-mode wrinkle: resizing a
-// repeating pattern resizes the REGION while the intrinsic tile stays
-// put, so an origin-edge resize compensates the tile-grid offset to keep
-// the pattern fixed in world space (same rule as the SVG adapter's
-// tileMode branch).
+// Patterns are bbox-shaped, with two repeat-mode wrinkles.
+//
+// RESIZE resizes the REGION while the intrinsic tile stays put, so an
+// origin-edge resize compensates the tile-grid offset to keep the pattern
+// fixed in world space (same rule as the SVG adapter's tileMode branch):
+// dragging an edge reveals more or less of a tiling that doesn't move.
+//
+// ROTATE is the opposite case, and used to be missed. Turning the region
+// turns the whole thing — region AND tiling, rigidly — so the sub-section
+// showing through must be the same picture, just on its side. The bbox
+// adapter swings the box about its centre and leaves the tile grid alone,
+// which slid the tiling under the region and brought a different part of
+// it into view. So the tile box goes round with the region: its dimensions
+// swap on a quarter turn, and its anchor is carried to where the rotation
+// takes it.
 const patternBboxAdapter = makeBboxAdapter<PatternObject>('pattern');
+
+/** Is this pattern actually tiling? Both dims are needed to define the
+ *  tile box; without them `repeat` is inert and the bake ignores it. */
+function isRepeating(node: PatternObject): boolean {
+  return node.tileMode === 'repeat' && node.tileWidthL0 != null && node.tileHeightL0 != null;
+}
+
 const patternAdapter: GeometryAdapter<PatternObject> = {
   ...patternBboxAdapter,
+
+  rotate90CW(node) {
+    const turned = patternBboxAdapter.rotate90CW(node) as PatternObject;
+    if (!isRepeating(node)) return turned;
+    const tw = node.tileWidthL0!;
+    const th = node.tileHeightL0!;
+    // The centre the box swung about — the same one makeBboxAdapter used,
+    // which is the IDENTITY box's centre, not the current one.
+    const idX = node.identityCellX ?? node.cellX;
+    const idY = node.identityCellY ?? node.cellY;
+    const cx = idX + (node.identityCellWidth ?? node.cellWidth) / 2;
+    const cy = idY + (node.identityCellHeight ?? node.cellHeight) / 2;
+    // The tile box's top-left after a clockwise quarter turn is the image
+    // of its BOTTOM-left corner: (x, y) → (cx + (cy − y), cy + (x − cx)).
+    const ax = node.cellX + (node.tileOffsetXL0 ?? 0);
+    const ay = node.cellY + (node.tileOffsetYL0 ?? 0);
+    const newAx = cx + (cy - (ay + th));
+    const newAy = cy + (ax - cx);
+    const newOx = newAx - turned.cellX;
+    const newOy = newAy - turned.cellY;
+    return {
+      ...turned,
+      // The tile turned with everything else, so its box stands on end.
+      tileWidthL0: th,
+      tileHeightL0: tw,
+      tileOffsetXL0: newOx === 0 ? undefined : newOx,
+      tileOffsetYL0: newOy === 0 ? undefined : newOy,
+    };
+  },
+
+  mirror(node, screenAxis) {
+    const flipped = patternBboxAdapter.mirror(node, screenAxis) as PatternObject;
+    if (!isRepeating(node)) return flipped;
+    // Reflect the tile box within the region it sits in, about the same
+    // axis through the region's centre that the mirror flag reflects the
+    // artwork about — otherwise the picture flips and its grid does not.
+    const horizontal = screenAxis === 'h';
+    const span = horizontal ? node.cellWidth : node.cellHeight;
+    const tile = horizontal ? node.tileWidthL0! : node.tileHeightL0!;
+    const off = (horizontal ? node.tileOffsetXL0 : node.tileOffsetYL0) ?? 0;
+    const next = span - (off + tile);
+    return {
+      ...flipped,
+      [horizontal ? 'tileOffsetXL0' : 'tileOffsetYL0']: next === 0 ? undefined : next,
+    };
+  },
+
   rescale(node, oldBbox, newBbox) {
     if (node.tileMode === 'repeat') {
       const dx = newBbox.cellX - node.cellX;
