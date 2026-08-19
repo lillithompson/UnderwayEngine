@@ -168,7 +168,10 @@ export function buildPatternLayerView(p: PatternObject): Layer {
 export type PatternSubTool =
   | { kind: 'random' }
   | { kind: 'erase' }
-  | { kind: 'tile'; spriteId: string };
+  // `transform` is the pose the armed tile stamps in — the per-tile
+  // rotation/mirror the Tiles menu's double-tap and transform modal set.
+  // Absent = identity, the pose the registry drew the tile in.
+  | { kind: 'tile'; spriteId: string; transform?: CellTransform };
 
 const IDENTITY: CellTransform = DEFAULT_TRANSFORM;
 
@@ -211,7 +214,7 @@ export function patternApplyToolAt(
       primary = null;
       break;
     case 'tile':
-      primary = { type: 'sprite', spriteId: tool.spriteId, transform: IDENTITY };
+      primary = { type: 'sprite', spriteId: tool.spriteId, transform: tool.transform ?? IDENTITY };
       break;
     case 'random': {
       const symmetry = computeMirrorSymmetry(x, y, layer, cfg, flags);

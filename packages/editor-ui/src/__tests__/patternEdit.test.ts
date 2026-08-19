@@ -8,11 +8,18 @@ import {
   PATTERN_RECENT_TILES,
   PATTERN_SYMMETRY_ENTRIES,
   PATTERN_SYMMETRY_FLAGS_OFF,
+  PATTERN_TILE_DOUBLE_TAP_MS,
   PATTERN_TILE_GRID_COLUMNS,
+  PATTERN_TILE_TRANSFORM_IDENTITY,
   type PatternTileRow,
+  type PatternTileTransform,
   groupPatternTiles,
+  isPatternTileDoubleTap,
+  mirrorPatternTileTransform,
+  patternTileThumbTransforms,
   pushRecentPatternTile,
   recentPatternTiles,
+  rotatePatternTileTransform,
   patternActionOfSubmenu,
   patternActionSubmenu,
   patternSymmetryForKey,
@@ -251,11 +258,111 @@ describe('the Tiles bar carries the arming grid', () => {
     expect(tilesBar).toContain('const active = tool === t.tool;');
   });
 
-  it("the '...' button opens the takeover, which arms and dismisses", () => {
+  it("the '...' button opens the takeover, which arms on pick", () => {
     expect(tilesBar).toContain('onPress={() => setShowAll(true)}');
     expect(tilesBar).toContain('<PatternTileModal');
     expect(tilesBar).toContain('tiles={model.patternTiles ?? []}');
-    expect(tilesBar).toContain('onPick={(id) => { setShowAll(false); model.onPatternPickTile?.(id); }}');
+    // Dismissal is the modal's own business now (it waits out the
+    // double-tap window); the bar just arms.
+    expect(tilesBar).toContain('onPick={(id) => model.onPatternPickTile?.(id)}');
+  });
+});
+
+// The Facet tile-editor's pose UX, ported: a second tap on a tile inside
+// the double-tap window turns it a quarter clockwise, and a long press
+// opens the transform modal (rotate + the two flips). Both the Tiles bar's
+// recent grid and the '...' takeover speak it, and both draw their
+// thumbnails in the stored pose — the button must show what the stamp will
+// lay.
+describe('the tile pose gestures (double-tap turn, long-press transform)', () => {
+  const BARS = readFileSync(resolve(__dirname, '..', 'components', 'PatternBars.tsx'), 'utf8');
+  const MODAL = readFileSync(
+    resolve(__dirname, '..', 'components', 'PatternTileModal.tsx'), 'utf8',
+  );
+  const XFORM = readFileSync(
+    resolve(__dirname, '..', 'components', 'PatternTileTransformModal.tsx'), 'utf8',
+  );
+  const tilesBar = BARS.slice(
+    BARS.indexOf('export function PatternTilesBar'),
+    BARS.indexOf('export function PatternToolsBar'),
+  );
+
+  it('a double tap rotates a quarter clockwise, keeping the mirrors', () => {
+    expect(rotatePatternTileTransform({ rotation: 0, mirrorH: true, mirrorV: false }))
+      .toEqual({ rotation: 90, mirrorH: true, mirrorV: false });
+    expect(rotatePatternTileTransform({ rotation: 270, mirrorH: false, mirrorV: true }))
+      .toEqual({ rotation: 0, mirrorH: false, mirrorV: true });
+  });
+
+  it('four double taps come back around', () => {
+    let t = PATTERN_TILE_TRANSFORM_IDENTITY;
+    for (let i = 0; i < 4; i++) t = rotatePatternTileTransform(t);
+    expect(t).toEqual(PATTERN_TILE_TRANSFORM_IDENTITY);
+  });
+
+  it("a flip is VISUAL — it inverts the rotation, as the engine's applyVisualMirror does", () => {
+    // The engine bakes mirrors first, then rotation; a visual flip of a
+    // rotated tile therefore flips the flag AND runs the rotation backwards.
+    expect(mirrorPatternTileTransform({ rotation: 90, mirrorH: false, mirrorV: false }, 'h'))
+      .toEqual({ rotation: 270, mirrorH: true, mirrorV: false });
+    expect(mirrorPatternTileTransform({ rotation: 0, mirrorH: false, mirrorV: true }, 'v'))
+      .toEqual({ rotation: 0, mirrorH: false, mirrorV: false });
+    // Self-inverse: flipping twice is the pose you started in.
+    const posed: PatternTileTransform = { rotation: 180, mirrorH: true, mirrorV: false };
+    expect(mirrorPatternTileTransform(mirrorPatternTileTransform(posed, 'h'), 'h')).toEqual(posed);
+    expect(mirrorPatternTileTransform(mirrorPatternTileTransform(posed, 'v'), 'v')).toEqual(posed);
+  });
+
+  it('the double-tap window: same tile inside the window only', () => {
+    const last = { id: 'a', time: 1000 };
+    expect(isPatternTileDoubleTap(last, 'a', 1000 + PATTERN_TILE_DOUBLE_TAP_MS - 1)).toBe(true);
+    expect(isPatternTileDoubleTap(last, 'a', 1000 + PATTERN_TILE_DOUBLE_TAP_MS)).toBe(false);
+    expect(isPatternTileDoubleTap(last, 'b', 1001)).toBe(false);
+    expect(isPatternTileDoubleTap({ id: '', time: 0 }, 'a', 1)).toBe(false);
+  });
+
+  it("thumbnails pose rotate-first, Facet's TileSvgThumbnail order, and identity adds nothing", () => {
+    expect(patternTileThumbTransforms({ rotation: 90, mirrorH: true, mirrorV: true }))
+      .toEqual([{ rotate: '90deg' }, { scaleX: -1 }, { scaleY: -1 }]);
+    expect(patternTileThumbTransforms(PATTERN_TILE_TRANSFORM_IDENTITY)).toEqual([]);
+    expect(patternTileThumbTransforms(undefined)).toEqual([]);
+  });
+
+  it('both grids speak both gestures, through the one host callback', () => {
+    for (const src of [tilesBar, MODAL]) {
+      expect(src).toContain('isPatternTileDoubleTap(lastTapRef.current, t.id, now)');
+      expect(src).toContain('rotatePatternTileTransform');
+      expect(src).toContain('onLongPress={');
+      expect(src).toContain('<PatternTileTransformModal');
+    }
+    expect(tilesBar).toContain('model.onPatternSetTileTransform?.(t.id, rotatePatternTileTransform(xform))');
+    expect(MODAL).toContain('onSetTransform?.(t.id, rotatePatternTileTransform(poseOf(t.id)))');
+    // A long press also ARMS the tile (Facet's palette does), so the pose
+    // being edited is the pose in hand.
+    expect(tilesBar).toContain('model.onPatternPickTile?.(t.id);\n                  setTransformId(t.id);');
+    expect(MODAL).toContain('onPick(t.id);\n                        setTransformId(t.id);');
+  });
+
+  it('both grids draw their thumbnails in the stored pose', () => {
+    expect(tilesBar).toContain('transform: patternTileThumbTransforms(xform)');
+    expect(MODAL).toContain('transform: patternTileThumbTransforms(poseOf(t.id))');
+  });
+
+  it('the takeover waits out the double-tap window before dismissing', () => {
+    expect(MODAL).toContain('closeTimerRef.current = setTimeout(onClose, PATTERN_TILE_DOUBLE_TAP_MS);');
+    // ...and a rotate keeps it up: the second tap cancels the pending exit.
+    const doubleTapBranch = MODAL.slice(
+      MODAL.indexOf('if (isPatternTileDoubleTap(lastTapRef.current, t.id, now)) {'),
+      MODAL.indexOf('} else {'),
+    );
+    expect(doubleTapBranch).toContain('cancelClose();');
+  });
+
+  it('the transform modal offers rotate and the two flips, previewed in the pose', () => {
+    expect(XFORM).toContain('onChange(rotatePatternTileTransform(transform))');
+    expect(XFORM).toContain("onChange(mirrorPatternTileTransform(transform, 'h'))");
+    expect(XFORM).toContain("onChange(mirrorPatternTileTransform(transform, 'v'))");
+    expect(XFORM).toContain('transform: patternTileThumbTransforms(transform)');
   });
 });
 

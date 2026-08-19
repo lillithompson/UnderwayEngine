@@ -365,6 +365,18 @@ export interface ObjectPropertiesModel {
   /** Arm a specific tile as the painting sub-tool. The host is also what
    *  files the tile at the head of its recent list. */
   onPatternPickTile?(id: string): void;
+  /** Each tile's pose (rotation + mirrors), keyed by sprite id. What the
+   *  menus draw their thumbnails in, and what arming the tile stamps with.
+   *  App-owned session state, like the recents; a missing entry is the
+   *  identity. */
+  patternTileTransforms?: Record<string, import('./logic/patternEdit').PatternTileTransform>;
+  /** Store a tile's pose — a double-tap's quarter turn or the transform
+   *  modal's rotate/flip. The host also re-arms the tile if it is in hand,
+   *  so the next stamp lays the pose the menu now shows. */
+  onPatternSetTileTransform?(
+    id: string,
+    transform: import('./logic/patternEdit').PatternTileTransform,
+  ): void;
   /** Arm the random brush / eraser as the painting sub-tool. */
   onPatternArmTool?(tool: 'random' | 'erase'): void;
   /** Run a grid action (flood replaces the whole grid with the armed tile —

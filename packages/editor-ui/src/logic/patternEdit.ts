@@ -154,6 +154,74 @@ export function recentPatternTiles(
   return rows;
 }
 
+// ── Tile transforms (the Facet tile-editor's pose UX) ───────────────
+
+/** The pose a tile is armed and painted in — a discrete rotation plus the
+ *  two mirrors. Structurally identical to the engine's CellTransform
+ *  (declared here too so this package stays engine-import-free). */
+export interface PatternTileTransform {
+  rotation: 0 | 90 | 180 | 270;
+  mirrorH: boolean;
+  mirrorV: boolean;
+}
+
+export const PATTERN_TILE_TRANSFORM_IDENTITY: PatternTileTransform = {
+  rotation: 0, mirrorH: false, mirrorV: false,
+};
+
+/** How close two taps on the same tile must land to read as a double tap
+ *  (Facet's TilePalette window). */
+export const PATTERN_TILE_DOUBLE_TAP_MS = 400;
+
+/** Is a tap at `now` on `id` the second half of a double tap, given the
+ *  last tap seen? The first tap arms the tile; this one rotates it. */
+export function isPatternTileDoubleTap(
+  last: { id: string; time: number },
+  id: string,
+  now: number,
+): boolean {
+  return last.id === id && now - last.time < PATTERN_TILE_DOUBLE_TAP_MS;
+}
+
+/** A quarter turn clockwise, keeping the mirrors — what a double tap does. */
+export function rotatePatternTileTransform(t: PatternTileTransform): PatternTileTransform {
+  return { ...t, rotation: ((t.rotation + 90) % 360) as 0 | 90 | 180 | 270 };
+}
+
+/** Left-compose a VISUAL mirror onto the pose — flip what the eye sees,
+ *  whatever rotation it is already under. Flipping a rotated tile is not
+ *  just toggling its mirror flag: the engine bakes mirrors first, then
+ *  rotation, so the visual flip lands on the near side of the rotation and
+ *  the rotation has to invert to compensate (the engine's applyVisualMirror,
+ *  ported verbatim — the two must agree or the modal's Flip button would
+ *  show one tile and stamp another). */
+export function mirrorPatternTileTransform(
+  t: PatternTileTransform,
+  axis: 'h' | 'v',
+): PatternTileTransform {
+  return {
+    rotation: ((360 - t.rotation) % 360) as 0 | 90 | 180 | 270,
+    mirrorH: axis === 'h' ? !t.mirrorH : t.mirrorH,
+    mirrorV: axis === 'v' ? !t.mirrorV : t.mirrorV,
+  };
+}
+
+/** The react-native style `transform` list that shows a thumbnail in its
+ *  pose. Rotate leads, mirrors follow — RN applies the list right-to-left,
+ *  so the image mirrors first and then rotates, exactly the order the
+ *  engine's bake composes them in (and the order Facet's TileSvgThumbnail
+ *  uses). Empty for the identity, so an unposed tile adds no style. */
+export function patternTileThumbTransforms(
+  t: PatternTileTransform | undefined,
+): ({ rotate: string } | { scaleX: number } | { scaleY: number })[] {
+  const out: ({ rotate: string } | { scaleX: number } | { scaleY: number })[] = [];
+  if (!t) return out;
+  if (t.rotation !== 0) out.push({ rotate: `${t.rotation}deg` });
+  if (t.mirrorH) out.push({ scaleX: -1 });
+  if (t.mirrorV) out.push({ scaleY: -1 });
+  return out;
+}
+
 // ── Tile sets (the family filter) ───────────────────────────────────
 
 /** One toggleable tile set of the Tools bar's Sets page: a sprite family,

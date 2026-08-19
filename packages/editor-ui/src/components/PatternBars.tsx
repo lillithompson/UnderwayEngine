@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ObjectPropertiesModel } from '../adapter';
 import {
@@ -9,10 +9,15 @@ import {
   PATTERN_ARM_TOOLS,
   PATTERN_GRID_ACTIONS,
   PATTERN_SYMMETRY_ENTRIES,
+  PATTERN_TILE_TRANSFORM_IDENTITY,
+  isPatternTileDoubleTap,
+  patternTileThumbTransforms,
+  rotatePatternTileTransform,
 } from '../logic/patternEdit';
 import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
 import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, MultiToggleRow, SegmentedRow } from './effectBar';
 import { PatternTileModal } from './PatternTileModal';
+import { PatternTileTransformModal } from './PatternTileTransformModal';
 
 // The pattern object's three submenu bars — siblings of the effect bars,
 // sharing their chrome and row grammar (effectBar.tsx):
@@ -37,9 +42,17 @@ export function PatternTilesBar({ model, onBack }: {
   onBack: () => void;
 }) {
   const [showAll, setShowAll] = useState(false);
+  // The tile whose pose the long-press transform modal is editing, if any.
+  const [transformId, setTransformId] = useState<string | null>(null);
+  // The last tile tap, for the double-tap quarter turn (Facet's window).
+  const lastTapRef = useRef<{ id: string; time: number }>({ id: '', time: 0 });
   const tool = model.patternTool;
   const activeId = tool === 'tile' ? model.patternActiveTileId ?? null : null;
   const recent = model.patternRecentTiles ?? [];
+  const transforms = model.patternTileTransforms ?? {};
+  const transformUri = transformId
+    ? (model.patternTiles ?? []).find((t) => t.id === transformId)?.uri ?? null
+    : null;
   // Random, Erase, the recent tiles, then '...' — laid out as a grid four
   // buttons wide (PATTERN_TILE_GRID_COLUMNS), so the eight fill two rows
   // exactly and the bar's height is the same whatever is in hand.
@@ -67,16 +80,37 @@ export function PatternTilesBar({ model, onBack }: {
           })}
           {recent.map((t) => {
             const active = t.id === activeId;
+            const xform = transforms[t.id] ?? PATTERN_TILE_TRANSFORM_IDENTITY;
             return (
               <Pressable
                 key={t.id}
-                onPress={() => model.onPatternPickTile?.(t.id)}
+                // First tap arms; a second within the window turns the tile a
+                // quarter clockwise instead (Facet's TilePalette double-tap).
+                onPress={() => {
+                  const now = Date.now();
+                  if (isPatternTileDoubleTap(lastTapRef.current, t.id, now)) {
+                    model.onPatternSetTileTransform?.(t.id, rotatePatternTileTransform(xform));
+                    lastTapRef.current = { id: '', time: 0 };
+                  } else {
+                    model.onPatternPickTile?.(t.id);
+                    lastTapRef.current = { id: t.id, time: now };
+                  }
+                }}
+                // Holding arms the tile AND opens its pose controls, as
+                // Facet's palette does.
+                onLongPress={() => {
+                  model.onPatternPickTile?.(t.id);
+                  setTransformId(t.id);
+                }}
                 style={[styles.tile, active && styles.tileActive]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={t.id}
               >
-                <Image source={{ uri: t.uri }} style={styles.tileImage} />
+                <Image
+                  source={{ uri: t.uri }}
+                  style={[styles.tileImage, { transform: patternTileThumbTransforms(xform) }]}
+                />
               </Pressable>
             );
           })}
@@ -94,10 +128,19 @@ export function PatternTilesBar({ model, onBack }: {
         visible={showAll}
         tiles={model.patternTiles ?? []}
         activeId={activeId}
-        // Picking IS the confirmation: arm the tile (which also files it at
-        // the head of the recent grid, host-side) and get out of the way.
-        onPick={(id) => { setShowAll(false); model.onPatternPickTile?.(id); }}
+        transforms={transforms}
+        onPick={(id) => model.onPatternPickTile?.(id)}
+        onSetTransform={(id, xform) => model.onPatternSetTileTransform?.(id, xform)}
         onClose={() => setShowAll(false)}
+      />
+      <PatternTileTransformModal
+        visible={transformId != null}
+        uri={transformUri}
+        transform={(transformId ? transforms[transformId] : undefined) ?? PATTERN_TILE_TRANSFORM_IDENTITY}
+        onChange={(xform) => {
+          if (transformId) model.onPatternSetTileTransform?.(transformId, xform);
+        }}
+        onClose={() => setTransformId(null)}
       />
     </View>
   );

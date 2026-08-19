@@ -156,6 +156,35 @@ describe('patternApplyToolAt', () => {
     }
   });
 
+  test("the tile tool stamps the arm's pose; omitted, the identity", () => {
+    const p = makePattern(4, 4);
+    const pose = { rotation: 90 as const, mirrorH: true, mirrorV: false };
+    const posed = patternApplyToolAt(p, 1, 1, {
+      kind: 'tile', spriteId: 'test/tile_11111111', transform: pose,
+    });
+    expect(posed[0].newState).toMatchObject({ type: 'sprite', transform: pose });
+    const plain = patternApplyToolAt(p, 1, 1, { kind: 'tile', spriteId: 'test/tile_11111111' });
+    expect(plain[0].newState).toMatchObject({
+      type: 'sprite', transform: { rotation: 0, mirrorH: false, mirrorV: false },
+    });
+  });
+
+  test("a posed stamp's symmetry partner mirrors the POSE, not the identity", () => {
+    const p = makePattern(4, 4, { symmetry: { ...PATTERN_SYMMETRY_OFF, mirrorH: true } });
+    const pose = { rotation: 90 as const, mirrorH: false, mirrorV: false };
+    const edits = patternApplyToolAt(p, 0, 1, {
+      kind: 'tile', spriteId: 'test/tile_10001000', transform: pose,
+    });
+    expect(edits).toHaveLength(2);
+    const partner = edits.find((e) => e.index === 7)!.newState;
+    // mirrorCellState composes the H flip onto the stamped rotation (an H
+    // mirror inverts it: 360 − 90) — the partner is NOT just {mirrorH: true}
+    // on an unrotated tile.
+    expect(partner && partner.type === 'sprite' && partner.transform).toEqual(
+      { rotation: 270, mirrorH: true, mirrorV: false },
+    );
+  });
+
   test('mirrorH symmetry stamps the horizontal partner', () => {
     const p = makePattern(4, 4, { symmetry: { ...PATTERN_SYMMETRY_OFF, mirrorH: true } });
     const edits = patternApplyToolAt(p, 0, 1, { kind: 'tile', spriteId: 'test/tile_10001000' });

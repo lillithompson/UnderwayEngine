@@ -1,14 +1,28 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { groupPatternTiles, type PatternTileRow } from '../logic/patternEdit';
+import {
+  PATTERN_TILE_DOUBLE_TAP_MS,
+  PATTERN_TILE_TRANSFORM_IDENTITY,
+  groupPatternTiles,
+  isPatternTileDoubleTap,
+  patternTileThumbTransforms,
+  rotatePatternTileTransform,
+  type PatternTileRow,
+  type PatternTileTransform,
+} from '../logic/patternEdit';
 import {
   PANEL_BG, PANEL_BORDER, PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE,
 } from '../theme';
+import { PatternTileTransformModal } from './PatternTileTransformModal';
 
 // The Tiles bar's takeover: every tile the menu offers, laid out as a grid
-// of square buttons. Tapping one arms it and dismisses — the picking is the
-// whole interaction, so there is no confirm.
+// of square buttons. Tapping one arms it; the sheet then excuses itself —
+// after the double-tap window, not instantly, because a tile here takes the
+// same pose gestures as the bar's recent grid: a second tap inside the
+// window turns it a quarter clockwise (cancelling the exit, so the pose can
+// keep turning), and a long press opens the transform modal over this one.
+// There is still no confirm — the arming already happened on the first tap.
 //
 // This sheet wears the PANEL scheme rather than the dark MODAL one the
 // rename / colour-picker sheets use, and that is not a stylistic whim: the
@@ -21,14 +35,40 @@ import {
 
 export const PATTERN_MODAL_TILE = 56;
 
-export function PatternTileModal({ visible, tiles, activeId, onPick, onClose }: {
+export function PatternTileModal({ visible, tiles, activeId, transforms, onPick, onSetTransform, onClose }: {
   visible: boolean;
   tiles: readonly PatternTileRow[];
   activeId: string | null;
+  /** Each tile's pose, keyed by sprite id (identity when missing). */
+  transforms?: Record<string, PatternTileTransform>;
   onPick: (id: string) => void;
+  onSetTransform?: (id: string, transform: PatternTileTransform) => void;
   onClose: () => void;
 }) {
   const groups = groupPatternTiles(tiles);
+  const [transformId, setTransformId] = useState<string | null>(null);
+  const lastTapRef = useRef<{ id: string; time: number }>({ id: '', time: 0 });
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClose = () => {
+    if (closeTimerRef.current != null) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  };
+  // A re-open (or unmount) must not inherit the previous visit's pending
+  // exit or half-open transform card.
+  useEffect(() => {
+    if (!visible) {
+      cancelClose();
+      setTransformId(null);
+      lastTapRef.current = { id: '', time: 0 };
+    }
+    return cancelClose;
+  }, [visible]);
+
+  const poseOf = (id: string) => transforms?.[id] ?? PATTERN_TILE_TRANSFORM_IDENTITY;
+  const transformUri = transformId
+    ? tiles.find((t) => t.id === transformId)?.uri ?? null
+    : null;
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.screen}>
@@ -36,7 +76,7 @@ export function PatternTileModal({ visible, tiles, activeId, onPick, onClose }: 
           <Text style={styles.title}>TILES</Text>
           <Pressable
             style={styles.closeIcon}
-            onPress={onClose}
+            onPress={() => { cancelClose(); onClose(); }}
             accessibilityRole="button"
             accessibilityLabel="Close"
           >
@@ -55,13 +95,33 @@ export function PatternTileModal({ visible, tiles, activeId, onPick, onClose }: 
                   return (
                     <Pressable
                       key={t.id}
-                      onPress={() => onPick(t.id)}
+                      onPress={() => {
+                        const now = Date.now();
+                        if (isPatternTileDoubleTap(lastTapRef.current, t.id, now)) {
+                          cancelClose();
+                          onSetTransform?.(t.id, rotatePatternTileTransform(poseOf(t.id)));
+                          lastTapRef.current = { id: '', time: 0 };
+                        } else {
+                          onPick(t.id);
+                          lastTapRef.current = { id: t.id, time: now };
+                          cancelClose();
+                          closeTimerRef.current = setTimeout(onClose, PATTERN_TILE_DOUBLE_TAP_MS);
+                        }
+                      }}
+                      onLongPress={() => {
+                        cancelClose();
+                        onPick(t.id);
+                        setTransformId(t.id);
+                      }}
                       style={[styles.tile, active && styles.tileActive]}
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
                       accessibilityLabel={t.id}
                     >
-                      <Image source={{ uri: t.uri }} style={styles.tileImage} />
+                      <Image
+                        source={{ uri: t.uri }}
+                        style={[styles.tileImage, { transform: patternTileThumbTransforms(poseOf(t.id)) }]}
+                      />
                     </Pressable>
                   );
                 })}
@@ -69,6 +129,15 @@ export function PatternTileModal({ visible, tiles, activeId, onPick, onClose }: 
             </View>
           ))}
         </ScrollView>
+        <PatternTileTransformModal
+          visible={transformId != null}
+          uri={transformUri}
+          transform={transformId ? poseOf(transformId) : PATTERN_TILE_TRANSFORM_IDENTITY}
+          onChange={(xform) => {
+            if (transformId) onSetTransform?.(transformId, xform);
+          }}
+          onClose={() => setTransformId(null)}
+        />
       </View>
     </Modal>
   );
