@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { MODAL_TEXT, PANEL_HAIRLINE } from '../theme';
-import { sliderValueFromX } from '../logic/slider';
+import { beginValueDrag, endValueDrag, sliderValueFromX } from '../logic/slider';
 
 // A minimal draggable slider (0–1). Tapping or dragging the track moves the
 // thumb to the touch; `onChange` fires live and `onCommit` on release. Built
@@ -58,6 +58,9 @@ export function Slider({ value, onChange, onCommit, accent = DEFAULT_ACCENT, tra
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => {
         draggingRef.current = true;
+        // Claim the gesture against the enclosing carousel's swipe — a
+        // horizontal drag here is not a page fling (see beginValueDrag).
+        beginValueDrag();
         cbRef.current.onChange(track(e.nativeEvent.locationX));
       },
       onPanResponderMove: (e) => cbRef.current.onChange(track(e.nativeEvent.locationX)),
@@ -65,10 +68,12 @@ export function Slider({ value, onChange, onCommit, accent = DEFAULT_ACCENT, tra
       // gesture's own value is both correct and always available.
       onPanResponderRelease: () => {
         draggingRef.current = false;
+        endValueDrag();
         cbRef.current.onCommit(dragRef.current);
       },
       onPanResponderTerminate: () => {
         draggingRef.current = false;
+        endValueDrag();
         cbRef.current.onCommit(dragRef.current);
       },
     }),

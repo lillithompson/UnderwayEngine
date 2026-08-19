@@ -6,7 +6,7 @@ import {
   SHADOW_PAD_SIZE, SHADOW_PAD_TOP,
 } from '../logic/submenuHeight';
 import { BAR_BG, CONTROL_ACCENT, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
-import { padOffsetFromTouch } from '../logic/slider';
+import { beginValueDrag, endValueDrag, padOffsetFromTouch } from '../logic/slider';
 
 // The Drop Shadow editing bar (design "2a"): a full-width light bar with a
 // header (title · color swatch · trash), an XY offset pad, and Blur / Spread /
@@ -61,10 +61,10 @@ function XYPad({ dx, dy, onChange, onCommit }: {
       // Keep the touch once the pad is grabbed so the bar's swipe-to-dismiss
       // can't steal it mid-drag (see Slider for the same guard).
       onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (e) => { draggingRef.current = true; const [x, y] = track(e); cbRef.current.onChange(x, y); },
+      onPanResponderGrant: (e) => { draggingRef.current = true; beginValueDrag(); const [x, y] = track(e); cbRef.current.onChange(x, y); },
       onPanResponderMove: (e) => { const [x, y] = track(e); cbRef.current.onChange(x, y); },
-      onPanResponderRelease: () => { draggingRef.current = false; cbRef.current.onCommit(...dragRef.current); },
-      onPanResponderTerminate: () => { draggingRef.current = false; cbRef.current.onCommit(...dragRef.current); },
+      onPanResponderRelease: () => { draggingRef.current = false; endValueDrag(); cbRef.current.onCommit(...dragRef.current); },
+      onPanResponderTerminate: () => { draggingRef.current = false; endValueDrag(); cbRef.current.onCommit(...dragRef.current); },
     }),
   ).current;
   const clampN = (v: number) => Math.max(-1, Math.min(1, v / MAX_OFFSET));

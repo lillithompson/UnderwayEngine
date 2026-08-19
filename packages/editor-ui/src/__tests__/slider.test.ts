@@ -1,6 +1,9 @@
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import {
   BRUSH_HANDLE_GRAB_SLOP,
-  brushDotSize, brushSliderGrabsHandle, brushSliderValueFromX, isSingleTouchGesture,
+  beginValueDrag, brushDotSize, brushSliderGrabsHandle, brushSliderValueFromX,
+  endValueDrag, isSingleTouchGesture, isValueDragging,
   padOffsetFromTouch, sliderValueFromX,
 } from '../logic/slider';
 
@@ -144,5 +147,76 @@ describe('isSingleTouchGesture', () => {
     // The last finger up can report zero touches; that has to fall on the
     // "ours" side or a normal drag would abandon itself at the end.
     expect(isSingleTouchGesture(0)).toBe(true);
+  });
+});
+
+// The bug this guards: the properties panel's submenu bars ride a
+// horizontal carousel, and dragging a Width slider IS a horizontal drag.
+// The carousel would take the gesture, terminate the slider mid-drag and
+// fling the bar away; returning to it re-seeded the bar's draft from the
+// model, so the thumb sprang back to where the drag began. Loudest on a
+// PATTERN, whose Stroke bar has three carousel siblings to be flung into.
+describe('the value-drag guard', () => {
+  afterEach(() => {
+    // Never leave a claim standing — a leaked one deadens every swipe.
+    while (isValueDragging()) endValueDrag();
+  });
+
+  it('is clear until a control takes a touch, and clear again after', () => {
+    expect(isValueDragging()).toBe(false);
+    beginValueDrag();
+    expect(isValueDragging()).toBe(true);
+    endValueDrag();
+    expect(isValueDragging()).toBe(false);
+  });
+
+  it('counts, so two controls at once release independently', () => {
+    // A multi-touch can grab two sliders; the first to let go must not
+    // clear the other's claim and hand the carousel a live gesture.
+    beginValueDrag();
+    beginValueDrag();
+    endValueDrag();
+    expect(isValueDragging()).toBe(true);
+    endValueDrag();
+    expect(isValueDragging()).toBe(false);
+  });
+
+  it('never goes negative, so a stray release cannot arm it', () => {
+    // Release and terminate can both fire for one gesture. An unbalanced
+    // end must floor at zero — otherwise the NEXT drag's begin would only
+    // bring the count back to nought and the guard would read "not
+    // dragging" for the whole gesture.
+    endValueDrag();
+    endValueDrag();
+    expect(isValueDragging()).toBe(false);
+    beginValueDrag();
+    expect(isValueDragging()).toBe(true);
+  });
+});
+
+// The controls and the swipe handlers are react-native and never render in
+// node, so the wiring is pinned by source.
+describe('the drag guard is actually wired up', () => {
+  const read = (rel: string) => readFileSync(resolve(__dirname, '..', rel), 'utf8');
+
+  it('every path out of a slider gesture releases the claim', () => {
+    const SRC = read('components/Slider.tsx');
+    expect(SRC).toContain('onPanResponderGrant');
+    expect(SRC.match(/beginValueDrag\(\)/g)).toHaveLength(1);
+    // Release AND terminate — a gesture the system steals must not leave
+    // the guard armed, or swipes stay dead for the rest of the session.
+    expect(SRC.match(/endValueDrag\(\)/g)).toHaveLength(2);
+  });
+
+  it('the XY offset pad claims it too', () => {
+    const SRC = read('components/ShadowBar.tsx');
+    expect(SRC.match(/beginValueDrag\(\)/g)).toHaveLength(1);
+    expect(SRC.match(/endValueDrag\(\)/g)).toHaveLength(2);
+  });
+
+  it('both of the panel swipe handlers stand down for it', () => {
+    const SRC = read('components/ObjectPropertiesPanel.tsx');
+    // The option-row swap and the submenu carousel/dismiss layer.
+    expect(SRC.match(/!isValueDragging\(\)/g)).toHaveLength(2);
   });
 });

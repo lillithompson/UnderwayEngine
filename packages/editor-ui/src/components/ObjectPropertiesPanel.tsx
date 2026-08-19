@@ -8,6 +8,7 @@ import {
   PATTERN_EDIT_OPTIONS, patternActionOfSubmenu, patternActionSubmenu,
 } from '../logic/patternEdit';
 import { multiSelectionOptions } from '../logic/multiOptions';
+import { isValueDragging } from '../logic/slider';
 import { SubmenuKey, typeMenuHeight } from '../logic/submenuHeight';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
@@ -429,7 +430,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const swapPan = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_e, g) =>
-        canSwapRef.current && Math.abs(g.dx) > 5 && Math.abs(g.dx) > Math.abs(g.dy),
+        !isValueDragging()
+        && canSwapRef.current && Math.abs(g.dx) > 5 && Math.abs(g.dx) > Math.abs(g.dy),
       onPanResponderMove: (_e, g) => { if (!swapping.current) swapX.setValue(g.dx); },
       onPanResponderRelease: (_e, g) => {
         const dir = swipeDismissDirection(g.dx); // −1 left, +1 right, 0 = too short
@@ -776,9 +778,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     PanResponder.create({
       // Claim a clearly-horizontal fling (carousel) or a clearly-downward drag
       // (dismiss) — but never while the font sheet is open, so scrolling its
-      // list isn't hijacked as a dismiss / carousel swipe.
+      // list isn't hijacked as a dismiss / carousel swipe, and never while a
+      // slider is taking a value: dragging Width IS a horizontal drag, and
+      // flinging the bar out from under it strands the gesture and springs
+      // the thumb back to where it started (see logic/slider's drag guard).
       onMoveShouldSetPanResponder: (_e, g) =>
-        !fontSheetOpenRef.current &&
+        !fontSheetOpenRef.current && !isValueDragging() &&
         ((Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5) ||
           (g.dy > 10 && g.dy > Math.abs(g.dx) * 1.5)),
       onPanResponderMove: (_e, g) => {

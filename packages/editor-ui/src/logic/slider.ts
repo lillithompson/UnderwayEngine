@@ -4,6 +4,44 @@
 
 const clamp01 = (t: number): number => (t < 0 ? 0 : t > 1 ? 1 : t);
 
+// ── The value-drag guard ────────────────────────────────────────────
+//
+// A horizontal drag on a slider is, geometrically, a horizontal swipe —
+// and the submenu bars these sliders live in ride a carousel that claims
+// exactly that. RN's responder negotiation is supposed to settle it (the
+// slider holds the responder and refuses termination), but the ancestor is
+// still asked on every move, and the emulated path is not airtight: the
+// carousel would sometimes take a Width drag, terminate the slider
+// mid-gesture, and navigate to the next bar. Coming back re-seeded that
+// bar's draft from the model, so the slider's thumb sprang back to where
+// the drag started — the loudest on a PATTERN, whose Stroke bar has three
+// carousel siblings to be flung into.
+//
+// So a control that is actively taking a value says so, and the swipe
+// handlers stand down for the duration — the same shape as the font
+// sheet's `fontSheetOpenRef` veto, which exists for the same reason.
+//
+// A counter rather than a flag: two controls can be mid-gesture at once
+// (a multi-touch that grabs two sliders), and the second one releasing
+// must not clear the first one's claim.
+let valueDragDepth = 0;
+
+/** A value control has taken a touch. Pair with {@link endValueDrag}. */
+export function beginValueDrag(): void {
+  valueDragDepth += 1;
+}
+
+/** …and has let it go (release OR terminate — every path out). */
+export function endValueDrag(): void {
+  if (valueDragDepth > 0) valueDragDepth -= 1;
+}
+
+/** Whether any value control is mid-gesture. Swipe handlers that would
+ *  otherwise steal the touch consult this and refuse. */
+export function isValueDragging(): boolean {
+  return valueDragDepth > 0;
+}
+
 /** The 0–1 slider value for a touch at `x` px across a `trackW`-wide track.
  *
  *  On react-native-web the FIRST onPanResponderGrant fires before the
