@@ -70,6 +70,17 @@ const LABEL_INSET = 16;
  *  Its whole opacity is the value (see {@link FloatingSliderRow}). */
 const STRENGTH_WASH =
   'radial-gradient(circle at 50% 50%, #ffffff 0%, rgba(255,255,255,0.9) 45%, rgba(255,255,255,0) 100%)';
+/** The size preview's disc: the brush's own gaussian falloff, solid at the
+ *  centre and gone at the rim, so what stands above the slider is the shape
+ *  of the mark rather than a hard circle the brush never makes. */
+const BRUSH_WASH =
+  'radial-gradient(circle at 50% 50%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.55) 45%, rgba(255,255,255,0) 100%)';
+/** How long the preview takes to go once the handle is let go. Short: it is
+ *  a readout for the drag, and lingering over the artwork afterwards would
+ *  make it a thing to wait out. */
+const PREVIEW_FADE_MS = 160;
+/** Clear air between the preview disc and the top of the slider stack. */
+const PREVIEW_GAP = 24;
 /** Fully clears bottom margin + both rows + any home-indicator inset. */
 const HIDDEN_Y = HANDLE * 2 + ROW_GAP + BOTTOM_MARGIN + 80;
 
@@ -77,12 +88,16 @@ const HIDDEN_Y = HANDLE * 2 + ROW_GAP + BOTTOM_MARGIN + 80;
  *  value. Exported as the package's one floating-slider look — any control
  *  that should "mirror the brush slider" (the Poser stage's turn slider)
  *  uses THIS row rather than growing a lookalike that drifts. */
-export function FloatingSliderRow({ label, value, onChange, readout }: {
+export function FloatingSliderRow({ label, value, onChange, readout, onPreview }: {
   label: string;
   value: number;
   onChange: (value: number) => void;
   /** What the handle's interior shows — see the module header. */
   readout: 'diameter' | 'opacity';
+  /** Live value while the handle is HELD, and null the moment it is let go
+   *  (or the touch turns out to have missed the handle). Drives the size
+   *  preview above the stack; rows without one are unaffected. */
+  onPreview?: (value: number | null) => void;
 }) {
   // The ground pill and the row's name: in while held, out on release. One
   // driver for both — the name is part of "you are adjusting THIS".
@@ -98,6 +113,8 @@ export function FloatingSliderRow({ label, value, onChange, readout }: {
   if (!draggingRef.current) dragRef.current = value;
   const cbRef = useRef(onChange);
   cbRef.current = onChange;
+  const previewRef = useRef(onPreview);
+  previewRef.current = onPreview;
 
   // THE HANDLE IS THE CONTROL. A touch anywhere else in the row is swallowed
   // and ignored — see brushSliderGrabsHandle for why tapping to a value was
@@ -120,8 +137,10 @@ export function FloatingSliderRow({ label, value, onChange, readout }: {
         // before there was anything to measure the touch against.
         draggingRef.current = false;
         fadeHeld(0);
+        previewRef.current?.(null);
         return false;
       }
+      previewRef.current?.(dragRef.current);
       grabOffsetRef.current = x - (dragRef.current * (TRACK_W - HANDLE) + HANDLE / 2);
     }
     return grabsRef.current;
@@ -138,6 +157,7 @@ export function FloatingSliderRow({ label, value, onChange, readout }: {
   const grabbedRef = useRef(value);
   const abandonedRef = useRef(false);
   const letGo = () => {
+    previewRef.current?.(null);
     draggingRef.current = false;
     abandonedRef.current = false;
     grabsRef.current = null;
@@ -172,11 +192,14 @@ export function FloatingSliderRow({ label, value, onChange, readout }: {
           draggingRef.current = false;
           dragRef.current = grabbedRef.current;
           fadeHeld(0);
+          previewRef.current?.(null);
           if (grabsRef.current) cbRef.current(grabbedRef.current);
           return;
         }
         if (!takeHold(e.nativeEvent.locationX)) return;
-        cbRef.current(track(e.nativeEvent.locationX));
+        const next = track(e.nativeEvent.locationX);
+        previewRef.current?.(next);
+        cbRef.current(next);
       },
       onPanResponderRelease: () => {
         const gave = abandonedRef.current || !grabsRef.current;
@@ -230,6 +253,24 @@ export function BrushControlsPanel({ model, safeBottom = 0 }: {
 }) {
   const [mounted, setMounted] = useState(model.visible);
   const rise = useRef(new Animated.Value(model.visible ? 0 : HIDDEN_Y)).current;
+  // The size preview: a disc of the brush's real on-canvas radius, standing
+  // over the stack while the Size handle is held. Its RADIUS is state (it
+  // has to redraw as the handle moves) but its presence is animated, so the
+  // release fades rather than blinks. The last radius is kept through that
+  // fade — dropping it to zero on release would make the disc collapse
+  // instead of dissolve.
+  const [previewRadius, setPreviewRadius] = useState(0);
+  const previewFade = useRef(new Animated.Value(0)).current;
+  const onSizePreview = (value: number | null) => {
+    if (value == null) {
+      Animated.timing(previewFade, {
+        toValue: 0, duration: PREVIEW_FADE_MS, useNativeDriver: true,
+      }).start();
+      return;
+    }
+    setPreviewRadius(Math.max(0, model.sizePreviewRadiusPx?.(value) ?? 0));
+    previewFade.setValue(1);
+  };
   useEffect(() => {
     let anim: Animated.CompositeAnimation;
     if (model.visible) {
@@ -255,6 +296,24 @@ export function BrushControlsPanel({ model, safeBottom = 0 }: {
       style={[styles.wrap, { bottom: safeBottom + BOTTOM_MARGIN }]}
       pointerEvents="box-none"
     >
+      {model.sizePreviewRadiusPx && previewRadius > 0 ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.preview,
+            {
+              width: previewRadius * 2,
+              height: previewRadius * 2,
+              borderRadius: previewRadius,
+              opacity: previewFade,
+              // Sat on the stack's top edge and pushed up by its own height,
+              // so the disc grows UPWARD into the page rather than down
+              // through the sliders it is describing.
+              bottom: HANDLE * 2 + ROW_GAP + PREVIEW_GAP,
+            },
+          ]}
+        />
+      ) : null}
       <Animated.View style={{ transform: [{ translateY: rise }] }}>
         {/* A host can drop STRENGTH (showStrength) when that brush carries
             it elsewhere. The stack stands on the bottom edge, so Size holds
@@ -269,6 +328,7 @@ export function BrushControlsPanel({ model, safeBottom = 0 }: {
         )}
         <FloatingSliderRow
           label="Size" readout="diameter" value={model.size} onChange={model.onSize}
+          onPreview={model.sizePreviewRadiusPx ? onSizePreview : undefined}
         />
       </Animated.View>
     </View>
@@ -322,6 +382,14 @@ const styles = StyleSheet.create({
   },
   dot: {
     backgroundColor: '#ffffff',
+  },
+  preview: {
+    position: 'absolute',
+    // The disc is the mark, so it is not clipped or boxed: it simply stands
+    // over the page at the size the brush will paint.
+    ...(Platform.OS === 'web'
+      ? ({ backgroundImage: BRUSH_WASH } as object)
+      : { backgroundColor: 'rgba(255,255,255,0.75)' }),
   },
   wash: {
     width: DOT_MAX,

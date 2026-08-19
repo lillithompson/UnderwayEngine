@@ -220,3 +220,47 @@ describe('the drag guard is actually wired up', () => {
     expect(SRC.match(/!isValueDragging\(\)/g)).toHaveLength(2);
   });
 });
+
+// The size preview: a disc of the brush's REAL on-canvas radius standing
+// over the slider while the handle is held, gone shortly after it is let
+// go. React-native, so the wiring is pinned by source.
+describe('the brush size preview', () => {
+  const SRC = readFileSync(
+    resolve(__dirname, '..', 'components', 'BrushControlsPanel.tsx'), 'utf8',
+  );
+
+  it('shows the real radius the host reports, not a token dot', () => {
+    // The handle's own readout is a dot that merely grows; the preview is
+    // the mark itself, so its size comes from the host's canvas mapping.
+    expect(SRC).toContain('setPreviewRadius(Math.max(0, model.sizePreviewRadiusPx?.(value) ?? 0))');
+    expect(SRC).toContain('width: previewRadius * 2');
+  });
+
+  it('is drawn with the brush\'s gaussian falloff', () => {
+    expect(SRC).toContain('BRUSH_WASH');
+    expect(SRC).toContain('radial-gradient');
+  });
+
+  it('appears at once and fades quickly on release', () => {
+    // Snapping in (setValue, not a timing) — the disc must be there for the
+    // first frame of the drag, not arrive after it.
+    expect(SRC).toContain('previewFade.setValue(1)');
+    expect(SRC).toContain('toValue: 0, duration: PREVIEW_FADE_MS');
+    expect(SRC).toMatch(/PREVIEW_FADE_MS = \d{2,3};/);
+  });
+
+  it('rides only the Size row, and only when the host offers a mapping', () => {
+    expect(SRC).toContain('onPreview={model.sizePreviewRadiusPx ? onSizePreview : undefined}');
+    // Strength gets no onPreview — it is not a size.
+    const strengthRow = SRC.slice(SRC.indexOf('label="Strength"'), SRC.indexOf('label="Size"'));
+    expect(strengthRow).not.toContain('onPreview');
+  });
+
+  it('clears on every way out of the gesture, not just a clean release', () => {
+    // Release, terminate, a second finger abandoning the drag, and a touch
+    // that turns out to have missed the handle — a preview left standing
+    // after any of those is a disc stuck over the artwork.
+    expect(SRC.match(/previewRef\.current\?\.\(null\)/g)).toHaveLength(3);
+    expect(SRC).toContain('previewRef.current?.(dragRef.current)');
+  });
+});

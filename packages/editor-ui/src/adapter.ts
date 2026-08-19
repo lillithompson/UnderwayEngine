@@ -706,6 +706,13 @@ export interface BrushControlsModel {
    *  way — the stack stands on the bottom edge, so the row that goes is the
    *  one above. */
   showStrength?: boolean;
+  /** The on-screen RADIUS, in px, that a Size value works out to on the
+   *  canvas right now — camera zoom and all. The Size row draws a soft disc
+   *  of exactly that size while the handle is held, so what you see above
+   *  the slider is the mark you are about to make rather than a dot that
+   *  merely grows. The mapping is the host's (it owns the brush and the
+   *  camera); omit it and no preview is drawn. */
+  sizePreviewRadiusPx?(value: number): number;
   /** Both fire live while dragging (and once on a tap). No commit variants —
    *  brush settings are tool state, not undoable document edits. */
   onSize(value: number): void;
