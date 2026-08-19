@@ -43,6 +43,52 @@ import { strokeScaleForUnits } from './svgStroke';
 const svgViewCache = new WeakMap<PatternObject, SVGObject | null>();
 
 /**
+ * Second-level cache: the BAKE itself, keyed on the `cells` array.
+ *
+ * The per-object WeakMap above only helps a render that hands back the SAME
+ * object. A slider drag doesn't: every preview frame builds `{...p, stroke}`
+ * — a fresh object carrying the SAME cells — so the object cache missed on
+ * every frame and re-baked a whole 16×16 grid per frame, exactly the
+ * per-frame work the note above promises never happens.
+ *
+ * None of stroke / angleDeg / opacity / hidden / groupId / name feeds the
+ * bake; they are applied ON TOP of the finished view (see
+ * withPatternPresentation). So the bake is cached against the cells array a
+ * presentation-only edit carries forward unchanged, guarded by a key over
+ * everything that DOES feed it — a cell edit mints a new cells array, and a
+ * resize / rotate / repeat toggle moves the key.
+ */
+const bakeCache = new WeakMap<
+  readonly (import('./types').CellState)[],
+  { key: string; view: SVGObject | null }
+>();
+
+/** Everything the bake reads, as one comparable string. Presentation fields
+ *  are deliberately absent — that omission is the whole point. */
+function bakeKey(p: PatternObject): string {
+  return [
+    p.id, p.cols, p.rows,
+    p.cellX, p.cellY, p.cellWidth, p.cellHeight,
+    p.rotation ?? 0, p.mirrorH ? 1 : 0, p.mirrorV ? 1 : 0,
+    p.tileMode ?? '', p.tileWidthL0 ?? '', p.tileHeightL0 ?? '',
+    p.tileOffsetXL0 ?? 0, p.tileOffsetYL0 ?? 0,
+  ].join('|');
+}
+
+/** The baked view wearing this object's presentation. A shallow copy, so
+ *  the shared segment / subpath arrays are never rewritten under a caller
+ *  holding an earlier view. */
+function withPatternPresentation(base: SVGObject, p: PatternObject): SVGObject {
+  const view: SVGObject = { ...base, name: p.name };
+  if (p.stroke) view.stroke = p.stroke; else delete view.stroke;
+  if (p.angleDeg) view.angleDeg = p.angleDeg; else delete view.angleDeg;
+  if (p.opacity != null) view.opacity = p.opacity; else delete view.opacity;
+  if (p.hidden) view.hidden = true; else delete view.hidden;
+  if (p.groupId) view.groupId = p.groupId; else delete view.groupId;
+  return view;
+}
+
+/**
  * The inner markup the DOM node layer mounts for a pattern view — the ONE
  * markup call every pattern render site shares (the node layer, the paint
  * stroke's live preview, its restore path).
@@ -97,7 +143,17 @@ export function bakePatternElements(p: PatternObject): CachedFigureSVG | null {
  */
 export function patternSVGView(p: PatternObject): SVGObject | null {
   if (svgViewCache.has(p)) return svgViewCache.get(p) ?? null;
-  const view = buildPatternSVGView(p);
+  const key = bakeKey(p);
+  const hit = bakeCache.get(p.cells);
+  const baked = hit && hit.key === key ? hit.view : null;
+  let view: SVGObject | null;
+  if (hit && hit.key === key) {
+    view = baked ? withPatternPresentation(baked, p) : null;
+  } else {
+    view = buildPatternSVGView(p);
+    bakeCache.set(p.cells, { key, view });
+    view = view ? withPatternPresentation(view, p) : null;
+  }
   svgViewCache.set(p, view);
   return view;
 }
@@ -154,17 +210,18 @@ function buildPatternSVGView(p: PatternObject): SVGObject | null {
     if (offX !== 0) view.tileOffsetXL0 = offX;
     if (offY !== 0) view.tileOffsetYL0 = offY;
   }
-  // The authored stroke block rides onto the view: width/dash render
-  // through svgStrokePresentation's world-based formula in BOTH the flat
-  // and the tiled markup, which is what keeps the line weight identical
-  // across a repeat toggle.
-  if (p.stroke) view.stroke = p.stroke;
-  // The discrete rotation/mirror are baked into the segments by the
-  // figure-placement transform above; the free angle is applied by the
-  // node layer / export at draw time, same as every bbox kind.
-  if (p.angleDeg) view.angleDeg = p.angleDeg;
-  if (p.opacity != null) view.opacity = p.opacity;
-  if (p.hidden) view.hidden = true;
-  if (p.groupId) view.groupId = p.groupId;
+  // The presentation fields are NOT set here — this result is cached and
+  // shared across every object that bakes the same way, so wearing one
+  // object's stroke would hand it to the next. withPatternPresentation
+  // dresses a copy, per call. What they are and why they don't bake:
+  //   • stroke — width/dash render through svgStrokePresentation's
+  //     world-based formula at MARKUP time, in both the flat and the tiled
+  //     path, which is what keeps the line weight identical across a
+  //     repeat toggle;
+  //   • angleDeg — the free angle is applied by the node layer / export at
+  //     draw time, same as every bbox kind (the DISCRETE rotation/mirror
+  //     is baked into the segments by the figure-placement transform
+  //     above, and so is keyed into bakeKey);
+  //   • opacity / hidden / groupId / name — scene bookkeeping.
   return view;
 }

@@ -728,3 +728,65 @@ describe('re-inking a whole pattern', () => {
     expect(patternInkColor(makePattern(2, 2))).toBeNull();
   });
 });
+
+// The module's contract: a pattern bakes once per EDIT, never once per
+// frame. The bug this pins: a stroke-width drag builds `{...p, stroke}`
+// every preview frame — a new object, so the per-object WeakMap missed and
+// re-baked the whole grid at pointer-move rate, on a control whose value
+// the bake does not even read.
+describe('the bake survives a presentation-only edit', () => {
+  // Colour cells, not sprites: a sprite bakes to nothing in this
+  // environment (no tile vector sources), which is why every bake test
+  // here is built from colour cells.
+  function filled(): PatternObject {
+    let p = makePattern(4, 4);
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) p = withCell(p, x, y, colorCell(200, 30, 30));
+    }
+    return p;
+  }
+
+  it('reuses the baked geometry when only the stroke changes', () => {
+    const p = filled();
+    const first = patternSVGView(p)!;
+    const dragged = patternSVGView({ ...p, stroke: { width: 0.5 } })!;
+    // The expensive part is shared outright…
+    expect(dragged.segments).toBe(first.segments);
+    expect(dragged.subpaths).toBe(first.subpaths);
+    // …while the view still wears the NEW stroke, not the cached one.
+    expect(dragged.stroke).toEqual({ width: 0.5 });
+    expect(first.stroke).toBeUndefined();
+  });
+
+  it('does the same for the other draw-time fields', () => {
+    const p = filled();
+    const base = patternSVGView(p)!;
+    const angled = patternSVGView({ ...p, angleDeg: 30, opacity: 0.5 })!;
+    expect(angled.segments).toBe(base.segments);
+    expect(angled.angleDeg).toBe(30);
+    expect(angled.opacity).toBe(0.5);
+    // Clearing them again must not leave the previous object's values on.
+    const cleared = patternSVGView({ ...p })!;
+    expect(cleared.angleDeg).toBeUndefined();
+    expect(cleared.opacity).toBeUndefined();
+  });
+
+  it('still re-bakes when something the bake READS changes', () => {
+    const p = filled();
+    const base = patternSVGView(p)!;
+    // A cell edit mints a new cells array…
+    const painted = applyPatternCellEdits(p, [{
+      index: 0, oldState: p.cells[0], newState: null,
+    }]);
+    expect(patternSVGView(painted)!.segments).not.toBe(base.segments);
+    // …and a resize keeps the cells but moves the key.
+    const resized = patternSVGView({ ...p, cellWidth: p.cellWidth * 2 })!;
+    expect(resized.segments).not.toBe(base.segments);
+    expect(resized.cellWidth).toBe(p.cellWidth * 2);
+    // A repeat toggle likewise: it changes what box the grid bakes into.
+    const repeated = patternSVGView({
+      ...p, tileMode: 'repeat', tileWidthL0: 2, tileHeightL0: 2,
+    })!;
+    expect(repeated.segments).not.toBe(base.segments);
+  });
+});
