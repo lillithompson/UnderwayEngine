@@ -158,6 +158,23 @@ export function PatternToolsBar({ model, onBack }: {
             if (allow !== (model.patternAllowBorder !== false)) model.onPatternToggleBorder?.();
           }}
         />
+        {model.onToggleRepeat && (
+          // Repeat: lay the grid across the bounding box as a tile instead
+          // of stretching it to fill. Named for what each choice does to
+          // the drawing, since 'Repeat / off' says nothing about the other
+          // half. A grouped pattern can't repeat, and gets no row.
+          <SegmentedRow
+            label="Repeat"
+            options={[
+              { value: 'stretch' as const, label: 'Stretch' },
+              { value: 'tile' as const, label: 'Tile' },
+            ]}
+            value={model.repeat ? 'tile' : 'stretch'}
+            onChange={(v) => {
+              if ((v === 'tile') !== !!model.repeat) model.onToggleRepeat?.();
+            }}
+          />
+        )}
         {sets.length > 0 && (
           <ActionRow
             label="Sets"

@@ -200,18 +200,29 @@ describe('patternFloodEdits', () => {
     }
   });
 
-  test('random flood (and the erase fallback) clears and re-rolls the whole grid', () => {
+  test('random flood (and the erase fallback) fills the grid consistently', () => {
     for (const tool of [{ kind: 'random' as const }, { kind: 'erase' as const }]) {
-      let p = withCell(makePattern(4, 4), 0, 0, spriteCell('test/tile_11111111'));
+      let p = withCell(makePattern(4, 4), 0, 0, spriteCell('test/tile_00100010'));
       p = applyPatternCellEdits(p, patternFloodEdits(p, tool));
       expect(p.cells.every((c) => c != null)).toBe(true);
       // Every pick was made against the working grid, so the finished
       // grid satisfies its own connectivity constraints.
       assertPatternReconciled(p);
-      // The seed did NOT survive: the re-roll started from an empty grid,
-      // and tile_11111111 has no compatible neighbour in the mock registry
-      // so a consistent re-fill could never have chosen it.
-      expect(patternCellAt(p, 0, 0)).not.toMatchObject({ spriteId: 'test/tile_11111111' });
+    }
+  });
+
+  test('random flood wipes what was there first, rather than filling around it', () => {
+    // A free re-roll could land on the seed's sprite by chance, so the
+    // wipe is pinned through the tile-set filter: excluding 'test' leaves
+    // the mock registry one sprite, every pick is forced, and a surviving
+    // seed from the excluded family would be plainly visible.
+    const ONLY_TEST2 = new Set(['test']);
+    for (const tool of [{ kind: 'random' as const }, { kind: 'erase' as const }]) {
+      let p = withCell(makePattern(4, 4), 0, 0, spriteCell('test/tile_00100010'));
+      p = applyPatternCellEdits(p, patternFloodEdits(p, tool, ONLY_TEST2));
+      for (const cell of p.cells) {
+        expect(cell).toMatchObject({ spriteId: 'test2/tile_00100010' });
+      }
     }
   });
 

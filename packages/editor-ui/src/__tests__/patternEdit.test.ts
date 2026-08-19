@@ -258,3 +258,50 @@ describe('the Tiles bar carries the arming grid', () => {
     expect(tilesBar).toContain('onPick={(id) => { setShowAll(false); model.onPatternPickTile?.(id); }}');
   });
 });
+
+// Repeat used to be a lit capsule beside Tiles / Tools / Symmetry. It is a
+// setting, not a page, and the pattern's top row was already four pages
+// long — so it moved down into the Tools bar. The svg branch keeps its own
+// capsule: legacy tiled vectors have no Tools bar to move it into.
+describe('Repeat rides the Tools bar', () => {
+  const BARS = readFileSync(resolve(__dirname, '..', 'components', 'PatternBars.tsx'), 'utf8');
+  const PANEL = readFileSync(
+    resolve(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'), 'utf8',
+  );
+  const patternBranch = PANEL.slice(
+    PANEL.indexOf('} else if (model.showPatternOptions) {'),
+    PANEL.indexOf('} else if (model.showEdit || model.showTextStyle) {'),
+  );
+
+  it('is a row on the Tools bar, toggled through the same handler', () => {
+    const toolsBar = BARS.slice(
+      BARS.indexOf('export function PatternToolsBar'),
+      BARS.indexOf('export function PatternSymmetryBar'),
+    );
+    expect(toolsBar).toContain('{model.onToggleRepeat && (');
+    expect(toolsBar).toContain("value={model.repeat ? 'tile' : 'stretch'}");
+    // Pressing the side already showing must not toggle back off.
+    expect(toolsBar).toContain("if ((v === 'tile') !== !!model.repeat) model.onToggleRepeat?.();");
+  });
+
+  it("is gone from the pattern's type row, but kept on the svg branch", () => {
+    expect(patternBranch).not.toContain('onToggleRepeat');
+    const svgBranch = PANEL.slice(
+      PANEL.indexOf('} else if (model.showSvgOptions) {'),
+      PANEL.indexOf('} else if (model.showInvert) {'),
+    );
+    expect(svgBranch).toContain("key: 'repeat',");
+  });
+
+  it('the bar reserves the row exactly when it will render it', () => {
+    // The guard in the bar is `model.onToggleRepeat`; the height context
+    // must be measured off the same thing, or a grouped pattern's bar
+    // opens with a row of empty space.
+    expect(PANEL).toContain('patternCanRepeat: !!model.onToggleRepeat,');
+    const withRepeat = submenuHeight('patternTools', { patternCanRepeat: true });
+    expect(withRepeat).toBeGreaterThan(submenuHeight('patternTools'));
+    // Repeat and Sets stack — both rows, not one standing in for the other.
+    expect(submenuHeight('patternTools', { patternCanRepeat: true, patternTileSetCount: 3 }))
+      .toBeGreaterThan(withRepeat);
+  });
+});

@@ -111,6 +111,9 @@ export interface SubmenuHeightContext {
    *  the Sets row, and sizes the bar to whichever of its two pages (tools /
    *  the chip grid) stands taller. */
   patternTileSetCount?: number;
+  /** Pattern Tools bar: whether the host wired up the Repeat toggle, which
+   *  adds its row. A grouped pattern can't repeat, so it doesn't. */
+  patternCanRepeat?: boolean;
 }
 
 /** Total height of a stack of rows, including the gaps between them. */
@@ -207,13 +210,14 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // The arming grid: two rows of square buttons.
       return standardBar([PATTERN_TILE_GRID]);
     case 'patternTools': {
-      // Grid actions and Borders — plus the Sets row when the host offers
-      // a tile-set filter. (Random and Erase left for the Tiles bar, where
-      // they sit beside the tiles they compete with.) Its second page
-      // (chip rows of three, then Done) may stand taller; the bar reserves
-      // the taller of the two so flipping pages never moves its top edge.
+      // Grid actions and Borders, plus Repeat when the pattern can take it
+      // and the Sets row when the host offers a tile-set filter. (Random
+      // and Erase left for the Tiles bar, where they sit beside the tiles
+      // they compete with.) Its second page (chip rows of three, then
+      // Done) may stand taller; the bar reserves the taller of the two so
+      // flipping pages never moves its top edge.
       const setCount = ctx.patternTileSetCount ?? 0;
-      const mainRows = setCount > 0 ? 3 : 2;
+      const mainRows = 2 + (ctx.patternCanRepeat ? 1 : 0) + (setCount > 0 ? 1 : 0);
       const setsRows = setCount > 0 ? Math.ceil(setCount / 3) + 1 : 0;
       return standardBar(new Array(Math.max(mainRows, setsRows)).fill(ROW_SEGMENTED));
     }

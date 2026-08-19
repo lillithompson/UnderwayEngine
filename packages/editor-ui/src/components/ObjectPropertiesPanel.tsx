@@ -614,8 +614,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // …and the RIG bar its Reset row, on the same rule.
     rigCanReset: !!model.onResetRig,
     // The pattern Tools bar grows its Sets row (and chip page) when the
-    // host offers a tile-set filter.
+    // host offers a tile-set filter, and its Repeat row on the same rule.
     patternTileSetCount: model.patternTileSets?.length ?? 0,
+    patternCanRepeat: !!model.onToggleRepeat,
   });
   const activeSub: SubmenuKey | null =
     model.layoutOpen ? 'layout'
@@ -1191,9 +1192,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       onPress: toggleOpacity,
     }));
   } else if (model.showPatternOptions) {
-    // Inline tile pattern: its three pages (Tiles / Tools / Symmetry), plus
-    // the same Repeat toggle the legacy tiled vectors wear — a toggle rather
-    // than a bar, in Facet's PATTERN_ACTIVE, exactly as on the svg branch.
+    // Inline tile pattern: its three pages (Tiles / Tools / Symmetry).
+    // Repeat is NOT a capsule here the way it is on the svg branch below —
+    // it rides the Tools bar as a row, with the grid actions and Borders,
+    // because a pattern object's top row is already four pages long and
+    // Repeat is a setting rather than a place to go.
     typeSpecs = PATTERN_EDIT_OPTIONS.map((opt) => ({
       key: opt.action,
       label: opt.label,
@@ -1203,15 +1206,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // The same Stroke bar the vectors get (its open-path form: Width +
     // Dash), pointed at the pattern's own stroke block.
     typeSpecs.push({ key: 'stroke', label: 'Stroke', sub: 'stroke', onPress: () => openSubmenu('stroke') });
-    if (model.onToggleRepeat) {
-      typeSpecs.unshift({
-        key: 'repeat',
-        label: 'Repeat',
-        toggled: model.repeat,
-        tint: PATTERN_ACTIVE,
-        onPress: model.onToggleRepeat,
-      });
-    }
   } else if (model.showEdit || model.showTextStyle) {
     // Edit (content) · Type (opens the Text bar on the Font page) · Align (opens
     // it straight on the Align page) · Shadow. Type / Align both slide the same
