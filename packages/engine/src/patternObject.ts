@@ -343,6 +343,45 @@ export function patternFloodEdits(
   return edits;
 }
 
+/** Re-ink every sprite cell, keeping its tile and transform — what the
+ *  Stroke bar's swatch does to a pattern, and the pattern's answer to
+ *  recolouring a vector object. 'color' cells are left alone: one IS a
+ *  colour rather than a tile drawn in one, so re-inking would replace the
+ *  thing instead of colouring it. Cells already drawing in `color` drop
+ *  out, so re-picking the same ink builds no undo step. */
+export function patternRecolorEdits(p: PatternObject, color: RGBColor): PatternCellEdit[] {
+  const edits: PatternCellEdit[] = [];
+  for (let i = 0; i < p.cells.length; i++) {
+    const cell = p.cells[i] ?? null;
+    if (!cell || cell.type !== 'sprite') continue;
+    const newState = tintedPatternCell(cell, color);
+    if (cellStatesEqual(cell, newState)) continue;
+    edits.push({ index: i, oldState: cell, newState });
+  }
+  return edits;
+}
+
+/** The colour cell `index` draws in — its own tint where it has one, else
+ *  the base ink the bake gives an untinted tile. */
+export function effectivePatternCellColor(p: PatternObject, index: number): RGBColor {
+  return patternCellTint(p.cells[index] ?? null) ?? PATTERN_BASE_INK;
+}
+
+/** The one colour the whole pattern draws in, or null when its cells
+ *  disagree (or it holds no sprite cell at all). What a swatch showing
+ *  "the pattern's colour" can honestly display. */
+export function patternInkColor(p: PatternObject): RGBColor | null {
+  let ink: RGBColor | null = null;
+  for (let i = 0; i < p.cells.length; i++) {
+    const cell = p.cells[i] ?? null;
+    if (!cell || cell.type !== 'sprite') continue;
+    const c = effectivePatternCellColor(p, i);
+    if (ink == null) ink = c;
+    else if (ink.r !== c.r || ink.g !== c.g || ink.b !== c.b) return null;
+  }
+  return ink;
+}
+
 /** Clear every filled cell. */
 export function patternClearEdits(p: PatternObject): PatternCellEdit[] {
   const edits: PatternCellEdit[] = [];

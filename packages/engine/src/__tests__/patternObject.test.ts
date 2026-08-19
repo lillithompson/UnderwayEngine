@@ -10,7 +10,9 @@ import {
   patternFloodEdits,
   patternCellTint,
   PATTERN_BASE_INK,
+  patternInkColor,
   patternIsEmpty,
+  patternRecolorEdits,
   patternReconcileEdits,
   tintedPatternCell,
 } from '../patternObject';
@@ -673,5 +675,56 @@ describe('the ink a laid tile arrives in', () => {
       if (cell != null) expect(patternCellTint(cell)).toEqual(RED);
     }
     assertPatternReconciled(healed);
+  });
+});
+
+describe('re-inking a whole pattern', () => {
+  const RED = { r: 220, g: 40, b: 40 };
+  const BLUE = { r: 30, g: 60, b: 200 };
+
+  function filled(): PatternObject {
+    const p = makePattern(2, 2);
+    return applyPatternCellEdits(
+      p, patternFloodEdits(p, { kind: 'tile', spriteId: 'test/tile_00000000' }),
+    );
+  }
+
+  it('re-inks every sprite cell, keeping tile and transform', () => {
+    const before = filled();
+    const after = applyPatternCellEdits(before, patternRecolorEdits(before, RED));
+    for (let i = 0; i < after.cells.length; i++) {
+      expect(patternCellTint(after.cells[i])).toEqual(RED);
+      const a = after.cells[i] as { spriteId: string; transform: unknown };
+      const b = before.cells[i] as { spriteId: string; transform: unknown };
+      expect(a.spriteId).toBe(b.spriteId);
+      expect(a.transform).toEqual(b.transform);
+    }
+  });
+
+  it('re-picking the same ink builds nothing', () => {
+    const red = applyPatternCellEdits(filled(), patternRecolorEdits(filled(), RED));
+    expect(patternRecolorEdits(red, RED)).toHaveLength(0);
+    expect(patternRecolorEdits(red, BLUE)).toHaveLength(4);
+    // …and an untinted grid is already at the base ink.
+    expect(patternRecolorEdits(filled(), PATTERN_BASE_INK)).toHaveLength(0);
+  });
+
+  it('leaves empty and colour cells alone', () => {
+    const p = withCell(makePattern(2, 2), 0, 0, colorCell(10, 20, 30));
+    expect(patternRecolorEdits(p, RED)).toHaveLength(0);
+  });
+
+  it('reports one ink when the cells agree, and none when they do not', () => {
+    const untinted = filled();
+    // Untinted cells all draw in the base ink — that IS agreement.
+    expect(patternInkColor(untinted)).toEqual(PATTERN_BASE_INK);
+    const red = applyPatternCellEdits(untinted, patternRecolorEdits(untinted, RED));
+    expect(patternInkColor(red)).toEqual(RED);
+    const mixed = applyPatternCellEdits(red, [{
+      index: 0, oldState: red.cells[0], newState: tintedPatternCell(red.cells[0], BLUE),
+    }]);
+    expect(patternInkColor(mixed)).toBeNull();
+    // An empty grid has no ink to report rather than a made-up one.
+    expect(patternInkColor(makePattern(2, 2))).toBeNull();
   });
 });
