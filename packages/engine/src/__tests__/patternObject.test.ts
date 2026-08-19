@@ -9,6 +9,7 @@ import {
   patternClearEdits,
   patternFloodEdits,
   patternCellTint,
+  PATTERN_BASE_INK,
   patternIsEmpty,
   patternReconcileEdits,
   tintedPatternCell,
@@ -585,5 +586,92 @@ describe('pattern SVG bake', () => {
       expect(seg.start[0]).toBeLessThanOrEqual(p.cellX + 2 + 1e-6);
       expect(seg.start[1]).toBeLessThanOrEqual(p.cellY + 2 + 1e-6);
     }
+  });
+});
+
+describe('the ink a laid tile arrives in', () => {
+  const RED = { r: 220, g: 40, b: 40 };
+
+  it('stamps the tile in the given ink', () => {
+    const edits = patternApplyToolAt(
+      makePattern(3, 3), 1, 1, { kind: 'tile', spriteId: 'test/tile_00000000' }, undefined, RED,
+    );
+    expect(edits).toHaveLength(1);
+    expect(patternCellTint(edits[0].newState)).toEqual(RED);
+  });
+
+  it('inks a random pick too — the ink is the cell, not the choice of tile', () => {
+    const edits = patternApplyToolAt(makePattern(3, 3), 1, 1, { kind: 'random' }, undefined, RED);
+    expect(patternCellTint(edits[0].newState)).toEqual(RED);
+  });
+
+  it('mirror partners inherit the ink, carrying only the transform across', () => {
+    const p = makePattern(4, 1, { symmetry: { ...PATTERN_SYMMETRY_OFF, mirrorH: true } });
+    const edits = patternApplyToolAt(
+      p, 0, 0, { kind: 'tile', spriteId: 'test/tile_10001000' }, undefined, RED,
+    );
+    expect(edits.length).toBeGreaterThan(1);
+    for (const e of edits) expect(patternCellTint(e.newState)).toEqual(RED);
+  });
+
+  it('leaves the eraser alone — there is no cell left to ink', () => {
+    const p = withCell(makePattern(2, 2), 0, 0, spriteCell('test/tile_00000000'));
+    const edits = patternApplyToolAt(p, 0, 0, { kind: 'erase' }, undefined, RED);
+    expect(edits[0].newState).toBeNull();
+  });
+
+  it('floods in the ink, mirrors and all', () => {
+    const p = makePattern(4, 1, { symmetry: { ...PATTERN_SYMMETRY_OFF, mirrorH: true } });
+    const filled = applyPatternCellEdits(
+      p, patternFloodEdits(p, { kind: 'tile', spriteId: 'test/tile_10001000' }, undefined, RED),
+    );
+    for (const cell of filled.cells) expect(patternCellTint(cell)).toEqual(RED);
+  });
+
+  it('stores the base ink as no tint at all, not as an explicit white', () => {
+    // The two draw identically, so only one of them may be stored — else a
+    // white flood over a white grid would report edits forever.
+    const white = patternApplyToolAt(
+      makePattern(2, 2), 0, 0, { kind: 'tile', spriteId: 'test/tile_00000000' },
+      undefined, PATTERN_BASE_INK,
+    )[0].newState;
+    const untinted = patternApplyToolAt(
+      makePattern(2, 2), 0, 0, { kind: 'tile', spriteId: 'test/tile_00000000' },
+    )[0].newState;
+    expect(white).toEqual(untinted);
+    expect(patternCellTint(white)).toBeNull();
+
+    const tile = { kind: 'tile' as const, spriteId: 'test/tile_00000000' };
+    let p = makePattern(2, 2);
+    p = applyPatternCellEdits(p, patternFloodEdits(p, tile, undefined, PATTERN_BASE_INK));
+    expect(patternFloodEdits(p, tile)).toHaveLength(0);
+    // …and painting white back over a red cell returns it to the base ink
+    // rather than pinning an equivalent white on it.
+    const red = applyPatternCellEdits(p, patternFloodEdits(p, tile, undefined, RED));
+    expect(patternCellTint(red.cells[0])).toEqual(RED);
+    const back = applyPatternCellEdits(
+      red, patternFloodEdits(red, tile, undefined, PATTERN_BASE_INK),
+    );
+    expect(back.cells).toEqual(p.cells);
+  });
+
+  it('reconcile heals the seam without stripping the ink', () => {
+    // Two neighbours that disagree, both painted red. Reconcile swaps one
+    // for a compatible tile — the replacement is minted untinted from the
+    // registry, so this pins that the cell's own ink is carried across.
+    let p = makePattern(4, 4);
+    p = applyPatternCellEdits(p, patternApplyToolAt(
+      p, 0, 0, { kind: 'tile', spriteId: 'test/tile_11111111' }, undefined, RED,
+    ));
+    p = applyPatternCellEdits(p, patternApplyToolAt(
+      p, 1, 0, { kind: 'tile', spriteId: 'test/tile_00000000' }, undefined, RED,
+    ));
+    const edits = patternReconcileEdits(p);
+    expect(edits.length).toBeGreaterThan(0);
+    const healed = applyPatternCellEdits(p, edits);
+    for (const cell of healed.cells) {
+      if (cell != null) expect(patternCellTint(cell)).toEqual(RED);
+    }
+    assertPatternReconciled(healed);
   });
 });

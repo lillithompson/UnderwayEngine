@@ -185,6 +185,12 @@ const IDENTITY: CellTransform = DEFAULT_TRANSFORM;
  *
  * `excludedFamilies` narrows what the random brush may pick (the app's
  * tile-set filter); stamping a specific tile ignores it.
+ *
+ * `tint` is the ink the laid tile draws in — the editor's active colour,
+ * so a tile arrives in the colour the user is working in rather than
+ * always in the base ink. It rides on the cell (see tintedPatternCell), so
+ * the mirror partners inherit it for free: mirrorCellState rewrites only
+ * the transform. Omit it (or pass the base ink) to lay an untinted tile.
  */
 export function patternApplyToolAt(
   p: PatternObject,
@@ -192,6 +198,7 @@ export function patternApplyToolAt(
   y: number,
   tool: PatternSubTool,
   excludedFamilies?: Set<string>,
+  tint?: RGBColor | null,
 ): PatternCellEdit[] {
   if (x < 0 || y < 0 || x >= p.cols || y >= p.rows) return [];
   const layer = buildPatternLayerView(p);
@@ -218,6 +225,7 @@ export function patternApplyToolAt(
       break;
     }
   }
+  if (tint) primary = tintedPatternCell(primary, tint);
 
   const edits: PatternCellEdit[] = [];
   const seen = new Set<number>();
@@ -268,13 +276,19 @@ export function patternReconcileEdits(
   for (const op of ops) {
     if (op.op !== 'cell') continue;
     if (op.cellX < 0 || op.cellY < 0 || op.cellX >= p.cols || op.cellY >= p.rows) continue;
+    // Reconcile swaps a tile for a better-connecting one; it is not a
+    // repaint. The replacement is minted fresh from the sprite registry, so
+    // it arrives untinted — carry the cell's own ink across, or healing a
+    // seam would quietly strip the colour the user painted there.
+    const ink = patternCellTint(op.oldState);
+    const newState = ink ? tintedPatternCell(op.newState, ink) : op.newState;
     edits.push({
       index: op.cellY * p.cols + op.cellX,
       oldState: op.oldState,
-      newState: op.newState,
+      newState,
     });
   }
-  return edits;
+  return edits.filter((e) => !cellStatesEqual(e.oldState, e.newState));
 }
 
 /**
@@ -296,19 +310,24 @@ export function patternReconcileEdits(
  *
  * The returned edits are relative to `p`, diffed at the end: a cell the
  * flood happens to leave exactly as it found it contributes nothing, so
- * re-flooding with the same tile is a no-op (and builds no undo step).
+ * re-flooding with the same tile in the same ink is a no-op (and builds no
+ * undo step).
+ *
+ * `tint` is the ink to lay, as in patternApplyToolAt — a flood is the
+ * painting of every cell at once, so it lays what the brush would.
  */
 export function patternFloodEdits(
   p: PatternObject,
   tool: PatternSubTool,
   excludedFamilies?: Set<string>,
+  tint?: RGBColor | null,
 ): PatternCellEdit[] {
   const effective: PatternSubTool = tool.kind === 'tile' ? tool : { kind: 'random' };
   let working = applyPatternCellEdits(p, patternClearEdits(p));
   for (let y = 0; y < p.rows; y++) {
     for (let x = 0; x < p.cols; x++) {
       if (patternCellAt(working, x, y) != null) continue;
-      const fillable = patternApplyToolAt(working, x, y, effective, excludedFamilies)
+      const fillable = patternApplyToolAt(working, x, y, effective, excludedFamilies, tint)
         .filter((e) => e.oldState == null);
       if (fillable.length === 0) continue;
       working = applyPatternCellEdits(working, fillable);
@@ -464,11 +483,27 @@ export function patternCellsInBrush(
   return [...nearest].map(([index, distSq]) => ({ index, distSq }));
 }
 
-/** The same cell with a brushed ink on it — the one way a pattern cell
- *  carries a colour of its own. Only a SPRITE cell can be tinted: a 'color'
- *  cell already is a colour, and would be recoloured outright. */
+/** The ink an UNTINTED pattern cell draws in: the bake leaves a tile's
+ *  `stroke="white"` alone unless the cell carries a tint (see
+ *  exportLayersToSVGInner), so white is the base every tint departs from
+ *  and every blend starts at. */
+export const PATTERN_BASE_INK: RGBColor = { r: 255, g: 255, b: 255 };
+
+/** The same cell with an ink on it — the one way a pattern cell carries a
+ *  colour of its own. Only a SPRITE cell can be tinted: a 'color' cell
+ *  already is a colour, and would be recoloured outright.
+ *
+ *  The base ink is stored as NO tint rather than as an explicit white.
+ *  They draw identically, so leaving both spellings in play would mean two
+ *  cells that look the same and compare unequal — a phantom edit in every
+ *  diff, three needless bytes per cell in every saved file, and a
+ *  same-tile flood that no longer settles to a no-op. */
 export function tintedPatternCell(cell: CellState, color: RGBColor): CellState {
   if (!cell || cell.type !== 'sprite') return cell;
+  if (color.r === PATTERN_BASE_INK.r && color.g === PATTERN_BASE_INK.g
+    && color.b === PATTERN_BASE_INK.b) {
+    return { ...cell, tintR: undefined, tintG: undefined, tintB: undefined };
+  }
   return { ...cell, tintR: color.r, tintG: color.g, tintB: color.b };
 }
 
