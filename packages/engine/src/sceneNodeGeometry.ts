@@ -341,7 +341,13 @@ function makeBboxAdapter<T extends BboxOnlyNode>(kind: CompItemKind): GeometryAd
     },
 
     mirror(node, screenAxis) {
-      return { ...node, [screenAxis === 'h' ? 'mirrorH' : 'mirrorV']: !(node[screenAxis === 'h' ? 'mirrorH' : 'mirrorV'] ?? false) };
+      // The flags are LOCAL — the render applies mirrors before the discrete
+      // rotation — so the screen-space flip lands on whichever local axis the
+      // current rotation maps it to (the same remap mirrorSVG uses). Without
+      // it, flipping a quarter-turned node flips the wrong way on screen.
+      const localAxis = getCompositionOps().screenToLocalFlipAxis(node.rotation ?? 0, screenAxis);
+      const key = localAxis === 'h' ? 'mirrorH' : 'mirrorV';
+      return { ...node, [key]: !(node[key] ?? false) };
     },
 
     rescale(node, _old, newBbox) {

@@ -108,6 +108,21 @@ describe('mirroring a repeating pattern', () => {
       expect(tileBox(back)).toEqual(tileBox(p));
     }
   });
+
+  it('flips a quarter-turned pattern about the LOCAL axis the rotation maps to', () => {
+    // The render applies mirrors BEFORE the discrete rotation, so a
+    // screen-H flip of a 90°-turned node must land on the local V flag
+    // (mirrorH would read as a vertical flip on screen). The tile box
+    // still reflects across the SCREEN axis — it lives in world space.
+    const turned = A.rotate90CW(pat()) as PatternObject; // rotation: 90
+    const h = A.mirror(turned, 'h') as PatternObject;
+    expect(h.mirrorV).toBe(true);
+    expect(h.mirrorH).toBeUndefined();
+    // Region x-span 4 (post-turn), tile 1 wide at offset 2.5 →
+    // reflected offset is 4 − (2.5 + 1) = 0.5.
+    expect(h.tileOffsetXL0).toBe(0.5);
+    expect(h.tileOffsetYL0).toBe(turned.tileOffsetYL0);
+  });
 });
 
 describe('resizing a repeating pattern', () => {
