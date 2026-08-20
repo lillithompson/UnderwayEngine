@@ -23,6 +23,15 @@ import { BAR_BG, EffectBarHeader, HAIRLINE, SegmentedRow, SliderRow } from './ef
 // ── Ranges (world cells; design pt ÷ 16) ─────────────────────────────
 const MAX_WIDTH = 1.5; // 0…24pt
 const MAX_DASH = 10; // 0 = solid … 10 = dots
+/** Design pt per world cell — the unit the ranges above are stated in, and
+ *  the one the Width readout speaks. */
+const PT_PER_CELL = 16;
+
+/** The Width readout's text: the stroke width in design pt, to one decimal,
+ *  trailing zero dropped (5, not 5.0). */
+function widthPtText(widthCells: number): string {
+  return String(Math.round(widthCells * PT_PER_CELL * 10) / 10);
+}
 // Corner radius is a 0–0.5 fraction of the shorter side (0 = sharp, 0.5 =
 // circle for a square) — mirrors the app's MAX_CORNER_RADIUS.
 const MAX_CORNER_RADIUS = 0.5;
@@ -33,7 +42,7 @@ const POSITIONS: readonly { value: BorderPosition; label: string }[] = [
   { value: 'outside', label: 'Outside' },
 ];
 
-export function BorderBar({ border, cornerRadius, title = 'BORDER', showRadius = true, showPosition = true, onChange, onCommit, onCornerRadius, onBack, onRemove, onPickColor }: {
+export function BorderBar({ border, cornerRadius, title = 'BORDER', showRadius = true, showPosition = true, showWidthValue = false, onChange, onCommit, onCornerRadius, onBack, onRemove, onPickColor }: {
   border: BorderModel;
   /** Object corner rounding, a 0–0.5 fraction of the shorter side. */
   cornerRadius: number;
@@ -45,6 +54,9 @@ export function BorderBar({ border, cornerRadius, title = 'BORDER', showRadius =
   /** Render the Position row. Off for a selection with no inside to align a
    *  stroke to (an open path: line, arc, freehand stroke). */
   showPosition?: boolean;
+  /** Render the Width slider's tap-to-type readout (design pt). On for the
+   *  STROKE variant — every type with a Stroke option gets the number. */
+  showWidthValue?: boolean;
   onChange: (b: BorderModel) => void;
   onCommit: (b: BorderModel) => void;
   /** Fires the Radius row: `radius` is a 0–0.5 fraction; `committed` marks the
@@ -67,7 +79,19 @@ export function BorderBar({ border, cornerRadius, title = 'BORDER', showRadius =
         onPickColor={onPickColor}
       />
       <View style={styles.controls}>
-        <SliderRow label="Width" value={border.width / MAX_WIDTH} apply={(t, c) => set({ width: t * MAX_WIDTH }, c)} />
+        <SliderRow
+          label="Width"
+          value={border.width / MAX_WIDTH}
+          apply={(t, c) => set({ width: t * MAX_WIDTH }, c)}
+          readout={showWidthValue ? {
+            text: widthPtText(border.width),
+            // A typed number is pt; clamp to the slider's own range so the
+            // field can never author a width the slider can't show.
+            commit: (n) => set({
+              width: Math.min(Math.max(n, 0), MAX_WIDTH * PT_PER_CELL) / PT_PER_CELL,
+            }, true),
+          } : undefined}
+        />
         {showRadius ? (
           <SliderRow
             label="Radius"

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { RGBLike } from '../adapter';
 import { BAR_HEADER, ROW_SEGMENTED, ROW_SLIDER } from '../logic/submenuHeight';
@@ -16,6 +16,7 @@ import {
   PANEL_SHEET_ROW_ACTIVE,
   PANEL_SWATCH_BORDER,
   PANEL_TRACK,
+  PUSHDOWN_INACTIVE,
   STATE_ACTIVE,
 } from '../theme';
 import { ColorSwatchFill } from './ColorSwatch';
@@ -127,12 +128,57 @@ export function Hint({ children }: { children: React.ReactNode }) {
   return <Text style={styles.hint}>{children}</Text>;
 }
 
+/** The tap-to-type readout a slider row can wear on its right: the value
+ *  written out in the toolbar hex field's dress — no box, the pushdown's
+ *  dim 13/600 ink — because it is just the slider's value spelled out, a
+ *  label you can happen to type into. Tapping arms a numeric field seeded
+ *  with the current text; a draft that parses commits on blur / done, and
+ *  an unfinished edit is abandoned, not guessed at (the hex field's rule). */
+function SliderReadout({ text, commit }: { text: string; commit: (n: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(text);
+  if (!editing) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Edit value, currently ${text}`}
+        onPress={() => { setDraft(text); setEditing(true); }}
+        hitSlop={6}
+      >
+        <Text style={styles.readout}>{text}</Text>
+      </Pressable>
+    );
+  }
+  const finish = () => {
+    setEditing(false);
+    const n = parseFloat(draft.replace(',', '.'));
+    if (Number.isFinite(n)) commit(n);
+  };
+  return (
+    <TextInput
+      accessibilityLabel="Value"
+      style={styles.readout}
+      value={draft}
+      onChangeText={setDraft}
+      onBlur={finish}
+      onSubmitEditing={finish}
+      keyboardType="numeric"
+      autoFocus
+      selectTextOnFocus
+      returnKeyType="done"
+    />
+  );
+}
+
 /** One slider row: a 50pt label column + a 0–1 slider filling the rest.
- *  `apply(t, committed)` fires live (false) and once on release (true). */
-export function SliderRow({ label, value, apply }: {
+ *  `apply(t, committed)` fires live (false) and once on release (true).
+ *  `readout` adds the tap-to-type value on the right ({@link SliderReadout});
+ *  its `commit` receives the parsed number, in whatever unit `text` shows. */
+export function SliderRow({ label, value, apply, readout }: {
   label: string;
   value: number;
   apply: (t: number, committed: boolean) => void;
+  readout?: { text: string; commit: (n: number) => void };
 }) {
   return (
     <View style={styles.row}>
@@ -140,6 +186,7 @@ export function SliderRow({ label, value, apply }: {
       <View style={styles.rowSlider}>
         <Slider value={value} accent={CONTROL_ACCENT} trackColor={TRACK} onChange={(v) => apply(v, false)} onCommit={(v) => apply(v, true)} />
       </View>
+      {readout ? <SliderReadout text={readout.text} commit={readout.commit} /> : null}
     </View>
   );
 }
@@ -362,6 +409,17 @@ const styles = StyleSheet.create({
   },
   segmentText: { color: SEG_TEXT, fontSize: 11.5, fontWeight: '600' },
   segmentTextActive: { color: PANEL_INK },
+  // The toolbar hex field's dress exactly (ToolbarColorField): no box, the
+  // pushdown's dim ink, 13/600 — a value, not a control of another kind.
+  readout: {
+    color: PUSHDOWN_INACTIVE,
+    fontSize: 13,
+    fontWeight: '600',
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    minWidth: 44,
+    textAlign: 'right',
+  },
   // Hint line: indented to the control column (50pt label + 10pt gap), dim.
   hint: { marginLeft: 60, marginTop: 2, paddingBottom: 2, color: PANEL_INK_MUTED, fontSize: 11 },
 });

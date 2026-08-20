@@ -1409,6 +1409,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         cornerRadius={model.strokeRadius ?? 0}
         showRadius={rows.radius}
         showPosition={rows.position}
+        showWidthValue
         onChange={(b) => applyStroke(b, false)}
         onCommit={(b) => applyStroke(b, true)}
         onCornerRadius={(r, committed) => model.onStrokeRadius?.(r, committed)}
