@@ -3,7 +3,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ObjectPropertiesModel } from '../adapter';
 import {
   BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP,
-  PATTERN_TILE_BUTTON, PATTERN_TILE_GRID_GAP, ROW_GAP,
+  PATTERN_TILE_BUTTON, PATTERN_TILE_GRID_GAP, ROW_GAP, ROW_SEGMENTED,
 } from '../logic/submenuHeight';
 import {
   PATTERN_ARM_TOOLS,
@@ -235,8 +235,9 @@ export function PatternSymmetryBar({ model, onBack }: {
   onBack: () => void;
 }) {
   const current = model.patternSymmetry ?? 'off';
-  // The 11 modes + Off, as three segmented rows of four (the old modal's
-  // grid, read in rows, with Off closing the set).
+  // The 11 modes + Off as a 4×3 grid of rectangles (the old modal's grid,
+  // read in rows, with Off closing the set). No label column: the cells
+  // stretch to split the bar's full width evenly.
   const cells = [
     ...PATTERN_SYMMETRY_ENTRIES.map((e) => ({ value: e.key, label: e.label })),
     { value: 'off', label: 'Off' },
@@ -247,15 +248,27 @@ export function PatternSymmetryBar({ model, onBack }: {
       <EffectBarHeader title={barTitle('symmetry')} chevron onBack={onBack} />
       <View style={styles.controls}>
         {rows.map((row, i) => (
-          <SegmentedRow
-            key={i}
-            label={i === 0 ? 'Mirror' : ' '}
-            options={row}
-            value={current}
-            // Tapping the ACTIVE mode again turns symmetry off, like the
-            // old modal's toggle.
-            onChange={(key) => model.onPatternSymmetry?.(key === current ? 'off' : key)}
-          />
+          <View key={i} style={styles.symRow}>
+            {row.map((o) => {
+              const active = o.value === current;
+              return (
+                <Pressable
+                  key={o.value}
+                  // Tapping the ACTIVE mode again turns symmetry off, like
+                  // the old modal's toggle.
+                  onPress={() => model.onPatternSymmetry?.(active ? 'off' : o.value)}
+                  style={[styles.symCell, active && styles.symCellActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={o.label}
+                >
+                  <Text style={[styles.symWord, active && styles.symWordActive]} numberOfLines={1}>
+                    {o.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         ))}
       </View>
     </View>
@@ -294,4 +307,20 @@ const styles = StyleSheet.create({
   tileImage: { width: TILE - 12, height: TILE - 12 },
   tileWord: { color: PANEL_INK_DIM, fontSize: 11, fontWeight: '600' },
   tileWordActive: { color: PANEL_INK },
+  // The symmetry grid's rows: four flex cells splitting the full bar width
+  // (no label column), each row at the segmented-row height so the bar's
+  // reserved height (submenuHeight's three ROW_SEGMENTED) still fits.
+  symRow: { flexDirection: 'row', gap: PATTERN_TILE_GRID_GAP, height: ROW_SEGMENTED },
+  symCell: {
+    flex: 1,
+    borderRadius: 8,
+    backgroundColor: PANEL_TRACK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  symCellActive: { borderColor: STATE_ACTIVE },
+  symWord: { color: PANEL_INK_DIM, fontSize: 11, fontWeight: '600' },
+  symWordActive: { color: PANEL_INK },
 });

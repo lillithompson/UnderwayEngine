@@ -222,7 +222,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return standardBar(new Array(Math.max(mainRows, setsRows)).fill(ROW_SEGMENTED));
     }
     case 'patternSymmetry':
-      // The mode grid as three segmented rows of four (Off rides row 3).
+      // The mode grid: 4×3 label-less rectangles, each row at the
+      // segmented-row height (Off rides row 3).
       return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'layout':
       // Horizontal and Vertical, plus Arrange when the host offers Grid.

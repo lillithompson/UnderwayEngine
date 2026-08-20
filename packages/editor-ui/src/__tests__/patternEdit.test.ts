@@ -268,6 +268,32 @@ describe('the Tiles bar carries the arming grid', () => {
   });
 });
 
+// The Symmetry bar's modes as a plain 4×3 grid — no 'Mirror' label column,
+// every cell a flex rectangle splitting the bar's full width.
+describe('the Symmetry bar is a label-less 4×3 grid', () => {
+  const SRC = readFileSync(resolve(__dirname, '..', 'components', 'PatternBars.tsx'), 'utf8');
+  const symBar = SRC.slice(
+    SRC.indexOf('export function PatternSymmetryBar'),
+    SRC.indexOf('const TILE = PATTERN_TILE_BUTTON'),
+  );
+
+  it("has no 'Mirror' label and no labeled segmented rows", () => {
+    expect(symBar).not.toContain("'Mirror'");
+    expect(symBar).not.toContain('<SegmentedRow');
+  });
+
+  it('lays the 11 modes + Off out four to a row, cells stretching', () => {
+    expect(symBar).toContain('cells.slice(0, 4), cells.slice(4, 8), cells.slice(8, 12)');
+    expect(symBar).toContain('styles.symRow');
+    // flex: 1 on the cell is what makes the rectangles split the width.
+    expect(SRC).toMatch(/symCell:\s*\{\s*flex:\s*1/);
+  });
+
+  it('still toggles the active mode back to off', () => {
+    expect(symBar).toContain("model.onPatternSymmetry?.(active ? 'off' : o.value)");
+  });
+});
+
 // The Facet tile-editor's pose UX, ported: a second tap on a tile inside
 // the double-tap window turns it a quarter clockwise, and a long press
 // opens the transform modal (rotate + the two flips). Both the Tiles bar's
