@@ -159,7 +159,7 @@ describe("the Tiles bar's arming grid", () => {
   const tile = (id: string): PatternTileRow => ({ id, connections: 0, uri: `u:${id}` });
   const MENU = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(tile);
 
-  it('the grid is eight buttons in four columns — two rows, always', () => {
+  it('the grid is twelve buttons in six columns — two rows, always', () => {
     // Random + Erase + the recents + '...'. The Tiles bar's height is
     // reserved on that count, so if any of the three changes, so must
     // PATTERN_TILE_GRID.
@@ -168,13 +168,14 @@ describe("the Tiles bar's arming grid", () => {
   });
 
   it('a fresh session is backed by the head of the menu', () => {
-    expect(recentPatternTiles([], MENU).map((t) => t.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(recentPatternTiles([], MENU).map((t) => t.id))
+      .toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g']);
   });
 
   it('a pick moves to the head and the padding fills in behind it', () => {
     const recent = pushRecentPatternTile([], 'g');
     expect(recentPatternTiles(recent, MENU).map((t) => t.id))
-      .toEqual(['g', 'a', 'b', 'c', 'd']);
+      .toEqual(['g', 'a', 'b', 'c', 'd', 'e', 'f']);
   });
 
   it('re-picking a remembered tile promotes it rather than duplicating it', () => {
@@ -182,13 +183,15 @@ describe("the Tiles bar's arming grid", () => {
     for (const id of ['a', 'b', 'c', 'a']) recent = pushRecentPatternTile(recent, id);
     expect(recent).toEqual(['a', 'c', 'b']);
     expect(recentPatternTiles(recent, MENU).map((t) => t.id))
-      .toEqual(['a', 'c', 'b', 'd', 'e']);
+      .toEqual(['a', 'c', 'b', 'd', 'e', 'f', 'g']);
   });
 
-  it('remembers only the last five', () => {
+  it('remembers only the last nine', () => {
     let recent: readonly string[] = [];
-    for (const id of ['a', 'b', 'c', 'd', 'e', 'f']) recent = pushRecentPatternTile(recent, id);
-    expect(recent).toEqual(['f', 'e', 'd', 'c', 'b']);
+    for (const id of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']) {
+      recent = pushRecentPatternTile(recent, id);
+    }
+    expect(recent).toEqual(['j', 'i', 'h', 'g', 'f', 'e', 'd', 'c', 'b']);
   });
 
   it('drops a remembered tile whose set was switched off, and backfills', () => {
@@ -201,7 +204,7 @@ describe("the Tiles bar's arming grid", () => {
       .toEqual(['a', 'b', 'c', 'd', 'e']);
   });
 
-  it('shows fewer than five only when the menu itself holds fewer', () => {
+  it('shows fewer than the cap only when the menu itself holds fewer', () => {
     expect(recentPatternTiles(['b'], MENU.slice(0, 3)).map((t) => t.id))
       .toEqual(['b', 'a', 'c']);
     expect(recentPatternTiles(['x'], [])).toEqual([]);
@@ -246,6 +249,18 @@ describe('the Tiles bar carries the arming grid', () => {
     expect(tilesBar).toContain('model.onPatternArmTool?.(t.tool)');
     expect(toolsBar).not.toContain('PATTERN_ARM_TOOLS');
     expect(toolsBar).not.toContain('onPatternArmTool');
+  });
+
+  it("Random sits over Erase, wearing Facet's palette glyphs", () => {
+    // The grid fills column by column (a fixed two-row height wrapping a
+    // column stack), so the two arm tools lead the leftmost column…
+    expect(SRC).toMatch(/tileGrid:\s*\{\s*flexDirection:\s*'column',\s*flexWrap:\s*'wrap'/);
+    // …and wear Facet Tile Palette's icon-over-word dress.
+    expect(PATTERN_ARM_TOOLS.map((t) => [t.tool, t.icon])).toEqual([
+      ['random', 'shuffle-variant'],
+      ['erase', 'eraser'],
+    ]);
+    expect(tilesBar).toContain('name={t.icon as never}');
   });
 
   it('shows the recents, not the whole menu, and lights exactly one button', () => {

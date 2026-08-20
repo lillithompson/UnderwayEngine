@@ -110,12 +110,13 @@ export function groupPatternTiles(
 // ── The Tiles bar's button grid ─────────────────────────────────────
 
 /** How many recently-used tiles the Tiles bar keeps on its grid. */
-export const PATTERN_RECENT_TILES = 5;
+export const PATTERN_RECENT_TILES = 9;
 
-/** The grid is four buttons wide, and holds exactly eight: Random, Erase,
- *  the five recent tiles, and the '...' that opens the full menu — two
- *  rows, always, so the bar's height never moves. */
-export const PATTERN_TILE_GRID_COLUMNS = 4;
+/** The grid is six buttons wide, and holds exactly twelve: Random over
+ *  Erase in the leftmost column, the nine recent tiles, and the '...'
+ *  that opens the full menu — two rows, always (the grid fills column by
+ *  column, Facet's palette flow), so the bar's height never moves. */
+export const PATTERN_TILE_GRID_COLUMNS = 6;
 
 /** Move `id` to the head of the most-recently-used list, dropping any
  *  earlier appearance and trimming to PATTERN_RECENT_TILES. */
@@ -129,8 +130,9 @@ export function pushRecentPatternTile(
 /** The tiles the grid shows: the remembered ones the menu still offers —
  *  a tile whose set was switched off drops out rather than arming a brush
  *  Random can't reach — padded from the head of `offered` so a user who
- *  has picked nothing yet still finds five tiles under their thumb.
- *  Returns fewer than five only when the menu itself holds fewer. */
+ *  has picked nothing yet still finds a full grid of tiles under their
+ *  thumb. Returns fewer than PATTERN_RECENT_TILES only when the menu
+ *  itself holds fewer. */
 export function recentPatternTiles(
   recent: readonly string[],
   offered: readonly PatternTileRow[],
@@ -265,12 +267,13 @@ export function patternTileSetRows(
 export type PatternPanelTool = 'random' | 'erase' | 'tile';
 
 /** The two ARMING choices that aren't a tile. They lead the Tiles bar's
- *  grid, beside the recent tiles, because all three answer the same
- *  question — what does the next canvas press paint? — and exactly one of
- *  the grid's buttons is lit at a time. */
-export const PATTERN_ARM_TOOLS: readonly { tool: 'random' | 'erase'; label: string }[] = [
-  { tool: 'random', label: 'Random' },
-  { tool: 'erase', label: 'Erase' },
+ *  grid — Random over Erase in the leftmost column, wearing Facet Tile
+ *  Palette's glyphs — beside the recent tiles, because all three answer
+ *  the same question — what does the next canvas press paint? — and
+ *  exactly one of the grid's buttons is lit at a time. */
+export const PATTERN_ARM_TOOLS: readonly { tool: 'random' | 'erase'; label: string; icon: string }[] = [
+  { tool: 'random', label: 'Random', icon: 'shuffle-variant' },
+  { tool: 'erase', label: 'Erase', icon: 'eraser' },
 ];
 
 /** A one-press whole-grid action of the Tools bar. */

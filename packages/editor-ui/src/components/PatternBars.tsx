@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { ObjectPropertiesModel } from '../adapter';
 import {
   BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP,
@@ -54,9 +55,12 @@ export function PatternTilesBar({ model, onBack }: {
   const transformUri = transformId
     ? (model.patternTiles ?? []).find((t) => t.id === transformId)?.uri ?? null
     : null;
-  // Random, Erase, the recent tiles, then '...' — laid out as a grid four
-  // buttons wide (PATTERN_TILE_GRID_COLUMNS), so the eight fill two rows
-  // exactly and the bar's height is the same whatever is in hand.
+  // Random, Erase, the recent tiles, then '...' — the grid FILLS COLUMN BY
+  // COLUMN (Facet's palette flow: a fixed two-row height wraps a column
+  // stack), so Random sits over Erase in the leftmost column, the nine
+  // recents make the next columns, and the twelve buttons fill two rows of
+  // six (PATTERN_TILE_GRID_COLUMNS) exactly — the bar's height is the same
+  // whatever is in hand.
   return (
     <View style={styles.bar}>
       <EffectBarHeader title={barTitle('tiles')} chevron onBack={onBack} />
@@ -73,7 +77,12 @@ export function PatternTilesBar({ model, onBack }: {
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={t.label}
               >
-                <Text style={[styles.tileWord, active && styles.tileWordActive]}>
+                <MaterialCommunityIcons
+                  name={t.icon as never}
+                  size={22}
+                  color={active ? PANEL_INK : PANEL_INK_DIM}
+                />
+                <Text style={[styles.tileCaption, active && styles.tileWordActive]}>
                   {t.label}
                 </Text>
               </Pressable>
@@ -271,9 +280,16 @@ const styles = StyleSheet.create({
     paddingBottom: BAR_PAD_BOTTOM,
   },
   controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
-  // Fixed-size squares that wrap: four fit a phone's bar width, so the
-  // eight buttons make the two rows submenuHeight reserves for them.
-  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: PATTERN_TILE_GRID_GAP },
+  // Fixed-size squares wrapping COLUMN-WISE inside the two-row height
+  // submenuHeight reserves (Facet's sectionWrap): the first column is
+  // Random over Erase, and six columns of twelve buttons fit a phone's bar.
+  tileGrid: {
+    flexDirection: 'column',
+    flexWrap: 'wrap',
+    alignContent: 'flex-start',
+    height: TILE * 2 + PATTERN_TILE_GRID_GAP,
+    gap: PATTERN_TILE_GRID_GAP,
+  },
   tile: {
     width: TILE,
     height: TILE,
@@ -290,6 +306,8 @@ const styles = StyleSheet.create({
   tileActive: { borderColor: STATE_ACTIVE },
   tileImage: { width: TILE - 12, height: TILE - 12 },
   tileWord: { color: PANEL_INK_DIM, fontSize: 11, fontWeight: '600' },
+  // Facet Tile Palette's Random/Erase dress: a 22pt glyph over a 9pt word.
+  tileCaption: { color: PANEL_INK_DIM, fontSize: 9, fontWeight: '600', marginTop: 2 },
   tileWordActive: { color: PANEL_INK },
   // The symmetry grid's rows: four flex cells splitting the full bar width
   // (no label column), each row at the segmented-row height so the bar's

@@ -57,11 +57,12 @@ export const SHADOW_PAD_SIZE = 106;
 export const CROP_CAPTION_HEIGHT = 21;
 
 /** One square button of the pattern Tiles bar's arming grid, and the gap
- *  between them. Four fit across a phone's bar, which is what makes the
- *  grid's eight buttons (Random, Erase, five recent tiles, '...') exactly
- *  two rows — see PATTERN_TILE_GRID_COLUMNS. */
-export const PATTERN_TILE_BUTTON = 56;
-export const PATTERN_TILE_GRID_GAP = 8;
+ *  between them. Six fit across a phone's bar (6×52 + 5×6 = 342 clears an
+ *  SE-width 375 − 2×16 padding), which is what makes the grid's twelve
+ *  buttons (Random over Erase, nine recent tiles, '...') exactly two
+ *  rows — see PATTERN_TILE_GRID_COLUMNS. */
+export const PATTERN_TILE_BUTTON = 52;
+export const PATTERN_TILE_GRID_GAP = 6;
 
 /** The whole arming grid: two rows of buttons with one gap between. */
 export const PATTERN_TILE_GRID =
