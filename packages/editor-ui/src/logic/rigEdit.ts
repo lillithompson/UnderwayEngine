@@ -50,7 +50,7 @@ export interface RigSliderSpec {
 
 export type RigSliderKey =
   | 'spinX' | 'spinY' | 'spinZ'
-  | 'handL' | 'handR' | 'wristTwistL' | 'wristTwistR'
+  | 'handL' | 'handR' | 'wristTwistL' | 'wristTwistR' | 'spreadL' | 'spreadR'
   | 'footL' | 'footR' | 'ankleTwistL' | 'ankleTwistR'
   | 'bend' | 'twist' | 'lean'
   | 'nod' | 'shake';
@@ -72,6 +72,10 @@ const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
     { key: 'handR', label: 'Right', ends: ['flat', 'fist'] },
     { key: 'wristTwistL', label: 'Left Twist', ends: ['in', 'out'], centered: true },
     { key: 'wristTwistR', label: 'Right Twist', ends: ['in', 'out'], centered: true },
+    // The fan itself: fingers squeezed together or splayed wide, centred
+    // on the rig's own modelled spread.
+    { key: 'spreadL', label: 'Left Spread', ends: ['together', 'wide'], centered: true },
+    { key: 'spreadR', label: 'Right Spread', ends: ['together', 'wide'], centered: true },
   ],
   feet: [
     { key: 'footL', label: 'Left', ends: ['pointed', 'flat'] },
@@ -109,6 +113,8 @@ export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
   handR: 0,
   wristTwistL: 0.5, // unrolled
   wristTwistR: 0.5,
+  spreadL: 0.5, // the modelled fan
+  spreadR: 0.5,
   footL: 1, // flat
   footR: 1,
   ankleTwistL: 0.5,

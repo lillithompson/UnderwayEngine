@@ -77,8 +77,9 @@ export type SubmenuKey =
   | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
   | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'layout'
   // The poseable rig's parts: the whole figure (three axes, plus the Reset
-  // that stands it back up), two sliders each for the hands and feet, three
-  // for the spine, two for the head.
+  // that stands it back up), six sliders for the hands (curl / twist /
+  // spread per side), four for the feet, three for the spine, two for the
+  // head.
   | 'rigRoot' | 'rigHands' | 'rigFeet' | 'rigSpine' | 'rigHead'
   // A pattern object's three pages: the tile menu, the grid tools, and the
   // painting-symmetry grid.
@@ -188,6 +189,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     // switch (see RigPoseBar) — so each stands exactly as tall as the
     // controls it renders.
     case 'rigHands':
+      // Left and Right, a Twist each, and a Spread each.
+      return standardBar([
+        ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER,
+      ]);
     case 'rigFeet':
       // Left and Right, each with its own Twist.
       return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
