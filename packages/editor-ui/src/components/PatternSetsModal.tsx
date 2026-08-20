@@ -1,10 +1,8 @@
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import type { PatternTileSetRow } from '../logic/patternEdit';
-import {
-  PANEL_BG, PANEL_BORDER, PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE,
-} from '../theme';
+import { PANEL_BORDER, PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
+import { AppModal } from './AppModal';
 
 // The Tools bar's Sets takeover: Facet's Randomization Settings, as a
 // full-screen sheet in the panel scheme (the same chrome as the Tiles
@@ -25,62 +23,36 @@ export function PatternSetsModal({ visible, sets, allowBorder, onToggleSet, onTo
   onClose: () => void;
 }) {
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.screen}>
-        <View style={styles.header}>
-          <Text style={styles.title}>RANDOMIZATION SETTINGS</Text>
-          <Pressable
-            style={styles.closeIcon}
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-          >
-            <MaterialCommunityIcons name="close" size={24} color={PANEL_INK} />
-          </Pressable>
+    <AppModal visible={visible} title="Randomization Settings" onClose={onClose}>
+      <ScrollView contentContainerStyle={styles.body}>
+        <View style={styles.setList}>
+          {sets.map((s) => (
+            <Pressable
+              key={s.family}
+              onPress={() => onToggleSet(s.family)}
+              style={[styles.setCell, s.enabled && styles.setCellActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: s.enabled }}
+              accessibilityLabel={s.label}
+            >
+              <Text style={[styles.setWord, s.enabled && styles.setWordActive]}>{s.label}</Text>
+            </Pressable>
+          ))}
         </View>
-        <ScrollView contentContainerStyle={styles.body}>
-          <View style={styles.setList}>
-            {sets.map((s) => (
-              <Pressable
-                key={s.family}
-                onPress={() => onToggleSet(s.family)}
-                style={[styles.setCell, s.enabled && styles.setCellActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: s.enabled }}
-                accessibilityLabel={s.label}
-              >
-                <Text style={[styles.setWord, s.enabled && styles.setWordActive]}>{s.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Border Connections</Text>
-            <Switch
-              value={allowBorder}
-              onValueChange={onToggleBorder}
-              trackColor={{ false: PANEL_TRACK, true: STATE_ACTIVE }}
-            />
-          </View>
-        </ScrollView>
-      </View>
-    </Modal>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Border Connections</Text>
+          <Switch
+            value={allowBorder}
+            onValueChange={onToggleBorder}
+            trackColor={{ false: PANEL_TRACK, true: STATE_ACTIVE }}
+          />
+        </View>
+      </ScrollView>
+    </AppModal>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: PANEL_BG },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 48,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: PANEL_BORDER,
-  },
-  title: { color: PANEL_INK, fontSize: 13, fontWeight: '700', letterSpacing: 1.2 },
-  closeIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   body: { padding: 16, gap: 16 },
   // Facet's familyGrid: full-width cells stacked with a gap, tall enough
   // to hit without looking.

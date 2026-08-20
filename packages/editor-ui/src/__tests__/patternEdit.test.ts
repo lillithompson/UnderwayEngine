@@ -310,7 +310,7 @@ describe('the Sets filter opens as a full-screen takeover', () => {
   });
 
   it("copies Facet's layout: full-width set cells, then the border switch, no multi-layer fill", () => {
-    expect(MODAL).toContain('RANDOMIZATION SETTINGS');
+    expect(MODAL).toContain('title="Randomization Settings"');
     expect(MODAL).toContain('onToggleSet(s.family)');
     expect(MODAL).toContain('Border Connections');
     // Exactly ONE switch renders — Border Connections. Facet's second

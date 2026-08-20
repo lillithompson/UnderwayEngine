@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   PATTERN_TILE_DOUBLE_TAP_MS,
   PATTERN_TILE_TRANSFORM_IDENTITY,
@@ -11,9 +10,8 @@ import {
   type PatternTileRow,
   type PatternTileTransform,
 } from '../logic/patternEdit';
-import {
-  PANEL_BG, PANEL_BORDER, PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE,
-} from '../theme';
+import { PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
+import { AppModal } from './AppModal';
 import { PatternTileTransformModal } from './PatternTileTransformModal';
 
 // The Tiles bar's takeover: every tile the menu offers, laid out as a grid
@@ -24,10 +22,11 @@ import { PatternTileTransformModal } from './PatternTileTransformModal';
 // keep turning), and a long press opens the transform modal over this one.
 // There is still no confirm — the arming already happened on the first tap.
 //
-// This sheet wears the PANEL scheme rather than the dark MODAL one the
-// rename / colour-picker sheets use, and that is not a stylistic whim: the
-// host bakes tile thumbnails in PANEL_INK for the light bar, so on a #3f3f3f
-// card the entire grid would be near-invisible dark-on-dark.
+// This sheet wears the unified takeover chrome (AppModal — the PANEL
+// scheme, not the dark MODAL one the floating rename card uses), and that
+// is not a stylistic whim: the host bakes tile thumbnails in PANEL_INK for
+// the light bar, so on a #3f3f3f card the entire grid would be
+// near-invisible dark-on-dark.
 //
 // The grouping by connection count is the old TilePalette's, kept because
 // with the whole registry on screen at once it is the only thing that makes
@@ -70,20 +69,8 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
     : null;
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.screen}>
-        <View style={styles.header}>
-          <Text style={styles.title}>TILES</Text>
-          <Pressable
-            style={styles.closeIcon}
-            onPress={() => { cancelClose(); onClose(); }}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-          >
-            <MaterialCommunityIcons name="close" size={24} color={PANEL_INK} />
-          </Pressable>
-        </View>
-        <ScrollView contentContainerStyle={styles.body}>
+    <AppModal visible={visible} title="Tiles" onClose={() => { cancelClose(); onClose(); }}>
+      <ScrollView contentContainerStyle={styles.body}>
           {groups.map((g) => (
             <View key={g.connections} style={styles.section}>
               <Text style={styles.caption}>
@@ -128,35 +115,21 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
               </View>
             </View>
           ))}
-        </ScrollView>
-        <PatternTileTransformModal
-          visible={transformId != null}
-          uri={transformUri}
-          transform={transformId ? poseOf(transformId) : PATTERN_TILE_TRANSFORM_IDENTITY}
-          onChange={(xform) => {
-            if (transformId) onSetTransform?.(transformId, xform);
-          }}
-          onClose={() => setTransformId(null)}
-        />
-      </View>
-    </Modal>
+      </ScrollView>
+      <PatternTileTransformModal
+        visible={transformId != null}
+        uri={transformUri}
+        transform={transformId ? poseOf(transformId) : PATTERN_TILE_TRANSFORM_IDENTITY}
+        onChange={(xform) => {
+          if (transformId) onSetTransform?.(transformId, xform);
+        }}
+        onClose={() => setTransformId(null)}
+      />
+    </AppModal>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: PANEL_BG },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 48,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: PANEL_BORDER,
-  },
-  title: { color: PANEL_INK, fontSize: 13, fontWeight: '700', letterSpacing: 1.2 },
-  closeIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   body: { padding: 16, gap: 18 },
   section: { gap: 8 },
   caption: { color: PANEL_INK_DIM, fontSize: 11, lineHeight: 15 },
