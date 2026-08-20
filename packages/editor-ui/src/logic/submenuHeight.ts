@@ -213,13 +213,11 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // Grid actions and Borders, plus Repeat when the pattern can take it
       // and the Sets row when the host offers a tile-set filter. (Random
       // and Erase left for the Tiles bar, where they sit beside the tiles
-      // they compete with.) Its second page (chip rows of three, then
-      // Done) may stand taller; the bar reserves the taller of the two so
-      // flipping pages never moves its top edge.
+      // they compete with.) The Sets row's filter opens as a full-screen
+      // takeover (PatternSetsModal), so the bar reserves nothing for it.
       const setCount = ctx.patternTileSetCount ?? 0;
       const mainRows = 2 + (ctx.patternCanRepeat ? 1 : 0) + (setCount > 0 ? 1 : 0);
-      const setsRows = setCount > 0 ? Math.ceil(setCount / 3) + 1 : 0;
-      return standardBar(new Array(Math.max(mainRows, setsRows)).fill(ROW_SEGMENTED));
+      return standardBar(new Array(mainRows).fill(ROW_SEGMENTED));
     }
     case 'patternSymmetry':
       // The mode grid: 4×3 label-less rectangles, each row at the

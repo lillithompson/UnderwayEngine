@@ -15,7 +15,8 @@ import {
   rotatePatternTileTransform,
 } from '../logic/patternEdit';
 import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
-import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, MultiToggleRow, SegmentedRow } from './effectBar';
+import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, SegmentedRow } from './effectBar';
+import { PatternSetsModal } from './PatternSetsModal';
 import { PatternTileModal } from './PatternTileModal';
 import { PatternTileTransformModal } from './PatternTileTransformModal';
 
@@ -150,36 +151,11 @@ export function PatternToolsBar({ model, onBack }: {
   model: ObjectPropertiesModel;
   onBack: () => void;
 }) {
-  // The bar's second page: the tile-set filter the Sets row's 'Tiles'
-  // button opens (Facet's Randomization Settings, as chip rows). Local —
-  // it is a view of the same bar, not another submenu.
+  // The Sets row's 'Tiles' button takes over the screen with the tile-set
+  // filter (Facet's Randomization Settings) rather than flipping the bar
+  // to a chip page — see PatternSetsModal.
   const [showSets, setShowSets] = useState(false);
   const sets = model.patternTileSets ?? [];
-  if (showSets) {
-    // Chips in rows of three, then the Done row back to the tools.
-    const chipRows: (typeof sets)[] = [];
-    for (let i = 0; i < sets.length; i += 3) chipRows.push(sets.slice(i, i + 3));
-    return (
-      <View style={styles.bar}>
-        <EffectBarHeader title={barTitle('tools')} chevron onBack={onBack} />
-        <View style={styles.controls}>
-          {chipRows.map((row, i) => (
-            <MultiToggleRow
-              key={i}
-              label={i === 0 ? 'Sets' : ' '}
-              options={row.map((s) => ({ value: s.family, label: s.label, active: s.enabled }))}
-              onToggle={(family) => model.onPatternToggleTileSet?.(family)}
-            />
-          ))}
-          <ActionRow
-            label=" "
-            options={[{ value: 'done' as const, label: 'Done' }]}
-            onPress={() => setShowSets(false)}
-          />
-        </View>
-      </View>
-    );
-  }
   return (
     <View style={styles.bar}>
       <EffectBarHeader title={barTitle('tools')} chevron onBack={onBack} />
@@ -226,6 +202,14 @@ export function PatternToolsBar({ model, onBack }: {
           />
         )}
       </View>
+      <PatternSetsModal
+        visible={showSets}
+        sets={sets}
+        allowBorder={model.patternAllowBorder !== false}
+        onToggleSet={(family) => model.onPatternToggleTileSet?.(family)}
+        onToggleBorder={() => model.onPatternToggleBorder?.()}
+        onClose={() => setShowSets(false)}
+      />
     </View>
   );
 }

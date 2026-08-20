@@ -143,16 +143,15 @@ describe('the tile-set filter', () => {
     expect(patternTileSetLabel('craftsman')).toBe('Craftsman');
   });
 
-  it('the Tools bar grows to hold whichever page is taller', () => {
+  it('the Tools bar reserves one Sets row, however many sets there are', () => {
     const plain = submenuHeight('patternTools');
     const withSets = submenuHeight('patternTools', { patternTileSetCount: 5 });
     // No sets: Grid and Borders, two rows (Random and Erase moved to the
-    // Tiles bar). Five sets: the Sets row makes three, and the chip page
-    // (2 chip rows + Done) ties it.
+    // Tiles bar). Any sets: the Sets row makes three.
     expect(withSets).toBeGreaterThan(plain);
-    // Ten sets: the chip page (4 rows + Done) overtakes the main page.
-    expect(submenuHeight('patternTools', { patternTileSetCount: 10 }))
-      .toBeGreaterThan(withSets);
+    // The filter itself opens as a full-screen takeover (PatternSetsModal),
+    // so MORE sets never grow the bar.
+    expect(submenuHeight('patternTools', { patternTileSetCount: 10 })).toBe(withSets);
   });
 });
 
@@ -291,6 +290,37 @@ describe('the Symmetry bar is a label-less 4×3 grid', () => {
 
   it('still toggles the active mode back to off', () => {
     expect(symBar).toContain("model.onPatternSymmetry?.(active ? 'off' : o.value)");
+  });
+});
+
+// The Sets filter as a full-screen takeover (Facet's Randomization
+// Settings), replacing the old in-bar chip page.
+describe('the Sets filter opens as a full-screen takeover', () => {
+  const BARS = readFileSync(resolve(__dirname, '..', 'components', 'PatternBars.tsx'), 'utf8');
+  const MODAL = readFileSync(resolve(__dirname, '..', 'components', 'PatternSetsModal.tsx'), 'utf8');
+  const toolsBar = BARS.slice(
+    BARS.indexOf('export function PatternToolsBar'),
+    BARS.indexOf('export function PatternSymmetryBar'),
+  );
+
+  it('the Tools bar opens the modal instead of flipping to a chip page', () => {
+    expect(toolsBar).toContain('<PatternSetsModal');
+    expect(toolsBar).toContain('onPress={() => setShowSets(true)}');
+    expect(toolsBar).not.toContain('MultiToggleRow');
+  });
+
+  it("copies Facet's layout: full-width set cells, then the border switch, no multi-layer fill", () => {
+    expect(MODAL).toContain('RANDOMIZATION SETTINGS');
+    expect(MODAL).toContain('onToggleSet(s.family)');
+    expect(MODAL).toContain('Border Connections');
+    // Exactly ONE switch renders — Border Connections. Facet's second
+    // (Multi-layer Fill) is deliberately not copied.
+    expect(MODAL.match(/<Switch/g)).toHaveLength(1);
+  });
+
+  it('the switch drives the same border rule as the Borders row', () => {
+    expect(toolsBar).toContain('allowBorder={model.patternAllowBorder !== false}');
+    expect(toolsBar).toContain('onToggleBorder={() => model.onPatternToggleBorder?.()}');
   });
 });
 
