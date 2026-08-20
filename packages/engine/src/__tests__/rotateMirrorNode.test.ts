@@ -324,6 +324,74 @@ describe('mirrorSVG (tile mode)', () => {
   });
 });
 
+// The tiled markup draws segments RELATIVE to the grid anchor
+// (cellX + tileOffset) and the <pattern> cell clips to tileW × tileH, so a
+// transform must keep the artwork exactly inside the anchored tile box —
+// and that box must go where the rigid turn/flip takes it, or the region
+// clips a DIFFERENT sub-section of the pattern afterwards (the "rotate a
+// partially-visible repeating pattern and it shifts" bug).
+describe('tile mode transforms rigidly (artwork stays in the anchored tile box)', () => {
+  /** One 6×4 tile of art at (4,6), region grown rightward to (4,6) 18×8 —
+   *  the shape the editor's repeat toggle + edge drag produces. */
+  function anchoredTileSVG(): SVGObject {
+    return {
+      id: 's1', color: WHITE,
+      segments: [
+        { kind: 'line', start: [4, 6], end: [10, 6] },
+        { kind: 'line', start: [10, 6], end: [10, 10] },
+        { kind: 'line', start: [10, 10], end: [4, 10] },
+        { kind: 'line', start: [4, 10], end: [4, 6] },
+      ],
+      cellX: 4, cellY: 6, cellWidth: 18, cellHeight: 8,
+      tileMode: 'repeat', tileWidthL0: 6, tileHeightL0: 4,
+    };
+  }
+  const segBox = (s: SVGObject) => computeSVGBbox(s.segments);
+  const anchor = (s: SVGObject) => [s.cellX + (s.tileOffsetXL0 ?? 0), s.cellY + (s.tileOffsetYL0 ?? 0)];
+
+  test('rotate carries artwork, grid, and region round together', () => {
+    const r = rotateSVG90CW(anchoredTileSVG());
+    // Region swings about its centre (13, 10) → (9, 1) 8×18.
+    expect([r.cellX, r.cellY, r.cellWidth, r.cellHeight]).toEqual([9, 1, 8, 18]);
+    // The tile box lands where the quarter turn takes it — the old box's
+    // BOTTOM-left corner (4, 10) becomes the new top-left, (13, 1)…
+    expect(anchor(r)).toEqual([13, 1]);
+    // …and the segments land exactly inside it (that is what renders).
+    expect(segBox(r)).toEqual({ cellX: 13, cellY: 1, cellWidth: 4, cellHeight: 6 });
+  });
+
+  test('mirror reflects artwork and grid about the region centre', () => {
+    const m = mirrorSVG(anchoredTileSVG(), 'h');
+    // Tile box reflected within the 18-wide region: 18 − (0 + 6) = 12.
+    expect(anchor(m)).toEqual([16, 6]);
+    expect(segBox(m)).toEqual({ cellX: 16, cellY: 6, cellWidth: 6, cellHeight: 4 });
+  });
+
+  test('four rotations land artwork and grid exactly back', () => {
+    let r = anchoredTileSVG();
+    for (let i = 0; i < 4; i++) r = rotateSVG90CW(r);
+    expect(segBox(r)).toEqual({ cellX: 4, cellY: 6, cellWidth: 6, cellHeight: 4 });
+    expect(anchor(r)).toEqual([4, 6]);
+    expect(r.identitySegments).toBeUndefined();
+  });
+
+  test('two mirrors land artwork and grid exactly back', () => {
+    const m = mirrorSVG(mirrorSVG(anchoredTileSVG(), 'h'), 'h');
+    expect(segBox(m)).toEqual({ cellX: 4, cellY: 6, cellWidth: 6, cellHeight: 4 });
+    expect(anchor(m)).toEqual([4, 6]);
+  });
+
+  test('rotate after mirror still keeps artwork inside the anchored box', () => {
+    const rm = rotateSVG90CW(mirrorSVG(anchoredTileSVG(), 'h'));
+    const [ax, ay] = anchor(rm);
+    const b = segBox(rm);
+    expect(b.cellX).toBeCloseTo(ax);
+    expect(b.cellY).toBeCloseTo(ay);
+    expect(b.cellWidth).toBeCloseTo(rm.tileWidthL0!);
+    expect(b.cellHeight).toBeCloseTo(rm.tileHeightL0!);
+  });
+});
+
 // A joined SVG: one primary path + N colored subpaths over the same
 // bbox. Rotating/mirroring must keep all pieces aligned — they share an
 // identity center and rotate as a unit.

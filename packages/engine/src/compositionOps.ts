@@ -3790,17 +3790,39 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
     // 32Ã—40 cell and the pattern visibly misaligns.
     const newTileW = svg.tileHeightL0;
     const newTileH = svg.tileWidthL0;
-    // Rotate the tile-grid world origin (cellX + ox, cellY + oy) around
-    // the region center; subtracting the new region origin yields the
-    // new in-region offset. Derivation collapses to a clean swap+flip:
-    //   newOx = oldCellHeight - oldOy ; newOy = oldOx.
-    // 4 rotations return both back to the originals (verified by the
-    // 4Ã—-cycle test in rotateMirrorNode.test.ts).
+    // The whole thing turns RIGIDLY about the centre the region box swings
+    // around â€” region, tile grid, and artwork keep exactly the same
+    // relative position, so the sub-section of the pattern the region clips
+    // into view is the same picture, turned. The grid anchor is carried to
+    // the image of the old tile box's BOTTOM-left corner (the pattern
+    // adapter's derivation): (x, y) â†’ (idCx + (idCy âˆ’ y), idCy + (x âˆ’ idCx)).
+    // 4 rotations return it exactly (rotation about a fixed centre).
     const oldOx = svg.tileOffsetXL0 ?? 0;
     const oldOy = svg.tileOffsetYL0 ?? 0;
-    const newOx = svg.cellHeight - oldOy;
-    const newOy = oldOx;
-    const rotated: SVGObject = { ...svg, segments: newSegs, subpaths: newSubpaths, rotation: newRot, identitySegments: newIdSegs,
+    const ax = svg.cellX + oldOx;
+    const ay = svg.cellY + oldOy;
+    const tileH = svg.tileHeightL0 ?? svg.cellHeight;
+    const newAx = idCx + (idCy - (ay + tileH));
+    const newAy = idCy + (ax - idCx);
+    const newOx = newAx - newCellX;
+    const newOy = newAy - newCellY;
+    // The identity rebuild above turned the segments about their own bbox
+    // centre; the rigid turn wants them turned about the region centre. The
+    // two differ by a pure translation, so shift segments, subpaths, AND
+    // the identity stash by it â€” translating the stash moves the rebuild
+    // pivot with it, which keeps `identity + recipe = actual position` true
+    // for every later rebuild (including the un-tiled branch after a
+    // repeat toggle OFF).
+    const curBox = computeSVGBbox(svg.segments);
+    const rigidMinX = idCx + (idCy - (curBox.cellY + curBox.cellHeight));
+    const rigidMinY = idCy + (curBox.cellX - idCx);
+    const recipeBox = computeSVGBbox(newSegs);
+    const dx = rigidMinX - recipeBox.cellX;
+    const dy = rigidMinY - recipeBox.cellY;
+    const shiftedSegs = newSegs.map(s => offsetPathSegment(s, dx, dy));
+    const shiftedSubpaths = newSubpaths?.map(sub => ({ ...sub, segments: sub.segments.map(s => offsetPathSegment(s, dx, dy)) }));
+    const shiftedIdSegs = newIdSegs?.map(s => offsetPathSegment(s, dx, dy));
+    const rotated: SVGObject = { ...svg, segments: shiftedSegs, subpaths: shiftedSubpaths, rotation: newRot, identitySegments: shiftedIdSegs,
       cellX: newCellX, cellY: newCellY, cellWidth: newW, cellHeight: newH,
       tileWidthL0: newTileW, tileHeightL0: newTileH,
       tileOffsetXL0: newOx === 0 ? undefined : newOx,
@@ -3808,14 +3830,12 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
       identityCellX: atIdentity ? undefined : identityX,
       identityCellY: atIdentity ? undefined : identityY,
       localSegments: undefined, localCellX: undefined, localCellY: undefined, localCellWidth: undefined, localCellHeight: undefined };
-    // Re-key per-copy paint: the whole pattern block rotates rigidly about the
-    // region center (invariant under 90Â° rotation), so map each painted copy's
+    // Re-key per-copy paint: the whole pattern block rotates rigidly about
+    // the SAME centre as everything else, so map each painted copy's
     // tile-center through that rotation onto the post-rotation grid.
     if (svg.segmentOverrides && svg.segmentOverrides.size > 0) {
-      const rcx = svg.cellX + svg.cellWidth / 2;
-      const rcy = svg.cellY + svg.cellHeight / 2;
       rotated.segmentOverrides = remapOverrides(svg.segmentOverrides, svg, rotated,
-        (x, y) => { const [nx, ny] = rotatePointCW(x, y, rcx, rcy); return { x: nx, y: ny }; });
+        (x, y) => { const [nx, ny] = rotatePointCW(x, y, idCx, idCy); return { x: nx, y: ny }; });
     }
     return rotated;
   }
@@ -3878,24 +3898,38 @@ export function mirrorSVG(svg: SVGObject, screenAxis: 'h' | 'v'): SVGObject {
   // `computeSVGBbox(newSegs)` would collapse the region to the AABB of one
   // tile, so skip it here.
   if (svg.tileMode === 'repeat') {
-    // Tile-grid origin mirrors across the screen axis through the
-    // region center, so the rendered pattern flips together with the
-    // segments. Screen 'h' mirrors X around (cellX + cellW/2); screen
-    // 'v' mirrors Y around (cellY + cellH/2). Tile dimensions don't
-    // change on mirror.
+    // The tile BOX reflects within the region â€” span âˆ’ (offset + tile),
+    // the pattern adapter's rule â€” so the grid flips together with the
+    // artwork and the region keeps clipping the same (now mirrored)
+    // picture. Tile dimensions don't change on mirror.
+    const tw = svg.tileWidthL0 ?? svg.cellWidth;
+    const th = svg.tileHeightL0 ?? svg.cellHeight;
     const oldOx = svg.tileOffsetXL0 ?? 0;
     const oldOy = svg.tileOffsetYL0 ?? 0;
-    const newOx = screenAxis === 'h' ? svg.cellWidth  - oldOx : oldOx;
-    const newOy = screenAxis === 'v' ? svg.cellHeight - oldOy : oldOy;
-    const mirrored: SVGObject = { ...svg, segments: newSegs, subpaths: newSubpaths, mirrorH: newMH, mirrorV: newMV, identitySegments: newIdSegs,
+    const newOx = screenAxis === 'h' ? svg.cellWidth  - (oldOx + tw) : oldOx;
+    const newOy = screenAxis === 'v' ? svg.cellHeight - (oldOy + th) : oldOy;
+    // Segments reflect about the REGION centre, not their own bbox centre:
+    // shift the identity rebuild (and the stash, so `identity + recipe`
+    // keeps reproducing the actual position â€” see rotateSVG90CW's tile
+    // branch) by the difference between the two reflections.
+    const rcx = svg.cellX + svg.cellWidth / 2;
+    const rcy = svg.cellY + svg.cellHeight / 2;
+    const curBox = computeSVGBbox(svg.segments);
+    const rigidMinX = screenAxis === 'h' ? 2 * rcx - (curBox.cellX + curBox.cellWidth) : curBox.cellX;
+    const rigidMinY = screenAxis === 'v' ? 2 * rcy - (curBox.cellY + curBox.cellHeight) : curBox.cellY;
+    const recipeBox = computeSVGBbox(newSegs);
+    const dx = rigidMinX - recipeBox.cellX;
+    const dy = rigidMinY - recipeBox.cellY;
+    const shiftedSegs = newSegs.map(s => offsetPathSegment(s, dx, dy));
+    const shiftedSubpaths = newSubpaths?.map(sub => ({ ...sub, segments: sub.segments.map(s => offsetPathSegment(s, dx, dy)) }));
+    const shiftedIdSegs = newIdSegs?.map(s => offsetPathSegment(s, dx, dy));
+    const mirrored: SVGObject = { ...svg, segments: shiftedSegs, subpaths: shiftedSubpaths, mirrorH: newMH, mirrorV: newMV, identitySegments: shiftedIdSegs,
       tileOffsetXL0: newOx === 0 ? undefined : newOx,
       tileOffsetYL0: newOy === 0 ? undefined : newOy,
       localSegments: undefined, localCellX: undefined, localCellY: undefined, localCellWidth: undefined, localCellHeight: undefined };
     // Re-key per-copy paint: the pattern block flips about the region center
     // across the screen axis; map each painted copy's tile-center accordingly.
     if (svg.segmentOverrides && svg.segmentOverrides.size > 0) {
-      const rcx = svg.cellX + svg.cellWidth / 2;
-      const rcy = svg.cellY + svg.cellHeight / 2;
       mirrored.segmentOverrides = remapOverrides(svg.segmentOverrides, svg, mirrored,
         (x, y) => screenAxis === 'h' ? { x: 2 * rcx - x, y } : { x, y: 2 * rcy - y });
     }

@@ -176,13 +176,16 @@ describe('editSVGSegments tile metadata', () => {
     expect(undone.cellWidth).toBe(12);
   });
 
-  test('mirror keeps the region and reflects the tile offset', () => {
+  test('mirror keeps the region and reflects the tile BOX within it', () => {
     const prev = makeTiledSVG({ tileOffsetXL0: 1 });
     const next = mirrorSVG(prev, 'h');
     expect(next.cellX).toBe(prev.cellX);
     expect(next.cellWidth).toBe(prev.cellWidth);
-    // Screen-h mirror reflects the offset about the region width.
-    expect(next.tileOffsetXL0).toBe(prev.cellWidth - 1);
+    // Screen-h mirror reflects the tile BOX about the region width — the
+    // pattern adapter's rule, span − (offset + tile) = 12 − (1 + 4) — so
+    // the box sits the same distance from the far edge and the segments
+    // (also reflected, about the region centre) land exactly inside it.
+    expect(next.tileOffsetXL0).toBe(prev.cellWidth - (1 + prev.tileWidthL0!));
     expect(next.tileOffsetYL0).toBeUndefined();
   });
 });
