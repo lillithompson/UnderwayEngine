@@ -79,8 +79,10 @@ const BRUSH_WASH =
  *  a readout for the drag, and lingering over the artwork afterwards would
  *  make it a thing to wait out. */
 const PREVIEW_FADE_MS = 160;
-/** Clear air between the preview disc and the top of the slider stack. */
-const PREVIEW_GAP = 24;
+/** Clear air between the preview disc and the top of the slider stack —
+ *  kept tight so the disc reads as the Size handle's own readout, not a
+ *  thing floating off in the page. */
+const PREVIEW_GAP = 8;
 /** Fully clears bottom margin + both rows + any home-indicator inset. */
 const HIDDEN_Y = HANDLE * 2 + ROW_GAP + BOTTOM_MARGIN + 80;
 
@@ -308,8 +310,12 @@ export function BrushControlsPanel({ model, safeBottom = 0 }: {
               opacity: previewFade,
               // Sat on the stack's top edge and pushed up by its own height,
               // so the disc grows UPWARD into the page rather than down
-              // through the sliders it is describing.
-              bottom: HANDLE * 2 + ROW_GAP + PREVIEW_GAP,
+              // through the sliders it is describing. The stack is ONE row
+              // when the host drops Strength (the Paint brush does), so the
+              // offset follows the rows actually on screen — a fixed two-row
+              // offset left the disc floating a row above the Size slider.
+              bottom: (model.showStrength === false ? HANDLE : HANDLE * 2 + ROW_GAP)
+                + PREVIEW_GAP,
             },
           ]}
         />

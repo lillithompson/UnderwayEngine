@@ -55,6 +55,17 @@ describe('both rows stand inside the safe area', () => {
     // parked at the bottom of the artwork while the panel is "away".
     expect(SRC).toContain('const HIDDEN_Y = HANDLE * 2 + ROW_GAP + BOTTOM_MARGIN + 80;');
   });
+
+  it('the size preview sits just over the rows actually on screen', () => {
+    // The stack is ONE row when Strength is dropped (the Paint brush), so
+    // the disc's offset follows — a fixed two-row offset left it floating a
+    // row above the slider it describes. And the gap stays tight: the disc
+    // is the Size handle's readout, not a thing off in the page.
+    expect(SRC).toContain(
+      "bottom: (model.showStrength === false ? HANDLE : HANDLE * 2 + ROW_GAP)",
+    );
+    expect(SRC).toContain('const PREVIEW_GAP = 8;');
+  });
 });
 
 // Each row shows the value in the currency it controls: SIZE as a width,
