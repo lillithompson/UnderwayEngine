@@ -30,6 +30,7 @@ export function AppModal({
   headerStyle,
   headerForeground = PANEL_INK,
   headerBackground,
+  background,
   children,
 }: {
   visible: boolean;
@@ -43,11 +44,15 @@ export function AppModal({
   headerForeground?: string;
   /** Node painted absolutely behind the header row (e.g. checkerboard). */
   headerBackground?: React.ReactNode;
+  /** Sheet color behind the body. Default is the light panel surface; the
+   *  color picker passes the dark modal grey (its swatches and wheel read
+   *  against dark, like Facet's original picker sheet). */
+  background?: string;
   children: React.ReactNode;
 }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.screen}>
+      <View style={[styles.screen, background ? { backgroundColor: background } : null]}>
         <View style={[styles.header, headerStyle]}>
           {headerBackground}
           <Text style={[styles.title, { color: headerForeground }]} numberOfLines={1}>
