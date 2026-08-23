@@ -436,7 +436,13 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      sprite cells: spriteIdIdx u16 (+ r,g,b u8×3 when hasTint);
 //      color cells: r,g,b u8×3. Older readers never see the section
 //      (version-gated); older files simply have no patterns.
-const FORMAT_VERSION = 54;
+// v55: COLOR OPACITY for two targets that had none. (a) Border effect:
+//      `border.alpha` rides the v44 border-extension block behind a new
+//      sub-mask bit (0x04) as one u8. (b) Text ink: `style.alpha` rides
+//      text flags2 bit 0x80 as one trailing u8, after the vAlign byte.
+//      Both bits were always written 0 before, so older files read back
+//      unchanged — absent, meaning opaque, which is what they always were.
+const FORMAT_VERSION = 55;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -945,6 +951,10 @@ const TFLAG2_HAS_CHAR_COLORS = 0x20;
 // reopened fell back to top-aligned, and a word sticker's centred word rose
 // off its card's middle onto the top edge.
 const TFLAG2_HAS_VALIGN = 0x40;
+// v55+: a trailing byte carrying the whole-text ink opacity (u8, 0-255),
+// after the vAlign byte. Presence-gated like every other trailing block --
+// the bit was always written 0 before, so older saves read back unchanged.
+const TFLAG2_HAS_ALPHA = 0x80;
 // v29+ text style flag bits.
 const TSTYLE_BOLD = 0x01;
 const TSTYLE_ITALIC = 0x02;
@@ -980,6 +990,9 @@ const EFFECT_HAS_SHADOW_SPREAD = 0x08;
 const EFFECT_HAS_BORDER_EXT = 0x10;
 const BORDER_EXT_HAS_POSITION = 0x01;
 const BORDER_EXT_HAS_DASH = 0x02;
+// v55+: border color opacity (u8, 0-255). Rides the same extension block;
+// the bit was always written 0 before, so older files read back unchanged.
+const BORDER_EXT_HAS_ALPHA = 0x04;
 
 // v29+ paint kind byte.
 const PAINT_KIND_SOLID = 0;
@@ -1135,7 +1148,8 @@ function hasShadowSpread(fx: NodeEffects): boolean {
  *  v29 border payload had no room for. Both are absent-at-default
  *  ('center', solid), so a plain border never grows the record. */
 function hasBorderExt(fx: NodeEffects): boolean {
-  return !!fx.border && (fx.border.position != null || fx.border.dash != null);
+  return !!fx.border
+    && (fx.border.position != null || fx.border.dash != null || fx.border.alpha != null);
 }
 
 function effectsBinarySize(fx: NodeEffects): number {
@@ -1149,6 +1163,7 @@ function effectsBinarySize(fx: NodeEffects): number {
     size += 1;                              // sub-mask
     if (fx.border!.position != null) size += 1;
     if (fx.border!.dash != null) size += 1;
+    if (fx.border!.alpha != null) size += 1; // v55 alpha u8
   }
   return size;
 }
@@ -1199,9 +1214,11 @@ function writeEffects(view: DataView, out: Uint8Array, pos: number, fx: NodeEffe
     let sub = 0;
     if (b.position != null) sub |= BORDER_EXT_HAS_POSITION;
     if (b.dash != null) sub |= BORDER_EXT_HAS_DASH;
+    if (b.alpha != null) sub |= BORDER_EXT_HAS_ALPHA;
     out[pos++] = sub;
     if (b.position != null) out[pos++] = BORDER_POSITION_TO_BYTE[b.position] ?? 1;
     if (b.dash != null) out[pos++] = Math.max(0, Math.min(10, Math.round(b.dash))) & 0xff;
+    if (b.alpha != null) out[pos++] = quantize255(b.alpha);
   }
   return pos;
 }
@@ -1250,6 +1267,11 @@ function readEffects(
     }
     if (sub & BORDER_EXT_HAS_DASH) {
       effects.border.dash = data[pos++];
+    }
+    // v55: border color opacity. Version-gated like its siblings, though the
+    // bit alone would do — it was always 0 before.
+    if (version >= 55 && (sub & BORDER_EXT_HAS_ALPHA)) {
+      effects.border.alpha = data[pos++] / 255;
     }
   }
   return { effects, pos };
@@ -2467,6 +2489,7 @@ function textBinarySize(text: TextObject): number {
   const charColorCount = countCharColors(text.style.charColors);
   if (charColorCount > 0) size += 2 + charColorCount * 5; // v47+ count + (idx u16, rgb)
   if (text.style.vAlign != null) size += 1; // v53+ vAlign enum
+  if (text.style.alpha != null) size += 1;  // v55+ ink opacity u8
   return size;
 }
 
@@ -2507,6 +2530,7 @@ function writeText(
   const charColorCount = countCharColors(text.style.charColors);
   if (charColorCount > 0) flags2 |= TFLAG2_HAS_CHAR_COLORS;
   if (text.style.vAlign != null) flags2 |= TFLAG2_HAS_VALIGN;
+  if (text.style.alpha != null) flags2 |= TFLAG2_HAS_ALPHA;
   out[pos++] = flags2;
 
   out[pos++] = ROTATION_TO_BITS[text.rotation ?? 0] & 0x03;
@@ -2576,9 +2600,14 @@ function writeText(
     }
   }
 
-  // v53+ vertical alignment, last in the record.
+  // v53+ vertical alignment, after the char colors.
   if (text.style.vAlign != null) {
     out[pos++] = VALIGN_TO_BITS[text.style.vAlign] & 0xff;
+  }
+
+  // v55+ whole-text ink opacity, last in the record.
+  if (text.style.alpha != null) {
+    out[pos++] = quantize255(text.style.alpha);
   }
 
   return pos;
@@ -2709,6 +2738,12 @@ function readText(
   if (flags2 & TFLAG2_HAS_VALIGN) {
     const vAlign = BITS_TO_VALIGN[data[pos++] & 0x03];
     if (vAlign != null) style.vAlign = vAlign;
+  }
+
+  // v55+ whole-text ink opacity, last in the record. Same presence-gating
+  // story as its neighbours.
+  if (flags2 & TFLAG2_HAS_ALPHA) {
+    style.alpha = data[pos++] / 255;
   }
 
   return { text, pos };

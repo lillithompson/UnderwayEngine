@@ -446,6 +446,13 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
   if (weight !== 400) attrs += ` font-weight="${weight}"`;
   if (style.italic) attrs += ' font-style="italic"';
   attrs += ` fill="${fill}"`;
+  // Whole-text ink opacity (v55): `opacity` rather than fill-opacity so the
+  // outline stroke and any per-char brush colors fade with the fill, exactly
+  // as the DOM layer's CSS opacity does. A sticker's ink is its card scheme's
+  // and carries no alpha.
+  if (!text.sticker && style.alpha != null && style.alpha < 1) {
+    attrs += ` opacity="${style.alpha}"`;
+  }
   if (style.letterSpacing !== undefined && style.letterSpacing !== 0) {
     // letterSpacing is authored in em units; SVG letter-spacing is a length.
     attrs += ` letter-spacing="${style.letterSpacing * fontSize}"`;

@@ -1210,7 +1210,9 @@ export interface BorderEffect { width: number; color: RGBColor; radius?: number;
   position?: BorderPosition;
   /** Dash density 0–10; 0 / undefined = solid. Higher = shorter dashes,
    *  ending at dots at 10 (see `borderDashPattern`). */
-  dash?: number }
+  dash?: number;
+  /** Border color opacity in [0, 1]; undefined = opaque (v55+). */
+  alpha?: number }
 
 /**
  * Per-node visual effects. Shadows/glows render as a pre-blurred texture
@@ -1344,6 +1346,9 @@ export interface TextStyle {
   bold?: boolean;
   italic?: boolean;
   color: RGBColor;
+  /** Ink opacity in [0, 1] for the whole text (fill, per-char brush colors
+   *  and outline stroke together); undefined = opaque (v55+). */
+  alpha?: number;
   /** Extra letter spacing in em units. */
   letterSpacing?: number;
   /** Line height as a multiple of size (default 1.2). */

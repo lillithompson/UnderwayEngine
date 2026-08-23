@@ -290,7 +290,11 @@ export function borderToSvgRect(border: BorderEffect, bbox: Bbox, u = 1): string
     const cap = borderDashIsDotted(dLen) ? ' stroke-linecap="round"' : '';
     dashAttr = ` stroke-dasharray="${fmt(dLen * u)} ${fmt(gap * u)}"${cap}`;
   }
+  // Border color opacity (v55): stroke-opacity, absent when opaque so
+  // pre-v55 output is byte-identical.
+  const alphaAttr = border.alpha != null && border.alpha < 1
+    ? ` stroke-opacity="${border.alpha}"` : '';
   return `<rect x="${fmt(geo.x)}" y="${fmt(geo.y)}" ` +
     `width="${fmt(geo.w)}" height="${fmt(geo.h)}"${rx} ` +
-    `fill="none" stroke="${hex(border.color)}" stroke-width="${fmt(border.width)}"${dashAttr}/>`;
+    `fill="none" stroke="${hex(border.color)}" stroke-width="${fmt(border.width)}"${dashAttr}${alphaAttr}/>`;
 }
