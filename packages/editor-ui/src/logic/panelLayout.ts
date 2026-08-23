@@ -45,19 +45,19 @@ export function objectPanelLayout(safeBottom: number, dotsInSafeArea: boolean): 
 // them, a dot each. There are three possible pages, always in this order:
 //
 //   common — the icon row (rotate / mirror / copy / lock / delete). Always
-//            present; it is the one page every selection has.
-//   type   — the options the selection's KIND offers (tint / crop / shadow …),
-//            present when the members share a kind that has any.
-//   multi  — the options the SELECTION offers (Layout · Group · Union),
-//            present only for a multi-selection, and independent of what its
-//            members are: a mixed selection gets this page with no type page.
-//
-// So a single selection keeps its two pages unchanged, and a multi-selection
-// grows the third on the end rather than resorting the two it already had.
+//            present and always FIRST; it is the one page every selection has.
+//   type   — ONE combined options row: the options the selection's KIND
+//            offers (tint / crop / shadow …) followed by the options the
+//            SELECTION offers (Layout · Group · Merge, multi-selections
+//            only). Present when the selection has any option at all.
+//   multi  — the OVERFLOW: only the options that did not fit on the combined
+//            row (see optionPageFitCount). Most selections never have it —
+//            a new page exists only when one page genuinely can't hold them.
 
 export type PanelPage = 'common' | 'type' | 'multi';
 
-/** The pages this selection has, in carousel order. */
+/** The pages this selection has, in carousel order. `type` is "any options at
+ *  all", `multi` is "they overflowed one row". */
 export function objectPanelPages(has: { type?: boolean; multi?: boolean }): PanelPage[] {
   const pages: PanelPage[] = ['common'];
   if (has.type) pages.push('type');
@@ -71,19 +71,15 @@ export function objectPanelPages(has: { type?: boolean; multi?: boolean }): Pane
  * `preferred` is the page the panel was showing for the LAST selection, and it
  * wins whenever the new one has it: someone working through a drawing's
  * shadows wants the shadow row on the next shape too, and re-landing them on
- * the type page every time makes the carousel something to re-navigate rather
- * than a place to be. A page the new selection does not have cannot be kept,
- * and it falls back to what the selection brought with it — its kind's options
- * if it has any, else the selection-level ones — with the common actions for a
- * selection that offers neither.
+ * the first page every time makes the carousel something to re-navigate rather
+ * than a place to be. Otherwise the panel opens on its FIRST page — the
+ * common icon actions every selection has; the option rows are a swipe away.
  */
 export function landingPanelPage(
   pages: readonly PanelPage[],
   preferred?: PanelPage,
 ): PanelPage {
   if (preferred && pages.includes(preferred)) return preferred;
-  if (pages.includes('type')) return 'type';
-  if (pages.includes('multi')) return 'multi';
   return 'common';
 }
 
@@ -136,6 +132,50 @@ export const OPTION_CAPSULE_HEIGHT = 26;
 /** Breathing room either side of an option's word, inside its capsule. The
  *  floor on a cell's width: a cell is never narrower than its word plus this. */
 export const OPTION_PILL_PAD = 10;
+
+/** Rough per-character width of an option's word at the pill's 13/600 type.
+ *  Deliberately a little generous: overestimating a word spills an option onto
+ *  the overflow page early, underestimating packs a row so tight the words
+ *  ellipsize — the first is a swipe, the second is unreadable. */
+export const OPTION_CHAR_WIDTH = 8;
+
+/** Estimated width of one option cell BEFORE layout has measured it: its word
+ *  at OPTION_CHAR_WIDTH per character plus the pill padding either side,
+ *  capped at the capsule ceiling exactly as a laid-out cell is. */
+export function estimatedOptionCellWidth(label: string): number {
+  return Math.min(
+    OPTION_CAPSULE_MAX_WIDTH,
+    label.length * OPTION_CHAR_WIDTH + 2 * OPTION_PILL_PAD,
+  );
+}
+
+/**
+ * How many of `labels` fit on the FIRST options page of a row `rowWidth`
+ * wide — the combined type + selection options row. Cells are estimated
+ * (estimatedOptionCellWidth) and packed in order with one `gap` between
+ * neighbours; the count stops at the first option that would not fit, and
+ * everything after it belongs to the overflow page. Always at least 1 with a
+ * measured row (a page must hold something), and everything while the row is
+ * unmeasured (rowWidth 0, the first render pass) so the panel never flashes
+ * an overflow page it may not need.
+ */
+export function optionPageFitCount(
+  labels: readonly string[],
+  rowWidth: number,
+  gap: number = OPTION_ROW_GAP,
+): number {
+  if (labels.length === 0) return 0;
+  if (!(rowWidth > 0)) return labels.length;
+  let used = 0;
+  let n = 0;
+  for (const label of labels) {
+    const w = estimatedOptionCellWidth(label) + (n > 0 ? gap : 0);
+    if (n > 0 && used + w > rowWidth) break;
+    used += w;
+    n += 1;
+  }
+  return Math.max(1, n);
+}
 
 /** Left offset of each option cell, given every cell's laid-out width.
  *

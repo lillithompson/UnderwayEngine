@@ -24,6 +24,7 @@ import {
   objectPanelLayout,
   objectPanelPages,
   optionCapsuleLefts,
+  optionPageFitCount,
   optionRowSidePad,
   stepPanelPage,
 } from '../logic/panelLayout';
@@ -71,16 +72,18 @@ import {
 // track which is showing (logic/panelLayout.ts owns the page order):
 //
 //   common — rotate / flip / copy / lock / delete, as bare icons: universal
-//            enough to need no caption. Every selection has this page.
-//   type   — what the selection's KIND offers (images: tint / crop / shadow /
-//            border / opacity; text: edit / type / align / shadow), as word
-//            capsules in the toolbar line-mode pushdown's style.
-//   multi  — what the SELECTION offers (Layout · Group · Merge), same word
-//            capsules. Multi-selections only, and independent of what the
-//            members are: a mixed selection has this page and no type page.
+//            enough to need no caption. Every selection has this page, first.
+//   type   — ONE combined options row, as word capsules in the toolbar
+//            line-mode pushdown's style: what the selection's KIND offers
+//            (images: tint / crop / shadow / border / opacity; text: edit /
+//            type / align / shadow) followed by what the SELECTION offers
+//            (Layout · Group · Merge, multi-selections only — a mixed
+//            selection has just those).
+//   multi  — the OVERFLOW: only the options the combined row couldn't fit
+//            (optionPageFitCount). Most selections never grow this page.
 //
-// A new selection lands on the leftmost page it brought with it — its type
-// options, else the multi ones — rather than on the common actions.
+// A new selection lands on the common icon page — the panel's first — unless
+// the previous selection was parked on a page this one also has.
 //
 // Crop / Shadow / Border / Text open their full editing bar, which STACKS
 // ABOVE this panel rather than covering it — the bar's bottom edge meets the
@@ -473,12 +476,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const showUngroup = multi && !!model.onUngroup;
   const showMerge = multi && !!model.onMerge;
 
-  // The two optional carousel pages. `type` is what the selection's KIND
-  // offers (and a multi-selection's members must share a kind to have one);
-  // `multi` is what the SELECTION offers, whatever it is made of.
+  // Whether the selection has an options row at all. `type` is what the
+  // selection's KIND offers (and a multi-selection's members must share a
+  // kind to have one); `multi` is what the SELECTION offers, whatever it is
+  // made of. Both render on ONE combined page — kind options first, then the
+  // selection's — and only an overflow spills onto a second (the pages are
+  // worked out below, once the option specs exist to count).
   const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showRigOptions || showUngroup;
   const hasMultiOptions = showLayout || showGroup || showMerge;
-  const pages = objectPanelPages({ type: hasTypeOptions, multi: hasMultiOptions });
   // Signature of the current selection's option pages. It changes when the
   // panel first appears for a selection or the selected object's type changes
   // (image → frame → text …), and empties when the panel hides. The vector
@@ -493,17 +498,20 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // row falls back to 'common' as the panel hides, and letting that overwrite
   // the memory would make every selection after a deselect start over.
   const lastPageRef = useRef<PanelPage>('common');
-  const landingPage = landingPanelPage(pages, lastPageRef.current);
+  // Where a new selection lands. The page LIST is computed after the option
+  // specs are built (further down — it needs their labels to know whether
+  // they overflow one row), and the landing page rides this ref into the
+  // effect: the render assigns it before React runs any effect, so the value
+  // here is always the current render's.
+  const landingPageRef = useRef<PanelPage>('common');
   useEffect(() => {
     if (typeSig === prevTypeSig.current) return;
     prevTypeSig.current = typeSig;
     // On each new selection, stay on the page the last one was on when this
-    // one has it; otherwise land on the options it brought with it — its
-    // kind's if it has any, else the selection-level ones; fall back to the
-    // common actions when it has neither (also keeps a stale swap from
-    // leaving an empty row).
-    setPage(landingPage);
-  }, [typeSig, landingPage]);
+    // one has it; otherwise open on the first page — the common icon actions
+    // (also keeps a stale swap from leaving an empty row).
+    setPage(landingPageRef.current);
+  }, [typeSig]);
   // After the effect above, so the landing decision reads the PREVIOUS
   // selection's page rather than the one it just set.
   useEffect(() => {
@@ -1229,14 +1237,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // they share nothing. One press, no bar — like the frame Ungroup it mirrors.
     typeSpecs = [...(typeSpecs ?? []), { key: 'ungroup', label: 'Ungroup', onPress: model.onUngroup }];
   }
-  // The selection-level options (Layout · Group · Merge) get a page of their
-  // own, after the type page — they belong to the selection rather than to
-  // what it is made of, and a mixed multi-selection has this page and no type
-  // page at all. "Layout" keeps it clear of the text Align option (which is
-  // about a paragraph's own lines, not where objects sit) now that neither
-  // carries a glyph. Only Layout opens a bar; Group and Merge are one press
-  // each, so they never take the sliding capsule — they just fire and leave a
-  // selection that is one thing instead of several.
+  // The selection-level options (Layout · Group · Merge) — they belong to the
+  // selection rather than to what it is made of, so they are appended AFTER
+  // the kind's own options on the one combined row (a mixed multi-selection
+  // simply has them as its whole row). "Layout" keeps it clear of the text
+  // Align option (which is about a paragraph's own lines, not where objects
+  // sit) now that neither carries a glyph. Only Layout opens a bar; Group and
+  // Merge are one press each, so they never take the sliding capsule — they
+  // just fire and leave a selection that is one thing instead of several.
   const multiOptions = multiSelectionOptions({ align: showLayout, group: showGroup, merge: showMerge });
   const multiSpecs: OptionSpec[] | null = multiOptions.length > 0
     ? multiOptions.map((opt): OptionSpec =>
@@ -1245,14 +1253,28 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
           : { key: opt.action, label: opt.label, onPress: opt.action === 'group' ? model.onGroup : model.onMerge })
     : null;
 
+  // ONE combined options row: the selection-level options (Layout · Group ·
+  // Merge) come AFTER the kind's own, and only the options that genuinely do
+  // not fit spill onto a second page — a page of their own is no longer the
+  // default. Fit is estimated from the words (the cells size to them, capped
+  // at the capsule ceiling) against the measured row width; while the row is
+  // unmeasured everything stays on one page.
+  const allOptionSpecs: OptionSpec[] = [...(typeSpecs ?? []), ...(multiSpecs ?? [])];
+  const fitCount = optionPageFitCount(allOptionSpecs.map((s) => s.label), rowWidth);
+  const pageOneSpecs = allOptionSpecs.slice(0, fitCount);
+  const overflowSpecs = allOptionSpecs.slice(fitCount);
+  const pages = objectPanelPages({
+    type: pageOneSpecs.length > 0,
+    multi: overflowSpecs.length > 0,
+  });
+  const landingPage = landingPanelPage(pages, lastPageRef.current);
+  landingPageRef.current = landingPage;
+
   // Only one page shows at a time; a horizontal swipe cycles through them (the
   // dots below track which is showing). The icon row's columns stay fixed at
   // the widest page's count so the icons keep one size across selections, and
   // empty cells split either side to centre them; an option row sizes its own
   // cells to its words instead (OptionPill) and so needs no pad.
-  //
-  // `pages` is worked out from the model's flags up top; the specs below are
-  // what those flags produce, so a page in the list always has a row to show.
   const shownPage: PanelPage = pages.includes(page) ? page : landingPage;
   const canSwap = pages.length > 1;
   canSwapRef.current = canSwap;
@@ -1260,8 +1282,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   pageRef.current = shownPage;
   // The option specs for the page showing (null on the common-actions page).
   const activeSpecs: OptionSpec[] | null =
-    shownPage === 'type' ? typeSpecs : shownPage === 'multi' ? multiSpecs : null;
-  const columns = Math.max(row1.length, typeSpecs?.length ?? 0, multiSpecs?.length ?? 0);
+    shownPage === 'type'
+      ? (pageOneSpecs.length > 0 ? pageOneSpecs : null)
+      : shownPage === 'multi'
+        ? (overflowSpecs.length > 0 ? overflowSpecs : null)
+        : null;
+  const columns = Math.max(row1.length, pageOneSpecs.length, overflowSpecs.length);
 
   // ── The sliding selection capsule ───────────────────────────────────
   // Parked over whichever option opened the bar you're looking at, taking that

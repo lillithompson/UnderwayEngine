@@ -2,11 +2,16 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
   OBJECT_DOTS_ROW_HEIGHT,
+  OPTION_CAPSULE_MAX_WIDTH,
+  OPTION_CHAR_WIDTH,
+  OPTION_PILL_PAD,
   OPTION_ROW_GAP,
+  estimatedOptionCellWidth,
   landingPanelPage,
   objectPanelLayout,
   objectPanelPages,
   optionCapsuleLefts,
+  optionPageFitCount,
   optionRowSidePad,
   stepPanelPage,
 } from '../logic/panelLayout';
@@ -108,35 +113,25 @@ describe('objectPanelPages', () => {
     expect(objectPanelPages({})).toEqual(['common']);
   });
 
-  test('a single selection keeps the two pages it always had, in the same order', () => {
+  test('the common icon page always comes first, options second', () => {
     expect(objectPanelPages({ type: true })).toEqual(['common', 'type']);
   });
 
-  test('a multi-selection grows the third page on the end', () => {
+  test('an OVERFLOW of the combined options row grows a third page on the end', () => {
     expect(objectPanelPages({ type: true, multi: true })).toEqual(['common', 'type', 'multi']);
-  });
-
-  test('a MIXED multi-selection has the selection page without a type page', () => {
-    // Nothing shared to ask for a type option, but Layout / Group / Union ask
-    // only that there are several members.
-    expect(objectPanelPages({ multi: true })).toEqual(['common', 'multi']);
   });
 });
 
 describe('landingPanelPage', () => {
-  test('lands on the type options when the selection has them', () => {
-    expect(landingPanelPage(['common', 'type'])).toBe('type');
-    expect(landingPanelPage(['common', 'type', 'multi'])).toBe('type');
-  });
-
-  test('falls back to the selection page, then to the common actions', () => {
-    expect(landingPanelPage(['common', 'multi'])).toBe('multi');
+  test('a new selection opens on the panel’s first page — the common icons', () => {
+    expect(landingPanelPage(['common', 'type'])).toBe('common');
+    expect(landingPanelPage(['common', 'type', 'multi'])).toBe('common');
     expect(landingPanelPage(['common'])).toBe('common');
   });
 
   test('keeps the page the last selection was on, when this one has it', () => {
     // Working through a drawing's shadows, the next shape should open on the
-    // shadow row too — re-landing every selection on the type page makes the
+    // shadow row too — re-landing every selection on the first page makes the
     // carousel something to re-navigate rather than a place to be.
     expect(landingPanelPage(['common', 'type'], 'common')).toBe('common');
     expect(landingPanelPage(['common', 'type', 'multi'], 'multi')).toBe('multi');
@@ -144,10 +139,46 @@ describe('landingPanelPage', () => {
   });
 
   test('cannot keep a page the new selection does not have', () => {
-    // A single selection has no 'multi' page; landing there would be an
-    // empty row.
-    expect(landingPanelPage(['common', 'type'], 'multi')).toBe('type');
+    // The last selection overflowed its options; this one doesn't — landing
+    // on its 'multi' page would be an empty row.
+    expect(landingPanelPage(['common', 'type'], 'multi')).toBe('common');
     expect(landingPanelPage(['common'], 'type')).toBe('common');
+  });
+});
+
+describe('estimatedOptionCellWidth', () => {
+  test('a short word is its characters plus the pill padding', () => {
+    expect(estimatedOptionCellWidth('Crop'))
+      .toBe(4 * OPTION_CHAR_WIDTH + 2 * OPTION_PILL_PAD);
+  });
+
+  test('a long word caps at the capsule ceiling, like a laid-out cell', () => {
+    expect(estimatedOptionCellWidth('Background color')).toBe(OPTION_CAPSULE_MAX_WIDTH);
+  });
+});
+
+describe('optionPageFitCount (how the combined options row paginates)', () => {
+  const LABELS = ['Tint', 'Opacity', 'Shadow', 'Border', 'Layout', 'Group', 'Merge'];
+
+  test('everything fits on one page when the row is wide enough', () => {
+    expect(optionPageFitCount(LABELS, 2000)).toBe(LABELS.length);
+  });
+
+  test('a narrow row stops at the first option that will not fit', () => {
+    // Room for exactly the first two estimated cells plus their gap.
+    const two = estimatedOptionCellWidth('Tint')
+      + OPTION_ROW_GAP + estimatedOptionCellWidth('Opacity');
+    expect(optionPageFitCount(LABELS, two)).toBe(2);
+    expect(optionPageFitCount(LABELS, two - 1)).toBe(1);
+  });
+
+  test('an unmeasured row keeps everything on one page — no overflow flash', () => {
+    expect(optionPageFitCount(LABELS, 0)).toBe(LABELS.length);
+  });
+
+  test('never returns less than one for a measured row, and zero only for none', () => {
+    expect(optionPageFitCount(['Background color'], 10)).toBe(1);
+    expect(optionPageFitCount([], 340)).toBe(0);
   });
 });
 
@@ -165,13 +196,13 @@ describe('the panel\u2019s memory of the last page', () => {
   test('records the page only while a selection is showing', () => {
     // The row falls back to 'common' as the panel hides; letting that
     // overwrite the memory would make every selection after a deselect start
-    // over on the type page.
+    // over.
     expect(PANEL).toContain('if (model.visible) lastPageRef.current = page;');
   });
 
-  test('records it AFTER the landing effect, so landing reads the old page', () => {
-    expect(PANEL.indexOf('setPage(landingPage);'))
-      .toBeLessThan(PANEL.indexOf('if (model.visible) lastPageRef.current = page;'));
+  test('builds ONE combined options row, selection options after the kind’s', () => {
+    expect(PANEL).toContain('[...(typeSpecs ?? []), ...(multiSpecs ?? [])]');
+    expect(PANEL).toContain('optionPageFitCount(allOptionSpecs.map((s) => s.label), rowWidth)');
   });
 });
 
