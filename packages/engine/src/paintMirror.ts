@@ -383,3 +383,183 @@ export function computeMirrorSymmetry(
   if (!s.h && !s.v && !s.d1 && !s.d2) return undefined;
   return { h: s.h, v: s.v, d1: s.d1, d2: s.d2 };
 }
+
+/**
+ * Mirror targets over a PLAIN cell window — {@link computeImpl}'s math with
+ * the layer machinery stripped away: no Layer, no CanvasConfig, no 32-cell
+ * clamp. The window is `[0, width) × [0, height)` in whatever cell unit the
+ * caller works in, origin-aligned and unshifted; `(cellX, cellY)` is the
+ * painted cell in those units.
+ *
+ * This exists for hosts whose painting surface is not a layer grid — a
+ * composition canvas mirroring stamps about a stored symmetry frame, say —
+ * where the window can be any size (the layer entry points top out at the
+ * L0 grid's 32 cells) and cells may sit at fractional offsets when the
+ * host's grid has moved since the frame was chosen. The branch bodies are
+ * kept line-for-line with computeImpl (with ocx/ocy = 0, shiftX/Y = 0,
+ * cellsPerL0 = 1 folded through), so the two cannot drift semantically —
+ * the paintMirror agreement suite pins them to each other on windows both
+ * can express.
+ *
+ * Returns fresh arrays (this is a tap-time API, not the 120 Hz fill path)
+ * plus the axis-membership record a self-targeting cell accumulates —
+ * exactly what {@link computeMirrorSymmetry} reports, so connectivity picks
+ * can demand self-symmetric tiles on axis cells.
+ */
+export function computeBoxMirrorTargets(
+  cellX: number,
+  cellY: number,
+  width: number,
+  height: number,
+  flags: MirrorFlags,
+): { targets: MirrorTarget[]; symmetry: MirrorSymmetry | undefined } {
+  const targets: MirrorTarget[] = [];
+  const self: MirrorSymmetry = { h: false, v: false, d1: false, d2: false };
+
+  const endX = Math.ceil(width);
+  const endY = Math.ceil(height);
+  // Pixel axis (continuous) and cell-window axis — identical for integer
+  // windows, exactly as in computeImpl.
+  const cx2 = width - 1;
+  const cy2 = height - 1;
+  const cellCx2 = endX - 1;
+  const cellCy2 = endY - 1;
+  const maxCellX = endX;
+  const maxCellY = endY;
+
+  const addTarget = (
+    mx: number, my: number,
+    mH: boolean, mV: boolean,
+    rot: 0 | 90 | 180 | 270,
+  ): void => {
+    if (mx < 0 || mx >= endX || my < 0 || my >= endY) return;
+    if (mx === cellX && my === cellY) {
+      if (mH) self.h = true;
+      if (mV) self.v = true;
+      if (rot === 270) self.d1 = true;
+      else if (rot === 90) self.d2 = true;
+      else if (rot !== 0) { self.h = true; self.v = true; }
+      return;
+    }
+    for (let i = 0; i < targets.length; i++) {
+      if (targets[i].x === mx && targets[i].y === my) return;
+    }
+    targets.push({ x: mx, y: my, mH, mV, rot });
+  };
+
+  if (flags.mirrorStar) {
+    const mhX = cellCx2 - cellX;
+    const mvY = cellCy2 - cellY;
+    addTarget(mhX, cellY, true, false, 0);
+    addTarget(cellX, mvY, false, true, 0);
+    addTarget(mhX, mvY, false, false, 180);
+    const pivotX = (cellCx2 + 1) / 2;
+    const pivotY = (cellCy2 + 1) / 2;
+    const primX = cellX + 0.5;
+    const primY = cellY + 0.5;
+    const sum = pivotX + pivotY;
+    const diagX = Math.round(sum - primY - 0.5);
+    const diagY = Math.round(sum - primX - 0.5);
+    const diagMhX = cellCx2 - diagX;
+    const diagMvY = cellCy2 - diagY;
+    addTarget(diagX, diagY, true, false, 90);
+    addTarget(diagMhX, diagY, false, false, 270);
+    addTarget(diagX, diagMvY, false, false, 90);
+    addTarget(diagMhX, diagMvY, true, false, 270);
+  } else if (flags.mirrorQuad) {
+    if (maxCellX < 4 || maxCellY < 4) {
+      const mhX = cellCx2 - cellX;
+      const mvY = cellCy2 - cellY;
+      addTarget(mhX, cellY, true, false, 0);
+      addTarget(cellX, mvY, false, true, 0);
+      addTarget(mhX, mvY, true, true, 0);
+    } else {
+      const qw = Math.floor(maxCellX / 2);
+      const qh = Math.floor(maxCellY / 2);
+      const qx = cellX < qw ? cellX : cellX - qw;
+      const qy = cellY < qh ? cellY : cellY - qh;
+      const mqx = qw - 1 - qx;
+      const mqy = qh - 1 - qy;
+      for (let qi = 0; qi < 4; qi++) {
+        const ox = (qi & 1) ? qw : 0;
+        const oy = (qi & 2) ? qh : 0;
+        const qH = (qi & 1) !== 0;
+        const qV = (qi & 2) !== 0;
+        for (let li = 0; li < 4; li++) {
+          const lx = ((li & 1) !== 0) !== qH ? mqx : qx;
+          const ly = ((li & 2) !== 0) !== qV ? mqy : qy;
+          const lH = (li & 1) !== 0;
+          const lV = (li & 2) !== 0;
+          addTarget(lx + ox, ly + oy, lH !== qH, lV !== qV, 0);
+        }
+      }
+    }
+  } else if (flags.mirrorRow || flags.mirrorCol) {
+    if (maxCellX < 4 || maxCellY < 4) {
+      if (flags.mirrorRow) {
+        addTarget(cellX, cellCy2 - cellY, false, true, 0);
+      } else {
+        addTarget(cellCx2 - cellX, cellY, true, false, 0);
+      }
+    } else if (flags.mirrorRow) {
+      const qh = Math.floor(maxCellY / 2);
+      const qy = cellY < qh ? cellY : cellY - qh;
+      const mqy = qh - 1 - qy;
+      for (let hi = 0; hi < 2; hi++) {
+        const oy = hi * qh;
+        const hV = hi !== 0;
+        for (let li = 0; li < 2; li++) {
+          const ly = (li !== 0) !== hV ? mqy : qy;
+          const lV = li !== 0;
+          addTarget(cellX, ly + oy, false, lV !== hV, 0);
+        }
+      }
+    } else {
+      const qw = Math.floor(maxCellX / 2);
+      const qx = cellX < qw ? cellX : cellX - qw;
+      const mqx = qw - 1 - qx;
+      for (let hi = 0; hi < 2; hi++) {
+        const ox = hi * qw;
+        const hH = hi !== 0;
+        for (let li = 0; li < 2; li++) {
+          const lx = (li !== 0) !== hH ? mqx : qx;
+          const lH = li !== 0;
+          addTarget(lx + ox, cellY, lH !== hH, false, 0);
+        }
+      }
+    }
+  } else if (flags.mirrorDiag1 || flags.mirrorDiag2 || flags.mirrorDiagBoth) {
+    const diagDim = Math.min(maxCellX, maxCellY);
+    const diagOffX = Math.floor((maxCellX - diagDim) / 2);
+    const diagOffY = Math.floor((maxCellY - diagDim) / 2);
+    const dx = cellX - diagOffX;
+    const dy = cellY - diagOffY;
+    if (flags.mirrorDiag1 || flags.mirrorDiagBoth) {
+      addTarget(dy + diagOffX, dx + diagOffY, true, false, 270);
+    }
+    if (flags.mirrorDiag2 || flags.mirrorDiagBoth) {
+      addTarget(diagDim - 1 - dy + diagOffX, diagDim - 1 - dx + diagOffY, true, false, 90);
+    }
+    if (flags.mirrorDiagBoth) {
+      addTarget(diagDim - 1 - dx + diagOffX, diagDim - 1 - dy + diagOffY, false, false, 180);
+    }
+  } else if (flags.mirrorRotate) {
+    const dx2 = 2 * cellX - cx2;
+    const dy2 = 2 * cellY - cy2;
+    addTarget(Math.round((cx2 - dy2) / 2), Math.round((cy2 + dx2) / 2), false, false, 90);
+    addTarget(cellCx2 - cellX, cellCy2 - cellY, false, false, 180);
+    addTarget(Math.round((cx2 + dy2) / 2), Math.round((cy2 - dx2) / 2), false, false, 270);
+  } else {
+    const mhX = cellCx2 - cellX;
+    const mvY = cellCy2 - cellY;
+    if (flags.mirrorH) addTarget(mhX, cellY, true, false, 0);
+    if (flags.mirrorV) addTarget(cellX, mvY, false, true, 0);
+    if (flags.mirrorH && flags.mirrorV) addTarget(mhX, mvY, true, true, 0);
+  }
+
+  // Same rule as computeMirrorSymmetry: only a record with a named axis
+  // counts — a self-target with no axis flag (quad's own quadrant slot,
+  // say) is not symmetry the caller can act on.
+  const any = self.h || self.v || self.d1 || self.d2;
+  return { targets, symmetry: any ? self : undefined };
+}

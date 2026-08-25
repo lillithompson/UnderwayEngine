@@ -1,5 +1,5 @@
 import storage from './storage';
-import { Layer, CellState, GridLevel, LAYER_PX, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, CanvasPaintIsland, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, ImagePaintOverlay, BlendMode, PaintObject, PatternObject, PathSegment, RGBColor, SVGDesignTemplate, TextObject, Paint, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
+import { Layer, CellState, GridLevel, LAYER_PX, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, CanvasPaintIsland, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, ImagePaintOverlay, BlendMode, PaintObject, PatternObject, PatternSymmetry, PathSegment, RGBColor, SVGDesignTemplate, TextObject, Paint, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
 import { normalizeCanvasPaintIslands, paintTilesContentRect } from './canvasPaint';
 import { mintPaintObjectId } from './paintObject';
 import { createCellGrid, rebuildPixelData } from './cells';
@@ -295,6 +295,10 @@ interface CompMeta {
   gridLevel?: number;
   strokeScale?: number;
   gridIntensity?: number;
+  /** Canvas-level painting symmetry + the frame it mirrors within (world
+   *  cells). Absent on older saves and while symmetry is off. */
+  symmetry?: PatternSymmetry;
+  symmetryFrame?: { cellX: number; cellY: number; cellWidth: number; cellHeight: number };
 }
 
 /** Storage key for an image's raw bytes. Keyed by `imageId` only (not
@@ -655,6 +659,12 @@ export async function saveCompositionState(
     gridLevel: normalized.gridLevel,
     strokeScale: normalized.strokeScale,
     gridIntensity: state.gridIntensity,
+    // Canvas symmetry rides the meta like gridLevel: view-adjacent state,
+    // saved with the next edit rather than through an op. The frame is in
+    // page coordinates, so like the camera it survives only saves whose
+    // geometry does (a normalization rescale would strand it).
+    symmetry: state.symmetry,
+    symmetryFrame: normalized.scale === 1 && normalized.k === 0 ? state.symmetryFrame : undefined,
   };
   const json = JSON.stringify(meta);
   _getCompMetaCache().set(compMetaKey(state.id), json);
@@ -831,6 +841,11 @@ export async function loadCompositionState(
     gridLevel: r.gridLevel,
     strokeScale: r.strokeScale,
     gridIntensity: parsed.gridIntensity ?? 0.5,
+    // The symmetry frame is page coordinates: a normalization rescale
+    // would leave it pointing at the wrong spot, so it survives only
+    // idempotent loads (same guard as the camera above).
+    symmetry: parsed.symmetry,
+    symmetryFrame: r.scale === 1 && r.k === 0 ? parsed.symmetryFrame : undefined,
   };
 }
 

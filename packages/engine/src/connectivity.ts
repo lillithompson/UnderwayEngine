@@ -831,16 +831,21 @@ export function pickRandomCompatibleSprite(
  * Same progressive fallback as {@link pickRandomCompatibleSprite}: full
  * constraints → cardinal-only → any sprite. Returns null only when no
  * sprite entries are loaded at all.
+ *
+ * `symmetry` narrows the pick to tiles whose rendered signature is
+ * symmetric about the named axes — for a cell sitting ON a mirror axis,
+ * exactly as pickRandomCompatibleSprite honours it.
  */
 export function pickRandomSpriteForConstraints(
   constraints: (boolean | null)[],
   excludedFamilies?: Set<string>,
+  symmetry?: MirrorSymmetry,
 ): CellState {
   const entries = getFilteredEntries(excludedFamilies);
-  let choice = pickRandomCompatibleOption(entries, constraints);
+  let choice = pickRandomCompatibleOption(entries, constraints, symmetry);
   if (!choice) {
     for (let i = 0; i < 8; i++) _cardinalOnly[i] = (i & 1) === 0 ? constraints[i] : null;
-    choice = pickRandomCompatibleOption(entries, _cardinalOnly);
+    choice = pickRandomCompatibleOption(entries, _cardinalOnly, symmetry);
   }
   if (!choice) {
     choice = pickRandomCompatibleOption(entries, _noConstraints);

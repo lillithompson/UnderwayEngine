@@ -1550,6 +1550,23 @@ export interface CompositionState {
    * `0..MAX_LAYER_LEVEL`.
    */
   gridLevel: number;
+  /**
+   * Canvas-level painting symmetry (the editor's Symmetry toolbar control),
+   * mirroring stamps about {@link symmetryFrame}. Undefined (or all-off)
+   * = symmetry off. Like gridLevel this is non-undoable editor state,
+   * saved with the page's meta rather than through an op.
+   */
+  symmetry?: PatternSymmetry;
+  /**
+   * The world-cell box the canvas symmetry mirrors within — its center is
+   * the axis crossing, its extent clips the mirrored stamps and the drawn
+   * axis lines. Chosen from the VISIBLE view each time symmetry toggles on
+   * (center snapped to the half-step lattice of the grid level of the
+   * moment, so the axis bisects a grid cell or rides an edge) and then
+   * FIXED: panning the view does not move the axes; toggling off and on
+   * again picks a fresh box.
+   */
+  symmetryFrame?: { cellX: number; cellY: number; cellWidth: number; cellHeight: number };
   strokeScale: number;
   gridIntensity: number;
   camera: Camera;
