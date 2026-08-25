@@ -401,6 +401,15 @@ export function computeMirrorSymmetry(
  * the paintMirror agreement suite pins them to each other on windows both
  * can express.
  *
+ * UNLIKE computeImpl, the window does not CLIP: on an unbounded canvas the
+ * window's job is to place the axes (and quad/row/col's block structure),
+ * not to fence the mirrored area, so cells and their partners may lie
+ * anywhere — a paint far outside still reflects about the same axes. The
+ * center-axis modes (H/V, rotate, the diagonals, star) extrapolate
+ * exactly; quad, row and col — whose within-half translation structure
+ * only exists inside the window's 2×2 (or 2×1) block grid — fall back to
+ * their plain center mirror for cells outside it.
+ *
  * Returns fresh arrays (this is a tap-time API, not the 120 Hz fill path)
  * plus the axis-membership record a self-targeting cell accumulates —
  * exactly what {@link computeMirrorSymmetry} reports, so connectivity picks
@@ -432,7 +441,8 @@ export function computeBoxMirrorTargets(
     mH: boolean, mV: boolean,
     rot: 0 | 90 | 180 | 270,
   ): void => {
-    if (mx < 0 || mx >= endX || my < 0 || my >= endY) return;
+    // Deliberately NO window clip — see the doc comment: the window
+    // places the axes, it does not fence the mirrored area.
     if (mx === cellX && my === cellY) {
       if (mH) self.h = true;
       if (mV) self.v = true;
@@ -473,6 +483,16 @@ export function computeBoxMirrorTargets(
       addTarget(mhX, cellY, true, false, 0);
       addTarget(cellX, mvY, false, true, 0);
       addTarget(mhX, mvY, true, true, 0);
+    } else if (
+      cellX < 0 || cellX >= maxCellX || cellY < 0 || cellY >= maxCellY
+    ) {
+      // Outside the window the quadrant structure does not exist — the
+      // center axes still do, so fall back to H+V.
+      const mhX = cellCx2 - cellX;
+      const mvY = cellCy2 - cellY;
+      addTarget(mhX, cellY, true, false, 0);
+      addTarget(cellX, mvY, false, true, 0);
+      addTarget(mhX, mvY, true, true, 0);
     } else {
       const qw = Math.floor(maxCellX / 2);
       const qh = Math.floor(maxCellY / 2);
@@ -501,6 +521,12 @@ export function computeBoxMirrorTargets(
       } else {
         addTarget(cellCx2 - cellX, cellY, true, false, 0);
       }
+    } else if (flags.mirrorRow && (cellY < 0 || cellY >= maxCellY)) {
+      // Outside the window the within-half structure does not exist — the
+      // center axis still does (same rule as quad above).
+      addTarget(cellX, cellCy2 - cellY, false, true, 0);
+    } else if (flags.mirrorCol && (cellX < 0 || cellX >= maxCellX)) {
+      addTarget(cellCx2 - cellX, cellY, true, false, 0);
     } else if (flags.mirrorRow) {
       const qh = Math.floor(maxCellY / 2);
       const qy = cellY < qh ? cellY : cellY - qh;

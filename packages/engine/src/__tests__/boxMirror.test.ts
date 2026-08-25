@@ -12,6 +12,11 @@ import { makeLayer } from './test-utils';
 // express (level 0, unshifted, origin 0 — where a layer cell IS a box
 // cell), the two must agree exactly, mode by mode. That agreement is the
 // contract that keeps the port from drifting.
+//
+// One deliberate difference: the box variant never CLIPS to the window —
+// on an unbounded canvas the window places the axes rather than fencing
+// the mirrored area — so the agreement compare filters the box results to
+// the window the layer implementation is bound to.
 
 const OFF: MirrorFlags = {
   mirrorH: false, mirrorV: false, mirrorRotate: false, mirrorQuad: false,
@@ -47,6 +52,7 @@ function boxTargets(
   x: number, y: number, w: number, h: number, flags: MirrorFlags,
 ): string[] {
   return computeBoxMirrorTargets(x, y, w, h, flags).targets
+    .filter((t) => t.x >= 0 && t.x < w && t.y >= 0 && t.y < h)
     .map((t) => `${t.x},${t.y},${t.mH},${t.mV},${t.rot}`)
     .sort();
 }
@@ -94,5 +100,34 @@ describe('computeBoxMirrorTargets agrees with the layer implementation', () => {
     const r = computeBoxMirrorTargets(2, 2, 8, 8, OFF);
     expect(r.targets).toEqual([]);
     expect(r.symmetry).toBeUndefined();
+  });
+
+  test('the mirror applies OUTSIDE the window — the axes, not the fence', () => {
+    // H about an 8-wide window's center (axis at 3.5): a cell way out at
+    // x = 20 still reflects, to 7 − 20 = −13.
+    expect(computeBoxMirrorTargets(20, 2, 8, 8, { ...OFF, mirrorH: true }).targets)
+      .toEqual([{ x: -13, y: 2, mH: true, mV: false, rot: 0 }]);
+    // …and a negative cell reflects back across.
+    expect(computeBoxMirrorTargets(-5, 2, 8, 8, { ...OFF, mirrorH: true }).targets)
+      .toEqual([{ x: 12, y: 2, mH: true, mV: false, rot: 0 }]);
+    // Rotate keeps its full orbit about the same pivot.
+    const rot = computeBoxMirrorTargets(10, 2, 8, 8, { ...OFF, mirrorRotate: true }).targets;
+    expect(rot).toHaveLength(3);
+    expect(rot).toContainEqual({ x: -3, y: 5, mH: false, mV: false, rot: 180 });
+  });
+
+  test('quad / row / col fall back to the center mirror outside their block grid', () => {
+    // Quad's quadrant structure exists only inside the window; beyond it
+    // the press still mirrors H+V about the center.
+    const quad = computeBoxMirrorTargets(10, 2, 8, 8, { ...OFF, mirrorQuad: true }).targets;
+    expect(quad).toEqual([
+      { x: -3, y: 2, mH: true, mV: false, rot: 0 },
+      { x: 10, y: 5, mH: false, mV: true, rot: 0 },
+      { x: -3, y: 5, mH: true, mV: true, rot: 0 },
+    ]);
+    const row = computeBoxMirrorTargets(2, 12, 8, 8, { ...OFF, mirrorRow: true }).targets;
+    expect(row).toEqual([{ x: 2, y: -5, mH: false, mV: true, rot: 0 }]);
+    const col = computeBoxMirrorTargets(12, 2, 8, 8, { ...OFF, mirrorCol: true }).targets;
+    expect(col).toEqual([{ x: -5, y: 2, mH: true, mV: false, rot: 0 }]);
   });
 });
