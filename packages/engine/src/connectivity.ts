@@ -821,6 +821,38 @@ export function pickRandomCompatibleSprite(
   };
 }
 
+/**
+ * Pick a random (sprite, transform) whose RENDERED signature satisfies an
+ * EXPLICIT 8-point constraint array — for callers that computed the
+ * constraint themselves rather than from a Layer (an app placing one tile
+ * against arbitrary scene geometry gathers its own points). Points follow
+ * the signature order N, NE, E, SE, S, SW, W, NW; null = unconstrained.
+ *
+ * Same progressive fallback as {@link pickRandomCompatibleSprite}: full
+ * constraints → cardinal-only → any sprite. Returns null only when no
+ * sprite entries are loaded at all.
+ */
+export function pickRandomSpriteForConstraints(
+  constraints: (boolean | null)[],
+  excludedFamilies?: Set<string>,
+): CellState {
+  const entries = getFilteredEntries(excludedFamilies);
+  let choice = pickRandomCompatibleOption(entries, constraints);
+  if (!choice) {
+    for (let i = 0; i < 8; i++) _cardinalOnly[i] = (i & 1) === 0 ? constraints[i] : null;
+    choice = pickRandomCompatibleOption(entries, _cardinalOnly);
+  }
+  if (!choice) {
+    choice = pickRandomCompatibleOption(entries, _noConstraints);
+  }
+  if (!choice) return null;
+  return {
+    type: 'sprite',
+    spriteId: choice.entry.id,
+    transform: choice.transform,
+  };
+}
+
 // ── Rendered Signature ──────────────────────────────────────────────
 
 /**

@@ -4,6 +4,7 @@ import {
   gatherConstraints,
   filterCompatibleSprites,
   pickRandomCompatibleSprite,
+  pickRandomSpriteForConstraints,
   getRenderedSignature,
   mirrorCellState,
   RegionBoundsL0,
@@ -489,6 +490,58 @@ describe('pickRandomCompatibleSprite', () => {
     } finally {
       SPRITE_ENTRIES.splice(0, SPRITE_ENTRIES.length);
       SPRITE_ENTRIES.push(...saved);
+    }
+  });
+});
+
+// ── Integration: pickRandomSpriteForConstraints ──────────────────────
+
+describe('pickRandomSpriteForConstraints', () => {
+  it('honours an explicit fully-constrained signature', () => {
+    // N and S filled, everything else empty — over repeated picks every
+    // signature-bearing result must render exactly that.
+    const constraints = [true, false, false, false, true, false, false, false];
+    for (let i = 0; i < 20; i++) {
+      const result = pickRandomSpriteForConstraints(constraints);
+      expect(result).not.toBeNull();
+      const rendered = getRenderedSignature(result);
+      if (rendered) expect(rendered).toEqual(constraints);
+    }
+  });
+
+  it('treats null slots as unconstrained', () => {
+    const result = pickRandomSpriteForConstraints([null, null, null, null, null, null, null, null]);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('sprite');
+  });
+
+  it('falls back to cardinal-only when the full constraint is unsatisfiable', () => {
+    // N + NE with all else false: no mock sprite has a cardinal with one
+    // adjacent corner under any transform, so the corner constraints must be
+    // dropped while the cardinals still hold.
+    const constraints = [true, true, false, false, false, false, false, false];
+    for (let i = 0; i < 20; i++) {
+      const result = pickRandomSpriteForConstraints(constraints);
+      expect(result).not.toBeNull();
+      const rendered = getRenderedSignature(result);
+      if (rendered) {
+        expect(rendered[0]).toBe(true);
+        expect(rendered[2]).toBe(false);
+        expect(rendered[4]).toBe(false);
+        expect(rendered[6]).toBe(false);
+      }
+    }
+  });
+
+  it('respects excluded families', () => {
+    // Excluding 'test' leaves only test2/tile_00100010 (E+W).
+    const excluded = new Set(['test']);
+    for (let i = 0; i < 10; i++) {
+      const result = pickRandomSpriteForConstraints(
+        [null, null, null, null, null, null, null, null], excluded,
+      );
+      expect(result).not.toBeNull();
+      expect(result!.type === 'sprite' && result!.spriteId.startsWith('test2/')).toBe(true);
     }
   });
 });
