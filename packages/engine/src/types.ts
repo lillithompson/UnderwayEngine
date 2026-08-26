@@ -1785,7 +1785,11 @@ export type CompUndoOp =
       oldTileWidthL0?: number; newTileWidthL0?: number;
       oldTileHeightL0?: number; newTileHeightL0?: number;
       oldTileOffsetXL0?: number; newTileOffsetXL0?: number;
-      oldTileOffsetYL0?: number; newTileOffsetYL0?: number }
+      oldTileOffsetYL0?: number; newTileOffsetYL0?: number;
+      /** Free rotation, kept in step with the rewrite (a mirror negates it
+       *  — see mirroredAngleDeg). `null` = clear the field; `undefined` =
+       *  don't touch. */
+      oldAngleDeg?: number | null; newAngleDeg?: number | null }
   | { op: 'renameSVG'; svgId: string; oldName: string | undefined; newName: string | undefined }
   /**
    * Recolor an SVGObject. Two shapes coexist:
@@ -1839,7 +1843,11 @@ export type CompUndoOp =
       oldLocalCellX?: number; oldLocalCellY?: number;
       oldLocalCellWidth?: number; oldLocalCellHeight?: number;
       newLocalCellX?: number; newLocalCellY?: number;
-      newLocalCellWidth?: number; newLocalCellHeight?: number }
+      newLocalCellWidth?: number; newLocalCellHeight?: number;
+      /** Free rotation, riding the transform like rotation/mirror (a
+       *  mirror negates it — see mirroredAngleDeg). Applied
+       *  unconditionally, so the one builder always carries both sides. */
+      oldAngleDeg?: number; newAngleDeg?: number }
   // ── Join ops ──────────────────────────────────────────────────────────
   /**
    * Merge of N selected SVGObjects (and optionally figures) into a single

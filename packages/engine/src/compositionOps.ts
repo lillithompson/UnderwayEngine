@@ -3,7 +3,7 @@ import { mintPaintObjectId, paintObjectAlphaHitTest } from './paintObject';
 import { mintPatternObjectId, applyPatternCellEdits } from './patternObject';
 import { lineHitsCell as svgHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
-import { GEOMETRY_ADAPTERS, rescaleSegs } from './sceneNodeGeometry';
+import { GEOMETRY_ADAPTERS, mirroredAngleDeg, rescaleSegs } from './sceneNodeGeometry';
 import { nextGroupName } from './sceneOutlineHelpers';
 import { svgPathHitsPoint, computeHitToleranceCells } from './compositionPathHitTest';
 import { buildActiveMaskMap, getAncestorMasks, getGroupMaskChain, pointPassesMasks, clipRectToNodeMasks, getNodeClipMasks } from './compositionMask';
@@ -3924,6 +3924,8 @@ export function mirrorSVG(svg: SVGObject, screenAxis: 'h' | 'v'): SVGObject {
     const shiftedSubpaths = newSubpaths?.map(sub => ({ ...sub, segments: sub.segments.map(s => offsetPathSegment(s, dx, dy)) }));
     const shiftedIdSegs = newIdSegs?.map(s => offsetPathSegment(s, dx, dy));
     const mirrored: SVGObject = { ...svg, segments: shiftedSegs, subpaths: shiftedSubpaths, mirrorH: newMH, mirrorV: newMV, identitySegments: shiftedIdSegs,
+      // The free rotation negates with the flip — see mirroredAngleDeg.
+      angleDeg: mirroredAngleDeg(svg.angleDeg),
       tileOffsetXL0: newOx === 0 ? undefined : newOx,
       tileOffsetYL0: newOy === 0 ? undefined : newOy,
       localSegments: undefined, localCellX: undefined, localCellY: undefined, localCellWidth: undefined, localCellHeight: undefined };
@@ -3936,6 +3938,8 @@ export function mirrorSVG(svg: SVGObject, screenAxis: 'h' | 'v'): SVGObject {
     return mirrored;
   }
   return { ...svg, segments: newSegs, subpaths: newSubpaths, mirrorH: newMH, mirrorV: newMV, identitySegments: newIdSegs, ...computeSVGBbox(newSegs),
+    // The free rotation negates with the flip — see mirroredAngleDeg.
+    angleDeg: mirroredAngleDeg(svg.angleDeg),
     localSegments: undefined, localCellX: undefined, localCellY: undefined, localCellWidth: undefined, localCellHeight: undefined };
 }
 
@@ -4583,7 +4587,9 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
             ...(op.newTileOffsetXL0 !== undefined
               ? { tileOffsetXL0: op.newTileOffsetXL0 === 0 ? undefined : op.newTileOffsetXL0 } : null),
             ...(op.newTileOffsetYL0 !== undefined
-              ? { tileOffsetYL0: op.newTileOffsetYL0 === 0 ? undefined : op.newTileOffsetYL0 } : null) }
+              ? { tileOffsetYL0: op.newTileOffsetYL0 === 0 ? undefined : op.newTileOffsetYL0 } : null),
+            ...(op.newAngleDeg !== undefined
+              ? { angleDeg: op.newAngleDeg === null ? undefined : op.newAngleDeg } : null) }
         : s);
       return { ...state, svgObjects };
     }
@@ -4642,6 +4648,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         rotation: op.newRotation,
         mirrorH: op.newMirrorH,
         mirrorV: op.newMirrorV,
+        angleDeg: op.newAngleDeg,
         opacity: op.newOpacity,
         identityCellX: op.newIdentityCellX,
         identityCellY: op.newIdentityCellY,
@@ -5216,7 +5223,8 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         oldTileWidthL0: op.newTileWidthL0, newTileWidthL0: op.oldTileWidthL0,
         oldTileHeightL0: op.newTileHeightL0, newTileHeightL0: op.oldTileHeightL0,
         oldTileOffsetXL0: op.newTileOffsetXL0, newTileOffsetXL0: op.oldTileOffsetXL0,
-        oldTileOffsetYL0: op.newTileOffsetYL0, newTileOffsetYL0: op.oldTileOffsetYL0 });
+        oldTileOffsetYL0: op.newTileOffsetYL0, newTileOffsetYL0: op.oldTileOffsetYL0,
+        oldAngleDeg: op.newAngleDeg, newAngleDeg: op.oldAngleDeg });
     case 'renameSVG':
       return applyOp(state, { op: 'renameSVG', svgId: op.svgId, oldName: op.newName, newName: op.oldName });
     case 'recolorSVG': {
@@ -5259,6 +5267,7 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
       return applyOp(state, { op: 'editImage', imageId: op.imageId,
         oldCellX: op.newCellX, oldCellY: op.newCellY, oldCellWidth: op.newCellWidth, oldCellHeight: op.newCellHeight,
         newCellX: op.oldCellX, newCellY: op.oldCellY, newCellWidth: op.oldCellWidth, newCellHeight: op.oldCellHeight,
+        oldAngleDeg: op.newAngleDeg, newAngleDeg: op.oldAngleDeg,
         oldRotation: op.newRotation, newRotation: op.oldRotation,
         oldMirrorH: op.newMirrorH, newMirrorH: op.oldMirrorH,
         oldMirrorV: op.newMirrorV, newMirrorV: op.oldMirrorV,

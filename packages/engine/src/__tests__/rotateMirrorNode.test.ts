@@ -539,3 +539,48 @@ describe('mirrorSVG (joined SVG with subpaths)', () => {
     expect(subStart[1] - mainStart[1]).toBeCloseTo(subEnd[1] - mainEnd[1], 9);
   });
 });
+
+// ── Free rotation under a mirror ────────────────────────────────────
+// A reflection conjugates a clockwise turn into a counter-clockwise one
+// (M ∘ R(θ) = R(−θ) ∘ M), so every mirror path negates `angleDeg`. Left
+// alone, a tilted member of a mirrored selection leans the wrong way —
+// the reported group-flip bug.
+
+import { GEOMETRY_ADAPTERS, mirroredAngleDeg } from '../sceneNodeGeometry';
+
+describe('mirroring negates the free rotation', () => {
+  test('mirroredAngleDeg negates into [0, 360) and keeps zero as undefined', () => {
+    expect(mirroredAngleDeg(undefined)).toBeUndefined();
+    expect(mirroredAngleDeg(0)).toBeUndefined();
+    expect(mirroredAngleDeg(30)).toBe(330);
+    expect(mirroredAngleDeg(330)).toBe(30);
+    expect(mirroredAngleDeg(-45)).toBe(45);
+    expect(mirroredAngleDeg(180)).toBe(180);
+  });
+
+  test('mirrorSVG carries the negated angle (and a double flip restores it)', () => {
+    const svg = { ...makeSVGFromVertices('a1', [[1, 1], [4, 1], [4, 5]]), angleDeg: 30 };
+    const once = mirrorSVG(svg, 'h');
+    expect(once.angleDeg).toBe(330);
+    expect(mirrorSVG(once, 'h').angleDeg).toBe(30);
+    const vertical = mirrorSVG(svg, 'v');
+    expect(vertical.angleDeg).toBe(330);
+  });
+
+  test('the bbox adapters negate it too — image, text, paint, pattern alike', () => {
+    for (const kind of ['image', 'text', 'paint', 'pattern'] as const) {
+      const node = {
+        id: `${kind}_x`, cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 2, angleDeg: 30,
+      };
+      const flipped = GEOMETRY_ADAPTERS[kind].mirror(node as never, 'h') as { angleDeg?: number };
+      expect(flipped.angleDeg).toBe(330);
+    }
+  });
+
+  test('a discrete quarter turn leaves the free angle alone (co-axial turns compose)', () => {
+    const svg = { ...makeSVGFromVertices('a2', [[1, 1], [4, 1], [4, 5]]), angleDeg: 30 };
+    expect(rotateSVG90CW(svg).angleDeg).toBe(30);
+    const node = { id: 'img_y', cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 2, angleDeg: 30 };
+    expect((GEOMETRY_ADAPTERS.image.rotate90CW(node as never) as { angleDeg?: number }).angleDeg).toBe(30);
+  });
+});

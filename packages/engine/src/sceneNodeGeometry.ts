@@ -292,6 +292,17 @@ interface BboxOnlyNode extends SceneNodeBase {
   identityCellHeight?: number;
 }
 
+/** The free rotation a MIRRORED node renders at: a reflection conjugates a
+ *  clockwise turn into a counter-clockwise one (M ∘ R(θ) = R(−θ) ∘ M), so
+ *  the angle negates — normalized to [0, 360), stored as undefined at zero
+ *  (setNodeRotation's convention). Discrete quarter-turns keep the angle
+ *  untouched — co-axial rotations compose — so only mirrors call this. */
+export function mirroredAngleDeg(angleDeg: number | undefined): number | undefined {
+  if (!angleDeg) return undefined;
+  const a = ((-angleDeg % 360) + 360) % 360;
+  return a === 0 ? undefined : a;
+}
+
 function makeBboxAdapter<T extends BboxOnlyNode>(kind: CompItemKind): GeometryAdapter<T> {
   return {
     kind,
@@ -345,9 +356,11 @@ function makeBboxAdapter<T extends BboxOnlyNode>(kind: CompItemKind): GeometryAd
       // rotation — so the screen-space flip lands on whichever local axis the
       // current rotation maps it to (the same remap mirrorSVG uses). Without
       // it, flipping a quarter-turned node flips the wrong way on screen.
+      // A free rotation negates with the flip (see mirroredAngleDeg) — left
+      // alone, a tilted member of a mirrored group leans the wrong way.
       const localAxis = getCompositionOps().screenToLocalFlipAxis(node.rotation ?? 0, screenAxis);
       const key = localAxis === 'h' ? 'mirrorH' : 'mirrorV';
-      return { ...node, [key]: !(node[key] ?? false) };
+      return { ...node, [key]: !(node[key] ?? false), angleDeg: mirroredAngleDeg(node.angleDeg) };
     },
 
     rescale(node, _old, newBbox) {
