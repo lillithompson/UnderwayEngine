@@ -40,31 +40,32 @@ describe('the rig option set', () => {
   it('sizes each bar to the rows it renders', () => {
     // Left and Right plus a Twist each for the hands and feet — and a
     // Spread each for the hands, which is why their bar stands taller than
-    // the feet's now; three sliders apiece for the spine and for the whole
-    // figure's three axes; Nod and Shake for the head.
+    // the feet's now; three sliders apiece for the spine, the whole
+    // figure's three axes, and the head's (Nod, Shake, Tilt).
     expect(submenuHeight('rigHands')).toBeGreaterThan(submenuHeight('rigFeet'));
     expect(submenuHeight('rigRoot')).toBe(submenuHeight('rigSpine'));
     expect(submenuHeight('rigFeet')).toBeGreaterThan(submenuHeight('rigSpine'));
-    expect(submenuHeight('rigHead')).toBeLessThan(submenuHeight('rigSpine'));
+    expect(submenuHeight('rigHead')).toBe(submenuHeight('rigSpine'));
     expect(rigPartSliders('rig')).toHaveLength(3);
     expect(rigPartSliders('spine')).toHaveLength(3);
     expect(rigPartSliders('hands')).toHaveLength(6);
     expect(rigPartSliders('feet')).toHaveLength(4);
-    expect(rigPartSliders('head')).toHaveLength(2);
+    expect(rigPartSliders('head')).toHaveLength(3);
     // Every part's bar is exactly its own rows — no page borrows another's.
     for (const opt of RIG_PART_OPTIONS) {
       const rows = rigPartSliders(opt.part).length;
       expect(submenuHeight(opt.sub))
-        .toBe(submenuHeight('rigHead') + (rows - 2) * (ROW_SLIDER + ROW_GAP));
+        .toBe(submenuHeight('rigHead') + (rows - 3) * (ROW_SLIDER + ROW_GAP));
     }
   });
 
-  it('gives the head its own two sliders, centred, and nothing else', () => {
+  it('gives the head its own three sliders, centred, and nothing else', () => {
     // The Spine bar cannot do this: its bend curves the WHOLE column and
     // takes the head along at the end of it, so there was no way to tip a
-    // face without stooping the body to do it.
+    // face without stooping the body to do it. Tilt is the roll the other
+    // two leave over: ear to shoulder, about the gaze.
     const specs = rigPartSliders('head');
-    expect(specs.map((s) => s.label)).toEqual(['Nod', 'Shake']);
+    expect(specs.map((s) => s.label)).toEqual(['Nod', 'Shake', 'Tilt']);
     for (const spec of specs) {
       expect(spec.centered).toBe(true);
       expect(RIG_SLIDER_REST[spec.key]).toBe(0.5); // facing level
@@ -168,7 +169,7 @@ describe('the rig option set', () => {
       spreadL: 0.5, spreadR: 0.5,
       footL: 1, footR: 1, ankleTwistL: 0.5, ankleTwistR: 0.5,
       bend: 0.5, twist: 0.5, lean: 0.5,
-      nod: 0.5, shake: 0.5,
+      nod: 0.5, shake: 0.5, tilt: 0.5,
     });
     for (const key of Object.keys(rest) as (keyof typeof rest)[]) {
       expect(rigPartSliders(rigSliderPart(key)).some((s) => s.key === key)).toBe(true);

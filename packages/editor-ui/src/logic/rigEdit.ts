@@ -53,7 +53,7 @@ export type RigSliderKey =
   | 'handL' | 'handR' | 'wristTwistL' | 'wristTwistR' | 'spreadL' | 'spreadR'
   | 'footL' | 'footR' | 'ankleTwistL' | 'ankleTwistR'
   | 'bend' | 'twist' | 'lean'
-  | 'nod' | 'shake';
+  | 'nod' | 'shake' | 'tilt';
 
 const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
   // The root joint's own rotation — every other bone hangs off it, so
@@ -94,6 +94,8 @@ const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
   head: [
     { key: 'nod', label: 'Nod', ends: ['up', 'down'], centered: true },
     { key: 'shake', label: 'Shake', ends: ['left', 'right'], centered: true },
+    // The third, orthogonal axis: the roll about the gaze — ear to shoulder.
+    { key: 'tilt', label: 'Tilt', ends: ['left', 'right'], centered: true },
   ],
 };
 
@@ -124,6 +126,7 @@ export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
   lean: 0.5,
   nod: 0.5, // facing level
   shake: 0.5,
+  tilt: 0.5,
 };
 
 /** The part a slider belongs to — read off the same table the bars render

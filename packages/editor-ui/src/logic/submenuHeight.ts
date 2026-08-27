@@ -208,8 +208,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
         ...(ctx.rigCanReset ? [ROW_SEGMENTED] : []),
       ]);
     case 'rigHead':
-      // Nod and Shake.
-      return standardBar([ROW_SLIDER, ROW_SLIDER]);
+      // Nod / Shake / Tilt.
+      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
     case 'endpoints':
       return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'patternTiles':
