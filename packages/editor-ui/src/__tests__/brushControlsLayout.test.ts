@@ -27,8 +27,8 @@ describe('both rows stand inside the safe area', () => {
     // furthest from the screen edge. Rendered order IS stacking order here
     // (a plain column), so first child = on top.
     const stack = /<Animated\.View style=\{\{ transform[\s\S]*?<\/Animated\.View>/.exec(SRC)?.[0] ?? '';
-    expect(stack).toContain('label="Strength"');
-    expect(stack.indexOf('label="Strength"')).toBeLessThan(stack.indexOf('label="Size"'));
+    expect(stack).toContain("label={model.strengthLabel ?? 'Strength'}");
+    expect(stack.indexOf('strengthLabel')).toBeLessThan(stack.indexOf('label="Size"'));
   });
 
   it('drops the STRENGTH row on request, leaving Size where it was', () => {
@@ -41,9 +41,12 @@ describe('both rows stand inside the safe area', () => {
     const stack = /<Animated\.View style=\{\{ transform[\s\S]*?<\/Animated\.View>/.exec(SRC)?.[0] ?? '';
     // Strength and the gap under it are inside the conditional; Size is not.
     const conditional = /\{model\.showStrength === false \? null : \([\s\S]*?\)\}/.exec(stack)?.[0] ?? '';
-    expect(conditional).toContain('label="Strength"');
+    expect(conditional).toContain("label={model.strengthLabel ?? 'Strength'}");
     expect(conditional).toContain('height: ROW_GAP');
     expect(conditional).not.toContain('label="Size"');
+    // …and the SIZE row can be dropped instead, for a host that swaps the
+    // one visible slider over to Strength (the paint brush's mode target).
+    expect(SRC).toContain('{model.showSize === false ? null : (');
     // The wrap still stands on the bottom margin, which is what keeps Size
     // in place when the row above it disappears.
     expect(SRC).toContain('bottom: safeBottom + BOTTOM_MARGIN');
@@ -61,9 +64,8 @@ describe('both rows stand inside the safe area', () => {
     // the disc's offset follows — a fixed two-row offset left it floating a
     // row above the slider it describes. And the gap stays tight: the disc
     // is the Size handle's readout, not a thing off in the page.
-    expect(SRC).toContain(
-      "bottom: (model.showStrength === false ? HANDLE : HANDLE * 2 + ROW_GAP)",
-    );
+    expect(SRC).toContain("bottom: (model.showStrength === false ? 0 : HANDLE + ROW_GAP)");
+    expect(SRC).toContain("+ (model.showSize === false ? 0 : HANDLE)");
     expect(SRC).toContain('const PREVIEW_GAP = 8;');
   });
 });
@@ -74,7 +76,7 @@ describe('both rows stand inside the safe area', () => {
 describe('each handle reads out the thing its row controls', () => {
   it('gives size a diameter and strength an opacity', () => {
     expect(SRC).toContain('label="Size" readout="diameter"');
-    expect(SRC).toContain('label="Strength" readout="opacity"');
+    expect(SRC).toMatch(/label=\{model\.strengthLabel \?\? 'Strength'\}\s*\n\s*readout="opacity"/);
   });
 
   it('draws the strength wash at full size, varying only its opacity', () => {

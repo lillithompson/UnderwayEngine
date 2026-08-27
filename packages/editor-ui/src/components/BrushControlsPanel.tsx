@@ -310,11 +310,12 @@ export function BrushControlsPanel({ model, safeBottom = 0 }: {
               opacity: previewFade,
               // Sat on the stack's top edge and pushed up by its own height,
               // so the disc grows UPWARD into the page rather than down
-              // through the sliders it is describing. The stack is ONE row
-              // when the host drops Strength (the Paint brush does), so the
-              // offset follows the rows actually on screen — a fixed two-row
-              // offset left the disc floating a row above the Size slider.
-              bottom: (model.showStrength === false ? HANDLE : HANDLE * 2 + ROW_GAP)
+              // through the sliders it is describing. The stack follows the
+              // rows actually on screen (a host may drop Strength, or swap
+              // Size out for it) — a fixed two-row offset left the disc
+              // floating a row above the Size slider.
+              bottom: (model.showStrength === false ? 0 : HANDLE + ROW_GAP)
+                + (model.showSize === false ? 0 : HANDLE)
                 + PREVIEW_GAP,
             },
           ]}
@@ -322,20 +323,25 @@ export function BrushControlsPanel({ model, safeBottom = 0 }: {
       ) : null}
       <Animated.View style={{ transform: [{ translateY: rise }] }}>
         {/* A host can drop STRENGTH (showStrength) when that brush carries
-            it elsewhere. The stack stands on the bottom edge, so Size holds
-            its place and the empty row above it simply isn't there. */}
+            it elsewhere — or drop SIZE (showSize) when a mode target swaps
+            the one visible slider over to Strength. The stack stands on the
+            bottom edge, so whichever rows remain hold their place and the
+            missing row simply isn't there. */}
         {model.showStrength === false ? null : (
           <>
             <FloatingSliderRow
-              label="Strength" readout="opacity" value={model.strength} onChange={model.onStrength}
+              label={model.strengthLabel ?? 'Strength'}
+              readout="opacity" value={model.strength} onChange={model.onStrength}
             />
-            <View style={{ height: ROW_GAP }} />
+            {model.showSize === false ? null : <View style={{ height: ROW_GAP }} />}
           </>
         )}
-        <FloatingSliderRow
-          label="Size" readout="diameter" value={model.size} onChange={model.onSize}
-          onPreview={model.sizePreviewRadiusPx ? onSizePreview : undefined}
-        />
+        {model.showSize === false ? null : (
+          <FloatingSliderRow
+            label="Size" readout="diameter" value={model.size} onChange={model.onSize}
+            onPreview={model.sizePreviewRadiusPx ? onSizePreview : undefined}
+          />
+        )}
       </Animated.View>
     </View>
   );

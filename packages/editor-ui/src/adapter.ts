@@ -718,6 +718,13 @@ export interface BrushControlsModel {
    *  way — the stack stands on the bottom edge, so the row that goes is the
    *  one above. */
   showStrength?: boolean;
+  /** Draw the Size row at all. Default (omitted) is yes; pass false when
+   *  the host swaps the single visible slider between meanings (a mode
+   *  target beside the row) and Strength is the meaning on screen. */
+  showSize?: boolean;
+  /** The Strength row's name. Default 'Strength'; a host whose strength IS
+   *  the stroke's opacity (the paint brush's mode target) names it that. */
+  strengthLabel?: string;
   /** The on-screen RADIUS, in px, that a Size value works out to on the
    *  canvas right now — camera zoom and all. The Size row draws a soft disc
    *  of exactly that size while the handle is held, so what you see above
