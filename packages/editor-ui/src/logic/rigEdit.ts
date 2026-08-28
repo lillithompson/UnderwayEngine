@@ -69,8 +69,8 @@ const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
   // paired under the part they belong to rather than given a bar of their
   // own — a hand is one thing to pose, however many ways it moves.
   hands: [
-    { key: 'handL', label: 'Left', ends: ['flat', 'fist'] },
-    { key: 'handR', label: 'Right', ends: ['flat', 'fist'] },
+    { key: 'handL', label: 'Left', ends: ['open', 'fist'] },
+    { key: 'handR', label: 'Right', ends: ['open', 'fist'] },
     { key: 'wristTwistL', label: 'Left Twist', ends: ['in', 'out'], centered: true },
     { key: 'wristTwistR', label: 'Right Twist', ends: ['in', 'out'], centered: true },
     // The fan itself: fingers squeezed together or splayed wide, centred
@@ -116,8 +116,12 @@ export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
   spinX: 0.5, // upright, facing front
   spinY: 0.5,
   spinZ: 0.5,
-  handL: 0, // flat
-  handR: 0,
+  // Straight fingers — a tenth up the track, not at its floor: the open
+  // end of the curl bends the fingers back PAST straight (Figgie's
+  // HAND_STRAIGHT_AT, which this must equal or an untouched bar would
+  // misreport the figure; the app's rigParts test pins the two together).
+  handL: 0.1,
+  handR: 0.1,
   wristTwistL: 0.5, // unrolled
   wristTwistR: 0.5,
   spreadL: 0.5, // the modelled fan

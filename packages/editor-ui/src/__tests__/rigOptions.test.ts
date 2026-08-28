@@ -171,7 +171,7 @@ describe('the rig option set', () => {
     const rest = restRigSliders();
     expect(rest).toEqual({
       spinX: 0.5, spinY: 0.5, spinZ: 0.5,
-      handL: 0, handR: 0, wristTwistL: 0.5, wristTwistR: 0.5,
+      handL: 0.1, handR: 0.1, wristTwistL: 0.5, wristTwistR: 0.5,
       spreadL: 0.5, spreadR: 0.5, wristBendL: 0.5, wristBendR: 0.5,
       footL: 1, footR: 1, ankleTwistL: 0.5, ankleTwistR: 0.5,
       bend: 0.5, twist: 0.5, lean: 0.5,
