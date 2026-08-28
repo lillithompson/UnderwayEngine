@@ -111,8 +111,10 @@ export interface GeometryAdapter<T extends SceneNodeBase = SceneNodeBase> {
   /** Compute world bbox from the node's current geometry. */
   computeBbox(node: T): Bbox;
 
-  /** Translate all geometry by (dx, dy). Returns a new node with shifted
-   *  geometry and cleared identity/rotation/mirror state. */
+  /** Translate all geometry by (dx, dy) — a RIGID move that preserves the
+   *  rendered orientation. Bbox kinds keep their rotation/mirror flags and
+   *  carry the identity stash along; figures/svgs clear their per-kind
+   *  transform-cycle stash (their orientation lives in the geometry). */
   translate(node: T, dx: number, dy: number): T;
 
   /** Rotate 90 CW using the identity-stash stabilization pattern. */
@@ -312,13 +314,24 @@ function makeBboxAdapter<T extends BboxOnlyNode>(kind: CompItemKind): GeometryAd
     },
 
     translate(node, dx, dy) {
+      // A move is RIGID: rotation / mirror stay — for bbox kinds those flags
+      // ARE the rendered orientation (unlike an svg, whose orientation is
+      // baked into its segments), so clearing them here visibly un-flipped a
+      // mirrored image / text / pattern the moment it was dragged. For a
+      // repeating pattern that was the worst case: the mirror() adapter had
+      // already reflected the tile-grid offset to match the flip, so losing
+      // the flag alone re-baked the UNFLIPPED artwork onto the reflected
+      // grid — the "pattern jumps to another orientation when moved" bug.
+      // The identity stash travels with the node (not cleared: mid-cycle
+      // dims-swap bookkeeping must survive a move, or the next quarter turn
+      // computes its box from the wrong identity), which also makes a move
+      // exactly invertible by the inverse translate.
       const next: T = {
         ...node,
         cellX: node.cellX + dx, cellY: node.cellY + dy,
-        identityCellX: undefined, identityCellY: undefined,
-        identityCellWidth: undefined, identityCellHeight: undefined,
-        rotation: undefined, mirrorH: undefined, mirrorV: undefined,
       };
+      if (node.identityCellX !== undefined) next.identityCellX = node.identityCellX + dx;
+      if (node.identityCellY !== undefined) next.identityCellY = node.identityCellY + dy;
       if (node.localCellX !== undefined && node.localCellY !== undefined) {
         next.localCellX = node.localCellX + dx;
         next.localCellY = node.localCellY + dy;

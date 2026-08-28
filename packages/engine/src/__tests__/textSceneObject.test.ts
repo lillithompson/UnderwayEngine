@@ -265,7 +265,9 @@ describe('text lock / hidden', () => {
 });
 
 describe('translateNodeByDelta on text', () => {
-  test('moves the bbox and clears identity anchors + rotation + mirror', () => {
+  test('moves the bbox rigidly: orientation kept, identity anchors ride along', () => {
+    // rotation/mirror are the RENDERED orientation of a bbox node — a move
+    // must leave the picture exactly as it was, just elsewhere.
     const txt = makeText('txt_a', {
       cellX: 1, cellY: 2, rotation: 90, mirrorH: true, mirrorV: true,
       identityCellX: 0, identityCellY: 0, identityCellWidth: 4, identityCellHeight: 2,
@@ -275,13 +277,13 @@ describe('translateNodeByDelta on text', () => {
     const moved = next.texts![0];
     expect(moved.cellX).toBe(4);
     expect(moved.cellY).toBe(6);
-    expect(moved.identityCellX).toBeUndefined();
-    expect(moved.identityCellY).toBeUndefined();
-    expect(moved.identityCellWidth).toBeUndefined();
-    expect(moved.identityCellHeight).toBeUndefined();
-    expect(moved.rotation).toBeUndefined();
-    expect(moved.mirrorH).toBeUndefined();
-    expect(moved.mirrorV).toBeUndefined();
+    expect(moved.identityCellX).toBe(3);
+    expect(moved.identityCellY).toBe(4);
+    expect(moved.identityCellWidth).toBe(4);
+    expect(moved.identityCellHeight).toBe(2);
+    expect(moved.rotation).toBe(90);
+    expect(moved.mirrorH).toBe(true);
+    expect(moved.mirrorV).toBe(true);
   });
 
   test('shifts group-local coords alongside the world bbox', () => {
@@ -295,25 +297,28 @@ describe('translateNodeByDelta on text', () => {
     expect(next.texts![0].localCellY).toBe(4);
   });
 
-  test('moveNode op round-trips a text move with identity restoration', () => {
+  test('moveNode is rigid: orientation survives the move, identity rides along, revert is exact', () => {
+    // The rotation/mirror flags ARE a text's rendered orientation — a move
+    // must not touch them (clearing them here visibly un-turned the text).
+    // The identity stash shifts with the node, so the transform cycle picks
+    // up mid-way after a move and the inverse translate restores everything.
     const txt = makeText('txt_a', {
-      cellX: 1, cellY: 2, rotation: 180,
+      cellX: 1, cellY: 2, rotation: 180, mirrorH: true,
       identityCellX: 0, identityCellY: 0, identityCellWidth: 4, identityCellHeight: 2,
     });
     const state = makeState({ texts: [txt] });
     const entry: CompUndoEntry = [{
       op: 'moveNode', nodeId: 'txt_a', dx: 3, dy: 4,
-      oldIdentityCellX: 0, oldIdentityCellY: 0,
-      oldRotation: 180,
     }];
     const after = applyCompOps(state, entry);
     expect(after.texts![0].cellX).toBe(4);
-    expect(after.texts![0].rotation).toBeUndefined();
+    expect(after.texts![0].rotation).toBe(180);
+    expect(after.texts![0].mirrorH).toBe(true);
+    expect(after.texts![0].identityCellX).toBe(3);
+    expect(after.texts![0].identityCellY).toBe(4);
+    expect(after.texts![0].identityCellWidth).toBe(4);
     const reverted = revertCompOps(after, entry);
-    expect(reverted.texts![0].cellX).toBe(1);
-    expect(reverted.texts![0].cellY).toBe(2);
-    expect(reverted.texts![0].rotation).toBe(180);
-    expect(reverted.texts![0].identityCellX).toBe(0);
+    expect(reverted.texts![0]).toEqual(state.texts![0]);
   });
 });
 

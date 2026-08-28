@@ -1530,8 +1530,9 @@ function localBboxFromSegments(
   return { localCellX: bb.cellX, localCellY: bb.cellY, localCellWidth: bb.cellWidth, localCellHeight: bb.cellHeight };
 }
 
-/** Shift one node (figure, svg, or image) by `(dx, dy)` and clear its
- *  identity / rotation / mirror state. Used by the unified `moveNode`
+/** Shift one node by `(dx, dy)` — rigid: the rendered orientation is
+ *  preserved (bbox kinds keep rotation/mirror; figures/svgs clear only
+ *  their transform-cycle stash). Used by the unified `moveNode`
  *  apply / revert. Delegates to the geometry adapter for per-kind logic. */
 export function translateNodeByDelta(
   state: CompositionState, nodeId: string, dx: number, dy: number,
@@ -1578,9 +1579,13 @@ export function setNodeAngleDeg(
 
 /** Restore the identity / rotation / mirror fields that the forward move
  *  cleared. Per-type: figures get `identityCell*` + `transformCycleStep`;
- *  svgs get `identitySegments` + `rotation` + `mirror*`; images and texts
- *  get `identityCell*` bbox + `rotation` + `mirror*`. Called immediately
- *  after the inverse-translate in `revertOp`'s `moveNode` case. */
+ *  svgs get `identitySegments` + `rotation` + `mirror*`. Bbox kinds
+ *  (image, text, paint, pattern) need nothing here: their translate is
+ *  rigid and exactly undone by the inverse translate — restoring captured
+ *  fields on top would only re-corrupt (the old image/text branches wrote
+ *  `identityCellWidth/Height` from op fields buildMoveNode never captured,
+ *  wiping them on every undo). Called immediately after the
+ *  inverse-translate in `revertOp`'s `moveNode` case. */
 function restoreNodeIdentity(
   state: CompositionState, nodeId: string,
   op: { oldIdentityCellX?: number; oldIdentityCellY?: number; oldTransformCycleStep?: number;
@@ -1607,34 +1612,6 @@ function restoreNodeIdentity(
       mirrorV: op.oldMirrorV,
     } : s);
     return { ...state, svgObjects };
-  }
-  const img = (state.images ?? []).find(i => i.id === nodeId);
-  if (img) {
-    const images = (state.images ?? []).map((i) => i.id === nodeId ? {
-      ...i,
-      identityCellX: op.oldIdentityCellX,
-      identityCellY: op.oldIdentityCellY,
-      identityCellWidth: op.oldIdentityCellWidth,
-      identityCellHeight: op.oldIdentityCellHeight,
-      rotation: op.oldRotation,
-      mirrorH: op.oldMirrorH,
-      mirrorV: op.oldMirrorV,
-    } : i);
-    return { ...state, images };
-  }
-  const txt = (state.texts ?? []).find(t => t.id === nodeId);
-  if (txt) {
-    const texts = (state.texts ?? []).map((t) => t.id === nodeId ? {
-      ...t,
-      identityCellX: op.oldIdentityCellX,
-      identityCellY: op.oldIdentityCellY,
-      identityCellWidth: op.oldIdentityCellWidth,
-      identityCellHeight: op.oldIdentityCellHeight,
-      rotation: op.oldRotation,
-      mirrorH: op.oldMirrorH,
-      mirrorV: op.oldMirrorV,
-    } : t);
-    return { ...state, texts };
   }
   return state;
 }

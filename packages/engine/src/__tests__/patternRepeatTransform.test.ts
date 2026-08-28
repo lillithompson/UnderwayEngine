@@ -125,6 +125,42 @@ describe('mirroring a repeating pattern', () => {
   });
 });
 
+describe('moving a repeating pattern', () => {
+  // The reported bug: flip a repeating pattern, then drag it — the picture
+  // jumped to another orientation. The bbox translate cleared the mirror
+  // flag but kept the reflected tile offset, so the UNFLIPPED artwork
+  // re-baked onto the reflected grid: misaligned AND unflipped. A move is
+  // rigid — orientation and tiling travel with the region, untouched.
+  it('after a flip, keeps the flip and carries the tiling rigidly', () => {
+    const p = pat();
+    const flipped = A.mirror(p, 'h') as PatternObject;
+    const moved = A.translate(flipped, 5, -2) as PatternObject;
+    expect(moved.mirrorH).toBe(true);
+    expect(moved.tileOffsetXL0).toBe(flipped.tileOffsetXL0);
+    expect(moved.tileOffsetYL0).toBe(flipped.tileOffsetYL0);
+    expect(tileBox(moved)).toEqual({
+      x: tileBox(flipped).x + 5, y: tileBox(flipped).y - 2,
+      w: flipped.tileWidthL0, h: flipped.tileHeightL0,
+    });
+  });
+
+  it('after a quarter turn, keeps the rotation and its identity anchoring', () => {
+    const turned = A.rotate90CW(pat()) as PatternObject;
+    const moved = A.translate(turned, 3, 3) as PatternObject;
+    expect(moved.rotation).toBe(90);
+    // The identity box rides along, so the next turn in the cycle swings
+    // about the MOVED centre rather than a stale pre-move one.
+    expect(moved.identityCellX).toBe((turned.identityCellX ?? turned.cellX) + 3);
+    expect(moved.identityCellY).toBe((turned.identityCellY ?? turned.cellY) + 3);
+    const turnedAgain = A.rotate90CW(moved) as PatternObject;
+    expect(turnedAgain.rotation).toBe(180);
+    // At 180 the box regains the identity dims (8×4), centred where the
+    // moved identity box is centred.
+    expect(turnedAgain.cellWidth).toBe(8);
+    expect(turnedAgain.cellHeight).toBe(4);
+  });
+});
+
 describe('resizing a repeating pattern', () => {
   it('still holds the tiling fixed in world space', () => {
     // The other rule, unchanged: dragging an edge reveals more or less of
