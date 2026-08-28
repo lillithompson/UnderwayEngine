@@ -189,9 +189,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     // switch (see RigPoseBar) — so each stands exactly as tall as the
     // controls it renders.
     case 'rigHands':
-      // Left and Right, a Twist each, and a Spread each.
+      // Left and Right, and a Twist, a Spread and a Bend each.
       return standardBar([
         ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER,
+        ROW_SLIDER, ROW_SLIDER,
       ]);
     case 'rigFeet':
       // Left and Right, each with its own Twist.

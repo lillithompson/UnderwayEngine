@@ -39,16 +39,16 @@ describe('the rig option set', () => {
 
   it('sizes each bar to the rows it renders', () => {
     // Left and Right plus a Twist each for the hands and feet — and a
-    // Spread each for the hands, which is why their bar stands taller than
-    // the feet's now; three sliders apiece for the spine, the whole
-    // figure's three axes, and the head's (Nod, Shake, Tilt).
+    // Spread and a Bend each for the hands, which is why their bar stands
+    // taller than the feet's now; three sliders apiece for the spine, the
+    // whole figure's three axes, and the head's (Nod, Shake, Tilt).
     expect(submenuHeight('rigHands')).toBeGreaterThan(submenuHeight('rigFeet'));
     expect(submenuHeight('rigRoot')).toBe(submenuHeight('rigSpine'));
     expect(submenuHeight('rigFeet')).toBeGreaterThan(submenuHeight('rigSpine'));
     expect(submenuHeight('rigHead')).toBe(submenuHeight('rigSpine'));
     expect(rigPartSliders('rig')).toHaveLength(3);
     expect(rigPartSliders('spine')).toHaveLength(3);
-    expect(rigPartSliders('hands')).toHaveLength(6);
+    expect(rigPartSliders('hands')).toHaveLength(8);
     expect(rigPartSliders('feet')).toHaveLength(4);
     expect(rigPartSliders('head')).toHaveLength(3);
     // Every part's bar is exactly its own rows — no page borrows another's.
@@ -84,7 +84,7 @@ describe('the rig option set', () => {
     // Height follows: every page is exactly its slider rows plus the bar's
     // own chrome, with nothing reserved below them.
     expect(submenuHeight('rigHands'))
-      .toBe(submenuHeight('rigSpine') + 3 * (ROW_SLIDER + ROW_GAP));
+      .toBe(submenuHeight('rigSpine') + 5 * (ROW_SLIDER + ROW_GAP));
   });
 
   it('has no trash in its header, on any of the pages', () => {
@@ -139,12 +139,13 @@ describe('the rig option set', () => {
     }
   });
 
-  it('gives each hand and foot a centred Twist beside its own slider, and the hands a Spread', () => {
-    // The curl / flex slider runs one way from rest; the twist and the
-    // spread run BOTH ways from the middle, since a joint rolls (and a fan
-    // opens) either direction.
+  it('gives each hand and foot a centred Twist beside its own slider, and the hands a Spread and a Bend', () => {
+    // The curl / flex slider runs one way from rest; the twist, the spread
+    // and the bend run BOTH ways from the middle, since a joint rolls (and
+    // a fan opens, and a wrist folds) either direction.
     expect(rigPartSliders('hands').map((s) => s.key)).toEqual([
       'handL', 'handR', 'wristTwistL', 'wristTwistR', 'spreadL', 'spreadR',
+      'wristBendL', 'wristBendR',
     ]);
     expect(rigPartSliders('feet').map((s) => s.key)).toEqual([
       'footL', 'footR', 'ankleTwistL', 'ankleTwistR',
@@ -155,9 +156,14 @@ describe('the rig option set', () => {
         expect(RIG_SLIDER_REST[spec.key]).toBe(0.5);
       }
     }
-    for (const spec of rigPartSliders('hands').slice(4)) {
+    for (const spec of rigPartSliders('hands').slice(4, 6)) {
       expect(spec.label).toContain('Spread');
       expect(spec.ends).toEqual(['together', 'wide']);
+    }
+    // The wrist hinge: the hand laid back or folded forward, off straight.
+    for (const spec of rigPartSliders('hands').slice(6)) {
+      expect(spec.label).toContain('Bend');
+      expect(spec.ends).toEqual(['back', 'forward']);
     }
   });
 
@@ -166,7 +172,7 @@ describe('the rig option set', () => {
     expect(rest).toEqual({
       spinX: 0.5, spinY: 0.5, spinZ: 0.5,
       handL: 0, handR: 0, wristTwistL: 0.5, wristTwistR: 0.5,
-      spreadL: 0.5, spreadR: 0.5,
+      spreadL: 0.5, spreadR: 0.5, wristBendL: 0.5, wristBendR: 0.5,
       footL: 1, footR: 1, ankleTwistL: 0.5, ankleTwistR: 0.5,
       bend: 0.5, twist: 0.5, lean: 0.5,
       nod: 0.5, shake: 0.5, tilt: 0.5,
