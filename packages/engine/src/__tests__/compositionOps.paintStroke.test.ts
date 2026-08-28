@@ -419,6 +419,124 @@ describe('accumulator monotonicity', () => {
   });
 });
 
+// A FILL subpath (figure-bake painted cells, filled merges) is one closed
+// drawing: the regroup must keep it whole, keep its `fill` flag, and give it
+// one color. The bug this pins: the regroup dropped `fill` entirely, so ONE
+// brush stroke anywhere on a baked figure hollowed all its painted cells
+// into outlines — and a fill sharing a color with an adjacent stroke run
+// got merged into it, restructuring the closed loops the fill chains from.
+describe('fill subpaths survive a paint stroke', () => {
+  const red = rgb(255, 0, 0), blue = rgb(0, 0, 255), green = rgb(0, 255, 0);
+  const rect = [
+    line([0, 0], [4, 0]), line([4, 0], [4, 4]), line([4, 4], [0, 4]), line([0, 4], [0, 0]),
+  ];
+  const tail = [line([4, 4], [8, 8])];
+
+  function fillSvg(): SVGObject {
+    return makeSVG('svg_m', [...rect, ...tail], red, {
+      subpaths: [
+        { segments: rect, color: red, fill: true },
+        { segments: tail, color: blue },
+      ],
+    });
+  }
+  const snapOf = (svg: SVGObject) =>
+    ({ color: svg.color, segments: svg.segments, subpaths: svg.subpaths });
+
+  it('painting the STROKE half leaves the fill filled and untouched', () => {
+    const svg = fillSvg();
+    const state = makeState([svg]);
+    const draft = makeDraft({
+      paintedSegments: new Map([['svg_m', new Map([[4, green]])]]), // the tail
+      svgSnapshots: new Map([['svg_m', snapOf(svg)]]),
+    });
+    const after = applyCompOps(state, buildPaintStrokeOps(state, draft)).svgObjects[0];
+    expect(after.subpaths).toHaveLength(2);
+    expect(after.subpaths![0]).toMatchObject({ color: red, fill: true });
+    expect(after.subpaths![0].segments).toHaveLength(4);
+    expect(after.subpaths![1].color).toEqual(green);
+    expect(after.subpaths![1].fill).toBeUndefined();
+  });
+
+  it('painting INTO the fill recolors it as one unit, still filled', () => {
+    const svg = fillSvg();
+    const state = makeState([svg]);
+    // Two of the rect's segments painted, slightly different greens — the
+    // fill is one drawing in one color, so the first painted index wins for
+    // the whole subpath rather than splitting it into stroke runs.
+    const g2 = rgb(0, 250, 5);
+    const draft = makeDraft({
+      paintedSegments: new Map([['svg_m', new Map([[1, green], [2, g2]])]]),
+      svgSnapshots: new Map([['svg_m', snapOf(svg)]]),
+    });
+    const after = applyCompOps(state, buildPaintStrokeOps(state, draft)).svgObjects[0];
+    expect(after.subpaths).toHaveLength(2);
+    expect(after.subpaths![0]).toMatchObject({ color: green, fill: true });
+    expect(after.subpaths![0].segments).toHaveLength(4);
+    expect(after.subpaths![1]).toMatchObject({ color: blue });
+  });
+
+  it('a fill never merges with a same-colored stroke neighbor', () => {
+    const svg = makeSVG('svg_m', [...rect, ...tail], red, {
+      subpaths: [
+        { segments: rect, color: red, fill: true },
+        { segments: tail, color: red }, // same red, stroke
+      ],
+    });
+    const state = makeState([svg]);
+    // Paint something so the op builds at all; the un-painted red pair must
+    // still come out as TWO groups — fill and stroke, not one merged run.
+    const draft = makeDraft({
+      paintedSegments: new Map([['svg_m', new Map([[1, red]])]]), // no-op color
+      svgSnapshots: new Map([['svg_m', snapOf(svg)]]),
+    });
+    const ops = buildPaintStrokeOps(state, draft);
+    // Same shape as the snapshot → no-op, nothing commits. THAT is the pin:
+    // before, the regroup merged the two red groups (and dropped the fill),
+    // which read as a shape change and committed a corrupted object.
+    expect(ops).toHaveLength(0);
+  });
+
+  it('an all-fill object keeps its subpath — never collapsed to a plain stroke shape', () => {
+    const svg = makeSVG('svg_f', rect, red, {
+      subpaths: [{ segments: rect, color: red, fill: true }],
+    });
+    const state = makeState([svg]);
+    const draft = makeDraft({
+      paintedSegments: new Map([['svg_f', new Map([[0, green]])]]),
+      svgSnapshots: new Map([['svg_f', snapOf(svg)]]),
+    });
+    const after = applyCompOps(state, buildPaintStrokeOps(state, draft)).svgObjects[0];
+    expect(after.subpaths).toHaveLength(1);
+    expect(after.subpaths![0]).toMatchObject({ color: green, fill: true });
+  });
+
+  it('group-local subpaths carry the same fill structure', () => {
+    const svg: SVGObject = {
+      ...fillSvg(),
+      groupId: 'g1',
+      localSegments: [...rect, ...tail],
+      localSubpaths: [
+        { segments: rect, color: red, fill: true },
+        { segments: tail, color: blue },
+      ],
+    };
+    const state = makeState([svg]);
+    const draft = makeDraft({
+      paintedSegments: new Map([['svg_m', new Map([[4, green]])]]),
+      svgSnapshots: new Map([['svg_m', {
+        color: red, segments: svg.segments, subpaths: svg.subpaths,
+        localSegments: svg.localSegments, localSubpaths: svg.localSubpaths,
+      }]]),
+    });
+    const ops = buildPaintStrokeOps(state, draft);
+    const op = ops[0] as Extract<typeof ops[0], { op: 'recolorSVG' }>;
+    expect(op.newLocalSubpaths).toHaveLength(2);
+    expect(op.newLocalSubpaths![0]).toMatchObject({ color: red, fill: true });
+    expect(op.newLocalSubpaths![1].color).toEqual(green);
+  });
+});
+
 describe('buildPaintStrokeOps fill color', () => {
   it('includes oldFillColor/newFillColor when SVG has fillColor', () => {
     const red = rgb(255, 0, 0);

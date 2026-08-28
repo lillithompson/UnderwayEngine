@@ -362,29 +362,45 @@ export function flattenSVGSegmentsWithColor(svg: SVGObject): Array<{ segment: Pa
  * accumulator back into the SVGObject's two-tier color shape.
  */
 export function regroupSegmentsByColor(
-  entries: ReadonlyArray<{ segment: PathSegment; color: RGBColor }>,
+  entries: ReadonlyArray<{ segment: PathSegment; color: RGBColor; fill?: boolean; atom?: number }>,
 ): { color: RGBColor; segments: PathSegment[]; subpaths?: SVGSubpath[] } {
   if (entries.length === 0) {
     return { color: { r: 0, g: 0, b: 0 }, segments: [], subpaths: undefined };
   }
-  const groups: Array<{ color: RGBColor; segments: PathSegment[] }> = [];
-  let cur: { color: RGBColor; segments: PathSegment[] } | null = null;
-  for (const { segment, color } of entries) {
-    if (cur && cur.color.r === color.r && cur.color.g === color.g && cur.color.b === color.b) {
+  // A FILL subpath is one closed drawing, not a run of stroke colors: its
+  // `fill` flag must survive the regroup, and its segments must stay one
+  // group — splitting them (or merging them with a same-colored stroke
+  // neighbor) restructures the closed loops the fill is built from. Entries
+  // that came from a fill subpath carry `fill` + that subpath's ordinal as
+  // `atom`; a group boundary falls wherever color, fill, OR atom changes,
+  // which keeps every atom whole and every stroke run grouped as before.
+  // (Before this, the regroup dropped `fill` entirely — one brush stroke on
+  // a baked figure hollowed all its painted cells into outlines.)
+  const groups: Array<{ color: RGBColor; segments: PathSegment[]; fill?: boolean; atom?: number }> = [];
+  let cur: { color: RGBColor; segments: PathSegment[]; fill?: boolean; atom?: number } | null = null;
+  for (const { segment, color, fill, atom } of entries) {
+    if (cur
+      && cur.color.r === color.r && cur.color.g === color.g && cur.color.b === color.b
+      && (cur.fill ?? false) === (fill ?? false)
+      && cur.atom === atom) {
       cur.segments.push(segment);
     } else {
-      cur = { color, segments: [segment] };
+      cur = { color, segments: [segment], fill, atom };
       groups.push(cur);
     }
   }
   const primary = groups[0];
-  if (groups.length === 1) {
+  if (groups.length === 1 && !primary.fill) {
     return { color: primary.color, segments: primary.segments, subpaths: undefined };
   }
   return {
     color: primary.color,
     segments: entries.map(e => e.segment),
-    subpaths: groups.map(g => ({ color: g.color, segments: g.segments })),
+    subpaths: groups.map(g => {
+      const sub: SVGSubpath = { color: g.color, segments: g.segments };
+      if (g.fill) sub.fill = true;
+      return sub;
+    }),
   };
 }
 
@@ -400,6 +416,49 @@ export function regroupSegmentsByColor(
  * the brush over a segment that was already the brush color) are skipped
  * so undo entries don't pile up no-op ops.
  */
+/**
+ * The flat (segment, color) entries a paint commit regroups, with painted
+ * colors substituted at their stable flat indices — and fill subpaths kept
+ * honest: a fill subpath's entries all take ONE color (the first painted
+ * index wins, else the subpath's own), tagged `fill` + `atom` so
+ * {@link regroupSegmentsByColor} preserves the subpath whole. A fill renders
+ * as one closed drawing in one color, so per-segment paint variation inside
+ * it has nothing to attach to. Shared by the world and group-local halves of
+ * the commit, which must stay structurally parallel.
+ */
+function paintedFlatEntries(
+  color: RGBColor,
+  segments: readonly PathSegment[],
+  subpaths: readonly SVGSubpath[] | undefined,
+  painted: ReadonlyMap<number, RGBColor>,
+): Array<{ segment: PathSegment; color: RGBColor; fill?: boolean; atom?: number }> {
+  const out: Array<{ segment: PathSegment; color: RGBColor; fill?: boolean; atom?: number }> = [];
+  if (Array.isArray(subpaths) && subpaths.length > 0) {
+    let idx = 0;
+    subpaths.forEach((sub, subIdx) => {
+      if (sub.fill) {
+        let fillColor = sub.color;
+        for (let k = 0; k < sub.segments.length; k++) {
+          const p = painted.get(idx + k);
+          if (p) { fillColor = p; break; }
+        }
+        for (const seg of sub.segments) {
+          out.push({ segment: seg, color: fillColor, fill: true, atom: subIdx });
+          idx++;
+        }
+      } else {
+        for (const seg of sub.segments) {
+          out.push({ segment: seg, color: painted.get(idx) ?? sub.color });
+          idx++;
+        }
+      }
+    });
+    return out;
+  }
+  segments.forEach((seg, idx) => out.push({ segment: seg, color: painted.get(idx) ?? color }));
+  return out;
+}
+
 export function buildPaintStrokeOps(state: CompositionState, draft: PaintStrokeDraft): CompUndoOp[] {
   const ops: CompUndoOp[] = [];
 
@@ -410,18 +469,8 @@ export function buildPaintStrokeOps(state: CompositionState, draft: PaintStrokeD
     if (!svg) continue;
     if (svg.locked) continue;
 
-    const flat = flattenSVGSegmentsWithColor({
-      ...svg,
-      color: snap.color,
-      segments: snap.segments,
-      subpaths: snap.subpaths,
-    });
-
-    // Substitute painted colors at their stable flat indices.
-    const entries = flat.map(({ segment, color }, idx) => {
-      const painedColor = painted.get(idx);
-      return { segment, color: painedColor ?? color };
-    });
+    // Substitute painted colors at their stable flat indices, fill-aware.
+    const entries = paintedFlatEntries(snap.color, snap.segments, snap.subpaths, painted);
 
     const regrouped = regroupSegmentsByColor(entries);
     const segmentsChanged = !sameShape(snap, regrouped);
@@ -456,29 +505,15 @@ export function buildPaintStrokeOps(state: CompositionState, draft: PaintStrokeD
     // SVG visually falls behind when the group moves.
     if (svg.groupId && snap.localSegments) {
       // Flat list of LOCAL segments in the same order as the world flat
-      // list. Follow the same "subpaths win when present" invariant
-      // `flattenSVGSegmentsWithColor` and `brushHitsSegments` use â€”
-      // walk localSubpaths-only when present, localSegments otherwise.
-      // Iterating BOTH would double-count under the regroup invariant
-      // (segments and subpaths describe the same geometry), causing
-      // localSegments / localSubpaths to double on every paint stroke
-      // until u16 counts overflow on save and corrupt the file.
-      const localFlatEntries: Array<{ segment: PathSegment; color: RGBColor }> = [];
-      const localSubpathsHas = Array.isArray(snap.localSubpaths) && snap.localSubpaths.length > 0;
-      if (localSubpathsHas) {
-        for (const sub of snap.localSubpaths!) {
-          for (const seg of sub.segments) localFlatEntries.push({ segment: seg, color: sub.color });
-        }
-      } else {
-        for (const seg of snap.localSegments) localFlatEntries.push({ segment: seg, color: snap.color });
-      }
-      // Substitute painted colors at the SAME flat indices used for the
-      // world regroup so the two outputs are structurally parallel
-      // (same group count, same per-group lengths, same color order).
-      const localEntries = localFlatEntries.map(({ segment, color }, idx) => ({
-        segment,
-        color: painted.get(idx) ?? color,
-      }));
+      // list — the same fill-aware builder, at the SAME flat indices, so
+      // the two outputs are structurally parallel (same group count, same
+      // per-group lengths, same color order, same fill flags). Walking
+      // localSubpaths-only when present (never BOTH lists) is what keeps
+      // the regroup from double-counting geometry until u16 counts
+      // overflow on save and corrupt the file.
+      const localEntries = paintedFlatEntries(
+        snap.color, snap.localSegments, snap.localSubpaths, painted,
+      );
       const localRegrouped = regroupSegmentsByColor(localEntries);
       opShape.oldLocalSegments = snap.localSegments;
       opShape.newLocalSegments = localRegrouped.segments;
@@ -556,6 +591,9 @@ function sameShape(
   for (let i = 0; i < aSubs.length; i++) {
     if (!colorsEqual(aSubs[i].color, bSubs[i].color)) return false;
     if (aSubs[i].segments.length !== bSubs[i].segments.length) return false;
+    // A fill flag flipping IS a shape change — without this a repaint that
+    // only restored a fill would read as a no-op and never commit.
+    if ((aSubs[i].fill ?? false) !== (bSubs[i].fill ?? false)) return false;
   }
   return true;
 }
