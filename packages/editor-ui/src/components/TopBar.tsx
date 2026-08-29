@@ -34,6 +34,15 @@ export function TopBar({ model }: { model: TopBarModel }) {
 
   return (
     <View style={styles.bar}>
+      {/* Center readout (e.g. the developer-mode grid level): absolutely
+          centered so it sits in the bar's true middle whatever the label and
+          tool-row widths, and press-transparent so it can never swallow a
+          tap aimed at what is under it. */}
+      {model.centerInfo ? (
+        <View pointerEvents="none" style={styles.centerInfoWrap}>
+          <Text style={styles.centerInfo} numberOfLines={1}>{model.centerInfo}</Text>
+        </View>
+      ) : null}
       <Pressable accessibilityRole="button" accessibilityLabel="Back" style={styles.back} onPress={model.onBack}>
         <MaterialCommunityIcons name="chevron-left" size={24} color={HEADER_INK} />
       </Pressable>
@@ -134,6 +143,18 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   label: { flexShrink: 1, color: HEADER_INK, fontSize: 18, fontWeight: '600' },
+  centerInfoWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Small and muted: information, not a control — it must never read as a
+  // button or compete with the title.
+  centerInfo: { color: HEADER_INK, fontSize: 11, opacity: 0.55, fontVariant: ['tabular-nums'] },
   tools: {
     flex: 1,
     flexDirection: 'row',

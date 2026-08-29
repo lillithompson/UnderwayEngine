@@ -119,6 +119,11 @@ export interface TopBarModel {
   label: string;
   /** Opens the scene outline (tap the title). Optional — Facet may unset. */
   onLabelPress?: () => void;
+  /** Small muted text centered in the bar, over the gap between the label
+   *  and the tools — an informational readout (CozyJournal's developer-mode
+   *  grid level), never a control: it takes no presses and truncates rather
+   *  than pushing the tools. Unset renders nothing. */
+  centerInfo?: string;
   tools: TopBarTool[];
   onBack(): void;
   /** The tool the press resolves to, or `null` when the press untoggled the
