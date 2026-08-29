@@ -288,7 +288,9 @@ export type PatternGridAction = 'flood' | 'reconcile' | 'clear';
  *  the grid and re-rolls it with connectivity-respecting picks. */
 export const PATTERN_GRID_ACTIONS: readonly { action: PatternGridAction; label: string }[] = [
   { action: 'flood', label: 'Flood' },
-  { action: 'reconcile', label: 'Reconcile' },
+  // "Close" is the user's word for reconciling — closing a tile's open
+  // ends into its neighbours; the 'reconcile' id stays the internal name.
+  { action: 'reconcile', label: 'Close' },
   { action: 'clear', label: 'Clear' },
 ];
 

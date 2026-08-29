@@ -35,8 +35,11 @@ describe('the pattern options row', () => {
     for (const o of PATTERN_EDIT_OPTIONS) expect(o.label.length).toBeGreaterThan(0);
   });
 
-  it('the Tools bar runs Flood, Reconcile and Clear on the grid', () => {
+  it('the Tools bar runs Flood, Close and Clear on the grid', () => {
     expect(PATTERN_GRID_ACTIONS.map((a) => a.action)).toEqual(['flood', 'reconcile', 'clear']);
+    // The UI's word for reconciling is "Close" — closing a tile's open
+    // ends into its neighbours; the 'reconcile' id stays the internal name.
+    expect(PATTERN_GRID_ACTIONS.map((a) => a.label)).toEqual(['Flood', 'Close', 'Clear']);
   });
 
   it('maps each action to its submenu key and back', () => {

@@ -29,7 +29,7 @@ import { PatternTileTransformModal } from './PatternTileTransformModal';
 //                the whole menu. Exactly one button is lit, because all
 //                eight answer one question — what does the next canvas
 //                press paint?
-//   • Tools    — the grid actions (Flood / Reconcile / Clear run now, one
+//   • Tools    — the grid actions (Flood / Close / Clear run now, one
 //                undo step each), the Borders rule connectivity honors at
 //                the grid edge, and the tile-set filter.
 //   • Symmetry — the painting-mirror grid (the old symmetry modal's modes),
