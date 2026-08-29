@@ -264,7 +264,10 @@ export function patternTileSetRows(
 
 /** The pattern sub-tool a canvas press paints with, as the panel speaks of
  *  it. 'tile' is selected implicitly by picking a tile in the Tiles bar. */
-export type PatternPanelTool = 'random' | 'erase' | 'tile';
+/** 'reconcile' is the per-cell repair tool the floating overlay toggles —
+ *  it has no button in the Tiles grid, so nothing there lights while it is
+ *  armed (the grid's random/erase/tile buttons compare against it). */
+export type PatternPanelTool = 'random' | 'erase' | 'tile' | 'reconcile';
 
 /** The two ARMING choices that aren't a tile. They lead the Tiles bar's
  *  grid — Random over Erase in the leftmost column, wearing Facet Tile

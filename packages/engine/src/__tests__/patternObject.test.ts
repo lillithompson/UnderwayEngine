@@ -13,11 +13,12 @@ import {
   patternInkColor,
   patternIsEmpty,
   patternRecolorEdits,
+  patternReconcileCellEdits,
   patternReconcileEdits,
   tintedPatternCell,
 } from '../patternObject';
 import { bakePatternElements, patternSVGView } from '../patternObjectRender';
-import { gatherConstraints, getRenderedSignature } from '../connectivity';
+import { gatherConstraints, getRenderedSignature, mirrorCellState } from '../connectivity';
 import { applyCompOps, revertCompOps, findSceneObjectAtCell, SCENE_ADAPTERS } from '../compositionOps';
 import {
   CellState,
@@ -214,6 +215,71 @@ describe('patternReconcileEdits', () => {
   test('already-consistent grid produces no edits', () => {
     const p = withCell(makePattern(4, 4), 0, 0, spriteCell('test/tile_00000000'));
     expect(patternReconcileEdits(p)).toHaveLength(0);
+  });
+});
+
+describe('patternReconcileCellEdits (the per-cell reconcile tool)', () => {
+  test('a tap closes the touched tile’s border — that cell alone', () => {
+    // tile_11111111 at (1,1) demands connections all around; its east
+    // neighbour refuses them and every other side is empty. Tapping the
+    // mismatched cell repairs it — and only it — the same replacement the
+    // whole-grid reconcile would give.
+    let p = withCell(makePattern(4, 4), 1, 1, spriteCell('test/tile_11111111'));
+    p = withCell(p, 2, 1, spriteCell('test/tile_00000000'));
+    const edits = patternReconcileCellEdits(p, 1, 1);
+    expect(edits.length).toBeGreaterThan(0);
+    expect(edits.every((e) => e.index === 1 * 4 + 1)).toBe(true);
+    p = applyPatternCellEdits(p, edits);
+    // The tapped cell now satisfies its gathered constraints…
+    const layer = buildPatternLayerView(p);
+    const cfg = patternCanvasCfg(p);
+    const sig = getRenderedSignature(patternCellAt(p, 1, 1)!)!;
+    const cs = gatherConstraints(
+      1, 1, layer, [layer], true, undefined, cfg.widthL0, cfg.heightL0,
+    );
+    for (let k = 0; k < 8; k++) expect(cs[k] === null || cs[k] === sig[k]).toBe(true);
+    // …and the neighbour was left exactly as it was.
+    expect(patternCellAt(p, 2, 1)).toEqual(spriteCell('test/tile_00000000'));
+  });
+
+  test('a well-connected tile, an empty cell, and a colour cell all yield nothing', () => {
+    let p = withCell(makePattern(4, 4), 0, 0, spriteCell('test/tile_00000000'));
+    p = withCell(p, 2, 2, colorCell(10, 20, 30));
+    expect(patternReconcileCellEdits(p, 0, 0)).toHaveLength(0);
+    expect(patternReconcileCellEdits(p, 1, 1)).toHaveLength(0);
+    expect(patternReconcileCellEdits(p, 2, 2)).toHaveLength(0);
+    expect(patternReconcileCellEdits(p, -1, 0)).toHaveLength(0);
+  });
+
+  test('the repair keeps the tile’s painted ink — it is a swap, not a repaint', () => {
+    const ink = { r: 200, g: 10, b: 10 };
+    let p = withCell(
+      makePattern(4, 4), 1, 1, tintedPatternCell(spriteCell('test/tile_11111111'), ink),
+    );
+    const edits = patternReconcileCellEdits(p, 1, 1);
+    expect(edits.length).toBeGreaterThan(0);
+    p = applyPatternCellEdits(p, edits);
+    expect(patternCellTint(patternCellAt(p, 1, 1))).toEqual(ink);
+  });
+
+  test('under mirrorH the repair lands mirrored on the partner too', () => {
+    // A symmetric pair of open tiles: the tap repairs the touched cell and
+    // clones the result (mirrored) onto its partner, so the grid stays
+    // symmetric by construction — never one side closed, the other open.
+    let p = makePattern(4, 4, { symmetry: { ...PATTERN_SYMMETRY_OFF, mirrorH: true } });
+    p = withCell(p, 0, 1, spriteCell('test/tile_11111111'));
+    p = withCell(p, 3, 1, mirrorCellState(spriteCell('test/tile_11111111'), true, false, 0));
+    const edits = patternReconcileCellEdits(p, 0, 1);
+    expect(edits.map((e) => e.index).sort((a, b) => a - b)).toEqual([4, 7]);
+    p = applyPatternCellEdits(p, edits);
+    const prim = patternCellAt(p, 0, 1)!;
+    expect(patternCellAt(p, 3, 1)).toEqual(mirrorCellState(prim, true, false, 0));
+  });
+
+  test('patternApplyToolAt routes the reconcile tool here — the tap IS a brush stroke', () => {
+    const p = withCell(makePattern(4, 4), 1, 1, spriteCell('test/tile_11111111'));
+    expect(patternApplyToolAt(p, 1, 1, { kind: 'reconcile' }))
+      .toEqual(patternReconcileCellEdits(p, 1, 1));
   });
 });
 

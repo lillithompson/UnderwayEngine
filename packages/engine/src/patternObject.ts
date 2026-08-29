@@ -31,6 +31,9 @@ import {
 } from './types';
 import {
   cellStatesEqual,
+  findMinimalReplacement,
+  gatherConstraints,
+  getRenderedSignature,
   pickRandomCompatibleSprite,
   reconcileCanvas,
   mirrorCellState,
@@ -168,6 +171,10 @@ export function buildPatternLayerView(p: PatternObject): Layer {
 export type PatternSubTool =
   | { kind: 'random' }
   | { kind: 'erase' }
+  // The per-cell reconcile TOOL: a tap closes the touched tile's border —
+  // the same repair the whole-grid reconcile would give that cell — with
+  // partners mirrored (see patternReconcileCellEdits).
+  | { kind: 'reconcile' }
   // `transform` is the pose the armed tile stamps in — the per-tile
   // rotation/mirror the Tiles menu's double-tap and transform modal set.
   // Absent = identity, the pose the registry drew the tile in.
@@ -204,6 +211,10 @@ export function patternApplyToolAt(
   tint?: RGBColor | null,
 ): PatternCellEdit[] {
   if (x < 0 || y < 0 || x >= p.cols || y >= p.rows) return [];
+  // The reconcile TOOL routes to its own per-cell repair: it stamps no
+  // state of its own — the replacement (and its mirrored partners) comes
+  // from what the touched cell's neighbours demand.
+  if (tool.kind === 'reconcile') return patternReconcileCellEdits(p, x, y, excludedFamilies);
   const layer = buildPatternLayerView(p);
   const cfg = patternCanvasCfg(p);
   const flags = patternSymmetryFlags(p);
@@ -290,6 +301,73 @@ export function patternReconcileEdits(
       oldState: op.oldState,
       newState,
     });
+  }
+  return edits.filter((e) => !cellStatesEqual(e.oldState, e.newState));
+}
+
+/**
+ * Reconcile ONE cell — the per-cell reconcile tool's tap: if the tile at
+ * (x, y) disagrees with any of its resolved border constraints, replace it
+ * with the minimal better-connecting pick — exactly the repair the
+ * whole-grid reconcile gives a mismatched cell (same gatherConstraints /
+ * findMinimalReplacement primitives, empty neighbours reading as walls so
+ * an open line-end into empty space is what gets closed, tint carried
+ * across) — and clone the result onto its symmetry partners
+ * (computePaintMirrorTargets + mirrorCellState, the orbit painting stamps
+ * through), so a reconcile tap can never break a symmetric grid.
+ *
+ * A well-connected cell, an empty one, or a non-sprite ('color') cell
+ * yields no edits — the tap has nothing to close.
+ */
+export function patternReconcileCellEdits(
+  p: PatternObject,
+  x: number,
+  y: number,
+  excludedFamilies?: Set<string>,
+): PatternCellEdit[] {
+  if (x < 0 || y < 0 || x >= p.cols || y >= p.rows) return [];
+  const cell = patternCellAt(p, x, y);
+  if (!cell || cell.type !== 'sprite') return [];
+  const sig = getRenderedSignature(cell);
+  if (!sig) return [];
+  const layer = buildPatternLayerView(p);
+  const cfg = patternCanvasCfg(p);
+  const flags = patternSymmetryFlags(p);
+  const allow = patternAllowsBorderConnections(p);
+  // gatherConstraints returns a SHARED array — copy before any further
+  // engine call could overwrite it (findMinimalReplacement gathers its own
+  // when not handed one).
+  const cs = gatherConstraints(
+    x, y, layer, [layer], allow, undefined, cfg.widthL0, cfg.heightL0, true,
+  ).slice();
+  let mismatch = false;
+  for (let k = 0; k < 8; k++) {
+    if (cs[k] !== null && cs[k] !== sig[k]) { mismatch = true; break; }
+  }
+  if (!mismatch) return [];
+  const symmetry = computeMirrorSymmetry(x, y, layer, cfg, flags);
+  const replacement = findMinimalReplacement(
+    x, y, layer, [layer], allow, cell, excludedFamilies,
+    cfg.widthL0, cfg.heightL0, symmetry, cs,
+  );
+  if (!replacement) return [];
+  // The repair swaps the tile, it does not repaint: carry the cell's own
+  // ink across, exactly as the whole-grid reconcile does.
+  const ink = patternCellTint(cell);
+  const next = ink ? tintedPatternCell(replacement, ink) : replacement;
+
+  const edits: PatternCellEdit[] = [];
+  const seen = new Set<number>();
+  const push = (cx: number, cy: number, state: CellState) => {
+    if (cx < 0 || cy < 0 || cx >= p.cols || cy >= p.rows) return;
+    const index = cy * p.cols + cx;
+    if (seen.has(index)) return;
+    seen.add(index);
+    edits.push({ index, oldState: patternCellAt(p, cx, cy), newState: state });
+  };
+  push(x, y, next);
+  for (const t of computePaintMirrorTargets(x, y, layer, cfg, flags)) {
+    push(t.x, t.y, mirrorCellState(next, t.mH, t.mV, t.rot));
   }
   return edits.filter((e) => !cellStatesEqual(e.oldState, e.newState));
 }
