@@ -100,6 +100,24 @@ export function paintObjectIsUntransformed(p: PaintObject): boolean {
 }
 
 /**
+ * The island's tile→world offset when its frame is a PURE TRANSLATION of
+ * tile space — moved, but not rotated, mirrored, scaled or grouped: every
+ * texel renders at exactly tile + (dx, dy). {0, 0} for an untransformed
+ * island; null once any other transform is layered on.
+ *
+ * The session brush's gate for continuing into a MOVED island: its world
+ * dabs still map into tile space by one subtraction (round dabs stay round,
+ * radii carry over 1:1), and its frame can still re-grow around fresh ink
+ * ({@link paintObjectCanGrow} at 1:1) — so new spray lands ON the moved
+ * paint instead of minting a second layer beneath it.
+ */
+export function paintObjectTranslation(p: PaintObject): { dx: number; dy: number } | null {
+  if (p.rotation || p.angleDeg || p.mirrorH || p.mirrorV || p.groupId) return null;
+  if (p.cellWidth !== p.contentW || p.cellHeight !== p.contentH) return null;
+  return { dx: p.cellX - p.contentX, dy: p.cellY - p.contentY };
+}
+
+/**
  * Can this island's FRAME absorb a change of content rect — can its tiles
  * cover more (or less) ground without the paint already in it moving on
  * screen?

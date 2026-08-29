@@ -32,6 +32,7 @@ import {
   paintObjectAlphaHitTest,
   paintObjectCanGrow,
   paintObjectIsUntransformed,
+  paintObjectTranslation,
 } from '../paintObject';
 import {
   applyCompOps,
@@ -210,6 +211,36 @@ describe('paintObjectIsUntransformed', () => {
     // bbox ≠ contentRect: a move or a scale each end the session frame.
     expect(paintObjectIsUntransformed({ ...p, cellX: p.cellX + 1 })).toBe(false);
     expect(paintObjectIsUntransformed({ ...p, cellWidth: p.cellWidth * 2 })).toBe(false);
+  });
+});
+
+describe('paintObjectTranslation', () => {
+  it('is {0, 0} at creation and the move offset after a plain move', () => {
+    const p = dabPaint('pnt_a', [[8 + C, 8 + C]]);
+    expect(paintObjectTranslation(p)).toEqual({ dx: 0, dy: 0 });
+    // A move changes cellX/Y only; tile space trails world by exactly that.
+    expect(paintObjectTranslation({ ...p, cellX: p.cellX + 7, cellY: p.cellY - 3 }))
+      .toEqual({ dx: 7, dy: -3 });
+  });
+
+  it('is null once any non-translation transform is layered on', () => {
+    const p = dabPaint('pnt_a', [[8 + C, 8 + C]]);
+    expect(paintObjectTranslation({ ...p, rotation: 90 })).toBeNull();
+    expect(paintObjectTranslation({ ...p, angleDeg: 5 })).toBeNull();
+    expect(paintObjectTranslation({ ...p, mirrorH: true })).toBeNull();
+    expect(paintObjectTranslation({ ...p, mirrorV: true })).toBeNull();
+    expect(paintObjectTranslation({ ...p, groupId: 'g1' })).toBeNull();
+    // A scale (bbox size ≠ content size) is not a translation.
+    expect(paintObjectTranslation({ ...p, cellWidth: p.cellWidth * 2 })).toBeNull();
+    expect(paintObjectTranslation({ ...p, cellHeight: p.cellHeight + 1 })).toBeNull();
+  });
+
+  it('agrees with paintLocalFrame: subtracting the offset IS the inverse map', () => {
+    const p = dabPaint('pnt_a', [[8 + C, 8 + C]]);
+    const moved: PaintObject = { ...p, cellX: p.cellX + 100, cellY: p.cellY - 50 };
+    const { dx, dy } = paintObjectTranslation(moved)!;
+    const frame = paintLocalFrame(moved);
+    closeTo(frame.toTile(8 + C + 100, 8 + C - 50), [8 + C + 100 - dx, 8 + C - 50 - dy]);
   });
 });
 
