@@ -1,10 +1,11 @@
 /**
  * The paint brush's sparse raster tiles (canvasPaint.ts): tile allocation
  * wherever a dab lands (the draw-anywhere contract), the shared texel
- * lattice across tile borders, the erase/blur passes that never allocate,
- * the memory budget, commit-time pruning, loader normalization, and the
- * tile-space content queries ({@link paintTilesContentRect} /
- * {@link paintTileAlphaAt}) that PaintObject geometry is derived from.
+ * lattice across tile borders, the erase pass that never allocates and the
+ * blur pass that spreads across seams and into fresh tiles, the memory
+ * budget, commit-time pruning, loader normalization, and the tile-space
+ * content queries ({@link paintTilesContentRect} / {@link paintTileAlphaAt})
+ * that PaintObject geometry is derived from.
  *
  * The module is frame-agnostic since v52 — coordinates here are cells in
  * the tile lattice of ONE {@link PaintObject}'s tiles; the world↔tile
@@ -165,13 +166,68 @@ describe('erase, blur and compose/commit', () => {
     expect(working.touched.size).toBe(0);
   });
 
-  it('blurring never allocates', () => {
-    // Blur softens what is there; on unallocated space there is nothing to
-    // soften, and allocating a tile of transparent texels to blur would be
-    // pure memory waste.
+  it('blurring empty plane changes nothing, and its scouting tiles prune at commit', () => {
+    // The blur pass allocates tiles under the disc so spread has somewhere
+    // to land — but a dab over nothing spreads nothing, reports nothing
+    // changed, and the untouched allocations prune away at commit exactly
+    // like an erased-empty tile.
     const working = createCanvasPaintWorking(undefined);
     expect(blurCanvasPaint(working, 8, 8, 4, 1)).toEqual([]);
-    expect(working.touched.size).toBe(0);
+    expect(commitCanvasPaint(working)).toBeUndefined();
+  });
+
+  /** A committed tile at grid slot (0,0) painted solid red over its
+   *  rightmost two cells — a hard paint edge flush against the tile seam at
+   *  x = 16, with nothing allocated beyond it. */
+  function redEdgeAtSeam(): CanvasPaintIsland[] {
+    const tile = emptyTile(0, 0);
+    const { cols, rows, rgba } = tile.overlay;
+    for (let r = 0; r < rows; r++) {
+      for (let c = cols - 16; c < cols; c++) {
+        const i = (r * cols + c) * 4;
+        rgba[i] = 255;
+        rgba[i + 3] = 255;
+      }
+    }
+    return [tile];
+  }
+
+  it('blur reads and spreads across the tile seam — the grid is invisible', () => {
+    const seam = CANVAS_ISLAND_CELLS;
+    const working = createCanvasPaintWorking(redEdgeAtSeam());
+    const changed = blurCanvasPaint(working, seam, 8 + C, 2, 1);
+    // The paint's edge feathered PAST the seam, into a tile that did not
+    // exist — the kernel read the red through the seam and the spread
+    // allocated where it landed.
+    expect(changed).toContain(islandKey(CANVAS_ISLAND_CELLS, 0));
+    const tiles = commitCanvasPaint(working)!;
+    expect(alphaAt(tiles, seam + C, 8 + C)).toBeGreaterThan(0);
+    // What spread is the paint's own colour (alpha-weighted average), not
+    // transparent black dragged in.
+    const isl = islandAt(tiles, seam + C, 8 + C)!;
+    const o = texelOffset(isl, seam + C, 8 + C);
+    expect(isl.overlay.rgba[o]).toBeGreaterThan(200);      // red
+    expect(isl.overlay.rgba[o + 1]).toBe(0);
+    expect(isl.overlay.rgba[o + 2]).toBe(0);
+    // And the last texel left of the seam softened DOWN — it now averages
+    // with the genuinely transparent plane on the other side, exactly as an
+    // edge in the middle of a tile would.
+    expect(alphaAt(tiles, seam - C, 8 + C)).toBeLessThan(255);
+  });
+
+  it('blur bounds fence writes but not reads', () => {
+    const seam = CANVAS_ISLAND_CELLS;
+    const working = createCanvasPaintWorking(redEdgeAtSeam());
+    const changed = blurCanvasPaint(working, seam, 8 + C, 2, 1, {
+      x: 0, y: 0, w: CANVAS_ISLAND_CELLS, h: CANVAS_ISLAND_CELLS,
+    });
+    // Nothing lands past the fence…
+    expect(changed).toEqual([islandKey(0, 0)]);
+    const tiles = commitCanvasPaint(working)!;
+    expect(alphaAt(tiles, seam + C, 8 + C)).toBe(0);
+    // …but the fenced-in edge still softens (its reads crossed the seam to
+    // the transparent plane as freely as ever).
+    expect(alphaAt(tiles, seam - C, 8 + C)).toBeLessThan(255);
   });
 
   it('composeCanvasPaint keeps untouched islands by reference', () => {

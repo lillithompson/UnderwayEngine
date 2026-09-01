@@ -39,8 +39,8 @@
 import { BlendMode, CanvasPaintIsland, RGBColor } from './types';
 import { gaussianFalloff } from './colorBlend';
 import {
-  blurImagePaintOverlay, clonePaintOverlay, eraseImagePaintOverlay, paintOverlayHasInk,
-  stampImagePaintOverlay,
+  BLUR_KERNEL_FRACTION, BLUR_MAX_KERNEL_TEXELS, BLUR_TAPS, clonePaintOverlay,
+  eraseImagePaintOverlay, paintOverlayHasInk, stampImagePaintOverlay,
 } from './imagePaintOverlay';
 
 /** Texel density. Double the per-object overlays' 4/cell: island brushwork
@@ -551,27 +551,193 @@ export function eraseCanvasPaint(
   return changed;
 }
 
-/** Blur one canvas dab — one box-blur step over each touched island's own
- *  texels, unmasked (softening what is there is fine anywhere). Never
- *  allocates. Each island blurs within itself: a texel at a tile edge
- *  doesn't read its neighbor tile, a soft-edged approximation that keeps the
- *  pass allocation-free. */
+/**
+ * A reader over the stroke's whole texel plane. Every tile shares one texel
+ * lattice, so a global texel index resolves to whichever tile holds it —
+ * working copies first ({@link readIsland}) — or to null, off the painted
+ * plane. The blur and smudge passes both sample their sources through this.
+ *
+ * One-entry tile memo: both passes walk row-major, so runs of consecutive
+ * reads land in the same tile and skip the key lookup.
+ */
+function globalTexelReader(
+  working: CanvasPaintWorking,
+): (gx: number, gy: number) => { rgba: Uint8Array; i: number } | null {
+  let memoTx = NaN;
+  let memoTy = NaN;
+  let memoIsl: CanvasPaintIsland | undefined;
+  return (gx, gy) => {
+    const tx = Math.floor(gx / CANVAS_ISLAND_TEXELS);
+    const ty = Math.floor(gy / CANVAS_ISLAND_TEXELS);
+    if (tx !== memoTx || ty !== memoTy) {
+      memoTx = tx;
+      memoTy = ty;
+      memoIsl = readIsland(working, tx, ty);
+    }
+    if (!memoIsl) return null;
+    const c = gx - tx * CANVAS_ISLAND_TEXELS;
+    const r = gy - ty * CANVAS_ISLAND_TEXELS;
+    return { rgba: memoIsl.overlay.rgba, i: (r * memoIsl.overlay.cols + c) * 4 };
+  };
+}
+
+/** Reusable per-dab result buffer for {@link blurCanvasPaint}: the blurred
+ *  texels of one dab's disc, computed in full before any is written back —
+ *  the pass reads its own neighbourhood, so writing in place would cascade
+ *  within the dab. Sized to the disc, not the tiles, so it stays small
+ *  however many tiles the disc grazes. Grown on demand, never shrunk, never
+ *  live across a call (the blur is synchronous). */
+let blurDabScratch = new Uint8Array(0);
+
+/**
+ * Blur one canvas dab, unmasked (softening what is there is fine anywhere):
+ * every texel under the disc moves toward its neighbourhood average by
+ * `strength × gaussianFalloff` — one soft box-blur step per stamp, the
+ * island counterpart of imagePaintOverlay's blur with the same kernel maths
+ * ({@link BLUR_KERNEL_FRACTION} / {@link BLUR_TAPS} / the texel cap) and the
+ * same alpha-weighted average (a transparent neighbour lends cover, not
+ * colour, so a red edge feathers red rather than dragging black in).
+ *
+ * Unlike the per-object overlay pass, this one sees the WHOLE tile plane:
+ *
+ * It READS ACROSS TILE SEAMS. Tiles are an allocation detail the user never
+ * chose, so a kernel clipped at a tile edge would draw the 16-cell grid over
+ * every blurred stroke as a visible seam. Taps resolve through whatever tile
+ * holds them ({@link readIsland}); a tap on unallocated plane is a
+ * transparent texel like any other — it lends cover and no colour — so the
+ * paint's true edge feathers identically mid-tile or on a seam.
+ *
+ * And it ALLOCATES. Softening an edge spreads alpha outward, and outward may
+ * be a tile that does not exist yet; without allocation the spread would
+ * pile against the tile border — a wall in what looks like empty space.
+ * Tiles under the disc are allocated like the smudge pass's, and ones the
+ * blur never fills are pruned at commit like any other empty tile.
+ *
+ * The dab computes into {@link blurDabScratch} first and writes back after,
+ * so it cannot cascade into itself. The write-back re-derives each texel's
+ * disc test with bit-identical arithmetic, which is what lets the scratch
+ * skip a coverage plane: a texel is read back exactly when it was computed.
+ *
+ * `bounds` (tile-space rect) fences the WRITES exactly as it does for
+ * {@link smudgeCanvasPaint}: an island whose frame cannot re-frame around
+ * more content (a rotated one) would clip outward spread invisibly, so the
+ * softening stays inside the rect instead. Reads are never fenced.
+ */
 export function blurCanvasPaint(
   working: CanvasPaintWorking,
   cellX: number,
   cellY: number,
   radiusCells: number,
   strength: number,
+  bounds?: { x: number; y: number; w: number; h: number },
 ): string[] {
+  if (!(strength > 0)) return [];
   const radius = effectiveRadius(radiusCells);
-  const changed: string[] = [];
-  forEachIslandUnderDab(working, cellX, cellY, radius, false, (island, key) => {
-    if (blurImagePaintOverlay(
-      island.overlay, island.widthCells, islandHeightCells(island),
-      cellX - island.x, cellY - island.y, radius, strength,
-    )) {
-      changed.push(key);
+  const radiusSq = radius * radius;
+  const tpc = CANVAS_PAINT_TEXELS_PER_CELL;
+  // Kernel reach and tap spacing — the overlay pass's maths verbatim.
+  const k = Math.max(1, Math.min(
+    BLUR_MAX_KERNEL_TEXELS,
+    Math.round(radius * tpc * BLUR_KERNEL_FRACTION * strength),
+  ));
+  const step = Math.max(1, Math.ceil(k / ((BLUR_TAPS - 1) / 2)));
+  // The disc's bbox on the global texel lattice — the scratch's frame. Every
+  // tile shares one lattice, so a global index resolves to whichever tile
+  // holds it, or to transparent plane where none does.
+  const gx0 = Math.floor((cellX - radius) * tpc);
+  const gx1 = Math.ceil((cellX + radius) * tpc);
+  const gy0 = Math.floor((cellY - radius) * tpc);
+  const gy1 = Math.ceil((cellY + radius) * tpc);
+  const gw = gx1 - gx0 + 1;
+  const gh = gy1 - gy0 + 1;
+  if (blurDabScratch.length < gw * gh * 4) blurDabScratch = new Uint8Array(gw * gh * 4);
+  const out = blurDabScratch;
+  const texelAt = globalTexelReader(working);
+  for (let gy = gy0; gy <= gy1; gy++) {
+    const dy = (gy + 0.5) / tpc - cellY;
+    for (let gx = gx0; gx <= gx1; gx++) {
+      const dx = (gx + 0.5) / tpc - cellX;
+      const distSq = dx * dx + dy * dy;
+      if (distSq > radiusSq) continue;
+      const t = strength * gaussianFalloff(distSq / radiusSq);
+      if (!(t > 0)) continue;
+      let rSum = 0, gSum = 0, bSum = 0, aSum = 0, n = 0;
+      for (let dr = -k; dr <= k; dr += step) {
+        for (let dc = -k; dc <= k; dc += step) {
+          const tap = texelAt(gx + dc, gy + dr);
+          if (tap) {
+            const a = tap.rgba[tap.i + 3];
+            rSum += tap.rgba[tap.i] * a;
+            gSum += tap.rgba[tap.i + 1] * a;
+            bSum += tap.rgba[tap.i + 2] * a;
+            aSum += a;
+          }
+          // A null tap is the unallocated plane: a transparent texel, so it
+          // counts toward the neighbourhood (n) and contributes nothing.
+          n++;
+        }
+      }
+      const own = texelAt(gx, gy);
+      const sr = own ? own.rgba[own.i] : 0;
+      const sg = own ? own.rgba[own.i + 1] : 0;
+      const sb = own ? own.rgba[own.i + 2] : 0;
+      const sa = own ? own.rgba[own.i + 3] : 0;
+      // A fully transparent neighbourhood has no colour to pull toward — the
+      // texel's own channels stand in (only its alpha, already 0, "moves").
+      const avgR = aSum > 0 ? rSum / aSum : sr;
+      const avgG = aSum > 0 ? gSum / aSum : sg;
+      const avgB = aSum > 0 ? bSum / aSum : sb;
+      const avgA = aSum / n;
+      const o = ((gy - gy0) * gw + (gx - gx0)) * 4;
+      out[o] = Math.round(sr + (avgR - sr) * t);
+      out[o + 1] = Math.round(sg + (avgG - sg) * t);
+      out[o + 2] = Math.round(sb + (avgB - sb) * t);
+      out[o + 3] = Math.round(sa + (avgA - sa) * t);
     }
+  }
+  const texel = 1 / tpc;
+  const changed: string[] = [];
+  forEachIslandUnderDab(working, cellX, cellY, radius, true, (island, key) => {
+    const { cols, rows, rgba } = island.overlay;
+    const lx = cellX - island.x;
+    const ly = cellY - island.y;
+    let cMin = Math.max(0, Math.floor((lx - radius) / texel));
+    let cMax = Math.min(cols - 1, Math.ceil((lx + radius) / texel));
+    let rMin = Math.max(0, Math.floor((ly - radius) / texel));
+    let rMax = Math.min(rows - 1, Math.ceil((ly + radius) / texel));
+    if (bounds) {
+      cMin = Math.max(cMin, Math.ceil((bounds.x - island.x) / texel));
+      cMax = Math.min(cMax, Math.floor((bounds.x + bounds.w - island.x) / texel) - 1);
+      rMin = Math.max(rMin, Math.ceil((bounds.y - island.y) / texel));
+      rMax = Math.min(rMax, Math.floor((bounds.y + bounds.h - island.y) / texel) - 1);
+    }
+    // The island's origin on the global texel lattice (island.x is a whole
+    // cell count, so this is exact).
+    const bx = island.x * tpc;
+    const by = island.y * tpc;
+    let touched = false;
+    for (let r = rMin; r <= rMax; r++) {
+      const gy = by + r;
+      // Same expression as the compute pass, so the disc test lands on the
+      // same texels to the last ulp — a skipped texel is never read back.
+      const dy = (gy + 0.5) / tpc - cellY;
+      for (let c = cMin; c <= cMax; c++) {
+        const gx = bx + c;
+        const dx = (gx + 0.5) / tpc - cellX;
+        const distSq = dx * dx + dy * dy;
+        if (distSq > radiusSq) continue;
+        if (!(strength * gaussianFalloff(distSq / radiusSq) > 0)) continue;
+        const o = ((gy - gy0) * gw + (gx - gx0)) * 4;
+        const i = (r * cols + c) * 4;
+        for (let ch = 0; ch < 4; ch++) {
+          if (rgba[i + ch] !== out[o + ch]) {
+            rgba[i + ch] = out[o + ch];
+            touched = true;
+          }
+        }
+      }
+    }
+    if (touched) changed.push(key);
   });
   return changed;
 }
@@ -627,17 +793,11 @@ export function smudgeCanvasPaint(
   const radiusSq = radius * radius;
   const texel = 1 / CANVAS_PAINT_TEXELS_PER_CELL;
   const changed: string[] = [];
-  // Every tile shares one texel lattice, so a global texel index resolves to
-  // whichever tile holds it — including none, off the painted plane.
-  const texelAt = (gx: number, gy: number): { rgba: Uint8Array; i: number } | null => {
-    const tx = Math.floor(gx / CANVAS_ISLAND_TEXELS);
-    const ty = Math.floor(gy / CANVAS_ISLAND_TEXELS);
-    const isl = readIsland(working, tx, ty);
-    if (!isl) return null;
-    const c = gx - tx * CANVAS_ISLAND_TEXELS;
-    const r = gy - ty * CANVAS_ISLAND_TEXELS;
-    return { rgba: isl.overlay.rgba, i: (r * isl.overlay.cols + c) * 4 };
-  };
+  // The reader's one-entry memo is safe under this pass's in-place writes: a
+  // tile is cloned only on its first-ever touch, and the away-from-the-read
+  // walk order means any texel read through a stale pre-clone reference
+  // still holds exactly its pre-write bytes.
+  const texelAt = globalTexelReader(working);
   // BILINEAR, and it has to be. The source sits `delta × falloff` behind its
   // destination, so across one disc the offset ranges continuously from the
   // full delta down to nothing — and nearest-neighbour sampling rounds most

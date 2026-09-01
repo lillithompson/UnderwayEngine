@@ -259,20 +259,19 @@ export function eraseImagePaintOverlay(
 
 /** Share of the brush RADIUS the blur kernel spans at full strength. A
  *  quarter is enough that one pass of a big brush visibly softens what it
- *  covers, while still leaving the dab's own shape readable. */
-const BLUR_KERNEL_FRACTION = 0.25;
+ *  covers, while still leaving the dab's own shape readable. Shared with the
+ *  island blur (canvasPaint), so both raster surfaces soften alike. */
+export const BLUR_KERNEL_FRACTION = 0.25;
 
-/** Ceiling on the kernel, in texels. Each surface blurs within ITSELF (a
- *  paint island's tiles don't read their neighbours — see canvasPaint), so
- *  an unbounded kernel would make that seam visible at tile borders. One
- *  cell's worth of texels is a strong blur and a seam small against a
- *  128-texel tile. */
-const BLUR_MAX_KERNEL_TEXELS = 8;
+/** Ceiling on the kernel, in texels — one cell's worth is already a strong
+ *  blur, and the cap keeps the per-texel tap cost flat however big the brush
+ *  gets. Shared with the island blur (canvasPaint). */
+export const BLUR_MAX_KERNEL_TEXELS = 8;
 
 /** Taps per axis across the kernel. Fixed, so a wide blur costs no more
  *  reads than a narrow one; at the small end the spacing collapses to 1 and
- *  these are the plain 3×3 neighbours. */
-const BLUR_TAPS = 5;
+ *  these are the plain 3×3 neighbours. Shared with the island blur. */
+export const BLUR_TAPS = 5;
 
 /** Reusable pre-stamp snapshot for {@link blurImagePaintOverlay}. The pass
  *  needs the bytes as they were before this dab, and it runs per dab per
