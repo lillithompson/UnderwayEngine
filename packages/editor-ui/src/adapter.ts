@@ -113,6 +113,11 @@ export interface TopBarTool {
    *  rectangle, arc ⇄ circle); it bypasses the press toggle semantics
    *  entirely — the app decides what the hold means. */
   onLongPress?: () => void;
+  /** Fixed icon ink: overrides the active/inactive color pair entirely —
+   *  a SETTING button whose state is a shade rather than the selection
+   *  accent (CozyJournal's symmetry button: light grey off, full ink on,
+   *  never selection blue). Ignored for swatch buttons. */
+  tint?: string;
 }
 
 export interface TopBarModel {

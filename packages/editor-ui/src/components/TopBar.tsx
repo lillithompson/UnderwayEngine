@@ -87,13 +87,13 @@ export function TopBar({ model }: { model: TopBarModel }) {
             ) : tool.IconComponent ? (
               <tool.IconComponent
                 size={ICON_SIZE}
-                color={tool.active ? STATE_ACTIVE : STATE_INACTIVE}
+                color={tool.tint ?? (tool.active ? STATE_ACTIVE : STATE_INACTIVE)}
               />
             ) : (
               <MaterialCommunityIcons
                 name={tool.icon as MCIName}
                 size={ICON_SIZE}
-                color={tool.active ? STATE_ACTIVE : STATE_INACTIVE}
+                color={tool.tint ?? (tool.active ? STATE_ACTIVE : STATE_INACTIVE)}
               />
             )}
           </Pressable>
