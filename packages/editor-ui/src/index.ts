@@ -32,6 +32,9 @@ export {
 } from './components/BrushControlsPanel';
 export { GridQuickActionPanel } from './components/GridQuickActionPanel';
 export { ObjectPropertiesPanel } from './components/ObjectPropertiesPanel';
+// The Tiles takeover on its own: hosts can open the full tile-choosing
+// sheet from chrome outside the Tiles bar (the tile radial's '…').
+export { PatternTileModal } from './components/PatternTileModal';
 export { ColorPickerModal } from './components/ColorPickerModal';
 // Exported so a host painting its own preview of a picked color (a canvas
 // overlay, a custom swatch) shows opacity the same way the package does.
