@@ -1,5 +1,6 @@
 import {
   applyPatternCellEdits,
+  bakePatternPose,
   buildPatternLayerView,
   MAX_PATTERN_GRID,
   mintPatternObjectId,
@@ -406,6 +407,87 @@ describe('patternClearEdits', () => {
     expect(patternIsEmpty(cleared)).toBe(true);
     const restored = applyPatternCellEdits(cleared, edits, 'revert');
     expect(restored.cells).toEqual(p.cells);
+  });
+});
+
+// ── Pose baking ─────────────────────────────────────────────────────
+// The discrete pose renders R(rot)∘MH∘MV (mirrors innermost) — the same
+// convention a cell's own transform uses (transformPointToRaw) — and the
+// bake must reproduce that picture in an identity-pose grid. Signatures
+// are the render contract the tile tool consumes, so equality is asserted
+// there: the baked cell at the pose-image position must RENDER the
+// pose-permuted signature of the stored cell.
+
+describe('bakePatternPose', () => {
+  /** The compass permutation of the pose: world point k shows the content
+   *  edge at poseIndex(k) — mirrors first, then the CW quarter turns. */
+  function poseSignature(sig: boolean[], rot: number, mH: boolean, mV: boolean): boolean[] {
+    const MIRROR_H = [0, 7, 6, 5, 4, 3, 2, 1];
+    const MIRROR_V = [4, 3, 2, 1, 0, 7, 6, 5];
+    const out: boolean[] = new Array(8);
+    for (let k = 0; k < 8; k++) {
+      // Invert the pose on the world index: un-rotate (CCW), then un-mirror.
+      let c = (k - rot / 45 + 8) % 8;
+      if (mH) c = MIRROR_H[c];
+      if (mV) c = MIRROR_V[c];
+      out[k] = sig[c];
+    }
+    return out;
+  }
+
+  test('identity pose is returned as-is', () => {
+    const p = withCell(makePattern(2, 2), 0, 0, spriteCell('test/tile_10100000'));
+    expect(bakePatternPose(p)).toBe(p);
+  });
+
+  test.each([
+    [90 as const, false, false],
+    [180 as const, false, false],
+    [270 as const, false, false],
+    [0 as const, true, false],
+    [0 as const, false, true],
+    [90 as const, true, false],
+    [270 as const, false, true],
+    [180 as const, true, true],
+  ])('rot=%s mH=%s mV=%s: every cell lands where the pose puts it, rendering the posed signature', (rot, mH, mV) => {
+    // A 3×2 grid with two distinct, asymmetric cells — one of them already
+    // carrying its own transform, so the composition (not just the
+    // placement) is exercised.
+    let p = makePattern(3, 2, { rotation: rot === 0 ? undefined : rot,
+      mirrorH: mH || undefined, mirrorV: mV || undefined });
+    p = withCell(p, 0, 0, spriteCell('test/tile_10000000'));
+    p = withCell(p, 2, 1, {
+      type: 'sprite', spriteId: 'test/tile_10100000',
+      transform: { rotation: 90, mirrorH: true, mirrorV: false },
+    });
+    const baked = bakePatternPose(p);
+    expect(baked.rotation).toBeUndefined();
+    expect(baked.mirrorH).toBeUndefined();
+    expect(baked.mirrorV).toBeUndefined();
+    const swap = rot === 90 || rot === 270;
+    expect(baked.cols).toBe(swap ? 2 : 3);
+    expect(baked.rows).toBe(swap ? 3 : 2);
+    // Walk the stored grid; compute the pose image of each filled cell and
+    // demand the baked grid renders the posed signature exactly there.
+    let checked = 0;
+    for (let sy = 0; sy < p.rows; sy++) {
+      for (let sx = 0; sx < p.cols; sx++) {
+        const c = patternCellAt(p, sx, sy);
+        if (!c) continue;
+        const x = mH ? p.cols - 1 - sx : sx;
+        const y = mV ? p.rows - 1 - sy : sy;
+        const bx = rot === 90 ? p.rows - 1 - y : rot === 180 ? p.cols - 1 - x : rot === 270 ? y : x;
+        const by = rot === 90 ? x : rot === 180 ? p.rows - 1 - y : rot === 270 ? p.cols - 1 - x : y;
+        const bakedCell = patternCellAt(baked, bx, by);
+        expect(bakedCell).not.toBeNull();
+        expect(getRenderedSignature(bakedCell))
+          .toEqual(poseSignature(getRenderedSignature(c)!, rot, mH, mV));
+        checked++;
+      }
+    }
+    expect(checked).toBe(2);
+    // Nothing else materialized.
+    expect(baked.cells.filter((c) => c != null)).toHaveLength(2);
   });
 });
 

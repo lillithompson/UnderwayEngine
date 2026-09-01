@@ -111,6 +111,103 @@ export function patternIsEmpty(p: PatternObject): boolean {
   return !p.cells.some((c) => c != null);
 }
 
+// ── Pose baking ─────────────────────────────────────────────────────
+// A pattern's discrete pose (rotation / mirrorH / mirrorV) renders as
+// R(rot)∘MH∘MV about the bbox centre — mirrors innermost, rotation on top
+// (NodeLayer's `rotate() scaleX() scaleY()` chain; CSS applies right to
+// left). A CELL's own transform renders by the very same convention
+// (transformPointToRaw un-rotates, then applies the mirror maps), so
+// composing the pose onto a cell is one D4 product in one convention:
+//   R(pr)∘M_p ∘ R(cr)∘M_c  =  R(pr ± cr) ∘ M_p∘M_c
+// where the sign flips when the pose carries exactly one mirror (a single
+// reflection conjugates a rotation to its inverse).
+
+/** `state` as it RENDERS under the object pose (`rot`, `mH`, `mV`): the
+ *  cell's transform composed with the pose, in the shared R∘M convention.
+ *  Color cells are pose-invariant solid fills and pass through untouched. */
+function poseCellState(
+  state: CellState,
+  rot: 0 | 90 | 180 | 270,
+  mH: boolean,
+  mV: boolean,
+): CellState {
+  if (!state || state.type !== 'sprite') return state;
+  if (!rot && !mH && !mV) return state;
+  const t = state.transform;
+  const signed = mH !== mV ? (360 - t.rotation) % 360 : t.rotation;
+  return {
+    ...state,
+    transform: {
+      rotation: ((rot + signed) % 360) as CellTransform['rotation'],
+      mirrorH: mH !== t.mirrorH,
+      mirrorV: mV !== t.mirrorV,
+    },
+  };
+}
+
+/**
+ * The same pattern with its discrete pose BAKED into the grid: cells
+ * rearranged to where the pose puts them (mirrors first, then the quarter
+ * turn, matching the render order), each cell's transform composed with
+ * the pose, and the pose flags cleared — an identity-pose object drawing
+ * the identical picture. cols/rows swap on a quarter turn; the bbox is
+ * NOT touched (the caller's bbox already frames the posed picture — the
+ * geometry adapter swings it). The identity stash is cleared with the
+ * flags: a baked object IS its own identity.
+ *
+ * This is what lets the Tile tool keep adding to a rotated pattern: with
+ * the pose in the cells rather than in a flag, the grid answers world
+ * queries directly, exactly like a pattern that was never turned.
+ *
+ * The stored `symmetry` mode is left as written: its axes are grid-space,
+ * so a quarter turn re-reads row symmetry as column symmetry — the same
+ * drift the flag pose always had (axes turned with the object), now
+ * legible in the stored mode. Free rotation (`angleDeg`) is a separate
+ * layered flag and unaffected. Repeat mode is the caller's business —
+ * this function only maps the cols×rows grid.
+ */
+export function bakePatternPose(p: PatternObject): PatternObject {
+  const rot = p.rotation ?? 0;
+  const mH = p.mirrorH ?? false;
+  const mV = p.mirrorV ?? false;
+  if (!rot && !mH && !mV) return p;
+  const { cols, rows } = p;
+  const swap = rot === 90 || rot === 270;
+  const colsB = swap ? rows : cols;
+  const rowsB = swap ? cols : rows;
+  const cells: CellState[] = new Array(cols * rows).fill(null);
+  for (let sy = 0; sy < rows; sy++) {
+    for (let sx = 0; sx < cols; sx++) {
+      const c = p.cells[sy * cols + sx];
+      if (!c) continue;
+      const x = mH ? cols - 1 - sx : sx;
+      const y = mV ? rows - 1 - sy : sy;
+      let bx: number;
+      let by: number;
+      switch (rot) {
+        case 90: bx = rows - 1 - y; by = x; break;
+        case 180: bx = cols - 1 - x; by = rows - 1 - y; break;
+        case 270: bx = y; by = cols - 1 - x; break;
+        default: bx = x; by = y; break;
+      }
+      cells[by * colsB + bx] = poseCellState(c, rot, mH, mV);
+    }
+  }
+  return {
+    ...p,
+    cols: colsB,
+    rows: rowsB,
+    cells,
+    rotation: undefined,
+    mirrorH: undefined,
+    mirrorV: undefined,
+    identityCellX: undefined,
+    identityCellY: undefined,
+    identityCellWidth: undefined,
+    identityCellHeight: undefined,
+  };
+}
+
 // ── Layer view ──────────────────────────────────────────────────────
 // connectivity.ts / paintMirror.ts / svgExport.ts all operate on Layer +
 // CanvasConfig. A pattern presents itself as one full 16×16 layer at

@@ -571,6 +571,9 @@ describe('mirroring negates the free rotation', () => {
     for (const kind of ['image', 'text', 'paint', 'pattern'] as const) {
       const node = {
         id: `${kind}_x`, cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 2, angleDeg: 30,
+        // The pattern adapter bakes a flip through the grid, so the pattern
+        // case needs one (the other kinds ignore these fields).
+        cols: 2, rows: 1, cells: [null, null],
       };
       const flipped = GEOMETRY_ADAPTERS[kind].mirror(node as never, 'h') as { angleDeg?: number };
       expect(flipped.angleDeg).toBe(330);

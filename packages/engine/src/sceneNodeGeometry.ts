@@ -12,6 +12,7 @@
  */
 
 import { CompositionFigure, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, PathSegment, CompItemKind } from './types';
+import { bakePatternPose } from './patternObject';
 import { lineHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { flattenArcSegment } from './compositionArcMath';
@@ -421,7 +422,15 @@ const patternAdapter: GeometryAdapter<PatternObject> = {
 
   rotate90CW(node) {
     const turned = patternBboxAdapter.rotate90CW(node) as PatternObject;
-    if (!isRepeating(node)) return turned;
+    // Stretch mode BAKES the pose into the grid (cells rearranged, cell
+    // transforms composed, flags cleared) instead of wearing a rotation
+    // flag — the same choice an svg makes by turning its segments. An
+    // identity-pose grid keeps answering world queries (the Tile tool's
+    // constraint reads, cell hits and joins) after any number of turns;
+    // under a flag it read as empty and every new tile started a fresh
+    // object. Repeat mode keeps the flag: its pose entangles the tile box
+    // below, whose own semantics the bake does not model.
+    if (!isRepeating(node)) return bakePatternPose(turned);
     const tw = node.tileWidthL0!;
     const th = node.tileHeightL0!;
     // The centre the box swung about — the same one makeBboxAdapter used,
@@ -450,7 +459,9 @@ const patternAdapter: GeometryAdapter<PatternObject> = {
 
   mirror(node, screenAxis) {
     const flipped = patternBboxAdapter.mirror(node, screenAxis) as PatternObject;
-    if (!isRepeating(node)) return flipped;
+    // Same bake as rotate90CW above: a stretch-mode flip lands in the
+    // cells, not in a flag, so the grid stays world-readable.
+    if (!isRepeating(node)) return bakePatternPose(flipped);
     // Reflect the tile box within the region it sits in, about the same
     // axis through the region's centre that the mirror flag reflects the
     // artwork about — otherwise the picture flips and its grid does not.
