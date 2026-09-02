@@ -2,7 +2,8 @@ import { ImageObject } from './types';
 import { compSnapStep } from './compositionCellMath';
 
 /**
- * Reference-image import pipeline. Decodes a picked PNG/JPG, downsamples
+ * Reference-image import pipeline. Decodes a picked PNG/JPG (or rasterizes
+ * a picked SVG — see {@link SVG_MIME_TYPE}), downsamples
  * its longest edge to {@link MAX_EDGE_PX}, re-encodes the bytes (PNG when
  * the source had alpha, JPEG otherwise), and produces a fresh
  * `ImageObject` placed at the given cell + sized so its longest edge
@@ -42,6 +43,15 @@ export const DEFAULT_LONGEST_EDGE_CELLS = 8;
  *  0.9 is the sweet spot — visual artifacts vanish while bytes are
  *  ~3x smaller than PNG for photographic content. */
 const JPEG_QUALITY = 0.9;
+
+/** The one vector source format the pipeline accepts. An SVG is RASTERIZED at
+ *  import — rendered at the pipeline's own resolution caps and re-encoded as
+ *  PNG — because everything downstream of import (the binary persistence
+ *  format, export data URIs, the native decode path) speaks
+ *  `'image/png' | 'image/jpeg'` only. Rendering AT the cap rather than at the
+ *  file's intrinsic size is what keeps a 24px icon crisp: vectors have no
+ *  native resolution to lose. */
+export const SVG_MIME_TYPE = 'image/svg+xml';
 
 /** Result returned by {@link prepareImageImport}: bytes ready for
  *  `state.imageBlobs` and an `ImageObject` ready for `state.images`. */
@@ -95,6 +105,82 @@ function bitmapHasAlpha(bitmap: ImageBitmap): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Is this picked file an SVG? The mime type settles it when the platform
+ * supplies one; otherwise sniff the head of the bytes — file inputs on some
+ * platforms hand over `.svg` files with an empty `type`, and an SVG document
+ * can only open with an XML declaration, a doctype, a comment, or the `<svg>`
+ * root itself.
+ */
+export function looksLikeSvg(bytes: Uint8Array, mimeType: string): boolean {
+  if (mimeType === SVG_MIME_TYPE) return true;
+  if (mimeType && mimeType !== 'application/octet-stream') return false;
+  const head = new TextDecoder().decode(bytes.slice(0, 512))
+    .replace(/^\uFEFF/, '').trimStart();
+  if (head.startsWith('<svg')) return true;
+  const preamble = head.startsWith('<?xml') || head.startsWith('<!--') || head.startsWith('<!DOCTYPE');
+  return preamble && head.includes('<svg');
+}
+
+/**
+ * The intrinsic size an SVG document declares, used only for its ASPECT (the
+ * raster is rendered at the pipeline's edge cap regardless). Root `width` /
+ * `height` attributes win when both are plain numbers (px or unitless); the
+ * `viewBox` extent is the fallback — icon SVGs routinely carry only that —
+ * and a document declaring neither rasterizes square. Attribute parsing is a
+ * regex over the root tag rather than a DOM parse so the decision is the same
+ * everywhere, browser or not.
+ */
+export function svgIntrinsicSize(svgText: string): { width: number; height: number } {
+  const root = /<svg\b[^>]*>/i.exec(svgText)?.[0];
+  if (root) {
+    const attr = (name: string): number | null => {
+      const m = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, 'i').exec(root);
+      const raw = m ? (m[2] ?? m[3]) : null;
+      const num = raw ? /^\s*([0-9.]+)\s*(px)?\s*$/.exec(raw) : null;
+      const n = num ? parseFloat(num[1]) : NaN;
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const w = attr('width');
+    const h = attr('height');
+    if (w != null && h != null) return { width: w, height: h };
+    const vbRaw = new RegExp('\\bviewBox\\s*=\\s*("([^"]*)"|\'([^\']*)\')', 'i').exec(root);
+    const vb = (vbRaw ? (vbRaw[2] ?? vbRaw[3]) : '').trim().split(/[\s,]+/).map(Number);
+    if (vb.length === 4 && vb[2] > 0 && vb[3] > 0) return { width: vb[2], height: vb[3] };
+  }
+  return { width: 1, height: 1 };
+}
+
+/**
+ * Render an SVG blob to a bitmap whose longest edge IS `maxEdge` — up- or
+ * downscaled, since a vector is sharp at any size. `createImageBitmap`
+ * cannot decode SVG blobs (Chrome and WebKit both refuse), so the decode
+ * goes through an `Image` element and an object URL, then draws into an
+ * OffscreenCanvas at the target size.
+ */
+async function rasterizeSvg(
+  blob: Blob,
+  maxEdge: number,
+): Promise<{ bitmap: ImageBitmap; width: number; height: number }> {
+  const { width, height } = svgIntrinsicSize(await blob.text());
+  const scale = maxEdge / Math.max(width, height);
+  const targetW = Math.max(1, Math.round(width * scale));
+  const targetH = Math.max(1, Math.round(height * scale));
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = new OffscreenCanvas(targetW, targetH);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('OffscreenCanvas 2d context unavailable');
+    ctx.drawImage(img, 0, 0, targetW, targetH);
+    return { bitmap: await createImageBitmap(canvas), width: targetW, height: targetH };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 /**
@@ -187,8 +273,14 @@ async function prepareScaledEncoding(
   maxEdge: number,
   forceAlpha?: boolean,
 ): Promise<{ bytes: Uint8Array; mimeType: 'image/png' | 'image/jpeg'; width: number; height: number; hasAlpha: boolean }> {
-  const { bitmap, width, height } = await decodeAndDownsample(sourceBlob, maxEdge);
-  const hasAlpha = forceAlpha ?? bitmapHasAlpha(bitmap);
+  // An SVG source rasterizes AT the edge cap (see rasterizeSvg) and always
+  // encodes as PNG: vector art is drawn on transparency far more often than
+  // not, and JPEG would flatten it onto a background forever.
+  const isSvg = sourceBlob.type === SVG_MIME_TYPE;
+  const { bitmap, width, height } = isSvg
+    ? await rasterizeSvg(sourceBlob, maxEdge)
+    : await decodeAndDownsample(sourceBlob, maxEdge);
+  const hasAlpha = forceAlpha ?? (isSvg || bitmapHasAlpha(bitmap));
   const { bytes, mimeType } = await reencodeBitmap(bitmap, width, height, hasAlpha);
   bitmap.close?.();
   return { bytes, mimeType, width, height, hasAlpha };
@@ -252,7 +344,7 @@ export async function prepareImageReplacement(
   rawBytes: Uint8Array,
   sourceMimeType: string,
 ): Promise<ImageReplacementResult> {
-  const sourceBlob = new Blob([rawBytes as BlobPart], { type: sourceMimeType });
+  const sourceBlob = new Blob([rawBytes as BlobPart], { type: importSourceType(rawBytes, sourceMimeType) });
   const original = await prepareScaledEncoding(sourceBlob, ORIGINAL_MAX_EDGE_PX);
   const needsSeparateOriginal =
     Math.max(original.width, original.height) > MAX_EDGE_PX;
@@ -294,7 +386,7 @@ export async function prepareImageImport(
   name?: string,
   gridLevel?: number,
 ): Promise<ImageImportResult> {
-  const sourceBlob = new Blob([rawBytes as BlobPart], { type: sourceMimeType });
+  const sourceBlob = new Blob([rawBytes as BlobPart], { type: importSourceType(rawBytes, sourceMimeType) });
   // Encode the export-quality original first, then the display copy. When the
   // source already fits the display cap the two are identical, so we skip the
   // second decode and store no separate original. The display copy is pinned
@@ -326,12 +418,22 @@ export async function prepareImageImport(
   return { image, bytes: display.bytes, originalBytes: original.bytes };
 }
 
+/** The type the import pipeline treats a picked file's bytes as: the caller's
+ *  mime, upgraded to {@link SVG_MIME_TYPE} when the file is an SVG the
+ *  platform mislabelled or left untyped (see looksLikeSvg). The blob HAS to
+ *  carry the SVG type for the decode to route through rasterizeSvg — and for
+ *  the `Image` element inside it to render the markup at all. */
+function importSourceType(rawBytes: Uint8Array, sourceMimeType: string): string {
+  return looksLikeSvg(rawBytes, sourceMimeType) ? SVG_MIME_TYPE : sourceMimeType;
+}
+
 /** Sniff a filename to decide whether to route through the image-import
  *  pipeline (vs. the JSON figure-set import). Returns the canonical MIME
  *  type when matched, or null otherwise. */
-export function detectImageMimeType(filename: string): 'image/png' | 'image/jpeg' | null {
+export function detectImageMimeType(filename: string): 'image/png' | 'image/jpeg' | 'image/svg+xml' | null {
   const lower = filename.toLowerCase();
   if (lower.endsWith('.png')) return 'image/png';
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.svg')) return SVG_MIME_TYPE;
   return null;
 }
