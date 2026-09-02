@@ -728,6 +728,27 @@ describe('compositionBinaryFormat', () => {
     expect(result.meta.images![0].opacity).toBeCloseTo(0.4, 2);
   });
 
+  test('round-trips an SVG image — vector bytes verbatim, mime intact (v56)', () => {
+    // The mime byte grew a third code at v56 (0 png, 1 jpeg, 2 svg) so a
+    // vector upload survives persistence as a vector. The blob is the
+    // markup itself, byte for byte.
+    const markup = new TextEncoder().encode('<svg viewBox="0 0 4 3"><rect width="4" height="3"/></svg>');
+    const img = {
+      id: 'img_v', imageId: 'blob_svg', mimeType: 'image/svg+xml' as const,
+      pixelWidth: 1024, pixelHeight: 768,
+      cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 6,
+    };
+    const out = serializeComposition(
+      makeBundle({ images: [img], imageBlobs: { blob_svg: markup } }),
+      [],
+    );
+    const result = deserializeComposition(out);
+    expect(result.meta.images![0].mimeType).toBe('image/svg+xml');
+    expect(result.meta.imageBlobs!.blob_svg).toEqual(markup);
+    // …and the raster codes still mean what they always did.
+    expect(result.meta.images![0].pixelWidth).toBe(1024);
+  });
+
   test('round-trips a hidden reference image', () => {
     const img = {
       id: 'img_a', imageId: 'blob_x', mimeType: 'image/png' as const,

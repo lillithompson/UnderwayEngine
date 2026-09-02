@@ -442,13 +442,28 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      text flags2 bit 0x80 as one trailing u8, after the vAlign byte.
 //      Both bits were always written 0 before, so older files read back
 //      unchanged — absent, meaning opaque, which is what they always were.
-const FORMAT_VERSION = 55;
+// v56: SVG IMAGE BLOBS. The per-image mime byte (and the per-blob copy in
+//      the bytes section) grows a third code: 0 png, 1 jpeg, 2 svg. Vector
+//      uploads store their markup verbatim (never rasterized at import) so
+//      they stay scalable. Older files only ever wrote 0/1, so the read
+//      needs no version gate; files carrying a 2 are v56+ by construction.
+const FORMAT_VERSION = 56;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
 // + 4Ã—float32 = 22
 // Optionally followed by parentGroupIdIdx(u16) and preGroupNameIdx(u16)
 const GROUP_RECORD_BASE_SIZE = 2 + 2 + 1 + 1 + 4 + 4 + 4 + 4; // 22 bytes
+
+// Image mime ↔ byte (v56 grew svg=2 — see the v56 changelog note). One pair
+// of helpers for the per-image byte and its per-blob copy, so they can't
+// drift.
+function imageMimeToByte(mime: ImageObject['mimeType']): number {
+  return mime === 'image/jpeg' ? 1 : mime === 'image/svg+xml' ? 2 : 0;
+}
+function byteToImageMime(b: number): ImageObject['mimeType'] {
+  return b === 1 ? 'image/jpeg' : b === 2 ? 'image/svg+xml' : 'image/png';
+}
 
 // Blend mode â†” byte mapping for colorOverride persistence (v22+).
 const BLEND_MODE_TO_BYTE: Record<BlendMode, number> = {
@@ -2204,7 +2219,7 @@ function writeImage(
     | (img.angleDeg ? IMG_ROT_HAS_ANGLE : 0)
     | (img.framing ? IMG_ROT_HAS_FRAMING : 0)
     | (img.cornerRadius ? IMG_ROT_HAS_CORNER : 0);
-  out[pos++] = img.mimeType === 'image/jpeg' ? 1 : 0;
+  out[pos++] = imageMimeToByte(img.mimeType);
   // Opacity quantized to 0..255 (default 255 = fully opaque). 256 levels
   // is well beyond what the eye can resolve and keeps the record
   // 1 byte / image instead of an f32. Round-trip through the reducer
@@ -2326,7 +2341,7 @@ function readImage(
   const img: ImageObject = {
     id: strings[idIdx],
     imageId: strings[imageIdIdx],
-    mimeType: mimeBit === 1 ? 'image/jpeg' : 'image/png',
+    mimeType: byteToImageMime(mimeBit),
     pixelWidth,
     pixelHeight,
     cellX, cellY, cellWidth, cellHeight,
@@ -3073,7 +3088,7 @@ export function serializeComposition(
     // the corresponding node exists too because the blobMap key was
     // harvested from images. Display and original share one mime per node.
     const refNode = images.find(i => i.imageId === id || i.originalImageId === id)!;
-    out[pos++] = refNode.mimeType === 'image/jpeg' ? 1 : 0;
+    out[pos++] = imageMimeToByte(refNode.mimeType);
     view.setUint32(pos, bytes.length, true); pos += 4;
     out.set(bytes, pos); pos += bytes.length;
   }

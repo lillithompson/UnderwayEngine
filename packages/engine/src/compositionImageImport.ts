@@ -2,8 +2,9 @@ import { ImageObject } from './types';
 import { compSnapStep } from './compositionCellMath';
 
 /**
- * Reference-image import pipeline. Decodes a picked PNG/JPG (or rasterizes
- * a picked SVG — see {@link SVG_MIME_TYPE}), downsamples
+ * Reference-image import pipeline. Decodes a picked PNG/JPG (a picked SVG
+ * skips all of this and stores verbatim — see {@link SVG_MIME_TYPE}),
+ * downsamples
  * its longest edge to {@link MAX_EDGE_PX}, re-encodes the bytes (PNG when
  * the source had alpha, JPEG otherwise), and produces a fresh
  * `ImageObject` placed at the given cell + sized so its longest edge
@@ -44,13 +45,15 @@ export const DEFAULT_LONGEST_EDGE_CELLS = 8;
  *  ~3x smaller than PNG for photographic content. */
 const JPEG_QUALITY = 0.9;
 
-/** The one vector source format the pipeline accepts. An SVG is RASTERIZED at
- *  import — rendered at the pipeline's own resolution caps and re-encoded as
- *  PNG — because everything downstream of import (the binary persistence
- *  format, export data URIs, the native decode path) speaks
- *  `'image/png' | 'image/jpeg'` only. Rendering AT the cap rather than at the
- *  file's intrinsic size is what keeps a 24px icon crisp: vectors have no
- *  native resolution to lose. */
+/** The one vector source format the pipeline accepts. An SVG is stored
+ *  VERBATIM — its markup is the blob, mime `image/svg+xml` (persisted as
+ *  binary-format v56's mime code 2) — so a vector upload STAYS a vector:
+ *  the renderer hands the bytes to the browser as a data URI in
+ *  `<image href>`, and the browser re-rasterizes at whatever scale the
+ *  image is drawn at. No decode, no downsample, no re-encode, and no
+ *  separate export original — the markup IS full resolution at every
+ *  size. Only the node's `pixelWidth`/`pixelHeight` are synthesized (see
+ *  {@link svgNominalPixelSize}): downstream math wants an aspect. */
 export const SVG_MIME_TYPE = 'image/svg+xml';
 
 /** Result returned by {@link prepareImageImport}: bytes ready for
@@ -154,33 +157,21 @@ export function svgIntrinsicSize(svgText: string): { width: number; height: numb
 }
 
 /**
- * Render an SVG blob to a bitmap whose longest edge IS `maxEdge` — up- or
- * downscaled, since a vector is sharp at any size. `createImageBitmap`
- * cannot decode SVG blobs (Chrome and WebKit both refuse), so the decode
- * goes through an `Image` element and an object URL, then draws into an
- * OffscreenCanvas at the target size.
+ * The `pixelWidth`/`pixelHeight` an imported SVG node carries: its declared
+ * size (see {@link svgIntrinsicSize}) scaled so the longest edge is
+ * {@link MAX_EDGE_PX}. A vector has no native resolution — these numbers
+ * exist because downstream math (placement, slot cover-fit, crop framing)
+ * wants an ASPECT in pixel-like units, and normalizing to the display cap
+ * keeps a 24-unit icon from looking like a 24-PIXEL image to anything that
+ * reasons about detail.
  */
-async function rasterizeSvg(
-  blob: Blob,
-  maxEdge: number,
-): Promise<{ bitmap: ImageBitmap; width: number; height: number }> {
-  const { width, height } = svgIntrinsicSize(await blob.text());
-  const scale = maxEdge / Math.max(width, height);
-  const targetW = Math.max(1, Math.round(width * scale));
-  const targetH = Math.max(1, Math.round(height * scale));
-  const url = URL.createObjectURL(blob);
-  try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    const canvas = new OffscreenCanvas(targetW, targetH);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('OffscreenCanvas 2d context unavailable');
-    ctx.drawImage(img, 0, 0, targetW, targetH);
-    return { bitmap: await createImageBitmap(canvas), width: targetW, height: targetH };
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+export function svgNominalPixelSize(svgText: string): { width: number; height: number } {
+  const { width, height } = svgIntrinsicSize(svgText);
+  const scale = MAX_EDGE_PX / Math.max(width, height);
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
 }
 
 /**
@@ -273,14 +264,8 @@ async function prepareScaledEncoding(
   maxEdge: number,
   forceAlpha?: boolean,
 ): Promise<{ bytes: Uint8Array; mimeType: 'image/png' | 'image/jpeg'; width: number; height: number; hasAlpha: boolean }> {
-  // An SVG source rasterizes AT the edge cap (see rasterizeSvg) and always
-  // encodes as PNG: vector art is drawn on transparency far more often than
-  // not, and JPEG would flatten it onto a background forever.
-  const isSvg = sourceBlob.type === SVG_MIME_TYPE;
-  const { bitmap, width, height } = isSvg
-    ? await rasterizeSvg(sourceBlob, maxEdge)
-    : await decodeAndDownsample(sourceBlob, maxEdge);
-  const hasAlpha = forceAlpha ?? (isSvg || bitmapHasAlpha(bitmap));
+  const { bitmap, width, height } = await decodeAndDownsample(sourceBlob, maxEdge);
+  const hasAlpha = forceAlpha ?? bitmapHasAlpha(bitmap);
   const { bytes, mimeType } = await reencodeBitmap(bitmap, width, height, hasAlpha);
   bitmap.close?.();
   return { bytes, mimeType, width, height, hasAlpha };
@@ -320,7 +305,7 @@ export function placementBbox(
 export interface ImageReplacementResult {
   imageId: string;
   bytes: Uint8Array;
-  mimeType: 'image/png' | 'image/jpeg';
+  mimeType: 'image/png' | 'image/jpeg' | 'image/svg+xml';
   pixelWidth: number;
   pixelHeight: number;
   /** Full-resolution copy for export; present only when the source exceeded
@@ -344,7 +329,19 @@ export async function prepareImageReplacement(
   rawBytes: Uint8Array,
   sourceMimeType: string,
 ): Promise<ImageReplacementResult> {
-  const sourceBlob = new Blob([rawBytes as BlobPart], { type: importSourceType(rawBytes, sourceMimeType) });
+  // An SVG replaces verbatim — the markup is the blob, and it stays a
+  // vector in its new node's box exactly as a fresh import would.
+  if (looksLikeSvg(rawBytes, sourceMimeType)) {
+    const { width, height } = svgNominalPixelSize(new TextDecoder().decode(rawBytes));
+    return {
+      imageId: mintImageId(),
+      bytes: rawBytes,
+      mimeType: SVG_MIME_TYPE,
+      pixelWidth: width,
+      pixelHeight: height,
+    };
+  }
+  const sourceBlob = new Blob([rawBytes as BlobPart], { type: sourceMimeType });
   const original = await prepareScaledEncoding(sourceBlob, ORIGINAL_MAX_EDGE_PX);
   const needsSeparateOriginal =
     Math.max(original.width, original.height) > MAX_EDGE_PX;
@@ -386,7 +383,27 @@ export async function prepareImageImport(
   name?: string,
   gridLevel?: number,
 ): Promise<ImageImportResult> {
-  const sourceBlob = new Blob([rawBytes as BlobPart], { type: importSourceType(rawBytes, sourceMimeType) });
+  // An SVG never touches the decode/downsample/re-encode path: its markup is
+  // stored verbatim so it stays scalable (see SVG_MIME_TYPE). No separate
+  // original either — the vector is its own full-resolution copy.
+  if (looksLikeSvg(rawBytes, sourceMimeType)) {
+    const { width, height } = svgNominalPixelSize(new TextDecoder().decode(rawBytes));
+    const bbox = placementBbox(width, height, centerCellX, centerCellY, gridLevel ?? 0);
+    const image: ImageObject = {
+      id: mintImageNodeId(),
+      name,
+      imageId: mintImageId(),
+      mimeType: SVG_MIME_TYPE,
+      pixelWidth: width,
+      pixelHeight: height,
+      cellX: bbox.cellX,
+      cellY: bbox.cellY,
+      cellWidth: bbox.cellWidth,
+      cellHeight: bbox.cellHeight,
+    };
+    return { image, bytes: rawBytes };
+  }
+  const sourceBlob = new Blob([rawBytes as BlobPart], { type: sourceMimeType });
   // Encode the export-quality original first, then the display copy. When the
   // source already fits the display cap the two are identical, so we skip the
   // second decode and store no separate original. The display copy is pinned
@@ -416,15 +433,6 @@ export async function prepareImageImport(
   }
   image.originalImageId = mintImageId();
   return { image, bytes: display.bytes, originalBytes: original.bytes };
-}
-
-/** The type the import pipeline treats a picked file's bytes as: the caller's
- *  mime, upgraded to {@link SVG_MIME_TYPE} when the file is an SVG the
- *  platform mislabelled or left untyped (see looksLikeSvg). The blob HAS to
- *  carry the SVG type for the decode to route through rasterizeSvg — and for
- *  the `Image` element inside it to render the markup at all. */
-function importSourceType(rawBytes: Uint8Array, sourceMimeType: string): string {
-  return looksLikeSvg(rawBytes, sourceMimeType) ? SVG_MIME_TYPE : sourceMimeType;
 }
 
 /** Sniff a filename to decide whether to route through the image-import

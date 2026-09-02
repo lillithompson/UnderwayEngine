@@ -1,5 +1,6 @@
 import {
-  detectImageMimeType, looksLikeSvg, placementBbox, SVG_MIME_TYPE, svgIntrinsicSize,
+  detectImageMimeType, looksLikeSvg, placementBbox, prepareImageImport,
+  prepareImageReplacement, SVG_MIME_TYPE, svgIntrinsicSize, svgNominalPixelSize,
 } from '../compositionImageImport';
 
 describe('placementBbox', () => {
@@ -55,10 +56,11 @@ describe('placementBbox', () => {
   });
 });
 
-// An SVG is a first-class import source: the pipeline rasterizes it at its
-// own edge caps and re-encodes as PNG, so everything downstream (binary
-// persistence, export, native decode) keeps speaking png/jpeg only. These
-// are the pure decisions that routing rests on.
+// An SVG is a first-class import source, and it STAYS a vector: the markup
+// is stored verbatim under mime image/svg+xml (binary v56), never decoded,
+// downsampled, or re-encoded — the browser re-rasterizes it at whatever
+// scale it is drawn, so it is sharp at every zoom. The whole SVG path is
+// pure, so it runs here end to end.
 describe('SVG import sources', () => {
   const bytes = (s: string) => new TextEncoder().encode(s);
   const PNG_MAGIC = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -124,5 +126,48 @@ describe('SVG import sources', () => {
     expect(detectImageMimeType('icon.svg')).toBe(SVG_MIME_TYPE);
     expect(detectImageMimeType('ICON.SVG')).toBe(SVG_MIME_TYPE);
     expect(detectImageMimeType('figure.json')).toBeNull();
+  });
+
+  describe('an imported SVG stays a vector', () => {
+    const MARKUP = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 12"><rect width="24" height="12"/></svg>';
+
+    it('stores the markup VERBATIM — no decode, no re-encode, no original copy', async () => {
+      const raw = bytes(MARKUP);
+      const { image, bytes: stored, originalBytes } = await prepareImageImport(raw, SVG_MIME_TYPE, 16, 16);
+      expect(stored).toBe(raw);
+      expect(originalBytes).toBeUndefined();
+      expect(image.originalImageId).toBeUndefined();
+      expect(image.mimeType).toBe(SVG_MIME_TYPE);
+    });
+
+    it('places at the declared aspect, sized like any other import', async () => {
+      const { image } = await prepareImageImport(bytes(MARKUP), SVG_MIME_TYPE, 16, 16);
+      // 24×12 viewBox → 2:1; longest edge 8 L0 cells, centered on the tap.
+      expect(image.cellWidth).toBe(8);
+      expect(image.cellHeight).toBe(4);
+      expect(image.cellX).toBe(12);
+      expect(image.cellY).toBe(14);
+      // Nominal pixel dims: the declared size normalized to the display cap,
+      // so nothing downstream mistakes a 24-unit icon for a 24px image.
+      expect(image.pixelWidth).toBe(1024);
+      expect(image.pixelHeight).toBe(512);
+      expect(svgNominalPixelSize(MARKUP)).toEqual({ width: 1024, height: 512 });
+    });
+
+    it('is sniffed from untyped bytes on this path too', async () => {
+      const { image } = await prepareImageImport(bytes(MARKUP), '', 16, 16);
+      expect(image.mimeType).toBe(SVG_MIME_TYPE);
+    });
+
+    it('replaces verbatim as well, into the node’s existing box', async () => {
+      const raw = bytes(MARKUP);
+      const rep = await prepareImageReplacement(raw, SVG_MIME_TYPE);
+      expect(rep.bytes).toBe(raw);
+      expect(rep.mimeType).toBe(SVG_MIME_TYPE);
+      expect(rep.pixelWidth).toBe(1024);
+      expect(rep.pixelHeight).toBe(512);
+      expect(rep.originalImageId).toBeUndefined();
+      expect(rep.originalBytes).toBeUndefined();
+    });
   });
 });

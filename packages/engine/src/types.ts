@@ -902,6 +902,16 @@ export interface PaintStrokeDraft {
 }
 
 /**
+/**
+ * The formats an image blob's bytes may be stored in. PNG/JPEG are what the
+ * import pipeline re-encodes rasters to; SVG is stored VERBATIM (never
+ * rasterized at import) so a vector source stays scalable — the renderer
+ * hands all three to the browser as data URIs in `<image href>`, and the
+ * browser re-rasterizes an SVG at whatever scale it is drawn at.
+ */
+export type ImageMimeType = 'image/png' | 'image/jpeg' | 'image/svg+xml';
+
+/**
  * A reference image placed on the composition canvas. Bbox-only scene
  * node — `cellX/Y/Width/Height` is the source of truth for move/scale.
  * Bytes live off-node in `CompositionState.imageBlobs` keyed by
@@ -926,9 +936,11 @@ export interface ImageObject {
    *  display cap (then `imageId` is already full resolution) and on saves
    *  made before this field existed — export falls back to `imageId`. */
   originalImageId?: string;
-  mimeType: 'image/png' | 'image/jpeg';
+  mimeType: ImageMimeType;
   /** Intrinsic pixel dimensions of the *stored* (post-downsample)
-   *  bitmap. Used for aspect ratio; not changed by scale handles. */
+   *  bitmap; for an SVG, its declared size normalized to the display cap
+   *  (aspect is what matters — a vector has no native resolution).
+   *  Used for aspect ratio; not changed by scale handles. */
   pixelWidth: number;
   pixelHeight: number;
   /** World bbox — single source of truth for move/scale. Always equal
@@ -2000,7 +2012,7 @@ export interface SVGNode extends SceneNodeBase {
 export interface ImageNode extends SceneNodeBase {
   readonly kind: 'image';
   readonly imageId: string;
-  readonly mimeType: 'image/png' | 'image/jpeg';
+  readonly mimeType: ImageMimeType;
   readonly pixelWidth: number;
   readonly pixelHeight: number;
   /** Local-space bounding box. */

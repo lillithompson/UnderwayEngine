@@ -48,7 +48,7 @@ function bytesToBase64(bytes: Uint8Array): string {
  */
 export function getImageDataUri(
   imageId: string,
-  mimeType: 'image/png' | 'image/jpeg',
+  mimeType: 'image/png' | 'image/jpeg' | 'image/svg+xml',
   blobs: Record<string, Uint8Array>,
 ): string | null {
   const cached = dataUriCache.get(imageId);
