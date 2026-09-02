@@ -32,4 +32,26 @@ describe('the unified takeover chrome (AppModal)', () => {
       expect(src).not.toContain('<Modal ');
     }
   });
+
+  it('carries the standard Done button, in the Set Color layout', () => {
+    // AppModalDoneButton is THE way out of a takeover whose picks don't
+    // dismiss it: full content width, 44pt, bold 15 label, the selection
+    // blue with white ink.
+    expect(shell).toContain('export function AppModalDoneButton(');
+    expect(shell).toContain("accessibilityLabel=\"Done\"");
+    expect(shell).toMatch(/done:\s*\{\s*marginTop:\s*20,\s*height:\s*44,\s*borderRadius:\s*10,/);
+    expect(shell).toContain('backgroundColor: STATE_ACTIVE,');
+    expect(shell).toContain("doneLabel: { fontSize: 15, fontWeight: '700', color: '#fff' }");
+  });
+
+  it('the pick-grid takeovers keep their sheet up and close through Done', () => {
+    // A pick is not a dismissal: the Tiles sheet no longer excuses itself
+    // after the double-tap window (the old setTimeout(onClose, …) exit),
+    // and both pattern takeovers stand the shared Done at their foot.
+    for (const f of ['PatternTileModal.tsx', 'PatternSetsModal.tsx']) {
+      const src = read(f);
+      expect(src).toContain('<AppModalDoneButton onPress={onClose} />');
+      expect(src).not.toContain('setTimeout(onClose');
+    }
+  });
 });

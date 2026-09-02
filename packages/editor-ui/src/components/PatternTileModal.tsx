@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
-  PATTERN_TILE_DOUBLE_TAP_MS,
   PATTERN_TILE_TRANSFORM_IDENTITY,
   groupPatternTiles,
   isPatternTileDoubleTap,
@@ -11,16 +10,18 @@ import {
   type PatternTileTransform,
 } from '../logic/patternEdit';
 import { PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
-import { AppModal } from './AppModal';
+import { AppModal, AppModalDoneButton } from './AppModal';
 import { PatternTileTransformModal } from './PatternTileTransformModal';
 
 // The Tiles bar's takeover: every tile the menu offers, laid out as a grid
-// of square buttons. Tapping one arms it; the sheet then excuses itself —
-// after the double-tap window, not instantly, because a tile here takes the
-// same pose gestures as the bar's recent grid: a second tap inside the
-// window turns it a quarter clockwise (cancelling the exit, so the pose can
-// keep turning), and a long press opens the transform modal over this one.
-// There is still no confirm — the arming already happened on the first tap.
+// of square buttons. Tapping one arms it and the sheet STAYS — the standard
+// AppModal rule: a pick is not a dismissal, so tiles can be browsed and
+// re-picked freely, and a tile keeps the same pose gestures as the bar's
+// recent grid (a second tap inside the double-tap window turns it a quarter
+// clockwise; a long press opens the transform modal over this one). The
+// way out is the Done button at the foot (AppModalDoneButton, the Set
+// Color layout) or the header's X. There is still no confirm — the arming
+// already happened on the first tap.
 //
 // This sheet wears the unified takeover chrome (AppModal — the PANEL
 // scheme, not the dark MODAL one the floating rename card uses), and that
@@ -47,20 +48,13 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
   const groups = groupPatternTiles(tiles);
   const [transformId, setTransformId] = useState<string | null>(null);
   const lastTapRef = useRef<{ id: string; time: number }>({ id: '', time: 0 });
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelClose = () => {
-    if (closeTimerRef.current != null) clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = null;
-  };
-  // A re-open (or unmount) must not inherit the previous visit's pending
-  // exit or half-open transform card.
+  // A re-open must not inherit the previous visit's half-open transform
+  // card or double-tap arm.
   useEffect(() => {
     if (!visible) {
-      cancelClose();
       setTransformId(null);
       lastTapRef.current = { id: '', time: 0 };
     }
-    return cancelClose;
   }, [visible]);
 
   const poseOf = (id: string) => transforms?.[id] ?? PATTERN_TILE_TRANSFORM_IDENTITY;
@@ -69,7 +63,7 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
     : null;
 
   return (
-    <AppModal visible={visible} title="Tiles" onClose={() => { cancelClose(); onClose(); }}>
+    <AppModal visible={visible} title="Tiles" onClose={onClose}>
       <ScrollView contentContainerStyle={styles.body}>
           {groups.map((g) => (
             <View key={g.connections} style={styles.section}>
@@ -85,18 +79,14 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
                       onPress={() => {
                         const now = Date.now();
                         if (isPatternTileDoubleTap(lastTapRef.current, t.id, now)) {
-                          cancelClose();
                           onSetTransform?.(t.id, rotatePatternTileTransform(poseOf(t.id)));
                           lastTapRef.current = { id: '', time: 0 };
                         } else {
                           onPick(t.id);
                           lastTapRef.current = { id: t.id, time: now };
-                          cancelClose();
-                          closeTimerRef.current = setTimeout(onClose, PATTERN_TILE_DOUBLE_TAP_MS);
                         }
                       }}
                       onLongPress={() => {
-                        cancelClose();
                         onPick(t.id);
                         setTransformId(t.id);
                       }}
@@ -116,6 +106,11 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
             </View>
           ))}
       </ScrollView>
+      {/* Done: picks don't dismiss (see the header note), so the sheet
+          carries the standard AppModal way out, pinned under the scroll. */}
+      <View style={styles.footer}>
+        <AppModalDoneButton onPress={onClose} />
+      </View>
       <PatternTileTransformModal
         visible={transformId != null}
         uri={transformUri}
@@ -131,6 +126,9 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
 
 const styles = StyleSheet.create({
   body: { padding: 16, gap: 18 },
+  // The Done row: the button carries its own 20pt top margin (the Set
+  // Color spacing), the row only frames it against the sheet's edges.
+  footer: { paddingHorizontal: 16, paddingBottom: 16 },
   section: { gap: 8 },
   caption: { color: PANEL_INK_DIM, fontSize: 11, lineHeight: 15 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

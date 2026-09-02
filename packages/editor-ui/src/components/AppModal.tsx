@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { PANEL_BG, PANEL_BORDER, PANEL_INK } from '../theme';
+import { PANEL_BG, PANEL_BORDER, PANEL_INK, STATE_ACTIVE } from '../theme';
 
 // The ONE full-screen modal shell — Facet's AppModal, in its compact
 // (phone) form, on the editor's light panel scheme. Every full-screen
@@ -76,6 +76,28 @@ export function AppModal({
   );
 }
 
+/** The takeover's Done button — the STANDARD way out of an AppModal whose
+ *  picks don't dismiss it (the Symmetry grid, the Layout aligns, the Tiles
+ *  sheet). The color picker's Set Color button is the layout this follows —
+ *  full content width, 44pt, bold 15 label — with the selection blue for a
+ *  face where Set Color wears the chosen color itself. Pass `width` to match
+ *  the content block it closes (a grid's row width); omitted, it stretches. */
+export function AppModalDoneButton({ onPress, width }: {
+  onPress: () => void;
+  width?: number;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Done"
+      onPress={onPress}
+      style={[styles.done, width != null ? { width } : styles.doneStretch]}
+    >
+      <Text style={styles.doneLabel}>Done</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: PANEL_BG },
   // Facet's compact header metrics (paddingVertical 18, title 18/700),
@@ -96,4 +118,16 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   closeIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1 },
+  // The Set Color button's metrics (ColorPickerModal.confirmButton).
+  done: {
+    marginTop: 20,
+    height: 44,
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: STATE_ACTIVE,
+  },
+  doneStretch: { alignSelf: 'stretch' },
+  doneLabel: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

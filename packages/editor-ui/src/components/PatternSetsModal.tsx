@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import type { PatternTileSetRow } from '../logic/patternEdit';
 import { PANEL_BORDER, PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
-import { AppModal } from './AppModal';
+import { AppModal, AppModalDoneButton } from './AppModal';
 
 // The Tools bar's Sets takeover: Facet's Randomization Settings, as a
 // full-screen sheet in the panel scheme (the same chrome as the Tiles
@@ -11,7 +11,8 @@ import { AppModal } from './AppModal';
 // Border Connections rule as a switch, the same setting the Tools bar's
 // Borders row drives. Facet's Multi-layer Fill switch is deliberately
 // absent: patterns here are single-resolution grids, so it has nothing to
-// govern. There is no confirm — every toggle applies as it is pressed.
+// govern. There is no confirm — every toggle applies as it is pressed —
+// and the way out is the standard Done button (or the header's X).
 
 export function PatternSetsModal({ visible, sets, allowBorder, onToggleSet, onToggleBorder, onClose }: {
   visible: boolean;
@@ -48,12 +49,16 @@ export function PatternSetsModal({ visible, sets, allowBorder, onToggleSet, onTo
           />
         </View>
       </ScrollView>
+      <View style={styles.footer}>
+        <AppModalDoneButton onPress={onClose} />
+      </View>
     </AppModal>
   );
 }
 
 const styles = StyleSheet.create({
   body: { padding: 16, gap: 16 },
+  footer: { paddingHorizontal: 16, paddingBottom: 16 },
   // Facet's familyGrid: full-width cells stacked with a gap, tall enough
   // to hit without looking.
   setList: { gap: 12 },

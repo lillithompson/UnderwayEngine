@@ -422,14 +422,21 @@ describe('the tile pose gestures (double-tap turn, long-press transform)', () =>
     expect(MODAL).toContain('transform: patternTileThumbTransforms(poseOf(t.id))');
   });
 
-  it('the takeover waits out the double-tap window before dismissing', () => {
-    expect(MODAL).toContain('closeTimerRef.current = setTimeout(onClose, PATTERN_TILE_DOUBLE_TAP_MS);');
-    // ...and a rotate keeps it up: the second tap cancels the pending exit.
+  it('a pick keeps the takeover up; Done (or the X) is the way out', () => {
+    // The sheet used to excuse itself after the double-tap window
+    // (setTimeout(onClose, …)); a pick is not a dismissal any more, so
+    // tiles can be browsed, re-picked and posed freely, and the standard
+    // AppModalDoneButton closes the sheet (appModal.test.ts pins the
+    // button itself).
+    expect(MODAL).not.toContain('setTimeout(onClose');
+    expect(MODAL).not.toContain('closeTimerRef');
+    expect(MODAL).toContain('<AppModalDoneButton onPress={onClose} />');
+    // The double-tap rotate still lands as before.
     const doubleTapBranch = MODAL.slice(
       MODAL.indexOf('if (isPatternTileDoubleTap(lastTapRef.current, t.id, now)) {'),
       MODAL.indexOf('} else {'),
     );
-    expect(doubleTapBranch).toContain('cancelClose();');
+    expect(doubleTapBranch).toContain('rotatePatternTileTransform');
   });
 
   it('the transform modal offers rotate and the two flips, previewed in the pose', () => {
