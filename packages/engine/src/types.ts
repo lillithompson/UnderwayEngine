@@ -1179,6 +1179,15 @@ export interface PatternObject {
   localCellY?: number;
   localCellWidth?: number;
   localCellHeight?: number;
+  /** Pre-group-transform tile pitch + tile-grid offset (repeat mode); only
+   *  set while groupId is set — the same locals a tiled figure keeps, so a
+   *  repeat pattern inside a scaled group scales its tile WITH the group
+   *  (constant repetition count) instead of re-flowing more tiles into the
+   *  resized region. Derived caches (reconcileGroupLocals), never saved. */
+  localTileWidthL0?: number;
+  localTileHeightL0?: number;
+  localTileOffsetXL0?: number;
+  localTileOffsetYL0?: number;
   /** Bbox at identity — same stabilization pattern as ImageObject. */
   identityCellX?: number;
   identityCellY?: number;

@@ -3,7 +3,7 @@ import { normalizeCanvasPaintIslands } from './canvasPaint';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
-import { computeAliveGroupIds } from './compositionOps';
+import { backfillPatternTileLocals, computeAliveGroupIds } from './compositionOps';
 import { compSnapStep } from './compositionCellMath';
 
 // â”€â”€ FCOMP Binary Format v29 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -3950,7 +3950,12 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       texts,
       background,
       paintObjects: paintObjects.length > 0 ? paintObjects : undefined,
-      patternObjects: patternObjects.length > 0 ? patternObjects : undefined,
+      // Tile locals are derived caches the format never writes: rebuild
+      // them for grouped repeat patterns so the first group scale after a
+      // reload still scales the tiling (backfillPatternTileLocals).
+      patternObjects: patternObjects.length > 0
+        ? backfillPatternTileLocals(patternObjects, prunedGroups)
+        : undefined,
     },
     embeddedFiles,
   };

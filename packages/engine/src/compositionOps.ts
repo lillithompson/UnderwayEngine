@@ -2842,7 +2842,7 @@ export function materializeGroupMembers(state: CompositionState, groupId: string
   });
   const statePatterns: PatternObject[] = state.patternObjects ?? [];
   const patterns = statePatterns.map((p) => {
-    const next = materializeBboxMember(p, chain, groupId);
+    const next = materializePatternMember(p, chain, groupId);
     if (next === null) return p;
     changed = true;
     return next;
@@ -3035,6 +3035,11 @@ function setLeafGroupId(
     localCellWidth: undefined, localCellHeight: undefined,
   } as const;
   const clearSvg = { ...clearBbox, localSegments: undefined, localSubpaths: undefined } as const;
+  const clearPattern = {
+    ...clearBbox,
+    localTileWidthL0: undefined, localTileHeightL0: undefined,
+    localTileOffsetXL0: undefined, localTileOffsetYL0: undefined,
+  } as const;
   const toTop = groupId === undefined;
   return {
     ...state,
@@ -3043,7 +3048,7 @@ function setLeafGroupId(
     images: (state.images ?? []).map((i) => (i.id !== id ? i : toTop ? { ...i, ...clearBbox } : { ...i, groupId })),
     texts: (state.texts ?? []).map((t) => (t.id !== id ? t : toTop ? { ...t, ...clearBbox } : { ...t, groupId })),
     paintObjects: (state.paintObjects ?? []).map((p) => (p.id !== id ? p : toTop ? { ...p, ...clearBbox } : { ...p, groupId })),
-    patternObjects: (state.patternObjects ?? []).map((p) => (p.id !== id ? p : toTop ? { ...p, ...clearBbox } : { ...p, groupId })),
+    patternObjects: (state.patternObjects ?? []).map((p) => (p.id !== id ? p : toTop ? { ...p, ...clearPattern } : { ...p, groupId })),
   };
 }
 
@@ -3076,28 +3081,12 @@ function reconcileGroupLocalsForGroups(
     };
     const localOrient = inverseChainedOrientation(chain, worldOrient);
 
-    // Inverse tile dimensions.
-    let localTileW = f.localTileWidthL0;
-    let localTileH = f.localTileHeightL0;
-    let localTileOffX = f.localTileOffsetXL0;
-    let localTileOffY = f.localTileOffsetYL0;
-    if (f.tileMode === 'repeat') {
-      if (f.tileWidthL0 !== undefined && f.tileHeightL0 !== undefined) {
-        const invTile = inverseChainedGroupTransform(chain, {
-          cellX: 0, cellY: 0, cellWidth: f.tileWidthL0, cellHeight: f.tileHeightL0,
-        });
-        localTileW = invTile.cellWidth;
-        localTileH = invTile.cellHeight;
-      }
-      const worldOffX = f.tileOffsetXL0 ?? 0;
-      const worldOffY = f.tileOffsetYL0 ?? 0;
-      // Tile-grid offset is a free vector, not a point â€” invert through
-      // the chain's scale/rotation/mirror only, matching the forward
-      // delta-transform used in materializeFigureMember.
-      const [invOffX, invOffY] = inverseChainedGroupTransformDelta(chain, worldOffX, worldOffY);
-      localTileOffX = invOffX === 0 ? undefined : invOffX;
-      localTileOffY = invOffY === 0 ? undefined : invOffY;
-    }
+    // Inverse tile dimensions (inverseTileLocals — the rule repeat
+    // PATTERN members share).
+    const {
+      localTileWidthL0: localTileW, localTileHeightL0: localTileH,
+      localTileOffsetXL0: localTileOffX, localTileOffsetYL0: localTileOffY,
+    } = inverseTileLocals(chain, f);
 
     // Inverse quads.
     const localQuads = f.quads
@@ -3203,8 +3192,115 @@ function reconcileGroupLocalsForGroups(
   const images = reconcileBboxLocals(state.images ?? []);
   const texts = reconcileBboxLocals(state.texts ?? []);
   const paints = reconcileBboxLocals(state.paintObjects ?? []);
-  const patterns = reconcileBboxLocals(state.patternObjects ?? []);
+  // Patterns reconcile like the bbox kinds PLUS, in repeat mode, the tile
+  // pitch and tile-grid offset (inverseTileLocals — the tiled figure's own
+  // rule), so a repeat pattern's tiling scales WITH its group.
+  const patterns = (state.patternObjects ?? []).map((p) => {
+    if (!p.groupId) return p;
+    if (targetGroupIds && !targetGroupIds.has(p.groupId)) return p;
+    const chain = groupAncestorChain(state.groups, p.groupId);
+    if (chain.length === 0) return p;
+    const local = inverseChainedGroupTransform(chain, {
+      cellX: p.cellX, cellY: p.cellY, cellWidth: p.cellWidth, cellHeight: p.cellHeight,
+    });
+    const tl = inverseTileLocals(chain, p);
+    if (p.localCellX === local.cellX && p.localCellY === local.cellY &&
+        p.localCellWidth === local.cellWidth && p.localCellHeight === local.cellHeight &&
+        p.localTileWidthL0 === tl.localTileWidthL0 &&
+        p.localTileHeightL0 === tl.localTileHeightL0 &&
+        p.localTileOffsetXL0 === tl.localTileOffsetXL0 &&
+        p.localTileOffsetYL0 === tl.localTileOffsetYL0) return p;
+    changed = true;
+    return { ...p,
+      localCellX: local.cellX, localCellY: local.cellY,
+      localCellWidth: local.cellWidth, localCellHeight: local.cellHeight,
+      ...tl,
+    };
+  });
   return changed ? { ...state, figures, svgObjects, images, texts, paintObjects: paints, patternObjects: patterns } : state;
+}
+
+/** The repeat-mode tile fields a grouped member draws with, re-derived
+ *  from its LOCAL tile fields through the group chain — the ONE rule
+ *  tiled figures and repeat patterns share: the tile pitch scales as a
+ *  (0,0)-anchored rect and the tile-grid offset as a free vector, so a
+ *  member inside a 2× group renders at 2× the pitch and 2× the offset —
+ *  the repetition count stays constant and the drawing stays locked to
+ *  the member's bounds as the group resizes (the offset doesn't slide
+ *  relative to it). Members without local tile fields (not repeat mode,
+ *  or a stale snapshot) keep their current world values. */
+function materializeTileLocals(
+  chain: readonly GroupNode[],
+  m: {
+    tileMode?: 'repeat';
+    tileWidthL0?: number; tileHeightL0?: number;
+    tileOffsetXL0?: number; tileOffsetYL0?: number;
+    localTileWidthL0?: number; localTileHeightL0?: number;
+    localTileOffsetXL0?: number; localTileOffsetYL0?: number;
+  },
+): {
+  tileWidthL0: number | undefined; tileHeightL0: number | undefined;
+  tileOffsetXL0: number | undefined; tileOffsetYL0: number | undefined;
+} {
+  let tileWidthL0 = m.tileWidthL0;
+  let tileHeightL0 = m.tileHeightL0;
+  let tileOffsetXL0 = m.tileOffsetXL0;
+  let tileOffsetYL0 = m.tileOffsetYL0;
+  if (m.tileMode === 'repeat' && m.localTileWidthL0 !== undefined && m.localTileHeightL0 !== undefined) {
+    const tileBbox = applyChainedGroupTransform(chain, {
+      cellX: 0, cellY: 0,
+      cellWidth: m.localTileWidthL0, cellHeight: m.localTileHeightL0,
+    });
+    tileWidthL0 = tileBbox.cellWidth;
+    tileHeightL0 = tileBbox.cellHeight;
+  }
+  if (m.tileMode === 'repeat' && (m.localTileOffsetXL0 !== undefined || m.localTileOffsetYL0 !== undefined)) {
+    const [woffX, woffY] = applyChainedGroupTransformDelta(
+      chain, m.localTileOffsetXL0 ?? 0, m.localTileOffsetYL0 ?? 0,
+    );
+    tileOffsetXL0 = woffX === 0 ? undefined : woffX;
+    tileOffsetYL0 = woffY === 0 ? undefined : woffY;
+  }
+  return { tileWidthL0, tileHeightL0, tileOffsetXL0, tileOffsetYL0 };
+}
+
+/** Inverse of {@link materializeTileLocals}: the LOCAL tile fields that
+ *  re-materialize to the member's current world tile fields under the
+ *  chain. Same guards, run backwards (the reconcile direction). */
+function inverseTileLocals(
+  chain: readonly GroupNode[],
+  m: {
+    tileMode?: 'repeat';
+    tileWidthL0?: number; tileHeightL0?: number;
+    tileOffsetXL0?: number; tileOffsetYL0?: number;
+    localTileWidthL0?: number; localTileHeightL0?: number;
+    localTileOffsetXL0?: number; localTileOffsetYL0?: number;
+  },
+): {
+  localTileWidthL0: number | undefined; localTileHeightL0: number | undefined;
+  localTileOffsetXL0: number | undefined; localTileOffsetYL0: number | undefined;
+} {
+  let localTileWidthL0 = m.localTileWidthL0;
+  let localTileHeightL0 = m.localTileHeightL0;
+  let localTileOffsetXL0 = m.localTileOffsetXL0;
+  let localTileOffsetYL0 = m.localTileOffsetYL0;
+  if (m.tileMode === 'repeat') {
+    if (m.tileWidthL0 !== undefined && m.tileHeightL0 !== undefined) {
+      const invTile = inverseChainedGroupTransform(chain, {
+        cellX: 0, cellY: 0, cellWidth: m.tileWidthL0, cellHeight: m.tileHeightL0,
+      });
+      localTileWidthL0 = invTile.cellWidth;
+      localTileHeightL0 = invTile.cellHeight;
+    }
+    // Tile-grid offset is a free vector, not a point — invert through the
+    // chain's scale/rotation/mirror only, matching the forward delta.
+    const [invOffX, invOffY] = inverseChainedGroupTransformDelta(
+      chain, m.tileOffsetXL0 ?? 0, m.tileOffsetYL0 ?? 0,
+    );
+    localTileOffsetXL0 = invOffX === 0 ? undefined : invOffX;
+    localTileOffsetYL0 = invOffY === 0 ? undefined : invOffY;
+  }
+  return { localTileWidthL0, localTileHeightL0, localTileOffsetXL0, localTileOffsetYL0 };
 }
 
 /** Re-derive a figure member's world `cell*` (and tile dim if it tiles)
@@ -3226,29 +3322,12 @@ function materializeFigureMember(
     cellWidth: f.localCellWidth, cellHeight: f.localCellHeight,
   });
   // Tile-mode members scale their tile dim AND tile-grid offset with the
-  // chained group transform, so a pattern inside a 2Ã— group renders at 2Ã—
-  // the tile pitch and 2Ã— the offset â€” the repetition count stays
-  // constant and the pattern stays locked to the figure's local bounds
-  // as the group resizes (offset doesn't slide relative to the figure).
-  let nextTileW: number | undefined = f.tileWidthL0;
-  let nextTileH: number | undefined = f.tileHeightL0;
-  let nextTileOffX: number | undefined = f.tileOffsetXL0;
-  let nextTileOffY: number | undefined = f.tileOffsetYL0;
-  if (f.tileMode === 'repeat' && f.localTileWidthL0 !== undefined && f.localTileHeightL0 !== undefined) {
-    const tileBbox = applyChainedGroupTransform(chain, {
-      cellX: 0, cellY: 0,
-      cellWidth: f.localTileWidthL0, cellHeight: f.localTileHeightL0,
-    });
-    nextTileW = tileBbox.cellWidth;
-    nextTileH = tileBbox.cellHeight;
-  }
-  if (f.tileMode === 'repeat' && (f.localTileOffsetXL0 !== undefined || f.localTileOffsetYL0 !== undefined)) {
-    const [woffX, woffY] = applyChainedGroupTransformDelta(
-      chain, f.localTileOffsetXL0 ?? 0, f.localTileOffsetYL0 ?? 0,
-    );
-    nextTileOffX = woffX === 0 ? undefined : woffX;
-    nextTileOffY = woffY === 0 ? undefined : woffY;
-  }
+  // chained group transform (materializeTileLocals — the rule repeat
+  // PATTERN members share).
+  const {
+    tileWidthL0: nextTileW, tileHeightL0: nextTileH,
+    tileOffsetXL0: nextTileOffX, tileOffsetYL0: nextTileOffY,
+  } = materializeTileLocals(chain, f);
   // Compose world orientation through the chain of group transforms.
   const local: Orientation = {
     rotation: f.localRotation ?? 0,
@@ -3355,6 +3434,45 @@ function materializeBboxMember<T extends {
     mirrorH: world.mirrorH,
     mirrorV: world.mirrorV,
   };
+}
+
+/** Seed missing LOCAL tile fields on grouped repeat patterns from their
+ *  world tile fields through the group chain — the binary format doesn't
+ *  persist the tile locals (derived caches, like every `local*`), so the
+ *  read rebuilds them the way reconcileGroupLocals would; without this
+ *  the first group scale after a reload would leave the tiling at its
+ *  absolute pitch again. Patterns already carrying locals, not in repeat
+ *  mode, or not grouped pass through untouched. */
+export function backfillPatternTileLocals(
+  patterns: PatternObject[], groups: GroupNode[],
+): PatternObject[] {
+  return patterns.map((p) => {
+    if (!p.groupId || p.tileMode !== 'repeat') return p;
+    if (p.localTileWidthL0 !== undefined && p.localTileHeightL0 !== undefined) return p;
+    const chain = groupAncestorChain(groups, p.groupId);
+    if (chain.length === 0) return p;
+    return { ...p, ...inverseTileLocals(chain, p) };
+  });
+}
+
+/** Re-derive a pattern member's world bbox — and, in repeat mode, its
+ *  tile pitch + tile-grid offset — from its locals composed with the
+ *  group chain: the tiled figure's own rule (materializeTileLocals), so
+ *  scaling a group scales the repeating DRAWING itself (the repetition
+ *  count stays constant) instead of re-flowing a fixed-pitch tiling into
+ *  the resized region — which visibly re-aligned the pattern. */
+function materializePatternMember(
+  p: PatternObject, chain: readonly GroupNode[], groupId: string,
+): PatternObject | null {
+  const base = materializeBboxMember(p, chain, groupId);
+  if (p.groupId !== groupId || p.tileMode !== 'repeat') return base;
+  const tile = materializeTileLocals(chain, p);
+  if (
+    base === null &&
+    p.tileWidthL0 === tile.tileWidthL0 && p.tileHeightL0 === tile.tileHeightL0 &&
+    p.tileOffsetXL0 === tile.tileOffsetXL0 && p.tileOffsetYL0 === tile.tileOffsetYL0
+  ) return null;
+  return { ...(base ?? p), ...tile };
 }
 
 /**
