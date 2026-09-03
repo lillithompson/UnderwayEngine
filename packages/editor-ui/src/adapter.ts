@@ -493,6 +493,15 @@ export interface ObjectPropertiesModel {
    *  Opacity / Blend controls, pointed at a closed path's interior rather than
    *  at an overlay over a bitmap. */
   svgFill?: TintModel;
+  /** Whether the selection actually CARRIES a fill. `false` (with
+   *  {@link onAddSvgFill}) renders the Fill bar as the absent-effect Add bar
+   *  instead of its controls — opening a menu must never edit the object.
+   *  Omitted means present (hosts that always materialize keep working). */
+  svgFillPresent?: boolean;
+  /** Create the default fill on the selection — the Add bar's one button.
+   *  One undo step; the host flips {@link svgFillPresent} and the bar
+   *  re-renders as its controls. */
+  onAddSvgFill?(): void;
   /** Fill-controls callback, same contract as `onTint`: live while dragging a
    *  stop / slider (`committed=false`), once on release or a structural edit —
    *  Type, stop add/delete, blend pick (`committed=true`, one undo step).
@@ -540,6 +549,12 @@ export interface ObjectPropertiesModel {
   /** The selected image's current tint (defaults supplied by the app when none
    *  is set yet), seeding the Tint controls. */
   tint?: TintModel;
+  /** Whether the selection actually CARRIES a tint — `false` (with
+   *  {@link onAddTint}) renders the absent-effect Add bar. See
+   *  {@link svgFillPresent}. */
+  tintPresent?: boolean;
+  /** Create the default tint — the Add bar's one button, one undo step. */
+  onAddTint?(): void;
   /** Tint-controls callback: fires live while dragging a stop / slider or on a
    *  stop selection (`committed=false`) and once on release / a structural edit
    *  — Type, stop add/delete, blend pick (`committed=true`, one undo step).
@@ -557,6 +572,12 @@ export interface ObjectPropertiesModel {
   /** The selected object's current shadow (defaults supplied by the app when
    *  none is set yet), seeding the Shadow controls. */
   shadow?: ShadowModel;
+  /** Whether the selection actually CARRIES a shadow — `false` (with
+   *  {@link onAddShadow}) renders the absent-effect Add bar. See
+   *  {@link svgFillPresent}. */
+  shadowPresent?: boolean;
+  /** Create the default shadow — the Add bar's one button, one undo step. */
+  onAddShadow?(): void;
   /** Shadow-controls callback: fires live while dragging (`committed=false`)
    *  and once on release (`committed=true`, one undo step). `shadow=null`
    *  removes the shadow. */
@@ -571,6 +592,12 @@ export interface ObjectPropertiesModel {
   /** The selected image's current border (defaults supplied by the app when
    *  none is set yet), seeding the Border controls. */
   border?: BorderModel;
+  /** Whether the selection actually CARRIES a border — `false` (with
+   *  {@link onAddBorder}) renders the absent-effect Add bar. See
+   *  {@link svgFillPresent}. */
+  borderPresent?: boolean;
+  /** Create the default border — the Add bar's one button, one undo step. */
+  onAddBorder?(): void;
   /** Border-controls callback: fires live while dragging (`committed=false`)
    *  and once on release (`committed=true`, one undo step). `border=null`
    *  removes the border. */

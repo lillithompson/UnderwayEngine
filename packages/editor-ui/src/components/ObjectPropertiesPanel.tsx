@@ -42,7 +42,7 @@ import { TintBar } from './TintBar';
 import { EndpointsBar } from './EndpointsBar';
 import { LayoutBar } from './LayoutBar';
 import { PatternSymmetryBar, PatternTilesBar, PatternToolsBar } from './PatternBars';
-import { BAR_BG } from './effectBar';
+import { BAR_BG, EmptyEffectBar } from './effectBar';
 import {
   PANEL_ANIM_MS,
   PANEL_BG,
@@ -1353,8 +1353,41 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
 
   // The currently-shown submenu bar (retained through the dismiss slide). onBack
   // (the down chevron) dismisses the whole submenu layer.
+  //
+  // An effect the selection does not carry renders as the ABSENT bar
+  // (EmptyEffectBar): opening a menu must never edit the object, so the
+  // effect exists only once its Add button is pressed — the host
+  // materializes it, presence flips, and the real controls swap in here.
   let activeBarEl: React.ReactNode = null;
-  if (displaySub === 'tint') {
+  if (displaySub === 'tint' && model.tintPresent === false && model.onAddTint) {
+    activeBarEl = (
+      <EmptyEffectBar
+        title="TINT" addLabel="Add Tint"
+        onBack={dismissSubmenu} onAdd={() => model.onAddTint?.()}
+      />
+    );
+  } else if (displaySub === 'svgFill' && model.svgFillPresent === false && model.onAddSvgFill) {
+    activeBarEl = (
+      <EmptyEffectBar
+        title="FILL" addLabel="Add Fill"
+        onBack={dismissSubmenu} onAdd={() => model.onAddSvgFill?.()}
+      />
+    );
+  } else if (displaySub === 'shadow' && model.shadowPresent === false && model.onAddShadow) {
+    activeBarEl = (
+      <EmptyEffectBar
+        title="DROP SHADOW" addLabel="Add Drop Shadow"
+        onBack={dismissSubmenu} onAdd={() => model.onAddShadow?.()}
+      />
+    );
+  } else if (displaySub === 'border' && model.borderPresent === false && model.onAddBorder) {
+    activeBarEl = (
+      <EmptyEffectBar
+        title="BORDER" addLabel="Add Border"
+        onBack={dismissSubmenu} onAdd={() => model.onAddBorder?.()}
+      />
+    );
+  } else if (displaySub === 'tint') {
     activeBarEl = (
       <TintBar
         tint={tintForBar}

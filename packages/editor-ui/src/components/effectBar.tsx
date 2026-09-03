@@ -2,7 +2,10 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { RGBLike } from '../adapter';
-import { BAR_HEADER, ROW_SEGMENTED, ROW_SLIDER } from '../logic/submenuHeight';
+import {
+  BAR_BORDER, BAR_CONTROLS_TOP, BAR_HEADER, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP,
+  ROW_SEGMENTED, ROW_SLIDER,
+} from '../logic/submenuHeight';
 import {
   PANEL_BG,
   PANEL_CONTROL,
@@ -126,6 +129,39 @@ export function EffectBarHeader({ title, color, swatch, chevron, align = 'center
  *  column + gap = 60pt). Used by the Crop bar's Fill / Fit modes. */
 export function Hint({ children }: { children: React.ReactNode }) {
   return <Text style={styles.hint}>{children}</Text>;
+}
+
+/**
+ * The bar an ABSENT effect opens: the standard chrome (hairline, padding,
+ * the header with its back chevron — no swatch and no trash, there being
+ * nothing to recolor or remove yet) over one full-width "Add …" button.
+ * Opening a menu must never edit the object, so the effect is created only
+ * by this press: the host materializes it (one undo step), presence flips,
+ * and the panel re-renders the bar as its normal controls in place.
+ */
+export function EmptyEffectBar({ title, addLabel, onBack, onAdd }: {
+  title: string;
+  /** The button's text (and accessibility label), e.g. "Add Drop Shadow". */
+  addLabel: string;
+  onBack: () => void;
+  onAdd: () => void;
+}) {
+  return (
+    <View style={styles.emptyBar}>
+      <EffectBarHeader title={title} chevron onBack={onBack} />
+      <View style={styles.emptyControls}>
+        <Pressable
+          onPress={onAdd}
+          accessibilityRole="button"
+          accessibilityLabel={addLabel}
+          style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
+        >
+          <MaterialCommunityIcons name={'plus' as MCIName} size={16} color="#fff" />
+          <Text style={styles.addLabel}>{addLabel}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
 }
 
 /** The tap-to-type readout a slider row can wear on its right: the value
@@ -422,4 +458,23 @@ const styles = StyleSheet.create({
   },
   // Hint line: indented to the control column (50pt label + 10pt gap), dim.
   hint: { marginLeft: 60, marginTop: 2, paddingBottom: 2, color: PANEL_INK_MUTED, fontSize: 11 },
+  // The absent-effect bar (EmptyEffectBar): the stacked bars' standard
+  // container, one segmented-row-tall Add button as its only control.
+  emptyBar: {
+    backgroundColor: BAR_BG,
+    borderTopWidth: BAR_BORDER,
+    borderTopColor: HAIRLINE,
+    paddingTop: BAR_PAD_TOP,
+    paddingHorizontal: BAR_PAD_HORIZONTAL,
+    paddingBottom: BAR_PAD_BOTTOM,
+  },
+  emptyControls: { marginTop: BAR_CONTROLS_TOP, height: ROW_SEGMENTED, flexDirection: 'row' },
+  // The Add button wears the control accent (a filled pill, like a selected
+  // segment lit in the value color): pressing it is what SETS a value.
+  addButton: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, borderRadius: 9, backgroundColor: CONTROL_ACCENT,
+  },
+  addButtonPressed: { opacity: 0.7 },
+  addLabel: { color: '#fff', fontSize: 12.5, fontWeight: '600' },
 });
