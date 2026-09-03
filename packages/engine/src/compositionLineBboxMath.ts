@@ -253,3 +253,84 @@ export function computeRegularPolygonSegments(
   }
   return segments;
 }
+
+/** Chain sampled points into line segments, reusing each vertex's exact
+ *  coordinates for the incoming end and outgoing start (the polygon
+ *  builder's own closing rule). `closed` joins the last point back to the
+ *  first. */
+function chainPoints(pts: readonly [number, number][], closed: boolean): PathSegment[] {
+  const segments: PathSegment[] = [];
+  const last = closed ? pts.length : pts.length - 1;
+  for (let i = 0; i < last; i++) {
+    const s = pts[i];
+    const e = pts[(i + 1) % pts.length];
+    segments.push({ kind: 'line', start: [s[0], s[1]], end: [e[0], e[1]] });
+  }
+  return segments;
+}
+
+/** Sample steps for the parametric shapes below. Both curves are smooth,
+ *  so at journal scale the facets sit far below a pixel — the ellipse
+ *  rule (computeOvalSegments) applied to denser curves. */
+const HEART_STEPS = 64;
+const SPIRAL_TURNS = 3;
+const SPIRAL_STEPS_PER_TURN = 36;
+
+/**
+ * A CLOSED heart filling the drag's box, point-down: the classic
+ * sixth-degree parametric heart (x = 16sin³t; y = 13cos t − 5cos 2t −
+ * 2cos 3t − cos 4t), sampled to a closed polyline and normalized so its
+ * own bounds meet the box exactly — a square drag gives the canonical
+ * proportions, a freeform one stretches it to fill, the polygon rule.
+ */
+export function computeHeartSegments(
+  sx: number, sy: number,
+  ex: number, ey: number,
+): PathSegment[] {
+  const raw: [number, number][] = [];
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < HEART_STEPS; i++) {
+    const t = (i * 2 * Math.PI) / HEART_STEPS;
+    const x = 16 * Math.sin(t) ** 3;
+    // The parametric heart is y-up; the page is y-down, so negate.
+    const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+    raw.push([x, y]);
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const bx = Math.min(sx, ex);
+  const by = Math.min(sy, ey);
+  const bw = Math.abs(ex - sx);
+  const bh = Math.abs(ey - sy);
+  const pts = raw.map(([x, y]): [number, number] => [
+    bx + ((x - minX) / (maxX - minX)) * bw,
+    by + ((y - minY) / (maxY - minY)) * bh,
+  ]);
+  return chainPoints(pts, true);
+}
+
+/**
+ * An OPEN Archimedean spiral filling the drag's box: {@link SPIRAL_TURNS}
+ * turns winding outward from the box centre, the outermost ending at the
+ * box edge. An open stroke — it has no interior, so it takes the open
+ * path's menus (stroke, endpoints), never a fill.
+ */
+export function computeSpiralSegments(
+  sx: number, sy: number,
+  ex: number, ey: number,
+): PathSegment[] {
+  const cx = (sx + ex) / 2;
+  const cy = (sy + ey) / 2;
+  const rx = Math.abs(ex - sx) / 2;
+  const ry = Math.abs(ey - sy) / 2;
+  const steps = SPIRAL_TURNS * SPIRAL_STEPS_PER_TURN;
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const a = -Math.PI / 2 + t * SPIRAL_TURNS * 2 * Math.PI;
+    pts.push([cx + t * rx * Math.cos(a), cy + t * ry * Math.sin(a)]);
+  }
+  return chainPoints(pts, false);
+}

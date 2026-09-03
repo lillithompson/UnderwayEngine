@@ -5,7 +5,9 @@ import {
   constrainRectBbox,
   computeLineVertices,
   computeCreationBox,
+  computeHeartSegments,
   computeRectSegments,
+  computeSpiralSegments,
   recenterLineBoxOnGrid,
 } from '../compositionLineBboxMath';
 
@@ -320,5 +322,79 @@ describe('computeRectSegments', () => {
     expect(segs[1]).toEqual({ kind: 'line', start: [0, 4], end: [0, 0] });
     expect(segs[2]).toEqual({ kind: 'line', start: [0, 0], end: [8, 0] });
     expect(segs[3]).toEqual({ kind: 'line', start: [8, 0], end: [8, 4] });
+  });
+});
+
+describe('computeHeartSegments', () => {
+  const segs = () => computeHeartSegments(2, 4, 10, 12);
+
+  it('is a CLOSED chain filling the drag box exactly', () => {
+    const s = segs();
+    // Closed: every end is the next start, last back to first, bit-for-bit.
+    for (let i = 0; i < s.length; i++) {
+      expect(s[i].end).toEqual(s[(i + 1) % s.length].start);
+    }
+    // Its own bounds meet the box (the polygon rule).
+    const xs = s.map((seg) => seg.start[0]);
+    const ys = s.map((seg) => seg.start[1]);
+    expect(Math.min(...xs)).toBeCloseTo(2, 9);
+    expect(Math.max(...xs)).toBeCloseTo(10, 9);
+    expect(Math.min(...ys)).toBeCloseTo(4, 9);
+    expect(Math.max(...ys)).toBeCloseTo(12, 9);
+  });
+
+  it('points DOWN on the page: the tip at the bottom middle, the lobes up top', () => {
+    const s = segs();
+    const pts = s.map((seg) => seg.start);
+    const maxY = Math.max(...pts.map(([, y]) => y));
+    const minY = Math.min(...pts.map(([, y]) => y));
+    // The bottommost vertex is the tip — on the box's vertical middle (6).
+    const tip = pts.find(([, y]) => y === maxY)!;
+    expect(tip[0]).toBeCloseTo(6, 6);
+    // The topmost vertices are the LOBES — off-centre, both sides.
+    const top = pts.filter(([, y]) => y < minY + 0.3);
+    expect(top.some(([x]) => x < 6)).toBe(true);
+    expect(top.some(([x]) => x > 6)).toBe(true);
+  });
+
+  it('is left-right symmetric about the box’s vertical middle', () => {
+    const s = segs();
+    const xs = s.map((seg) => seg.start[0]).sort((a, b) => a - b);
+    for (let i = 0; i < xs.length; i++) {
+      expect(xs[i] + xs[xs.length - 1 - i]).toBeCloseTo(12, 6); // 2 + 10
+    }
+  });
+});
+
+describe('computeSpiralSegments', () => {
+  const segs = () => computeSpiralSegments(0, 0, 8, 8);
+
+  it('is an OPEN chain from the box centre out to its edge', () => {
+    const s = segs();
+    // Open: the last end never returns to the first start.
+    expect(s[s.length - 1].end).not.toEqual(s[0].start);
+    // Starts at the centre…
+    expect(s[0].start[0]).toBeCloseTo(4, 9);
+    expect(s[0].start[1]).toBeCloseTo(4, 9);
+    // …ends on the box's reach (one radius from the centre).
+    const [ex, ey] = s[s.length - 1].end;
+    expect(Math.hypot(ex - 4, ey - 4)).toBeCloseTo(4, 6);
+  });
+
+  it('winds monotonically outward — a spiral, not a wobble', () => {
+    const s = segs();
+    let prev = -1;
+    for (const seg of s) {
+      const r = Math.hypot(seg.start[0] - 4, seg.start[1] - 4);
+      expect(r).toBeGreaterThanOrEqual(prev - 1e-9);
+      prev = r;
+    }
+  });
+
+  it('chains contiguously (each end is the next start)', () => {
+    const s = segs();
+    for (let i = 0; i < s.length - 1; i++) {
+      expect(s[i].end).toEqual(s[i + 1].start);
+    }
   });
 });
