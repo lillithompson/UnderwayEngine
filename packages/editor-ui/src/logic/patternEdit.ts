@@ -87,6 +87,33 @@ export interface PatternTileRow {
   id: string;
   connections: number;
   uri: string;
+  /** The same art baked WHITE, for grounds the panel ink vanishes on —
+   *  the Tiles takeover's selected cell and its floating Done button both
+   *  paint the selection blue and draw this over it. Optional: rows
+   *  without one fall back to `uri`. */
+  activeUri?: string;
+}
+
+/** The Tiles takeover's standard cell (px), its grid gap, the columns a
+ *  row must seat, and the body's side padding — shared with
+ *  {@link patternModalTileSize} so the fit math and the layout agree. */
+export const PATTERN_MODAL_TILE = 56;
+export const PATTERN_MODAL_GRID_GAP = 8;
+export const PATTERN_MODAL_COLUMNS = 6;
+export const PATTERN_MODAL_PAD = 16;
+
+/** The cell size that seats {@link PATTERN_MODAL_COLUMNS} per row in a
+ *  sheet `width` wide: the standard tile, shrunk just enough when the
+ *  sheet is narrower than six standard tiles (a fixed 56 wrapped a
+ *  phone's rows at five with the sixth nearly fitting). Unmeasured (0)
+ *  falls back to the standard cell. */
+export function patternModalTileSize(width: number): number {
+  if (width <= 0) return PATTERN_MODAL_TILE;
+  const fit = Math.floor(
+    (width - 2 * PATTERN_MODAL_PAD - (PATTERN_MODAL_COLUMNS - 1) * PATTERN_MODAL_GRID_GAP)
+      / PATTERN_MODAL_COLUMNS,
+  );
+  return Math.min(PATTERN_MODAL_TILE, fit);
 }
 
 /** Group the tile menu by connection count, ascending, skipping empty

@@ -27,6 +27,7 @@ import {
   patternTileSetLabel,
   patternTileSetRows,
 } from '../logic/patternEdit';
+import { patternModalTileSize } from '../logic/patternEdit';
 import { submenuHeight } from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
@@ -425,18 +426,48 @@ describe('the tile pose gestures (double-tap turn, long-press transform)', () =>
   it('a pick keeps the takeover up; Done (or the X) is the way out', () => {
     // The sheet used to excuse itself after the double-tap window
     // (setTimeout(onClose, …)); a pick is not a dismissal any more, so
-    // tiles can be browsed, re-picked and posed freely, and the standard
-    // AppModalDoneButton closes the sheet (appModal.test.ts pins the
-    // button itself).
+    // tiles can be browsed, re-picked and posed freely, and the floating
+    // Done square closes the sheet (its shape is pinned below).
     expect(MODAL).not.toContain('setTimeout(onClose');
     expect(MODAL).not.toContain('closeTimerRef');
-    expect(MODAL).toContain('<AppModalDoneButton onPress={onClose} />');
+    expect(MODAL).toContain('onPress={onClose}');
     // The double-tap rotate still lands as before.
     const doubleTapBranch = MODAL.slice(
       MODAL.indexOf('if (isPatternTileDoubleTap(lastTapRef.current, t.id, now)) {'),
       MODAL.indexOf('} else {'),
     );
     expect(doubleTapBranch).toContain('rotatePatternTileTransform');
+  });
+
+  it('the Tiles takeover wears its redesigned dress', () => {
+    // Six to a row: the cell size shrinks to seat six wherever the sheet is
+    // narrower than six standard tiles (the old fixed 56 wrapped a phone's
+    // rows at five with the sixth nearly fitting)…
+    expect(patternModalTileSize(390)).toBe(53); // a phone: shrunk to fit six
+    expect(390 - 2 * 16).toBeGreaterThanOrEqual(6 * patternModalTileSize(390) + 5 * 8);
+    expect(patternModalTileSize(800)).toBe(56); // a wide sheet: the standard cell
+    expect(patternModalTileSize(0)).toBe(56); // unmeasured: the standard cell
+    // …the selected cell inverts to selection-blue ground + the white bake…
+    expect(MODAL).toContain('tileActive: { backgroundColor: STATE_ACTIVE, borderColor: STATE_ACTIVE }');
+    expect(MODAL).toContain('uri: active ? t.activeUri ?? t.uri : t.uri');
+    // …the sections separate on a light rule, with no caption text…
+    expect(MODAL).not.toContain("'1 connection'");
+    expect(MODAL).not.toContain('connections`');
+    expect(MODAL).toContain('backgroundColor: PANEL_BORDER');
+    // …the hint sits italic under the header…
+    expect(MODAL).toContain('double tap to rotate, long press to mirror');
+    expect(MODAL).toContain("fontStyle: 'italic'");
+    // …and Done floats over the scroll: a rounded square 1.5 tiles big,
+    // no footer strip behind it, standing clear of the screen's bottom
+    // curve, wearing the armed tile's white bake over its label.
+    expect(MODAL).toContain('const doneSize = Math.round(tile * 1.5);');
+    expect(MODAL).toContain('const DONE_BOTTOM = 32;');
+    expect(MODAL).toContain("position: 'absolute'");
+    expect(MODAL).not.toContain('styles.footer');
+    expect(MODAL).toContain('activeRow.activeUri ?? activeRow.uri');
+    // The scroll's foot pads past the square so the last row can always
+    // escape from under it.
+    expect(MODAL).toContain('paddingBottom: doneSize + DONE_BOTTOM + 24');
   });
 
   it('the transform modal offers rotate and the two flips, previewed in the pose', () => {

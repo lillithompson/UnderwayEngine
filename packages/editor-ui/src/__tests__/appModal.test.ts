@@ -46,11 +46,14 @@ describe('the unified takeover chrome (AppModal)', () => {
 
   it('the pick-grid takeovers keep their sheet up and close through Done', () => {
     // A pick is not a dismissal: the Tiles sheet no longer excuses itself
-    // after the double-tap window (the old setTimeout(onClose, …) exit),
-    // and both pattern takeovers stand the shared Done at their foot.
+    // after the double-tap window (the old setTimeout(onClose, …) exit).
+    // The Sets takeover stands the shared Done at its foot; the Tiles
+    // sheet closes through its own floating Done square instead (the armed
+    // tile over the label — patternEdit.test.ts pins its shape).
+    expect(read('PatternSetsModal.tsx')).toContain('<AppModalDoneButton onPress={onClose} />');
     for (const f of ['PatternTileModal.tsx', 'PatternSetsModal.tsx']) {
       const src = read(f);
-      expect(src).toContain('<AppModalDoneButton onPress={onClose} />');
+      expect(src).toContain('onPress={onClose}');
       expect(src).not.toContain('setTimeout(onClose');
     }
   });
