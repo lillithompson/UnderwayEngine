@@ -4460,6 +4460,14 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           localCellY: p.cellY,
           localCellWidth: p.cellWidth,
           localCellHeight: p.cellHeight,
+          // Repeat patterns snapshot their tile pitch + offset like tiled
+          // figures do (the group is born at identity, so local == world):
+          // transformGroup materializes from locals, and without these the
+          // FIRST scale after grouping would leave the tiling fixed.
+          localTileWidthL0: p.tileMode === 'repeat' ? p.tileWidthL0 : undefined,
+          localTileHeightL0: p.tileMode === 'repeat' ? p.tileHeightL0 : undefined,
+          localTileOffsetXL0: p.tileMode === 'repeat' ? p.tileOffsetXL0 : undefined,
+          localTileOffsetYL0: p.tileMode === 'repeat' ? p.tileOffsetYL0 : undefined,
         };
       });
       // Nest child groups by setting parentGroupId, saving their name.
