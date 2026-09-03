@@ -3,10 +3,7 @@
     "target": "ES2022",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ES2023",
-      "DOM"
-    ],
+    "lib": ["ES2023", "DOM"],
     "jsx": "react-jsx",
     "strict": true,
     "noUnusedLocals": true,
@@ -17,34 +14,16 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": [
-      "jest",
-      "node",
-      "react"
-    ],
+    "types": ["jest", "node", "react"],
     "baseUrl": ".",
     "paths": {
-      "@/engine/*": [
-        "packages/engine/src/*"
-      ],
-      "@/native-shell/*": [
-        "packages/shell/src/*"
-      ],
-      "@/editor-ui/*": [
-        "packages/editor-ui/src/*"
-      ],
-      "expo-constants": [
-        "shims/expo-constants"
-      ],
-      "expo-asset": [
-        "shims/expo-asset"
-      ],
-      "expo-gl": [
-        "shims/expo-gl"
-      ],
-      "react-native": [
-        "shims/react-native"
-      ]
+      "@/engine/*": ["packages/engine/src/*"],
+      "@/native-shell/*": ["packages/shell/src/*"],
+      "@/editor-ui/*": ["packages/editor-ui/src/*"],
+      "expo-constants": ["shims/expo-constants"],
+      "expo-asset": ["shims/expo-asset"],
+      "expo-gl": ["shims/expo-gl"],
+      "react-native": ["shims/react-native"]
     }
   },
   "exclude": [
@@ -54,6 +33,5 @@
     "packages/shell/src/server",
     "packages/shell/modules",
     "packages/editor-ui"
-  ],
-  "extends": "expo/tsconfig.base"
+  ]
 }
