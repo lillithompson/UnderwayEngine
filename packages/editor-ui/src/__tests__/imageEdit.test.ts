@@ -6,9 +6,11 @@ import {
 } from '../logic/imageEdit';
 
 describe('IMAGE_EDIT_OPTIONS', () => {
-  test('lists tint, crop, shadow, border, opacity in order', () => {
+  test('lists crop, shadow, border, opacity in order — Tint was removed', () => {
+    // Pages saved with an image tint keep rendering it; only the page is
+    // gone from the row.
     expect(IMAGE_EDIT_OPTIONS.map((o) => o.action)).toEqual([
-      'tint', 'crop', 'shadow', 'border', 'opacity',
+      'crop', 'shadow', 'border', 'opacity',
     ]);
   });
   test('offers no replace action — every option opens a bar', () => {

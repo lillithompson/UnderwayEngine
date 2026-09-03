@@ -502,7 +502,7 @@ export interface ObjectPropertiesModel {
    *  One undo step; the host flips {@link svgFillPresent} and the bar
    *  re-renders as its controls. */
   onAddSvgFill?(): void;
-  /** Fill-controls callback, same contract as `onTint`: live while dragging a
+  /** Fill-controls callback: live while dragging a
    *  stop / slider (`committed=false`), once on release or a structural edit —
    *  Type, stop add/delete, blend pick (`committed=true`, one undo step).
    *  `fill=null` removes the fill, leaving the shape an outline. */
@@ -542,28 +542,9 @@ export interface ObjectPropertiesModel {
    *  differently-mixed one. */
   locked: boolean;
   onEdit(): void;
-  /** Whether the Tint controls are shown. App-owned so a tap-off dismisses
-   *  them before the panel (same as the Shadow / Border bars). */
-  tintOpen?: boolean;
-  onTintOpenChange?(open: boolean): void;
-  /** The selected image's current tint (defaults supplied by the app when none
-   *  is set yet), seeding the Tint controls. */
-  tint?: TintModel;
-  /** Whether the selection actually CARRIES a tint — `false` (with
-   *  {@link onAddTint}) renders the absent-effect Add bar. See
-   *  {@link svgFillPresent}. */
-  tintPresent?: boolean;
-  /** Create the default tint — the Add bar's one button, one undo step. */
-  onAddTint?(): void;
-  /** Tint-controls callback: fires live while dragging a stop / slider or on a
-   *  stop selection (`committed=false`) and once on release / a structural edit
-   *  — Type, stop add/delete, blend pick (`committed=true`, one undo step).
-   *  `tint=null` removes the tint layer. */
-  onTint?(tint: TintModel | null, committed: boolean): void;
-  /** Open the full-screen color picker for the tint. It targets the solid color
-   *  in Solid mode or `tint.stops[tint.selectedStop]` in gradient modes; the app
-   *  reads the current tint to know which. */
-  onPickTintColor?(): void;
+  // (The image Tint page was removed: images no longer offer a tint bar.
+  // TintModel lives on as the Fill bar's model — see `svgFill` — and pages
+  // saved with an image tint keep rendering it; only the UI is gone.)
   /** Whether the Shadow controls are shown. App-owned so a tap-off dismisses
    *  them before the panel (same as the Border bar). Offered by images, frames
    *  AND text — the one effect bar all three share. */

@@ -9,9 +9,10 @@
  *  Border panel (its Radius slider), so there is no standalone Round action.
  *  Opacity opens the Opacity bar (whole-image opacity + edge soften).
  *  Swapping an image's pixels is not an option here: replace-in-place is
- *  reached by tapping an unfilled photo placeholder, not from this row. */
+ *  reached by tapping an unfilled photo placeholder (and the floating
+ *  Replace capsule), not from this row. Tint was removed from the row:
+ *  pages saved with a tint keep rendering it, but the page is gone. */
 export type ImageEditAction =
-  | 'tint'
   | 'crop'
   | 'shadow'
   | 'border'
@@ -26,7 +27,6 @@ export interface ImageEditOption {
 }
 
 export const IMAGE_EDIT_OPTIONS: readonly ImageEditOption[] = [
-  { action: 'tint', label: 'Tint', icon: 'palette-outline' },
   { action: 'crop', label: 'Crop', icon: 'crop' },
   { action: 'shadow', label: 'Shadow', icon: 'box-shadow' },
   { action: 'border', label: 'Border', icon: 'border-outside' },

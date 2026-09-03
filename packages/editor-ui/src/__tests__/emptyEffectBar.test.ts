@@ -32,7 +32,6 @@ describe('the panel swaps the Add bar in for an absent effect', () => {
   const panel = read(join('components', 'ObjectPropertiesPanel.tsx'));
 
   it.each([
-    ['tint', 'TINT', 'Add Tint'],
     ['svgFill', 'FILL', 'Add Fill'],
     ['shadow', 'DROP SHADOW', 'Add Drop Shadow'],
     ['border', 'BORDER', 'Add Border'],
@@ -46,13 +45,13 @@ describe('the panel swaps the Add bar in for an absent effect', () => {
   it('presence omitted means present — hosts that always materialize keep their controls', () => {
     // The guard is an explicit `=== false`, never falsy: an old host that
     // passes nothing gets the full bar exactly as before.
-    expect(panel).toContain("model.tintPresent === false");
-    expect(panel).not.toContain('!model.tintPresent &&');
+    expect(panel).toContain("model.svgFillPresent === false");
+    expect(panel).not.toContain('!model.svgFillPresent &&');
   });
 
   it('the model carries the presence flags and Add callbacks', () => {
     const adapter = read('adapter.ts');
-    for (const k of ['svgFill', 'tint', 'shadow', 'border']) {
+    for (const k of ['svgFill', 'shadow', 'border']) {
       expect(adapter).toContain(`${k}Present?: boolean;`);
       expect(adapter).toContain(`onAdd${k[0].toUpperCase()}${k.slice(1)}?(): void;`);
     }

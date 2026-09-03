@@ -75,7 +75,7 @@ import {
 //            enough to need no caption. Every selection has this page, first.
 //   type   — ONE combined options row, as word capsules in the toolbar
 //            line-mode pushdown's style: what the selection's KIND offers
-//            (images: tint / crop / shadow / border / opacity; text: edit /
+//            (images: crop / shadow / border / opacity; text: edit /
 //            type / align / shadow) followed by what the SELECTION offers
 //            (Layout · Group · Merge, multi-selections only — a mixed
 //            selection has just those).
@@ -137,7 +137,7 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 };
 
 // The slide-up submenus, in carousel order. Image selections cycle through
-// tint / crop / shadow / border / opacity (matching their type-option order);
+// crop / shadow / border / opacity (matching their type-option order);
 // text cycles through font / align (two pages of the Text bar) and then shadow
 // — the SAME Drop Shadow bar an image opens, cast by the glyphs rather than by
 // the box; a vector selection has stroke, plus its subtype's second bar —
@@ -541,9 +541,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // bar, pointed at a vector object's own stroke.
   const [strokeDraft, setStrokeDraft] = useState<BorderModel | null>(null);
   const prevStrokeOpen = useRef(false);
-  const [tintDraft, setTintDraft] = useState<TintModel | null>(null);
-  const prevTintOpen = useRef(false);
-  // The Fill bar rides the same draft pattern as Tint — it IS the Tint bar,
+  // The Fill bar rides the Tint bar's draft pattern — it IS the Tint bar,
   // pointed at a closed shape's interior.
   const [svgFillDraft, setSvgFillDraft] = useState<TintModel | null>(null);
   const prevSvgFillOpen = useRef(false);
@@ -574,8 +572,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const svgOpacityable = !!model.showSvgOptions && svgHasOpacity(model.svgSubtype ?? 'stroke');
   const typeSubmenuOrder: SubmenuKey[] =
     model.showImageEdit ? (multi
-      ? ['tint', 'shadow', 'border', 'opacity']
-      : ['tint', 'crop', 'shadow', 'border', 'opacity'])
+      ? ['shadow', 'border', 'opacity']
+      : ['crop', 'shadow', 'border', 'opacity'])
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'align', 'shadow']
     : model.showPaintOptions ? ['opacity']
@@ -603,13 +601,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // How tall the bar layer stands: the tallest bar THIS selection can reach,
   // and no taller. Every bar of a type shares it, so swiping the carousel never
   // moves the bar's top edge — but a text selection (two three-row bars) no
-  // longer reserves room for the five-row gradient Tint only an image can open.
+  // longer reserves room for the five-row gradient Fill only a shape can open.
   //
   // Rows are counted from the state the bars will actually render from, drafts
-  // included, so this tracks a live edit: switching a tint to Linear genuinely
+  // included, so this tracks a live edit: switching a fill to Linear genuinely
   // adds an angle row, and the layer grows by one row to hold it.
   const barHeight = typeMenuHeight(submenuOrder, {
-    tintType: (tintDraft ?? model.tint ?? DEFAULT_TINT_MODEL).type,
     svgFillType: (svgFillDraft ?? model.svgFill ?? DEFAULT_TINT_MODEL).type,
     cropMode: (cropDraft ?? model.framing ?? DEFAULT_FRAMING_MODEL).mode,
     cropHasResolution: formatPixelSize(model.imagePixelSize) !== null,
@@ -630,7 +627,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   });
   const activeSub: SubmenuKey | null =
     model.layoutOpen ? 'layout'
-    : model.tintOpen ? 'tint'
     : model.cropOpen ? 'crop'
     : model.shadowOpen ? 'shadow'
     : model.borderOpen ? 'border'
@@ -689,8 +685,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // (including onto a page where nothing is lit, which is fine: the bar says
     // what it is).
     setPage(key === 'layout' ? 'multi' : 'type');
-    if (key === 'tint') model.onTintOpenChange?.(true);
-    else if (key === 'crop') model.onCropOpenChange?.(true);
+    if (key === 'crop') model.onCropOpenChange?.(true);
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
     else if (key === 'border') model.onBorderOpenChange?.(true);
     else if (key === 'opacity') model.onOpacityOpenChange?.(true);
@@ -709,7 +704,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   };
   const dismissSubmenu = () => {
     fontSheetOpenRef.current = false;
-    model.onTintOpenChange?.(false);
     model.onShadowOpenChange?.(false);
     model.onBorderOpenChange?.(false);
     model.onCropOpenChange?.(false);
@@ -833,7 +827,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     if (!model.visible || !canBorder) model.onBorderOpenChange?.(false);
     if (!model.visible || !model.showImageEdit) {
       model.onCropOpenChange?.(false);
-      model.onTintOpenChange?.(false);
     }
     // model.on*OpenChange are stable setters; listing the whole model would
     // re-run this every render.
@@ -942,12 +935,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, showLayout, model.layoutOpen]);
-  useEffect(() => {
-    if (model.tintOpen && !prevTintOpen.current) {
-      setTintDraft(model.tint ?? DEFAULT_TINT_MODEL);
-    }
-    prevTintOpen.current = !!model.tintOpen;
-  }, [model.tintOpen, model.tint]);
   // Fold the Text bar away the moment the selection is no longer editable text
   // (or the whole bar hides), so it never lingers over the next object.
   useEffect(() => {
@@ -962,11 +949,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const toggleShadow = () => model.onShadowOpenChange?.(!model.shadowOpen);
   const toggleBorder = () => model.onBorderOpenChange?.(!model.borderOpen);
   const toggleCrop = () => model.onCropOpenChange?.(!model.cropOpen);
-  const toggleTint = () => model.onTintOpenChange?.(!model.tintOpen);
   const toggleOpacity = () => model.onOpacityOpenChange?.(!model.opacityOpen);
 
   const runImageAction = (action: ImageEditAction) => {
-    if (action === 'tint') { toggleTint(); return; }
     if (action === 'shadow') { toggleShadow(); return; }
     if (action === 'border') { toggleBorder(); return; }
     if (action === 'crop') { toggleCrop(); return; }
@@ -1032,28 +1017,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     model.onTextStyle?.(s, committed);
   };
 
-  // Tint → live preview / commit; the draft owns the tracked params (type,
-  // stop positions, angle, opacity, blend, selection) while colors (solid +
-  // per-stop) come from the model, changed externally via the full-screen
-  // picker — same split as the effect bars' colors.
-  const applyTint = (t: TintModel, committed: boolean) => {
-    setTintDraft(t);
-    model.onTint?.(t, committed);
-  };
-  // Header trash: drop the whole tint layer (one undo step) and close the bar.
-  const removeTint = () => {
-    model.onTint?.(null, true);
-    model.onTintOpenChange?.(false);
-  };
-  // + button: commit the new stop (one undo step) then open the picker on it so
-  // a fresh stop is never a dead end (design 6a).
-  const addTintStop = () => {
-    const next = addStop(tintDraft ?? model.tint ?? DEFAULT_TINT_MODEL);
-    applyTint(next, true);
-    model.onPickTintColor?.();
-  };
-
-  // Shape fill → the same three handlers as Tint, against the shape's own fill.
+  // Shape fill → live preview / commit against the shape's own fill: the
+  // draft owns the tracked params (type, stop positions, angle, opacity,
+  // blend, selection) while colors (solid + per-stop) come from the model,
+  // changed externally via the full-screen picker — same split as the
+  // effect bars' colors.
   const applySvgFill = (f: TintModel, committed: boolean) => {
     setSvgFillDraft(f);
     model.onSvgFill?.(f, committed);
@@ -1332,17 +1300,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const textForBar: TextStyleModel = textDraft
     ? { ...textDraft, color: model.textStyle?.color ?? textDraft.color }
     : (model.textStyle ?? DEFAULT_TEXT_STYLE_MODEL);
-  // Tracked tint params from the draft; the solid + per-stop colors come from
-  // the model (the full-screen picker edits them externally). Stops are matched
-  // by index — add / delete commit immediately, so the counts stay aligned.
-  const tintForBar: TintModel = tintDraft
-    ? {
-        ...tintDraft,
-        solid: model.tint?.solid ?? tintDraft.solid,
-        stops: tintDraft.stops.map((s, i) => ({ ...s, color: model.tint?.stops[i]?.color ?? s.color })),
-      }
-    : (model.tint ?? DEFAULT_TINT_MODEL);
-  // Same draft/model split for the shape fill.
+  // Tracked tint params from the draft; the solid + per-stop colors come
+  // from the model (the full-screen picker edits them externally). Stops
+  // are matched by index — add / delete commit immediately, so the counts
+  // stay aligned.
   const svgFillForBar: TintModel = svgFillDraft
     ? {
         ...svgFillDraft,
@@ -1359,14 +1320,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // effect exists only once its Add button is pressed — the host
   // materializes it, presence flips, and the real controls swap in here.
   let activeBarEl: React.ReactNode = null;
-  if (displaySub === 'tint' && model.tintPresent === false && model.onAddTint) {
-    activeBarEl = (
-      <EmptyEffectBar
-        title="TINT" addLabel="Add Tint"
-        onBack={dismissSubmenu} onAdd={() => model.onAddTint?.()}
-      />
-    );
-  } else if (displaySub === 'svgFill' && model.svgFillPresent === false && model.onAddSvgFill) {
+  if (displaySub === 'svgFill' && model.svgFillPresent === false && model.onAddSvgFill) {
     activeBarEl = (
       <EmptyEffectBar
         title="FILL" addLabel="Add Fill"
@@ -1385,19 +1339,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       <EmptyEffectBar
         title="BORDER" addLabel="Add Border"
         onBack={dismissSubmenu} onAdd={() => model.onAddBorder?.()}
-      />
-    );
-  } else if (displaySub === 'tint') {
-    activeBarEl = (
-      <TintBar
-        tint={tintForBar}
-        onChange={(t) => applyTint(t, false)}
-        onCommit={(t) => applyTint(t, true)}
-        onBack={dismissSubmenu}
-        onRemove={removeTint}
-        onPickColor={() => model.onPickTintColor?.()}
-        onAddStop={addTintStop}
-        onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
       />
     );
   } else if (displaySub === 'svgFill') {
