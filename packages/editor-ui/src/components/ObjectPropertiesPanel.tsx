@@ -26,6 +26,7 @@ import {
   optionCapsuleLefts,
   optionPageFitCount,
   optionRowSidePad,
+  panelPageDirection,
   stepPanelPage,
 } from '../logic/panelLayout';
 import { ColorSwatchFill } from './ColorSwatch';
@@ -415,18 +416,36 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // down this render, after the model's option flags.
   const pagesRef = useRef<PanelPage[]>(['common']);
   const pageRef = useRef<PanelPage>('common');
-  const runSwapRef = useRef<(dir: -1 | 1) => void>(() => {});
-  runSwapRef.current = (dir) => {
+  // The swap choreography, shared by the swipe and the dot clicks: throw the
+  // showing row off the `dir` edge, then ask `resolveTarget` which page comes
+  // in — resolved at the throw's END, not its start, so a page whose options
+  // went away mid-animation is never landed on.
+  const animateSwap = (dir: -1 | 1, resolveTarget: () => PanelPage) => {
     if (swapping.current) return;
     swapping.current = true;
     Animated.timing(swapX, { toValue: dir * width, duration: PANEL_ANIM_MS, useNativeDriver: true }).start(({ finished }) => {
       if (!finished) { swapping.current = false; return; }
-      setPage(stepPanelPage(pagesRef.current, pageRef.current, dir));
+      setPage(resolveTarget());
       swapX.setValue(dir * -width); // place the incoming row just off the opposite edge
       Animated.timing(swapX, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true }).start(() => {
         swapping.current = false;
       });
     });
+  };
+  const runSwapRef = useRef<(dir: -1 | 1) => void>(() => {});
+  runSwapRef.current = (dir) => {
+    animateSwap(dir, () => stepPanelPage(pagesRef.current, pageRef.current, dir));
+  };
+  // A click (or tap) on a carousel dot jumps straight to that dot's page —
+  // same slide, but the destination is named rather than stepped to, and the
+  // row travels the way the clicked dot sits relative to the lit one.
+  const runSwapToRef = useRef<(target: PanelPage) => void>(() => {});
+  runSwapToRef.current = (target) => {
+    const dir = panelPageDirection(pagesRef.current, pageRef.current, target);
+    if (dir === 0) return;
+    animateSwap(dir, () => (
+      pagesRef.current.includes(target) ? target : landingPanelPage(pagesRef.current)
+    ));
   };
   const canSwapRef = useRef(false);
 
@@ -1514,7 +1533,22 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         {canSwap ? (
           <View style={styles.dotsRow}>
             {pages.map((p) => (
-              <View key={p} style={[styles.dot, p === shownPage && styles.dotActive]} />
+              // Each dot is also a button: clicking it slides straight to its
+              // page (runSwapToRef) — the swipe's equal for a mouse. The
+              // hitSlop grows the 12px dot to a comfortable target without
+              // touching the row's look.
+              <Pressable
+                key={p}
+                onPress={() => runSwapToRef.current(p)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  p === 'common' ? 'Show actions page'
+                    : p === 'type' ? 'Show options page'
+                      : 'Show more options page'
+                }
+                style={[styles.dot, p === shownPage && styles.dotActive]}
+              />
             ))}
           </View>
         ) : null}

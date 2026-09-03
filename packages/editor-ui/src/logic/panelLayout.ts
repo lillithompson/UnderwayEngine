@@ -100,6 +100,24 @@ export function stepPanelPage(
   return pages[next];
 }
 
+/** The content-travel direction that brings `target`'s row in from `current` —
+ *  a click on a carousel dot, where the destination is named rather than
+ *  stepped to. −1 slides the content leftward (the later page comes in from
+ *  the right), +1 the reverse — matching stepPanelPage's convention — and 0
+ *  means nothing to do (already there, or either page missing from the set).
+ *  No wrapping: the dots are laid out in page order, so the row always
+ *  travels the way the clicked dot sits relative to the lit one. */
+export function panelPageDirection(
+  pages: readonly PanelPage[],
+  current: PanelPage,
+  target: PanelPage,
+): -1 | 0 | 1 {
+  const from = pages.indexOf(current);
+  const to = pages.indexOf(target);
+  if (from < 0 || to < 0 || from === to) return 0;
+  return to > from ? -1 : 1;
+}
+
 /** Flex weight of the empty cell flanking each side of the COMMON-ACTIONS row
  *  when it has fewer buttons than the row has columns.
  *

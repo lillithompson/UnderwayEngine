@@ -13,6 +13,7 @@ import {
   optionCapsuleLefts,
   optionPageFitCount,
   optionRowSidePad,
+  panelPageDirection,
   stepPanelPage,
 } from '../logic/panelLayout';
 import { OBJECT_PANEL_HEIGHT } from '../theme';
@@ -238,5 +239,59 @@ describe('stepPanelPage', () => {
     // The union collapsed a multi-selection while its page was showing.
     expect(stepPanelPage(['common', 'type'], 'multi', -1)).toBe('type');
     expect(stepPanelPage(['common', 'type'], 'multi', 1)).toBe('type');
+  });
+});
+
+describe('panelPageDirection (a dot click names its destination)', () => {
+  const THREE = ['common', 'type', 'multi'] as const;
+
+  test('a later page comes in from the right (content travels left), an earlier one the reverse', () => {
+    expect(panelPageDirection(THREE, 'common', 'type')).toBe(-1);
+    expect(panelPageDirection(THREE, 'common', 'multi')).toBe(-1);
+    expect(panelPageDirection(THREE, 'multi', 'common')).toBe(1);
+    expect(panelPageDirection(THREE, 'type', 'common')).toBe(1);
+  });
+
+  test('never wraps — the row travels the way the clicked dot sits from the lit one', () => {
+    // Unlike stepPanelPage: from the last dot back to the first is always a
+    // rightward slide, not a leftward wrap.
+    expect(panelPageDirection(THREE, 'multi', 'common')).toBe(1);
+    expect(panelPageDirection(['common', 'type'], 'type', 'common')).toBe(1);
+  });
+
+  test('clicking the lit dot, or naming a page not in the set, does nothing', () => {
+    expect(panelPageDirection(THREE, 'type', 'type')).toBe(0);
+    expect(panelPageDirection(['common', 'type'], 'common', 'multi')).toBe(0);
+    expect(panelPageDirection(['common', 'type'], 'multi', 'common')).toBe(0);
+  });
+});
+
+describe('the carousel dots are buttons', () => {
+  // The component can't render under node, so the wiring is pinned at the
+  // source: each dot is a Pressable that jumps to its own page, and the jump
+  // re-resolves its destination when the slide lands.
+  const PANEL = readFileSync(
+    resolve(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'), 'utf8',
+  );
+
+  test('a dot press slides straight to that dot’s page', () => {
+    expect(PANEL).toContain('onPress={() => runSwapToRef.current(p)}');
+    expect(PANEL).toContain(
+      "const dir = panelPageDirection(pagesRef.current, pageRef.current, target);",
+    );
+  });
+
+  test('the destination is re-resolved at the throw’s end, like the swipe’s', () => {
+    expect(PANEL).toContain(
+      "pagesRef.current.includes(target) ? target : landingPanelPage(pagesRef.current)",
+    );
+    // …and the swipe path still steps through the shared runner.
+    expect(PANEL).toContain(
+      'animateSwap(dir, () => stepPanelPage(pagesRef.current, pageRef.current, dir));',
+    );
+  });
+
+  test('the 12px dot gets a hit area a fingertip (and a cursor) can trust', () => {
+    expect(PANEL).toContain('hitSlop={10}');
   });
 });
