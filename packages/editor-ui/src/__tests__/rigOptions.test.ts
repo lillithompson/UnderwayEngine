@@ -49,7 +49,7 @@ describe('the rig option set', () => {
     expect(rigPartSliders('rig')).toHaveLength(3);
     expect(rigPartSliders('spine')).toHaveLength(3);
     expect(rigPartSliders('hands')).toHaveLength(8);
-    expect(rigPartSliders('feet')).toHaveLength(4);
+    expect(rigPartSliders('feet')).toHaveLength(6);
     expect(rigPartSliders('head')).toHaveLength(3);
     // Every part's bar is exactly its own rows — no page borrows another's.
     for (const opt of RIG_PART_OPTIONS) {
@@ -148,13 +148,21 @@ describe('the rig option set', () => {
       'wristBendL', 'wristBendR',
     ]);
     expect(rigPartSliders('feet').map((s) => s.key)).toEqual([
-      'footL', 'footR', 'ankleTwistL', 'ankleTwistR',
+      'footL', 'footR', 'ankleTwistL', 'ankleTwistR', 'ballBendL', 'ballBendR',
     ]);
     for (const part of ['hands', 'feet'] as const) {
-      for (const spec of rigPartSliders(part).slice(2)) {
+      for (const spec of rigPartSliders(part).slice(2, 4)) {
         expect(spec.centered).toBe(true);
         expect(RIG_SLIDER_REST[spec.key]).toBe(0.5);
       }
+    }
+    // The ball's bend runs ONE way — flat to up, the forefoot off a
+    // planted heel — so it is not centred and rests at the floor.
+    for (const spec of rigPartSliders('feet').slice(4)) {
+      expect(spec.label).toContain('Bend');
+      expect(spec.ends).toEqual(['flat', 'up']);
+      expect(spec.centered).toBeUndefined();
+      expect(RIG_SLIDER_REST[spec.key]).toBe(0);
     }
     for (const spec of rigPartSliders('hands').slice(4, 6)) {
       expect(spec.label).toContain('Spread');
@@ -174,6 +182,7 @@ describe('the rig option set', () => {
       handL: 0.1, handR: 0.1, wristTwistL: 0.5, wristTwistR: 0.5,
       spreadL: 0.5, spreadR: 0.5, wristBendL: 0.5, wristBendR: 0.5,
       footL: 1, footR: 1, ankleTwistL: 0.5, ankleTwistR: 0.5,
+      ballBendL: 0, ballBendR: 0,
       bend: 0.5, twist: 0.5, lean: 0.5,
       nod: 0.5, shake: 0.5, tilt: 0.5,
     });

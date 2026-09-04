@@ -195,8 +195,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
         ROW_SLIDER, ROW_SLIDER,
       ]);
     case 'rigFeet':
-      // Left and Right, each with its own Twist.
-      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
+      // Left and Right, each with its own Twist and its ball's Bend.
+      return standardBar([
+        ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER,
+      ]);
     case 'rigSpine':
       // Bend / Twist / Lean.
       return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
