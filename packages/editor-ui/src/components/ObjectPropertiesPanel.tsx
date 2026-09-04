@@ -35,7 +35,7 @@ import { BorderBar } from './BorderBar';
 import { OpacityBar } from './OpacityBar';
 import { RigPoseBar } from './RigPoseBar';
 import {
-  RIG_PART_OPTIONS, restRigSliders, rigPartOfSubmenu, rigPartSubmenu,
+  RIG_PART_PAGES, restRigSliders, rigPartOfSubmenu, rigPartSubmenu,
 } from '../logic/rigEdit';
 import { CropBar } from './CropBar';
 import { TextBar } from './TextBar';
@@ -600,10 +600,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // plus the Stroke bar its baked tile paths share with the vectors.
     : model.showPatternOptions
       ? [...PATTERN_EDIT_OPTIONS.map((o) => patternActionSubmenu(o.action)), 'stroke' as const]
-    // A rig's parts, in the order its options row lists them. Checked
-    // before showSvgOptions: a rig's figure IS an svg object, and the
-    // vector bars have nothing to act on for a baked silhouette.
-    : model.showRigOptions ? RIG_PART_OPTIONS.map((o) => o.sub)
+    // A rig's pages — the whole-figure RIG bar only; the part pages
+    // (Hands/Feet/Spine/Head) came off the row, their sliders living on as
+    // the host's floating slider modes. Checked before showSvgOptions: a
+    // rig's figure IS an svg object, and the vector bars have nothing to
+    // act on for a baked silhouette.
+    : model.showRigOptions ? RIG_PART_PAGES.map((o) => o.sub)
     : model.showSvgOptions
       ? [
           'stroke',
@@ -1132,16 +1134,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       typeSpecs.push({ key: 'ungroup', label: 'Ungroup', onPress: model.onUngroup });
     }
   } else if (model.showRigOptions) {
-    // Poseable rig: the PARTS a slider can shape — the whole figure first,
-    // then its hands, feet, spine and head. No Stroke / Fill / Opacity: the
-    // figure's silhouette is baked from its pose, so none of the three has
-    // anything to act on. The IK switch is not an option of its own; it
-    // lives on the RIG bar, with the rest of the posing controls.
+    // Poseable rig: the whole-figure RIG page only — the part pages
+    // (Hands / Feet / Spine / Head) were removed from the row; their
+    // sliders live on as the host's floating slider modes. No Stroke /
+    // Fill / Opacity: the figure's silhouette is baked from its pose, so
+    // none of the three has anything to act on. The IK switch is not an
+    // option of its own; it lives on the RIG bar, with the rest of the
+    // posing controls.
     // Reset is NOT one of them: standing the figure back up is a thing you do
     // to the whole rig, so it rides at the foot of the RIG bar (RigPoseBar),
     // the page that is already about the figure as a whole — rather than
     // taking a slot in a row of pages you can open.
-    typeSpecs = RIG_PART_OPTIONS.map((opt) => ({
+    typeSpecs = RIG_PART_PAGES.map((opt) => ({
       key: opt.part,
       label: opt.label,
       sub: opt.sub,

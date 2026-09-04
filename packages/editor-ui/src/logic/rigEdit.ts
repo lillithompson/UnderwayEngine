@@ -25,6 +25,15 @@ export const RIG_PART_OPTIONS: readonly RigPartOption[] = [
   { part: 'head', label: 'Head', sub: 'rigHead' },
 ];
 
+/** The pages the panel actually OFFERS a rig selection: the whole figure
+ *  only. The part pages (Hands / Feet / Spine / Head) were removed from
+ *  the options row — their sliders live on as the floating slider modes
+ *  the host drives through {@link rigPartSliders} / {@link rigSliderPart},
+ *  which is why the full table above stays: it is the part↔bar/slider
+ *  pairing, not the page list. */
+export const RIG_PART_PAGES: readonly RigPartOption[] =
+  RIG_PART_OPTIONS.filter((o) => o.part === 'rig');
+
 /** The bar a part opens, and the part a bar belongs to — the SAME pairing,
  *  read both ways off the one table above. The panel needs both directions
  *  (a press opens a bar; the open bar says which part to render), and it

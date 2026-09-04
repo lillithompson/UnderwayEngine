@@ -6,8 +6,8 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  RIG_PART_OPTIONS, RIG_SLIDER_REST, restRigSliders, rigPartOfSubmenu, rigPartSliders,
-  rigPartSubmenu, rigSliderPart,
+  RIG_PART_OPTIONS, RIG_PART_PAGES, RIG_SLIDER_REST, restRigSliders, rigPartOfSubmenu,
+  rigPartSliders, rigPartSubmenu, rigSliderPart,
 } from '../logic/rigEdit';
 import { ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, submenuHeight } from '../logic/submenuHeight';
 import type { SubmenuKey } from '../logic/submenuHeight';
@@ -18,11 +18,26 @@ const SRC = readFileSync(
 );
 
 describe('the rig option set', () => {
-  it('is the whole figure and its four parts, each opening its own bar', () => {
+  it('the pairing TABLE knows the figure and its four parts', () => {
+    // The full table stays — it is the part↔bar/slider pairing the hosts'
+    // floating slider modes look joints up through — even though most of
+    // its rows no longer open a page.
     expect(RIG_PART_OPTIONS.map((o) => o.label))
       .toEqual(['Rig', 'Hands', 'Feet', 'Spine', 'Head']);
     expect(RIG_PART_OPTIONS.map((o) => o.sub))
       .toEqual(['rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead']);
+  });
+
+  it('the panel offers ONE page: the whole figure', () => {
+    // The part pages (Hands / Feet / Spine / Head) came off the options
+    // row; their sliders live on as the floating slider modes. Both panel
+    // sites — the options row and the submenu list — read RIG_PART_PAGES,
+    // never the full table.
+    expect(RIG_PART_PAGES.map((o) => o.label)).toEqual(['Rig']);
+    expect(RIG_PART_PAGES.map((o) => o.sub)).toEqual(['rigRoot']);
+    expect(SRC).toContain('RIG_PART_PAGES.map((o) => o.sub)');
+    expect(SRC).toContain('RIG_PART_PAGES.map((opt) => ({');
+    expect(SRC).not.toContain('RIG_PART_OPTIONS');
   });
 
   it('reads the part↔bar pairing both ways off the one table', () => {
@@ -114,7 +129,7 @@ describe('the rig option set', () => {
     // carousel's position. Reset opened nothing and lit nothing, so it sat in
     // that row as a button that behaved like no other; it lives at the foot of
     // the RIG bar now, the page already about the whole figure.
-    expect(SRC).toContain('typeSpecs = RIG_PART_OPTIONS.map');
+    expect(SRC).toContain('typeSpecs = RIG_PART_PAGES.map');
     expect(SRC).not.toContain("key: 'resetRig'");
     expect(RIG_PART_OPTIONS.some((o) => o.sub === ('resetRig' as SubmenuKey))).toBe(false);
     // The bar takes it instead, and only when the host wires it — a locked
@@ -212,7 +227,7 @@ describe('the panel', () => {
     // A rig's figure IS an svg object; the rig branch has to win.
     expect(SRC.indexOf('model.showRigOptions ? ')).toBeLessThan(SRC.indexOf('model.showSvgOptions\n'));
     // …and the carousel's order IS the options row's, not a second copy of it.
-    expect(SRC).toContain('model.showRigOptions ? RIG_PART_OPTIONS.map((o) => o.sub)');
+    expect(SRC).toContain('model.showRigOptions ? RIG_PART_PAGES.map((o) => o.sub)');
   });
 
   it('offers no IK switch anywhere — not on a bar, not as an option', () => {
