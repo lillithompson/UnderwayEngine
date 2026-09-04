@@ -16,8 +16,9 @@ import {
 // ObjectPropertiesPanel cycles between:
 //   • FONT  — color (header swatch) · Font (a pill that opens a font sheet) ·
 //     Weight (segmented) · Size (slider).
-//   • ALIGN — Character / Line spacing (dual slider) · horizontal justification
-//     (left/center/right) · vertical alignment (top/middle/bottom).
+//   • ALIGN — Character / Line spacing (dual slider) · Bend (arc curvature,
+//     slider centered at flat) · horizontal justification (left/center/right)
+//     · vertical alignment (top/middle/bottom).
 // Both pages share this component (via `page`), the container, header and row
 // grammar of the image-effect bars (Drop Shadow / Border / Crop; see
 // effectBar.tsx). The slide-in / swipe-out chrome is the
@@ -32,6 +33,10 @@ const LS_MIN = -0.05; // letter spacing (em), design −0.5pt-ish
 const LS_MAX = 0.5; // em, design 2.0pt-ish
 const LH_MIN = 0.8; // line height 80%
 const LH_MAX = 2.0; // line height 200%
+// Bend: −1 (full arc down) … +1 (full arc up), 0 = flat — so the slider
+// STARTS IN THE MIDDLE and pushing either way curves the text that way.
+const BEND_MIN = -1;
+const BEND_MAX = 1;
 
 const WEIGHTS: readonly { value: TextWeight; label: string }[] = [
   { value: 'light', label: 'Light' },
@@ -172,6 +177,17 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onPick
               rightLabel="Line"
               rightValue={(style.lineHeight - LH_MIN) / (LH_MAX - LH_MIN)}
               rightApply={(t, c) => set({ lineHeight: LH_MIN + t * (LH_MAX - LH_MIN) }, c)}
+            />
+            {/* Bend: curve the lines along an arc — up past the middle,
+                down before it; the readout speaks signed percent (0% flat). */}
+            <SliderRow
+              label="Bend"
+              value={(style.bend - BEND_MIN) / (BEND_MAX - BEND_MIN)}
+              apply={(t, c) => set({ bend: BEND_MIN + t * (BEND_MAX - BEND_MIN) }, c)}
+              readout={{
+                text: `${Math.round(style.bend * 100)}%`,
+                commit: (n) => set({ bend: Math.max(BEND_MIN, Math.min(BEND_MAX, n / 100)) }, true),
+              }}
             />
             <SegmentedRow
               label="Align"

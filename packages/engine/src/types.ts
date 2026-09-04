@@ -1374,6 +1374,13 @@ export interface TextStyle {
   letterSpacing?: number;
   /** Line height as a multiple of size (default 1.2). */
   lineHeight?: number;
+  /** Arc bend: each line's baseline curves along a circular arc, −1…1.
+   *  0/absent = flat; positive bows the line upward (apex above the
+   *  baseline), negative downward; magnitude 1 is a half-circle sweep.
+   *  The arc keeps the line's flat width as its ARC length (glyph advances
+   *  are preserved along the path) and is symmetric about the line's
+   *  center, endpoints staying on the flat baseline. See textArc.ts. */
+  bend?: number;
   align?: TextAlign;
   /** Vertical alignment within the bbox height (default 'top'). */
   vAlign?: TextVAlign;

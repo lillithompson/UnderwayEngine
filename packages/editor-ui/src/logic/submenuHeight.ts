@@ -250,8 +250,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // Font pill, Weight segmented, Size slider.
       return standardBar([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER]);
     case 'align':
-      // Char/Line sharing one slider row, then Align and Vertical.
-      return standardBar([ROW_SLIDER, ROW_SEGMENTED, ROW_SEGMENTED]);
+      // Char/Line sharing one slider row, then Bend, Align and Vertical.
+      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'shadow':
       // The odd one out: its XY pad sits BESIDE three sliders rather than above
       // them, so the taller of the two columns sets the height (three of the

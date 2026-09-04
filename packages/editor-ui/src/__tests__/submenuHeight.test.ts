@@ -44,11 +44,11 @@ describe('submenuHeight', () => {
     expect(submenuHeight('opacity')).toBe(barOf([ROW_SLIDER, ROW_SLIDER]));
   });
 
-  test('both Text pages are three rows, and equal', () => {
-    const font = barOf([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER]);
-    expect(submenuHeight('font')).toBe(font);
-    // Char/Line share a row precisely so Align matches Font.
-    expect(submenuHeight('align')).toBe(font);
+  test('the Text pages: Font is three rows, Align four (Bend added a slider)', () => {
+    expect(submenuHeight('font')).toBe(barOf([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER]));
+    // Char/Line still share a row; the Bend slider stands on its own.
+    expect(submenuHeight('align'))
+      .toBe(barOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SEGMENTED]));
   });
 
   test('the Tint bar grows a row per gradient feature', () => {
@@ -155,13 +155,13 @@ describe('typeMenuHeight', () => {
   });
 
   test('text stands as tall as its own tallest bar — not the five rows an image can need', () => {
-    // The reported bug: text's bars are three rows each, but every bar in
-    // the editor reserved room for the tallest bar anywhere (a linear-gradient
-    // Tint, five rows). Text's tallest is now its Shadow bar (three of the
-    // caption-over-track slider rows beside the pad); the typography bars
-    // stand shorter, and the image's worst case shorter still is not.
-    expect(typeMenuHeight(TEXT)).toBe(submenuHeight('shadow'));
-    expect(submenuHeight('font')).toBeLessThan(submenuHeight('shadow'));
+    // The reported bug: text's bars reserved room for the tallest bar
+    // anywhere in the editor (a linear-gradient Tint, five rows). Text's
+    // tallest is now its own Align page (Char/Line + Bend + two segmented
+    // rows); the Font page stands shorter, and the image's worst case
+    // shorter still is not.
+    expect(typeMenuHeight(TEXT)).toBe(submenuHeight('align'));
+    expect(submenuHeight('font')).toBeLessThan(submenuHeight('align'));
     const imageAtWorst = typeMenuHeight(IMAGE, { tintType: 'linear' });
     expect(typeMenuHeight(TEXT)).toBeLessThan(imageAtWorst);
   });

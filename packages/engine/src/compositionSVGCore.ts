@@ -28,6 +28,7 @@ import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, tintToF
 import { tintFillToPaint } from './imageTintFill';
 import { overlayPngDataUri, paintBlendCss, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { islandHeightCells } from './canvasPaint';
+import { textArcGeometry, textArcPath, textBend } from './textArc';
 import { charColorRuns, contentBoxCells, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
 import { STICKER_BORDER_CELLS, STICKER_SHADOW_CELLS, stickerColors } from './stickerStyle';
 import { resolveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
@@ -510,7 +511,8 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
   // and a colorOverride both flatten the text to one color, so both drop
   // the per-character brushwork.
   const charColors = colors || override ? undefined : style.charColors;
-  for (const line of layout.lines) {
+  const bend = textBend(style);
+  for (const [i, line] of layout.lines.entries()) {
     if (line.text.length === 0) continue;
     // Lines carry the align offset from the shared layout, so the export
     // and the DOM layer place them identically; `central` puts the baseline
@@ -523,7 +525,17 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
         ? `<tspan fill="rgb(${r.color.r},${r.color.g},${r.color.b})">${escapeXml(r.text)}</tspan>`
         : `<tspan>${escapeXml(r.text)}</tspan>`)).join('')
       : escapeXml(line.text);
-    inner += `<text x="${lx}" y="${ly}" ${attrs}>${body}</text>`;
+    if (bend !== 0 && line.width > 0) {
+      // Bent line: the glyphs ride a <textPath> along the arc textArcPath
+      // shares with the editor's line layer — same `central` baseline, so
+      // the path IS the line the flat glyphs would center on and bend → 0
+      // converges on the flat rendering below.
+      const pathId = `tba_${text.id}_${i}`;
+      inner += `<defs><path id="${pathId}" d="${textArcPath(lx, ly, line.width * u, bend)}" fill="none"/></defs>` +
+        `<text ${attrs}><textPath href="#${pathId}">${body}</textPath></text>`;
+    } else {
+      inner += `<text x="${lx}" y="${ly}" ${attrs}>${body}</text>`;
+    }
   }
   if (!inner) return '';
   return `<g transform="${parts.join(' ')}">${inner}</g>`;
@@ -578,6 +590,16 @@ function textPaintOutset(text: TextObject): number {
   if (fx?.border) {
     const pos = fx.border.position ?? 'center';
     out = Math.max(out, pos === 'outside' ? fx.border.width : pos === 'center' ? fx.border.width / 2 : 0);
+  }
+  const bend = textBend(text.style);
+  if (bend !== 0) {
+    // A bent line bows off its flat baseline by the arc's rise; a cutout
+    // framed to the flat box would crop the bow. The widest a line can be is
+    // the content box width, and rise grows with width, so measuring the
+    // arc at the full box width bounds every real line — erring outward,
+    // like the rest of this function.
+    const content = contentBoxCells(text);
+    if (content.width > 0) out += textArcGeometry(content.width, bend).rise;
   }
   return out;
 }

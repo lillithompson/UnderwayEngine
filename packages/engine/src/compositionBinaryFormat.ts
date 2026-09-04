@@ -447,7 +447,14 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      uploads store their markup verbatim (never rasterized at import) so
 //      they stay scalable. Older files only ever wrote 0/1, so the read
 //      needs no version gate; files carrying a 2 are v56+ by construction.
-const FORMAT_VERSION = 56;
+// v57: TEXT ARC BEND + a text extension byte. Text flags2 is fully spent
+//      (0x01–0x80 all assigned), so v57 text records ALWAYS end with one
+//      extension-flags byte (version-gated: readers only consume it at
+//      v57+). Its bit 0x01 flags a trailing `style.bend` f32 (−1…1, the
+//      Type bar's Bend slider; see textArc.ts). Bits 0x02–0x80 are free
+//      for future text fields, which is the point of paying the byte
+//      unconditionally.
+const FORMAT_VERSION = 57;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -971,6 +978,11 @@ const TFLAG2_HAS_VALIGN = 0x40;
 // the bit was always written 0 before, so older saves read back unchanged.
 const TFLAG2_HAS_ALPHA = 0x80;
 // v29+ text style flag bits.
+// v57+ text EXTENSION byte, written unconditionally at the very end of every
+// text record (flags2 above is fully spent). Each bit gates a payload that
+// follows the byte, in bit order.
+const TEXT_EXT_HAS_BEND = 0x01;
+
 const TSTYLE_BOLD = 0x01;
 const TSTYLE_ITALIC = 0x02;
 const TSTYLE_HAS_STROKE = 0x04;
@@ -2505,6 +2517,8 @@ function textBinarySize(text: TextObject): number {
   if (charColorCount > 0) size += 2 + charColorCount * 5; // v47+ count + (idx u16, rgb)
   if (text.style.vAlign != null) size += 1; // v53+ vAlign enum
   if (text.style.alpha != null) size += 1;  // v55+ ink opacity u8
+  size += 1; // v57+ extension byte, always written
+  if (text.style.bend != null) size += 4; // v57+ arc bend f32
   return size;
 }
 
@@ -2620,9 +2634,18 @@ function writeText(
     out[pos++] = VALIGN_TO_BITS[text.style.vAlign] & 0xff;
   }
 
-  // v55+ whole-text ink opacity, last in the record.
+  // v55+ whole-text ink opacity.
   if (text.style.alpha != null) {
     out[pos++] = quantize255(text.style.alpha);
+  }
+
+  // v57+ extension byte, ALWAYS last in the record (flags2 is fully spent);
+  // each set bit gates a payload after it, in bit order.
+  let ext = 0;
+  if (text.style.bend != null) ext |= TEXT_EXT_HAS_BEND;
+  out[pos++] = ext;
+  if (text.style.bend != null) {
+    view.setFloat32(pos, text.style.bend, true); pos += 4;
   }
 
   return pos;
@@ -2755,10 +2778,19 @@ function readText(
     if (vAlign != null) style.vAlign = vAlign;
   }
 
-  // v55+ whole-text ink opacity, last in the record. Same presence-gating
-  // story as its neighbours.
+  // v55+ whole-text ink opacity. Same presence-gating story as its
+  // neighbours.
   if (flags2 & TFLAG2_HAS_ALPHA) {
     style.alpha = data[pos++] / 255;
+  }
+
+  // v57+ extension byte, always written from v57 on (flags2 ran out of
+  // bits); version-gated because older records simply end above.
+  if (version >= 57) {
+    const ext = data[pos++];
+    if (ext & TEXT_EXT_HAS_BEND) {
+      style.bend = view.getFloat32(pos, true); pos += 4;
+    }
   }
 
   return { text, pos };

@@ -134,7 +134,7 @@ const sameFramingModel = (a: FramingModel, b: FramingModel): boolean =>
 // (it always does while a text is selected — this only guards the transient
 // frame before model.textStyle lands).
 const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
-  fontId: 'system', weight: 'regular', size: 2, letterSpacing: 0, lineHeight: 1.2, align: 'left', vAlign: 'top', color: { r: 58, g: 53, b: 50 },
+  fontId: 'system', weight: 'regular', size: 2, letterSpacing: 0, lineHeight: 1.2, bend: 0, align: 'left', vAlign: 'top', color: { r: 58, g: 53, b: 50 },
 };
 
 // The slide-up submenus, in carousel order. Image selections cycle through

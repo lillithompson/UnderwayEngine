@@ -253,6 +253,9 @@ export interface TextStyleModel {
   letterSpacing: number;
   /** Line height as a multiple of the font size. */
   lineHeight: number;
+  /** Arc bend, −1…1: each line's baseline curves along a circular arc —
+   *  positive bows up, negative down, 0 flat (the Bend slider's middle). */
+  bend: number;
   align: TextHAlign;
   /** Vertical alignment of the block within its box height. */
   vAlign: TextVAlign;
