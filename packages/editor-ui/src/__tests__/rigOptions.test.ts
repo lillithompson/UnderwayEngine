@@ -156,11 +156,11 @@ describe('the rig option set', () => {
         expect(RIG_SLIDER_REST[spec.key]).toBe(0.5);
       }
     }
-    // The ball's bend runs ONE way — flat to up, the forefoot off a
-    // planted heel — so it is not centred and rests at the floor.
+    // The ball's bend runs ONE way — flat to tiptoe, the forefoot folding
+    // down through the arch — so it is not centred and rests flat.
     for (const spec of rigPartSliders('feet').slice(4)) {
       expect(spec.label).toContain('Bend');
-      expect(spec.ends).toEqual(['flat', 'up']);
+      expect(spec.ends).toEqual(['flat', 'tiptoe']);
       expect(spec.centered).toBeUndefined();
       expect(RIG_SLIDER_REST[spec.key]).toBe(0);
     }

@@ -89,8 +89,8 @@ const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
     { key: 'ankleTwistR', label: 'Right Twist', ends: ['in', 'out'], centered: true },
     // The BALL's bend: the forefoot swung up off a planted heel (Figgie's
     // bendBall), which the point slider — heel and toe — leaves alone.
-    { key: 'ballBendL', label: 'Left Bend', ends: ['flat', 'up'] },
-    { key: 'ballBendR', label: 'Right Bend', ends: ['flat', 'up'] },
+    { key: 'ballBendL', label: 'Left Bend', ends: ['flat', 'tiptoe'] },
+    { key: 'ballBendR', label: 'Right Bend', ends: ['flat', 'tiptoe'] },
   ],
   spine: [
     { key: 'bend', label: 'Bend', ends: ['back', 'forward'], centered: true },
@@ -136,7 +136,7 @@ export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
   footR: 1,
   ankleTwistL: 0.5,
   ankleTwistR: 0.5,
-  ballBendL: 0, // flat — the bend only goes UP, so rest is the floor
+  ballBendL: 0, // flat — the bend only folds DOWN (tiptoe), so rest is flat
   ballBendR: 0,
   bend: 0.5, // straight
   twist: 0.5,
