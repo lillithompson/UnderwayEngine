@@ -507,6 +507,16 @@ export interface ObjectPropertiesModel {
    *  One undo step; the host flips {@link svgFillPresent} and the bar
    *  re-renders as its controls. */
   onAddSvgFill?(): void;
+  /** Whether the selection actually DRAWS its stroke. `false` (with
+   *  {@link onAddStroke}) renders the Stroke bar as the absent-effect Add
+   *  bar — a closed shape can stand outline-less (width 0), and opening its
+   *  Stroke page must never edit it. Omitted means present: open paths ARE
+   *  their stroke, and patterns always draw their tiles' lines. */
+  strokePresent?: boolean;
+  /** Create the default stroke on the selection — the Add bar's one
+   *  button. One undo step; the host flips {@link strokePresent} and the
+   *  bar re-renders as its controls. */
+  onAddStroke?(): void;
   /** Fill-controls callback: live while dragging a
    *  stop / slider (`committed=false`), once on release or a structural edit —
    *  Type, stop add/delete, blend pick (`committed=true`, one undo step).

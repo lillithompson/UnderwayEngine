@@ -42,6 +42,23 @@ describe('the panel swaps the Add bar in for an absent effect', () => {
     expect(panel).toContain(`title="${title}" addLabel="${label}"`);
   });
 
+  it('stroke: an outline-less closed shape opens on Add Stroke', () => {
+    // strokePresent is a closed-shape question: open paths ARE their stroke
+    // and patterns always draw their tiles' lines, so those hosts answer
+    // undefined and keep the controls.
+    expect(panel).toContain(
+      "displaySub === 'stroke' && model.strokePresent === false && model.onAddStroke",
+    );
+    expect(panel).toContain('title="STROKE" addLabel="Add Stroke"');
+    // The draft seeded on open holds the ABSENT stroke (width 0); the Add
+    // press drops it so the controls that swap in read the freshly created
+    // stroke off the model.
+    expect(panel).toContain('onAdd={() => { setStrokeDraft(null); model.onAddStroke?.(); }}');
+    const adapter = read('adapter.ts');
+    expect(adapter).toContain('strokePresent?: boolean;');
+    expect(adapter).toContain('onAddStroke?(): void;');
+  });
+
   it('presence omitted means present — hosts that always materialize keep their controls', () => {
     // The guard is an explicit `=== false`, never falsy: an old host that
     // passes nothing gets the full bar exactly as before.

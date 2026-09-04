@@ -1339,7 +1339,19 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // effect exists only once its Add button is pressed — the host
   // materializes it, presence flips, and the real controls swap in here.
   let activeBarEl: React.ReactNode = null;
-  if (displaySub === 'svgFill' && model.svgFillPresent === false && model.onAddSvgFill) {
+  if (displaySub === 'stroke' && model.strokePresent === false && model.onAddStroke) {
+    activeBarEl = (
+      <EmptyEffectBar
+        title="STROKE" addLabel="Add Stroke"
+        // The draft was seeded when the page opened — on the ABSENT stroke
+        // (width 0) — so drop it as the Add lands: the controls that swap
+        // in read the freshly created stroke off the model instead of
+        // showing a Width slider parked at zero.
+        onBack={dismissSubmenu}
+        onAdd={() => { setStrokeDraft(null); model.onAddStroke?.(); }}
+      />
+    );
+  } else if (displaySub === 'svgFill' && model.svgFillPresent === false && model.onAddSvgFill) {
     activeBarEl = (
       <EmptyEffectBar
         title="FILL" addLabel="Add Fill"
