@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { PANEL_BG, PANEL_BORDER, PANEL_INK, STATE_ACTIVE } from '../theme';
+import { HEADER_HEIGHT, PANEL_BG, PANEL_BORDER, PANEL_INK, STATE_ACTIVE } from '../theme';
 
 // The ONE full-screen modal shell — Facet's AppModal, in its compact
 // (phone) form, on the editor's light panel scheme. Every full-screen
@@ -22,10 +22,17 @@ import { PANEL_BG, PANEL_BORDER, PANEL_INK, STATE_ACTIVE } from '../theme';
 // flipped black/white by luma — the same override hooks Facet's AppModal
 // grew for the same customer.
 
+/** The status-bar clearance a takeover header wears when the host names
+ *  none: Facet's webview constant, kept as the fallback so a modal outside
+ *  the editor still clears a notch. Editor hosts pass `safeTop` (the
+ *  toolbar's own top edge) instead — see the prop. */
+const DEFAULT_SAFE_TOP = 48;
+
 export function AppModal({
   visible,
   title,
   onClose,
+  safeTop = DEFAULT_SAFE_TOP,
   headerRight,
   headerStyle,
   headerForeground = PANEL_INK,
@@ -36,6 +43,12 @@ export function AppModal({
   visible: boolean;
   title: string;
   onClose: () => void;
+  /** Clearance above the header's content row. The header's TOTAL height is
+   *  safeTop + HEADER_HEIGHT, so when the host passes the editor toolbar's
+   *  top edge (EditorShell's toolbarTop), the header's bottom hairline
+   *  lands exactly on the toolbar's own bottom edge — opening a takeover
+   *  never moves the chrome's 'top edge'. */
+  safeTop?: number;
   /** Extra controls between the title and the close X. */
   headerRight?: React.ReactNode;
   /** Style override for the header band (e.g. a flat color). */
@@ -53,7 +66,16 @@ export function AppModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={[styles.screen, background ? { backgroundColor: background } : null]}>
-        <View style={[styles.header, headerStyle]}>
+        <View
+          style={[
+            styles.header,
+            // Sized, not padded, to the editor's own chrome: clearance
+            // above, one HEADER_HEIGHT row of content below (see the
+            // safeTop prop).
+            { paddingTop: safeTop, height: safeTop + HEADER_HEIGHT },
+            headerStyle,
+          ]}
+        >
           {headerBackground}
           <Text style={[styles.title, { color: headerForeground }]} numberOfLines={1}>
             {title}
@@ -100,16 +122,15 @@ export function AppModalDoneButton({ onPress, width }: {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: PANEL_BG },
-  // Facet's compact header metrics (paddingVertical 18, title 18/700),
-  // with the editor webview's status-bar clearance on top and the panel
-  // hairline underneath. overflow:hidden clips headerBackground to the band.
+  // The band: status-bar clearance on top (the inline paddingTop/height —
+  // safeTop + HEADER_HEIGHT, matching the editor toolbar's bottom edge),
+  // Facet's title type (18/700), and the panel hairline underneath.
+  // overflow:hidden clips headerBackground to the band.
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
-    paddingTop: 48,
-    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: PANEL_BORDER,
     overflow: 'hidden',

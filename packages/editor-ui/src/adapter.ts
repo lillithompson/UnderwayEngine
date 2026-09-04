@@ -312,6 +312,11 @@ export interface OpacityModel {
 
 export interface ObjectPropertiesModel {
   visible: boolean;
+  /** Header clearance for the panel's full-screen takeovers (the Tiles and
+   *  Randomization Settings modals): the editor toolbar's top edge, so a
+   *  takeover's header bottom lands exactly on the toolbar's own bottom
+   *  edge — see AppModal's safeTop. */
+  safeTop?: number;
   /** 'multi' marks a multi-selection: the host applies every edit to ALL
    *  selected objects, the image options drop the single-target actions
    *  (Replace / Crop), and the selection gets a carousel page of its own

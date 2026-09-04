@@ -14,7 +14,7 @@ import { AppModal, AppModalDoneButton } from './AppModal';
 // govern. There is no confirm — every toggle applies as it is pressed —
 // and the way out is the standard Done button (or the header's X).
 
-export function PatternSetsModal({ visible, sets, allowBorder, onToggleSet, onToggleBorder, onClose }: {
+export function PatternSetsModal({ visible, sets, allowBorder, onToggleSet, onToggleBorder, onClose, safeTop }: {
   visible: boolean;
   sets: readonly PatternTileSetRow[];
   /** Whether connectivity may reach across the grid border (undefined = yes). */
@@ -22,9 +22,11 @@ export function PatternSetsModal({ visible, sets, allowBorder, onToggleSet, onTo
   onToggleSet: (family: string) => void;
   onToggleBorder: () => void;
   onClose: () => void;
+  /** Header clearance — see AppModal's safeTop. */
+  safeTop?: number;
 }) {
   return (
-    <AppModal visible={visible} title="Randomization Settings" onClose={onClose}>
+    <AppModal visible={visible} title="Randomization Settings" onClose={onClose} safeTop={safeTop}>
       <ScrollView contentContainerStyle={styles.body}>
         <View style={styles.setList}>
           {sets.map((s) => (
