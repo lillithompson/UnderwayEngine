@@ -134,7 +134,8 @@ export interface CompositionExportOptions {
    *  different weight for every page depending on how big its content is. */
   normalize?: boolean;
   /** Uniform breathing margin around the export frame, as a fraction of its
-   *  longer edge — see {@link CompositionSVGInputs.viewBoxPadFraction}. */
+   *  longer edge — content-framed exports only (a frame-pinned export keeps
+   *  its exact edge) — see {@link CompositionSVGInputs.viewBoxPadFraction}. */
   viewBoxPadFraction?: number;
   /** Frame SVG objects on their inked extent (geometry + stroke half-width),
    *  as subset cutouts do — see {@link CompositionSVGInputs.frameInkExtents}.

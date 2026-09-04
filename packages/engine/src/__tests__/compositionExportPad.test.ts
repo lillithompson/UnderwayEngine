@@ -118,6 +118,49 @@ describe('viewBoxPadFraction', () => {
     expect(w).toBeCloseTo(8192 + 819.2);
     expect(h).toBeCloseTo(4096 + 819.2);
   });
+
+  it('is ignored when a frame pins the bounds — the framed page keeps its exact edge', async () => {
+    // A 16×16 frame (isFrame group + rect mask boundary) with a member line
+    // inside. Hosts pass the pad unconditionally for content-framed formats;
+    // a page whose export pins to a Figma-style frame must not gain page
+    // background outside the board the user framed.
+    storage['comp_meta_framedpad'] = JSON.stringify({
+      name: 'FramedPad',
+      figures: [],
+      groups: [{
+        id: 'gFrame', name: 'Frame',
+        translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
+        rotation: 0, mirrorH: false, mirrorV: false, isFrame: true,
+      }],
+      svgObjects: [
+        {
+          id: 'svg_b', groupId: 'gFrame', isMask: true, color: { r: 0, g: 0, b: 0 },
+          segments: [
+            { kind: 'line', start: [0, 0], end: [16, 0] },
+            { kind: 'line', start: [16, 0], end: [16, 16] },
+            { kind: 'line', start: [16, 16], end: [0, 16] },
+            { kind: 'line', start: [0, 16], end: [0, 0] },
+          ],
+          cellX: 0, cellY: 0, cellWidth: 16, cellHeight: 16,
+        },
+        {
+          id: 'svg_m', groupId: 'gFrame',
+          segments: [{ kind: 'line', start: [2, 2], end: [14, 14] }],
+          color: { r: 0, g: 0, b: 0 },
+          cellX: 2, cellY: 2, cellWidth: 12, cellHeight: 12,
+        },
+      ],
+      camera: { offsetX: 0, offsetY: 0, zoom: 1 },
+      strokeScale: 0.04, gridIntensity: 0.5,
+    });
+    const svg = await exportCompositionSVG('framedpad', undefined, undefined, {
+      normalize: false,
+      viewBoxPadFraction: 0.05,
+      frameInkExtents: true,
+    });
+    // Exactly the 16×16-cell frame — no pad, no ink growth past the frame.
+    expect(parseViewBox(svg!)).toEqual([0, 0, 4096, 4096]);
+  });
 });
 
 describe('frameInkExtents', () => {

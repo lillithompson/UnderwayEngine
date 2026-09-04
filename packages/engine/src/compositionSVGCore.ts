@@ -127,8 +127,11 @@ export interface CompositionSVGInputs {
    * the canvas background (which covers the full viewBox) or left
    * transparent/backdrop-colored when there is none. For exports whose frame
    * is the tight content union (an unframed freeform page), where the
-   * outermost marks would otherwise touch the image edge. 0/absent keeps the
-   * exact frame every existing export has.
+   * outermost marks would otherwise touch the image edge. Ignored when a
+   * Figma-style frame pins the bounds (the frame is the page the user
+   * framed; padding it would add page background outside that board), so
+   * hosts can pass it unconditionally. 0/absent keeps the exact frame every
+   * existing export has.
    */
   viewBoxPadFraction?: number;
   /**
@@ -1033,18 +1036,21 @@ export async function generateCompositionSVGCore(
     if (mask.cellX + mask.cellWidth > fMaxCX) fMaxCX = mask.cellX + mask.cellWidth;
     if (mask.cellY + mask.cellHeight > fMaxCY) fMaxCY = mask.cellY + mask.cellHeight;
   }
-  if (fMinCX !== Infinity) {
+  const framePinned = fMinCX !== Infinity;
+  if (framePinned) {
     minCX = fMinCX; minCY = fMinCY; maxCX = fMaxCX; maxCY = fMaxCY;
   }
 
   if (maxCX === minCX) { minCX -= 0.5; maxCX += 0.5; }
   if (maxCY === minCY) { minCY -= 0.5; maxCY += 0.5; }
 
-  // Breathing margin (see viewBoxPadFraction). Applied last — after frame
-  // pinning and the degenerate guards — so it pads whatever frame the rules
-  // above settled on, and sized off the longer edge so the margin is the same
-  // width on all four sides.
-  const padFraction = input.viewBoxPadFraction ?? 0;
+  // Breathing margin (see viewBoxPadFraction) — content-framed exports only.
+  // Applied last, after the degenerate guards, sized off the longer edge so
+  // the margin is the same width on all four sides. A frame-pinned export
+  // ignores it: the frame IS the page the user (or the format) framed, and
+  // padding it would only add page background outside that board — so hosts
+  // can pass the pad unconditionally and framed pages keep their exact edge.
+  const padFraction = framePinned ? 0 : (input.viewBoxPadFraction ?? 0);
   if (padFraction > 0) {
     const pad = Math.max(maxCX - minCX, maxCY - minCY) * padFraction;
     minCX -= pad; minCY -= pad; maxCX += pad; maxCY += pad;
