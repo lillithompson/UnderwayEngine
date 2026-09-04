@@ -7,6 +7,7 @@ import {
 } from '../logic/submenuHeight';
 import { BAR_BG, CONTROL_ACCENT, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
 import { beginValueDrag, endValueDrag, padOffsetFromTouch } from '../logic/slider';
+import { rgbCss, withAlpha } from '../logic/hsv';
 
 // The Drop Shadow editing bar (design "2a"): a full-width light bar with a
 // header (title · color swatch · trash), an XY offset pad, and Blur / Spread /
@@ -115,7 +116,15 @@ export function ShadowBar({ shadow, onChange, onCommit, onBack, onRemove, onPick
             value={(shadow.spread - MIN_SPREAD) / (MAX_SPREAD - MIN_SPREAD)}
             apply={(t, c) => set({ spread: MIN_SPREAD + t * (MAX_SPREAD - MIN_SPREAD) }, c)}
           />
-          <SliderRow label="Opacity" value={shadow.opacity} apply={(t, c) => set({ opacity: t }, c)} />
+          {/* The shadow's own color ramping up over the alpha checker — "how
+              much of THIS shadow", as the color picker's Opacity reads. */}
+          <SliderRow
+            label="Opacity"
+            value={shadow.opacity}
+            accent={rgbCss(withAlpha(shadow.color, 1))}
+            checker
+            apply={(t, c) => set({ opacity: t }, c)}
+          />
         </View>
       </View>
     </View>

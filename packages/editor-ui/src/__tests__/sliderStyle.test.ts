@@ -66,6 +66,27 @@ describe('the slider row', () => {
   });
 });
 
+describe('every Opacity row', () => {
+  it('shows the alpha checker under its ramp, in the property bars too', () => {
+    for (const f of ['OpacityBar.tsx', 'ShadowBar.tsx', 'TintBar.tsx']) {
+      const src = read(f);
+      const at = src.indexOf('label="Opacity"');
+      expect([f, at >= 0]).toEqual([f, true]);
+      const row = src.slice(src.lastIndexOf('<SliderRow', at), src.indexOf('/>', at));
+      expect([f, /\schecker\s/.test(row)]).toEqual([f, true]);
+    }
+    // Soften is not an opacity: no checker.
+    const opacity = read('OpacityBar.tsx');
+    const soften = opacity.slice(opacity.indexOf('label="Soften"'), opacity.indexOf('/>', opacity.indexOf('label="Soften"')));
+    expect(soften).not.toContain('checker');
+  });
+
+  it('ramps in the color it controls where there is one', () => {
+    expect(read('ShadowBar.tsx')).toContain('accent={rgbCss(withAlpha(shadow.color, 1))}');
+    expect(read('TintBar.tsx')).toContain("accent={tint.type === 'solid' ? rgbCss(withAlpha(tint.solid, 1)) : undefined}");
+  });
+});
+
 describe('the color pickers', () => {
   it('both draw their Opacity as the shared row: the color over the checker, dark caption', () => {
     const ui = read('ColorPickerModal.tsx');

@@ -3,7 +3,7 @@ import { LayoutChangeEvent, PanResponder, Pressable, ScrollView, StyleSheet, Tex
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TintModel } from '../adapter';
-import { isTranslucent } from '../logic/hsv';
+import { isTranslucent, rgbCss, withAlpha } from '../logic/hsv';
 import {
   TINT_ANGLE_MAX,
   TINT_BLENDS,
@@ -317,9 +317,13 @@ export function TintBar({ title = 'TINT', removeLabel, tint, onChange, onCommit,
             }}
           />
         ) : null}
+        {/* The tint ramping up over the alpha checker: a solid tint's own
+            color, a gradient's the control accent (no one color to ramp). */}
         <SliderRow
           label="Opacity"
           value={tint.opacity}
+          accent={tint.type === 'solid' ? rgbCss(withAlpha(tint.solid, 1)) : undefined}
+          checker
           apply={(t, c) => set({ opacity: t }, c)}
         />
         <BlendRow label={tintBlendLabel(tint.blend)} onOpen={() => setSheetOpen(true)} />

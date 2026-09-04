@@ -37,7 +37,9 @@ export function OpacityBar({ opacity, onChange, onCommit, onBack, onRemove }: {
         onRemove={onRemove}
       />
       <View style={styles.controls}>
-        <SliderRow label="Opacity" value={opacity.opacity} apply={(t, c) => set({ opacity: t }, c)} />
+        {/* An opacity: the alpha checker under the ramp, so its empty end
+            reads as see-through. Soften is not one (hard → faded edges). */}
+        <SliderRow label="Opacity" value={opacity.opacity} checker apply={(t, c) => set({ opacity: t }, c)} />
         <SliderRow label="Soften" value={opacity.edgeSoften} apply={(t, c) => set({ edgeSoften: t }, c)} />
       </View>
     </View>
