@@ -4,8 +4,9 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { RGBLike } from '../adapter';
 import {
   BAR_BORDER, BAR_CONTROLS_TOP, BAR_HEADER, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP,
-  ROW_SEGMENTED, ROW_SLIDER,
+  ROW_SEGMENTED, ROW_SLIDER, SLIDER_CONTROL, SLIDER_LABEL, SLIDER_LABEL_GAP,
 } from '../logic/submenuHeight';
+import { percentText, percentToValue } from '../logic/slider';
 import {
   PANEL_BG,
   PANEL_CONTROL,
@@ -19,15 +20,15 @@ import {
   PANEL_SHEET_ROW_ACTIVE,
   PANEL_SWATCH_BORDER,
   PANEL_TRACK,
-  PUSHDOWN_INACTIVE,
   STATE_ACTIVE,
 } from '../theme';
 import { ColorSwatchFill } from './ColorSwatch';
-import { Slider } from './Slider';
+import { SLIDER_TRACK, Slider } from './Slider';
 
 // Shared chrome for the image-effect editing bars (Drop Shadow, Border): the
 // full-width light bar's header (back · color swatch · trash) and the row
-// grammar (50pt label column + a control filling the rest). Both bars are
+// grammar (a slider row is its caption over the track, with the value box
+// on the right; a segmented row keeps the 50pt label column). Both bars are
 // siblings of the same design, so this is their single source of truth — the
 // bars themselves only supply their specific controls (the shadow XY pad, the
 // border segmented control) and container padding.
@@ -164,12 +165,12 @@ export function EmptyEffectBar({ title, addLabel, onBack, onAdd }: {
   );
 }
 
-/** The tap-to-type readout a slider row can wear on its right: the value
- *  written out in the toolbar hex field's dress — no box, the pushdown's
- *  dim 13/600 ink — because it is just the slider's value spelled out, a
- *  label you can happen to type into. Tapping arms a numeric field seeded
- *  with the current text; a draft that parses commits on blur / done, and
- *  an unfinished edit is abandoned, not guessed at (the hex field's rule). */
+/** The tap-to-type value box every slider row wears on its right: a white
+ *  pill-high cell (one track tall, the raised cell of the segmented rows)
+ *  with the value written in full-strength ink. Tapping arms a numeric
+ *  field seeded with the current text; a draft that parses commits on blur
+ *  / done, and an unfinished edit is abandoned, not guessed at (the toolbar
+ *  hex field's rule). */
 function SliderReadout({ text, commit }: { text: string; commit: (n: number) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
@@ -180,8 +181,9 @@ function SliderReadout({ text, commit }: { text: string; commit: (n: number) => 
         accessibilityLabel={`Edit value, currently ${text}`}
         onPress={() => { setDraft(text); setEditing(true); }}
         hitSlop={6}
+        style={styles.readout}
       >
-        <Text style={styles.readout}>{text}</Text>
+        <Text style={styles.readoutText}>{text}</Text>
       </Pressable>
     );
   }
@@ -191,47 +193,63 @@ function SliderReadout({ text, commit }: { text: string; commit: (n: number) => 
     if (Number.isFinite(n)) commit(n);
   };
   return (
-    <TextInput
-      accessibilityLabel="Value"
-      style={styles.readout}
-      value={draft}
-      onChangeText={setDraft}
-      onBlur={finish}
-      onSubmitEditing={finish}
-      keyboardType="numeric"
-      autoFocus
-      selectTextOnFocus
-      returnKeyType="done"
-    />
-  );
-}
-
-/** One slider row: a 50pt label column + a 0–1 slider filling the rest.
- *  `apply(t, committed)` fires live (false) and once on release (true).
- *  `readout` adds the tap-to-type value on the right ({@link SliderReadout});
- *  its `commit` receives the parsed number, in whatever unit `text` shows. */
-export function SliderRow({ label, value, apply, readout }: {
-  label: string;
-  value: number;
-  apply: (t: number, committed: boolean) => void;
-  readout?: { text: string; commit: (n: number) => void };
-}) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <View style={styles.rowSlider}>
-        <Slider value={value} accent={CONTROL_ACCENT} trackColor={TRACK} onChange={(v) => apply(v, false)} onCommit={(v) => apply(v, true)} />
-      </View>
-      {readout ? <SliderReadout text={readout.text} commit={readout.commit} /> : null}
+    <View style={styles.readout}>
+      <TextInput
+        accessibilityLabel="Value"
+        style={styles.readoutText}
+        value={draft}
+        onChangeText={setDraft}
+        onBlur={finish}
+        onSubmitEditing={finish}
+        keyboardType="numeric"
+        autoFocus
+        selectTextOnFocus
+        returnKeyType="done"
+      />
     </View>
   );
 }
 
-/** Two sliders sharing one row: a compact label + slider per half, split down
- *  the middle. Lets a bar pack two related controls (e.g. the Text bar's
- *  Character + Line spacing) into a single 32pt row instead of two, shaving a
- *  row's height off the bar. Each half's `apply(t, committed)` fires live
- *  (false) and once on release (true), same as SliderRow. */
+/** One slider row, in the Opacity slider's layout: the label as a small
+ *  caption OVER a full-width 0–1 slider, with the value box on the right
+ *  ({@link SliderReadout}). `apply(t, committed)` fires live (false) and
+ *  once on release (true). `readout` spells the value in its own unit and
+ *  says what a typed number in that unit means; without one the box shows
+ *  the 0–1 value as a percent and takes a percent back. */
+export function SliderRow({ label, value, apply, readout, accent, checker, onDark }: {
+  label: string;
+  value: number;
+  apply: (t: number, committed: boolean) => void;
+  readout?: { text: string; commit: (n: number) => void };
+  /** The slider's color (ramp + thumb). Defaults to the selection-blue
+   *  CONTROL_ACCENT; a color picker's Opacity row passes the color itself. */
+  accent?: string;
+  /** Show the alpha checkerboard under the ramp — an opacity row. */
+  checker?: boolean;
+  /** The row on a dark sheet (the color pickers): the caption goes white. */
+  onDark?: boolean;
+}) {
+  const text = readout ? readout.text : percentText(value);
+  const commit = readout ? readout.commit : (n: number) => apply(percentToValue(n), true);
+  return (
+    <View style={styles.row}>
+      <Text style={[styles.rowLabel, onDark ? styles.rowLabelDark : null]}>{label}</Text>
+      <View style={styles.rowControl}>
+        <View style={styles.rowSlider}>
+          <Slider value={value} accent={accent ?? CONTROL_ACCENT} trackColor={TRACK} checker={checker} onChange={(v) => apply(v, false)} onCommit={(v) => apply(v, true)} />
+        </View>
+        <SliderReadout text={text} commit={commit} />
+      </View>
+    </View>
+  );
+}
+
+/** Two sliders sharing one row, each in the SliderRow dress (caption over
+ *  the track, value box beside it), split down the middle. Lets a bar pack
+ *  two related controls (e.g. the Text bar's Character + Line spacing) into
+ *  a single slider row instead of two, shaving a row's height off the bar.
+ *  Each half's `apply(t, committed)` fires live (false) and once on release
+ *  (true), same as SliderRow; both read out as a percent. */
 export function DualSliderRow({ leftLabel, leftValue, leftApply, rightLabel, rightValue, rightApply }: {
   leftLabel: string;
   leftValue: number;
@@ -240,20 +258,21 @@ export function DualSliderRow({ leftLabel, leftValue, leftApply, rightLabel, rig
   rightValue: number;
   rightApply: (t: number, committed: boolean) => void;
 }) {
+  const half = (label: string, value: number, apply: (t: number, committed: boolean) => void) => (
+    <View style={styles.dualHalf}>
+      <Text style={styles.segLabel}>{label}</Text>
+      <View style={styles.rowControl}>
+        <View style={styles.rowSlider}>
+          <Slider value={value} accent={CONTROL_ACCENT} trackColor={TRACK} onChange={(v) => apply(v, false)} onCommit={(v) => apply(v, true)} />
+        </View>
+        <SliderReadout text={percentText(value)} commit={(n) => apply(percentToValue(n), true)} />
+      </View>
+    </View>
+  );
   return (
     <View style={styles.dualRow}>
-      <View style={styles.dualHalf}>
-        <Text style={styles.dualLabel}>{leftLabel}</Text>
-        <View style={styles.rowSlider}>
-          <Slider value={leftValue} accent={CONTROL_ACCENT} trackColor={TRACK} onChange={(v) => leftApply(v, false)} onCommit={(v) => leftApply(v, true)} />
-        </View>
-      </View>
-      <View style={styles.dualHalf}>
-        <Text style={styles.dualLabel}>{rightLabel}</Text>
-        <View style={styles.rowSlider}>
-          <Slider value={rightValue} accent={CONTROL_ACCENT} trackColor={TRACK} onChange={(v) => rightApply(v, false)} onCommit={(v) => rightApply(v, true)} />
-        </View>
-      </View>
+      {half(leftLabel, leftValue, leftApply)}
+      {half(rightLabel, rightValue, rightApply)}
     </View>
   );
 }
@@ -270,7 +289,7 @@ export function SegmentedRow<T extends string>({ label, options, value, onChange
 }) {
   return (
     <View style={styles.segmentedRow}>
-      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.segLabel}>{label}</Text>
       <View style={styles.segmented}>
         {options.map((o) => {
           const active = o.value === value;
@@ -309,7 +328,7 @@ export function ActionRow<T extends string>({ label, options, onPress }: {
 }) {
   return (
     <View style={styles.segmentedRow}>
-      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.segLabel}>{label}</Text>
       <View style={styles.segmented}>
         {options.map((o) => (
           <Pressable
@@ -342,7 +361,7 @@ export function MultiToggleRow<T extends string>({ label, options, onToggle }: {
 }) {
   return (
     <View style={styles.segmentedRow}>
-      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.segLabel}>{label}</Text>
       <View style={styles.segmented}>
         {options.map((o) => (
           <Pressable
@@ -401,7 +420,7 @@ export function DualSegmentedRow<T extends string>({ label, options, leftLabel, 
   );
   return (
     <View style={styles.dualSegmentedRow}>
-      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.segLabel}>{label}</Text>
       {half(leftLabel, leftValue, onLeftChange)}
       {half(rightLabel, rightValue, onRightChange)}
     </View>
@@ -422,13 +441,22 @@ const styles = StyleSheet.create({
   // Clips the swatch's fill — flat color or a custom one (the Tint bar's
   // gradient preview) — to the circle, inside the border.
   swatchClip: { ...StyleSheet.absoluteFillObject, borderRadius: 11, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', height: ROW_SLIDER },
-  rowLabel: { width: 50, color: LABEL, fontSize: 12 },
+  // A slider row stacks: caption, gap, then the control line (track + value
+  // box). The three metrics are submenuHeight's, so its arithmetic and this
+  // layout are one number.
+  row: { height: ROW_SLIDER, gap: SLIDER_LABEL_GAP },
+  rowLabel: {
+    color: LABEL, fontSize: 11, lineHeight: SLIDER_LABEL, fontWeight: '600',
+    letterSpacing: 0.6, textTransform: 'uppercase',
+  },
+  rowLabelDark: { color: 'rgba(255, 255, 255, 0.75)' },
+  rowControl: { flexDirection: 'row', alignItems: 'center', gap: 10, height: SLIDER_CONTROL },
   rowSlider: { flex: 1 },
-  // Dual-slider row: two label+slider halves split evenly with a gap between.
+  // Dual-slider row: two caption-over-track halves split evenly with a gap between.
   dualRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SLIDER, gap: 16 },
-  dualHalf: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  dualLabel: { width: 34, color: LABEL, fontSize: 12 },
+  dualHalf: { flex: 1, height: ROW_SLIDER, gap: SLIDER_LABEL_GAP },
+  // The 50pt label column the segmented rows keep.
+  segLabel: { width: 50, color: LABEL, fontSize: 12 },
   segmentedRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SEGMENTED },
   // Two segmented controls in one row: the shared label column, then two
   // equal halves each with a compact label of its own.
@@ -445,19 +473,28 @@ const styles = StyleSheet.create({
   },
   segmentText: { color: SEG_TEXT, fontSize: 11.5, fontWeight: '600' },
   segmentTextActive: { color: PANEL_INK },
-  // The toolbar hex field's dress exactly (ToolbarColorField): no box, the
-  // pushdown's dim ink, 13/600 — a value, not a control of another kind.
+  // The value box: the segmented rows' raised white cell, one track tall,
+  // wide enough for "100%" without reflowing as the value changes.
   readout: {
-    color: PUSHDOWN_INACTIVE,
-    fontSize: 13,
-    fontWeight: '600',
-    paddingVertical: 3,
-    paddingHorizontal: 6,
-    minWidth: 44,
-    textAlign: 'right',
+    height: SLIDER_TRACK,
+    minWidth: 60,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: PANEL_CONTROL,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1,
   },
-  // Hint line: indented to the control column (50pt label + 10pt gap), dim.
-  hint: { marginLeft: 60, marginTop: 2, paddingBottom: 2, color: PANEL_INK_MUTED, fontSize: 11 },
+  readoutText: {
+    color: PANEL_INK,
+    fontSize: 14,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+    padding: 0,
+  },
+  // Hint line under a slider row: flush with its track, dim.
+  hint: { marginTop: 2, paddingBottom: 2, color: PANEL_INK_MUTED, fontSize: 11 },
   // The absent-effect bar (EmptyEffectBar): the stacked bars' standard
   // container, one segmented-row-tall Add button as its only control.
   emptyBar: {

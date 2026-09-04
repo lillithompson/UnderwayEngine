@@ -42,6 +42,43 @@ export function isValueDragging(): boolean {
   return valueDragDepth > 0;
 }
 
+/** `#rgb`, `#rrggbb`, `rgb(…)` or `rgba(…)` — the forms the theme and the
+ *  color pickers hand a slider — as its three 0–255 channels; null for
+ *  anything else. */
+function parseCssRgb(s: string): [number, number, number] | null {
+  const t = s.trim();
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(t);
+  if (hex) {
+    const h = hex[1].length === 3 ? hex[1].replace(/./g, (c) => c + c) : hex[1];
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
+  }
+  const fn = /^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i.exec(t);
+  if (fn) return [Number(fn[1]), Number(fn[2]), Number(fn[3])];
+  return null;
+}
+
+/** The two ends of a slider's track ramp for `accent`: that color at alpha 0
+ *  on the left and at full on the right, so the track reads "none → all of
+ *  this". A color string it can't read ramps up from a clear black — a
+ *  wrong-looking track over a pale surface, never a crash. */
+export function sliderRampColors(accent: string): [string, string] {
+  const rgb = parseCssRgb(accent);
+  if (!rgb) return ['rgba(0,0,0,0)', accent];
+  const [r, g, b] = rgb;
+  return [`rgba(${r},${g},${b},0)`, `rgba(${r},${g},${b},1)`];
+}
+
+/** A 0–1 value as the readout every slider wears by default: a whole
+ *  percent. */
+export function percentText(t: number): string {
+  return `${Math.round(clamp01(t) * 100)}%`;
+}
+
+/** A typed percent back to the 0–1 value (the default readout's commit). */
+export function percentToValue(n: number): number {
+  return clamp01(n / 100);
+}
+
 /** The 0–1 slider value for a touch at `x` px across a `trackW`-wide track.
  *
  *  On react-native-web the FIRST onPanResponderGrant fires before the

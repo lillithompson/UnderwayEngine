@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import {
   BAR_BORDER,
   BAR_CONTROLS_TOP,
@@ -10,6 +12,9 @@ import {
   ROW_PILL,
   ROW_SEGMENTED,
   ROW_SLIDER,
+  SLIDER_CONTROL,
+  SLIDER_LABEL,
+  SLIDER_LABEL_GAP,
   SHADOW_CONTROLS_TOP,
   SHADOW_PAD_BOTTOM,
   SHADOW_PAD_SIZE,
@@ -91,15 +96,27 @@ describe('submenuHeight', () => {
     }
   });
 
-  test('the Shadow bar is sized by its XY pad, not by the sliders beside it', () => {
+  test('the Shadow bar is sized by the taller of its XY pad and the sliders beside it', () => {
     // Its pad sits alongside three sliders rather than above them, so the
     // taller column wins — and it pads differently from the stacked bars.
     expect(submenuHeight('shadow')).toBe(
       BAR_BORDER + SHADOW_PAD_TOP + BAR_HEADER + SHADOW_CONTROLS_TOP
-      + SHADOW_PAD_SIZE + SHADOW_PAD_BOTTOM + BAR_CUSHION,
+      + Math.max(SHADOW_PAD_SIZE, ROW_SLIDER * 3) + SHADOW_PAD_BOTTOM + BAR_CUSHION,
     );
-    // The pad is the taller column; three stacked sliders would be shorter.
-    expect(SHADOW_PAD_SIZE).toBeGreaterThan(ROW_SLIDER * 3);
+    // Three caption-over-track rows outstand the pad, so they set it.
+    expect(ROW_SLIDER * 3).toBeGreaterThan(SHADOW_PAD_SIZE);
+  });
+
+  test('a slider row is its caption, the gap under it, and the control line', () => {
+    expect(ROW_SLIDER).toBe(SLIDER_LABEL + SLIDER_LABEL_GAP + SLIDER_CONTROL);
+    // The control line holds the pill track with a hair to spare for the
+    // thumb's ring and shadow — read from the Slider's source, since the
+    // component can't be imported here.
+    const slider = readFileSync(resolve(__dirname, '..', 'components', 'Slider.tsx'), 'utf8');
+    const track = Number(/export const SLIDER_TRACK = (\d+);/.exec(slider)?.[1]);
+    expect(track).toBeGreaterThan(0);
+    expect(SLIDER_CONTROL).toBeGreaterThanOrEqual(track);
+    expect(SLIDER_CONTROL - track).toBeLessThanOrEqual(6);
   });
 
   test('the Layout bar grows the Arrange row only when Grid is wired up', () => {
@@ -137,21 +154,23 @@ describe('typeMenuHeight', () => {
     for (const key of IMAGE) expect(submenuHeight(key, ctx)).toBeLessThanOrEqual(tallest);
   });
 
-  test('text stands three rows tall — not the five an image can need', () => {
-    // The reported bug: text's two bars are three rows each, but every bar in
+  test('text stands as tall as its own tallest bar — not the five rows an image can need', () => {
+    // The reported bug: text's bars are three rows each, but every bar in
     // the editor reserved room for the tallest bar anywhere (a linear-gradient
-    // Tint, five rows).
-    expect(typeMenuHeight(TEXT)).toBe(submenuHeight('font'));
+    // Tint, five rows). Text's tallest is now its Shadow bar (three of the
+    // caption-over-track slider rows beside the pad); the typography bars
+    // stand shorter, and the image's worst case shorter still is not.
+    expect(typeMenuHeight(TEXT)).toBe(submenuHeight('shadow'));
+    expect(submenuHeight('font')).toBeLessThan(submenuHeight('shadow'));
     const imageAtWorst = typeMenuHeight(IMAGE, { tintType: 'linear' });
     expect(typeMenuHeight(TEXT)).toBeLessThan(imageAtWorst);
   });
 
-  test("text's Shadow bar fits the height its typography bars already set", () => {
-    // Text gained the image's Drop Shadow bar. Its XY pad is shorter than the
-    // three-row Font/Align bars, so the menu keeps the height it had — adding
-    // the option moves no top edge.
-    expect(submenuHeight('shadow')).toBeLessThan(submenuHeight('font'));
-    expect(typeMenuHeight(TEXT)).toBe(typeMenuHeight(['font', 'align']));
+  test("text's menu is the taller of its Shadow bar and its typography bars", () => {
+    // Text carries the image's Drop Shadow bar. Whichever of it and the
+    // Font/Align pair stands taller sets the menu, so swiping between them
+    // never moves the top edge.
+    expect(typeMenuHeight(TEXT)).toBe(Math.max(submenuHeight('shadow'), typeMenuHeight(['font', 'align'])));
   });
 
   test('an image stands four rows tall — the Border bar sets it', () => {

@@ -4,8 +4,41 @@ import {
   BRUSH_HANDLE_GRAB_SLOP,
   beginValueDrag, brushDotSize, brushSliderGrabsHandle, brushSliderValueFromX,
   endValueDrag, isSingleTouchGesture, isValueDragging,
-  padOffsetFromTouch, sliderValueFromX,
+  padOffsetFromTouch, percentText, percentToValue, sliderRampColors, sliderValueFromX,
 } from '../logic/slider';
+
+describe('sliderRampColors', () => {
+  test('ramps a hex color from clear to full', () => {
+    expect(sliderRampColors('#38BDF8')).toEqual(['rgba(56,189,248,0)', 'rgba(56,189,248,1)']);
+    expect(sliderRampColors('#fff')).toEqual(['rgba(255,255,255,0)', 'rgba(255,255,255,1)']);
+  });
+
+  test('reads the rgb() strings the color pickers hand over', () => {
+    expect(sliderRampColors('rgb(220, 60, 30)')).toEqual(['rgba(220,60,30,0)', 'rgba(220,60,30,1)']);
+    // An rgba() input still ramps from clear to FULL: the slider is what
+    // sets the alpha, so the ramp ignores the one it was handed.
+    expect(sliderRampColors('rgba(1,2,3,0.4)')).toEqual(['rgba(1,2,3,0)', 'rgba(1,2,3,1)']);
+  });
+
+  test('a string it cannot read ramps from clear to itself, never throws', () => {
+    expect(sliderRampColors('tomato')).toEqual(['rgba(0,0,0,0)', 'tomato']);
+  });
+});
+
+describe('the percent readout', () => {
+  test('spells a 0–1 value as a whole percent, clamped', () => {
+    expect(percentText(0.5)).toBe('50%');
+    expect(percentText(0.004)).toBe('0%');
+    expect(percentText(1.7)).toBe('100%');
+    expect(percentText(-1)).toBe('0%');
+  });
+
+  test('takes a typed percent back to the value, clamped', () => {
+    expect(percentToValue(50)).toBe(0.5);
+    expect(percentToValue(250)).toBe(1);
+    expect(percentToValue(-5)).toBe(0);
+  });
+});
 
 describe('sliderValueFromX', () => {
   test('maps a touch to its fraction across the track', () => {

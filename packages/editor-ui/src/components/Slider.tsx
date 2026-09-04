@@ -1,22 +1,46 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
-import { MODAL_TEXT, PANEL_HAIRLINE } from '../theme';
-import { beginValueDrag, endValueDrag, sliderValueFromX } from '../logic/slider';
+import { LinearGradient } from 'expo-linear-gradient';
+import { PANEL_TRACK, STATE_ACTIVE } from '../theme';
+import { SLIDER_CONTROL } from '../logic/submenuHeight';
+import { beginValueDrag, brushSliderValueFromX, endValueDrag, sliderRampColors } from '../logic/slider';
+import { CheckerboardFill } from './ColorSwatch';
 
-// A minimal draggable slider (0–1). Tapping or dragging the track moves the
-// thumb to the touch; `onChange` fires live and `onCommit` on release. Built
-// on PanResponder (as the sub-panel swipe is) so it needs no slider dep.
-const THUMB = 22;
-const DEFAULT_ACCENT = '#e5e5e5';
+// The one draggable 0–1 control every property page uses, in the dress the
+// color picker's Opacity slider set: a tall pill track carrying a left→right
+// ramp of the control's color — none of it at the left end, all of it at the
+// right — and a round thumb, the color inside a white ring, marking the value
+// on that ramp. The ramp spans the WHOLE track rather than the part behind
+// the thumb: it is the scale the thumb points into, which also means nothing
+// but the thumb's `left` changes during a drag (no fill re-layout per move).
+// An opacity slider shows the alpha checkerboard under its ramp (`checker`),
+// so the ramp's empty end reads as see-through rather than as pale.
+//
+// The thumb stays fully inside the track (its center runs over `trackW −
+// SLIDER_THUMB`, the brush slider's mapping) so at 100% it sits flush with
+// the track's right end, as the design has it. Tapping or dragging the track
+// moves the thumb to the touch; `onChange` fires live and `onCommit` on
+// release. Built on PanResponder (as the sub-panel swipe is) so it needs no
+// slider dep.
 
-export function Slider({ value, onChange, onCommit, accent = DEFAULT_ACCENT, trackColor }: {
+/** The pill track's height — and the height of the value box beside it. */
+export const SLIDER_TRACK = 28;
+/** The thumb's diameter: the track's, so it fills the pill top to bottom. */
+export const SLIDER_THUMB = SLIDER_TRACK;
+const THUMB_RING = 3;
+
+export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, trackColor = PANEL_TRACK, checker }: {
   value: number;
   onChange: (v: number) => void;
   onCommit: (v: number) => void;
-  /** Filled-portion color (defaults to a light neutral). */
+  /** The control's color: the ramp's full end and the thumb's center.
+   *  Defaults to selection blue; a color picker's Opacity row passes the
+   *  color being picked. `#rgb`, `#rrggbb`, `rgb()` or `rgba()`. */
   accent?: string;
-  /** Empty-track color (defaults to the panel hairline). */
+  /** What shows through the ramp's empty end (defaults to the panel track). */
   trackColor?: string;
+  /** Draw the alpha checkerboard under the ramp — an opacity slider. */
+  checker?: boolean;
 }) {
   const [trackW, setTrackW] = useState(0);
   const trackWRef = useRef(0);
@@ -25,7 +49,7 @@ export function Slider({ value, onChange, onCommit, accent = DEFAULT_ACCENT, tra
   //
   // Two things conspire otherwise. A release event's `locationX` is sometimes
   // un-locatable (the same react-native-web quirk that made the first grab
-  // read NaN — see sliderValueFromX), which sends the release down the
+  // read NaN — see brushSliderValueFromX), which sends the release down the
   // hold-current path; and the prop it would hold is a render behind, because
   // a drag's live onChange and the finger lifting land in the same React
   // batch. Committing the prop there wrote back the value the slider had
@@ -43,7 +67,7 @@ export function Slider({ value, onChange, onCommit, accent = DEFAULT_ACCENT, tra
 
   /** Track the touch, remembering where it left the value. */
   const track = (x: number) => {
-    dragRef.current = sliderValueFromX(x, trackWRef.current, dragRef.current);
+    dragRef.current = brushSliderValueFromX(x, trackWRef.current, SLIDER_THUMB, dragRef.current);
     return dragRef.current;
   };
 
@@ -79,39 +103,51 @@ export function Slider({ value, onChange, onCommit, accent = DEFAULT_ACCENT, tra
     }),
   ).current;
 
+  // The ramp is a property of the color, not of the value: computed once per
+  // accent, never per move.
+  const ramp = useMemo(() => sliderRampColors(accent), [accent]);
   const clamped = Math.max(0, Math.min(1, value));
-  const thumbLeft = clamped * trackW;
+  const thumbLeft = clamped * Math.max(0, trackW - SLIDER_THUMB);
   return (
     <View
       style={styles.hit}
       onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+      accessibilityRole="adjustable"
+      accessibilityValue={{ min: 0, max: 100, now: Math.round(clamped * 100) }}
       {...pan.panHandlers}
     >
-      <View style={[styles.track, trackColor ? { backgroundColor: trackColor } : null]} />
-      <View style={[styles.fill, { width: thumbLeft, backgroundColor: accent }]} />
-      <View style={[styles.thumb, { left: thumbLeft - THUMB / 2 }]} />
+      <View style={[styles.track, { backgroundColor: trackColor }]}>
+        {checker ? <CheckerboardFill /> : null}
+        <LinearGradient
+          colors={ramp}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+      <View style={[styles.thumb, { left: thumbLeft, backgroundColor: accent }]} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  hit: { height: THUMB + 12, justifyContent: 'center' },
-  track: { height: 5, borderRadius: 2.5, backgroundColor: PANEL_HAIRLINE },
-  fill: { position: 'absolute', left: 0, height: 5, borderRadius: 2.5 },
+  hit: { height: SLIDER_CONTROL, justifyContent: 'center' },
+  // The pill clips the ramp (and the checker under it) to its rounded ends.
+  track: { height: SLIDER_TRACK, borderRadius: SLIDER_TRACK / 2, overflow: 'hidden' },
   thumb: {
     position: 'absolute',
-    width: THUMB,
-    height: THUMB,
-    borderRadius: THUMB / 2,
-    // White thumb in both schemes — on the light properties bars it's the
-    // raised cell over a recessed track, on the dark color picker it's the one
-    // bright thing on the row. The shadow is dialled back from the dark-only
-    // 0.55 so it lifts the thumb on a pale surface without haloing it.
-    backgroundColor: MODAL_TEXT,
+    top: (SLIDER_CONTROL - SLIDER_THUMB) / 2,
+    width: SLIDER_THUMB,
+    height: SLIDER_THUMB,
+    borderRadius: SLIDER_THUMB / 2,
+    // The color inside a white ring: the ring is what separates the thumb
+    // from the ramp's full end, where the two are the same color.
+    borderWidth: THUMB_RING,
+    borderColor: '#ffffff',
     shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
     elevation: 3,
   },
 });

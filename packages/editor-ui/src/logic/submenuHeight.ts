@@ -18,8 +18,16 @@ import type { ImageFramingMode, TintType } from '../adapter';
 // literals — so this arithmetic cannot drift from the layout it predicts.
 
 // ── Row metrics (effectBar.tsx's row styles) ────────────────────────
-/** A label + slider row (SliderRow, DualSliderRow). */
-export const ROW_SLIDER = 32;
+/** A slider row's label line: the small uppercase caption OVER the track. */
+export const SLIDER_LABEL = 13;
+/** …the gap under it… */
+export const SLIDER_LABEL_GAP = 3;
+/** …and the control line: the pill track (Slider.tsx's SLIDER_TRACK) plus a
+ *  hair of room above and below for the thumb's ring and shadow. The value
+ *  box beside the track is exactly one track tall, so it adds nothing. */
+export const SLIDER_CONTROL = 32;
+/** A label-over-track slider row (SliderRow, each half of DualSliderRow). */
+export const ROW_SLIDER = SLIDER_LABEL + SLIDER_LABEL_GAP + SLIDER_CONTROL;
 /** A label + segmented-control row (SegmentedRow, ActionRow, DualSegmentedRow). */
 export const ROW_SEGMENTED = 36;
 /** A label + full-width pill row (the Text bar's Font, the Tint bar's Blend and
@@ -246,7 +254,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return standardBar([ROW_SLIDER, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'shadow':
       // The odd one out: its XY pad sits BESIDE three sliders rather than above
-      // them, so the taller of the two columns sets the height — and its
+      // them, so the taller of the two columns sets the height (three of the
+      // label-over-track rows, since they grew past the pad) — and its
       // container pads differently from the stacked bars.
       return BAR_BORDER + SHADOW_PAD_TOP + BAR_HEADER + SHADOW_CONTROLS_TOP
         + Math.max(SHADOW_PAD_SIZE, ROW_SLIDER * 3)

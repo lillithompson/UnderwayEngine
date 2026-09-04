@@ -311,6 +311,10 @@ export function TintBar({ title = 'TINT', removeLabel, tint, onChange, onCommit,
             label="Angle"
             value={tint.angle / TINT_ANGLE_MAX}
             apply={(t, c) => set({ angle: Math.round(t * TINT_ANGLE_MAX) }, c)}
+            readout={{
+              text: `${Math.round(tint.angle)}°`,
+              commit: (n) => set({ angle: Math.round(Math.min(Math.max(n, 0), TINT_ANGLE_MAX)) }, true),
+            }}
           />
         ) : null}
         <SliderRow

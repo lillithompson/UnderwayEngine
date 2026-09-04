@@ -42,7 +42,7 @@ const POSITIONS: readonly { value: BorderPosition; label: string }[] = [
   { value: 'outside', label: 'Outside' },
 ];
 
-export function BorderBar({ border, cornerRadius, title = 'BORDER', showRadius = true, showPosition = true, showWidthValue = false, onChange, onCommit, onCornerRadius, onBack, onRemove, onPickColor }: {
+export function BorderBar({ border, cornerRadius, title = 'BORDER', showRadius = true, showPosition = true, onChange, onCommit, onCornerRadius, onBack, onRemove, onPickColor }: {
   border: BorderModel;
   /** Object corner rounding, a 0–0.5 fraction of the shorter side. */
   cornerRadius: number;
@@ -54,9 +54,6 @@ export function BorderBar({ border, cornerRadius, title = 'BORDER', showRadius =
   /** Render the Position row. Off for a selection with no inside to align a
    *  stroke to (an open path: line, arc, freehand stroke). */
   showPosition?: boolean;
-  /** Render the Width slider's tap-to-type readout (design pt). On for the
-   *  STROKE variant — every type with a Stroke option gets the number. */
-  showWidthValue?: boolean;
   onChange: (b: BorderModel) => void;
   onCommit: (b: BorderModel) => void;
   /** Fires the Radius row: `radius` is a 0–0.5 fraction; `committed` marks the
@@ -83,14 +80,14 @@ export function BorderBar({ border, cornerRadius, title = 'BORDER', showRadius =
           label="Width"
           value={border.width / MAX_WIDTH}
           apply={(t, c) => set({ width: t * MAX_WIDTH }, c)}
-          readout={showWidthValue ? {
+          readout={{
             text: widthPtText(border.width),
             // A typed number is pt; clamp to the slider's own range so the
             // field can never author a width the slider can't show.
             commit: (n) => set({
               width: Math.min(Math.max(n, 0), MAX_WIDTH * PT_PER_CELL) / PT_PER_CELL,
             }, true),
-          } : undefined}
+          }}
         />
         {showRadius ? (
           <SliderRow
@@ -111,6 +108,12 @@ export function BorderBar({ border, cornerRadius, title = 'BORDER', showRadius =
           label="Dash"
           value={border.dash / MAX_DASH}
           apply={(t, c) => set({ dash: Math.round(t * MAX_DASH) }, c)}
+          // The dash is a whole step (0 = solid … MAX_DASH = dots), so the box
+          // shows the step, not a percent of the track.
+          readout={{
+            text: String(Math.round(border.dash)),
+            commit: (n) => set({ dash: Math.round(Math.min(Math.max(n, 0), MAX_DASH)) }, true),
+          }}
         />
       </View>
     </View>

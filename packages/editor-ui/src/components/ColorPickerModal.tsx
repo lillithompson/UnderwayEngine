@@ -13,7 +13,7 @@ import {
   STATE_ACTIVE,
 } from '../theme';
 import { ColorSwatchFill } from './ColorSwatch';
-import { Slider } from './Slider';
+import { SliderRow } from './effectBar';
 
 // Fallback color picker (no WebGL / expo-gl): a deterministic HSV swatch
 // grid + an Opacity slider + a live preview, behind the ColorPickerModel
@@ -87,22 +87,19 @@ export function ColorPickerModal({ model }: { model: ColorPickerModel }) {
                 })}
               </View>
             ))}
-            {/* Opacity sits under the grid, label + readout over a full-width
-                track: the card is only as wide as five swatches, so a
-                label-beside-slider row would leave the slider unusably short. */}
+            {/* Opacity sits under the grid: the shared slider row (caption over
+                a full-width track, value box on the right), its ramp the color
+                itself over the alpha checker, so the track reads as "how much
+                of THIS color" — none at the left, all at the right. */}
             {model.showOpacity !== false && (
               <View style={styles.opacity}>
-                <View style={styles.opacityHead}>
-                  <Text style={styles.opacityLabel}>Opacity</Text>
-                  <Text style={styles.opacityValue}>{`${Math.round(alpha * 100)}%`}</Text>
-                </View>
-                <Slider
+                <SliderRow
+                  label="Opacity"
                   value={alpha}
-                  // The filled track is the color itself, so the slider reads as
-                  // "how much of this color", not as generic chrome.
                   accent={rgbCss(withAlpha(model.color, 1))}
-                  onChange={(v) => setAlpha(v, false)}
-                  onCommit={(v) => setAlpha(v, true)}
+                  checker
+                  onDark
+                  apply={setAlpha}
                 />
               </View>
             )}
@@ -162,12 +159,9 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 6 },
   swatch: { width: SWATCH, height: SWATCH, borderRadius: 6 },
   swatchSelected: { borderWidth: 3, borderColor: STATE_ACTIVE },
-  // Opacity block: 2pt above the grid's own 6pt row gap, then the label line
-  // tight over the track (the Slider carries its own 12pt of vertical hit).
+  // Opacity block: 2pt above the grid's own 6pt row gap; the row's own
+  // caption-over-track layout carries the rest.
   opacity: { marginTop: 2 },
-  opacityHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  opacityLabel: { color: MODAL_TEXT, fontSize: 12, opacity: 0.75 },
-  opacityValue: { color: MODAL_TEXT, fontSize: 12, fontVariant: ['tabular-nums'] },
   footer: { flexDirection: 'row', alignItems: 'stretch', gap: 6, marginTop: 8 },
   eyedropper: {
     height: 40,

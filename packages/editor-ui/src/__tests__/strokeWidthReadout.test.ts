@@ -1,42 +1,50 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-// The Stroke bar's Width slider wears a tap-to-type readout on its right:
-// the width in design pt, dressed exactly like the toolbar hex field (no
-// box, the pushdown's dim 13/600 ink). The components are react-native and
-// never render in node, so the wiring is pinned by source.
+// Every slider row wears a tap-to-type value box on its right (the Opacity
+// slider's design, adopted by every property page). The Stroke / Border
+// Width row speaks design pt in it; a row with no unit of its own shows the
+// 0–1 value as a percent. The components are react-native and never render
+// in node, so the wiring is pinned by source.
 
 const read = (f: string) =>
   readFileSync(resolve(__dirname, '..', 'components', f), 'utf8');
 
-describe('the Stroke Width readout', () => {
+describe('the slider value box', () => {
   const bar = read('effectBar.tsx');
   const border = read('BorderBar.tsx');
   const panel = read('ObjectPropertiesPanel.tsx');
 
-  it('SliderRow renders a readout that arms a numeric field on tap', () => {
+  it('every SliderRow renders a readout that arms a numeric field on tap', () => {
     expect(bar).toContain('function SliderReadout');
-    expect(bar).toContain('{readout ? <SliderReadout text={readout.text} commit={readout.commit} /> : null}');
+    // Unconditional: a row without its own unit falls back to a percent.
+    expect(bar).toContain('const text = readout ? readout.text : percentText(value);');
+    expect(bar).toContain('const commit = readout ? readout.commit : (n: number) => apply(percentToValue(n), true);');
+    expect(bar).toContain('<SliderReadout text={text} commit={commit} />');
     // Tap → edit; a draft that parses commits, an unfinished edit is
     // abandoned (the hex field's rule).
     expect(bar).toContain('onPress={() => { setDraft(text); setEditing(true); }}');
     expect(bar).toContain('if (Number.isFinite(n)) commit(n);');
+    // Both halves of a dual row carry one too.
+    expect(bar.match(/<SliderReadout text=\{percentText\(value\)\}/g)).toHaveLength(1);
   });
 
-  it("wears the toolbar hex field's dress", () => {
-    // ToolbarColorField's field: PUSHDOWN_INACTIVE ink, 13/600, no box.
-    expect(bar).toMatch(/readout:\s*\{\s*color:\s*PUSHDOWN_INACTIVE,\s*fontSize:\s*13,\s*fontWeight:\s*'600'/);
+  it('is the white value box, one track tall, in full-strength ink', () => {
+    expect(bar).toMatch(/readout:\s*\{\s*height:\s*SLIDER_TRACK,[^}]*backgroundColor:\s*PANEL_CONTROL/);
+    expect(bar).toMatch(/readoutText:\s*\{\s*color:\s*PANEL_INK,\s*fontSize:\s*14,\s*fontWeight:\s*'600'/);
   });
 
-  it('the STROKE bar shows it for every type with a Stroke option', () => {
-    // BorderBar gates the readout on showWidthValue…
-    expect(border).toContain('readout={showWidthValue ? {');
-    // …speaks design pt, clamped to the slider range…
+  it('the Width row speaks design pt on both the BORDER and STROKE bars', () => {
     expect(border).toContain('text: widthPtText(border.width)');
     expect(border).toContain('Math.min(Math.max(n, 0), MAX_WIDTH * PT_PER_CELL) / PT_PER_CELL');
-    // …and the panel's shared STROKE instance (vectors AND patterns route
-    // through the one `stroke` submenu) turns it on.
-    const stroke = panel.slice(panel.indexOf('title="STROKE"'), panel.indexOf('onPickColor={() => model.onPickStrokeColor?.()}'));
-    expect(stroke).toContain('showWidthValue');
+    // No longer gated: with a box on every row, a percent of the track would
+    // be the odd one out.
+    expect(border).not.toContain('showWidthValue');
+    expect(panel).not.toContain('showWidthValue');
+  });
+
+  it('the Dash row counts steps, not percent', () => {
+    expect(border).toContain('text: String(Math.round(border.dash))');
+    expect(border).toContain('Math.round(Math.min(Math.max(n, 0), MAX_DASH))');
   });
 });

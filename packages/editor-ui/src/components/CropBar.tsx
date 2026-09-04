@@ -76,6 +76,10 @@ export function CropBar({ framing, pixelSize, onChange, onCommit, onReplace, onB
               label="Zoom"
               value={(framing.zoom - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN)}
               apply={(t, c) => set({ zoom: ZOOM_MIN + t * (ZOOM_MAX - ZOOM_MIN) }, c)}
+              readout={{
+                text: `${Math.round(framing.zoom * 100)}%`,
+                commit: (n) => set({ zoom: Math.min(Math.max(n / 100, ZOOM_MIN), ZOOM_MAX) }, true),
+              }}
             />
             <Hint>Drag the artwork on the canvas to reposition it inside the frame.</Hint>
           </>
@@ -102,6 +106,10 @@ export function CropBar({ framing, pixelSize, onChange, onCommit, onReplace, onB
               label="Straighten"
               value={(framing.angle + ANGLE_MAX) / (2 * ANGLE_MAX)}
               apply={(t, c) => set({ angle: Math.round(-ANGLE_MAX + t * 2 * ANGLE_MAX) }, c)}
+              readout={{
+                text: `${Math.round(framing.angle)}°`,
+                commit: (n) => set({ angle: Math.round(Math.min(Math.max(n, -ANGLE_MAX), ANGLE_MAX)) }, true),
+              }}
             />
           </>
         ) : null}
