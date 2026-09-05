@@ -100,8 +100,6 @@ export type SubmenuKey =
 export interface SubmenuHeightContext {
   /** Tint bar: gradients add a stop editor, linear adds an angle slider. */
   tintType?: TintType;
-  /** The Fill bar is the Tint bar pointed at a shape's interior. */
-  svgFillType?: TintType;
   /** Crop bar: each framing mode brings its own rows. */
   cropMode?: ImageFramingMode;
   /** Crop bar: the source-resolution caption only renders when it's known. */
@@ -181,7 +179,9 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'tint':
       return standardBar(tintRows(ctx.tintType));
     case 'svgFill':
-      return standardBar(tintRows(ctx.svgFillType));
+      // The Fill bar is the Tint bar solid-only (a shape's fill is always
+      // one flat color): no Type control, no gradient rows — Opacity + Blend.
+      return standardBar([ROW_SLIDER, ROW_PILL]);
     case 'border':
       return standardBar(borderRows(ctx.borderRows));
     case 'stroke':

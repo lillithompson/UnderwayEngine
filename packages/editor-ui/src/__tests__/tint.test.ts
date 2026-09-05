@@ -146,3 +146,28 @@ describe('rampGradient', () => {
     expect(colors).toEqual(['rgba(0, 0, 255, 0.25)', 'rgb(255, 0, 0)']);
   });
 });
+
+describe('the Fill bar is solid-only (source pins — the bars are RN components)', () => {
+  // A shape's fill is always one flat color: the Fill bar drops the Type
+  // control and the gradient rows, and every edit it writes carries
+  // type 'solid' — so a legacy gradient fill flattens on its first edit
+  // here instead of surviving as an uneditable ramp.
+  const { readFileSync } = require('fs') as typeof import('fs');
+  const { resolve } = require('path') as typeof import('path');
+  const read = (...p: string[]) => readFileSync(resolve(__dirname, '..', ...p), 'utf8');
+
+  test('TintBar coerces to solid and hides the Type row under solidOnly', () => {
+    const bar = read('components', 'TintBar.tsx');
+    expect(bar).toContain("const shown = solidOnly ? { ...tint, type: 'solid' as const } : tint;");
+    // Edits build on the coerced model, so commits write type solid.
+    expect(bar).toContain('(committed ? onCommit : onChange)({ ...shown, ...patch });');
+    // The Type segmented control renders only when types are switchable.
+    expect(bar).toContain('{!solidOnly && (');
+  });
+
+  test('the panel opens the shape Fill bar solid-only', () => {
+    const panel = read('components', 'ObjectPropertiesPanel.tsx');
+    const fill = panel.slice(panel.indexOf('title="FILL"'), panel.indexOf('onAddStop={addSvgFillStop}'));
+    expect(fill).toContain('solidOnly');
+  });
+});

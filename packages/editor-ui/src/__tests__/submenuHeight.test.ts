@@ -60,12 +60,16 @@ describe('submenuHeight', () => {
     expect(linear - radial).toBe(ROW_SLIDER + ROW_GAP);
   });
 
-  test('the Fill bar is the Tint bar, read from the shape fill', () => {
-    expect(submenuHeight('svgFill', { svgFillType: 'linear' }))
-      .toBe(submenuHeight('tint', { tintType: 'linear' }));
-    // …and it reads svgFillType, not tintType.
+  test('the Fill bar is solid-only: two fixed rows, deaf to any tint type', () => {
+    // A shape's fill is always one flat color, so the bar drops the Type
+    // control and the gradient rows: just Opacity and Blend, always.
+    expect(submenuHeight('svgFill')).toBe(barOf([ROW_SLIDER, ROW_PILL]));
+    // No context feeds it — a mid-gradient image tint doesn't grow it.
     expect(submenuHeight('svgFill', { tintType: 'linear' }))
-      .toBe(submenuHeight('svgFill', { svgFillType: 'solid' }));
+      .toBe(submenuHeight('svgFill'));
+    // …which keeps it strictly shorter than the full Tint bar.
+    expect(submenuHeight('svgFill'))
+      .toBeLessThan(submenuHeight('tint', { tintType: 'solid' }));
   });
 
   test('the Stroke bar drops the rows a subtype has no answer for', () => {

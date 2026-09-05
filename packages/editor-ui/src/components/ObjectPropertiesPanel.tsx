@@ -621,14 +621,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
 
   // How tall the bar layer stands: the tallest bar THIS selection can reach,
   // and no taller. Every bar of a type shares it, so swiping the carousel never
-  // moves the bar's top edge — but a text selection (two three-row bars) no
-  // longer reserves room for the five-row gradient Fill only a shape can open.
+  // moves the bar's top edge.
   //
   // Rows are counted from the state the bars will actually render from, drafts
-  // included, so this tracks a live edit: switching a fill to Linear genuinely
-  // adds an angle row, and the layer grows by one row to hold it.
+  // included, so this tracks a live edit: switching the Crop mode genuinely
+  // swaps its rows, and the layer resizes to hold them. (The Fill bar is
+  // solid-only — two fixed rows — so it no longer feeds a type in.)
   const barHeight = typeMenuHeight(submenuOrder, {
-    svgFillType: (svgFillDraft ?? model.svgFill ?? DEFAULT_TINT_MODEL).type,
     cropMode: (cropDraft ?? model.framing ?? DEFAULT_FRAMING_MODEL).mode,
     cropHasResolution: formatPixelSize(model.imagePixelSize) !== null,
     // …and its Replace row on the same rule.
@@ -1378,10 +1377,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     );
   } else if (displaySub === 'svgFill') {
     // The Tint bar retitled, pointed at the closed shape's own interior.
+    // Solid-only: a shape's fill is always one flat color, so the bar drops
+    // its Type control and the gradient rows.
     activeBarEl = (
       <TintBar
         title="FILL"
         removeLabel="Remove fill"
+        solidOnly
         tint={svgFillForBar}
         onChange={(t) => applySvgFill(t, false)}
         onCommit={(t) => applySvgFill(t, true)}
