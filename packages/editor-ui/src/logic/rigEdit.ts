@@ -92,8 +92,8 @@ const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
     { key: 'wristBendR', label: 'Right Bend', ends: ['back', 'forward'], centered: true },
   ],
   feet: [
-    { key: 'footL', label: 'Left', ends: ['pointed', 'flat'] },
-    { key: 'footR', label: 'Right', ends: ['pointed', 'flat'] },
+    { key: 'footL', label: 'Left', ends: ['flat', 'pointed'] },
+    { key: 'footR', label: 'Right', ends: ['flat', 'pointed'] },
     { key: 'ankleTwistL', label: 'Left Twist', ends: ['in', 'out'], centered: true },
     { key: 'ankleTwistR', label: 'Right Twist', ends: ['in', 'out'], centered: true },
     // The BALL's bend: the toe segment creased at the ball — the same
@@ -144,8 +144,8 @@ export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
   spreadR: 0.5,
   wristBendL: 0.5, // straight, in line with the forearm
   wristBendR: 0.5,
-  footL: 1, // flat
-  footR: 1,
+  footL: 0, // flat — the slider travels TOWARD the point
+  footR: 0,
   ankleTwistL: 0.5,
   ankleTwistR: 0.5,
   ballBendL: 0.5, // flat — centered between toes-back and tiptoe
