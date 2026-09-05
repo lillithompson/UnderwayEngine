@@ -60,10 +60,11 @@ describe('submenuHeight', () => {
     expect(linear - radial).toBe(ROW_SLIDER + ROW_GAP);
   });
 
-  test('the Fill bar is solid-only: two fixed rows, deaf to any tint type', () => {
-    // A shape's fill is always one flat color, so the bar drops the Type
-    // control and the gradient rows: just Opacity and Blend, always.
-    expect(submenuHeight('svgFill')).toBe(barOf([ROW_SLIDER, ROW_PILL]));
+  test('the Fill bar is solid-only: one fixed row, deaf to any tint type', () => {
+    // A shape's fill is always one flat color at Normal blend, so the bar
+    // drops the Type control, the gradient rows and the Blend row: the
+    // Opacity slider alone, always.
+    expect(submenuHeight('svgFill')).toBe(barOf([ROW_SLIDER]));
     // No context feeds it — a mid-gradient image tint doesn't grow it.
     expect(submenuHeight('svgFill', { tintType: 'linear' }))
       .toBe(submenuHeight('svgFill'));
@@ -133,13 +134,14 @@ describe('submenuHeight', () => {
 
   test('every submenu reports a real height, not a fallback', () => {
     // A key with no case would fall through; each of these is a whole bar, so
-    // none may come back as bare chrome.
+    // none may come back as bare chrome. At least one row (svgFill, solid-only,
+    // is exactly its Opacity slider — the shortest real bar).
     const ALL: SubmenuKey[] = [
       'tint', 'crop', 'shadow', 'border', 'opacity',
       'font', 'align', 'stroke', 'svgFill', 'endpoints', 'layout',
     ];
     for (const key of ALL) {
-      expect([key, submenuHeight(key) > CHROME + ROW_SLIDER]).toEqual([key, true]);
+      expect([key, submenuHeight(key) >= CHROME + ROW_SLIDER]).toEqual([key, true]);
     }
   });
 

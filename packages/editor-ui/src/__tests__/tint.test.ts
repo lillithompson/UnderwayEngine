@@ -148,21 +148,25 @@ describe('rampGradient', () => {
 });
 
 describe('the Fill bar is solid-only (source pins — the bars are RN components)', () => {
-  // A shape's fill is always one flat color: the Fill bar drops the Type
-  // control and the gradient rows, and every edit it writes carries
-  // type 'solid' — so a legacy gradient fill flattens on its first edit
-  // here instead of surviving as an uneditable ramp.
+  // A shape's fill is always one flat color at Normal blend: the Fill bar
+  // drops the Type control, the gradient rows and the Blend row, and every
+  // edit it writes carries type 'solid' + blend 'normal' — so a legacy
+  // gradient or blended fill flattens on its first edit here instead of
+  // surviving as an uneditable ramp.
   const { readFileSync } = require('fs') as typeof import('fs');
   const { resolve } = require('path') as typeof import('path');
   const read = (...p: string[]) => readFileSync(resolve(__dirname, '..', ...p), 'utf8');
 
-  test('TintBar coerces to solid and hides the Type row under solidOnly', () => {
+  test('TintBar coerces to a normal-blend solid and hides Type + Blend under solidOnly', () => {
     const bar = read('components', 'TintBar.tsx');
-    expect(bar).toContain("const shown = solidOnly ? { ...tint, type: 'solid' as const } : tint;");
-    // Edits build on the coerced model, so commits write type solid.
+    expect(bar).toContain(
+      "const shown = solidOnly ? { ...tint, type: 'solid' as const, blend: 'normal' as const } : tint;",
+    );
+    // Edits build on the coerced model, so commits write solid + normal.
     expect(bar).toContain('(committed ? onCommit : onChange)({ ...shown, ...patch });');
-    // The Type segmented control renders only when types are switchable.
-    expect(bar).toContain('{!solidOnly && (');
+    // The Type segmented control and the Blend row render only when the
+    // bar's tint can actually vary in those dimensions.
+    expect(bar.match(/\{!solidOnly && \(/g)).toHaveLength(2);
   });
 
   test('the panel opens the shape Fill bar solid-only', () => {

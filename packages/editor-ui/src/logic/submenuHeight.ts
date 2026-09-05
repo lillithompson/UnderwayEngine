@@ -180,8 +180,9 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return standardBar(tintRows(ctx.tintType));
     case 'svgFill':
       // The Fill bar is the Tint bar solid-only (a shape's fill is always
-      // one flat color): no Type control, no gradient rows — Opacity + Blend.
-      return standardBar([ROW_SLIDER, ROW_PILL]);
+      // one flat color at Normal blend): no Type control, no gradient rows,
+      // no Blend row — the Opacity slider alone.
+      return standardBar([ROW_SLIDER]);
     case 'border':
       return standardBar(borderRows(ctx.borderRows));
     case 'stroke':

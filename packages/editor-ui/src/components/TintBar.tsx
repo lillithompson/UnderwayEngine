@@ -31,8 +31,9 @@ import {
 // The image Tint bar (design "6a"): a full-width light bar whose contents vary by
 // Type. A header (chevron · TINT · gradient swatch) sits above:
 //   • Type      — segmented Solid / Linear / Radial (unless `solidOnly`, which
-//                 drops the control and the gradient rows with it — the shape
-//                 Fill bar, where a fill is always one flat color).
+//                 drops the control, the gradient rows and the Blend row — the
+//                 shape Fill bar, where a fill is always one flat color
+//                 composited normally).
 //   • Stops     — a positional gradient editor with draggable stops + add /
 //                 delete (gradient modes only).
 //   • Angle     — the linear gradient angle (Linear only).
@@ -246,10 +247,11 @@ export function TintBar({ title = 'TINT', removeLabel, tint, solidOnly, onChange
   /** Bar title. Defaults to the image tint; the Fill bar passes 'FILL' — it is
    *  this same bar pointed at a closed shape's interior (see `svgHasFill`). */
   title?: string;
-  /** Solid color only: the Type segmented control and the gradient rows are
-   *  dropped, and every edit writes `type: 'solid'` — the shape Fill bar,
-   *  where a fill is always one flat color. A legacy gradient fill renders
-   *  until its first edit here, which flattens it to its solid color. */
+  /** Solid color only: the Type segmented control, the gradient rows and the
+   *  Blend row are dropped, and every edit writes `type: 'solid'` and
+   *  `blend: 'normal'` — the shape Fill bar, where a fill is always one flat
+   *  color composited normally. A legacy gradient or blended fill renders
+   *  until its first edit here, which flattens it. */
   solidOnly?: boolean;
   /** Accessibility label for the header trash (defaults to `Remove <title>`). */
   removeLabel?: string;
@@ -275,10 +277,11 @@ export function TintBar({ title = 'TINT', removeLabel, tint, solidOnly, onChange
     setSheetOpenState(open);
     onSheetOpenChange?.(open);
   };
-  // Solid-only: the bar reads AND writes the tint as a solid, so the first
-  // committed edit flattens a legacy gradient (the model's retained `solid`
-  // color) rather than silently keeping an uneditable ramp alive.
-  const shown = solidOnly ? { ...tint, type: 'solid' as const } : tint;
+  // Solid-only: the bar reads AND writes the tint as a solid at Normal blend,
+  // so the first committed edit flattens a legacy gradient or blended fill
+  // (the model's retained `solid` color) rather than silently keeping an
+  // uneditable ramp or blend alive.
+  const shown = solidOnly ? { ...tint, type: 'solid' as const, blend: 'normal' as const } : tint;
   const set = (patch: Partial<TintModel>, committed: boolean) =>
     (committed ? onCommit : onChange)({ ...shown, ...patch });
 
@@ -339,7 +342,9 @@ export function TintBar({ title = 'TINT', removeLabel, tint, solidOnly, onChange
           checker
           apply={(t, c) => set({ opacity: t }, c)}
         />
-        <BlendRow label={tintBlendLabel(shown.blend)} onOpen={() => setSheetOpen(true)} />
+        {!solidOnly && (
+          <BlendRow label={tintBlendLabel(shown.blend)} onOpen={() => setSheetOpen(true)} />
+        )}
       </View>
       {sheetOpen ? (
         <BlendSheet
