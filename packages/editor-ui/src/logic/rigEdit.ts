@@ -96,11 +96,13 @@ const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
     { key: 'footR', label: 'Right', ends: ['pointed', 'flat'] },
     { key: 'ankleTwistL', label: 'Left Twist', ends: ['in', 'out'], centered: true },
     { key: 'ankleTwistR', label: 'Right Twist', ends: ['in', 'out'], centered: true },
-    // The BALL's bend: the toe segment folded under at the ball — the same
+    // The BALL's bend: the toe segment creased at the ball — the same
     // crease a drag on the toe tip makes (Figgie's bendBall, the toe slot)
-    // — which the point slider (heel and ball) leaves alone.
-    { key: 'ballBendL', label: 'Left Bend', ends: ['flat', 'tiptoe'] },
-    { key: 'ballBendR', label: 'Right Bend', ends: ['flat', 'tiptoe'] },
+    // — which the point slider (heel and ball) leaves alone. Centered:
+    // below the middle the toes peel BACK up off the ground (a quarter
+    // turn at the far end), above it they fold under toward tiptoe.
+    { key: 'ballBendL', label: 'Left Bend', ends: ['back', 'tiptoe'], centered: true },
+    { key: 'ballBendR', label: 'Right Bend', ends: ['back', 'tiptoe'], centered: true },
   ],
   spine: [
     { key: 'bend', label: 'Bend', ends: ['back', 'forward'], centered: true },
@@ -146,8 +148,8 @@ export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
   footR: 1,
   ankleTwistL: 0.5,
   ankleTwistR: 0.5,
-  ballBendL: 0, // flat — the bend only folds DOWN (tiptoe), so rest is flat
-  ballBendR: 0,
+  ballBendL: 0.5, // flat — centered between toes-back and tiptoe
+  ballBendR: 0.5,
   bend: 0.5, // straight
   twist: 0.5,
   lean: 0.5,

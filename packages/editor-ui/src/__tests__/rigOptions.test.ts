@@ -171,13 +171,14 @@ describe('the rig option set', () => {
         expect(RIG_SLIDER_REST[spec.key]).toBe(0.5);
       }
     }
-    // The ball's bend runs ONE way — flat to tiptoe, the forefoot folding
-    // down through the arch — so it is not centred and rests flat.
+    // The ball's bend is centred: below the middle the toes peel BACK up
+    // off the ground (a quarter turn at the far end), above it they fold
+    // under toward tiptoe — so it rests flat at the centre.
     for (const spec of rigPartSliders('feet').slice(4)) {
       expect(spec.label).toContain('Bend');
-      expect(spec.ends).toEqual(['flat', 'tiptoe']);
-      expect(spec.centered).toBeUndefined();
-      expect(RIG_SLIDER_REST[spec.key]).toBe(0);
+      expect(spec.ends).toEqual(['back', 'tiptoe']);
+      expect(spec.centered).toBe(true);
+      expect(RIG_SLIDER_REST[spec.key]).toBe(0.5);
     }
     for (const spec of rigPartSliders('hands').slice(4, 6)) {
       expect(spec.label).toContain('Spread');
@@ -197,7 +198,7 @@ describe('the rig option set', () => {
       handL: 0.1, handR: 0.1, wristTwistL: 0.5, wristTwistR: 0.5,
       spreadL: 0.5, spreadR: 0.5, wristBendL: 0.5, wristBendR: 0.5,
       footL: 1, footR: 1, ankleTwistL: 0.5, ankleTwistR: 0.5,
-      ballBendL: 0, ballBendR: 0,
+      ballBendL: 0.5, ballBendR: 0.5,
       bend: 0.5, twist: 0.5, lean: 0.5,
       nod: 0.5, shake: 0.5, tilt: 0.5,
     });
