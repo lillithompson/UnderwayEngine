@@ -129,6 +129,10 @@ export interface TopBarModel {
    *  grid level), never a control: it takes no presses and truncates rather
    *  than pushing the tools. Unset renders nothing. */
   centerInfo?: string;
+  /** Bar background override. The app hands the page's own colour here when
+   *  the bar should merge with an adjacent same-coloured band (CozyJournal's
+   *  done-marked title band) instead of wearing the default HEADER_BG grey. */
+  background?: string;
   tools: TopBarTool[];
   onBack(): void;
   /** The tool the press resolves to, or `null` when the press untoggled the

@@ -33,7 +33,7 @@ export function TopBar({ model }: { model: TopBarModel }) {
   const swatchSize = ICON_SIZE - 4;
 
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, model.background ? { backgroundColor: model.background } : null]}>
       {/* Center readout (e.g. the developer-mode grid level): absolutely
           centered so it sits in the bar's true middle whatever the label and
           tool-row widths, and press-transparent so it can never swallow a
