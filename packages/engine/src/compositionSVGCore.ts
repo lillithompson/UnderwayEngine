@@ -192,6 +192,18 @@ export interface CompositionSVGInputs {
    */
   strokeColorOverride?: RGBColor;
   /**
+   * Objects `strokeColorOverride` REACHES — every other SVG object keeps its
+   * authored ink. Absent, the override reaches every object drawn.
+   *
+   * For an export that singles one thing out on an otherwise faithful page:
+   * a "reveal" of the day's seed shape inside the user's finished drawing,
+   * say, where the seed is re-inked and the rest of the page has to match
+   * the plain export stroke for stroke. Selected the way {@link subset} is,
+   * by a host callback given the unfiltered scene. Names nothing → nothing
+   * is re-inked. No-op without `strokeColorOverride`.
+   */
+  strokeOverrideOnly?: CompositionSubsetSelector;
+  /**
    * Objects whose FILLS take `strokeColorOverride` as well — the silhouette
    * the fill rule above refuses by default.
    *
@@ -871,10 +883,20 @@ export async function generateCompositionSVGCore(
     // override in its own colours while the pen lines beside it went white.
     // Flooding one loses nothing, for the same reason it loses nothing on a
     // rig: the picture IS the silhouette.
-    svgObjects = svgObjects.map((s) => withSVGObjectStrokeColor(
+    // …and the override may be told to reach only some of them. Asked of the
+    // unfiltered scene for the same reason `silhouette` is.
+    const only = input.strokeOverrideOnly?.({
+      figures: input.figures,
+      svgObjects: input.svgObjects,
+      images: input.images,
+      texts: input.texts ?? [],
+      paints: input.paintObjects ?? [],
+      groups,
+    });
+    svgObjects = svgObjects.map((s) => (only && !only.has(s.id) ? s : withSVGObjectStrokeColor(
       s, strokeInk,
       flooded?.has(s.id) || patternViewIds.has(s.id) ? { floodFills: true } : undefined,
-    ));
+    )));
   }
 
   const maskMap = buildActiveMaskMap({

@@ -374,6 +374,39 @@ describe('strokeColorOverride', () => {
     expect(svg!.match(/stroke="rgb\(255,255,255\)"/g)).toHaveLength(2);
   });
 
+  it('reaches only the objects `strokeOverrideOnly` names; the rest keep their ink', async () => {
+    // A page export that singles one object out (a seed shape re-inked
+    // inside the user's finished drawing): the named object takes the
+    // override, every other line stays exactly as the plain export draws
+    // it — so the two images line up stroke for stroke.
+    const inputs = (extra: Partial<CompositionSVGInputs>) => makeInputs({
+      svgObjects: [
+        makeSvg({ id: 'svg_seed' }),
+        makeSvg({ id: 'svg_2', color: { r: 200, g: 40, b: 40 }, cellY: 18 }),
+      ],
+      ...extra,
+    });
+    const svg = await generateCompositionSVGCore(inputs({
+      strokeColorOverride: WHITE,
+      strokeOverrideOnly: () => new Set(['svg_seed']),
+    }));
+    expect(svg!.match(/stroke="rgb\(255,255,255\)"/g)).toHaveLength(1);
+    expect(svg).toContain('stroke="rgb(200,40,40)"');
+    expect(svg).not.toContain('stroke="rgb(10,20,30)"');
+    // The geometry is untouched: the same frame as the plain export.
+    const plain = await generateCompositionSVGCore(inputs({}));
+    expect(viewBoxOf(svg!)).toEqual(viewBoxOf(plain!));
+    // Naming nothing re-inks nothing; the selector alone (no ink) is inert.
+    const none = await generateCompositionSVGCore(inputs({
+      strokeColorOverride: WHITE, strokeOverrideOnly: () => new Set(),
+    }));
+    expect(none).not.toContain('stroke="rgb(255,255,255)"');
+    const inert = await generateCompositionSVGCore(inputs({
+      strokeOverrideOnly: () => new Set(['svg_seed']),
+    }));
+    expect(inert).toContain('stroke="rgb(10,20,30)"');
+  });
+
   it('repaints a joined object’s stroked subpaths too', async () => {
     // A joined object draws its subpaths INSTEAD of its own segments, each in
     // the ink of the object it came from — recoloring `color` alone would

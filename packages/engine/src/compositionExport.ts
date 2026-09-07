@@ -115,6 +115,9 @@ export interface CompositionExportOptions {
    *  for a cutout that is line art. See
    *  {@link CompositionSVGInputs.strokeColorOverride}. */
   strokeColorOverride?: RGBColor;
+  /** Objects `strokeColorOverride` reaches; the rest keep their authored ink.
+   *  See {@link CompositionSVGInputs.strokeOverrideOnly}. */
+  strokeOverrideOnly?: CompositionSubsetSelector;
   /** Objects whose FILLS take `strokeColorOverride` too — for a picture made
    *  only of fills (a baked rig), which the line override would otherwise
    *  slide straight off. See {@link CompositionSVGInputs.silhouette}. */
@@ -387,6 +390,7 @@ export async function exportCompositionSVG(
     subset: options?.subset,
     textColorOverride: options?.textColorOverride,
     strokeColorOverride: options?.strokeColorOverride,
+    strokeOverrideOnly: options?.strokeOverrideOnly,
     silhouette: options?.silhouette,
     paintColorOverride: options?.paintColorOverride,
     dropTextShadow: options?.dropTextShadow,
