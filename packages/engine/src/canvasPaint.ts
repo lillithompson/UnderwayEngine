@@ -36,7 +36,7 @@
  * one never painted.
  */
 
-import { BlendMode, CanvasPaintIsland, RGBColor } from './types';
+import { BlendMode, CanvasPaintIsland, ImagePaintOverlay, PaintObject, RGBColor } from './types';
 import { gaussianFalloff } from './colorBlend';
 import {
   BLUR_KERNEL_FRACTION, BLUR_MAX_KERNEL_TEXELS, BLUR_TAPS, clonePaintOverlay,
@@ -275,6 +275,64 @@ export function paintTileAlphaAt(
     return rgba[(r * cols + c) * 4 + 3];
   }
   return 0;
+}
+
+/** Texel dimensions of an island's content rect at the lattice density —
+ *  the bitmap that holds exactly its painted resolution (the editor's canvas
+ *  backing store, the exporter's single image). Content rects are ink
+ *  bounds, texel-aligned, so the products are whole numbers (the round
+ *  absorbs float fuzz); never smaller than 1×1. */
+export function paintContentTexels(
+  p: Pick<PaintObject, 'contentW' | 'contentH'>,
+): { cols: number; rows: number } {
+  return {
+    cols: Math.max(1, Math.round(p.contentW * CANVAS_PAINT_TEXELS_PER_CELL)),
+    rows: Math.max(1, Math.round(p.contentH * CANVAS_PAINT_TEXELS_PER_CELL)),
+  };
+}
+
+/**
+ * An island's tiles composed into ONE bitmap spanning its content rect at
+ * the lattice density — the bytes the editor's paint node draws into a
+ * single canvas, for callers that need them as a bitmap: the exporter emits
+ * this as a single `<image>`.
+ *
+ * It must. Drawn as one `<image>` per tile, a rasterizer's bilinear sampler
+ * fades each image's edge texels against the transparency OUTSIDE it, and
+ * where two tiles meet those two half-covered columns composite to a faint
+ * seam — a hairline grid of gaps across every wash wider than a tile. One
+ * bitmap has no interior edges to fade.
+ *
+ * Tiles arrive through {@link normalizeCanvasPaintIslands}, so every one is
+ * on the lattice and the copy is a byte-exact row blit at an integral
+ * offset (content rects are texel-aligned ink bounds); texels outside the
+ * content rect are dropped. Null when the rect is empty or nothing is
+ * painted. Sized `contentW × contentH` texels × 4 bytes: a page-sized wash
+ * is a few MB, allocated only while a caller holds it.
+ */
+export function flattenPaintTiles(
+  p: Pick<PaintObject, 'tiles' | 'contentX' | 'contentY' | 'contentW' | 'contentH'>,
+): ImagePaintOverlay | null {
+  if (!(p.contentW > 0) || !(p.contentH > 0)) return null;
+  const tiles = normalizeCanvasPaintIslands(p.tiles);
+  if (!tiles) return null;
+  const { cols, rows } = paintContentTexels(p);
+  const rgba = new Uint8Array(cols * rows * 4);
+  for (const tile of tiles) {
+    const src = tile.overlay;
+    const ox = Math.round((tile.x - p.contentX) * CANVAS_PAINT_TEXELS_PER_CELL);
+    const oy = Math.round((tile.y - p.contentY) * CANVAS_PAINT_TEXELS_PER_CELL);
+    const c0 = Math.max(0, -ox);
+    const c1 = Math.min(src.cols, cols - ox);
+    const r0 = Math.max(0, -oy);
+    const r1 = Math.min(src.rows, rows - oy);
+    if (c1 <= c0 || r1 <= r0) continue;
+    for (let r = r0; r < r1; r++) {
+      const s = (r * src.cols + c0) * 4;
+      rgba.set(src.rgba.subarray(s, s + (c1 - c0) * 4), ((oy + r) * cols + ox + c0) * 4);
+    }
+  }
+  return { cols, rows, rgba, blend: tiles[0].overlay.blend };
 }
 
 // ── The stroke's working set ────────────────────────────────────────

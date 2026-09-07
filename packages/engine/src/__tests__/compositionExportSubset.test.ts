@@ -10,7 +10,7 @@ import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compos
 import { DEFAULT_LINE_HEIGHT, layoutText } from '../textLayout';
 import { STICKER_SHADOW_CELLS } from '../stickerStyle';
 import { CellState, DEFAULT_TRANSFORM, GroupNode, ImageObject, PaintObject, PathSegment, PatternObject, RGBColor, SVGObject, TextObject } from '../types';
-import { commitCanvasPaint, createCanvasPaintWorking, stampCanvasPaint } from '../canvasPaint';
+import { commitCanvasPaint, createCanvasPaintWorking, flattenPaintTiles, stampCanvasPaint } from '../canvasPaint';
 import { overlayPngDataUri } from '../imagePaintOverlay';
 import { createPaintObjectFromTiles } from '../paintObject';
 
@@ -737,10 +737,22 @@ describe('paint islands in a cutout', () => {
       ...extra,
     });
 
-  it('a page export draws the island as tile <image> markup', async () => {
-    const svg = await generateCompositionSVGCore(paintPage(inkPaint()));
-    expect(svg).toContain('<image');
-    expect(svg).toContain('data:image/png;base64,');
+  it('a page export draws the island as ONE <image> over its content rect, however many tiles it spans', async () => {
+    // A dab astride the tile seam at cell 32: two tiles, one bitmap. Drawn as
+    // an <image> per tile, the rasterizer's edge fade on each would meet in
+    // a hairline gap down the seam (the grid across every exported wash).
+    const working = createCanvasPaintWorking(undefined);
+    stampCanvasPaint(working, 32 + C, 20 + C, 2, { r: 255, g: 0, b: 0 }, 1);
+    const p = createPaintObjectFromTiles('pnt_seam', commitCanvasPaint(working));
+    if (!p) throw new Error('fixture dab painted nothing');
+    expect(p.tiles.length).toBeGreaterThanOrEqual(2);
+    const svg = await generateCompositionSVGCore(paintPage(p));
+    expect(svg!.match(/<image/g)).toHaveLength(1);
+    const flat = flattenPaintTiles(p)!;
+    expect(svg).toContain(
+      `<image x="0" y="0" width="${p.cellWidth * U}" height="${p.cellHeight * U}"` +
+      ` href="${overlayPngDataUri(flat)}" preserveAspectRatio="none"/>`,
+    );
   });
 
   it('a cutout drops the island when the selector leaves it out', async () => {
@@ -801,58 +813,46 @@ describe('paint islands in a cutout', () => {
   describe('an ink override repaints the brushwork', () => {
     const WHITE: RGBColor = { r: 255, g: 255, b: 255 };
 
-    /** `tiles` recolored the way the override should recolor them: painted
-     *  texels take `ink`, empty ones stay empty, alphas are untouched. */
-    const inkedHrefs = (p: PaintObject, ink: RGBColor) =>
-      p.tiles.map((tile) => {
-        const rgba = new Uint8Array(tile.overlay.rgba);
-        for (let i = 0; i < rgba.length; i += 4) {
-          if (rgba[i + 3] === 0) continue;
-          rgba[i] = ink.r;
-          rgba[i + 1] = ink.g;
-          rgba[i + 2] = ink.b;
-        }
-        return `href="${overlayPngDataUri({ ...tile.overlay, rgba })}"`;
-      });
+    /** The island's flattened bitmap recolored the way the override should
+     *  recolor it: painted texels take `tone`, empty ones stay empty, alphas
+     *  are untouched. */
+    const inkedHref = (p: PaintObject, tone: (r: number, g: number, b: number) => RGBColor) => {
+      const flat = flattenPaintTiles(p)!;
+      const rgba = new Uint8Array(flat.rgba);
+      for (let i = 0; i < rgba.length; i += 4) {
+        if (rgba[i + 3] === 0) continue;
+        const c = tone(rgba[i], rgba[i + 1], rgba[i + 2]);
+        rgba[i] = c.r;
+        rgba[i + 1] = c.g;
+        rgba[i + 2] = c.b;
+      }
+      return `href="${overlayPngDataUri({ ...flat, rgba })}"`;
+    };
 
-    it('emits every tile in the override color, whatever was brushed', async () => {
+    it('emits the brushwork in the override color, whatever was brushed', async () => {
       const p = inkPaint();
       const svg = await generateCompositionSVGCore(
         paintPage(p, { paintColorOverride: WHITE }),
       );
       expect(svg).toBeTruthy();
-      for (const href of inkedHrefs(p, WHITE)) expect(svg).toContain(href);
+      expect(svg).toContain(inkedHref(p, () => WHITE));
       // The red the fixture actually painted is nowhere in the output.
-      for (const tile of p.tiles) {
-        expect(svg).not.toContain(`href="${overlayPngDataUri(tile.overlay)}"`);
-      }
+      expect(svg).not.toContain(`href="${overlayPngDataUri(flattenPaintTiles(p)!)}"`);
     });
 
-    it('a tone override maps every tile texel by texel', async () => {
+    it('a tone override maps the brushwork texel by texel', async () => {
       const p = inkPaint();
       const tone = (r: number, g: number, b: number) => ({ r: 255 - r, g: 255 - g, b: 255 - b });
       const svg = await generateCompositionSVGCore(
         paintPage(p, { paintColorOverride: tone }),
       );
-      const want = p.tiles.map((tile) => {
-        const rgba = new Uint8Array(tile.overlay.rgba);
-        for (let i = 0; i < rgba.length; i += 4) {
-          if (rgba[i + 3] === 0) continue;
-          rgba[i] = 255 - rgba[i];
-          rgba[i + 1] = 255 - rgba[i + 1];
-          rgba[i + 2] = 255 - rgba[i + 2];
-        }
-        return `href="${overlayPngDataUri({ ...tile.overlay, rgba })}"`;
-      });
-      for (const href of want) expect(svg).toContain(href);
+      expect(svg).toContain(inkedHref(p, tone));
     });
 
-    it('leaves the tiles alone when no override is given', async () => {
+    it('leaves the texels alone when no override is given', async () => {
       const p = inkPaint();
       const svg = await generateCompositionSVGCore(paintPage(p));
-      for (const tile of p.tiles) {
-        expect(svg).toContain(`href="${overlayPngDataUri(tile.overlay)}"`);
-      }
+      expect(svg).toContain(`href="${overlayPngDataUri(flattenPaintTiles(p)!)}"`);
     });
 
     it('does not touch the island it was handed', async () => {

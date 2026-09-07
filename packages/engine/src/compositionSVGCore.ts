@@ -27,7 +27,7 @@ import { patternFillBackground } from './patternFill';
 import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
 import { overlayPngDataUri, paintBlendCss, PaintInk, shapePaintOverlaySVG } from './imagePaintOverlay';
-import { islandHeightCells } from './canvasPaint';
+import { flattenPaintTiles } from './canvasPaint';
 import { textArcGeometry, textArcPath, textBend } from './textArc';
 import { charColorRuns, contentBoxCells, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
 import { STICKER_BORDER_CELLS, STICKER_SHADOW_CELLS, stickerColors } from './stickerStyle';
@@ -1305,21 +1305,19 @@ export async function generateCompositionSVGCore(
     if (rot !== 0) parts.push(`rotate(${rot} ${cx} ${cy})`);
     if (p.mirrorH) parts.push(`translate(${w}, 0) scale(-1, 1)`);
     if (p.mirrorV) parts.push(`translate(0, ${h}) scale(1, -1)`);
-    // One <image> per sparse tile, positioned by its contentRect-normalized
-    // rect in the inner frame. Export-time PNG encode is fine here — this
-    // path never runs per-frame, which is also why an ink override can be
-    // done in the TEXELS (exact, and no filter for the rasterizer to get
-    // wrong) rather than as an SVG color matrix over them.
-    const paintInk = input.paintColorOverride;
-    let tileImages = '';
-    for (const tile of p.tiles) {
-      const tx = ((tile.x - p.contentX) / p.contentW) * iw;
-      const ty = ((tile.y - p.contentY) / p.contentH) * ih;
-      const tw = (tile.widthCells / p.contentW) * iw;
-      const th = (islandHeightCells(tile) / p.contentH) * ih;
-      tileImages += `<image x="${tx}" y="${ty}" width="${tw}" height="${th}"` +
-        ` href="${overlayPngDataUri(tile.overlay, paintInk)}" preserveAspectRatio="none"/>`;
-    }
+    // ONE <image> for the whole island: its sparse tiles flattened into a
+    // single bitmap over the content rect, stretched onto the inner frame.
+    // Not one per tile — a rasterizer fades every image's edge texels into
+    // the transparency around it, so tile-sized images meet in hairline
+    // seams (a faint grid across any wash wider than a tile). Export-time
+    // flatten + PNG encode is fine here — this path never runs per-frame,
+    // which is also why an ink override can be done in the TEXELS (exact,
+    // and no filter for the rasterizer to get wrong) rather than as an SVG
+    // color matrix over them.
+    const flat = flattenPaintTiles(p);
+    if (!flat) continue;
+    const tileImages = `<image x="0" y="0" width="${iw}" height="${ih}"` +
+      ` href="${overlayPngDataUri(flat, input.paintColorOverride)}" preserveAspectRatio="none"/>`;
     const opacityAttr = p.opacity != null && p.opacity < 1 ? ` opacity="${p.opacity}"` : '';
     // Edge soften: the images' eroded-then-blurred silhouette mask, built in
     // the INNER frame's coordinates so it stays glued to the tiles through

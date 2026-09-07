@@ -15,8 +15,8 @@
 import {
   CANVAS_ISLAND_CELLS, CANVAS_ISLAND_TEXELS, canvasPaintBytes, canvasPaintHasInk,
   canvasPaintInkBounds, blurCanvasPaint, commitCanvasPaint, composeCanvasPaint,
-  createCanvasPaintWorking, eraseCanvasPaint, islandHeightCells, islandKey,
-  normalizeCanvasPaintIslands, paintTileAlphaAt, paintTilesContentRect, smudgeCanvasPaint,
+  createCanvasPaintWorking, eraseCanvasPaint, flattenPaintTiles, islandHeightCells, islandKey,
+  normalizeCanvasPaintIslands, paintContentTexels, paintTileAlphaAt, paintTilesContentRect, smudgeCanvasPaint,
   stampCanvasPaint,
 } from '../canvasPaint';
 import { CanvasPaintIsland, RGBColor } from '../types';
@@ -558,5 +558,102 @@ describe('non-normal blends mutate existing paint only', () => {
     stampCanvasPaint(plain, 8 + C, 8 + C, 2, BLUE, 0.5);
     stampCanvasPaint(normal, 8 + C, 8 + C, 2, BLUE, 0.5, { mode: 'normal' });
     expect(commitCanvasPaint(normal)).toEqual(commitCanvasPaint(plain));
+  });
+});
+
+/**
+ * {@link flattenPaintTiles}: the island's tiles as ONE bitmap over its
+ * content rect. The exporter draws this as a single <image> because
+ * tile-sized images meet in hairline seams (each one's edge texels fade
+ * into the transparency around it) — so the flatten has to be exact:
+ * every texel where the tiles put it, and nothing outside the ink bounds.
+ */
+describe('flattenPaintTiles', () => {
+  const TEX = 1 / 8;
+  const C = TEX / 2;
+
+  /** A dab astride the tile seam at cell 32, committed and framed on its
+   *  ink bounds the way createPaintObjectFromTiles does. */
+  function seamIsland() {
+    const working = createCanvasPaintWorking(undefined);
+    stampCanvasPaint(working, 32 + C, 20 + C, 2, RED, 1);
+    const tiles = commitCanvasPaint(working)!;
+    const rect = paintTilesContentRect(tiles)!;
+    return { tiles, contentX: rect.x, contentY: rect.y, contentW: rect.w, contentH: rect.h };
+  }
+
+  it('is null with nothing painted, or no content rect', () => {
+    expect(flattenPaintTiles({ tiles: [], contentX: 0, contentY: 0, contentW: 4, contentH: 4 })).toBeNull();
+    const p = seamIsland();
+    expect(flattenPaintTiles({ ...p, contentW: 0 })).toBeNull();
+  });
+
+  it('spans exactly the content rect at the lattice density', () => {
+    const p = seamIsland();
+    expect(p.tiles.length).toBeGreaterThanOrEqual(2);
+    const flat = flattenPaintTiles(p)!;
+    expect({ cols: flat.cols, rows: flat.rows }).toEqual(paintContentTexels(p));
+    expect(flat.cols).toBe(Math.round(p.contentW * 8));
+    expect(flat.rows).toBe(Math.round(p.contentH * 8));
+    expect(flat.rgba.length).toBe(flat.cols * flat.rows * 4);
+  });
+
+  it('puts every texel where the tiles have it — across the seam, byte for byte', () => {
+    const p = seamIsland();
+    const flat = flattenPaintTiles(p)!;
+    let inked = 0;
+    let crossedSeam = false;
+    for (let r = 0; r < flat.rows; r++) {
+      for (let c = 0; c < flat.cols; c++) {
+        const x = p.contentX + (c + 0.5) * TEX;
+        const y = p.contentY + (r + 0.5) * TEX;
+        const i = (r * flat.cols + c) * 4;
+        expect(flat.rgba[i + 3]).toBe(paintTileAlphaAt(p.tiles, x, y));
+        if (flat.rgba[i + 3] > 0) {
+          inked++;
+          expect([flat.rgba[i], flat.rgba[i + 1], flat.rgba[i + 2]]).toEqual([255, 0, 0]);
+          if (x > 32 && x < 32 + TEX) crossedSeam = true;
+        }
+      }
+    }
+    expect(inked).toBeGreaterThan(0);
+    // The column just past cell 32 is painted — the dab really straddles
+    // two tiles, and the flatten carried both halves.
+    expect(crossedSeam).toBe(true);
+    expect(paintTileAlphaAt(p.tiles, 32 - C, 20 + C)).toBeGreaterThan(0);
+  });
+
+  it('frames on the ink: every edge row and column of the bitmap carries paint', () => {
+    const p = seamIsland();
+    const flat = flattenPaintTiles(p)!;
+    const rowHasInk = (r: number) => {
+      for (let c = 0; c < flat.cols; c++) if (flat.rgba[(r * flat.cols + c) * 4 + 3] > 0) return true;
+      return false;
+    };
+    const colHasInk = (c: number) => {
+      for (let r = 0; r < flat.rows; r++) if (flat.rgba[(r * flat.cols + c) * 4 + 3] > 0) return true;
+      return false;
+    };
+    expect(rowHasInk(0)).toBe(true);
+    expect(rowHasInk(flat.rows - 1)).toBe(true);
+    expect(colHasInk(0)).toBe(true);
+    expect(colHasInk(flat.cols - 1)).toBe(true);
+  });
+
+  it('brings an off-lattice tile onto the grid first, so the blit stays byte-exact', () => {
+    // A legacy 4-texel-per-cell island (widthCells 4, 16×16 texels) with one
+    // opaque texel at its cell (1.5, 0.5); normalized it becomes a lattice
+    // tile, and the flatten finds the texel at the same cell.
+    const rgba = new Uint8Array(16 * 16 * 4);
+    const si = (2 * 16 + 6) * 4;
+    rgba[si] = 10; rgba[si + 1] = 20; rgba[si + 2] = 30; rgba[si + 3] = 255;
+    const legacy: CanvasPaintIsland = { x: 3, y: 5, widthCells: 4, overlay: { cols: 16, rows: 16, rgba, blend: 'normal' } };
+    const rect = paintTilesContentRect(normalizeCanvasPaintIslands([legacy]))!;
+    const flat = flattenPaintTiles({ tiles: [legacy], contentX: rect.x, contentY: rect.y, contentW: rect.w, contentH: rect.h })!;
+    // The legacy texel is a quarter cell wide: 2×2 lattice texels.
+    expect([flat.cols, flat.rows]).toEqual([2, 2]);
+    for (let i = 0; i < flat.rgba.length; i += 4) {
+      expect(Array.from(flat.rgba.subarray(i, i + 4))).toEqual([10, 20, 30, 255]);
+    }
   });
 });
