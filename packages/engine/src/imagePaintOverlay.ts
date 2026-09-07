@@ -379,6 +379,12 @@ export function paintOverlayHasInk(overlay: ImagePaintOverlay): boolean {
   return false;
 }
 
+/** How an export re-inks painted texels: one colour for every texel (alpha
+ *  kept), or a TONE — a map from the texel's own colour to the one it lands
+ *  in, so an override can keep a wash's light-and-dark rather than flatten
+ *  it. Empty texels are never visited either way. */
+export type PaintInk = RGBColor | ((r: number, g: number, b: number) => RGBColor);
+
 /**
  * The PNG data URI both renderers draw the layer from — the engine's own
  * encoder (pngcodec), so node tests and exports need no canvas.
@@ -391,15 +397,17 @@ export function paintOverlayHasInk(overlay: ImagePaintOverlay): boolean {
  * never touched (alpha 0) are left as zeroes rather than filled with an
  * invisible color, so the PNG stays as compressible as it was.
  */
-export function overlayPngDataUri(overlay: ImagePaintOverlay, ink?: RGBColor): string {
+export function overlayPngDataUri(overlay: ImagePaintOverlay, ink?: PaintInk): string {
   let { rgba } = overlay;
   if (ink) {
     const inked = new Uint8Array(rgba);
+    const tone = typeof ink === 'function' ? ink : undefined;
     for (let i = 0; i < inked.length; i += 4) {
       if (inked[i + 3] === 0) continue;
-      inked[i] = ink.r;
-      inked[i + 1] = ink.g;
-      inked[i + 2] = ink.b;
+      const c = tone ? tone(inked[i], inked[i + 1], inked[i + 2]) : (ink as RGBColor);
+      inked[i] = c.r;
+      inked[i + 1] = c.g;
+      inked[i + 2] = c.b;
     }
     rgba = inked;
   }

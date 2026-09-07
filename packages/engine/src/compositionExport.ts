@@ -1,4 +1,5 @@
 import { CompositionFigure, CompositionState, RGBColor } from './types';
+import type { PaintInk } from './imagePaintOverlay';
 import { loadCompositionState, loadFileStateLite, loadClipBox } from './persistence';
 import { loadBakedFigurePng } from './bake';
 import { rasterizeSvgToJpegDataUri, rasterizeSvgToPngDataUri } from './svgRasterize';
@@ -118,10 +119,11 @@ export interface CompositionExportOptions {
    *  only of fills (a baked rig), which the line override would otherwise
    *  slide straight off. See {@link CompositionSVGInputs.silhouette}. */
   silhouette?: CompositionSubsetSelector;
-  /** Repaint every paint island in this color, texel alphas kept — the same
-   *  intent as `strokeColorOverride` for the raster brush's marks. See
+  /** Repaint every paint island in this color — or through this per-texel
+   *  tone — texel alphas kept; the same intent as `strokeColorOverride` for
+   *  the raster brush's marks. See
    *  {@link CompositionSVGInputs.paintColorOverride}. */
-  paintColorOverride?: RGBColor;
+  paintColorOverride?: PaintInk;
   /** Drop every text node's authored drop shadow — for a cutout that leaves
    *  behind the page the shadow was cast against. See
    *  {@link CompositionSVGInputs.dropTextShadow}. */

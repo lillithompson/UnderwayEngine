@@ -324,6 +324,26 @@ describe('overlayPngDataUri', () => {
     expect(o.rgba[(12 * o.cols + 16) * 4 + 1]).toBe(0);
   });
 
+  test('a tone override re-inks each painted texel from its own colour', () => {
+    const o = createImagePaintOverlay(8, 6, 'normal');
+    stampImagePaintOverlay(o, 8, 6, 4.125, 3.125, 1, RED, 1);
+    const invert = (r: number, g: number, b: number) => ({ r: 255 - r, g: 255 - g, b: 255 - b });
+    const want = clonePaintOverlay(o);
+    for (let i = 0; i < want.rgba.length; i += 4) {
+      if (want.rgba[i + 3] === 0) continue;
+      want.rgba[i] = 255 - want.rgba[i];
+      want.rgba[i + 1] = 255 - want.rgba[i + 1];
+      want.rgba[i + 2] = 255 - want.rgba[i + 2];
+    }
+    expect(overlayPngDataUri(o, invert)).toBe(overlayPngDataUri(want));
+    expect(overlayPngDataUri(o, invert)).not.toBe(overlayPngDataUri(o));
+    // Empty texels are never handed to the tone, and the scene is untouched.
+    const seen: number[] = [];
+    overlayPngDataUri(o, (r, g, b) => { seen.push(r, g, b); return { r, g, b }; });
+    expect(seen.length).toBe(3 * Array.from(o.rgba).filter((_, i) => i % 4 === 3 && o.rgba[i] > 0).length);
+    expect(o.rgba[(12 * o.cols + 16) * 4]).toBe(255);
+  });
+
   test('an ink override over empty texels leaves the layer transparent', () => {
     // Filling invisible texels with a color would only cost bytes; a blank
     // layer must encode identically with and without the override.

@@ -795,6 +795,25 @@ describe('paint islands in a cutout', () => {
       }
     });
 
+    it('a tone override maps every tile texel by texel', async () => {
+      const p = inkPaint();
+      const tone = (r: number, g: number, b: number) => ({ r: 255 - r, g: 255 - g, b: 255 - b });
+      const svg = await generateCompositionSVGCore(
+        paintPage(p, { paintColorOverride: tone }),
+      );
+      const want = p.tiles.map((tile) => {
+        const rgba = new Uint8Array(tile.overlay.rgba);
+        for (let i = 0; i < rgba.length; i += 4) {
+          if (rgba[i + 3] === 0) continue;
+          rgba[i] = 255 - rgba[i];
+          rgba[i + 1] = 255 - rgba[i + 1];
+          rgba[i + 2] = 255 - rgba[i + 2];
+        }
+        return `href="${overlayPngDataUri({ ...tile.overlay, rgba })}"`;
+      });
+      for (const href of want) expect(svg).toContain(href);
+    });
+
     it('leaves the tiles alone when no override is given', async () => {
       const p = inkPaint();
       const svg = await generateCompositionSVGCore(paintPage(p));

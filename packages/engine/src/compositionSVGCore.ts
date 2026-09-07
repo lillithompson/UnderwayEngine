@@ -26,7 +26,7 @@ import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
 import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
-import { overlayPngDataUri, paintBlendCss, shapePaintOverlaySVG } from './imagePaintOverlay';
+import { overlayPngDataUri, paintBlendCss, PaintInk, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { islandHeightCells } from './canvasPaint';
 import { textArcGeometry, textArcPath, textBend } from './textArc';
 import { charColorRuns, contentBoxCells, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
@@ -229,8 +229,12 @@ export interface CompositionSVGInputs {
    * object — a wash over a photo, a scribble inside a shape — and the object
    * they sit on comes along with the cutout, so their color was chosen against
    * a backdrop that did not get left behind.
+   *
+   * A TONE (a function of the texel's own colour — see {@link PaintInk})
+   * re-inks each texel from what it was instead of flattening the lot: the
+   * same alpha rule, with the wash's light-and-dark carried through.
    */
-  paintColorOverride?: RGBColor;
+  paintColorOverride?: PaintInk;
   /**
    * Drop the AUTHORED drop shadow from every text node.
    *
