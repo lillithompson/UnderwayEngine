@@ -608,6 +608,30 @@ function sameShape(
 
 export interface SceneObjectBase { id: string; locked?: boolean; hidden?: boolean; groupId?: string; name?: string; }
 
+/** A functional tag rather than a display name: `<prefix>:<id>`, the way a
+ *  format's scaffold marks its nodes (`slot:squiggle`, `decor:dateStamp`).
+ *  A copy keeps a tag verbatim — what the tag marks (the day's seed, the
+ *  date stamp) the copy is too, and " copy" would make it another tag. */
+export function isTagName(name: string): boolean {
+  return /^[a-z][a-zA-Z0-9_-]*:/.test(name);
+}
+
+/**
+ * The name a duplicate is placed with. A node's OWN name is `preGroupName`
+ * while it is grouped: the group op moves every member's name there and
+ * gives one member the group's own name, which is not the member's. So a
+ * copy of a grouped node starts from `preGroupName` — the copy is regrouped
+ * by the same op, which files that name away again — rather than from
+ * `name` (a duplicated group used to come out with its members unnamed and
+ * its leader called "<group> copy"; a tagged member, the Reimagine seed, lost
+ * its tag). A user's name gets " copy"; a tag is kept as it is (isTagName).
+ */
+export function duplicateName(item: { name?: string; preGroupName?: string; groupId?: string }): string | undefined {
+  const own = item.groupId ? item.preGroupName : item.name;
+  if (!own) return undefined;
+  return isTagName(own) ? own : own + ' copy';
+}
+
 export interface SceneObjectAdapter<T extends SceneObjectBase = SceneObjectBase> {
   kind: CompItemKind;
   matchesId(id: string): boolean;
@@ -654,7 +678,8 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         id: newId,
         cellX: fig.cellX + dx,
         cellY: fig.cellY + dy,
-        name: fig.name ? fig.name + ' copy' : undefined,
+        name: duplicateName(fig),
+        preGroupName: undefined,
         groupId: newGroupId,
         locked: false,
         quads: fig.quads ? fig.quads.map((q) => ({ ...q })) : fig.quads,
@@ -712,7 +737,8 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         creationBox: keepCreationBox && svg.creationBox
           ? { minX: svg.creationBox.minX + dx, minY: svg.creationBox.minY + dy, width: svg.creationBox.width, height: svg.creationBox.height }
           : undefined,
-        name: svg.name ? svg.name + ' copy' : undefined,
+        name: duplicateName(svg),
+        preGroupName: undefined,
         groupId: newGroupId,
         locked: false,
         ...(svg.segmentOverrides ? { segmentOverrides: new Map(svg.segmentOverrides) } : null),
@@ -739,7 +765,8 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         localCellY: img.localCellY !== undefined ? img.localCellY + dy : undefined,
         identityCellX: img.identityCellX !== undefined ? img.identityCellX + dx : undefined,
         identityCellY: img.identityCellY !== undefined ? img.identityCellY + dy : undefined,
-        name: img.name ? img.name + ' copy' : undefined,
+        name: duplicateName(img),
+        preGroupName: undefined,
         groupId: newGroupId,
         locked: false,
       } as SceneObjectBase;
@@ -772,7 +799,8 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         localCellY: txt.localCellY !== undefined ? txt.localCellY + dy : undefined,
         identityCellX: txt.identityCellX !== undefined ? txt.identityCellX + dx : undefined,
         identityCellY: txt.identityCellY !== undefined ? txt.identityCellY + dy : undefined,
-        name: txt.name ? txt.name + ' copy' : undefined,
+        name: duplicateName(txt),
+        preGroupName: undefined,
         groupId: newGroupId,
         locked: false,
       } as SceneObjectBase;
@@ -806,7 +834,8 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         localCellY: p.localCellY !== undefined ? p.localCellY + dy : undefined,
         identityCellX: p.identityCellX !== undefined ? p.identityCellX + dx : undefined,
         identityCellY: p.identityCellY !== undefined ? p.identityCellY + dy : undefined,
-        name: p.name ? p.name + ' copy' : undefined,
+        name: duplicateName(p),
+        preGroupName: undefined,
         groupId: newGroupId,
         locked: false,
       } as SceneObjectBase;
@@ -837,7 +866,8 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         localCellY: p.localCellY !== undefined ? p.localCellY + dy : undefined,
         identityCellX: p.identityCellX !== undefined ? p.identityCellX + dx : undefined,
         identityCellY: p.identityCellY !== undefined ? p.identityCellY + dy : undefined,
-        name: p.name ? p.name + ' copy' : undefined,
+        name: duplicateName(p),
+        preGroupName: undefined,
         groupId: newGroupId,
         locked: false,
       } as SceneObjectBase;
