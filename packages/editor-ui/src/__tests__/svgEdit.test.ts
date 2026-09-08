@@ -25,7 +25,7 @@ describe('svgEditOptions', () => {
 
   it('adds Fill then Opacity to the shapes with an interior, and to nothing else', () => {
     for (const subtype of FILLED) {
-      expect(svgEditOptions(subtype).map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity']);
+      expect(svgEditOptions(subtype).map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity', 'transform']);
     }
     for (const subtype of SUBTYPES.filter((s) => !FILLED.includes(s))) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('fill');
@@ -35,7 +35,7 @@ describe('svgEditOptions', () => {
 
   it('adds Ends to the three open paths, and to nothing else', () => {
     for (const subtype of ['line', 'arc', 'stroke'] as SVGSubtypeKind[]) {
-      expect(svgEditOptions(subtype).map((o) => o.action)).toEqual(['stroke', 'endpoints']);
+      expect(svgEditOptions(subtype).map((o) => o.action)).toEqual(['stroke', 'endpoints', 'transform']);
     }
     for (const subtype of ['rectangle', 'circle', 'polygon', 'shape'] as SVGSubtypeKind[]) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('endpoints');
@@ -52,7 +52,7 @@ describe('svgEditOptions', () => {
   it('gives the closed freeform `shape` the same interior options as a drawn one', () => {
     // However the outline came to be — merged, joined, unioned, drawn — a
     // closed path has an inside to paint.
-    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity']);
+    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity', 'transform']);
   });
 
   it('labels and glyphs the Ends option the same way whichever path it is on', () => {
@@ -99,7 +99,9 @@ describe('svgEditOptions', () => {
     expect(options[0].icon).toBe('vector-polyline');
     expect(options[0].action).toBe('stroke');
     // …and offers it neither of the two subtype-specific bars.
-    expect(options).toHaveLength(1);
+    // …plus Transform, which every subtype has.
+    expect(options).toHaveLength(2);
+    expect(options[1].action).toBe('transform');
   });
 
   it('exposes the same menus through the whole-table export', () => {

@@ -41,6 +41,7 @@ import { CropBar } from './CropBar';
 import { TextBar } from './TextBar';
 import { TintBar } from './TintBar';
 import { EndpointsBar } from './EndpointsBar';
+import { TransformBar } from './TransformBar';
 import { LayoutBar } from './LayoutBar';
 import { PatternSymmetryBar, PatternTilesBar, PatternToolsBar } from './PatternBars';
 import { BAR_BG, EmptyEffectBar } from './effectBar';
@@ -589,6 +590,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const svgFillable = !!model.showSvgOptions && svgHasFill(model.svgSubtype ?? 'stroke');
   const svgEndable = !!model.showSvgOptions && svgHasEndpoints(model.svgSubtype ?? 'stroke');
   const svgOpacityable = !!model.showSvgOptions && svgHasOpacity(model.svgSubtype ?? 'stroke');
+  // Every vector subtype turns and repeats (svgEditOptions' Transform).
+  const svgTransformable = !!model.showSvgOptions;
   const typeSubmenuOrder: SubmenuKey[] =
     model.showImageEdit ? (multi
       ? ['shadow', 'border', 'opacity']
@@ -612,6 +615,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
           ...(svgFillable ? (['svgFill'] as const) : []),
           ...(svgEndable ? (['endpoints'] as const) : []),
           ...(svgOpacityable ? (['opacity'] as const) : []),
+          ...(svgTransformable ? (['transform'] as const) : []),
         ]
     : [];
   // Layout joins the tail of whatever the selection's type offers, so a
@@ -654,6 +658,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     : model.strokeOpen ? 'stroke'
     : model.svgFillOpen ? 'svgFill'
     : model.endpointsOpen ? 'endpoints'
+    : model.transformOpen ? 'transform'
     : model.rigPartOpen ? rigPartSubmenu(model.rigPartOpen)
     : model.patternBarOpen ? patternActionSubmenu(model.patternBarOpen)
     : model.textStyleOpen ? textPage
@@ -694,6 +699,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     action === 'fill' ? 'svgFill'
     : action === 'endpoints' ? 'endpoints'
     : action === 'opacity' ? 'opacity'
+    : action === 'transform' ? 'transform'
     : 'stroke';
 
   const openSubmenu = (key: SubmenuKey) => {
@@ -712,6 +718,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     else if (key === 'stroke') model.onStrokeOpenChange?.(true);
     else if (key === 'svgFill') model.onSvgFillOpenChange?.(true);
     else if (key === 'endpoints') model.onEndpointsOpenChange?.(true);
+    else if (key === 'transform') model.onTransformOpenChange?.(true);
     else if (key === 'layout') model.onLayoutOpenChange?.(true);
     else if (rigPartOfSubmenu(key)) model.onRigPartOpenChange?.(rigPartOfSubmenu(key));
     else if (patternActionOfSubmenu(key)) model.onPatternBarOpenChange?.(patternActionOfSubmenu(key));
@@ -731,6 +738,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     model.onStrokeOpenChange?.(false);
     model.onSvgFillOpenChange?.(false);
     model.onEndpointsOpenChange?.(false);
+    model.onTransformOpenChange?.(false);
     model.onLayoutOpenChange?.(false);
     model.onTextStyleOpenChange?.(false);
     model.onRigPartOpenChange?.(null);
@@ -942,10 +950,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     if ((!model.visible || !svgEndable) && model.endpointsOpen) {
       model.onEndpointsOpenChange?.(false);
     }
+    if ((!model.visible || !svgTransformable) && model.transformOpen) {
+      model.onTransformOpenChange?.(false);
+    }
     // model.on* are stable setters; listing the whole model would re-run this
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, strokeable, model.strokeOpen, svgFillable, model.svgFillOpen, svgEndable, model.endpointsOpen]);
+  }, [model.visible, strokeable, model.strokeOpen, svgFillable, model.svgFillOpen, svgEndable, model.endpointsOpen, svgTransformable, model.transformOpen]);
   // Fold the Layout bar away as soon as the selection stops being a multi one
   // (a tap that drops it to a single object, or clears it), so it never
   // lingers over an object it has nothing to say about.
@@ -1392,6 +1403,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onPickColor={() => model.onPickSvgFillColor?.()}
         onAddStop={addSvgFillStop}
         onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
+      />
+    );
+  } else if (displaySub === 'transform') {
+    activeBarEl = (
+      <TransformBar
+        transform={model.transform ?? { angleDeg: 0 }}
+        onRotate={(deg, committed) => model.onTransformRotate?.(deg, committed)}
+        onCopies={(spec) => model.onTransformCopies?.(spec)}
+        onBack={dismissSubmenu}
       />
     );
   } else if (displaySub === 'endpoints') {

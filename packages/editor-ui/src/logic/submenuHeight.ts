@@ -83,7 +83,7 @@ export const PATTERN_TILE_GRID =
  *  multi-selection rather than on a type. */
 export type SubmenuKey =
   | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
-  | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'layout'
+  | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
   // The poseable rig's parts: the whole figure (three axes, plus the Reset
   // that stands it back up), six sliders for the hands (curl / twist /
   // spread per side), four for the feet, three for the spine, two for the
@@ -224,6 +224,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
     case 'endpoints':
       return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
+    case 'transform':
+      // Rotation, then Create copies' four settings (count, offset X,
+      // offset Y, rotation offset) and the button row that fires it.
+      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
     case 'patternTiles':
       // The arming grid: two rows of square buttons.
       return standardBar([PATTERN_TILE_GRID]);

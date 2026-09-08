@@ -138,7 +138,7 @@ describe('submenuHeight', () => {
     // is exactly its Opacity slider — the shortest real bar).
     const ALL: SubmenuKey[] = [
       'tint', 'crop', 'shadow', 'border', 'opacity',
-      'font', 'align', 'stroke', 'svgFill', 'endpoints', 'layout',
+      'font', 'align', 'stroke', 'svgFill', 'endpoints', 'transform', 'layout',
     ];
     for (const key of ALL) {
       expect([key, submenuHeight(key) >= CHROME + ROW_SLIDER]).toEqual([key, true]);

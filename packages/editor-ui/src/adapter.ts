@@ -196,6 +196,22 @@ export type AlignEdge = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom
 export type EndMarkerKind = 'none' | 'circle' | 'arrow';
 export type EndCapKind = 'round' | 'square';
 
+/** What the Transform bar reads off the selected object. */
+export interface TransformModel {
+  /** Free rotation, degrees clockwise about the bbox centre; 0 = upright. */
+  angleDeg: number;
+}
+
+/** The Create copies request (the Transform bar's lower half). */
+export interface TransformCopiesSpec {
+  count: number;
+  /** Position offset per copy, in world cells. */
+  dx: number;
+  dy: number;
+  /** Rotation offset per copy, degrees clockwise. */
+  dAngleDeg: number;
+}
+
 /** Editable endpoints for an open path (the Endpoints bar). Unlike the engine's
  *  `SVGEndpoints` every field is concrete: the app resolves absent to the
  *  default before handing the model over, so the segmented rows always have a
@@ -552,6 +568,19 @@ export interface ObjectPropertiesModel {
    *  every control is a segmented pick, so each call is one finished edit and
    *  one undo step. `endpoints=null` resets both ends to the defaults. */
   onEndpoints?(endpoints: EndpointsModel | null): void;
+  /** Whether the Transform bar is shown — every vector subtype offers it
+   *  (svgEditOptions). App-owned like the other bars. */
+  transformOpen?: boolean;
+  onTransformOpenChange?(open: boolean): void;
+  /** The selected object's transform, seeding the bar's Rotation row. */
+  transform?: TransformModel;
+  /** The Rotation slider: live (committed=false) while the thumb moves, once
+   *  on release — one undo step. Degrees clockwise, (-180, 180]. */
+  onTransformRotate?(angleDeg: number, committed: boolean): void;
+  /** Create copies: `count` copies of the object, the i-th laid `i × (dx,
+   *  dy)` cells from it and turned `i × dAngleDeg` further — so each copy
+   *  is the one before with the offsets added. One undo step. */
+  onTransformCopies?(spec: TransformCopiesSpec): void;
   /** Selection is a Figma-style frame: the panel's second row shows the frame
    *  options (background / shadow / border / ungroup), with Shadow / Border
    *  reusing the image effect bars (frame submenu carousel = shadow, border).
