@@ -216,6 +216,28 @@ export interface CompositionSVGInputs {
    */
   strokeOverrideOthersOpacity?: number;
   /**
+   * SVG objects laid OVER the scene — drawn after everything else, exactly as
+   * given, in their own ink and at their own opacity — and FRAMED ON like
+   * content: a content-framed export grows to hold them. They are not part
+   * of the composition otherwise: `subset`, `strokeColorOverride` and its
+   * fade, masks and `sceneOrder` never see them.
+   *
+   * For a reveal whose singled-out thing is no longer ON the page: a
+   * Reimagine page whose day's seed the user deleted or redrew still has a
+   * seed to show — the one the issue dealt — so the host hands that geometry
+   * in here, re-inked, over the faded page. The plain export it is laid over
+   * passes the same overlay with `drawOverlay: false`, so the two frame
+   * identically (the seed's room is in both) and the pair lines up pixel for
+   * pixel under a slider, the whole seed in view.
+   */
+  overlaySvgObjects?: SVGObject[];
+  /**
+   * Whether `overlaySvgObjects` are painted (default) or only framed on — the
+   * plain twin of an overlaid export, which must share its frame without
+   * showing the overlay. Meaningless without `overlaySvgObjects`.
+   */
+  drawOverlay?: boolean;
+  /**
    * Objects whose FILLS take `strokeColorOverride` as well — the silhouette
    * the fill rule above refuses by default.
    *
@@ -1018,7 +1040,11 @@ export async function generateCompositionSVGCore(
   // freeform export's viewBox — an export that instead frames on its content
   // opts in via frameInkExtents.
   const inkFramed = !!input.subset || !!input.frameInkExtents;
-  for (const svg of svgObjects) {
+  // The overlay (`overlaySvgObjects`) is framed on with the scene — drawn or
+  // not (`drawOverlay`) — so an overlaid export and its plain twin share one
+  // frame, with room for the overlay in both.
+  const overlay = input.overlaySvgObjects ?? [];
+  for (const svg of overlay.length > 0 ? [...svgObjects, ...overlay] : svgObjects) {
     const pad = inkFramed
       ? svgStrokeWidthCells(svg, svgStrokeScale, SVG_UNITS_PER_L0_CELL) / 2
       : 0;
@@ -1437,7 +1463,12 @@ export async function generateCompositionSVGCore(
     }
   }
 
-  for (const svg of svgObjects) {
+  // The overlay paints after the scene's own objects — it is not in
+  // `sceneOrder`, so the emission below appends it after every ordered node,
+  // and with no order it follows insertion order, which is this loop's. The
+  // plain twin of an overlaid export frames on it (above) but skips it here.
+  const drawnOverlay = input.drawOverlay === false ? [] : overlay;
+  for (const svg of drawnOverlay.length > 0 ? [...svgObjects, ...drawnOverlay] : svgObjects) {
     if (cancelled?.()) return null;
     if (svg.segments.length === 0) continue;
     if (svg.tileMode === 'repeat') {

@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { svgEditOptions, SVG_EDIT_OPTIONS } from '../logic/svgEdit';
 import { submenuHeight } from '../logic/submenuHeight';
-import { COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN } from '../components/TransformBar';
+import { COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN } from '../logic/transform';
 
 // The Transform bar: every vector subtype's last option — Rotation, and
 // Create copies with a count, a position offset and a rotation offset.
@@ -20,7 +20,7 @@ describe('the Transform option', () => {
 
   it('has a bar height of five sliders and a button row', () => {
     expect(submenuHeight('transform', {})).toBeGreaterThan(submenuHeight('endpoints', {}));
-    expect(submenuHeight('transform', {})).toBeGreaterThan(submenuHeight('stroke', { svgSubtype: 'rectangle' }));
+    expect(submenuHeight('transform', {})).toBeGreaterThan(submenuHeight('stroke', { strokeRows: { radius: true, position: true } }));
   });
 });
 

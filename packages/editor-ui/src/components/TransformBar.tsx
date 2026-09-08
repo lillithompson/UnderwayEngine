@@ -5,6 +5,7 @@ import {
   BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP, ROW_GAP,
 } from '../logic/submenuHeight';
 import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
+import { COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN } from '../logic/transform';
 
 // The Transform bar, on every vector shape and line: a Rotation slider for the
 // object itself (degrees clockwise, the same free rotation the two-finger
@@ -15,19 +16,8 @@ import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effec
 // set 6 copies 2 cells apart at 15°, press, undo, press again.
 //
 // Ranges are stated in the object's own units so the readouts mean
-// something: a typed 90 is a quarter turn, a typed 4 is four cells.
-
-/** Rotation runs the full circle: (-180, 180]. */
-export const ROTATE_MIN = -180;
-export const ROTATE_MAX = 180;
-/** Copies: at least one, and enough to ring a shape at 15° without running
- *  the page into mush. */
-export const COPIES_MIN = 1;
-export const COPIES_MAX = 24;
-/** Position offset per copy, in cells either way; a page is 32 across. */
-export const OFFSET_MAX = 8;
-/** What a fresh bar proposes: a few copies, a cell over, a small turn. */
-export const DEFAULT_COPIES: TransformCopiesSpec = { count: 3, dx: 1, dy: 0, dAngleDeg: 15 };
+// something: a typed 90 is a quarter turn, a typed 4 is four cells
+// (logic/transform.ts).
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 /** A value in [lo, hi] as the slider's 0–1, and back. */

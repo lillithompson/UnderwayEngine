@@ -957,3 +957,87 @@ describe('strokeColorOverride on a pattern', () => {
     expect(svg).toContain('rgb(200,30,30)');
   });
 });
+
+describe('overlaySvgObjects', () => {
+  const openL: PathSegment[] = [
+    { kind: 'line', start: [4, 4], end: [12, 4] },
+    { kind: 'line', start: [12, 4], end: [12, 14] },
+  ];
+  function makeSvg(overrides: Partial<SVGObject> & { id: string }): SVGObject {
+    return {
+      segments: openL,
+      color: { r: 10, g: 20, b: 30 },
+      cellX: 4, cellY: 4, cellWidth: 8, cellHeight: 10,
+      ...overrides,
+    };
+  }
+  const RED = { r: 220, g: 38, b: 38 };
+  const WHITE = { r: 255, g: 255, b: 255 };
+
+  it('draws the overlay last, in its own ink, and frames on it — drawn or not', async () => {
+    const scene = [
+      makeSvg({ id: 'svg_1' }),
+      makeSvg({ id: 'svg_2', color: { r: 200, g: 40, b: 40 }, cellY: 18 }),
+    ];
+    // The overlay sits outside the scene's ink, so the frame has to grow to
+    // hold it — in the overlaid export AND in its plain twin, which frames on
+    // the overlay without painting it, so the two line up.
+    const overlay = makeSvg({
+      id: 'ovl', color: RED, cellX: 60, cellY: 60,
+      segments: [
+        { kind: 'line', start: [60, 60], end: [70, 60] },
+        { kind: 'line', start: [70, 60], end: [70, 70] },
+      ],
+    });
+    const plain = await generateCompositionSVGCore(makeInputs({
+      svgObjects: scene, sceneOrder: ['svg_2', 'svg_1'],
+    }));
+    const withOverlay = await generateCompositionSVGCore(makeInputs({
+      svgObjects: scene, sceneOrder: ['svg_2', 'svg_1'], overlaySvgObjects: [overlay],
+    }));
+    const twin = await generateCompositionSVGCore(makeInputs({
+      svgObjects: scene, sceneOrder: ['svg_2', 'svg_1'], overlaySvgObjects: [overlay], drawOverlay: false,
+    }));
+    const [, , plainW] = viewBoxOf(plain!);
+    const [, , overlaidW] = viewBoxOf(withOverlay!);
+    expect(overlaidW).toBeGreaterThan(plainW);
+    expect(viewBoxOf(twin!)).toEqual(viewBoxOf(withOverlay!));
+    expect(twin).not.toContain('stroke="rgb(220,38,38)"');
+    expect(withOverlay).toContain('stroke="rgb(220,38,38)"');
+    // Front-most: after both ordered scene objects.
+    const red = withOverlay!.indexOf('stroke="rgb(220,38,38)"');
+    expect(red).toBeGreaterThan(withOverlay!.indexOf('stroke="rgb(10,20,30)"'));
+    expect(red).toBeGreaterThan(withOverlay!.indexOf('stroke="rgb(200,40,40)"'));
+    // No sceneOrder: still last.
+    const unordered = await generateCompositionSVGCore(makeInputs({
+      svgObjects: scene, overlaySvgObjects: [overlay],
+    }));
+    expect(unordered!.lastIndexOf('<path')).toBe(unordered!.indexOf('<path d="M 15360,15360'));
+  });
+
+  it('is untouched by the stroke override and its fade, which see only the scene', async () => {
+    // A reveal whose seed is gone: everything on the page fades (the override
+    // names nothing), and the dealt seed rides over it at full strength in
+    // the ink the host gave it.
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [makeSvg({ id: 'svg_1' }), makeSvg({ id: 'svg_2', cellY: 18, opacity: 0.5 })],
+      overlaySvgObjects: [makeSvg({ id: 'ovl', color: RED })],
+      strokeColorOverride: WHITE,
+      strokeOverrideOnly: () => new Set(),
+      strokeOverrideOthersOpacity: 0.25,
+    }));
+    expect(svg).not.toContain('stroke="rgb(255,255,255)"');
+    expect(svg).toContain('stroke="rgb(220,38,38)"');
+    expect(svg).toContain('opacity="0.25"');
+    expect(svg).toContain('opacity="0.125"');
+    // Two faded scene objects, and nothing wrapping the overlay.
+    expect(svg!.match(/ opacity="/g)).toHaveLength(2);
+    // A subset cutout keeps its overlay too — it is not a scene object to select.
+    const cut = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [makeSvg({ id: 'svg_1' }), makeSvg({ id: 'svg_2', cellY: 18 })],
+      overlaySvgObjects: [makeSvg({ id: 'ovl', color: RED })],
+      subset: () => new Set(['svg_1']),
+    }));
+    expect(cut).toContain('stroke="rgb(220,38,38)"');
+  });
+});

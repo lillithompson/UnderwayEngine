@@ -1,4 +1,4 @@
-import { CompositionFigure, CompositionState, RGBColor } from './types';
+import { CompositionFigure, CompositionState, RGBColor, SVGObject } from './types';
 import type { PaintInk } from './imagePaintOverlay';
 import { loadCompositionState, loadFileStateLite, loadClipBox } from './persistence';
 import { loadBakedFigurePng } from './bake';
@@ -122,6 +122,13 @@ export interface CompositionExportOptions {
    *  multiple, so the singled-out thing sits in a ghost of the page. See
    *  {@link CompositionSVGInputs.strokeOverrideOthersOpacity}. */
   strokeOverrideOthersOpacity?: number;
+  /** SVG objects laid over the whole scene in their own ink, and framed on
+   *  with it — a reveal's stand-in for a thing the page no longer holds. See
+   *  {@link CompositionSVGInputs.overlaySvgObjects}. */
+  overlaySvgObjects?: SVGObject[];
+  /** Frame on `overlaySvgObjects` without painting them — the plain twin of
+   *  an overlaid export. See {@link CompositionSVGInputs.drawOverlay}. */
+  drawOverlay?: boolean;
   /** Objects whose FILLS take `strokeColorOverride` too — for a picture made
    *  only of fills (a baked rig), which the line override would otherwise
    *  slide straight off. See {@link CompositionSVGInputs.silhouette}. */
@@ -396,6 +403,8 @@ export async function exportCompositionSVG(
     strokeColorOverride: options?.strokeColorOverride,
     strokeOverrideOnly: options?.strokeOverrideOnly,
     strokeOverrideOthersOpacity: options?.strokeOverrideOthersOpacity,
+    overlaySvgObjects: options?.overlaySvgObjects,
+    drawOverlay: options?.drawOverlay,
     silhouette: options?.silhouette,
     paintColorOverride: options?.paintColorOverride,
     dropTextShadow: options?.dropTextShadow,
