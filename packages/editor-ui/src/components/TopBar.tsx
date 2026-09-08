@@ -1,5 +1,5 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TopBarModel } from '../adapter';
 import { nextToolOnPress } from '../logic/toolbarBehavior';
@@ -23,6 +23,47 @@ import {
 // the active tool untoggling it, leaving every button unlit.
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+
+/** The colour tool's live swatch, with the ring pair when armed. It bounces
+ *  (ToolModeCapsule's overshoot spring) each time `bounceKey` changes: the
+ *  radial's swatch capsule confirms a colour away from the toolbar, and
+ *  the swatch — where the colour is read — answers so the change is seen. */
+function SwatchGlyph({ color, active, size, bounceKey }: {
+  color: NonNullable<TopBarModel['tools'][number]['swatchColor']>;
+  active: boolean;
+  size: number;
+  bounceKey: number | undefined;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const lastKey = useRef(bounceKey);
+  useEffect(() => {
+    if (bounceKey === undefined || bounceKey === lastKey.current) return undefined;
+    lastKey.current = bounceKey;
+    scale.setValue(0.6);
+    const anim = Animated.spring(scale, {
+      toValue: 1,
+      // Low friction = a visible overshoot past 1 and back — the bounce.
+      friction: 4,
+      tension: 220,
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [bounceKey, scale]);
+  return (
+    <Animated.View style={[styles.swatchWrap, { transform: [{ scale }] }]}>
+      <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden' }}>
+        <ColorSwatchFill color={color} />
+      </View>
+      {active ? (
+        <>
+          <View style={ring(size, STATE_INACTIVE)} />
+          <View style={ring(size + 8, STATE_ACTIVE)} />
+        </>
+      ) : null}
+    </Animated.View>
+  );
+}
 
 export function TopBar({ model }: { model: TopBarModel }) {
   // No `active` tool is a real state (all tools untoggled), not a missing
@@ -68,22 +109,12 @@ export function TopBar({ model }: { model: TopBarModel }) {
             onLongPress={tool.onLongPress}
           >
             {tool.swatchColor ? (
-              <View style={styles.swatchWrap}>
-                <View
-                  style={{
-                    width: swatchSize, height: swatchSize, borderRadius: swatchSize / 2,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <ColorSwatchFill color={tool.swatchColor} />
-                </View>
-                {tool.active ? (
-                  <>
-                    <View style={ring(swatchSize, STATE_INACTIVE)} />
-                    <View style={ring(swatchSize + 8, STATE_ACTIVE)} />
-                  </>
-                ) : null}
-              </View>
+              <SwatchGlyph
+                color={tool.swatchColor}
+                active={tool.active}
+                size={swatchSize}
+                bounceKey={tool.swatchBounceKey}
+              />
             ) : tool.IconComponent ? (
               <tool.IconComponent
                 size={ICON_SIZE}

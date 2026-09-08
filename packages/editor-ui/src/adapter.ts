@@ -107,6 +107,12 @@ export interface TopBarTool {
   active: boolean;
   /** When present the tool renders as a live color swatch (color tool). */
   swatchColor?: RGBLike;
+  /** Bump to make the swatch BOUNCE — a small overshoot spring that draws
+   *  the eye to it — when the colour was changed somewhere other than the
+   *  swatch itself (a radial's swatch capsule): the swatch is where the
+   *  colour lives, and the change is answered where it can be seen. Each
+   *  new value bounces once; unchanged, nothing moves. */
+  swatchBounceKey?: number;
   /** When present it renders instead of the MCI glyph (see above). */
   IconComponent?: ToolIconComponent;
   /** Long press on the button. Facet uses it for sub-mode toggles (line ⇄
