@@ -204,6 +204,18 @@ export interface CompositionSVGInputs {
    */
   strokeOverrideOnly?: CompositionSubsetSelector;
   /**
+   * Fade the SVG objects `strokeOverrideOnly` does NOT name — the rest of the
+   * page around the thing singled out — by multiplying each one's whole-object
+   * opacity by this (0–1). So a reveal reads as "this, inside a ghost of
+   * that": the re-inked seed at full strength, the user's finished lines
+   * around it at a quarter. Geometry, stroke widths and framing are untouched,
+   * so the fade layers over the plain export pixel for pixel. Only SVG objects
+   * fade — they are the strokes the override is about; photos, text and paint
+   * keep their own opacity. Absent or ≥ 1 → nothing fades. No-op without
+   * `strokeColorOverride` and `strokeOverrideOnly`.
+   */
+  strokeOverrideOthersOpacity?: number;
+  /**
    * Objects whose FILLS take `strokeColorOverride` as well — the silhouette
    * the fill rule above refuses by default.
    *
@@ -893,10 +905,21 @@ export async function generateCompositionSVGCore(
       paints: input.paintObjects ?? [],
       groups,
     });
-    svgObjects = svgObjects.map((s) => (only && !only.has(s.id) ? s : withSVGObjectStrokeColor(
-      s, strokeInk,
-      flooded?.has(s.id) || patternViewIds.has(s.id) ? { floodFills: true } : undefined,
-    )));
+    // Everything the override passes over may be faded behind it — see
+    // `strokeOverrideOthersOpacity`. The fade rides the object's own opacity
+    // (a half-transparent line fades to an eighth), and the same
+    // wrapSVGObjectOpacity that draws the Opacity bar emits it.
+    const others = input.strokeOverrideOthersOpacity;
+    const dim = only && others != null && others < 1 ? Math.max(0, others) : null;
+    svgObjects = svgObjects.map((s) => {
+      if (only && !only.has(s.id)) {
+        return dim === null ? s : { ...s, opacity: (s.opacity ?? 1) * dim };
+      }
+      return withSVGObjectStrokeColor(
+        s, strokeInk,
+        flooded?.has(s.id) || patternViewIds.has(s.id) ? { floodFills: true } : undefined,
+      );
+    });
   }
 
   const maskMap = buildActiveMaskMap({

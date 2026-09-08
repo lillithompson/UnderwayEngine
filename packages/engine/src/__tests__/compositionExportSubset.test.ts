@@ -407,6 +407,46 @@ describe('strokeColorOverride', () => {
     expect(inert).toContain('stroke="rgb(10,20,30)"');
   });
 
+  it('fades the objects the override passes over when asked, riding their own opacity', async () => {
+    // A reveal that wants the rest of the page as a ghost around the re-inked
+    // seed: every object `strokeOverrideOnly` skips takes the fade, the named
+    // one stays at full strength, and a line the user had already faded ends
+    // up fainter still. Framing is unchanged, so it still layers over the
+    // plain export.
+    const inputs = (extra: Partial<CompositionSVGInputs>) => makeInputs({
+      svgObjects: [
+        makeSvg({ id: 'svg_seed' }),
+        makeSvg({ id: 'svg_2', color: { r: 200, g: 40, b: 40 }, cellY: 18 }),
+        makeSvg({ id: 'svg_3', color: { r: 40, g: 200, b: 40 }, cellY: 24, opacity: 0.5 }),
+      ],
+      ...extra,
+    });
+    const faded = await generateCompositionSVGCore(inputs({
+      strokeColorOverride: WHITE,
+      strokeOverrideOnly: () => new Set(['svg_seed']),
+      strokeOverrideOthersOpacity: 0.25,
+    }));
+    expect(faded!.match(/stroke="rgb\(255,255,255\)"/g)).toHaveLength(1);
+    expect(faded).toContain('stroke="rgb(200,40,40)"');
+    expect(faded).toContain('opacity="0.25"');
+    expect(faded).toContain('opacity="0.125"');
+    // The seed itself is not wrapped in any opacity.
+    expect(faded!.match(/ opacity="/g)).toHaveLength(2);
+    const plain = await generateCompositionSVGCore(inputs({}));
+    expect(viewBoxOf(faded!)).toEqual(viewBoxOf(plain!));
+    // Without a selector there is no "rest of the page" to fade; at 1 nothing
+    // fades either.
+    const all = await generateCompositionSVGCore(inputs({
+      strokeColorOverride: WHITE, strokeOverrideOthersOpacity: 0.25,
+    }));
+    expect(all).not.toContain('opacity="0.25"');
+    const full = await generateCompositionSVGCore(inputs({
+      strokeColorOverride: WHITE, strokeOverrideOnly: () => new Set(['svg_seed']), strokeOverrideOthersOpacity: 1,
+    }));
+    expect(full).not.toContain('opacity="0.25"');
+    expect(full).toContain('opacity="0.5"');
+  });
+
   it('repaints a joined object’s stroked subpaths too', async () => {
     // A joined object draws its subpaths INSTEAD of its own segments, each in
     // the ink of the object it came from — recoloring `color` alone would
