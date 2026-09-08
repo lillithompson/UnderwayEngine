@@ -2,9 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Platform, StyleSheet, View } from 'react-native';
 import type { BrushControlsModel } from '../adapter';
 import { CAPSULE_SIZE, MODAL_TEXT, PANEL_ANIM_MS, WHITE_25 } from '../theme';
-import {
-  brushDotSize, brushSliderGrabsHandle, brushSliderValueFromX, isSingleTouchGesture,
-} from '../logic/slider';
+import { brushDotSize, brushSliderGrabsHandle, brushSliderValueFromX, isSingleTouchGesture, VALUE_DRAG_SURFACE } from '../logic/slider';
 
 // Floating brush controls (Procreate Pocket's size slider as the model): a
 // stack of two sliders — STRENGTH over SIZE — each a single round handle
@@ -361,6 +359,7 @@ const styles = StyleSheet.create({
     width: TRACK_W,
     height: HANDLE,
     justifyContent: 'center',
+    ...VALUE_DRAG_SURFACE,
   },
   ground: {
     ...StyleSheet.absoluteFillObject,

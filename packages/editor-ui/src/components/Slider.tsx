@@ -3,7 +3,9 @@ import { PanResponder, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { PANEL_TRACK, STATE_ACTIVE } from '../theme';
 import { SLIDER_CONTROL } from '../logic/submenuHeight';
-import { beginValueDrag, brushSliderValueFromX, endValueDrag, sliderRampColors } from '../logic/slider';
+import {
+  beginValueDrag, brushSliderValueFromX, endValueDrag, sliderRampColors, VALUE_DRAG_SURFACE,
+} from '../logic/slider';
 import { CheckerboardFill } from './ColorSwatch';
 
 // The one draggable 0–1 control every property page uses, in the dress the
@@ -131,7 +133,9 @@ export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, track
 }
 
 const styles = StyleSheet.create({
-  hit: { height: SLIDER_CONTROL, justifyContent: 'center' },
+  // touch-action: none, so iOS never turns the drag into a scroll and cancels
+  // it under the thumb (logic/slider VALUE_DRAG_SURFACE).
+  hit: { height: SLIDER_CONTROL, justifyContent: 'center', ...VALUE_DRAG_SURFACE },
   // The pill clips the ramp (and the checker under it) to its rounded ends.
   track: { height: SLIDER_TRACK, borderRadius: SLIDER_TRACK / 2, overflow: 'hidden' },
   thumb: {

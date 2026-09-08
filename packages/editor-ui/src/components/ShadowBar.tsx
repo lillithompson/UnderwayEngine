@@ -6,7 +6,7 @@ import {
   SHADOW_PAD_SIZE, SHADOW_PAD_TOP,
 } from '../logic/submenuHeight';
 import { BAR_BG, CONTROL_ACCENT, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
-import { beginValueDrag, endValueDrag, padOffsetFromTouch } from '../logic/slider';
+import { beginValueDrag, endValueDrag, padOffsetFromTouch, VALUE_DRAG_SURFACE } from '../logic/slider';
 import { rgbCss, withAlpha } from '../logic/hsv';
 
 // The Drop Shadow editing bar (design "2a"): a full-width light bar with a
@@ -147,6 +147,7 @@ const styles = StyleSheet.create({
   pad: {
     width: PAD_SIZE, height: PAD_SIZE, borderRadius: 12, backgroundColor: PAD_FILL,
     borderWidth: 1, borderColor: PAD_BORDER,
+    ...VALUE_DRAG_SURFACE,
   },
   padCrossV: { position: 'absolute', left: PAD_SIZE / 2, top: 0, bottom: 0, width: 1, backgroundColor: CROSSHAIR },
   padCrossH: { position: 'absolute', top: PAD_SIZE / 2, left: 0, right: 0, height: 1, backgroundColor: CROSSHAIR },

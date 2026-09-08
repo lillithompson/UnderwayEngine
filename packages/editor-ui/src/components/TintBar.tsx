@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { LayoutChangeEvent, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { VALUE_DRAG_SURFACE } from '../logic/slider';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TintModel } from '../adapter';
@@ -375,7 +376,7 @@ const styles = StyleSheet.create({
   // Stops row: label + gradient bar (fills) + the two 28pt buttons.
   stopRow: { flexDirection: 'row', alignItems: 'center', height: ROW_PILL, gap: 10 },
   // The drag hit area fills the row height (≥44pt effective) around the 28pt bar.
-  stopBarHit: { flex: 1, height: ROW_PILL, justifyContent: 'center' },
+  stopBarHit: { flex: 1, height: ROW_PILL, justifyContent: 'center', ...VALUE_DRAG_SURFACE },
   stopBar: {
     height: 28, borderRadius: 8, borderWidth: 1, borderColor: STOP_BAR_BORDER, overflow: 'visible',
   },

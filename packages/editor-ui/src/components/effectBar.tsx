@@ -174,12 +174,18 @@ export function EmptyEffectBar({ title, addLabel, onBack, onAdd }: {
 function SliderReadout({ text, commit }: { text: string; commit: (n: number) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
+  // What the field was armed WITH. iOS keeps a focused field focused while
+  // the finger is on a non-focusable control, so a tap on the number
+  // followed by a slider drag leaves the field armed through the drag and
+  // blurs it later — committing the number it opened on, over the value
+  // the slider had just set. A draft the user never changed is not an edit.
+  const [seeded, setSeeded] = useState(text);
   if (!editing) {
     return (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Edit value, currently ${text}`}
-        onPress={() => { setDraft(text); setEditing(true); }}
+        onPress={() => { setDraft(text); setSeeded(text); setEditing(true); }}
         hitSlop={6}
         style={styles.readout}
       >
@@ -189,6 +195,7 @@ function SliderReadout({ text, commit }: { text: string; commit: (n: number) => 
   }
   const finish = () => {
     setEditing(false);
+    if (draft === seeded) return;
     const n = parseFloat(draft.replace(',', '.'));
     if (Number.isFinite(n)) commit(n);
   };

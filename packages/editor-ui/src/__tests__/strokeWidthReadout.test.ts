@@ -23,7 +23,7 @@ describe('the slider value box', () => {
     expect(bar).toContain('<SliderReadout text={text} commit={commit} />');
     // Tap → edit; a draft that parses commits, an unfinished edit is
     // abandoned (the hex field's rule).
-    expect(bar).toContain('onPress={() => { setDraft(text); setEditing(true); }}');
+    expect(bar).toContain('onPress={() => { setDraft(text); setSeeded(text); setEditing(true); }}');
     expect(bar).toContain('if (Number.isFinite(n)) commit(n);');
     // Both halves of a dual row carry one too.
     expect(bar.match(/<SliderReadout text=\{percentText\(value\)\}/g)).toHaveLength(1);

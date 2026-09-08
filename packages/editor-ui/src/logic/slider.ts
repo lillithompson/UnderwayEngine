@@ -42,6 +42,30 @@ export function isValueDragging(): boolean {
   return valueDragDepth > 0;
 }
 
+// ── The browser's own claim on the touch ────────────────────────────
+//
+// The guard above settles who gets the gesture INSIDE the responder system.
+// WebKit sits outside it: on iOS, a finger that moves before the page has
+// refused the touch becomes a native scroll (or the document's rubber-band),
+// and the browser then sends `touchcancel` — the responder is terminated
+// after the first move or two. The control commits the value it had
+// reached, which is a hair from where the drag began, and the thumb springs
+// back to (almost) where it started while the finger is still travelling.
+// That is the Stroke Width slider's "bounces back to the pre-edit value",
+// which no amount of release-time bookkeeping could cure because the drag
+// had already been taken away.
+//
+// `touch-action: none` on the control's hit surface tells the browser the
+// touch is ours before it moves, so it never becomes a scroll. The canvas,
+// the outline's drag handles and the eyedropper already declare it for the
+// same reason; every value control spreads this into its hit style so none
+// is left to rediscover the bug. Web-only — a native renderer has no such
+// property, and RN's style types don't know it, hence the cast.
+export const VALUE_DRAG_SURFACE: object =
+  typeof navigator !== 'undefined' && typeof document !== 'undefined'
+    ? { touchAction: 'none' }
+    : {};
+
 /** `#rgb`, `#rrggbb`, `rgb(…)` or `rgba(…)` — the forms the theme and the
  *  color pickers hand a slider — as its three 0–255 channels; null for
  *  anything else. */
