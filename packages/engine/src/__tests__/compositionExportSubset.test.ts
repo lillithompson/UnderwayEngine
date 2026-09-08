@@ -407,44 +407,76 @@ describe('strokeColorOverride', () => {
     expect(inert).toContain('stroke="rgb(10,20,30)"');
   });
 
-  it('fades the objects the override passes over when asked, riding their own opacity', async () => {
-    // A reveal that wants the rest of the page as a ghost around the re-inked
-    // seed: every object `strokeOverrideOnly` skips takes the fade, the named
-    // one stays at full strength, and a line the user had already faded ends
-    // up fainter still. Framing is unchanged, so it still layers over the
-    // plain export.
-    const inputs = (extra: Partial<CompositionSVGInputs>) => makeInputs({
-      svgObjects: [
-        makeSvg({ id: 'svg_seed' }),
-        makeSvg({ id: 'svg_2', color: { r: 200, g: 40, b: 40 }, cellY: 18 }),
-        makeSvg({ id: 'svg_3', color: { r: 40, g: 200, b: 40 }, cellY: 24, opacity: 0.5 }),
-      ],
-      ...extra,
-    });
-    const faded = await generateCompositionSVGCore(inputs({
+  it('a cutout can keep the page’s frame (frameOnScene) and stand on a backdrop wash', async () => {
+    // A reveal: one object of the page drawn on a translucent wash, to lie
+    // over the page's own image under a slider — so it frames exactly as the
+    // whole page's export does (the same ink padding rule), not tightly on
+    // the object, and the wash covers that whole frame under it.
+    const scene = [
+      makeSvg({ id: 'svg_seed' }),
+      makeSvg({ id: 'svg_2', color: { r: 200, g: 40, b: 40 }, cellY: 20, segments: [
+        { kind: 'line', start: [4, 20], end: [12, 20] }, { kind: 'line', start: [12, 20], end: [12, 26] },
+      ] }),
+    ];
+    const plain = await generateCompositionSVGCore(makeInputs({ svgObjects: scene, frameInkExtents: true }));
+    const reveal = await generateCompositionSVGCore(makeInputs({
+      svgObjects: scene, frameInkExtents: true,
+      subset: () => new Set(['svg_seed']), frameOnScene: true,
       strokeColorOverride: WHITE,
-      strokeOverrideOnly: () => new Set(['svg_seed']),
-      strokeOverrideOthersOpacity: 0.25,
+      backdrop: { kind: 'solid', color: { r: 240, g: 240, b: 240 }, alpha: 0.75 },
     }));
-    expect(faded!.match(/stroke="rgb\(255,255,255\)"/g)).toHaveLength(1);
-    expect(faded).toContain('stroke="rgb(200,40,40)"');
-    expect(faded).toContain('opacity="0.25"');
-    expect(faded).toContain('opacity="0.125"');
-    // The seed itself is not wrapped in any opacity.
-    expect(faded!.match(/ opacity="/g)).toHaveLength(2);
-    const plain = await generateCompositionSVGCore(inputs({}));
-    expect(viewBoxOf(faded!)).toEqual(viewBoxOf(plain!));
-    // Without a selector there is no "rest of the page" to fade; at 1 nothing
-    // fades either.
-    const all = await generateCompositionSVGCore(inputs({
-      strokeColorOverride: WHITE, strokeOverrideOthersOpacity: 0.25,
+    expect(viewBoxOf(reveal!)).toEqual(viewBoxOf(plain!));
+    // Only the seed is drawn, in the override ink; the other line is gone.
+    expect(reveal!.match(/<path /g)).toHaveLength(1);
+    expect(reveal).toContain('stroke="rgb(255,255,255)"');
+    expect(reveal).not.toContain('stroke="rgb(200,40,40)"');
+    // The wash: a rect over the whole viewBox, translucent, before the paths.
+    const [x, y, w, h] = viewBoxOf(reveal!);
+    const wash = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#F0F0F0" fill-opacity="0.75" stroke="none"/>`;
+    expect(reveal).toContain(wash);
+    expect(reveal!.indexOf(wash)).toBeLessThan(reveal!.indexOf('<path '));
+    // Without frameOnScene the cutout frames tightly on the seed — smaller —
+    // and the wash covers that frame instead.
+    const tight = await generateCompositionSVGCore(makeInputs({
+      svgObjects: scene, frameInkExtents: true,
+      subset: () => new Set(['svg_seed']),
+      backdrop: { kind: 'solid', color: { r: 240, g: 240, b: 240 }, alpha: 0.75 },
     }));
-    expect(all).not.toContain('opacity="0.25"');
-    const full = await generateCompositionSVGCore(inputs({
-      strokeColorOverride: WHITE, strokeOverrideOnly: () => new Set(['svg_seed']), strokeOverrideOthersOpacity: 1,
+    expect(viewBoxOf(tight!)[3]).toBeLessThan(viewBoxOf(plain!)[3]);
+    expect(tight).toContain('fill="#F0F0F0" fill-opacity="0.75"');
+    // frameOnScene means nothing without a subset; an opaque backdrop has no fill-opacity.
+    const noSubset = await generateCompositionSVGCore(makeInputs({
+      svgObjects: scene, frameInkExtents: true, frameOnScene: true,
+      backdrop: { kind: 'solid', color: { r: 240, g: 240, b: 240 } },
     }));
-    expect(full).not.toContain('opacity="0.25"');
-    expect(full).toContain('opacity="0.5"');
+    expect(viewBoxOf(noSubset!)).toEqual(viewBoxOf(plain!));
+    expect(noSubset).toContain('fill="#F0F0F0" stroke="none"');
+    expect(noSubset).not.toContain('fill-opacity');
+  });
+
+  it('a cutout keeping the page’s frame may draw nothing of the page but its overlay', async () => {
+    // A reveal whose seed is gone: the page frames the picture (with room for
+    // the dealt seed, like its plain twin), and the overlay alone is drawn.
+    const scene = [makeSvg({ id: 'svg_1' }), makeSvg({ id: 'svg_2', cellY: 18 })];
+    const overlay = makeSvg({ id: 'ovl', color: { r: 220, g: 38, b: 38 }, cellY: 40, segments: [
+      { kind: 'line', start: [0, 40], end: [8, 40] }, { kind: 'line', start: [8, 40], end: [8, 48] },
+    ] });
+    const twin = await generateCompositionSVGCore(makeInputs({
+      svgObjects: scene, frameInkExtents: true, overlaySvgObjects: [overlay], drawOverlay: false,
+    }));
+    const reveal = await generateCompositionSVGCore(makeInputs({
+      svgObjects: scene, frameInkExtents: true, overlaySvgObjects: [overlay],
+      subset: () => new Set(), frameOnScene: true,
+    }));
+    expect(reveal).not.toBeNull();
+    expect(viewBoxOf(reveal!)).toEqual(viewBoxOf(twin!));
+    expect(reveal!.match(/<path /g)).toHaveLength(1);
+    expect(reveal).toContain('stroke="rgb(220,38,38)"');
+    // Nothing selected, nothing overlaid: nothing to draw.
+    const nothing = await generateCompositionSVGCore(makeInputs({
+      svgObjects: scene, subset: () => new Set(), frameOnScene: true,
+    }));
+    expect(nothing).toBeNull();
   });
 
   it('repaints a joined object’s stroked subpaths too', async () => {
@@ -1015,23 +1047,20 @@ describe('overlaySvgObjects', () => {
     expect(unordered!.lastIndexOf('<path')).toBe(unordered!.indexOf('<path d="M 15360,15360'));
   });
 
-  it('is untouched by the stroke override and its fade, which see only the scene', async () => {
-    // A reveal whose seed is gone: everything on the page fades (the override
-    // names nothing), and the dealt seed rides over it at full strength in
-    // the ink the host gave it.
+  it('is untouched by the stroke override, which sees only the scene', async () => {
+    // The override names nothing on the page; the dealt seed rides over it
+    // at full strength in the ink the host gave it.
     const svg = await generateCompositionSVGCore(makeInputs({
       svgObjects: [makeSvg({ id: 'svg_1' }), makeSvg({ id: 'svg_2', cellY: 18, opacity: 0.5 })],
       overlaySvgObjects: [makeSvg({ id: 'ovl', color: RED })],
       strokeColorOverride: WHITE,
       strokeOverrideOnly: () => new Set(),
-      strokeOverrideOthersOpacity: 0.25,
     }));
     expect(svg).not.toContain('stroke="rgb(255,255,255)"');
     expect(svg).toContain('stroke="rgb(220,38,38)"');
-    expect(svg).toContain('opacity="0.25"');
-    expect(svg).toContain('opacity="0.125"');
-    // Two faded scene objects, and nothing wrapping the overlay.
-    expect(svg!.match(/ opacity="/g)).toHaveLength(2);
+    expect(svg).toContain('stroke="rgb(10,20,30)"');
+    // The user's own opacity stands; nothing wraps the overlay.
+    expect(svg!.match(/ opacity="/g)).toHaveLength(1);
     // A subset cutout keeps its overlay too — it is not a scene object to select.
     const cut = await generateCompositionSVGCore(makeInputs({
       svgObjects: [makeSvg({ id: 'svg_1' }), makeSvg({ id: 'svg_2', cellY: 18 })],

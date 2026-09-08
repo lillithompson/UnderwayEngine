@@ -1,4 +1,4 @@
-import { CompositionFigure, CompositionState, RGBColor, SVGObject } from './types';
+import { CompositionFigure, CompositionState, Paint, RGBColor, SVGObject } from './types';
 import type { PaintInk } from './imagePaintOverlay';
 import { loadCompositionState, loadFileStateLite, loadClipBox } from './persistence';
 import { loadBakedFigurePng } from './bake';
@@ -118,10 +118,6 @@ export interface CompositionExportOptions {
   /** Objects `strokeColorOverride` reaches; the rest keep their authored ink.
    *  See {@link CompositionSVGInputs.strokeOverrideOnly}. */
   strokeOverrideOnly?: CompositionSubsetSelector;
-  /** Fade the SVG objects `strokeOverrideOnly` passes over to this opacity
-   *  multiple, so the singled-out thing sits in a ghost of the page. See
-   *  {@link CompositionSVGInputs.strokeOverrideOthersOpacity}. */
-  strokeOverrideOthersOpacity?: number;
   /** SVG objects laid over the whole scene in their own ink, and framed on
    *  with it — a reveal's stand-in for a thing the page no longer holds. See
    *  {@link CompositionSVGInputs.overlaySvgObjects}. */
@@ -129,6 +125,13 @@ export interface CompositionExportOptions {
   /** Frame on `overlaySvgObjects` without painting them — the plain twin of
    *  an overlaid export. See {@link CompositionSVGInputs.drawOverlay}. */
   drawOverlay?: boolean;
+  /** With `subset`: draw the selection, framed as the whole page's plain export
+   *  is — the cutout lays over that export exactly. See
+   *  {@link CompositionSVGInputs.frameOnScene}. */
+  frameOnScene?: boolean;
+  /** A translucent wash over the whole frame under everything drawn, a cutout
+   *  included. See {@link CompositionSVGInputs.backdrop}. */
+  backdrop?: Paint;
   /** Objects whose FILLS take `strokeColorOverride` too — for a picture made
    *  only of fills (a baked rig), which the line override would otherwise
    *  slide straight off. See {@link CompositionSVGInputs.silhouette}. */
@@ -402,9 +405,10 @@ export async function exportCompositionSVG(
     textColorOverride: options?.textColorOverride,
     strokeColorOverride: options?.strokeColorOverride,
     strokeOverrideOnly: options?.strokeOverrideOnly,
-    strokeOverrideOthersOpacity: options?.strokeOverrideOthersOpacity,
     overlaySvgObjects: options?.overlaySvgObjects,
     drawOverlay: options?.drawOverlay,
+    frameOnScene: options?.frameOnScene,
+    backdrop: options?.backdrop,
     silhouette: options?.silhouette,
     paintColorOverride: options?.paintColorOverride,
     dropTextShadow: options?.dropTextShadow,

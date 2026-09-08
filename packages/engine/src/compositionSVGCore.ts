@@ -204,28 +204,16 @@ export interface CompositionSVGInputs {
    */
   strokeOverrideOnly?: CompositionSubsetSelector;
   /**
-   * Fade the SVG objects `strokeOverrideOnly` does NOT name — the rest of the
-   * page around the thing singled out — by multiplying each one's whole-object
-   * opacity by this (0–1). So a reveal reads as "this, inside a ghost of
-   * that": the re-inked seed at full strength, the user's finished lines
-   * around it at a quarter. Geometry, stroke widths and framing are untouched,
-   * so the fade layers over the plain export pixel for pixel. Only SVG objects
-   * fade — they are the strokes the override is about; photos, text and paint
-   * keep their own opacity. Absent or ≥ 1 → nothing fades. No-op without
-   * `strokeColorOverride` and `strokeOverrideOnly`.
-   */
-  strokeOverrideOthersOpacity?: number;
-  /**
    * SVG objects laid OVER the scene — drawn after everything else, exactly as
    * given, in their own ink and at their own opacity — and FRAMED ON like
    * content: a content-framed export grows to hold them. They are not part
-   * of the composition otherwise: `subset`, `strokeColorOverride` and its
-   * fade, masks and `sceneOrder` never see them.
+   * of the composition otherwise: `subset`, `strokeColorOverride`, masks and
+   * `sceneOrder` never see them.
    *
    * For a reveal whose singled-out thing is no longer ON the page: a
    * Reimagine page whose day's seed the user deleted or redrew still has a
    * seed to show — the one the issue dealt — so the host hands that geometry
-   * in here, re-inked, over the faded page. The plain export it is laid over
+   * in here, re-inked, over the page. The plain export it is laid over
    * passes the same overlay with `drawOverlay: false`, so the two frame
    * identically (the seed's room is in both) and the pair lines up pixel for
    * pixel under a slider, the whole seed in view.
@@ -237,6 +225,25 @@ export interface CompositionSVGInputs {
    * showing the overlay. Meaningless without `overlaySvgObjects`.
    */
   drawOverlay?: boolean;
+  /**
+   * With `subset`: draw only the selected objects, but FRAME as the plain
+   * export of the whole page would — the full scene (and any overlay), with
+   * the same ink padding rule — so the cutout lines up pixel for pixel over
+   * that plain export. For an export that is laid OVER another picture of
+   * the same page: a reveal that paints one object on a wash, to sit on the
+   * page's own image under a slider. A subset naming nothing is fine here
+   * when an overlay is drawn: the page frames the picture, the overlay is
+   * what it shows. Ignored without `subset`.
+   */
+  frameOnScene?: boolean;
+  /**
+   * A full-frame wash painted under everything drawn — a cutout's too,
+   * unlike `background`, which a cutout drops. For an export laid over
+   * another picture of the same page (see `frameOnScene`): a translucent
+   * paint in the ground's own colour quiets that picture where the overlay
+   * lands, so the one thing drawn on it stands out.
+   */
+  backdrop?: Paint;
   /**
    * Objects whose FILLS take `strokeColorOverride` as well — the silhouette
    * the fill rule above refuses by default.
@@ -862,19 +869,32 @@ export async function generateCompositionSVGCore(
     }
   }
 
+  // The overlay (`overlaySvgObjects`) is framed on with the scene — drawn or
+  // not (`drawOverlay`) — so an overlaid export and its plain twin share one
+  // frame, with room for the overlay in both.
+  const overlay = input.overlaySvgObjects ?? [];
+  const drawnOverlay = input.drawOverlay === false ? [] : overlay;
+
   // Nothing to draw.
   const noObjects = () =>
     figures.length === 0 && svgObjects.length === 0 && images.length === 0
-    && texts.length === 0 && paints.length === 0;
+    && texts.length === 0 && paints.length === 0 && drawnOverlay.length === 0;
   if (noObjects()) return null;
 
   // Active masks resolve from the UNFILTERED svg objects: a hidden mask
   // still clips (invisible-mask behavior) even though it isn't drawn.
   const groups = input.groups ?? [];
 
+  // What the FRAME measures: the drawn set — or, for a cutout that keeps its
+  // page's frame (`frameOnScene`), the whole scene as the plain export sees
+  // it, so the cutout lays over that export exactly.
+  const framed = { figures, svgObjects, images, texts, paints };
+  const frameOnScene = !!input.subset && !!input.frameOnScene;
+
   // Cutout export: narrow the drawn set to the selector's ids. Everything
   // downstream — the bbox union, the viewBox, the background — then sees only
-  // this subset, which is what tightens the frame onto it.
+  // this subset, which is what tightens the frame onto it (unless the frame
+  // is the page's, `frameOnScene`).
   if (input.subset) {
     const keep = input.subset({ figures, svgObjects, images, texts, paints, groups });
     const kept = (n: { id: string }): boolean => keep.has(n.id);
@@ -883,6 +903,7 @@ export async function generateCompositionSVGCore(
     images = images.filter(kept);
     texts = texts.filter(kept);
     paints = paints.filter(kept);
+    if (!frameOnScene) Object.assign(framed, { figures, svgObjects, images, texts, paints });
     if (noObjects()) return null;
   }
 
@@ -927,16 +948,8 @@ export async function generateCompositionSVGCore(
       paints: input.paintObjects ?? [],
       groups,
     });
-    // Everything the override passes over may be faded behind it — see
-    // `strokeOverrideOthersOpacity`. The fade rides the object's own opacity
-    // (a half-transparent line fades to an eighth), and the same
-    // wrapSVGObjectOpacity that draws the Opacity bar emits it.
-    const others = input.strokeOverrideOthersOpacity;
-    const dim = only && others != null && others < 1 ? Math.max(0, others) : null;
     svgObjects = svgObjects.map((s) => {
-      if (only && !only.has(s.id)) {
-        return dim === null ? s : { ...s, opacity: (s.opacity ?? 1) * dim };
-      }
+      if (only && !only.has(s.id)) return s;
       return withSVGObjectStrokeColor(
         s, strokeInk,
         flooded?.has(s.id) || patternViewIds.has(s.id) ? { floodFills: true } : undefined,
@@ -1027,7 +1040,7 @@ export async function generateCompositionSVGCore(
     if (r.maxY > maxCY) maxCY = r.maxY;
   };
 
-  for (const f of figures) {
+  for (const f of framed.figures) {
     accept(f, f.cellX, f.cellY, f.cellX + f.cellWidth, f.cellY + f.cellHeight);
   }
   // Cutouts and ink-framed exports frame on the INKED extent: a stroke is
@@ -1039,12 +1052,8 @@ export async function generateCompositionSVGCore(
   // its frame is already the page, and padding it would move every existing
   // freeform export's viewBox — an export that instead frames on its content
   // opts in via frameInkExtents.
-  const inkFramed = !!input.subset || !!input.frameInkExtents;
-  // The overlay (`overlaySvgObjects`) is framed on with the scene — drawn or
-  // not (`drawOverlay`) — so an overlaid export and its plain twin share one
-  // frame, with room for the overlay in both.
-  const overlay = input.overlaySvgObjects ?? [];
-  for (const svg of overlay.length > 0 ? [...svgObjects, ...overlay] : svgObjects) {
+  const inkFramed = (!!input.subset && !frameOnScene) || !!input.frameInkExtents;
+  for (const svg of overlay.length > 0 ? [...framed.svgObjects, ...overlay] : framed.svgObjects) {
     const pad = inkFramed
       ? svgStrokeWidthCells(svg, svgStrokeScale, SVG_UNITS_PER_L0_CELL) / 2
       : 0;
@@ -1062,7 +1071,7 @@ export async function generateCompositionSVGCore(
     );
     accept(svg, r.minX, r.minY, r.maxX, r.maxY);
   }
-  for (const img of images) {
+  for (const img of framed.images) {
     // The markup rotates an image about its box center — free rotation
     // outermost, then the discrete step; same center, so the angles sum for
     // the corners' world positions. Mirrors flip within the box and don't
@@ -1074,12 +1083,13 @@ export async function generateCompositionSVGCore(
     );
     accept(img, r.minX, r.minY, r.maxX, r.maxY);
   }
-  for (const txt of texts) {
+  for (const txt of framed.texts) {
     // A cutout frames on the glyphs, not on the box they were laid out in —
     // see paintedTextBounds (which applies the node rotation itself). A page
     // export keeps using the node bbox: its viewBox is the page, and
-    // tightening it would move every existing freeform export's frame.
-    if (input.subset) {
+    // tightening it would move every existing freeform export's frame — so
+    // does a cutout that keeps the page's frame.
+    if (input.subset && !frameOnScene) {
       const b = paintedTextBounds(txt);
       if (b) accept(txt, b.minX, b.minY, b.maxX, b.maxY);
       continue;
@@ -1095,7 +1105,7 @@ export async function generateCompositionSVGCore(
     accept(txt, r.minX, r.minY, r.maxX, r.maxY);
   }
 
-  for (const p of paints) {
+  for (const p of framed.paints) {
     // Same rotation story as images: contentRect maps onto the bbox and
     // both transforms spin about the box center in the markup, so the frame
     // follows the rotated corners. The bbox is the ink bounds at last
@@ -1467,7 +1477,6 @@ export async function generateCompositionSVGCore(
   // `sceneOrder`, so the emission below appends it after every ordered node,
   // and with no order it follows insertion order, which is this loop's. The
   // plain twin of an overlaid export frames on it (above) but skips it here.
-  const drawnOverlay = input.drawOverlay === false ? [] : overlay;
   for (const svg of drawnOverlay.length > 0 ? [...svgObjects, ...drawnOverlay] : svgObjects) {
     if (cancelled?.()) return null;
     if (svg.segments.length === 0) continue;
@@ -1683,6 +1692,16 @@ export async function generateCompositionSVGCore(
       `<rect x="${vbX}" y="${vbY}" width="${bboxW}" height="${bboxH}" fill="${p.fill}"${oa} stroke="none"/>`;
   }
 
+  // A backdrop: a translucent wash over the whole frame, under everything
+  // drawn, a cutout's too (see `backdrop`).
+  let backdropRect = '';
+  if (input.backdrop) {
+    const p = paintToSvg(input.backdrop, 'backdrop_paint');
+    const oa = p.fillOpacity !== undefined ? ` fill-opacity="${p.fillOpacity}"` : '';
+    backdropRect = (p.defs ? `<defs>${p.defs}</defs>` : '') +
+      `<rect x="${vbX}" y="${vbY}" width="${bboxW}" height="${bboxH}" fill="${p.fill}"${oa} stroke="none"/>`;
+  }
+
   return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<svg id="${compName}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ` +
@@ -1691,6 +1710,7 @@ export async function generateCompositionSVGCore(
     `fill="none" stroke="white">`,
     ...(fontStyleBlock ? [fontStyleBlock] : []),
     ...(backgroundRect ? [backgroundRect] : []),
+    ...(backdropRect ? [backdropRect] : []),
     ...(maskDefs ? [maskDefs] : []),
     ...allElements,
     `</svg>`,
