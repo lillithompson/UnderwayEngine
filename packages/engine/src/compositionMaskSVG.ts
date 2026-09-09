@@ -1,5 +1,6 @@
 import { GroupNode, SVGObject } from './types';
 import { buildClosedFillPathD } from './svgPathBuilder';
+import { SVG_UNITS_PER_L0_CELL } from './svgExport';
 
 /**
  * SVG clip-path construction for "Use as mask" shapes — shared by the app's
@@ -78,8 +79,15 @@ export function buildMaskClipDefs(
     const chain = parentMaskGid
       ? ` clip-path="url(#${MASK_CLIP_ID_PREFIX}${parentMaskGid})"`
       : '';
+    // A mask with a free rotation (a tilted frame's boundary rect) clips
+    // through the same rotation its own markup is drawn with: the path's
+    // segments are the unrotated box, so the rotation rides the clip path,
+    // about the box's centre, exactly as the node's `<g transform>` does.
+    const rot = mask.angleDeg
+      ? ` transform="rotate(${mask.angleDeg} ${(mask.cellX + mask.cellWidth / 2) * SVG_UNITS_PER_L0_CELL} ${(mask.cellY + mask.cellHeight / 2) * SVG_UNITS_PER_L0_CELL})"`
+      : '';
     body += `<clipPath id="${MASK_CLIP_ID_PREFIX}${gid}" clipPathUnits="userSpaceOnUse"${chain}>`
-      + `<path d="${d}" />`
+      + `<path d="${d}"${rot} />`
       + `</clipPath>`;
   }
   return body ? `<defs>${body}</defs>` : '';

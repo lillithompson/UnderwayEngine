@@ -6,6 +6,7 @@ import {
 } from '../compositionMaskSVG';
 import { buildActiveMaskMap, MaskScene } from '../compositionMask';
 import { GroupNode, PathSegment, SVGObject } from '../types';
+import { SVG_UNITS_PER_L0_CELL } from '../svgExport';
 
 function squareSegments(x: number, y: number, size: number): PathSegment[] {
   return [
@@ -110,6 +111,25 @@ describe('buildMaskClipDefs', () => {
     expect(defs).toContain(
       `<clipPath id="${MASK_CLIP_ID_PREFIX}gInner" clipPathUnits="userSpaceOnUse" clip-path="url(#${MASK_CLIP_ID_PREFIX}gOuter)">`,
     );
+  });
+});
+
+describe('a tilted mask (a rotated frame boundary) clips through its rotation', () => {
+  test('the clip path turns about the box centre, in SVG units', () => {
+    const mask = makeSvg('svg_mask', {
+      groupId: 'g1', isMask: true, angleDeg: -23.82,
+      cellX: 4, cellY: 6, cellWidth: 10, cellHeight: 20,
+    });
+    const groups = [makeGroup('g1')];
+    const defs = buildMaskClipDefs(buildActiveMaskMap(scene([mask], groups)), groups);
+    // Centre (9, 16) cells → SVG units.
+    expect(defs).toContain(`transform="rotate(-23.82 ${9 * SVG_UNITS_PER_L0_CELL} ${16 * SVG_UNITS_PER_L0_CELL})"`);
+  });
+
+  test('an upright mask emits no transform at all', () => {
+    const mask = makeSvg('svg_mask', { groupId: 'g1', isMask: true });
+    const groups = [makeGroup('g1')];
+    expect(buildMaskClipDefs(buildActiveMaskMap(scene([mask], groups)), groups)).not.toContain('transform=');
   });
 });
 

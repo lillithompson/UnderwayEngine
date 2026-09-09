@@ -177,3 +177,30 @@ describe('frame border export', () => {
     expect(whiteRects(withBoundary!)).toHaveLength(1);
   });
 });
+
+describe('a tilted frame (boundary rect with a free angle)', () => {
+  it('turns its border and its clip with it, about the frame centre', async () => {
+    // A template author tilts the "Frame" rectangle; instantiation keeps the
+    // angle on the promoted boundary. The export used to clip and border the
+    // upright box regardless, so the page's board stood straight.
+    const svg = (await generateCompositionSVGCore(framedPage({
+      svgObjects: [makeBoundary({ angleDeg: -23.82 })],
+    })))!;
+    const pivot = `${(PAGE / 2) * U} ${(PAGE / 2) * U}`;
+    // The border overlay rides a rotation group…
+    const borderAt = svg.search(/stroke="#ffffff"/i);
+    expect(borderAt).toBeGreaterThan(-1);
+    const before = svg.slice(0, borderAt);
+    expect(before.lastIndexOf(`<g transform="rotate(-23.82 ${pivot})">`)).toBeGreaterThan(-1);
+    // …and the frame's clip path carries the same rotation.
+    const clipAt = svg.indexOf('<clipPath id="groupmask-grp_frame"');
+    expect(clipAt).toBeGreaterThan(-1);
+    const clip = svg.slice(clipAt, svg.indexOf('</clipPath>', clipAt));
+    expect(clip).toContain(` transform="rotate(-23.82 ${pivot})" />`);
+  });
+
+  it('an upright frame emits no rotation for either', async () => {
+    const svg = (await generateCompositionSVGCore(framedPage()))!;
+    expect(svg).not.toContain('rotate(');
+  });
+});

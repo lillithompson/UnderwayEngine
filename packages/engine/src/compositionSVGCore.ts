@@ -991,7 +991,12 @@ export async function generateCompositionSVGCore(
     // still shows its border, matching the canvas overlay, which reads the
     // mask's effects regardless of the node's own `hidden`.)
     if (input.subset && !svgObjects.some(s => s.id === boundary.id)) continue;
-    frameBorders.set(g.id, borderRectForBox(border, boundary, SVG_UNITS_PER_L0_CELL));
+    // A tilted frame's border turns with it (the clip does the same in
+    // buildMaskClipDefs, the canvas overlay in CanvasSurface).
+    const borderRect = borderRectForBox(border, boundary, SVG_UNITS_PER_L0_CELL);
+    frameBorders.set(g.id, boundary.angleDeg
+      ? `<g transform="rotate(${boundary.angleDeg} ${(boundary.cellX + boundary.cellWidth / 2) * SVG_UNITS_PER_L0_CELL} ${(boundary.cellY + boundary.cellHeight / 2) * SVG_UNITS_PER_L0_CELL})">${borderRect}</g>`
+      : borderRect);
     frameBorderBoundaryIds.add(boundary.id);
   }
 
