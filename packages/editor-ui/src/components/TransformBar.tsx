@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { TransformCopiesSpec, TransformModel } from '../adapter';
 import {
@@ -18,6 +18,11 @@ import { COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_
 // Ranges are stated in the object's own units so the readouts mean
 // something: a typed 90 is a quarter turn, a typed 4 is four cells
 // (logic/transform.ts).
+//
+// The draft is also REPORTED live (onCopiesPreview): once when the bar
+// mounts, again on every change, and null as it unmounts — the host ghosts
+// the copies a press would lay down, updating as the sliders move, and
+// clears them when the bar is dismissed or another bar takes its place.
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 /** A value in [lo, hi] as the slider's 0–1, and back. */
@@ -28,15 +33,23 @@ const cellText = (cells: number) => String(Math.round(cells * 10) / 10);
 
 const CREATE_OPTION = [{ value: 'create' as const, label: 'Create copies' }];
 
-export function TransformBar({ transform, onRotate, onCopies, onBack }: {
+export function TransformBar({ transform, onRotate, onCopies, onCopiesPreview, onBack }: {
   transform: TransformModel;
   /** The Rotation slider: live while dragging, committed on release. */
   onRotate: (angleDeg: number, committed: boolean) => void;
   onCopies: (spec: TransformCopiesSpec) => void;
+  /** The live draft: every change while the bar is up, null on the way out. */
+  onCopiesPreview?: (spec: TransformCopiesSpec | null) => void;
   onBack: () => void;
 }) {
   const [copies, setCopies] = useState<TransformCopiesSpec>(DEFAULT_COPIES);
   const set = (patch: Partial<TransformCopiesSpec>) => setCopies((c) => ({ ...c, ...patch }));
+  // Read through a ref so a host passing a fresh closure each render doesn't
+  // re-announce an unchanged draft — the effects key on the draft alone.
+  const previewRef = useRef(onCopiesPreview);
+  previewRef.current = onCopiesPreview;
+  useEffect(() => { previewRef.current?.(copies); }, [copies]);
+  useEffect(() => () => { previewRef.current?.(null); }, []);
   return (
     <View style={styles.bar}>
       <EffectBarHeader title="TRANSFORM" chevron onBack={onBack} />

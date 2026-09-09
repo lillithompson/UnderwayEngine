@@ -45,6 +45,17 @@ describe('the Transform bar', () => {
     expect(SRC).toContain("label: 'Create copies'");
   });
 
+  it('reports the copies draft live — on mount, on every change, and null as it unmounts', () => {
+    expect(SRC).toContain('onCopiesPreview?: (spec: TransformCopiesSpec | null) => void;');
+    // Keyed on the draft alone, through a ref, so a host's fresh closure
+    // each render never re-announces an unchanged draft.
+    expect(SRC).toContain('const previewRef = useRef(onCopiesPreview);');
+    expect(SRC).toContain('useEffect(() => { previewRef.current?.(copies); }, [copies]);');
+    expect(SRC).toContain('useEffect(() => () => { previewRef.current?.(null); }, []);');
+    // The press itself is not a preview.
+    expect(SRC).not.toContain('onCopiesPreview?.(copies)');
+  });
+
   it('is wired into the panel like its sibling bars', () => {
     const panel = read('ObjectPropertiesPanel.tsx');
     expect(panel).toContain("...(svgTransformable ? (['transform'] as const) : []),");
@@ -52,6 +63,7 @@ describe('the Transform bar', () => {
     expect(panel).toContain("else if (key === 'transform') model.onTransformOpenChange?.(true);");
     expect(panel).toContain("onRotate={(deg, committed) => model.onTransformRotate?.(deg, committed)}");
     expect(panel).toContain("onCopies={(spec) => model.onTransformCopies?.(spec)}");
+    expect(panel).toContain("onCopiesPreview={(spec) => model.onTransformCopiesPreview?.(spec)}");
     // Dismiss and fold-away reach it too.
     expect(panel.match(/model\.onTransformOpenChange\?\.\(false\);/g)!.length).toBeGreaterThanOrEqual(2);
   });

@@ -581,6 +581,13 @@ export interface ObjectPropertiesModel {
    *  dy)` cells from it and turned `i × dAngleDeg` further — so each copy
    *  is the one before with the offsets added. One undo step. */
   onTransformCopies?(spec: TransformCopiesSpec): void;
+  /** The bar's Create copies DRAFT, live: called with the current settings
+   *  whenever the bar opens or any of them changes, and with null when the
+   *  bar goes away (dismissed, folded, another bar picked) — so the host can
+   *  ghost the copies the press would lay down, and take the ghosts away
+   *  with the bar. Never fires for the press itself; that is
+   *  {@link onTransformCopies}. */
+  onTransformCopiesPreview?(spec: TransformCopiesSpec | null): void;
   /** Selection is a Figma-style frame: the panel's second row shows the frame
    *  options (background / shadow / border / ungroup), with Shadow / Border
    *  reusing the image effect bars (frame submenu carousel = shadow, border).
