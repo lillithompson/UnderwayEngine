@@ -382,7 +382,9 @@ export interface ObjectPropertiesModel {
    *  Fill: an island is baked brushwork, not a shape. Mutually exclusive
    *  with the image / svg / text / frame type-option families. */
   showPaintOptions?: boolean;
-  /** Selection is an inline tile PATTERN object. Its type options are the
+  /** Selection is an inline tile PATTERN object — or several, all patterns:
+   *  the host applies each edit to every member and seeds the rows from the
+   *  first, as the image and text families do. Its type options are the
    *  pattern's three pages — Tiles (the connection-grouped tile menu),
    *  Tools (brush arming + grid actions + the border-connections rule) and
    *  Symmetry (the painting-mirror grid) — plus the same Repeat toggle the
