@@ -4570,6 +4570,13 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           isMask: undefined,
         };
       });
+      // The bbox kinds (images, texts, paint islands, patterns) KEEP their
+      // rotation / mirror: for them those fields are the world orientation
+      // the renderer draws — what materializeBboxMember writes — and a loose
+      // object drawn the same way needs the same values. Clearing them (as
+      // the svg branch above rightly does, its segments carrying the
+      // orientation) turned four patterns flipped and turned differently
+      // back into four identical grids the moment they were ungrouped.
       const images = (state.images ?? []).map((i) =>
         i.groupId === op.groupId ? {
           ...i,
@@ -4584,9 +4591,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           identityCellY: undefined,
           identityCellWidth: undefined,
           identityCellHeight: undefined,
-          rotation: undefined,
-          mirrorH: undefined,
-          mirrorV: undefined,
         } : i
       );
       const texts = (state.texts ?? []).map((t) =>
@@ -4603,9 +4607,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           identityCellY: undefined,
           identityCellWidth: undefined,
           identityCellHeight: undefined,
-          rotation: undefined,
-          mirrorH: undefined,
-          mirrorV: undefined,
         } : t
       );
       const paints = (state.paintObjects ?? []).map((p) =>
@@ -4622,9 +4623,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           identityCellY: undefined,
           identityCellWidth: undefined,
           identityCellHeight: undefined,
-          rotation: undefined,
-          mirrorH: undefined,
-          mirrorV: undefined,
         } : p
       );
       const patterns = (state.patternObjects ?? []).map((p) =>
@@ -4637,13 +4635,14 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           localCellY: undefined,
           localCellWidth: undefined,
           localCellHeight: undefined,
+          localTileWidthL0: undefined,
+          localTileHeightL0: undefined,
+          localTileOffsetXL0: undefined,
+          localTileOffsetYL0: undefined,
           identityCellX: undefined,
           identityCellY: undefined,
           identityCellWidth: undefined,
           identityCellHeight: undefined,
-          rotation: undefined,
-          mirrorH: undefined,
-          mirrorV: undefined,
         } : p
       );
       // Detach child groups from the parent and restore their names.
@@ -5177,6 +5176,10 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
       // every later group walk resolves them through a group that no longer
       // exists. `preGroupName` is the same original name `oldNames` carries;
       // it backs the entry up when a caller built the op without those slots.
+      // The bbox kinds keep their rotation / mirror here exactly as the
+      // ungroup apply does: those fields are their world orientation, not a
+      // group-local cache. Undoing a grouping used to leave four turned and
+      // flipped patterns upright and identical.
       const images = (state.images ?? []).map((i) => {
         if (!idSet.has(i.id)) return i;
         return {
@@ -5192,9 +5195,6 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
           identityCellY: undefined,
           identityCellWidth: undefined,
           identityCellHeight: undefined,
-          rotation: undefined,
-          mirrorH: undefined,
-          mirrorV: undefined,
         };
       });
       const texts = (state.texts ?? []).map((t) => {
@@ -5212,9 +5212,6 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
           identityCellY: undefined,
           identityCellWidth: undefined,
           identityCellHeight: undefined,
-          rotation: undefined,
-          mirrorH: undefined,
-          mirrorV: undefined,
         };
       });
       const paints = (state.paintObjects ?? []).map((p) => {
@@ -5232,9 +5229,6 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
           identityCellY: undefined,
           identityCellWidth: undefined,
           identityCellHeight: undefined,
-          rotation: undefined,
-          mirrorH: undefined,
-          mirrorV: undefined,
         };
       });
       const patterns = (state.patternObjects ?? []).map((p) => {
@@ -5248,13 +5242,14 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
           localCellY: undefined,
           localCellWidth: undefined,
           localCellHeight: undefined,
+          localTileWidthL0: undefined,
+          localTileHeightL0: undefined,
+          localTileOffsetXL0: undefined,
+          localTileOffsetYL0: undefined,
           identityCellX: undefined,
           identityCellY: undefined,
           identityCellWidth: undefined,
           identityCellHeight: undefined,
-          rotation: undefined,
-          mirrorH: undefined,
-          mirrorV: undefined,
         };
       });
       // Detach child groups (restore name from preGroupName, clear parentGroupId).

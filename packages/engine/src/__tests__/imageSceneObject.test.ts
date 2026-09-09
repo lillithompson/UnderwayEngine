@@ -316,7 +316,7 @@ describe('image grouping', () => {
     expect(after.images![0].localCellHeight).toBe(4);
   });
 
-  test('ungroupFigures clears image local bbox + identity', () => {
+  test('ungroupFigures clears image local bbox + identity, and keeps its world rotation', () => {
     const img = makeImage('img_a', {
       groupId: 'g1', preGroupName: 'orig',
       localCellX: 4, localCellY: 8, localCellWidth: 6, localCellHeight: 4,
@@ -336,7 +336,9 @@ describe('image grouping', () => {
     expect(after.images![0].groupId).toBeUndefined();
     expect(after.images![0].localCellX).toBeUndefined();
     expect(after.images![0].identityCellX).toBeUndefined();
-    expect(after.images![0].rotation).toBeUndefined();
+    // `rotation` is the image's WORLD orientation (what it is drawn at), not
+    // a group-local cache — a loose image drawn the same way keeps it.
+    expect(after.images![0].rotation).toBe(90);
     expect(after.groups).toHaveLength(0);
   });
 
