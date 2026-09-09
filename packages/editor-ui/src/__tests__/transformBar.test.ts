@@ -29,10 +29,12 @@ describe('the Transform bar', () => {
 
   it('turns the full circle and keeps the copies request sane', () => {
     expect([ROTATE_MIN, ROTATE_MAX]).toEqual([-180, 180]);
-    expect(COPIES_MIN).toBe(1);
+    // The count runs down to none: the bar opens at 0 and a press with 0
+    // lays down nothing, so a fresh bar never mints copies by surprise.
+    expect(COPIES_MIN).toBe(0);
     expect(COPIES_MAX).toBeGreaterThanOrEqual(12);
     expect(OFFSET_MAX).toBeGreaterThan(0);
-    expect(DEFAULT_COPIES.count).toBeGreaterThanOrEqual(1);
+    expect(DEFAULT_COPIES.count).toBe(0);
   });
 
   it('rotation is live-then-commit on the object; the copy settings are the bar’s own draft', () => {
