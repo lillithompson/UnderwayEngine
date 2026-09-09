@@ -1,3 +1,4 @@
+import { patchFormatVersion } from './test-utils';
 import {
   serializeComposition,
   deserializeComposition,
@@ -427,9 +428,8 @@ describe('compositionBinaryFormat', () => {
     // normalized on load via migrateLegacyStrokeScale. v23+ allows
     // strokeScale > 1 directly (composition normalization scales it).
     const bundle = makeBundle({ strokeScale: 8 });
-    const v23Bytes = serializeComposition(bundle, []);
     // Patch the version down to v22 so the loader applies the legacy migration.
-    new DataView(v23Bytes.buffer, v23Bytes.byteOffset, v23Bytes.byteLength).setUint16(4, 22, true);
+    const v23Bytes = patchFormatVersion(serializeComposition(bundle, []), 22);
     const result = deserializeComposition(v23Bytes);
     expect(result.meta.strokeScale).toBeCloseTo(migrateLegacyStrokeScale(8));
   });
@@ -438,7 +438,7 @@ describe('compositionBinaryFormat', () => {
     // Serialize a current bundle, then patch it back to v3 and remove the
     // strokeScale + gridIntensity bytes (16 total).
     const bundle = makeBundle();
-    const currentBytes = serializeComposition(bundle, []);
+    const currentBytes = patchFormatVersion(serializeComposition(bundle, []), 3);
 
     const PRE_SS = 27;  // metadata bytes before strokeScale: nameIdx(2)+gridLevel(1)+cam(24)
     const SS_GI = 16;   // strokeScale(8) + gridIntensity(8)
@@ -470,7 +470,7 @@ describe('compositionBinaryFormat', () => {
   test('defaults gridIntensity to 0.3 for v8 files', () => {
     // Serialize a v9 bundle, patch to v8, remove gridIntensity bytes.
     const bundle = makeBundle();
-    const v9Bytes = serializeComposition(bundle, []);
+    const v9Bytes = patchFormatVersion(serializeComposition(bundle, []), 8);
 
     const PRE_GI = 35; // metadata bytes before gridIntensity: nameIdx(2)+gridLevel(1)+cam(24)+strokeScale(8)
     const GI = 8;      // gridIntensity f64
@@ -1132,7 +1132,7 @@ describe('compositionBinaryFormat', () => {
     // the gridIntensity f64 from metadata (v9+) and the svgCount u16 from the
     // tail (v12+), then patch version to 7.
     const fig = makeFigure({ id: 'f1', figureKey: 'k1' });
-    const v12Bytes = serializeComposition(makeBundle({ figures: [fig] }), []);
+    const v12Bytes = patchFormatVersion(serializeComposition(makeBundle({ figures: [fig] }), []), 7);
 
     // Step 1: strip gridIntensity (8 bytes) from metadata
     const GI_OFFSET = 8 + 35; // header(8) + pre-gridIntensity metadata(35)
@@ -1398,9 +1398,8 @@ describe('compositionBinaryFormat', () => {
 
     test('v22 file with gridLevel=5 still loads with the same value (u8 and i8 agree in 0..127)', () => {
       const bundle = makeBundle({ gridLevel: 5 });
-      const bytes = serializeComposition(bundle, []);
       // Patch version down to v22 and confirm the same gridLevel decodes.
-      new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint16(4, 22, true);
+      const bytes = patchFormatVersion(serializeComposition(bundle, []), 22);
       const result = deserializeComposition(bytes);
       expect(result.meta.gridLevel).toBe(5);
     });

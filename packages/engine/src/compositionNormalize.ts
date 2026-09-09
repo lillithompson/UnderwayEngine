@@ -22,8 +22,10 @@ import { hiddenGroupIds } from './compositionOps';
 export const CANONICAL_SIZE = 32;
 
 /** Lowest gridLevel whose snap step (= 2^level L0 units) is ≥ the
- *  quarter-cell encoding precision used by `encodeFixed` in
- *  `compositionBinaryFormat.ts` (which rounds to multiples of 0.25 L0).
+ *  quarter-cell encoding precision `encodeFixed` in
+ *  `compositionBinaryFormat.ts` fell back to before v58 (since v58 the
+ *  binary format widens its scale to whatever the content needs, so this
+ *  upscale is belt-and-braces for the normalizing consumers).
  *  At gridLevel = -2 the snap step is exactly 0.25, so content drawn
  *  on the grid lands on the encoding grid; at gridLevel < -2 it doesn't.
  *  `normalizeComposition` picks its scale factor so the new gridLevel

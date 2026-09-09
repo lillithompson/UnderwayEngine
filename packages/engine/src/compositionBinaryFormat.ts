@@ -13,8 +13,8 @@ import { compSnapStep } from './compositionCellMath';
 //   Version:     u16 LE
 //   FigureCount: u16 LE
 //
-// COMPOSITION METADATA (fields total 43 bytes; METADATA_SIZE=45 keeps
-// 2 bytes of historical slack in the allocation â€” writes are sequential,
+// COMPOSITION METADATA (fields total 44 bytes; METADATA_SIZE=45 keeps
+// 1 byte of historical slack in the allocation â€” writes are sequential,
 // so the slack is just trailing zeros)
 //   nameIdx:     u16 LE        (string table index)
 //   gridLevel:   i8  (v23+; u8 in v22-, but legacy values were 0..6 so
@@ -29,6 +29,10 @@ import { compSnapStep } from './compositionCellMath';
 //                               with content. Migration: v22- values
 //                               keep the legacy divide-by-200 rule.)
 //   gridIntensity: f64 LE      (v9+; default 0.5 for older files)
+//   coordScaleLog2: u8         (v58+; the fixed-point exponent every i16/u16
+//                               coordinate in the file was encoded at — see
+//                               "Fixed-point encoding". Pre-58 files derive
+//                               it from gridLevel / the legacy ×4.)
 //
 // NORMALIZATION (v23+)
 //   Every save scales the content's AABB by a power-of-2 factor s = 2^k,
@@ -454,7 +458,22 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      Type bar's Bend slider; see textArc.ts). Bits 0x02–0x80 are free
 //      for future text fields, which is the point of paying the byte
 //      unconditionally.
-const FORMAT_VERSION = 57;
+// v58: STORED COORDINATE SCALE, chosen from the content. v45 derived the
+//      i16 fixed-point scale from gridLevel, which still rounded FREEHAND
+//      geometry (touch samples are not on any grid) to quarter cells on
+//      every coarse-grid page — CozyJournal's Facets pages save at
+//      gridLevel 1 with normalize:false, so a synced or exported drawing
+//      came back as staircases. The writer now measures every coordinate it
+//      encodes and picks the coarsest power of two that represents them ALL
+//      exactly (so grid-snapped content keeps its v57 bytes), floored at the
+//      v45 gridLevel-derived scale and capped by the i16 range and
+//      MAX_STORED_COORD_SCALE_LOG2; content off every grid gets the finest
+//      scale that fits. The exponent is one new metadata byte after
+//      gridIntensity, read at v58+ (older files still derive it), which
+//      shifts everything after it by one byte — the version-patch trick the
+//      legacy tests use goes through test-utils' patchFormatVersion, which
+//      drops the byte for pre-58 targets.
+const FORMAT_VERSION = 58;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -541,10 +560,11 @@ export interface DeserializedComposition {
 
 // â”€â”€ Fixed-point encoding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// v44-: always quarter-cell (×4). v45+: per-file — derived from the
+// v44-: always quarter-cell (×4). v45–v57: per-file — derived from the
 // composition's gridLevel (the first metadata field) by coordScaleLog2For,
-// identically on the write and read side, so no scale field is stored and
-// the byte layout matches v44. Serialization and deserialization are
+// identically on the write and read side. v58+: per-file, STORED — the
+// writer measures the content (see chooseCoordScaleLog2) and records the
+// exponent in the metadata. Serialization and deserialization are
 // synchronous single-file walks, so a module-local current scale (set at
 // the top of serializeComposition / deserializeComposition before any
 // coordinate is touched) threads it to every encode/decode site without
@@ -553,20 +573,36 @@ export interface DeserializedComposition {
 /** The v44-and-earlier quarter-cell scale; also the floor for v45+ files so
  *  coarse-grid files stay byte-identical to v44. */
 const LEGACY_COORD_SCALE_LOG2 = 2;
-/** Cap: ×64 puts the i16 coordinate range at ±511.98 L0 — 16× the canonical
- *  32-cell canvas, comfortably past anything the normalizer emits (its
- *  precision upscale tops out around ~360 L0). */
+/** Cap on the gridLevel-DERIVED exponent (v45+): ×64 puts the i16
+ *  coordinate range at ±511.98 L0 — 16× the canonical 32-cell canvas,
+ *  comfortably past anything the normalizer emits (its precision upscale
+ *  tops out around ~360 L0). */
 const MAX_COORD_SCALE_LOG2 = 6;
+/** Cap on the content-chosen exponent (v58+): 1/4096 of a cell is far
+ *  below anything a screen resolves at any zoom the editor allows, and the
+ *  i16 fit (see chooseCoordScaleLog2) keeps a full-page drawing well under
+ *  it anyway — content spanning the 32-cell page lands at ×512. */
+const MAX_STORED_COORD_SCALE_LOG2 = 12;
+/** Largest magnitude an encoded coordinate may reach: the i16 positions
+ *  bound it, and the u16 sizes (never negative) fit whenever positions do. */
+const COORD_ENCODED_MAX = 32767;
 
 let coordScale = 1 << LEGACY_COORD_SCALE_LOG2;
+
+// Writer-side measurement (v58+). encodeFixed records the largest magnitude
+// it was handed and the finest power-of-two grid its inputs all sit on, so
+// serializeComposition can pick the stored scale from the content itself
+// rather than guess from gridLevel. Reset per serialization pass.
+let coordMaxAbs = 0;
+let coordNeededLog2 = 0;
 
 /** Fixed-point scale exponent for a v45+ file whose snap grid is
  *  `gridLevel`. `1 - gridLevel` is one bit finer than the snap step
  *  (2^gridLevel), so both grid intersections AND the half-step offsets the
  *  editor's solo-H/V line snap places survive the round trip exactly, down
  *  to gridLevel −5. MUST stay a pure function of the metadata's stored
- *  gridLevel (an i8 — integers only): the reader re-derives the writer's
- *  scale from it. */
+ *  gridLevel (an i8 — integers only): v45–v57 readers re-derive the
+ *  writer's scale from it, and v58+ writers use it as their floor. */
 function coordScaleLog2For(gridLevel: number): number {
   return Math.min(
     MAX_COORD_SCALE_LOG2,
@@ -574,7 +610,40 @@ function coordScaleLog2For(gridLevel: number): number {
   );
 }
 
+/** Smallest exponent k (≤ MAX_STORED_COORD_SCALE_LOG2) with value·2^k an
+ *  integer — the fixed-point grid this one coordinate needs to round-trip
+ *  exactly. Values off every dyadic grid (freehand samples) hit the cap. */
+function fracBitsOf(value: number): number {
+  for (let k = 0; k < MAX_STORED_COORD_SCALE_LOG2; k++) {
+    const scaled = value * (1 << k);
+    if (scaled === Math.round(scaled)) return k;
+  }
+  return MAX_STORED_COORD_SCALE_LOG2;
+}
+
+/**
+ * The exponent a v58 file stores: the coarsest scale that represents every
+ * measured coordinate exactly (`neededLog2`), never coarser than the v45
+ * gridLevel-derived floor (so grid-snapped files keep their v57 bytes) and
+ * never so fine that the largest magnitude leaves the i16 range. Content
+ * already past the i16 range at the floor (>±8191 L0 at ×4) wraps exactly
+ * as it always did; the floor is not lowered for it.
+ */
+function chooseCoordScaleLog2(gridLevel: number, maxAbs: number, neededLog2: number): number {
+  const floor = coordScaleLog2For(gridLevel);
+  const fit = maxAbs > 0 ? Math.floor(Math.log2(COORD_ENCODED_MAX / maxAbs)) : MAX_STORED_COORD_SCALE_LOG2;
+  return Math.max(floor, Math.min(MAX_STORED_COORD_SCALE_LOG2, neededLog2, fit));
+}
+
 function encodeFixed(value: number): number {
+  if (Number.isFinite(value)) {
+    const abs = Math.abs(value);
+    if (abs > coordMaxAbs) coordMaxAbs = abs;
+    if (coordNeededLog2 < MAX_STORED_COORD_SCALE_LOG2) {
+      const k = fracBitsOf(value);
+      if (k > coordNeededLog2) coordNeededLog2 = k;
+    }
+  }
   return Math.round(value * coordScale);
 }
 
@@ -2798,13 +2867,40 @@ function readText(
 
 // â”€â”€ Serialize â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+/**
+ * Serialize a composition bundle to FCMP bytes. The coordinate scale is
+ * chosen from the content (v58, see chooseCoordScaleLog2): the first pass
+ * runs at the gridLevel-derived floor while encodeFixed measures what the
+ * content actually needs; when that differs, one more pass writes at the
+ * measured scale. Grid-snapped content (every Facet file, most pages)
+ * settles in one pass; freehand content costs a second walk — export and
+ * sync only, never a frame.
+ */
 export function serializeComposition(
   bundle: CompositionBundle,
   embeddedFiles: EmbeddedFile[],
 ): Uint8Array {
-  // Per-file coordinate precision (v45+), derived from the gridLevel this
-  // file stores — must be set before ANY encodeFixed call below.
-  coordScale = 1 << coordScaleLog2For(bundle.gridLevel);
+  let coordScaleLog2 = coordScaleLog2For(bundle.gridLevel);
+  for (;;) {
+    coordMaxAbs = 0;
+    coordNeededLog2 = 0;
+    const out = serializeCompositionAt(bundle, embeddedFiles, coordScaleLog2);
+    const wanted = chooseCoordScaleLog2(bundle.gridLevel, coordMaxAbs, coordNeededLog2);
+    // The measurement does not depend on the scale, so a second pass always
+    // lands on the scale it was asked for.
+    if (wanted === coordScaleLog2) return out;
+    coordScaleLog2 = wanted;
+  }
+}
+
+function serializeCompositionAt(
+  bundle: CompositionBundle,
+  embeddedFiles: EmbeddedFile[],
+  coordScaleLog2: number,
+): Uint8Array {
+  // Per-file coordinate precision — must be set before ANY encodeFixed
+  // call below, and is what the metadata byte records.
+  coordScale = 1 << coordScaleLog2;
 
   const { strings, indexOf } = buildStringTable(bundle, embeddedFiles);
   const encoder = new TextEncoder();
@@ -2950,6 +3046,7 @@ export function serializeComposition(
   view.setFloat64(pos, bundle.camera.zoom, true); pos += 8;
   view.setFloat64(pos, bundle.strokeScale, true); pos += 8;
   view.setFloat64(pos, bundle.gridIntensity, true); pos += 8;
+  out[pos++] = coordScaleLog2; // v58+
 
   // String table
   view.setUint16(pos, strings.length, true); pos += 2;
@@ -3441,10 +3538,20 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
   const gridIntensity = version >= 9 ? view.getFloat64(pos, true) : 0.3;
   if (version >= 9) pos += 8;
 
-  // Per-file coordinate precision (v45+), re-derived from the gridLevel
-  // just read — must be set before ANY decodeFixed call below. v44- files
-  // were always WRITTEN at quarter-cell, whatever their gridLevel.
-  coordScale = 1 << (version >= 45 ? coordScaleLog2For(gridLevel) : LEGACY_COORD_SCALE_LOG2);
+  // Per-file coordinate precision — must be set before ANY decodeFixed
+  // call below. v58+ files store the exponent; v45–v57 derived it from the
+  // gridLevel just read; v44- files were always WRITTEN at quarter-cell,
+  // whatever their gridLevel.
+  let coordScaleLog2 = LEGACY_COORD_SCALE_LOG2;
+  if (version >= 58) {
+    coordScaleLog2 = data[pos++];
+    if (coordScaleLog2 > MAX_STORED_COORD_SCALE_LOG2) {
+      throw new Error(`Invalid composition format: coordinate scale exponent ${coordScaleLog2}`);
+    }
+  } else if (version >= 45) {
+    coordScaleLog2 = coordScaleLog2For(gridLevel);
+  }
+  coordScale = 1 << coordScaleLog2;
 
   // String table
   const stringCount = view.getUint16(pos, true); pos += 2;

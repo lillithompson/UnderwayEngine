@@ -1,3 +1,4 @@
+import { patchFormatVersion } from './test-utils';
 import {
   serializeComposition,
   deserializeComposition,
@@ -461,7 +462,7 @@ describe('compositionBinaryFormat v29', () => {
       fillColor: { r: 1, g: 2, b: 3 },
       fillOpacity: 0.5,
     });
-    const v29Bytes = serializeComposition(makeBundle({ figures: [fig], svgObjects: [svg] }), []);
+    const v29Bytes = patchFormatVersion(serializeComposition(makeBundle({ figures: [fig], svgObjects: [svg] }), []), 28);
 
     // Guard the construction: the v29 tail must be all zeros.
     expect(Array.from(v29Bytes.subarray(v29Bytes.length - 9))).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0]);

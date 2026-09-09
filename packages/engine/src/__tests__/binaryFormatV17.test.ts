@@ -4,6 +4,7 @@
  * backward compatibility with v16 files (no field → empty array).
  */
 
+import { patchFormatVersion } from './test-utils';
 import {
   serializeComposition,
   deserializeComposition,
@@ -56,8 +57,7 @@ describe('v17 customColors', () => {
     const bundle = makeBundle({ customColors: [] });
     const data = serializeComposition(bundle, []);
     // FORMAT_VERSION lives at offset 4 (u16 LE).
-    const v16 = data.slice(0, data.byteLength - 2);
-    new DataView(v16.buffer, v16.byteOffset).setUint16(4, 16, true);
+    const v16 = patchFormatVersion(data.slice(0, data.byteLength - 2), 16);
     const { meta } = deserializeComposition(v16);
     expect(meta.customColors).toEqual([]);
   });

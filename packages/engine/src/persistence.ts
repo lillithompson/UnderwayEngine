@@ -1182,11 +1182,18 @@ export async function exportFileAsPNG(fileId: string, maxSize: number = 1024): P
 
 // ── Composition Bundle Export / Import ─────────────────────────────
 
-export async function exportCompositionBundle(compId: string): Promise<Uint8Array | null> {
+/**
+ * Pack a composition into `.tile` bytes. `opts` are the load-side
+ * CompositionIOOptions: a page-anchored consumer passes `{ normalize: false }`
+ * so the file holds the page as saved, rather than a copy the default
+ * normalization has upscaled into the canonical box (see
+ * importCompositionBundle for the other side of that trip).
+ */
+export async function exportCompositionBundle(compId: string, opts?: CompositionIOOptions): Promise<Uint8Array | null> {
   const { serializeComposition } = await import('./compositionBinaryFormat');
   const { compressTile } = await import('./tileIO');
 
-  const partial = await loadCompositionState(compId);
+  const partial = await loadCompositionState(compId, opts);
   if (!partial || !partial.figures) return null;
 
   const figures = partial.figures;
@@ -1243,7 +1250,21 @@ export async function exportCompositionBundle(compId: string): Promise<Uint8Arra
   return compressTile(payload);
 }
 
-export async function importCompositionBundle(data: Uint8Array, fileName?: string, entryFields?: Partial<CompositionEntry>): Promise<string> {
+/**
+ * Unpack a `.tile` bundle into a NEW composition and return its id. `opts`
+ * are the save-side CompositionIOOptions: a page-anchored consumer passes
+ * `{ normalize: false }` so the page lands in storage exactly as the file
+ * holds it — the default normalization would power-of-2 upscale and
+ * re-centre any page whose content is smaller than the canonical box, which
+ * is how a small drawing synced from another device came back twice its
+ * size and off its spot. The consumer must then load with the same option.
+ */
+export async function importCompositionBundle(
+  data: Uint8Array,
+  fileName?: string,
+  entryFields?: Partial<CompositionEntry>,
+  opts?: CompositionIOOptions,
+): Promise<string> {
   const { deserializeComposition } = await import('./compositionBinaryFormat');
   const { decompressTile } = await import('./tileIO');
 
@@ -1321,7 +1342,7 @@ export async function importCompositionBundle(data: Uint8Array, fileName?: strin
     createRegion: null,
     renderGeneration: 0,
   };
-  await saveCompositionState(compState);
+  await saveCompositionState(compState, opts);
 
   // Add to composition list
   const compList = await loadCompositionList();

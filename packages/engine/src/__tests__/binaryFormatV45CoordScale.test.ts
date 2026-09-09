@@ -13,6 +13,7 @@
  * from v44.
  */
 
+import { patchFormatVersion } from './test-utils';
 import {
   serializeComposition,
   deserializeComposition,
@@ -93,17 +94,17 @@ describe('v45 per-file coordinate scale', () => {
     expect(out.creationBox).toEqual(svg.creationBox);
   });
 
-  test('coarse-grid files keep the legacy quarter-cell coordinate bytes', () => {
-    // gridLevel ≥ −1 derives the legacy ×4 scale and the layout carries no
-    // new fields, so a v45 buffer patched down to v44 must decode to the
-    // very same composition — the byte-compat invariant every legacy
-    // migration test in this suite leans on.
+  test('coarse-grid, grid-snapped files keep the legacy quarter-cell coordinate bytes', () => {
+    // gridLevel ≥ −1 derives the legacy ×4 scale, and quarter-cell content
+    // needs nothing finer (v58 only widens the scale for content OFF that
+    // grid), so a current buffer re-labelled v44 must decode to the very
+    // same composition — the byte-compat invariant every legacy migration
+    // test in this suite leans on.
     const segs = [line([0.25, 0.5], [4.75, 0.5])];
     const bytes = serializeComposition(makeBundle(1, [makeSVG('s', segs)]), []);
     expect(deserializeComposition(bytes).meta.svgObjects![0].segments).toEqual(segs);
 
-    const asV44 = bytes.slice();
-    new DataView(asV44.buffer).setUint16(4, 44, true);
+    const asV44 = patchFormatVersion(bytes, 44);
     expect(deserializeComposition(asV44).meta.svgObjects![0].segments).toEqual(segs);
   });
 
