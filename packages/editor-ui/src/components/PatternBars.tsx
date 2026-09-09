@@ -136,7 +136,6 @@ export function PatternTilesBar({ model, onBack }: {
       </View>
       <PatternTileModal
         visible={showAll}
-        safeTop={model.safeTop}
         tiles={model.patternTiles ?? []}
         activeId={activeId}
         transforms={transforms}

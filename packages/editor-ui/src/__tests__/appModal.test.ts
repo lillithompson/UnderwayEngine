@@ -33,6 +33,20 @@ describe('the unified takeover chrome (AppModal)', () => {
     }
   });
 
+  it('the Tiles sheet keeps the chrome’s default header, like the color picker', () => {
+    // Seated on the toolbar's bottom edge like the other takeovers, the
+    // band stood a title band's height too tall over the grid. It takes no
+    // safeTop at all, so no host can hand it the taller header.
+    const tiles = read('PatternTileModal.tsx');
+    expect(tiles).not.toContain('safeTop');
+    expect(tiles).toContain('<AppModal visible={visible} title="Tiles" onClose={onClose}>');
+    const bars = read('PatternBars.tsx');
+    const at = bars.indexOf('<PatternTileModal');
+    expect(bars.slice(at, bars.indexOf('/>', at))).not.toContain('safeTop');
+    // The Sets takeover still seats on the toolbar.
+    expect(bars.match(/safeTop=\{model\.safeTop\}/g)?.length).toBe(1);
+  });
+
   it('carries the standard Done button, in the Set Color layout', () => {
     // AppModalDoneButton is THE way out of a takeover whose picks don't
     // dismiss it: full content width, 44pt, bold 15 label, the selection

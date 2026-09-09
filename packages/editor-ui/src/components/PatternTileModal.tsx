@@ -46,7 +46,7 @@ export { PATTERN_MODAL_TILE } from '../logic/patternEdit';
  *  clear of a phone screen's bottom curve and home indicator. */
 const DONE_BOTTOM = 32;
 
-export function PatternTileModal({ visible, tiles, activeId, transforms, onPick, onSetTransform, onClose, safeTop }: {
+export function PatternTileModal({ visible, tiles, activeId, transforms, onPick, onSetTransform, onClose }: {
   visible: boolean;
   tiles: readonly PatternTileRow[];
   activeId: string | null;
@@ -55,8 +55,6 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
   onPick: (id: string) => void;
   onSetTransform?: (id: string, transform: PatternTileTransform) => void;
   onClose: () => void;
-  /** Header clearance — see AppModal's safeTop. */
-  safeTop?: number;
 }) {
   const groups = groupPatternTiles(tiles);
   const [transformId, setTransformId] = useState<string | null>(null);
@@ -81,7 +79,12 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
   const activeRow = activeId ? tiles.find((t) => t.id === activeId) ?? null : null;
 
   return (
-    <AppModal visible={visible} title="Tiles" onClose={onClose} safeTop={safeTop}>
+    // The chrome's DEFAULT header — the same clearance the color picker
+    // keeps, and no clearance prop to be handed anything taller: seated on
+    // the toolbar's bottom edge like the other takeovers, the band stood a
+    // title band's height too tall over the grid, blank space where the
+    // color picker shows its swatch and this sheet shows nothing.
+    <AppModal visible={visible} title="Tiles" onClose={onClose}>
       <View style={styles.sheet} onLayout={(e) => setSheetWidth(e.nativeEvent.layout.width)}>
         <Text style={styles.hint}>double tap to rotate, long press to mirror</Text>
         <ScrollView
