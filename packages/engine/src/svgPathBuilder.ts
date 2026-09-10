@@ -4,7 +4,7 @@ import { computeSweepFlag, arcRadius, chainSegments, chainSegmentsLoops } from '
 import { packKey, unpackKey, forEachVisibleTile } from './tileSegmentOverrides';
 import { borderDashPattern, paintToSvg } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
-import { shapePaintOverlaySVG } from './imagePaintOverlay';
+import { PaintOverlaySlot, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import {
   roundPathCorners,
@@ -732,6 +732,11 @@ export function buildSVGObjectContent(
      *  device CTM — so under camera zoom the two conventions disagree and
      *  a repeat toggle visibly changed the line weight. */
     nonScaling?: boolean;
+    /** Pixel carrier for a color-tool paint layer — default 'image' (PNG
+     *  data URI, the export's self-contained form). The live DOM node layer
+     *  passes 'canvas' and draws the slot after mount; see
+     *  {@link PaintOverlaySlot} for why the DOM must not inline pixels. */
+    paintOverlaySlot?: PaintOverlaySlot;
   },
 ): string {
   if (obj.segments.length === 0) return '';
@@ -766,6 +771,7 @@ export function buildSVGObjectContent(
     const overlay = shapePaintOverlaySVG(
       obj.paintOverlay, obj.id, closedD,
       obj.cellX * u, obj.cellY * u, obj.cellWidth * u, obj.cellHeight * u,
+      opts?.paintOverlaySlot,
     );
     fillMarkup = `<g style="isolation:isolate">${fillMarkup}${overlay}</g>`;
   }

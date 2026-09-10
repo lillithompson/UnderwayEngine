@@ -16,6 +16,7 @@
 import { BlendMode, ImagePaintOverlay, RGBColor } from './types';
 import { blendColor, blendFoldsOpacity, gaussianFalloff } from './colorBlend';
 import { encodePNG, toBase64 } from './pngcodec';
+import { PAINT_OVERLAY_CANVAS_ATTR } from './overlayCanvas';
 
 /** Overlay texel density. At the brush's one-grid-step radius this puts a
  *  few texels under the falloff so a dab reads as a soft dot, while a full
@@ -414,15 +415,28 @@ export function overlayPngDataUri(overlay: ImagePaintOverlay, ink?: PaintInk): s
   return `data:image/png;base64,${toBase64(encodePNG(rgba, overlay.cols, overlay.rows))}`;
 }
 
+/** Where a shape's paint layer markup gets its pixels. `'image'` (the
+ *  default) inlines them as a PNG data URI — self-contained, what the SVG
+ *  export and the thumbnail rasterizer need. `'canvas'` emits an EMPTY
+ *  `<canvas data-paint-overlay="id">` inside a `<foreignObject>` for the live
+ *  DOM node layer to draw into after mount (`drawPaintOverlaySlots`): the DOM
+ *  must never mint a data URL per edit — WebKit retains every distinct one
+ *  for the document's lifetime (see overlayCanvas.ts). */
+export type PaintOverlaySlot = 'image' | 'canvas';
+
 /**
- * A solid shape's paint layer as SVG markup: the overlay <image> stretched
- * over the bbox and clipped to the shape's own closed outline (`fillD`, in
- * the caller's geometry units — the same `d` its fill paints with, so paint
+ * A solid shape's paint layer as SVG markup: the overlay stretched over the
+ * bbox and clipped to the shape's own closed outline (`fillD`, in the
+ * caller's geometry units — the same `d` its fill paints with, so paint
  * can't bleed past the fill). Both SVGObject markup builders — the DOM node
  * layer's buildSVGObjectContent and the exporter — emit the overlay through
  * here, the same single-source rule as svgFillPresentation. The caller wraps
  * this together with its fill element in `<g style="isolation:isolate">` so
  * the blend is confined to the shape.
+ *
+ * `slot` picks the pixel carrier — see {@link PaintOverlaySlot}. Both carriers
+ * share the clip, the geometry and the blend, so the DOM layer and the export
+ * composite the same layer the same way.
  */
 export function shapePaintOverlaySVG(
   overlay: ImagePaintOverlay,
@@ -432,12 +446,27 @@ export function shapePaintOverlaySVG(
   y: number,
   width: number,
   height: number,
+  slot: PaintOverlaySlot = 'image',
 ): string {
   const clipId = `paintclip_${id}`;
-  return `<clipPath id="${clipId}"><path d="${fillD}" fill-rule="nonzero"/></clipPath>` +
+  const blend = `mix-blend-mode:${paintBlendCss(overlay.blend) ?? 'normal'}`;
+  const clip = `<clipPath id="${clipId}"><path d="${fillD}" fill-rule="nonzero"/></clipPath>`;
+  if (slot === 'canvas') {
+    // The foreignObject is the SVG-side box (it takes the clip and the
+    // blend); the HTML canvas inside fills it and carries the bitmap at the
+    // overlay's native texel size, CSS-stretched like the <image> would be.
+    return clip +
+      `<foreignObject x="${x}" y="${y}" width="${width}" height="${height}"` +
+      ` style="${blend}" clip-path="url(#${clipId})">` +
+      `<canvas xmlns="http://www.w3.org/1999/xhtml" ${PAINT_OVERLAY_CANVAS_ATTR}="${id}"` +
+      ` width="${overlay.cols}" height="${overlay.rows}"` +
+      ` style="display:block;width:100%;height:100%"></canvas>` +
+      `</foreignObject>`;
+  }
+  return clip +
     `<image x="${x}" y="${y}" width="${width}" height="${height}"` +
     ` href="${overlayPngDataUri(overlay)}" preserveAspectRatio="none"` +
-    ` style="mix-blend-mode:${paintBlendCss(overlay.blend) ?? 'normal'}" clip-path="url(#${clipId})"/>`;
+    ` style="${blend}" clip-path="url(#${clipId})"/>`;
 }
 
 /**

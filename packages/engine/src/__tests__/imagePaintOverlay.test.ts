@@ -25,6 +25,8 @@ import {
 } from '../compositionBinaryFormat';
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
 import { buildSVGObjectContent } from '../svgPathBuilder';
+import { patternViewNodeMarkup } from '../patternObjectRender';
+import { PAINT_OVERLAY_CANVAS_ATTR } from '../overlayCanvas';
 import { ImageObject, ImagePaintOverlay, RGBColor, SVGObject } from '../types';
 
 const RED: RGBColor = { r: 255, g: 0, b: 0 };
@@ -560,5 +562,47 @@ describe('stampImagePaintOverlay weight (occlusion fall-through)', () => {
     const right = (12 * o.cols + 18) * 4;  // center (4.625, 3.125)
     expect(o.rgba[left + 3]).toBe(0);
     expect(o.rgba[right + 3]).toBeGreaterThan(0);
+  });
+});
+
+describe('shape paintOverlay canvas slot (the live DOM carrier)', () => {
+  test("'canvas' emits an empty canvas slot in a clipped, blended foreignObject — no data URL", () => {
+    const overlay = paintedOverlay();
+    const shape = makeShape({ paintOverlay: overlay });
+    const markup = buildSVGObjectContent(shape, 1, 16, { nonScaling: false, paintOverlaySlot: 'canvas' });
+    expect(markup).toContain('<g style="isolation:isolate">');
+    expect(markup).toContain('<clipPath id="paintclip_svg_1">');
+    expect(markup).toContain('<foreignObject ');
+    expect(markup).toContain('style="mix-blend-mode:multiply"');
+    expect(markup).toContain('clip-path="url(#paintclip_svg_1)"');
+    expect(markup).toContain(`<canvas xmlns="http://www.w3.org/1999/xhtml" ${PAINT_OVERLAY_CANVAS_ATTR}="svg_1"`);
+    expect(markup).toContain(`width="${overlay.cols}" height="${overlay.rows}"`);
+    expect(markup).not.toContain('data:image/png');
+    expect(markup).not.toContain('<image ');
+  });
+
+  test('the slot spans the same box the <image> carrier does', () => {
+    const overlay = paintedOverlay();
+    const shape = makeShape({ paintOverlay: overlay, cellX: 3, cellY: 2 });
+    const image = buildSVGObjectContent(shape, 1, 16);
+    const slot = buildSVGObjectContent(shape, 1, 16, { paintOverlaySlot: 'canvas' });
+    const box = /x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"/;
+    const imageBox = image.match(/<image [^>]*/)![0].match(box)!.slice(1);
+    const slotBox = slot.match(/<foreignObject [^>]*/)![0].match(box)!.slice(1);
+    expect(slotBox).toEqual(imageBox);
+  });
+
+  test("the default carrier is still the export's data URI <image>", () => {
+    const overlay = paintedOverlay();
+    const markup = buildSVGObjectContent(makeShape({ paintOverlay: overlay }), 1, 16, { paintOverlaySlot: 'image' });
+    expect(markup).toContain(`href="${overlayPngDataUri(overlay)}"`);
+    expect(markup).not.toContain('<foreignObject');
+  });
+
+  test('the pattern node markup (DOM-only) never inlines pixels either', () => {
+    const overlay = paintedOverlay();
+    const markup = patternViewNodeMarkup(makeShape({ paintOverlay: overlay }), 1);
+    expect(markup).not.toContain('data:image/png');
+    expect(markup).toContain(`${PAINT_OVERLAY_CANVAS_ATTR}="svg_1"`);
   });
 });

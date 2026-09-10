@@ -105,7 +105,7 @@ export function patternViewNodeMarkup(view: SVGObject, strokeScale: number): str
     view,
     strokeScaleForUnits(strokeScale, SVG_UNITS_PER_L0_CELL),
     SVG_UNITS_PER_L0_CELL,
-    { nonScaling: false },
+    { nonScaling: false, paintOverlaySlot: 'canvas' },
   );
 }
 
