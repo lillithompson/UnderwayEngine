@@ -391,6 +391,13 @@ export interface ObjectPropertiesModel {
    *  legacy tiled vectors wear (via `repeat` / `onToggleRepeat`). Mutually
    *  exclusive with the other type-option families. */
   showPatternOptions?: boolean;
+  /** Selection mixes vectors and pattern objects (every one unlocked): the
+   *  type row offers the one option they all share — Stroke, opening the
+   *  same bar in its open-path form (Width + Dash), which the host applies
+   *  to every member. Neither family's own pages show, since half the
+   *  selection would have no answer for them. Mutually exclusive with
+   *  `showSvgOptions` / `showPatternOptions`. */
+  showStrokeOptions?: boolean;
   /** Which pattern bar is open, if any (app-owned, like the effect bars). */
   patternBarOpen?: import('./logic/patternEdit').PatternEditAction | null;
   onPatternBarOpenChange?(bar: import('./logic/patternEdit').PatternEditAction | null): void;

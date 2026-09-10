@@ -502,7 +502,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // made of. Both render on ONE combined page — kind options first, then the
   // selection's — and only an overflow spills onto a second (the pages are
   // worked out below, once the option specs exist to count).
-  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showRigOptions || showUngroup;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showStrokeOptions || !!model.showRigOptions || showUngroup;
   const hasMultiOptions = showLayout || showGroup || showMerge;
   // Signature of the current selection's option pages. It changes when the
   // panel first appears for a selection or the selected object's type changes
@@ -510,7 +510,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // subtype is part of it so switching between two vector objects with
   // different menus (a line → a rectangle) re-lands on the type row.
   const typeSig = model.visible
-    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showPatternOptions ? 'P' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
+    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showPatternOptions ? 'P' : ''}${model.showStrokeOptions ? 'S' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
     : '';
   const prevTypeSig = useRef('');
   // The page the panel was last showing for a real selection — what the next
@@ -603,6 +603,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // plus the Stroke bar its baked tile paths share with the vectors.
     : model.showPatternOptions
       ? [...PATTERN_EDIT_OPTIONS.map((o) => patternActionSubmenu(o.action)), 'stroke' as const]
+    // Vectors and patterns together: the one bar they share.
+    : model.showStrokeOptions ? ['stroke']
     // A rig's pages — the whole-figure RIG bar only; the part pages
     // (Hands/Feet/Spine/Head) came off the row, their sliders living on as
     // the host's floating slider modes. Checked before showSvgOptions: a
@@ -939,7 +941,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // bars go with it, and also whenever the new vector selection is a subtype
   // that doesn't offer that one — a shape with no interior to fill, or a
   // closed one with no loose end to decorate.
-  const strokeable = !!model.showSvgOptions || !!model.showPatternOptions;
+  const strokeable = !!model.showSvgOptions || !!model.showPatternOptions || !!model.showStrokeOptions;
   useEffect(() => {
     if ((!model.visible || !strokeable) && model.strokeOpen) {
       model.onStrokeOpenChange?.(false);
@@ -1114,6 +1116,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // the row needs to know WHICH option is selected to park the sliding capsule
   // over it; the elements come out of these at render time.
   let typeSpecs: OptionSpec[] | null = null;
+  // The Stroke option as the pattern row and the mixed row both list it:
+  // one spec, so the two can't drift.
+  const strokeSpec = () => ({ key: 'stroke', label: 'Stroke', sub: 'stroke' as const, onPress: () => openSubmenu('stroke') });
   if (model.showImageEdit) {
     typeSpecs = IMAGE_EDIT_OPTIONS
       // Crop is single-target only — a mixed selection has no one frame to fit.
@@ -1219,7 +1224,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     }));
     // The same Stroke bar the vectors get (its open-path form: Width +
     // Dash), pointed at the pattern's own stroke block.
-    typeSpecs.push({ key: 'stroke', label: 'Stroke', sub: 'stroke', onPress: () => openSubmenu('stroke') });
+    typeSpecs.push(strokeSpec());
+  } else if (model.showStrokeOptions) {
+    // Vectors and pattern objects selected together: every one of them
+    // has a stroke and nothing else in common, so the row is Stroke alone
+    // — the open-path bar, which the host lands on all of them.
+    typeSpecs = [strokeSpec()];
   } else if (model.showEdit || model.showTextStyle) {
     // Edit (content) · Type (opens the Text bar on the Font page) · Align (opens
     // it straight on the Align page) · Shadow. Type / Align both slide the same
