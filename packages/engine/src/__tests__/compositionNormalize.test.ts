@@ -7,6 +7,7 @@ import {
   CompositionFigure,
   GroupNode,
   ImageObject,
+  PatternObject,
   SVGObject,
 } from '../types';
 
@@ -318,6 +319,68 @@ describe('normalizeComposition — grid alignment preserved', () => {
       expect(f.cellWidth % newStep).toBe(0);
       expect(f.cellHeight % newStep).toBe(0);
     }
+  });
+});
+
+describe('normalizeComposition — pattern grids keep their own alignment', () => {
+  const pane = (over: Partial<PatternObject> & { id: string }): PatternObject => ({
+    cellX: 16, cellY: -24, cellWidth: 48, cellHeight: 64, cols: 6, rows: 8,
+    cells: new Array(48).fill(null), ...over,
+  });
+
+  test('a pane coarser than the file’s grid level is translated whole in ITS step', () => {
+    // The Window template: grid level 1 (step 2), the Center pane laid at
+    // step 8 beside a 56×72 border — a translation whole in 2s but not in
+    // 8s put the pane half a tile off its own grid.
+    const r = normalizeComposition(input({
+      svgObjects: [svg({ id: 'edge', cellX: 12, cellY: -28, cellWidth: 56, cellHeight: 72,
+        segments: [{ kind: 'line', start: [12, -28], end: [68, 44] }] })],
+      patternObjects: [pane({ id: 'center' })],
+      gridLevel: 1,
+    }));
+    expect(r.k).toBe(0);
+    const c = r.patternObjects![0];
+    expect(c.cellX % 8).toBe(0);
+    expect(c.cellY % 8).toBe(0);
+    expect(c.cellWidth).toBe(48);
+    expect(c.cellHeight).toBe(64);
+    // Still a translation whole in the file's own step, of course.
+    expect(r.svgObjects[0].cellX % 2).toBe(0);
+    expect(r.svgObjects[0].cellY % 2).toBe(0);
+  });
+
+  test('…and under a power-of-2 upscale, whole in its scaled step', () => {
+    // A 2-step grid in a level-0 file, 4×4 ⇒ k=3, s=8: its step becomes 16.
+    const r = normalizeComposition(input({
+      patternObjects: [pane({ id: 'p', cellX: 2, cellY: 6, cellWidth: 4, cellHeight: 4, cols: 2, rows: 2, cells: [null, null, null, null] })],
+      gridLevel: 0,
+    }));
+    expect(r.scale).toBe(8);
+    const p = r.patternObjects![0];
+    expect(p.cellWidth / p.cols).toBe(16);
+    expect(p.cellX % 16).toBe(0);
+    expect(p.cellY % 16).toBe(0);
+  });
+
+  test('a grid at an off-power step claims no alignment; a finer one changes nothing', () => {
+    const odd = normalizeComposition(input({
+      svgObjects: [svg({ id: 'edge', cellX: 12, cellY: -28, cellWidth: 56, cellHeight: 72,
+        segments: [{ kind: 'line', start: [12, -28], end: [68, 44] }] })],
+      patternObjects: [pane({ id: 'p', cellWidth: 18, cellHeight: 24 })],
+      gridLevel: 1,
+    }));
+    // Whole in the file's step alone: the origin floors 12 and -28 to 2s,
+    // and the pane at (16, -24) lands at (4, 4) — half an 8-step off.
+    expect(odd.patternObjects![0].cellX).toBe(4);
+    expect(odd.patternObjects![0].cellY).toBe(4);
+    const fine = normalizeComposition(input({
+      svgObjects: [svg({ id: 'edge', cellX: 12, cellY: -28, cellWidth: 56, cellHeight: 72,
+        segments: [{ kind: 'line', start: [12, -28], end: [68, 44] }] })],
+      patternObjects: [pane({ id: 'p', cellWidth: 6, cellHeight: 8 })],
+      gridLevel: 1,
+    }));
+    expect(fine.patternObjects![0].cellX).toBe(4);
+    expect(fine.patternObjects![0].cellY).toBe(4);
   });
 });
 

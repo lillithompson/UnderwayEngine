@@ -328,6 +328,25 @@ function transformBboxNode<T extends {
  *  tile size / offset are world-cell lengths, so they scale like the SVG
  *  tile fields. The cell grid itself is object-local (cols/rows/cells)
  *  and passes through untouched. */
+/** The coarsest cell step any pattern grid in the scene is laid at, over
+ *  both axes — the step a translation must be whole in for every grid to
+ *  keep its alignment at its own resolution. Only power-of-two steps
+ *  count (the grid levels the editor stamps at; a grid at any other step
+ *  has no grid alignment to keep), so the answer is a multiple of every
+ *  finer power-of-two step in the file. 0 with no such grid. */
+function coarsestPatternStep(patternObjects: PatternObject[] | undefined): number {
+  let coarsest = 0;
+  for (const p of patternObjects ?? []) {
+    for (const step of [p.cellWidth / p.cols, p.cellHeight / p.rows]) {
+      if (!(step > 0)) continue;
+      const level = Math.log2(step);
+      if (Math.abs(level - Math.round(level)) > 1e-9) continue;
+      coarsest = Math.max(coarsest, step);
+    }
+  }
+  return coarsest;
+}
+
 function transformPatternObject(tr: AffineTransform, p: PatternObject): PatternObject {
   const out = transformBboxNode(tr, p);
   if (p.tileWidthL0 !== undefined) out.tileWidthL0 = p.tileWidthL0 * tr.scale;
@@ -526,7 +545,7 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
   // canonical box when centering, and at origin otherwise.
   const snapDown = (v: number, step: number): number =>
     step > 0 ? Math.floor(v / step) * step : v;
-  const newStep = Math.pow(2, input.gridLevel + k);
+  const newStep = Math.max(Math.pow(2, input.gridLevel + k), coarsestPatternStep(input.patternObjects) * scale);
   const idealOffsetX = scaledW <= CANONICAL_SIZE ? (CANONICAL_SIZE - scaledW) / 2 : 0;
   const idealOffsetY = scaledH <= CANONICAL_SIZE ? (CANONICAL_SIZE - scaledH) / 2 : 0;
   const offsetX = snapDown(idealOffsetX, newStep);
@@ -540,7 +559,18 @@ export function normalizeComposition(input: NormalizableInput): NormalizeResult 
   // translation (offset - origin·scale) is always a multiple of the new
   // grid step, so both grid alignment and sub-grid phase are preserved for
   // all content. Content may overhang the ideal placement by < 1 step.
-  const oldStep = Math.pow(2, input.gridLevel);
+  //
+  // Pattern grids carry a step of their OWN — a pane laid at 8 cells in a
+  // file whose grid level is 1 — and a translation that is whole in the
+  // file's steps can still knock such a grid off its own (the Window
+  // template's Center pane landed half a tile off, and no tap could edit
+  // it). So the anchor and the offset snap to the coarsest pattern step in
+  // the scene as well: steps are powers of two, so the coarsest is a
+  // multiple of every finer one, and every grid keeps its alignment at its
+  // own resolution. Content may then overhang the ideal placement by less
+  // than one of THOSE steps.
+  const patternStep = coarsestPatternStep(input.patternObjects);
+  const oldStep = Math.max(Math.pow(2, input.gridLevel), patternStep);
   const originX = snapDown(bbox.minX, oldStep);
   const originY = snapDown(bbox.minY, oldStep);
 
