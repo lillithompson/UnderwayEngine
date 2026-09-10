@@ -256,30 +256,41 @@ export function SliderRow({ label, value, apply, readout, accent, checker, onDar
  *  two related controls (e.g. the Text bar's Character + Line spacing) into
  *  a single slider row instead of two, shaving a row's height off the bar.
  *  Each half's `apply(t, committed)` fires live (false) and once on release
- *  (true), same as SliderRow; both read out as a percent. */
-export function DualSliderRow({ leftLabel, leftValue, leftApply, rightLabel, rightValue, rightApply }: {
+ *  (true), same as SliderRow; each reads out as a percent unless handed a
+ *  `readout` in its own unit, SliderRow's contract. */
+export function DualSliderRow({
+  leftLabel, leftValue, leftApply, leftReadout, rightLabel, rightValue, rightApply, rightReadout,
+}: {
   leftLabel: string;
   leftValue: number;
   leftApply: (t: number, committed: boolean) => void;
+  leftReadout?: { text: string; commit: (n: number) => void };
   rightLabel: string;
   rightValue: number;
   rightApply: (t: number, committed: boolean) => void;
+  rightReadout?: { text: string; commit: (n: number) => void };
 }) {
-  const half = (label: string, value: number, apply: (t: number, committed: boolean) => void) => (
+  const half = (
+    label: string, value: number, apply: (t: number, committed: boolean) => void,
+    readout?: { text: string; commit: (n: number) => void },
+  ) => (
     <View style={styles.dualHalf}>
       <Text style={styles.segLabel}>{label}</Text>
       <View style={styles.rowControl}>
         <View style={styles.rowSlider}>
           <Slider value={value} accent={CONTROL_ACCENT} trackColor={TRACK} onChange={(v) => apply(v, false)} onCommit={(v) => apply(v, true)} />
         </View>
-        <SliderReadout text={percentText(value)} commit={(n) => apply(percentToValue(n), true)} />
+        <SliderReadout
+          text={readout ? readout.text : percentText(value)}
+          commit={readout ? readout.commit : (n) => apply(percentToValue(n), true)}
+        />
       </View>
     </View>
   );
   return (
     <View style={styles.dualRow}>
-      {half(leftLabel, leftValue, leftApply)}
-      {half(rightLabel, rightValue, rightApply)}
+      {half(leftLabel, leftValue, leftApply, leftReadout)}
+      {half(rightLabel, rightValue, rightApply, rightReadout)}
     </View>
   );
 }

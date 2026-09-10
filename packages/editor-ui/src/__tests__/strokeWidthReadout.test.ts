@@ -25,8 +25,10 @@ describe('the slider value box', () => {
     // abandoned (the hex field's rule).
     expect(bar).toContain('onPress={() => { setDraft(text); setSeeded(text); setEditing(true); }}');
     expect(bar).toContain('if (Number.isFinite(n)) commit(n);');
-    // Both halves of a dual row carry one too.
-    expect(bar.match(/<SliderReadout text=\{percentText\(value\)\}/g)).toHaveLength(1);
+    // Both halves of a dual row carry one too — a percent, or the half's
+    // own unit when it brings a readout (SliderRow's contract).
+    expect(bar).toContain('text={readout ? readout.text : percentText(value)}');
+    expect(bar).toContain('commit={readout ? readout.commit : (n) => apply(percentToValue(n), true)}');
   });
 
   it('is the white value box, one track tall, in full-strength ink', () => {

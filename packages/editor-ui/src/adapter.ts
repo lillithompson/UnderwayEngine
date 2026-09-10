@@ -210,6 +210,11 @@ export interface TransformCopiesSpec {
   dy: number;
   /** Rotation offset per copy, degrees clockwise. */
   dAngleDeg: number;
+  /** Scale per copy, each axis its own factor (1 = the same size): the
+   *  i-th copy is the original scaled by the factor i times over, about
+   *  its own centre — compounding, as the offsets and the turn do. */
+  sx: number;
+  sy: number;
 }
 
 /** Editable endpoints for an open path (the Endpoints bar). Unlike the engine's
@@ -587,8 +592,9 @@ export interface ObjectPropertiesModel {
    *  on release — one undo step. Degrees clockwise, (-180, 180]. */
   onTransformRotate?(angleDeg: number, committed: boolean): void;
   /** Create copies: `count` copies of the object, the i-th laid `i × (dx,
-   *  dy)` cells from it and turned `i × dAngleDeg` further — so each copy
-   *  is the one before with the offsets added. One undo step. */
+   *  dy)` cells from it, turned `i × dAngleDeg` further and scaled by
+   *  `sx` / `sy` i times over — so each copy is the one before with the
+   *  offsets added. One undo step. */
   onTransformCopies?(spec: TransformCopiesSpec): void;
   /** The bar's Create copies DRAFT, live: called with the current settings
    *  whenever the bar opens or any of them changes, and with null when the

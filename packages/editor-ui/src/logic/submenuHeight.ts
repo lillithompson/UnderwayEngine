@@ -225,9 +225,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'endpoints':
       return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'transform':
-      // Rotation, then Create copies' four settings (count, offset X,
-      // offset Y, rotation offset) and the button row that fires it.
-      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
+      // Rotation, then Create copies' six settings two to a row (offset X
+      // + Y, scale X + Y, rotation offset + count) and the button row that
+      // fires it.
+      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
     case 'patternTiles':
       // The arming grid: two rows of square buttons.
       return standardBar([PATTERN_TILE_GRID]);
