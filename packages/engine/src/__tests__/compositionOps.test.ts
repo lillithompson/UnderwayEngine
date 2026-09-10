@@ -946,7 +946,7 @@ describe('compositionOps toggleRepeat clears tile offset', () => {
 });
 
 describe('compositionOps groupFigures', () => {
-  test('apply sets groupId, group name, and preGroupName', () => {
+  test('apply sets groupId and names the GroupNode; every member keeps its own name', () => {
     const fig1 = makeFigure({ id: 'a', name: 'Figure 1' });
     const fig2 = makeFigure({ id: 'b', name: 'Figure 2' });
     const state = makeState([fig1, fig2]);
@@ -955,15 +955,13 @@ describe('compositionOps groupFigures', () => {
       figureIds: ['a', 'b'],
       groupId: 'g1',
       groupName: 'Group 1',
-      oldNames: ['Figure 1', 'Figure 2'],
     }];
     const result = applyCompOps(state, entry);
     expect(result.figures[0].groupId).toBe('g1');
-    expect(result.figures[0].name).toBe('Group 1');
-    expect(result.figures[0].preGroupName).toBe('Figure 1');
+    expect(result.figures[0].name).toBe('Figure 1');
     expect(result.figures[1].groupId).toBe('g1');
-    expect(result.figures[1].name).toBeUndefined();
-    expect(result.figures[1].preGroupName).toBe('Figure 2');
+    expect(result.figures[1].name).toBe('Figure 2');
+    expect(result.groups).toEqual([expect.objectContaining({ id: 'g1', name: 'Group 1' })]);
   });
 
   test('apply seeds localCell* from current cell bounds', () => {
@@ -972,7 +970,7 @@ describe('compositionOps groupFigures', () => {
     const state = makeState([fig1, fig2]);
     const entry: CompUndoEntry = [{
       op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'g1',
-      groupName: 'Group 1', oldNames: [undefined, undefined],
+      groupName: 'Group 1',
     }];
     const result = applyCompOps(state, entry);
     expect(result.figures[0].localCellX).toBe(5);
@@ -984,12 +982,12 @@ describe('compositionOps groupFigures', () => {
   });
 
   test('revert clears localCell* along with groupId', () => {
-    const fig1 = makeFigure({ id: 'a', name: 'Group 1', groupId: 'g1', preGroupName: 'Figure 1',
+    const fig1 = makeFigure({ id: 'a', name: 'Figure 1', groupId: 'g1',
       localCellX: 5, localCellY: 7, localCellWidth: 2, localCellHeight: 3 });
     const state = makeState([fig1]);
     const entry: CompUndoEntry = [{
       op: 'groupFigures', figureIds: ['a'], groupId: 'g1',
-      groupName: 'Group 1', oldNames: ['Figure 1'],
+      groupName: 'Group 1',
     }];
     const result = revertCompOps(state, entry);
     expect(result.figures[0].localCellX).toBeUndefined();
@@ -998,31 +996,28 @@ describe('compositionOps groupFigures', () => {
     expect(result.figures[0].localCellHeight).toBeUndefined();
   });
 
-  test('revert clears groupId, preGroupName and restores old names', () => {
-    const fig1 = makeFigure({ id: 'a', name: 'Group 1', groupId: 'g1', preGroupName: 'Figure 1' });
-    const fig2 = makeFigure({ id: 'b', name: undefined, groupId: 'g1', preGroupName: 'Figure 2' });
+  test('revert clears groupId and leaves the names, which it never changed', () => {
+    const fig1 = makeFigure({ id: 'a', name: 'Figure 1', groupId: 'g1' });
+    const fig2 = makeFigure({ id: 'b', name: 'Figure 2', groupId: 'g1' });
     const state = makeState([fig1, fig2]);
     const entry: CompUndoEntry = [{
       op: 'groupFigures',
       figureIds: ['a', 'b'],
       groupId: 'g1',
       groupName: 'Group 1',
-      oldNames: ['Figure 1', 'Figure 2'],
     }];
     const result = revertCompOps(state, entry);
     expect(result.figures[0].groupId).toBeUndefined();
     expect(result.figures[0].name).toBe('Figure 1');
-    expect(result.figures[0].preGroupName).toBeUndefined();
     expect(result.figures[1].groupId).toBeUndefined();
     expect(result.figures[1].name).toBe('Figure 2');
-    expect(result.figures[1].preGroupName).toBeUndefined();
   });
 });
 
 describe('compositionOps ungroupFigures', () => {
-  test('apply clears groupId and restores original names', () => {
-    const fig1 = makeFigure({ id: 'a', name: 'Group 1', groupId: 'g1', preGroupName: 'Figure 1' });
-    const fig2 = makeFigure({ id: 'b', name: undefined, groupId: 'g1', preGroupName: 'Figure 2' });
+  test('apply clears groupId and leaves the names', () => {
+    const fig1 = makeFigure({ id: 'a', name: 'Figure 1', groupId: 'g1' });
+    const fig2 = makeFigure({ id: 'b', name: 'Figure 2', groupId: 'g1' });
     const state = makeState([fig1, fig2]);
     const entry: CompUndoEntry = [{
       op: 'ungroupFigures',
@@ -1033,13 +1028,11 @@ describe('compositionOps ungroupFigures', () => {
     const result = applyCompOps(state, entry);
     expect(result.figures[0].groupId).toBeUndefined();
     expect(result.figures[0].name).toBe('Figure 1');
-    expect(result.figures[0].preGroupName).toBeUndefined();
     expect(result.figures[1].groupId).toBeUndefined();
     expect(result.figures[1].name).toBe('Figure 2');
-    expect(result.figures[1].preGroupName).toBeUndefined();
   });
 
-  test('revert re-applies groupId and sets preGroupName', () => {
+  test('revert re-applies groupId and leaves the names', () => {
     const fig1 = makeFigure({ id: 'a', name: 'Figure 1' });
     const fig2 = makeFigure({ id: 'b', name: 'Figure 2' });
     const state = makeState([fig1, fig2]);
@@ -1051,10 +1044,9 @@ describe('compositionOps ungroupFigures', () => {
     }];
     const result = revertCompOps(state, entry);
     expect(result.figures[0].groupId).toBe('g1');
-    expect(result.figures[0].name).toBe('Group 1');
-    expect(result.figures[0].preGroupName).toBe('Figure 1');
+    expect(result.figures[0].name).toBe('Figure 1');
     expect(result.figures[1].groupId).toBe('g1');
-    expect(result.figures[1].preGroupName).toBe('Figure 2');
+    expect(result.figures[1].name).toBe('Figure 2');
   });
 
   test('full group/ungroup/undo round-trip preserves names', () => {
@@ -1064,11 +1056,11 @@ describe('compositionOps ungroupFigures', () => {
 
     const groupEntry: CompUndoEntry = [{
       op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'g1',
-      groupName: 'Group 1', oldNames: ['Figure 1', 'Figure 2'],
+      groupName: 'Group 1',
     }];
     const grouped = applyCompOps(state, groupEntry);
-    expect(grouped.figures[0].name).toBe('Group 1');
-    expect(grouped.figures[1].name).toBeUndefined();
+    expect(grouped.figures[0].name).toBe('Figure 1');
+    expect(grouped.figures[1].name).toBe('Figure 2');
 
     const ungroupEntry: CompUndoEntry = [{
       op: 'ungroupFigures', figureIds: ['a', 'b'], groupId: 'g1', groupName: 'Group 1',
@@ -1078,7 +1070,7 @@ describe('compositionOps ungroupFigures', () => {
     expect(ungrouped.figures[1].name).toBe('Figure 2');
 
     const reGrouped = revertCompOps(ungrouped, ungroupEntry);
-    expect(reGrouped.figures[0].name).toBe('Group 1');
+    expect(reGrouped.figures[0].name).toBe('Figure 1');
     expect(reGrouped.figures[0].groupId).toBe('g1');
 
     const fullyRestored = revertCompOps(reGrouped, groupEntry);
@@ -2195,7 +2187,7 @@ describe('mask-confirm replaceScene round-trip', () => {
     // Live state after mask mode: `other` moved, then group + setMask applied.
     const movedOther = { ...other, cellX: 25 };
     const live = { ...snapshot, figures: [movedOther] };
-    let finalScene = applyCompOps(live, [{ op: 'groupFigures', figureIds: ['mask_1', 'other'], groupId: 'g1', groupName: 'Group 1', oldNames: [mask.name, other.name] }]);
+    let finalScene = applyCompOps(live, [{ op: 'groupFigures', figureIds: ['mask_1', 'other'], groupId: 'g1', groupName: 'Group 1' }]);
     finalScene = applyCompOps(finalScene, [{ op: 'setMaskMode', svgId: 'mask_1', oldValue: undefined, newValue: true }]);
 
     const entry: CompUndoEntry = [{

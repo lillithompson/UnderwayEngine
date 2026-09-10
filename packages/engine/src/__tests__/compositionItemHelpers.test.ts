@@ -180,7 +180,6 @@ describe('groupFigures op handles mixed selection (figure + svg objects)', () =>
       figureIds: ['fig1', 'svg_a', 'svg_b'],
       groupId: 'g1',
       groupName: 'My Group',
-      oldNames: [undefined, undefined, undefined],
     }]);
     expect(next.groups).toHaveLength(1);
     expect(next.groups[0].id).toBe('g1');

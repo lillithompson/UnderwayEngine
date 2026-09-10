@@ -142,7 +142,7 @@ describe('groupFigures op creates a GroupNode and seeds locals', () => {
     ];
     const state = makeState(figs);
     const entry: CompUndoEntry = [{
-      op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'g1', groupName: 'My Group', oldNames: ['A', 'B'],
+      op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'g1', groupName: 'My Group',
     }];
     const out = applyCompOps(state, entry);
     expect(out.groups).toHaveLength(1);
@@ -155,12 +155,12 @@ describe('groupFigures op creates a GroupNode and seeds locals', () => {
   test('isFrame flag creates a frame group; omitted leaves it undefined', () => {
     const figs = [makeFigure({ id: 'a', cellX: 0, cellY: 0, name: 'A' }), makeFigure({ id: 'b', cellX: 3, cellY: 0, name: 'B' })];
     const framed = applyCompOps(makeState(figs), [{
-      op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'gf', groupName: 'Frame', oldNames: ['A', 'B'], isFrame: true,
+      op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'gf', groupName: 'Frame', isFrame: true,
     }]);
     expect(framed.groups[0].isFrame).toBe(true);
 
     const plain = applyCompOps(makeState(figs), [{
-      op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'gp', groupName: 'Group', oldNames: ['A', 'B'],
+      op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'gp', groupName: 'Group',
     }]);
     expect(plain.groups[0].isFrame).toBeUndefined();
   });
@@ -172,7 +172,7 @@ describe('groupFigures op creates a GroupNode and seeds locals', () => {
     ];
     const state = makeState(figs);
     const entry: CompUndoEntry = [{
-      op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'g1', groupName: 'My Group', oldNames: ['A', 'B'],
+      op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'g1', groupName: 'My Group',
     }];
     const grouped = applyCompOps(state, entry);
     expect(grouped.groups).toHaveLength(1);

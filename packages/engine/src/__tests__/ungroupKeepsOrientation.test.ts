@@ -117,7 +117,6 @@ describe('ungroupFigures keeps the bbox kinds’ world orientation', () => {
     });
     const back = revertCompOps(s, [{
       op: 'groupFigures', figureIds: ['pat', 'img'], groupId: 'g1', groupName: 'Group 1',
-      oldNames: [undefined, undefined],
     }]);
     const pat = back.patternObjects![0];
     expect(pat.groupId).toBeUndefined();

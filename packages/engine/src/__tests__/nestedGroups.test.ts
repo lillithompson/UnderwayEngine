@@ -54,12 +54,8 @@ function makeState(figures: CompositionFigure[], groups: GroupNode[] = []): Comp
 describe('nested groups', () => {
   // Helper: group two figures into a group, returning the resulting state
   function groupFigures(state: CompositionState, figureIds: string[], groupId: string, groupName: string, childGroupIds?: string[]): CompositionState {
-    const oldNames = figureIds.map(id => {
-      const fig = state.figures.find(f => f.id === id);
-      return fig?.name;
-    });
     const entry: CompUndoEntry = [{
-      op: 'groupFigures', figureIds, groupId, groupName, oldNames,
+      op: 'groupFigures', figureIds, groupId, groupName,
       childGroupIds,
     }];
     return applyCompOps(state, entry);
@@ -103,9 +99,9 @@ describe('nested groups', () => {
       expect(state.figures.find(f => f.id === 'c')!.groupId).toBe('g2');
       expect(state.figures.find(f => f.id === 'd')!.groupId).toBe('g2');
 
-      // Original preGroupNames on figures preserved from inner group
-      expect(state.figures.find(f => f.id === 'a')!.preGroupName).toBe('Fig A');
-      expect(state.figures.find(f => f.id === 'b')!.preGroupName).toBe('Fig B');
+      // The figures' names are their own throughout
+      expect(state.figures.find(f => f.id === 'a')!.name).toBe('Fig A');
+      expect(state.figures.find(f => f.id === 'b')!.name).toBe('Fig B');
     });
   });
 
@@ -148,11 +144,11 @@ describe('nested groups', () => {
       expect(state.groups.find(g => g.id === 'g1')!.name).toBe('Group 1');
       expect(state.groups.find(g => g.id === 'g2')!.name).toBe('Group 2');
 
-      // Figures still in their inner groups with original preGroupNames
+      // Figures still in their inner groups, names their own
       expect(state.figures.find(f => f.id === 'a')!.groupId).toBe('g1');
-      expect(state.figures.find(f => f.id === 'a')!.preGroupName).toBe('Fig A');
+      expect(state.figures.find(f => f.id === 'a')!.name).toBe('Fig A');
       expect(state.figures.find(f => f.id === 'b')!.groupId).toBe('g1');
-      expect(state.figures.find(f => f.id === 'b')!.preGroupName).toBe('Fig B');
+      expect(state.figures.find(f => f.id === 'b')!.name).toBe('Fig B');
     });
   });
 
@@ -300,8 +296,7 @@ describe('nested groups', () => {
 
       // Nest → G3
       const nestEntry: CompUndoEntry = [{
-        op: 'groupFigures', figureIds: [], groupId: 'g3', groupName: 'Group 3',
-        oldNames: [], childGroupIds: ['g1', 'g2'],
+        op: 'groupFigures', figureIds: [], groupId: 'g3', groupName: 'Group 3', childGroupIds: ['g1', 'g2'],
       }];
       state = applyCompOps(state, nestEntry);
       expect(state.groups).toHaveLength(3);
@@ -374,8 +369,7 @@ describe('nested groups', () => {
 
       // Level 3: G5 = G3+G4  (G3 is the ROOT to nest, not G1/G2 individually)
       const level3Entry: CompUndoEntry = [{
-        op: 'groupFigures', figureIds: [], groupId: 'g5', groupName: 'Group 5',
-        oldNames: [], childGroupIds: ['g3', 'g4'],
+        op: 'groupFigures', figureIds: [], groupId: 'g5', groupName: 'Group 5', childGroupIds: ['g3', 'g4'],
       }];
       state = applyCompOps(state, level3Entry);
 
@@ -415,8 +409,7 @@ describe('nested groups', () => {
       state = groupFigures(state, ['e', 'f'], 'g4', 'Group 4');
 
       const level3Entry: CompUndoEntry = [{
-        op: 'groupFigures', figureIds: [], groupId: 'g5', groupName: 'Group 5',
-        oldNames: [], childGroupIds: ['g3', 'g4'],
+        op: 'groupFigures', figureIds: [], groupId: 'g5', groupName: 'Group 5', childGroupIds: ['g3', 'g4'],
       }];
       state = applyCompOps(state, level3Entry);
 

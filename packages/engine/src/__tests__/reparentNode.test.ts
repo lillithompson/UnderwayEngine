@@ -38,7 +38,7 @@ function grouped(): CompositionState {
     makeFigure({ id: 'c', cellX: 10, cellY: 10, name: 'C' }),
   ];
   const entry: CompUndoEntry = [{
-    op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'g1', groupName: 'G', oldNames: ['A', 'B'],
+    op: 'groupFigures', figureIds: ['a', 'b'], groupId: 'g1', groupName: 'G',
   }];
   return applyCompOps(makeState(figs), entry);
 }

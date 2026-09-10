@@ -305,7 +305,6 @@ describe('image grouping', () => {
     const state = makeState({ images: [img] });
     const entry: CompUndoEntry = [{ op: 'groupFigures',
       figureIds: ['img_a'], groupId: 'g1', groupName: 'Group',
-      oldNames: [undefined],
     }];
     const after = applyCompOps(state, entry);
     expect(after.groups).toHaveLength(1);

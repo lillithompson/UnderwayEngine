@@ -113,7 +113,6 @@ describe('clearGroupLocals', () => {
   test('clears figure group-local fields', () => {
     const fig = makeFigure({
       groupId: 'g1',
-      preGroupName: 'old',
       localCellX: 1,
       localCellY: 2,
       localCellWidth: 3,
@@ -127,7 +126,6 @@ describe('clearGroupLocals', () => {
     }) as any;
     clearGroupLocals(fig, 'figure');
     expect(fig.groupId).toBeUndefined();
-    expect(fig.preGroupName).toBeUndefined();
     expect(fig.localCellX).toBeUndefined();
     expect(fig.localCellY).toBeUndefined();
     expect(fig.localCellWidth).toBeUndefined();
@@ -146,7 +144,6 @@ describe('clearGroupLocals', () => {
   test('clears SVG group-local fields', () => {
     const svg = makeSvg({
       groupId: 'g1',
-      preGroupName: 'old',
       localSegments: [{ kind: 'line', start: [0, 0], end: [1, 1] }],
       localCellX: 1,
       localCellY: 2,
@@ -158,7 +155,6 @@ describe('clearGroupLocals', () => {
     }) as any;
     clearGroupLocals(svg, 'svg');
     expect(svg.groupId).toBeUndefined();
-    expect(svg.preGroupName).toBeUndefined();
     expect(svg.localSegments).toBeUndefined();
     expect(svg.localCellX).toBeUndefined();
     expect(svg.rotation).toBeUndefined();
@@ -175,7 +171,6 @@ describe('clearGroupLocals', () => {
       uri: 'test.png',
       cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2,
       groupId: 'g1',
-      preGroupName: 'old',
       localCellX: 1, localCellY: 2,
       localCellWidth: 3, localCellHeight: 4,
       identityCellX: 5, identityCellY: 6,
@@ -184,7 +179,6 @@ describe('clearGroupLocals', () => {
     };
     clearGroupLocals(img, 'image');
     expect(img.groupId).toBeUndefined();
-    expect(img.preGroupName).toBeUndefined();
     expect(img.localCellX).toBeUndefined();
     expect(img.identityCellX).toBeUndefined();
     expect(img.identityCellWidth).toBeUndefined();

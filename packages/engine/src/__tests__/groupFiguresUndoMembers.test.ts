@@ -76,7 +76,6 @@ const GROUP_ENTRY: CompUndoEntry = [{
   figureIds: ['s1', 'i1', 't1'],
   groupId: 'g1',
   groupName: 'Group 1',
-  oldNames: ['svg s1', 'image i1', 'text t1'],
 }];
 
 describe('groupFigures undo across every member kind', () => {
@@ -104,16 +103,13 @@ describe('groupFigures undo across every member kind', () => {
     // The group-local coords the apply seeded are gone too.
     expect(back.images![0].localCellX).toBeUndefined();
     expect(back.texts![0].localCellX).toBeUndefined();
-    expect(back.images![0].preGroupName).toBeUndefined();
-    expect(back.texts![0].preGroupName).toBeUndefined();
   });
 
-  test('an entry with no oldNames still restores names from preGroupName', () => {
-    const entry: CompUndoEntry = [{ ...GROUP_ENTRY[0], oldNames: [] } as typeof GROUP_ENTRY[0]];
-    const grouped = applyCompOps(makeState(), entry);
-    const back = revertCompOps(grouped, entry);
-
-    expect(back.images![0].name).toBe('image i1');
-    expect(back.texts![0].name).toBe('text t1');
+  test('grouping leaves every member\'s name exactly as it was', () => {
+    const grouped = applyCompOps(makeState(), GROUP_ENTRY);
+    expect(grouped.svgObjects[0].name).toBe('svg s1');
+    expect(grouped.images![0].name).toBe('image i1');
+    expect(grouped.texts![0].name).toBe('text t1');
+    expect(grouped.groups[0].name).toBe('Group 1');
   });
 });

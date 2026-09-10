@@ -156,7 +156,6 @@ describe('group → move → mirror → move → rotate keeps the rotation pivot
     const state = makeState({ svgObjects: [a1, a2] });
     return applyCompOps(state, [{
       op: 'groupFigures', figureIds: ['svg_1', 'svg_2'], groupId: 'g1', groupName: 'G',
-      oldNames: [undefined, undefined],
     }]);
   }
 
@@ -205,7 +204,6 @@ describe('group → move → mirror → move → rotate keeps the rotation pivot
     let s = makeState({ svgObjects: [l1, l2] });
     s = applyCompOps(s, [{
       op: 'groupFigures', figureIds: ['svg_1', 'svg_2'], groupId: 'g1', groupName: 'G',
-      oldNames: [undefined, undefined],
     }]);
     s = applyMoveDelta(s, ['svg_1', 'svg_2'], 100, 0);
     s = applyGroupMirror(s, 'g1', 'h');
@@ -224,7 +222,6 @@ describe('group → move → mirror → move → rotate keeps the rotation pivot
     let s = makeState({ figures: [fig], svgObjects: [svgArc] });
     s = applyCompOps(s, [{
       op: 'groupFigures', figureIds: ['fig1', 'svg_1'], groupId: 'g1', groupName: 'G',
-      oldNames: [undefined, undefined],
     }]);
     s = applyMoveDelta(s, ['fig1', 'svg_1'], 100, 0);
     s = applyGroupMirror(s, 'g1', 'h');

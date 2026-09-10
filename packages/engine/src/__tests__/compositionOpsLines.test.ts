@@ -207,16 +207,15 @@ describe('groupFigures with mixed figures and svg objects', () => {
       figureIds: ['a', 'svg_1'],
       groupId: 'g1',
       groupName: 'Group 1',
-      oldNames: ['Figure 1', 'My SVG'],
     }];
     const result = applyCompOps(state, entry);
     expect(result.figures[0].groupId).toBe('g1');
     expect(result.svgObjects[0].groupId).toBe('g1');
-    expect(result.svgObjects[0].preGroupName).toBe('My SVG');
+    expect(result.svgObjects[0].name).toBe('My SVG');
     expect(result.svgObjects[0].localSegments).toEqual([{kind:'line', start:[0,0], end:[5,5]}]);
   });
 
-  test('apply assigns group name to first member (svg object)', () => {
+  test('apply leaves every member named as it was; the group name is the GroupNode\'s', () => {
     const svg1 = makeSVG('svg_1', { name: 'SVG A' });
     const svg2 = makeSVG('svg_2', { name: 'SVG B', segments: [{kind:'line', start:[1,1], end:[2,2]}] });
     const state = makeState([svg1, svg2]);
@@ -225,33 +224,30 @@ describe('groupFigures with mixed figures and svg objects', () => {
       figureIds: ['svg_1', 'svg_2'],
       groupId: 'g1',
       groupName: 'Group 1',
-      oldNames: ['SVG A', 'SVG B'],
     }];
     const result = applyCompOps(state, entry);
-    expect(result.svgObjects[0].name).toBe('Group 1');
-    expect(result.svgObjects[1].name).toBeUndefined();
+    expect(result.svgObjects[0].name).toBe('SVG A');
+    expect(result.svgObjects[1].name).toBe('SVG B');
+    expect(result.groups[0].name).toBe('Group 1');
   });
 
-  test('revert clears groupId and restores names on svg objects', () => {
+  test('revert clears groupId and leaves names on svg objects', () => {
     const svg = makeSVG('svg_1', {
-      name: undefined,
+      name: 'My SVG',
       groupId: 'g1',
-      preGroupName: 'My SVG',
       localSegments: [{kind:'line', start:[0,0], end:[5,5]}],
     });
-    const fig = makeFigure({ id: 'a', name: 'Group 1', groupId: 'g1', preGroupName: 'Fig A' });
+    const fig = makeFigure({ id: 'a', name: 'Fig A', groupId: 'g1' });
     const state = makeState([svg], { figures: [fig] });
     const entry: CompUndoEntry = [{
       op: 'groupFigures',
       figureIds: ['a', 'svg_1'],
       groupId: 'g1',
       groupName: 'Group 1',
-      oldNames: ['Fig A', 'My SVG'],
     }];
     const result = revertCompOps(state, entry);
     expect(result.svgObjects[0].groupId).toBeUndefined();
     expect(result.svgObjects[0].name).toBe('My SVG');
-    expect(result.svgObjects[0].preGroupName).toBeUndefined();
     expect(result.svgObjects[0].localSegments).toBeUndefined();
     expect(result.figures[0].groupId).toBeUndefined();
     expect(result.figures[0].name).toBe('Fig A');
@@ -259,12 +255,11 @@ describe('groupFigures with mixed figures and svg objects', () => {
 });
 
 describe('ungroupFigures with mixed figures and svg objects', () => {
-  test('apply clears groupId and restores names on svg objects', () => {
-    const fig = makeFigure({ id: 'a', name: 'Group 1', groupId: 'g1', preGroupName: 'Fig A' });
+  test('apply clears groupId and leaves names on svg objects', () => {
+    const fig = makeFigure({ id: 'a', name: 'Fig A', groupId: 'g1' });
     const svg = makeSVG('svg_1', {
-      name: undefined,
+      name: 'My SVG',
       groupId: 'g1',
-      preGroupName: 'My SVG',
       localSegments: [{kind:'line', start:[0,0], end:[5,5]}],
     });
     const state = makeState([svg], { figures: [fig] });
@@ -277,7 +272,6 @@ describe('ungroupFigures with mixed figures and svg objects', () => {
     const result = applyCompOps(state, entry);
     expect(result.svgObjects[0].groupId).toBeUndefined();
     expect(result.svgObjects[0].name).toBe('My SVG');
-    expect(result.svgObjects[0].preGroupName).toBeUndefined();
     expect(result.svgObjects[0].localSegments).toBeUndefined();
     expect(result.figures[0].groupId).toBeUndefined();
     expect(result.figures[0].name).toBe('Fig A');
@@ -295,7 +289,7 @@ describe('ungroupFigures with mixed figures and svg objects', () => {
     }];
     const result = revertCompOps(state, entry);
     expect(result.svgObjects[0].groupId).toBe('g1');
-    expect(result.svgObjects[0].preGroupName).toBe('My SVG');
+    expect(result.svgObjects[0].name).toBe('My SVG');
     expect(result.svgObjects[0].localSegments).toEqual([{kind:'line', start:[0,0], end:[5,5]}]);
     expect(result.figures[0].groupId).toBe('g1');
   });
@@ -311,7 +305,6 @@ describe('ungroupFigures with mixed figures and svg objects', () => {
       figureIds: ['a', 'svg_1'],
       groupId: 'g1',
       groupName: 'Group 1',
-      oldNames: ['Fig A', 'My SVG'],
     }];
     const grouped = applyCompOps(state, groupEntry);
     expect(grouped.figures[0].groupId).toBe('g1');

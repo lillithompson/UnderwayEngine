@@ -66,7 +66,6 @@ function buildDuplicateOps(state: CompositionState, selectedIds: string[]): {
   const ops: CompUndoEntry = [];
   const groupIdMap = new Map<string, string>();
   const newGroupMembers = new Map<string, string[]>();
-  const newGroupOldNames = new Map<string, (string | undefined)[]>();
   let mint = 0;
 
   for (const id of selectedIds) {
@@ -82,7 +81,6 @@ function buildDuplicateOps(state: CompositionState, selectedIds: string[]): {
         newGroupId = origGroupId + '_dup';
         groupIdMap.set(origGroupId, newGroupId);
         newGroupMembers.set(newGroupId, []);
-        newGroupOldNames.set(newGroupId, []);
       }
     }
     const baseId = ref.kind === 'svg' ? 'svg_' : ref.kind === 'image' ? 'img_' : '';
@@ -91,7 +89,6 @@ function buildDuplicateOps(state: CompositionState, selectedIds: string[]): {
     ops.push({ op: 'placeObject', kind: ref.kind, item: adapter.cloneItem(dup) as any });
     if (newGroupId) {
       newGroupMembers.get(newGroupId)!.push(dup.id);
-      newGroupOldNames.get(newGroupId)!.push(dup.name);
     }
   }
 
@@ -120,7 +117,6 @@ function buildDuplicateOps(state: CompositionState, selectedIds: string[]): {
         figureIds: memberIds,
         groupId: newGroupId,
         groupName: (origGroup?.name ?? 'Group') + ' copy',
-        oldNames: newGroupOldNames.get(newGroupId)!,
         ...(children.length > 0 ? { childGroupIds: children } : null),
       });
       emitted.add(newGroupId);

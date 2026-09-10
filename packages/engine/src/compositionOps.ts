@@ -617,17 +617,13 @@ export function isTagName(name: string): boolean {
 }
 
 /**
- * The name a duplicate is placed with. A node's OWN name is `preGroupName`
- * while it is grouped: the group op moves every member's name there and
- * gives one member the group's own name, which is not the member's. So a
- * copy of a grouped node starts from `preGroupName` — the copy is regrouped
- * by the same op, which files that name away again — rather than from
- * `name` (a duplicated group used to come out with its members unnamed and
- * its leader called "<group> copy"; a tagged member, the Reimagine seed, lost
- * its tag). A user's name gets " copy"; a tag is kept as it is (isTagName).
+ * The name a duplicate is placed with: a user's name gets " copy"; a tag
+ * (the Reimagine seed's `slot:squiggle`) is kept as it is (isTagName); a
+ * nameless node stays nameless. A node's name is its own whether or not it
+ * is grouped — grouping never touches it (see the `groupFigures` apply).
  */
-export function duplicateName(item: { name?: string; preGroupName?: string; groupId?: string }): string | undefined {
-  const own = item.groupId ? item.preGroupName : item.name;
+export function duplicateName(item: { name?: string }): string | undefined {
+  const own = item.name;
   if (!own) return undefined;
   return isTagName(own) ? own : own + ' copy';
 }
@@ -679,7 +675,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         cellX: fig.cellX + dx,
         cellY: fig.cellY + dy,
         name: duplicateName(fig),
-        preGroupName: undefined,
         groupId: newGroupId,
         locked: false,
         quads: fig.quads ? fig.quads.map((q) => ({ ...q })) : fig.quads,
@@ -738,7 +733,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
           ? { minX: svg.creationBox.minX + dx, minY: svg.creationBox.minY + dy, width: svg.creationBox.width, height: svg.creationBox.height }
           : undefined,
         name: duplicateName(svg),
-        preGroupName: undefined,
         groupId: newGroupId,
         locked: false,
         ...(svg.segmentOverrides ? { segmentOverrides: new Map(svg.segmentOverrides) } : null),
@@ -766,7 +760,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         identityCellX: img.identityCellX !== undefined ? img.identityCellX + dx : undefined,
         identityCellY: img.identityCellY !== undefined ? img.identityCellY + dy : undefined,
         name: duplicateName(img),
-        preGroupName: undefined,
         groupId: newGroupId,
         locked: false,
       } as SceneObjectBase;
@@ -800,7 +793,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         identityCellX: txt.identityCellX !== undefined ? txt.identityCellX + dx : undefined,
         identityCellY: txt.identityCellY !== undefined ? txt.identityCellY + dy : undefined,
         name: duplicateName(txt),
-        preGroupName: undefined,
         groupId: newGroupId,
         locked: false,
       } as SceneObjectBase;
@@ -835,7 +827,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         identityCellX: p.identityCellX !== undefined ? p.identityCellX + dx : undefined,
         identityCellY: p.identityCellY !== undefined ? p.identityCellY + dy : undefined,
         name: duplicateName(p),
-        preGroupName: undefined,
         groupId: newGroupId,
         locked: false,
       } as SceneObjectBase;
@@ -867,7 +858,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         identityCellX: p.identityCellX !== undefined ? p.identityCellX + dx : undefined,
         identityCellY: p.identityCellY !== undefined ? p.identityCellY + dy : undefined,
         name: duplicateName(p),
-        preGroupName: undefined,
         groupId: newGroupId,
         locked: false,
       } as SceneObjectBase;
@@ -916,10 +906,8 @@ export function buildDuplicateOps(
   // same source group land in one new group rather than each spawning
   // its own.
   const groupIdMap = new Map<string, string>();
-  // Per-new-group: ordered duplicated member ids (first is the leader
-  // that carries the group display name) and their original .name values.
+  // Per-new-group: ordered duplicated member ids.
   const newGroupMembers = new Map<string, string[]>();
-  const newGroupOldNames = new Map<string, (string | undefined)[]>();
   const mintGroupId = options?.mintGroupId
     ?? ((_orig: string) => Date.now().toString() + '_g' + Math.random().toString(36).slice(2, 6));
 
@@ -946,7 +934,6 @@ export function buildDuplicateOps(
         newGroupId = mintGroupId(origGroupId);
         groupIdMap.set(origGroupId, newGroupId);
         newGroupMembers.set(newGroupId, []);
-        newGroupOldNames.set(newGroupId, []);
       }
     }
     const newItemId = options?.mintItemId
@@ -959,10 +946,7 @@ export function buildDuplicateOps(
       item: adapter.cloneItem(dup) as CompositionFigure | SVGObject | ImageObject | TextObject,
     });
     newIds.push(dup.id);
-    if (newGroupId) {
-      newGroupMembers.get(newGroupId)!.push(dup.id);
-      newGroupOldNames.get(newGroupId)!.push(dup.name);
-    }
+    if (newGroupId) newGroupMembers.get(newGroupId)!.push(dup.id);
   }
 
   // Walk up each mapped group's ancestor chain. An ancestor whose every
@@ -978,7 +962,6 @@ export function buildDuplicateOps(
       const newAncestorId = mintGroupId(parentId);
       groupIdMap.set(parentId, newAncestorId);
       newGroupMembers.set(newAncestorId, []);
-      newGroupOldNames.set(newAncestorId, []);
       parentId = state.groups.find(g => g.id === parentId)?.parentGroupId;
     }
   }
@@ -1015,7 +998,6 @@ export function buildDuplicateOps(
         figureIds: memberIds,
         groupId: newGroupId,
         groupName,
-        oldNames: newGroupOldNames.get(newGroupId)!,
         ...(children.length > 0 ? { childGroupIds: children } : null),
         // Preserve Figma-style frame-ness so a duplicated frame stays a frame
         // (clips + fixed export region), not a plain group.
@@ -1162,11 +1144,6 @@ export function buildRemoveObjectOps(
  *  `ungroupCreationBox` snap should handle that separately. */
 export function clearGroupLocals(item: any, kind: CompItemKind): void {
   item.groupId = undefined;
-  // Restore the original name that was saved before grouping.
-  if (item.preGroupName !== undefined) {
-    item.name = item.preGroupName;
-  }
-  item.preGroupName = undefined;
   item.localCellX = undefined;
   item.localCellY = undefined;
   item.localCellWidth = undefined;
@@ -4395,19 +4372,22 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
     }
     case 'groupFigures': {
       const childGroupSet = new Set(op.childGroupIds ?? []);
-      // Items in child groups are NOT modified â€” only their GroupNode gets
+      // Items in child groups are NOT modified — only their GroupNode gets
       // a parentGroupId. figureIds contains only loose items (not in any
       // child group).
+      //
+      // A member's `name` is never touched: the group's own name lives on
+      // its GroupNode. (Grouping used to clear every member's name into
+      // `preGroupName` and write the group's name onto the first member —
+      // a hold-over from before GroupNode had a name of its own, and what
+      // made four renamed patterns read as unnamed the moment they were
+      // grouped. Files from then are folded back on load: legacyGroupNames.)
       const looseIdSet = new Set(op.figureIds);
-      // The first loose item carries the group display name.
-      const namedNodeId = op.figureIds[0];
       const figures = state.figures.map((f) => {
         if (!looseIdSet.has(f.id)) return f;
         return {
           ...f,
           groupId: op.groupId,
-          preGroupName: f.name,
-          name: f.id === namedNodeId ? op.groupName : undefined,
           localCellX: f.cellX,
           localCellY: f.cellY,
           localCellWidth: f.cellWidth,
@@ -4427,8 +4407,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         return {
           ...s,
           groupId: op.groupId,
-          preGroupName: s.name,
-          name: s.id === namedNodeId ? op.groupName : undefined,
           localSegments: safeMapSegments(s.segments, clonePathSegment) ?? [],
           // At identity-transform group creation, world == local. Cloning
           // the subpaths into localSubpaths keeps both forms in sync so
@@ -4445,8 +4423,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         return {
           ...i,
           groupId: op.groupId,
-          preGroupName: i.name,
-          name: i.id === namedNodeId ? op.groupName : undefined,
           localCellX: i.cellX,
           localCellY: i.cellY,
           localCellWidth: i.cellWidth,
@@ -4458,8 +4434,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         return {
           ...t,
           groupId: op.groupId,
-          preGroupName: t.name,
-          name: t.id === namedNodeId ? op.groupName : undefined,
           localCellX: t.cellX,
           localCellY: t.cellY,
           localCellWidth: t.cellWidth,
@@ -4471,8 +4445,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         return {
           ...p,
           groupId: op.groupId,
-          preGroupName: p.name,
-          name: p.id === namedNodeId ? op.groupName : undefined,
           localCellX: p.cellX,
           localCellY: p.cellY,
           localCellWidth: p.cellWidth,
@@ -4484,8 +4456,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         return {
           ...p,
           groupId: op.groupId,
-          preGroupName: p.name,
-          name: p.id === namedNodeId ? op.groupName : undefined,
           localCellX: p.cellX,
           localCellY: p.cellY,
           localCellWidth: p.cellWidth,
@@ -4500,10 +4470,10 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           localTileOffsetYL0: p.tileMode === 'repeat' ? p.tileOffsetYL0 : undefined,
         };
       });
-      // Nest child groups by setting parentGroupId, saving their name.
+      // Nest child groups by setting parentGroupId; their names are theirs.
       let groups: GroupNode[] = state.groups.map((g) => {
         if (!childGroupSet.has(g.id)) return g;
-        return { ...g, parentGroupId: op.groupId, preGroupName: g.name };
+        return { ...g, parentGroupId: op.groupId };
       });
       // Add the new GroupNode unless it already exists.
       const existing = groups.some(g => g.id === op.groupId);
@@ -4524,8 +4494,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         f.groupId === op.groupId ? {
           ...f,
           groupId: undefined,
-          name: f.preGroupName,
-          preGroupName: undefined,
           localCellX: undefined,
           localCellY: undefined,
           localCellWidth: undefined,
@@ -4548,8 +4516,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         return {
           ...s,
           groupId: undefined,
-          name: s.preGroupName,
-          preGroupName: undefined,
           localSegments: undefined,
           localSubpaths: undefined,
           localCellX: undefined,
@@ -4581,8 +4547,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         i.groupId === op.groupId ? {
           ...i,
           groupId: undefined,
-          name: i.preGroupName,
-          preGroupName: undefined,
           localCellX: undefined,
           localCellY: undefined,
           localCellWidth: undefined,
@@ -4597,8 +4561,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         t.groupId === op.groupId ? {
           ...t,
           groupId: undefined,
-          name: t.preGroupName,
-          preGroupName: undefined,
           localCellX: undefined,
           localCellY: undefined,
           localCellWidth: undefined,
@@ -4613,8 +4575,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         p.groupId === op.groupId ? {
           ...p,
           groupId: undefined,
-          name: p.preGroupName,
-          preGroupName: undefined,
           localCellX: undefined,
           localCellY: undefined,
           localCellWidth: undefined,
@@ -4629,8 +4589,6 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         p.groupId === op.groupId ? {
           ...p,
           groupId: undefined,
-          name: p.preGroupName,
-          preGroupName: undefined,
           localCellX: undefined,
           localCellY: undefined,
           localCellWidth: undefined,
@@ -4645,10 +4603,10 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           identityCellHeight: undefined,
         } : p
       );
-      // Detach child groups from the parent and restore their names.
+      // Detach child groups from the parent.
       let groups = state.groups.map((g) => {
         if (!childGroupSet.has(g.id)) return g;
-        return { ...g, parentGroupId: undefined, name: g.preGroupName ?? g.name, preGroupName: undefined };
+        return { ...g, parentGroupId: undefined };
       });
       // Remove the outer GroupNode itself.
       groups = groups.filter(g => g.id !== op.groupId);
@@ -5117,19 +5075,16 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         newAllowBorderConnections: op.oldAllowBorderConnections,
       });
     case 'groupFigures': {
-      // Undo group: clear groupId, identity, locals, and restore original
-      // names. Also remove the GroupNode and detach any child groups.
+      // Undo group: clear groupId, identity and locals (names were never
+      // changed). Also remove the GroupNode and detach any child groups.
       const revertGroup = state.groups.find(g => g.id === op.groupId);
       const childGroupSet = new Set(op.childGroupIds ?? []);
       const idSet = new Set(op.figureIds);
       const figures = state.figures.map((f) => {
         if (!idSet.has(f.id)) return f;
-        const idx = op.figureIds.indexOf(f.id);
         return {
           ...f,
           groupId: undefined,
-          name: op.oldNames[idx],
-          preGroupName: undefined,
           localCellX: undefined,
           localCellY: undefined,
           localCellWidth: undefined,
@@ -5149,12 +5104,9 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
       });
       const svgObjects = state.svgObjects.map((s) => {
         if (!idSet.has(s.id)) return s;
-        const idx = op.figureIds.indexOf(s.id);
         return {
           ...s,
           groupId: undefined,
-          name: op.oldNames[idx],
-          preGroupName: undefined,
           localSegments: undefined,
           localCellX: undefined,
           localCellY: undefined,
@@ -5174,9 +5126,7 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
       // handler), so they must detach here too — left behind they keep a
       // `groupId` pointing at the GroupNode this undo is about to delete, and
       // every later group walk resolves them through a group that no longer
-      // exists. `preGroupName` is the same original name `oldNames` carries;
-      // it backs the entry up when a caller built the op without those slots.
-      // The bbox kinds keep their rotation / mirror here exactly as the
+      // exists. The bbox kinds keep their rotation / mirror here exactly as the
       // ungroup apply does: those fields are their world orientation, not a
       // group-local cache. Undoing a grouping used to leave four turned and
       // flipped patterns upright and identical.
@@ -5185,8 +5135,6 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         return {
           ...i,
           groupId: undefined,
-          name: op.oldNames[op.figureIds.indexOf(i.id)] ?? i.preGroupName,
-          preGroupName: undefined,
           localCellX: undefined,
           localCellY: undefined,
           localCellWidth: undefined,
@@ -5202,8 +5150,6 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         return {
           ...t,
           groupId: undefined,
-          name: op.oldNames[op.figureIds.indexOf(t.id)] ?? t.preGroupName,
-          preGroupName: undefined,
           localCellX: undefined,
           localCellY: undefined,
           localCellWidth: undefined,
@@ -5219,8 +5165,6 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         return {
           ...p,
           groupId: undefined,
-          name: op.oldNames[op.figureIds.indexOf(p.id)] ?? p.preGroupName,
-          preGroupName: undefined,
           localCellX: undefined,
           localCellY: undefined,
           localCellWidth: undefined,
@@ -5236,8 +5180,6 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         return {
           ...p,
           groupId: undefined,
-          name: op.oldNames[op.figureIds.indexOf(p.id)] ?? p.preGroupName,
-          preGroupName: undefined,
           localCellX: undefined,
           localCellY: undefined,
           localCellWidth: undefined,
@@ -5252,10 +5194,10 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
           identityCellHeight: undefined,
         };
       });
-      // Detach child groups (restore name from preGroupName, clear parentGroupId).
+      // Detach child groups (clear parentGroupId).
       let groups = state.groups.map((g) => {
         if (!childGroupSet.has(g.id)) return g;
-        return { ...g, parentGroupId: undefined, name: g.preGroupName ?? g.name, preGroupName: undefined };
+        return { ...g, parentGroupId: undefined };
       });
       groups = groups.filter(g => g.id !== op.groupId);
       const ungroupResult: CompositionState = { ...state, figures, svgObjects, images, texts, paintObjects: paints, patternObjects: patterns, groups };
@@ -5296,11 +5238,6 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
         figureIds: op.figureIds,
         groupId: op.groupId,
         groupName: op.groupName,
-        oldNames: op.figureIds.map(id => {
-          const fig = state.figures.find(f => f.id === id);
-          if (fig) return fig.name;
-          return state.svgObjects.find(s => s.id === id)?.name;
-        }),
         childGroupIds: op.childGroupIds,
         ...(op.savedIsFrame ? { isFrame: true } : null),
       });

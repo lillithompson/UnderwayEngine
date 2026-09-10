@@ -227,7 +227,6 @@ describe('groupFigures op seeds local orientation', () => {
       figureIds: ['f1'],
       groupId: 'g1',
       groupName: 'G',
-      oldNames: [undefined],
     }];
     const after = applyCompOps(state, entry);
     expect(after.figures[0].localRotation).toBe(90);
@@ -265,7 +264,7 @@ describe('groupFigures op seeds local fields on svg objects', () => {
     const svgLine = makeSVGFromVertices('l1', [[1, 2], [5, 2]]);
     const state = makeState({ svgObjects: [svgLine] });
     const entry: CompUndoEntry = [{
-      op: 'groupFigures', figureIds: ['l1'], groupId: 'g1', groupName: 'G', oldNames: [undefined],
+      op: 'groupFigures', figureIds: ['l1'], groupId: 'g1', groupName: 'G',
     }];
     const after = applyCompOps(state, entry);
     expect(after.svgObjects[0].localSegments).toBeDefined();
@@ -279,7 +278,7 @@ describe('groupFigures op seeds local fields on svg objects', () => {
     const svgArc = makeSVG('a1', [{ kind: 'arc', start: [0, 0], end: [3, 3], center: [0, 3] }]);
     const state = makeState({ svgObjects: [svgArc] });
     const entry: CompUndoEntry = [{
-      op: 'groupFigures', figureIds: ['a1'], groupId: 'g1', groupName: 'G', oldNames: [undefined],
+      op: 'groupFigures', figureIds: ['a1'], groupId: 'g1', groupName: 'G',
     }];
     const after = applyCompOps(state, entry);
     expect(after.svgObjects[0].localSegments).toBeDefined();
@@ -296,7 +295,7 @@ describe('end-to-end group rotate/mirror via applyCompOps then materialize', () 
     const s2 = makeSVGFromVertices('l2', [[0, 2], [4, 2]]);
     const state = makeState({ svgObjects: [s1, s2] });
     const grouped = applyCompOps(state, [{
-      op: 'groupFigures', figureIds: ['l1', 'l2'], groupId: 'g1', groupName: 'G', oldNames: [undefined, undefined],
+      op: 'groupFigures', figureIds: ['l1', 'l2'], groupId: 'g1', groupName: 'G',
     }]);
     // Rotate the group by 90
     const groups = grouped.groups.map(g => g.id === 'g1' ? { ...g, rotation: 90 as const } : g);
@@ -315,7 +314,7 @@ describe('end-to-end group rotate/mirror via applyCompOps then materialize', () 
     const a2 = makeSVG('a2', [{ kind: 'line', start: [2, 0], end: [2, 3] }]);
     const state = makeState({ svgObjects: [a1, a2] });
     const grouped = applyCompOps(state, [{
-      op: 'groupFigures', figureIds: ['a1', 'a2'], groupId: 'g1', groupName: 'G', oldNames: [undefined, undefined],
+      op: 'groupFigures', figureIds: ['a1', 'a2'], groupId: 'g1', groupName: 'G',
     }]);
     const groups = grouped.groups.map(g => g.id === 'g1' ? { ...g, rotation: 90 as const } : g);
     const rotated = materializeGroupMembers({ ...grouped, groups }, 'g1');
@@ -336,7 +335,6 @@ describe('end-to-end group rotate/mirror via applyCompOps then materialize', () 
     const state = makeState({ figures: [fig], svgObjects: [svgLine, svgArc] });
     const grouped = applyCompOps(state, [{
       op: 'groupFigures', figureIds: ['f1', 'l1', 'a1'], groupId: 'g1', groupName: 'G',
-      oldNames: [undefined, undefined, undefined],
     }]);
     // Mirror horizontally
     const groups = grouped.groups.map(g => g.id === 'g1' ? { ...g, mirrorH: true } : g);

@@ -675,31 +675,26 @@ describe('handlePropsDuplicate ops produce a usable duplicated group', () => {
 });
 
 describe('a duplicate is named from the node’s own name; a tag is kept as it is', () => {
-  test('duplicateName: own name + " copy"; a grouped node’s own name is its preGroupName; a tag is verbatim', () => {
+  test('duplicateName: own name + " copy"; a tag is verbatim; nameless stays nameless', () => {
     expect(duplicateName({ name: 'arc' })).toBe('arc copy');
     expect(duplicateName({})).toBeUndefined();
-    // Grouped: the leader carries the group's name, which is not its own.
-    expect(duplicateName({ name: 'Group 1', preGroupName: 'arc', groupId: 'g' })).toBe('arc copy');
-    expect(duplicateName({ preGroupName: 'arc', groupId: 'g' })).toBe('arc copy');
-    expect(duplicateName({ name: 'Group 1', groupId: 'g' })).toBeUndefined();
     // A scaffold tag marks what the node IS; the copy is that too.
     expect(duplicateName({ name: 'slot:squiggle' })).toBe('slot:squiggle');
-    expect(duplicateName({ name: 'Group 1', preGroupName: 'slot:squiggle', groupId: 'g' })).toBe('slot:squiggle');
     expect(isTagName('decor:dateStamp')).toBe(true);
     expect(isTagName('My drawing: the sequel')).toBe(false);
     expect(isTagName('arc')).toBe(false);
   });
 
   test('duplicating a group carries every member’s own name into the copy, tags intact', () => {
-    // As the group op leaves them: names filed in preGroupName, the leader
-    // (first member) wearing the group's name.
+    // As the group op leaves them: every name its member's own; the group's
+    // name on the GroupNode alone.
     const seed = makeSVGLine('svg_seed', {
-      name: 'Group 1', preGroupName: 'slot:squiggle', groupId: 'g1',
+      name: 'slot:squiggle', groupId: 'g1',
       localSegments: [{ kind: 'line', start: [5, 5], end: [10, 5] }],
       localCellX: 5, localCellY: 5, localCellWidth: 5, localCellHeight: 0,
     });
     const arc = makeSVGArc('svg_arc', {
-      preGroupName: 'arc copy', groupId: 'g1',
+      name: 'arc copy', groupId: 'g1',
       localSegments: [{ kind: 'arc', start: [1, 0], end: [0, 1], center: [0, 0] }],
       localCellX: 0, localCellY: 0, localCellWidth: 1, localCellHeight: 1,
     });
@@ -716,32 +711,26 @@ describe('a duplicate is named from the node’s own name; a tag is kept as it i
     const { ops, newIds, groupIdMap } = buildDuplicateOps(state, ['svg_seed', 'svg_arc', 'svg_plain']);
     const after = applyCompOps(state, ops);
     const copies = newIds.map((id) => after.svgObjects.find((s) => s.id === id)!);
-    // The copy group is "Group 1 copy", worn by its leader; each member's
-    // own name sits in preGroupName as the original's did — the seed's tag
-    // verbatim, a user name with " copy", a nameless member still nameless.
+    // The copy group is "Group 1 copy" on its GroupNode; each member is named
+    // from its own — the seed's tag verbatim, a user name with " copy", a
+    // nameless member still nameless — and grouping the copies changed none.
     expect(after.groups.find((g) => g.id === groupIdMap.get('g1'))!.name).toBe('Group 1 copy');
-    expect(copies.map((c) => [c.name, c.preGroupName])).toEqual([
-      ['Group 1 copy', 'slot:squiggle'],
-      [undefined, 'arc copy copy'],
-      [undefined, undefined],
-    ]);
-    // Ungrouping the copy hands each member its own name back.
+    expect(copies.map((c) => c.name)).toEqual(['slot:squiggle', 'arc copy copy', undefined]);
+    expect(copies.every((c) => c.groupId === groupIdMap.get('g1'))).toBe(true);
     const originals = after.svgObjects.filter((s) => !newIds.includes(s.id));
-    expect(originals.map((s) => [s.name, s.preGroupName])).toEqual([
-      ['Group 1', 'slot:squiggle'], [undefined, 'arc copy'], [undefined, undefined],
-    ]);
+    expect(originals.map((s) => s.name)).toEqual(['slot:squiggle', 'arc copy', undefined]);
   });
 
-  test('an ungrouped copy of a tagged node carries the tag; a stale preGroupName is not copied', () => {
+  test('an ungrouped copy of a tagged node carries the tag', () => {
     const seed = makeSVGLine('svg_seed', { name: 'slot:squiggle' });
-    const stale = makeSVGLine('svg_stale', { name: 'arc', preGroupName: 'old' });
-    const state = makeState({ svgObjects: [seed, stale] });
-    const { ops, newIds } = buildDuplicateOps(state, ['svg_seed', 'svg_stale']);
+    const arc = makeSVGLine('svg_arc', { name: 'arc' });
+    const state = makeState({ svgObjects: [seed, arc] });
+    const { ops, newIds } = buildDuplicateOps(state, ['svg_seed', 'svg_arc']);
     const after = applyCompOps(state, ops);
     const copies = newIds.map((id) => after.svgObjects.find((s) => s.id === id)!);
-    expect(copies.map((c) => [c.name, c.preGroupName, c.groupId])).toEqual([
-      ['slot:squiggle', undefined, undefined],
-      ['arc copy', undefined, undefined],
+    expect(copies.map((c) => [c.name, c.groupId])).toEqual([
+      ['slot:squiggle', undefined],
+      ['arc copy', undefined],
     ]);
   });
 });

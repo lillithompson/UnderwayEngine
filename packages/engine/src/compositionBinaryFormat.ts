@@ -4,6 +4,7 @@ import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
 import { backfillPatternTileLocals, computeAliveGroupIds } from './compositionOps';
+import { foldLegacyGroupNames } from './legacyGroupNames';
 import { compSnapStep } from './compositionCellMath';
 
 // â”€â”€ FCOMP Binary Format v29 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -473,13 +474,18 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      shifts everything after it by one byte — the version-patch trick the
 //      legacy tests use goes through test-utils' patchFormatVersion, which
 //      drops the byte for pre-58 targets.
-const FORMAT_VERSION = 58;
+const FORMAT_VERSION = 59;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
 // + 4Ã—float32 = 22
 // Optionally followed by parentGroupIdIdx(u16) and preGroupNameIdx(u16)
 const GROUP_RECORD_BASE_SIZE = 2 + 2 + 1 + 1 + 4 + 4 + 4 + 4; // 22 bytes
+// v59: GROUP MEMBERS KEEP THEIR NAMES. No layout change. Grouping no longer
+//      clears a member's `name` into `preGroupName` (nor writes the group's
+//      name onto the first member); a v59+ file never carries the stash.
+//      Files up to v58 are folded on read (legacyGroupNames): a grouped
+//      leaf's own name is its `preGroupName`.
 
 // Image mime ↔ byte (v56 grew svg=2 — see the v56 changelog note). One pair
 // of helpers for the per-image byte and its per-blob copy, so they can't
@@ -4061,6 +4067,11 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       patternObjects.push(p);
     }
   }
+
+  // Up to v58 grouping stashed a member's own name in `preGroupName` and
+  // cleared `name`; fold it back so every reader asks `name` alone. The
+  // layout is unchanged — v59 marks only that its writer never stashes.
+  foldLegacyGroupNames(version, [figures, svgObjects, images, texts, paintObjects, patternObjects], groups);
 
   // Drop GroupNodes whose subtree carries no surviving leaf members.
   // Older save paths could leave orphans behind when the last member of a

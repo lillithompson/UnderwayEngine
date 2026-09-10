@@ -353,7 +353,6 @@ export function buildUnionEntry(
         figureIds: [figureId, result.id],
         groupId: `grp_${Date.now()}_un`,
         groupName: nextGroupName(withFigure.figures),
-        oldNames: [tiled.name, result.name],
       }]);
       // Flag the result as a pattern fill (its solid fillColor — inherited from
       // the top-most shape — is preserved as the tile background).

@@ -237,7 +237,7 @@ describe('set-mask confirm op sequence (groupFigures + setMaskMode)', () => {
     const state = fullState([mask], [figA]);
 
     const entry: CompUndoEntry = [
-      { op: 'groupFigures', figureIds: ['svg_mask', 'figA'], groupId: 'g1', groupName: 'Group 1', oldNames: [undefined, undefined] },
+      { op: 'groupFigures', figureIds: ['svg_mask', 'figA'], groupId: 'g1', groupName: 'Group 1' },
       { op: 'setMaskMode', svgId: 'svg_mask', oldValue: undefined, newValue: true },
     ];
 
@@ -275,7 +275,7 @@ describe('edit-mask confirm op sequence (full re-pick: ungroup + move + regroup)
 
     // Existing mask group g1 = { mask, figA, figB }.
     const snapshot = applyCompOps(base, [
-      { op: 'groupFigures', figureIds: ['svg_mask', 'figA', 'figB'], groupId: 'g1', groupName: 'Group 1', oldNames: [undefined, undefined, undefined] },
+      { op: 'groupFigures', figureIds: ['svg_mask', 'figA', 'figB'], groupId: 'g1', groupName: 'Group 1' },
       { op: 'setMaskMode', svgId: 'svg_mask', oldValue: undefined, newValue: true },
     ]);
 
@@ -295,7 +295,7 @@ describe('edit-mask confirm op sequence (full re-pick: ungroup + move + regroup)
     const entry: CompUndoEntry = [
       ungroupOp,
       moveOp,
-      { op: 'groupFigures', figureIds: ['svg_mask', ...overlapIds], groupId: 'g2', groupName: 'Group 2', oldNames: [undefined, undefined] },
+      { op: 'groupFigures', figureIds: ['svg_mask', ...overlapIds], groupId: 'g2', groupName: 'Group 2' },
       { op: 'setMaskMode', svgId: 'svg_mask', oldValue: true, newValue: true },
     ];
     const final = applyCompOps(snapshot, entry);

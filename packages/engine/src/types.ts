@@ -425,6 +425,9 @@ export interface CompositionFigure {
   tileOffsetXL0?: number;
   tileOffsetYL0?: number;
   groupId?: string;
+  /** LEGACY, never set in memory: a group member's own name as files written
+   *  before v59 stashed it (grouping then cleared `name`). The reader folds
+   *  it back into `name` on load (legacyGroupNames) and nothing sets it since. */
   preGroupName?: string;
   /**
    * Local transform of this member within its group, expressed in the
@@ -478,6 +481,7 @@ export interface GroupNode {
   id: string;
   name: string;
   parentGroupId?: string;
+  /** Legacy, folded into `name` on load — see CompositionFigure.preGroupName. */
   preGroupName?: string;
   translateX: number;
   translateY: number;
@@ -668,6 +672,7 @@ export interface SVGObject {
    *  color. Created by join of different-colored objects. */
   subpaths?: SVGSubpath[];
   groupId?: string;
+  /** Legacy, folded into `name` on load — see CompositionFigure.preGroupName. */
   preGroupName?: string;
   locked?: boolean;
   /** When true, the object is not rendered on the canvas and not
@@ -998,6 +1003,7 @@ export interface ImageObject {
    *  hit-testable. Toggled via the eye icon in the Scene Outline. */
   hidden?: boolean;
   groupId?: string;
+  /** Legacy, folded into `name` on load — see CompositionFigure.preGroupName. */
   preGroupName?: string;
   /** Pre-group-transform bbox; only set while groupId is set. */
   localCellX?: number;
@@ -1065,6 +1071,7 @@ export interface PaintObject {
   locked?: boolean;
   hidden?: boolean;
   groupId?: string;
+  /** Legacy, folded into `name` on load — see CompositionFigure.preGroupName. */
   preGroupName?: string;
   /** Pre-group-transform bbox; only set while groupId is set. */
   localCellX?: number;
@@ -1173,6 +1180,7 @@ export interface PatternObject {
   locked?: boolean;
   hidden?: boolean;
   groupId?: string;
+  /** Legacy, folded into `name` on load — see CompositionFigure.preGroupName. */
   preGroupName?: string;
   /** Pre-group-transform bbox; only set while groupId is set. */
   localCellX?: number;
@@ -1442,6 +1450,7 @@ export interface TextObject {
   locked?: boolean;
   hidden?: boolean;
   groupId?: string;
+  /** Legacy, folded into `name` on load — see CompositionFigure.preGroupName. */
   preGroupName?: string;
   /** Pre-group-transform bbox; only set while groupId is set. */
   localCellX?: number;
@@ -1709,7 +1718,7 @@ export type CompUndoOp =
       newResolutionX: number; newResolutionY: number;
       oldCellWidth?: number; oldCellHeight?: number;
       newCellWidth?: number; newCellHeight?: number }
-  | { op: 'groupFigures'; figureIds: string[]; groupId: string; groupName: string; oldNames: (string | undefined)[]; childGroupIds?: string[]; isFrame?: boolean }
+  | { op: 'groupFigures'; figureIds: string[]; groupId: string; groupName: string; childGroupIds?: string[]; isFrame?: boolean }
   | { op: 'ungroupFigures'; figureIds: string[]; groupId: string; groupName: string; childGroupIds?: string[];
       /** Saved transform so undo can restore the group at its pre-ungroup state
        *  instead of recreating it at identity. */

@@ -524,7 +524,6 @@ describe('groupFigures op clusters sceneOrder', () => {
       figureIds: ['a', 'c'],
       groupId: 'g1',
       groupName: 'My Group',
-      oldNames: [undefined, undefined],
     }];
     const grouped = applyCompOps(state, entry);
     // a and c are now group members; they cluster at a's anchor index 0.

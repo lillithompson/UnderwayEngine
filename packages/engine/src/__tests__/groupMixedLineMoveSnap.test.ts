@@ -120,7 +120,6 @@ function buildAndDuplicateMixed(): {
   let state = makeState({ svgObjects: [svgArc, svgLine] });
   state = applyCompOps(state, [{
     op: 'groupFigures', figureIds: ['svg_2', 'svg_1'], groupId: 'g1', groupName: 'G',
-    oldNames: [undefined, undefined],
   }]);
 
   // Duplicate flow: cloneWithOffset(dx, dy) per kind, placeObject,
@@ -133,8 +132,7 @@ function buildAndDuplicateMixed(): {
   const ops: CompUndoEntry = [
     { op: 'placeObject', kind: 'svg', item: dupLine },
     { op: 'placeObject', kind: 'svg', item: dupArc },
-    { op: 'groupFigures', figureIds: ['svg_dup_line', 'svg_dup_arc'], groupId: 'g_dup', groupName: 'G copy',
-      oldNames: [undefined, undefined] },
+    { op: 'groupFigures', figureIds: ['svg_dup_line', 'svg_dup_arc'], groupId: 'g_dup', groupName: 'G copy' },
   ];
   state = applyCompOps(state, ops);
   return { state, dupArcId: 'svg_dup_arc', dupLineId: 'svg_dup_line', dupGroupId: 'g_dup' };
@@ -150,7 +148,6 @@ function buildAndDuplicateArcOnly(): {
   let state = makeState({ svgObjects: [a1, a2] });
   state = applyCompOps(state, [{
     op: 'groupFigures', figureIds: ['svg_1', 'svg_2'], groupId: 'g1', groupName: 'G',
-    oldNames: [undefined, undefined],
   }]);
   const svgAdapter = SCENE_ADAPTERS.find(a => a.kind === 'svg')!;
   const dup1 = svgAdapter.cloneWithOffset(state.svgObjects[0], 1, 1, 'svg_dup_1', 'g_dup') as SVGObject;
@@ -158,8 +155,7 @@ function buildAndDuplicateArcOnly(): {
   state = applyCompOps(state, [
     { op: 'placeObject', kind: 'svg', item: dup1 },
     { op: 'placeObject', kind: 'svg', item: dup2 },
-    { op: 'groupFigures', figureIds: ['svg_dup_1', 'svg_dup_2'], groupId: 'g_dup', groupName: 'G copy',
-      oldNames: [undefined, undefined] },
+    { op: 'groupFigures', figureIds: ['svg_dup_1', 'svg_dup_2'], groupId: 'g_dup', groupName: 'G copy' },
   ]);
   return { state, dupArcId: 'svg_dup_1', dupGroupId: 'g_dup' };
 }

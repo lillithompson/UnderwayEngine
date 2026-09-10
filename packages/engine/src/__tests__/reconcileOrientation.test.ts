@@ -331,7 +331,6 @@ describe('reconcileGroupLocals — orientation correction', () => {
       figureIds: ['line1'],
       groupId: 'parent',
       groupName: 'Parent Group',
-      oldNames: [undefined],
       childGroupIds: ['rug'],
     }];
     state = applyCompOps(state, groupEntry);

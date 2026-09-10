@@ -198,7 +198,6 @@ describe('groupbug2.tile: partial marquee + Group preserves nested-group members
       figureIds,
       groupId: outerId,
       groupName: 'Outer',
-      oldNames: figureIds.map(id => state.svgObjects.find(s => s.id === id)?.name),
       childGroupIds,
     }];
     const next = applyCompOps(state, op);
