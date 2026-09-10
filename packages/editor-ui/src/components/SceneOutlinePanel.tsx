@@ -316,10 +316,18 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                     >
                       <MaterialCommunityIcons name={icon(glyph)} size={18} color={OUTLINE_ICON} />
                     </View>
+                    {/* Long-press renames EVERY row, locked ones included: a
+                        name is a label, not the artwork, and the lock holds
+                        the canvas. A locked row used to get no long-press at
+                        all, which is how a group — locked, as groups are, so
+                        their layout holds — was the one row that never
+                        opened the rename dialog. The host decides what a
+                        locked rename commits (the shell forces it through
+                        its lock guard). */}
                     <Pressable
                       style={styles.rowContent}
                       onPress={handlePress}
-                      onLongPress={locked ? undefined : () => setRenaming({ id: row.id, name: displayName })}
+                      onLongPress={() => setRenaming({ id: row.id, name: displayName })}
                       delayLongPress={400}
                     >
                       <Text
