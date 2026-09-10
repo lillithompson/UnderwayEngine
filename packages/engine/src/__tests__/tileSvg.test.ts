@@ -57,4 +57,17 @@ describe('buildTileSvgDataUri', () => {
     expect(svg).toContain('stroke="white"');
   });
 
+  it('redraws every authored stroke-width at the requested one; absent, the authored width stands', () => {
+    const two = content + '<circle r="4" stroke="white" stroke-width="10"/>';
+    const svg = decode(buildTileSvgDataUri(two, 22, 'rgb(255,0,0)', 24));
+    expect(svg.match(/stroke-width="24"/g)).toHaveLength(2);
+    expect(svg).not.toContain('stroke-width="10"');
+    expect(svg).toContain('stroke="rgb(255,0,0)"');
+    expect(decode(buildTileSvgDataUri(two, 22, 'rgb(255,0,0)'))).toContain('stroke-width="10"');
+    // A width is part of the bake's identity: the same content at two
+    // widths is two data-URIs, and one width twice is the cached one.
+    expect(buildTileSvgDataUri(two, 22, 'white', 24)).not.toBe(buildTileSvgDataUri(two, 22, 'white'));
+    expect(buildTileSvgDataUri(two, 22, 'white', 24)).toBe(buildTileSvgDataUri(two, 22, 'white', 24));
+  });
+
 });
