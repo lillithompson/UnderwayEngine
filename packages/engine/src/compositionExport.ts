@@ -2,7 +2,7 @@ import { CompositionFigure, CompositionState, Paint, RGBColor, SVGObject } from 
 import type { PaintInk } from './imagePaintOverlay';
 import { loadCompositionState, loadFileStateLite, loadClipBox } from './persistence';
 import { loadBakedFigurePng } from './bake';
-import { rasterizeSvgToJpegDataUri, rasterizeSvgToPngDataUri } from './svgRasterize';
+import { rasterizeSvgToImageDataUri, rasterizeSvgToJpegDataUri, rasterizeSvgToPngDataUri } from './svgRasterize';
 import {
   generateCompositionSVGCore,
   type CompositionFigureLoadResult,
@@ -284,9 +284,9 @@ export interface SizedRasterExport {
   height: number;
 }
 
-/** Frame the export, then encode it — the one body behind all four raster
- *  exporters below, so the framing rules (aspect fit, "nothing to draw" →
- *  null) cannot differ between PNG and JPEG. */
+/** Frame the export, then encode it — the one body behind every raster
+ *  exporter below, so the framing rules (aspect fit, "nothing to draw" →
+ *  null) cannot differ between PNG, JPEG and the encoder-by-alpha export. */
 async function exportCompositionRaster(
   compId: string,
   maxDimension: number,
@@ -365,6 +365,37 @@ export async function exportCompositionJPEGSized(
 ): Promise<SizedRasterExport | null> {
   return exportCompositionRaster(compId, maxDimension, strokeScale, options, (svg, w, h) =>
     rasterizeSvgToJpegDataUri(svg, w, h, quality));
+}
+
+/**
+ * Export the composition as the raster its pixels call for: a PNG data URI,
+ * alpha intact, when the frame has any transparency; a JPEG at
+ * `jpegQuality` (0..1) when it is opaque edge to edge — see
+ * {@link rasterizeSvgToImageDataUri}. Framed exactly as the PNG and JPEG
+ * exporters frame it. Read the mime off the data URI.
+ */
+export async function exportCompositionImage(
+  compId: string,
+  maxDimension: number,
+  jpegQuality: number,
+  strokeScale?: number,
+  options?: CompositionExportOptions,
+): Promise<string | null> {
+  const sized = await exportCompositionImageSized(compId, maxDimension, jpegQuality, strokeScale, options);
+  return sized?.dataUri ?? null;
+}
+
+/** {@link exportCompositionImage}, returning the raster's pixel dimensions
+ *  alongside the data URI, as {@link exportCompositionPNGSized} does. */
+export async function exportCompositionImageSized(
+  compId: string,
+  maxDimension: number,
+  jpegQuality: number,
+  strokeScale?: number,
+  options?: CompositionExportOptions,
+): Promise<SizedRasterExport | null> {
+  return exportCompositionRaster(compId, maxDimension, strokeScale, options, (svg, w, h) =>
+    rasterizeSvgToImageDataUri(svg, w, h, jpegQuality));
 }
 
 /**

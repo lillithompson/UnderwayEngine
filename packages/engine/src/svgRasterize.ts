@@ -20,6 +20,8 @@
  * and not merely `load` before it draws. See _rasterizeInner.
  */
 
+import { canvasHasTransparency } from './canvasAlpha';
+
 let _pooledCanvas: HTMLCanvasElement | null = null;
 let _pooledImg: HTMLImageElement | null = null;
 
@@ -81,6 +83,30 @@ export function rasterizeSvgToPngDataUri(
 ): Promise<string | null> {
   const job = _queue.then(() => _rasterizeInner(svg, width, height, false, (canvas) =>
     canvas.toDataURL('image/png')));
+  _queue = job.catch(() => {});
+  return job;
+}
+
+/**
+ * Rasterize an SVG to the data URI its own pixels call for: PNG, alpha
+ * intact, when any pixel of the frame is short of opaque (exactly
+ * {@link rasterizeSvgToPngDataUri}); JPEG at `jpegQuality` (0..1) when the
+ * frame is opaque edge to edge, where PNG is only bytes — a page that is
+ * one photo on a mat encodes to a fraction of the size, and nothing is
+ * flattened that was not already flat. The frame is probed after the draw
+ * (canvasAlpha.ts), never guessed from the document. Read the mime off the
+ * result.
+ */
+export function rasterizeSvgToImageDataUri(
+  svg: string,
+  width: number,
+  height: number,
+  jpegQuality: number,
+): Promise<string | null> {
+  const job = _queue.then(() => _rasterizeInner(svg, width, height, false, (canvas, ctx) =>
+    canvasHasTransparency(ctx, width, height)
+      ? canvas.toDataURL('image/png')
+      : canvas.toDataURL('image/jpeg', jpegQuality)));
   _queue = job.catch(() => {});
   return job;
 }

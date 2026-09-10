@@ -1,5 +1,6 @@
 import { ImageObject } from './types';
 import { compSnapStep } from './compositionCellMath';
+import { canvasHasTransparency } from './canvasAlpha';
 
 /**
  * Reference-image import pipeline. Decodes a picked PNG/JPG (a picked SVG
@@ -83,31 +84,19 @@ function mintImageNodeId(): string {
 }
 
 /**
- * Detect whether a decoded bitmap has any non-opaque pixels. Sampled —
- * we don't decode every pixel, just a sparse grid. Photographs almost
- * never have alpha; UI screenshots and PNG icons usually do. Used to
- * pick the re-encode format (PNG to preserve transparency, JPEG
- * otherwise).
+ * Detect whether a decoded bitmap has any non-opaque pixels. Photographs
+ * almost never have alpha; UI screenshots and PNG icons usually do. Used to
+ * pick the re-encode format (PNG to preserve transparency, JPEG otherwise).
+ * Every pixel is read (canvasAlpha.ts): a sampled grid used to stand in,
+ * and a stray transparent region between its points went to JPEG and lost
+ * its transparency for good.
  */
 function bitmapHasAlpha(bitmap: ImageBitmap): boolean {
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
   const ctx = canvas.getContext('2d');
   if (!ctx) return true;
   ctx.drawImage(bitmap, 0, 0);
-  const w = bitmap.width;
-  const h = bitmap.height;
-  // 16×16 grid of sample points keeps cost O(256) regardless of image
-  // size. False positives (alpha=255 sampled but a stray semi-transparent
-  // pixel exists elsewhere) just downgrade JPEG → PNG, which is safe.
-  const stepX = Math.max(1, Math.floor(w / 16));
-  const stepY = Math.max(1, Math.floor(h / 16));
-  for (let y = 0; y < h; y += stepY) {
-    for (let x = 0; x < w; x += stepX) {
-      const px = ctx.getImageData(x, y, 1, 1).data;
-      if (px[3] < 255) return true;
-    }
-  }
-  return false;
+  return canvasHasTransparency(ctx, bitmap.width, bitmap.height);
 }
 
 /**

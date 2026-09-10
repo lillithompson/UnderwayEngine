@@ -1,4 +1,4 @@
-import { rasterizeSvgToPixels } from '../svgRasterize';
+import { rasterizeSvgToImageDataUri, rasterizeSvgToPixels } from '../svgRasterize';
 
 // Mock global Image for web path.
 //
@@ -43,6 +43,7 @@ const mockCanvas = {
   width: 0,
   height: 0,
   getContext: jest.fn((): any => mockCtx),
+  toDataURL: jest.fn((type: string, quality?: number) => `data:${type};q=${quality ?? ''};base64,AA==`),
 };
 
 // Mock document.createElement to return our mock canvas
@@ -57,6 +58,7 @@ describe('rasterizeSvgToPixels', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockImageData.data.fill(255);
+    mockCtx.getImageData.mockImplementation(() => mockImageData);
     mockCanvas.getContext.mockReturnValue(mockCtx);
     drawnFrames.length = 0;
     decodeFails = false;
@@ -177,5 +179,47 @@ describe('rasterizeSvgToPixels', () => {
 
     expect(r1).toBeNull();
     expect(r2).toBeInstanceOf(Uint8Array);
+  });
+});
+
+describe('rasterizeSvgToImageDataUri', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockImageData.data.fill(255);
+    mockCtx.getImageData.mockImplementation(() => mockImageData);
+    mockCanvas.getContext.mockReturnValue(mockCtx);
+    decodeFails = false;
+  });
+
+  test('a frame opaque edge to edge encodes as JPEG at the given quality', async () => {
+    const uri = await rasterizeSvgToImageDataUri('<svg>photo on a mat</svg>', 4, 4, 0.9);
+    expect(uri).toBe('data:image/jpeg;q=0.9;base64,AA==');
+    expect(mockCanvas.toDataURL).toHaveBeenCalledWith('image/jpeg', 0.9);
+    // Probed from the drawn pixels: the whole frame, after the draw.
+    expect(mockCtx.getImageData).toHaveBeenCalledWith(0, 0, 4, 4);
+    expect(mockCtx.drawImage.mock.invocationCallOrder[0]).toBeLessThan(mockCtx.getImageData.mock.invocationCallOrder[0]);
+  });
+
+  test('one translucent pixel keeps the PNG, alpha intact', async () => {
+    mockImageData.data[4 * 4 * 4 - 1] = 254;
+    const uri = await rasterizeSvgToImageDataUri('<svg>strokes on nothing</svg>', 4, 4, 0.9);
+    expect(uri).toBe('data:image/png;q=;base64,AA==');
+    expect(mockCanvas.toDataURL).toHaveBeenCalledWith('image/png');
+  });
+
+  test('draws on a transparent canvas — no white flood under the probe', async () => {
+    // The JPEG exporter floods white before drawing; this one must not, or
+    // every frame would probe opaque.
+    const fillRect = jest.fn();
+    mockCanvas.getContext.mockReturnValue({ ...mockCtx, fillRect });
+    await rasterizeSvgToImageDataUri('<svg></svg>', 4, 4, 0.9);
+    expect(fillRect).not.toHaveBeenCalled();
+  });
+
+  test('releases the backing store and reports null on failure like its siblings', async () => {
+    mockCanvas.getContext.mockReturnValueOnce(null);
+    expect(await rasterizeSvgToImageDataUri('<svg></svg>', 4, 4, 0.9)).toBeNull();
+    expect(mockCanvas.width).toBe(0);
+    expect(mockCanvas.height).toBe(0);
   });
 });
