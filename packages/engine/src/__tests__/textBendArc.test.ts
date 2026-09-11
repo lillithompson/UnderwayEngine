@@ -266,6 +266,52 @@ function roundTrip(bundle: CompositionBundle) {
   return deserializeComposition(serializeComposition(bundle, []));
 }
 
+describe('a content-framed export contains the bow', () => {
+  // The journal's page raster frames on the ink (frameInkExtents), and the
+  // bow is glyphs hanging outside the text's box: framed on the box alone
+  // it was cut off at the flat baseline's edge.
+  const viewBoxOf = (svg: string | null): number[] =>
+    /viewBox="([^"]+)"/.exec(svg!)![1].split(' ').map(Number);
+
+  const exportFramed = (bend: number) => generateCompositionSVGCore(
+    makeInputs({
+      texts: [makeText({ style: style({ bend }) })],
+      sceneOrder: ['txt_1'],
+      frameInkExtents: true,
+    }),
+  );
+
+  test('the frame grows by the bow, above and below, and a flat block’s frame is untouched', async () => {
+    const [flatX, flatY, flatW, flatH] = viewBoxOf(await exportFramed(0));
+    const [bentX, bentY, bentW, bentH] = viewBoxOf(await exportFramed(0.5));
+    // The rise for the full box width — what the bow reaches (textBendRise).
+    const rise = textArcGeometry(8, 0.5).rise;
+    expect(rise).toBeGreaterThan(0);
+    // Outset on every side (the bow leaves the box on the bend's side; the
+    // frame errs outward rather than guessing which).
+    const u = (bentW - flatW) / 2;
+    expect(u).toBeGreaterThan(0);
+    expect(bentH - flatH).toBeCloseTo(bentW - flatW, 6);
+    expect(flatX - bentX).toBeCloseTo(u, 6);
+    expect(flatY - bentY).toBeCloseTo(u, 6);
+  });
+
+  test('a bend of 0 frames exactly as an unbent block does — no frame moves that did not have to', async () => {
+    const zero = viewBoxOf(await exportFramed(0));
+    const absent = viewBoxOf(await generateCompositionSVGCore(makeInputs({
+      texts: [makeText()], sceneOrder: ['txt_1'], frameInkExtents: true,
+    })));
+    expect(zero).toEqual(absent);
+  });
+
+  test('a negative bend bows the other way and frames just as wide', async () => {
+    const up = viewBoxOf(await exportFramed(0.5));
+    const down = viewBoxOf(await exportFramed(-0.5));
+    expect(down[2]).toBeCloseTo(up[2], 6);
+    expect(down[3]).toBeCloseTo(up[3], 6);
+  });
+});
+
 describe('bend binary round-trip (v57)', () => {
   test('bend survives the file, both signs', () => {
     for (const bend of [0.75, -0.4]) {

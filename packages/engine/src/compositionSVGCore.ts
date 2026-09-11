@@ -658,18 +658,27 @@ function textPaintOutset(text: TextObject): number {
     const pos = fx.border.position ?? 'center';
     out = Math.max(out, pos === 'outside' ? fx.border.width : pos === 'center' ? fx.border.width / 2 : 0);
   }
-  const bend = textBend(text.style);
-  if (bend !== 0) {
-    // A bent block bows every line off its flat baseline by the widest
-    // line's rise (textArcPaths: concentric rings, one rise for all); a
-    // cutout framed to the flat box would crop the bow. The widest a line
-    // can be is the content box width, and rise grows with width, so
-    // measuring the arc at the full box width bounds the block — erring
-    // outward, like the rest of this function.
-    const content = contentBoxCells(text);
-    if (content.width > 0) out += textArcGeometry(content.width, bend).rise;
-  }
+  out += textBendRise(text);
   return out;
+}
+
+/**
+ * How far a bent block bows off its flat baseline, in cells — 0 for
+ * unbent text. Every line rises by the widest line's amount (textArcPaths
+ * draws them as concentric rings, one rise for all), and the widest a line
+ * can be is the content box, so measuring the arc at the full box width
+ * bounds the block, erring outward.
+ *
+ * The bow is GLYPHS, not decoration: it leaves the node's box, so any
+ * frame measured from that box alone cuts the bent text off. Both framing
+ * paths add it — the cutout through {@link textPaintOutset}, the page
+ * export directly (see the bounds walk).
+ */
+function textBendRise(text: TextObject): number {
+  const bend = textBend(text.style);
+  if (bend === 0) return 0;
+  const content = contentBoxCells(text);
+  return content.width > 0 ? textArcGeometry(content.width, bend).rise : 0;
 }
 
 /** Rotate (x, y) clockwise by `deg` about (cx, cy) in the y-down world frame —
@@ -1112,9 +1121,14 @@ export async function generateCompositionSVGCore(
     }
     // Same rotation story as images: both transforms spin about the box
     // center in the markup (buildTextSVGContent), so the frame follows the
-    // rotated corners.
+    // rotated corners — grown first by a bend's bow, which is glyphs
+    // hanging outside the box (textBendRise). Without it a content-framed
+    // page export (the journal's) cut bent text off at the flat box: the
+    // rest of this branch stays the node bbox, so an unbent text's frame is
+    // exactly where it always was.
+    const bow = textBendRise(txt);
     const r = rotatedRectAabb(
-      txt.cellX, txt.cellY, txt.cellX + txt.cellWidth, txt.cellY + txt.cellHeight,
+      txt.cellX - bow, txt.cellY - bow, txt.cellX + txt.cellWidth + bow, txt.cellY + txt.cellHeight + bow,
       (txt.angleDeg ?? 0) + (txt.rotation ?? 0),
       txt.cellX + txt.cellWidth / 2, txt.cellY + txt.cellHeight / 2,
     );
