@@ -302,7 +302,14 @@ interface BboxOnlyNode extends SceneNodeBase {
  *  untouched — co-axial rotations compose — so only mirrors call this. */
 export function mirroredAngleDeg(angleDeg: number | undefined): number | undefined {
   if (!angleDeg) return undefined;
-  const a = ((-angleDeg % 360) + 360) % 360;
+  return normalizeAngleDeg(-angleDeg);
+}
+
+/** A free rotation in the stored form: degrees in [0, 360), `undefined`
+ *  at zero (setNodeRotation's convention). */
+export function normalizeAngleDeg(angleDeg: number | undefined): number | undefined {
+  if (!angleDeg) return undefined;
+  const a = ((angleDeg % 360) + 360) % 360;
   return a === 0 ? undefined : a;
 }
 

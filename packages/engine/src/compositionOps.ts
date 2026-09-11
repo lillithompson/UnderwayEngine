@@ -3,7 +3,7 @@ import { mintPaintObjectId, paintObjectAlphaHitTest } from './paintObject';
 import { mintPatternObjectId, applyPatternCellEdits } from './patternObject';
 import { lineHitsCell as svgHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
-import { GEOMETRY_ADAPTERS, mirroredAngleDeg, rescaleSegs } from './sceneNodeGeometry';
+import { GEOMETRY_ADAPTERS, mirroredAngleDeg, normalizeAngleDeg, rescaleSegs } from './sceneNodeGeometry';
 import { nextGroupName } from './sceneOutlineHelpers';
 import { svgPathHitsPoint, computeHitToleranceCells } from './compositionPathHitTest';
 import { buildActiveMaskMap, getAncestorMasks, getGroupMaskChain, pointPassesMasks, clipRectToNodeMasks, getNodeClipMasks } from './compositionMask';
@@ -1586,10 +1586,18 @@ export function translateNodeByDelta(
   // Find which array contains the node and use the matching adapter.
   for (const sceneAdapter of SCENE_ADAPTERS) {
     const arr = sceneAdapter.getArray(state);
-    if (!arr.some((x: any) => x.id === nodeId)) continue;
+    const item = arr.find((x: any) => x.id === nodeId) as { groupId?: string } | undefined;
+    if (!item) continue;
     const geoAdapter = GEOMETRY_ADAPTERS[sceneAdapter.kind];
-    const updated = arr.map((item: any) => item.id === nodeId ? geoAdapter.translate(item, dx, dy) : item);
-    return sceneAdapter.setArray(state, updated);
+    const updated = arr.map((x: any) => x.id === nodeId ? geoAdapter.translate(x, dx, dy) : x);
+    const next = sceneAdapter.setArray(state, updated);
+    // A member of a transformed group: the adapter shifted its locals by
+    // the WORLD delta, which is only right under an identity chain — in a
+    // rotated, flipped or scaled frame the local delta is the world one
+    // inverted through the chain, and locals left on the world delta
+    // jumped the node on the frame's next transform. Re-derive the group's
+    // locals from world (the reconcile), which is exact for every kind.
+    return item.groupId ? reconcileGroupLocalsForGroups(next, new Set([item.groupId])) : next;
   }
   return state;
 }
@@ -3040,6 +3048,7 @@ function setLeafGroupId(
   const clearBbox = {
     groupId: undefined, localCellX: undefined, localCellY: undefined,
     localCellWidth: undefined, localCellHeight: undefined,
+    localRotation: undefined, localMirrorH: undefined, localMirrorV: undefined, localAngleDeg: undefined,
   } as const;
   const clearSvg = { ...clearBbox, localSegments: undefined, localSubpaths: undefined } as const;
   const clearPattern = {
@@ -3176,11 +3185,7 @@ function reconcileGroupLocalsForGroups(
   });
   // Bbox-only kinds (images, texts, paint islands) reconcile identically:
   // inverse the bbox through the chain into `localCell*`, nothing else.
-  const reconcileBboxLocals = <T extends {
-    groupId?: string;
-    cellX: number; cellY: number; cellWidth: number; cellHeight: number;
-    localCellX?: number; localCellY?: number; localCellWidth?: number; localCellHeight?: number;
-  }>(items: readonly T[]): T[] => items.map((i) => {
+  const reconcileBboxLocals = <T extends BboxMemberLocals>(items: readonly T[]): T[] => items.map((i) => {
     if (!i.groupId) return i;
     if (targetGroupIds && !targetGroupIds.has(i.groupId)) return i;
     const chain = groupAncestorChain(state.groups, i.groupId);
@@ -3188,12 +3193,25 @@ function reconcileGroupLocalsForGroups(
     const local = inverseChainedGroupTransform(chain, {
       cellX: i.cellX, cellY: i.cellY, cellWidth: i.cellWidth, cellHeight: i.cellHeight,
     });
+    // Inverse orientation + free rotation, the figure's way: the world
+    // orientation is the truth (a reparent keeps the node looking as it
+    // did), and the snapshot is what re-materializes to it.
+    const orient = inverseChainedOrientation(chain, {
+      rotation: i.rotation ?? 0, mirrorH: i.mirrorH ?? false, mirrorV: i.mirrorV ?? false,
+    });
+    const angle = worldAngleDeg(chain, i.angleDeg);
     if (i.localCellX === local.cellX && i.localCellY === local.cellY &&
-        i.localCellWidth === local.cellWidth && i.localCellHeight === local.cellHeight) return i;
+        i.localCellWidth === local.cellWidth && i.localCellHeight === local.cellHeight &&
+        (i.localRotation ?? 0) === orient.rotation &&
+        (i.localMirrorH ?? false) === orient.mirrorH &&
+        (i.localMirrorV ?? false) === orient.mirrorV &&
+        (i.localAngleDeg ?? undefined) === angle) return i;
     changed = true;
     return { ...i,
       localCellX: local.cellX, localCellY: local.cellY,
       localCellWidth: local.cellWidth, localCellHeight: local.cellHeight,
+      localRotation: orient.rotation, localMirrorH: orient.mirrorH, localMirrorV: orient.mirrorV,
+      localAngleDeg: angle,
     };
   });
   const images = reconcileBboxLocals(state.images ?? []);
@@ -3407,12 +3425,9 @@ function materializeSVGMember(
  *  orientation, mirroring `materializeFigureMember` minus the
  *  quad-transform pass. Returns `null` when the member isn't in the
  *  group, has no local rect, or already matches the derived state. */
-function materializeBboxMember<T extends {
-  groupId?: string;
-  cellX: number; cellY: number; cellWidth: number; cellHeight: number;
-  rotation?: 0 | 90 | 180 | 270; mirrorH?: boolean; mirrorV?: boolean;
-  localCellX?: number; localCellY?: number; localCellWidth?: number; localCellHeight?: number;
-}>(i: T, chain: readonly GroupNode[], groupId: string): T | null {
+function materializeBboxMember<T extends BboxMemberLocals>(
+  i: T, chain: readonly GroupNode[], groupId: string,
+): T | null {
   if (i.groupId !== groupId) return null;
   if (i.localCellX === undefined || i.localCellY === undefined
     || i.localCellWidth === undefined || i.localCellHeight === undefined) return null;
@@ -3420,18 +3435,27 @@ function materializeBboxMember<T extends {
     cellX: i.localCellX, cellY: i.localCellY,
     cellWidth: i.localCellWidth, cellHeight: i.localCellHeight,
   });
-  const local: Orientation = {
-    rotation: i.rotation ?? 0,
-    mirrorH: i.mirrorH ?? false,
-    mirrorV: i.mirrorV ?? false,
-  };
-  const world = composeChainedOrientations(chain, local);
+  // The member's LOCAL orientation — its own turn before the group's —
+  // composed through the chain gives the world one. Reading the world
+  // orientation here instead (as this once did) composed the group's turn
+  // onto an orientation that already carried it: a text in a 90° frame
+  // rendered a quarter turn past its bbox after the frame's next
+  // transform, and a word dropped into a rotated frame turned on the spot
+  // while its box stayed put — off its pixels for the hit test and the
+  // selection box alike. A member without the snapshot (grouped before it
+  // existed) is read the way reconcile would seed it: its world
+  // orientation is the truth as it stands, inverted through the chain so
+  // it re-materializes unchanged.
+  const local = localOrientationOf(i, chain);
+  const world = composeChainedOrientations(chain, local.orientation);
+  const angleDeg = worldAngleDeg(chain, local.angleDeg);
   if (
     i.cellX === w.cellX && i.cellY === w.cellY &&
     i.cellWidth === w.cellWidth && i.cellHeight === w.cellHeight &&
     (i.rotation ?? 0) === world.rotation &&
     (i.mirrorH ?? false) === world.mirrorH &&
-    (i.mirrorV ?? false) === world.mirrorV
+    (i.mirrorV ?? false) === world.mirrorV &&
+    (i.angleDeg ?? undefined) === angleDeg
   ) return null;
   return {
     ...i,
@@ -3440,7 +3464,100 @@ function materializeBboxMember<T extends {
     rotation: world.rotation,
     mirrorH: world.mirrorH,
     mirrorV: world.mirrorV,
+    angleDeg,
   };
+}
+
+/** The group-relative fields a bbox-only member (image / text / paint
+ *  island / pattern) keeps beside its world ones. */
+type BboxMemberLocals = {
+  groupId?: string;
+  cellX: number; cellY: number; cellWidth: number; cellHeight: number;
+  rotation?: 0 | 90 | 180 | 270; mirrorH?: boolean; mirrorV?: boolean; angleDeg?: number;
+  localCellX?: number; localCellY?: number; localCellWidth?: number; localCellHeight?: number;
+  localRotation?: 0 | 90 | 180 | 270; localMirrorH?: boolean; localMirrorV?: boolean; localAngleDeg?: number;
+};
+
+/** True when the chain, taken together, reflects — an odd number of
+ *  mirrors — which is when a free rotation changes sense through it
+ *  (mirroredAngleDeg: M ∘ R(θ) = R(−θ) ∘ M). Quarter turns never do. */
+function chainFlips(chain: readonly GroupNode[]): boolean {
+  const o = composeChainedOrientations(chain, { rotation: 0, mirrorH: false, mirrorV: false });
+  return o.mirrorH !== o.mirrorV;
+}
+
+/** A free rotation carried through the chain: negated when the chain
+ *  flips, else itself — normalized to the `undefined`-at-zero convention. */
+function worldAngleDeg(chain: readonly GroupNode[], localAngleDeg: number | undefined): number | undefined {
+  if (chainFlips(chain)) return mirroredAngleDeg(localAngleDeg);
+  return localAngleDeg ? normalizeAngleDeg(localAngleDeg) : undefined;
+}
+
+/** A bbox member's local orientation + free rotation: its snapshot when
+ *  it has one, else its world orientation inverted through the chain (the
+ *  reconcile seeding — world kept). The inverse of a flip is itself, so
+ *  the angle inverts the way it composes. */
+function localOrientationOf(
+  i: BboxMemberLocals, chain: readonly GroupNode[],
+): { orientation: Orientation; angleDeg: number | undefined } {
+  if (i.localRotation !== undefined || i.localMirrorH !== undefined || i.localMirrorV !== undefined) {
+    return {
+      orientation: { rotation: i.localRotation ?? 0, mirrorH: i.localMirrorH ?? false, mirrorV: i.localMirrorV ?? false },
+      angleDeg: i.localAngleDeg ? normalizeAngleDeg(i.localAngleDeg) : undefined,
+    };
+  }
+  return {
+    orientation: inverseChainedOrientation(chain, {
+      rotation: i.rotation ?? 0, mirrorH: i.mirrorH ?? false, mirrorV: i.mirrorV ?? false,
+    }),
+    angleDeg: worldAngleDeg(chain, i.angleDeg),
+  };
+}
+
+/** The orientation snapshot a bbox member takes on joining a group born
+ *  at identity (local == world). */
+function bboxOrientationSnapshot(i: {
+  rotation?: 0 | 90 | 180 | 270; mirrorH?: boolean; mirrorV?: boolean; angleDeg?: number;
+}): { localRotation: 0 | 90 | 180 | 270; localMirrorH: boolean; localMirrorV: boolean; localAngleDeg: number | undefined } {
+  return {
+    localRotation: i.rotation ?? 0,
+    localMirrorH: i.mirrorH ?? false,
+    localMirrorV: i.mirrorV ?? false,
+    localAngleDeg: i.angleDeg ? normalizeAngleDeg(i.angleDeg) : undefined,
+  };
+}
+
+/** Give every bbox member under `groupId` (its own members and its
+ *  descendants') that has no orientation snapshot one, read from its world
+ *  orientation through the chain AS IT STANDS — called before a group
+ *  transform changes that chain. The snapshot is a derived cache the file
+ *  never carries, so a member written before it existed arrives without
+ *  one; seeded at the moment of the first transform after the load, under
+ *  the old chain, the member keeps its look and then turns with the group
+ *  (seeded under the new chain it would keep its look and stay). */
+function seedBboxSnapshots(state: CompositionState, groupId: string): CompositionState {
+  const under = new Set<string>([groupId, ...descendantGroupIds(state.groups, groupId)]);
+  let changed = false;
+  const seed = <T extends BboxMemberLocals>(items: T[] | undefined): T[] | undefined => items?.map((i) => {
+    if (!i.groupId || !under.has(i.groupId)) return i;
+    if (i.localRotation !== undefined || i.localMirrorH !== undefined || i.localMirrorV !== undefined) return i;
+    const chain = groupAncestorChain(state.groups, i.groupId);
+    if (chain.length === 0) return i;
+    const local = localOrientationOf(i, chain);
+    changed = true;
+    return {
+      ...i,
+      localRotation: local.orientation.rotation,
+      localMirrorH: local.orientation.mirrorH,
+      localMirrorV: local.orientation.mirrorV,
+      localAngleDeg: local.angleDeg,
+    };
+  });
+  const images = seed(state.images);
+  const texts = seed(state.texts);
+  const paintObjects = seed(state.paintObjects);
+  const patternObjects = seed(state.patternObjects);
+  return changed ? { ...state, images, texts, paintObjects, patternObjects } : state;
 }
 
 /** Seed missing LOCAL tile fields on grouped repeat patterns from their
@@ -3487,10 +3604,16 @@ function materializePatternMember(
  * world values.  Called during initial load (via `materializeGroupHierarchy`)
  * and during .tile merge so that both paths produce identical local state.
  */
-export function backfillMissingLocals(
-  figures: CompositionFigure[],
-  svgObjects: SVGObject[],
-): { figures: CompositionFigure[]; svgObjects: SVGObject[] } {
+export function backfillMissingLocals<S extends {
+  figures: CompositionFigure[];
+  svgObjects: SVGObject[];
+  images?: ImageObject[];
+  texts?: TextObject[];
+  paintObjects?: PaintObject[];
+  patternObjects?: PatternObject[];
+  groups?: GroupNode[];
+}>(scene: S): S {
+  const { figures, svgObjects } = scene;
   const newFigures = figures.map((f) => {
     if (!f.groupId) return f;
     const needsLocalCell = f.localCellX === undefined || f.localCellY === undefined || f.localCellWidth === undefined || f.localCellHeight === undefined;
@@ -3544,7 +3667,36 @@ export function backfillMissingLocals(
     return out;
   });
 
-  return { figures: newFigures, svgObjects: newSVGObjects };
+  // The bbox kinds: a grouped image / text / paint island / pattern with
+  // no orientation snapshot takes one from its world orientation as it
+  // stands, inverted through its chain — the file was written before the
+  // snapshot existed (locals are derived caches the binary never
+  // carries), so its world fields are the truth, and the snapshot is what
+  // re-materializes to them (the same seeding seedBboxSnapshots does at
+  // the first transform, for a scene that skipped this pass).
+  const groups = scene.groups ?? [];
+  const backfillBbox = <T extends BboxMemberLocals>(items: T[] | undefined): T[] | undefined => items?.map((i) => {
+    if (!i.groupId) return i;
+    if (i.localRotation !== undefined || i.localMirrorH !== undefined || i.localMirrorV !== undefined) return i;
+    const local = localOrientationOf(i, groupAncestorChain(groups, i.groupId));
+    return {
+      ...i,
+      localRotation: local.orientation.rotation,
+      localMirrorH: local.orientation.mirrorH,
+      localMirrorV: local.orientation.mirrorV,
+      localAngleDeg: local.angleDeg,
+    };
+  });
+
+  return {
+    ...scene,
+    figures: newFigures,
+    svgObjects: newSVGObjects,
+    ...(scene.images ? { images: backfillBbox(scene.images) } : null),
+    ...(scene.texts ? { texts: backfillBbox(scene.texts) } : null),
+    ...(scene.paintObjects ? { paintObjects: backfillBbox(scene.paintObjects) } : null),
+    ...(scene.patternObjects ? { patternObjects: backfillBbox(scene.patternObjects) } : null),
+  };
 }
 
 /**
@@ -3599,9 +3751,7 @@ export function materializeGroupHierarchy(state: CompositionState): CompositionS
     });
   }
 
-  const backfilled = backfillMissingLocals(state.figures, state.svgObjects);
-
-  const migrated = { ...state, groups: newGroups, figures: backfilled.figures, svgObjects: backfilled.svgObjects };
+  const migrated = { ...backfillMissingLocals(state), groups: newGroups };
   return migrated.sceneOrder ? reflowSceneOrderForGroups(migrated) : migrated;
 }
 
@@ -4418,6 +4568,9 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           localCellHeight: s.cellHeight,
         };
       });
+      // The bbox kinds snapshot their orientation + free rotation too (the
+      // group is born at identity, so local == world): materializeBboxMember
+      // composes the group's turn onto THESE, never onto the world fields.
       const images = (state.images ?? []).map((i) => {
         if (!looseIdSet.has(i.id)) return i;
         return {
@@ -4427,6 +4580,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           localCellY: i.cellY,
           localCellWidth: i.cellWidth,
           localCellHeight: i.cellHeight,
+          ...bboxOrientationSnapshot(i),
         };
       });
       const texts = (state.texts ?? []).map((t) => {
@@ -4438,6 +4592,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           localCellY: t.cellY,
           localCellWidth: t.cellWidth,
           localCellHeight: t.cellHeight,
+          ...bboxOrientationSnapshot(t),
         };
       });
       const paints = (state.paintObjects ?? []).map((p) => {
@@ -4449,6 +4604,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           localCellY: p.cellY,
           localCellWidth: p.cellWidth,
           localCellHeight: p.cellHeight,
+          ...bboxOrientationSnapshot(p),
         };
       });
       const patterns = (state.patternObjects ?? []).map((p) => {
@@ -4460,6 +4616,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           localCellY: p.cellY,
           localCellWidth: p.cellWidth,
           localCellHeight: p.cellHeight,
+          ...bboxOrientationSnapshot(p),
           // Repeat patterns snapshot their tile pitch + offset like tiled
           // figures do (the group is born at identity, so local == world):
           // transformGroup materializes from locals, and without these the
@@ -4665,7 +4822,10 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
       // Set the GroupNode's transform to the new* values, then materialize
       // every member's world coords from the updated transform composed
       // with the unchanged local coords.
-      const groups = state.groups.map((g) =>
+      // Members loaded without their orientation snapshot take one under
+      // the chain as it stands, BEFORE it changes (seedBboxSnapshots).
+      const seeded = seedBboxSnapshots(state, op.groupId);
+      const groups = seeded.groups.map((g) =>
         g.id === op.groupId ? {
           ...g,
           translateX: op.newTranslateX, translateY: op.newTranslateY,
@@ -4674,7 +4834,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
           mirrorH: op.newMirrorH, mirrorV: op.newMirrorV,
         } : g
       );
-      return materializeGroupMembers({ ...state, groups }, op.groupId);
+      return materializeGroupMembers({ ...seeded, groups }, op.groupId);
     }
     case 'createSVG':
       return { ...state, svgObjects: [...state.svgObjects, op.svg] };
@@ -5292,7 +5452,8 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
       return { ...state, groups: [...state.groups, op.group] };
     }
     case 'transformGroup': {
-      const groups = state.groups.map((g) =>
+      const seeded = seedBboxSnapshots(state, op.groupId);
+      const groups = seeded.groups.map((g) =>
         g.id === op.groupId ? {
           ...g,
           translateX: op.oldTranslateX, translateY: op.oldTranslateY,
@@ -5301,7 +5462,7 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
           mirrorH: op.oldMirrorH, mirrorV: op.oldMirrorV,
         } : g
       );
-      return materializeGroupMembers({ ...state, groups }, op.groupId);
+      return materializeGroupMembers({ ...seeded, groups }, op.groupId);
     }
     case 'createSVG':
       return applyOp(state, { op: 'removeObject', kind: 'svg', item: op.svg });

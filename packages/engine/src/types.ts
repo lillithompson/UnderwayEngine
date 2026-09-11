@@ -1010,6 +1010,22 @@ export interface ImageObject {
   localCellY?: number;
   localCellWidth?: number;
   localCellHeight?: number;
+  /**
+   * Pre-group-transform orientation and free rotation; only set while
+   * `groupId` is set. World `rotation` / `mirrorH` / `mirrorV` / `angleDeg`
+   * re-derive from these composed with the group chain at materialize
+   * time — the figure's own rule (CompositionFigure.localRotation) — so a
+   * member of a rotated or flipped frame renders, hit-tests and boxes as
+   * its world fields say, and a second transform of the frame does not
+   * compose the frame's turn onto an already-world orientation. Seeded
+   * from the world orientation by grouping (identity group: local =
+   * world), by every reconcile (a reparent, a move inside the group) and
+   * by the load backfill.
+   */
+  localRotation?: 0 | 90 | 180 | 270;
+  localMirrorH?: boolean;
+  localMirrorV?: boolean;
+  localAngleDeg?: number;
   /** Bbox at identity (rotation=0, no mirror). Stored on first
    *  rotate/mirror so repeated transforms pivot around a stable center
    *  and 360° returns to the exact original position. Cleared on move
@@ -1078,6 +1094,11 @@ export interface PaintObject {
   localCellY?: number;
   localCellWidth?: number;
   localCellHeight?: number;
+  /** Pre-group-transform orientation + free rotation; see ImageObject. */
+  localRotation?: 0 | 90 | 180 | 270;
+  localMirrorH?: boolean;
+  localMirrorV?: boolean;
+  localAngleDeg?: number;
   /** Bbox at identity — same stabilization pattern as ImageObject. */
   identityCellX?: number;
   identityCellY?: number;
@@ -1187,6 +1208,11 @@ export interface PatternObject {
   localCellY?: number;
   localCellWidth?: number;
   localCellHeight?: number;
+  /** Pre-group-transform orientation + free rotation; see ImageObject. */
+  localRotation?: 0 | 90 | 180 | 270;
+  localMirrorH?: boolean;
+  localMirrorV?: boolean;
+  localAngleDeg?: number;
   /** Pre-group-transform tile pitch + tile-grid offset (repeat mode); only
    *  set while groupId is set — the same locals a tiled figure keeps, so a
    *  repeat pattern inside a scaled group scales its tile WITH the group
@@ -1457,6 +1483,11 @@ export interface TextObject {
   localCellY?: number;
   localCellWidth?: number;
   localCellHeight?: number;
+  /** Pre-group-transform orientation + free rotation; see ImageObject. */
+  localRotation?: 0 | 90 | 180 | 270;
+  localMirrorH?: boolean;
+  localMirrorV?: boolean;
+  localAngleDeg?: number;
   /** Bbox at identity; same stabilization pattern as `ImageObject`. */
   identityCellX?: number;
   identityCellY?: number;

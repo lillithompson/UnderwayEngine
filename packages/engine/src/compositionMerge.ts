@@ -285,12 +285,12 @@ export async function prepareTileMerge(data: Uint8Array, fileName?: string): Pro
   // Without this, localRotation etc. stay undefined for already-grouped
   // items deserialized from the binary format, causing rotation/mirror
   // corruption when the wrapper group is later transformed.
-  const backfilled = backfillMissingLocals(wrapped.figures, wrapped.svgObjects);
+  const backfilled = backfillMissingLocals(wrapped);
 
   return {
     figures: backfilled.figures,
     svgObjects: backfilled.svgObjects,
-    images: wrapped.images,
+    images: backfilled.images,
     imageBlobs: imgs.blobs,
     groups: wrapped.groups,
     sceneOrder,

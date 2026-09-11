@@ -287,11 +287,13 @@ describe('translateNodeByDelta on text', () => {
   });
 
   test('shifts group-local coords alongside the world bbox', () => {
+    // The group sits at (4,4), so local (1,1) IS world (5,5): a move re-derives
+    // the locals from the world through the group, and they shift with it.
     const txt = makeText('txt_a', {
       cellX: 5, cellY: 5, groupId: 'g1',
       localCellX: 1, localCellY: 1, localCellWidth: 4, localCellHeight: 2,
     });
-    const state = makeState({ texts: [txt], groups: [makeGroup('g1')] });
+    const state = makeState({ texts: [txt], groups: [makeGroup('g1', { translateX: 4, translateY: 4 })] });
     const next = translateNodeByDelta(state, 'txt_a', 2, 3);
     expect(next.texts![0].localCellX).toBe(3);
     expect(next.texts![0].localCellY).toBe(4);

@@ -143,11 +143,12 @@ describe('ungroupFigures keeps the bbox kinds’ world orientation', () => {
   });
 
   test('a pose the group gave the member is kept as well — what was drawn is what stays', () => {
-    // A pattern upright in its locals, inside a group flipped horizontally:
-    // the flip materializes into the member's world flags…
+    // A pattern upright in its locals (its orientation snapshot says so),
+    // inside a group flipped horizontally: the flip materializes into the
+    // member's world flags…
     const s = state({
       groups: [group({ mirrorH: true })],
-      patterns: [pattern({ ...IN_G1 })],
+      patterns: [pattern({ ...IN_G1, localRotation: 0, localMirrorH: false, localMirrorV: false })],
     });
     const flipped = applyCompOps(s, [{
       op: 'transformGroup', groupId: 'g1',
