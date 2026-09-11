@@ -358,12 +358,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       ? [...PATTERN_EDIT_OPTIONS.map((o) => patternActionSubmenu(o.action)), 'stroke' as const]
     // Vectors and patterns together: the one page they share.
     : model.showStrokeOptions ? ['stroke']
-    // A rig's pages — the whole-figure RIG page only; the part pages
-    // (Hands/Feet/Spine/Head) came off the row, their sliders living on as
-    // the host's floating slider modes. Checked before showSvgOptions: a
-    // rig's figure IS an svg object, and the vector pages have nothing to
-    // act on for a baked silhouette.
-    : model.showRigOptions ? RIG_PART_PAGES.map((o) => o.sub)
+    // A rig's pages — the whole-figure TRANSFORM page (the part pages
+    // Hands/Feet/Spine/Head came off the row, their sliders living on as
+    // the host's floating slider modes) and Opacity, the same page an
+    // image opens: a figure fades like any object. Checked before
+    // showSvgOptions: a rig's figure IS an svg object, and the other vector
+    // pages have nothing to act on for a baked silhouette.
+    : model.showRigOptions ? [...RIG_PART_PAGES.map((o) => o.sub), 'opacity' as const]
     : model.showSvgOptions
       ? [
           'stroke',
@@ -558,18 +559,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // re-run this every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showImageEdit, model.showFrameOptions, model.showTextStyle]);
-  // The Opacity page is shared by images, paint islands, and the closed
-  // vector shapes, so it folds away only when the selection is none of
+  // The Opacity page is shared by images, paint islands, the closed vector
+  // shapes and rigs, so it folds away only when the selection is none of
   // those (or the panel hides).
   useEffect(() => {
-    const canOpacity = model.showImageEdit || model.showPaintOptions || svgOpacityable;
+    const canOpacity = model.showImageEdit || model.showPaintOptions || svgOpacityable || model.showRigOptions;
     if ((!model.visible || !canOpacity) && model.opacityOpen) {
       model.onOpacityOpenChange?.(false);
     }
     // model.on* are stable setters; listing the whole model would re-run this
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showImageEdit, model.showPaintOptions, svgOpacityable, model.opacityOpen]);
+  }, [model.visible, model.showImageEdit, model.showPaintOptions, svgOpacityable, model.showRigOptions, model.opacityOpen]);
 
   // Seed the shadow / border drafts from the current effect each time the
   // controls open.
@@ -1090,6 +1091,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       sub: opt.sub,
       onPress: () => openSubmenu(opt.sub),
     }));
+    // …and Opacity: the whole figure's render opacity, the page an image
+    // opens, through the host's same objectOpacity plumbing.
+    typeSpecs.push({ key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') });
   } else if (model.showSvgOptions) {
     // Vector selection: the subtype's own option menu (svgEdit.ts). Every
     // subtype offers Stroke — a path IS its stroke; the closed shapes add Fill.

@@ -18,7 +18,9 @@ export interface RigPartOption {
 }
 
 export const RIG_PART_OPTIONS: readonly RigPartOption[] = [
-  { part: 'rig', label: 'Rig', sub: 'rigRoot' },
+  // The whole figure's page is named for what its sliders do — turn the
+  // figure on its three axes — rather than for the object.
+  { part: 'rig', label: 'Transform', sub: 'rigRoot' },
   { part: 'hands', label: 'Hands', sub: 'rigHands' },
   { part: 'feet', label: 'Feet', sub: 'rigFeet' },
   { part: 'spine', label: 'Spine', sub: 'rigSpine' },

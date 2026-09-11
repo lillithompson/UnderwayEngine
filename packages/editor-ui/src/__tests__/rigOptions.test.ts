@@ -22,21 +22,26 @@ describe('the rig option set', () => {
     // The full table stays — it is the part↔bar/slider pairing the hosts'
     // floating slider modes look joints up through — even though most of
     // its rows no longer open a page.
+    // The whole figure's page is named for what its sliders do (turn it
+    // on three axes), not for the object.
     expect(RIG_PART_OPTIONS.map((o) => o.label))
-      .toEqual(['Rig', 'Hands', 'Feet', 'Spine', 'Head']);
+      .toEqual(['Transform', 'Hands', 'Feet', 'Spine', 'Head']);
     expect(RIG_PART_OPTIONS.map((o) => o.sub))
       .toEqual(['rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead']);
   });
 
-  it('the panel offers ONE page: the whole figure', () => {
+  it('the panel offers the whole-figure page, then Opacity', () => {
     // The part pages (Hands / Feet / Spine / Head) came off the options
     // row; their sliders live on as the floating slider modes. Both panel
-    // sites — the options row and the submenu list — read RIG_PART_PAGES,
-    // never the full table.
-    expect(RIG_PART_PAGES.map((o) => o.label)).toEqual(['Rig']);
+    // sites — the tab row and the page list — read RIG_PART_PAGES, never
+    // the full table, and append the Opacity page an image opens.
+    expect(RIG_PART_PAGES.map((o) => o.label)).toEqual(['Transform']);
     expect(RIG_PART_PAGES.map((o) => o.sub)).toEqual(['rigRoot']);
-    expect(SRC).toContain('RIG_PART_PAGES.map((o) => o.sub)');
+    expect(SRC).toContain("model.showRigOptions ? [...RIG_PART_PAGES.map((o) => o.sub), 'opacity' as const]");
     expect(SRC).toContain('RIG_PART_PAGES.map((opt) => ({');
+    expect(SRC).toContain("typeSpecs.push({ key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') });");
+    // …and the Opacity page stays open for a rig rather than folding away.
+    expect(SRC).toContain('const canOpacity = model.showImageEdit || model.showPaintOptions || svgOpacityable || model.showRigOptions;');
     expect(SRC).not.toContain('RIG_PART_OPTIONS');
   });
 
@@ -141,7 +146,9 @@ describe('the rig option set', () => {
     expect(BAR).toContain("{part === 'rig' && onReset ? (");
     // It says whose reset it is: under three sliders, an unlabelled button
     // would read as resetting those three.
-    expect(BAR).toContain('<ActionRow label="Whole figure" options={RESET_OPTION} onPress={onReset} />');
+    // No label column: on the whole-figure page "Reset" says enough.
+    expect(BAR).toContain('<ActionRow options={RESET_OPTION} onPress={onReset} />');
+    expect(BAR).not.toContain('Whole figure"');
   });
 
   it('makes room for that row on the RIG page, and only there', () => {
@@ -230,7 +237,7 @@ describe('the panel', () => {
     // A rig's figure IS an svg object; the rig branch has to win.
     expect(SRC.indexOf('model.showRigOptions ? ')).toBeLessThan(SRC.indexOf('model.showSvgOptions\n'));
     // …and the carousel's order IS the options row's, not a second copy of it.
-    expect(SRC).toContain('model.showRigOptions ? RIG_PART_PAGES.map((o) => o.sub)');
+    expect(SRC).toContain("model.showRigOptions ? [...RIG_PART_PAGES.map((o) => o.sub), 'opacity' as const]");
   });
 
   it('offers no IK switch anywhere — not on a bar, not as an option', () => {

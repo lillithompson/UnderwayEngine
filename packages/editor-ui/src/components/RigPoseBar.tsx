@@ -3,8 +3,8 @@ import type { RigPart, RigSliderKey } from '../logic/rigEdit';
 import { rigPartSliders } from '../logic/rigEdit';
 import { ActionRow, BarBody, SliderRow } from './effectBar';
 
-// The rig's pose page: one part per tab (RIG · HANDS · FEET · SPINE · HEAD)
-// and a slider per control. The whole figure turns on three axes, the hands
+// The rig's pose page: one part per tab (TRANSFORM — the whole figure —
+// then HANDS · FEET · SPINE · HEAD) and a slider per control. The whole figure turns on three axes, the hands
 // close into fists and roll at the wrist, the feet point or flatten and
 // swivel at the ankle, the spine bends / twists / leans from a centered
 // rest, and the head nods and shakes on its own.
@@ -22,12 +22,12 @@ import { ActionRow, BarBody, SliderRow } from './effectBar';
 // (rigIkStore, off), so the behaviour can be handed back without rebuilding
 // it; nothing in the UI turns it on.
 //
-// RESET lives at the foot of the RIG page, and only there: it puts the WHOLE
-// figure back — rest pose, facing front, every slider at rest — so it belongs
-// on the page about the figure as a whole rather than beside the hands or the
-// spine. Its row says so out loud ("Whole figure"), because a button sitting
-// under three sliders otherwise reads as resetting those three. It renders
-// only when the host wires it, so a locked rig offers none.
+// RESET lives at the foot of the TRANSFORM page, and only there: it puts the
+// WHOLE figure back — rest pose, facing front, every slider at rest — so it
+// belongs on the page about the figure as a whole rather than beside the
+// hands or the spine. Its cell spans the row, no label column ("Reset" on
+// the whole-figure page says enough). It renders only when the host wires
+// it, so a locked rig offers none.
 //
 // The sliders do NOT read the figure's current pose — a hand posed finger
 // by finger has no single "fistness" — so they sit at their rest positions
@@ -64,7 +64,7 @@ export function RigPoseBar({ part, values, onChange, onCommit, onReset }: {
         />
       ))}
       {part === 'rig' && onReset ? (
-        <ActionRow label="Whole figure" options={RESET_OPTION} onPress={onReset} />
+        <ActionRow options={RESET_OPTION} onPress={onReset} />
       ) : null}
     </BarBody>
   );

@@ -321,13 +321,15 @@ export function SegmentedRow<T extends string>({ label, options, value, onChange
  *  state an object is in, so lighting a segment would lie about it. Cells
  *  dim while held, which is the only feedback a stateless control can give. */
 export function ActionRow<T extends string>({ label, options, onPress }: {
-  label: string;
+  /** The 50pt label column; without one the cells span the whole row (the
+   *  rig's Reset, which names itself). */
+  label?: string;
   options: readonly { value: T; label: string; icon?: MCIName }[];
   onPress: (v: T) => void;
 }) {
   return (
     <View style={styles.segmentedRow}>
-      <Text style={styles.segLabel}>{label}</Text>
+      {label ? <Text style={styles.segLabel}>{label}</Text> : null}
       <View style={styles.segmented}>
         {options.map((o) => (
           <Pressable
