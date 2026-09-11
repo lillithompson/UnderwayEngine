@@ -113,6 +113,12 @@ export interface TopBarTool {
    *  colour lives, and the change is answered where it can be seen. Each
    *  new value bounces once; unchanged, nothing moves. */
   swatchBounceKey?: number;
+  /** Bump to make the WHOLE button bounce — the same overshoot spring —
+   *  when the tool was armed from somewhere other than the bar (a floating
+   *  Edit target handing a selected object's tool back to the bar): the
+   *  button is where the armed tool is read, and the arming is answered
+   *  where it can be seen. Each new value bounces once. */
+  bounceKey?: number;
   /** When present it renders instead of the MCI glyph (see above). */
   IconComponent?: ToolIconComponent;
   /** Long press on the button. Facet uses it for sub-mode toggles (line ⇄

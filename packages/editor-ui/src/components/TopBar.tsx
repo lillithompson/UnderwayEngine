@@ -24,16 +24,11 @@ import {
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
-/** The colour tool's live swatch, with the ring pair when armed. It bounces
- *  (ToolModeCapsule's overshoot spring) each time `bounceKey` changes: the
- *  radial's swatch capsule confirms a colour away from the toolbar, and
- *  the swatch — where the colour is read — answers so the change is seen. */
-function SwatchGlyph({ color, active, size, bounceKey }: {
-  color: NonNullable<TopBarModel['tools'][number]['swatchColor']>;
-  active: boolean;
-  size: number;
-  bounceKey: number | undefined;
-}) {
+/** The overshoot spring (ToolModeCapsule's) on a scale value, run once
+ *  each time `bounceKey` takes a new value: shrink to 0.6 and spring back
+ *  past 1. Undefined never bounces; the first value seen is the resting
+ *  key, so mounting with a key set does not bounce either. */
+function useBounceScale(bounceKey: number | undefined): Animated.Value {
   const scale = useRef(new Animated.Value(1)).current;
   const lastKey = useRef(bounceKey);
   useEffect(() => {
@@ -50,6 +45,20 @@ function SwatchGlyph({ color, active, size, bounceKey }: {
     anim.start();
     return () => anim.stop();
   }, [bounceKey, scale]);
+  return scale;
+}
+
+/** The colour tool's live swatch, with the ring pair when armed. It bounces
+ *  (useBounceScale) each time `bounceKey` changes: the radial's swatch
+ *  capsule confirms a colour away from the toolbar, and the swatch — where
+ *  the colour is read — answers so the change is seen. */
+function SwatchGlyph({ color, active, size, bounceKey }: {
+  color: NonNullable<TopBarModel['tools'][number]['swatchColor']>;
+  active: boolean;
+  size: number;
+  bounceKey: number | undefined;
+}) {
+  const scale = useBounceScale(bounceKey);
   return (
     <Animated.View style={[styles.swatchWrap, { transform: [{ scale }] }]}>
       <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden' }}>
@@ -61,6 +70,36 @@ function SwatchGlyph({ color, active, size, bounceKey }: {
           <View style={ring(size + 8, STATE_ACTIVE)} />
         </>
       ) : null}
+    </Animated.View>
+  );
+}
+
+/** One tool's glyph — swatch, app-supplied component, or MCI icon — in a
+ *  wrapper that bounces (useBounceScale) each time the tool's `bounceKey`
+ *  changes: the whole button answers an arming that happened off the bar. */
+function ToolGlyph({ tool, swatchSize }: { tool: TopBarModel['tools'][number]; swatchSize: number }) {
+  const scale = useBounceScale(tool.bounceKey);
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      {tool.swatchColor ? (
+        <SwatchGlyph
+          color={tool.swatchColor}
+          active={tool.active}
+          size={swatchSize}
+          bounceKey={tool.swatchBounceKey}
+        />
+      ) : tool.IconComponent ? (
+        <tool.IconComponent
+          size={ICON_SIZE}
+          color={tool.tint ?? (tool.active ? STATE_ACTIVE : STATE_INACTIVE)}
+        />
+      ) : (
+        <MaterialCommunityIcons
+          name={tool.icon as MCIName}
+          size={ICON_SIZE}
+          color={tool.tint ?? (tool.active ? STATE_ACTIVE : STATE_INACTIVE)}
+        />
+      )}
     </Animated.View>
   );
 }
@@ -108,25 +147,7 @@ export function TopBar({ model }: { model: TopBarModel }) {
             // both — RN suppresses onPress once onLongPress has fired.
             onLongPress={tool.onLongPress}
           >
-            {tool.swatchColor ? (
-              <SwatchGlyph
-                color={tool.swatchColor}
-                active={tool.active}
-                size={swatchSize}
-                bounceKey={tool.swatchBounceKey}
-              />
-            ) : tool.IconComponent ? (
-              <tool.IconComponent
-                size={ICON_SIZE}
-                color={tool.tint ?? (tool.active ? STATE_ACTIVE : STATE_INACTIVE)}
-              />
-            ) : (
-              <MaterialCommunityIcons
-                name={tool.icon as MCIName}
-                size={ICON_SIZE}
-                color={tool.tint ?? (tool.active ? STATE_ACTIVE : STATE_INACTIVE)}
-              />
-            )}
+            <ToolGlyph tool={tool} swatchSize={swatchSize} />
           </Pressable>
         ))}
       </View>
