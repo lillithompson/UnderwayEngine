@@ -174,7 +174,7 @@ function cropRows(mode: ImageFramingMode = 'fill'): number[] {
     case 'crop': return [ROW_SEGMENTED, ROW_SEGMENTED, ROW_SLIDER];
     case 'tile': return [ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER];
     case 'fill':
-    default: return [ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT];
+    default: return [ROW_SEGMENTED, ROW_SLIDER];
   }
 }
 

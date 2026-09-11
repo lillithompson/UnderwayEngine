@@ -87,7 +87,8 @@ describe('submenuHeight (a page’s content area)', () => {
     // The mode row, then the mode's own rows. No resolution caption, no
     // Replace row: both came off the page.
     expect(submenuHeight('crop', { cropMode: 'crop' })).toBe(pageOf([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SLIDER]));
-    expect(submenuHeight('crop', { cropMode: 'fill' })).toBe(pageOf([ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT]));
+    // Fill is the Zoom slider alone: its "drag the artwork" hint came off.
+    expect(submenuHeight('crop', { cropMode: 'fill' })).toBe(pageOf([ROW_SEGMENTED, ROW_SLIDER]));
     expect(submenuHeight('crop', { cropMode: 'fit' })).toBe(pageOf([ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT]));
     expect(submenuHeight('crop', { cropMode: 'tile' })).toBe(pageOf([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER]));
     // A live mode switch resizes the page.

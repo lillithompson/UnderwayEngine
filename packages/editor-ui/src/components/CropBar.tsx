@@ -50,18 +50,17 @@ export function CropBar({ framing, onChange, onCommit }: {
         onChange={(mode) => set({ mode }, true)}
       />
       {framing.mode === 'fill' ? (
-        <>
-          <SliderRow
-            label="Zoom"
-            value={(framing.zoom - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN)}
-            apply={(t, c) => set({ zoom: ZOOM_MIN + t * (ZOOM_MAX - ZOOM_MIN) }, c)}
-            readout={{
-              text: `${Math.round(framing.zoom * 100)}%`,
-              commit: (n) => set({ zoom: Math.min(Math.max(n / 100, ZOOM_MIN), ZOOM_MAX) }, true),
-            }}
-          />
-          <Hint>Drag the artwork on the canvas to reposition it inside the frame.</Hint>
-        </>
+        // Zoom alone: the line that used to say the artwork can be dragged
+        // on the canvas came off — the page is about the frame's settings.
+        <SliderRow
+          label="Zoom"
+          value={(framing.zoom - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN)}
+          apply={(t, c) => set({ zoom: ZOOM_MIN + t * (ZOOM_MAX - ZOOM_MIN) }, c)}
+          readout={{
+            text: `${Math.round(framing.zoom * 100)}%`,
+            commit: (n) => set({ zoom: Math.min(Math.max(n / 100, ZOOM_MIN), ZOOM_MAX) }, true),
+          }}
+        />
       ) : null}
       {framing.mode === 'fit' ? (
         <>

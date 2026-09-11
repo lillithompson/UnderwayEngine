@@ -141,6 +141,7 @@ describe('the pages have no chrome of their own', () => {
     expect(crop).not.toContain("label: 'Replace'");
     expect(crop).not.toContain('<ActionRow');
     expect(crop).not.toContain('onReplace');
+    expect(crop).not.toContain('Drag the artwork');
     expect(crop).not.toContain('pixelSize');
     expect(crop).not.toContain('formatPixelSize');
     // An unlabelled segmented row spans the whole line.
