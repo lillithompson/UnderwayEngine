@@ -24,7 +24,7 @@ import {
   editSheetHeight,
   submenuHeight,
 } from '../logic/submenuHeight';
-import { svgStrokeRows } from '../logic/svgEdit';
+import { svgHasEndCaps, svgStrokeRows } from '../logic/svgEdit';
 
 /** The content area's chrome around any page: its padding and the cushion. */
 const CHROME = CONTENT_PAD * 2 + BAR_CUSHION;
@@ -42,6 +42,13 @@ describe('submenuHeight (a page’s content area)', () => {
   test('the Opacity page drops its Soften row for a selection that fades whole (a word sticker)', () => {
     expect(submenuHeight('opacity', { opacitySoften: false })).toBe(pageOf([ROW_SLIDER]));
     expect(submenuHeight('opacity', { opacitySoften: true })).toBe(submenuHeight('opacity'));
+  });
+
+  test('the Endpoints page drops its Caps row for a freehand curve', () => {
+    expect(submenuHeight('endpoints')).toBe(pageOf([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]));
+    expect(submenuHeight('endpoints', { endpointCaps: svgHasEndCaps('line') })).toBe(submenuHeight('endpoints'));
+    expect(submenuHeight('endpoints', { endpointCaps: svgHasEndCaps('stroke') }))
+      .toBe(pageOf([ROW_SEGMENTED, ROW_SEGMENTED]));
   });
 
   test('the Color page is a segmented row per colour listed, and never empty', () => {

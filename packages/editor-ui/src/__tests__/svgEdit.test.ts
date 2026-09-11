@@ -4,7 +4,7 @@
  * images.
  */
 
-import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
+import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndCaps, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
 import type { SVGSubtypeKind } from '../adapter';
 
 const SUBTYPES: SVGSubtypeKind[] = ['line', 'arc', 'rectangle', 'circle', 'polygon', 'shape', 'stroke'];
@@ -39,6 +39,19 @@ describe('svgEditOptions', () => {
     }
     for (const subtype of ['rectangle', 'circle', 'polygon', 'shape'] as SVGSubtypeKind[]) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('endpoints');
+    }
+  });
+
+  it('offers Caps on a line and an arc, but not on a freehand curve (nor a closed shape)', () => {
+    // A freehand curve's ends are wherever the pen lifted: markers stay,
+    // the Caps row goes.
+    expect(svgHasEndCaps('line')).toBe(true);
+    expect(svgHasEndCaps('arc')).toBe(true);
+    expect(svgHasEndCaps('stroke')).toBe(false);
+    for (const subtype of FILLED) expect(svgHasEndCaps(subtype)).toBe(false);
+    // Caps are a subset of Ends: never a cap without a loose end.
+    for (const subtype of SUBTYPES) {
+      if (svgHasEndCaps(subtype)) expect(svgHasEndpoints(subtype)).toBe(true);
     }
   });
 

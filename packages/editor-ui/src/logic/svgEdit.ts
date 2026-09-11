@@ -81,6 +81,16 @@ export function svgHasEndpoints(subtype: SVGSubtypeKind): boolean {
 }
 
 /**
+ * Whether a subtype's Endpoints page offers the Caps row (round / square per
+ * end) beside its markers. A line and an arc do; the freehand stroke does
+ * not — its ends are wherever the pen lifted, and a cap on a hand-drawn
+ * curve reads as noise rather than a choice. Markers stay on all three.
+ */
+export function svgHasEndCaps(subtype: SVGSubtypeKind): boolean {
+  return svgHasEndpoints(subtype) && subtype !== 'stroke';
+}
+
+/**
  * Whether a subtype offers the Opacity bar (whole-object opacity + edge
  * soften).
  *

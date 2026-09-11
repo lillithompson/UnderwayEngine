@@ -5,7 +5,8 @@ import { BarBody, DualSegmentedRow, SegmentedRow } from './effectBar';
 // The Endpoints page: what an OPEN path's two loose ends carry. A sibling of
 // the Stroke / Fill pages sharing their grammar (see effectBar.tsx), with
 // three rows — Start and End pick that end's marker, and Caps picks both
-// ends' caps side by side.
+// ends' caps side by side. A freehand curve drops the Caps row
+// (`showCaps`, from svgHasEndCaps): its ends are wherever the pen lifted.
 //
 // No color swatch: a decorated end is drawn in the path's own color, so there
 // is nothing here for a picker to change (the Stroke page's swatch already
@@ -28,8 +29,11 @@ const CAPS: readonly { value: EndCapKind; label: string }[] = [
   { value: 'square', label: 'Square' },
 ];
 
-export function EndpointsBar({ endpoints, onChange }: {
+export function EndpointsBar({ endpoints, showCaps = true, onChange }: {
   endpoints: EndpointsModel;
+  /** Render the Caps row. Off for a freehand curve. submenuHeight('endpoints')
+   *  is told the same thing (`endpointCaps`). */
+  showCaps?: boolean;
   /** Fires once per tap — a segmented pick is always a finished edit. */
   onChange: (e: EndpointsModel) => void;
 }) {
@@ -48,16 +52,18 @@ export function EndpointsBar({ endpoints, onChange }: {
         value={endpoints.endMarker}
         onChange={(endMarker) => set({ endMarker })}
       />
-      <DualSegmentedRow
-        label="Caps"
-        options={CAPS}
-        leftLabel="Start"
-        leftValue={endpoints.startCap}
-        onLeftChange={(startCap) => set({ startCap })}
-        rightLabel="End"
-        rightValue={endpoints.endCap}
-        onRightChange={(endCap) => set({ endCap })}
-      />
+      {showCaps ? (
+        <DualSegmentedRow
+          label="Caps"
+          options={CAPS}
+          leftLabel="Start"
+          leftValue={endpoints.startCap}
+          onLeftChange={(startCap) => set({ startCap })}
+          rightLabel="End"
+          rightValue={endpoints.endCap}
+          onRightChange={(endCap) => set({ endCap })}
+        />
+      ) : null}
     </BarBody>
   );
 }

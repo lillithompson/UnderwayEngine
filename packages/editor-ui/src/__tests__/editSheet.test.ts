@@ -262,6 +262,13 @@ describe('the panel drives the sheet', () => {
     expect(opacity).toContain('{showSoften ? (');
   });
 
+  it('the Endpoints page drops its Caps row on a freehand curve, and its height with it', () => {
+    const ends = SRC('components', 'EndpointsBar.tsx');
+    expect(ends).toContain('{showCaps ? (');
+    expect(PANEL).toContain("showCaps={svgHasEndCaps(model.svgSubtype ?? 'stroke')}");
+    expect(PANEL).toContain("endpointCaps: svgHasEndCaps(model.svgSubtype ?? 'stroke'),");
+  });
+
   it('a tab that opens a page opens it — it never toggles the page closed', () => {
     // The old options toggled their bar; a lit tab pressed again stays lit.
     expect(PANEL).not.toContain('toggleShadow');
