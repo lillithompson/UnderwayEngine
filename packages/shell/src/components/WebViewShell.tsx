@@ -11,6 +11,13 @@ import { ACCENT_SECONDARY, BG_HEADER, BG_DARK } from '@/engine/colors';
 
 export interface WebViewShellProps {
   /**
+   * Let Safari's Web Inspector attach to the page (Develop menu → the
+   * device → the page): the one way to see the WebContent process's own
+   * memory, layers and timeline from outside. Defaults to __DEV__; a
+   * profiling build passes true to inspect a Release bundle.
+   */
+  debuggable?: boolean;
+  /**
    * Optional suffix appended verbatim to the loaded page URL (e.g.
    * '?entryId=abc&format=haiku'). Lets the host app route/parameterize
    * the web bundle at load time with no bridge round-trip. Applied to
@@ -26,7 +33,7 @@ export interface WebViewShellProps {
 // (compositions.tsx) after its first paint with real data, not on a timer, so
 // the splash hides directly onto a frame with the final UI — no skeleton, no
 // resize flash, no intermediate handoff.
-export default function WebViewShell({ urlSuffix }: WebViewShellProps = {}) {
+export default function WebViewShell({ urlSuffix, debuggable = __DEV__ }: WebViewShellProps = {}) {
   const { url, ready } = useLocalServer();
   const [webReady, setWebReady] = useState(false);
   const [recoveryFailed, setRecoveryFailed] = useState(false);
@@ -183,7 +190,7 @@ export default function WebViewShell({ urlSuffix }: WebViewShellProps = {}) {
               }));
             }}
             onContentProcessDidTerminate={onContentProcessDidTerminate}
-            webviewDebuggingEnabled={__DEV__}
+            webviewDebuggingEnabled={debuggable}
             originWhitelist={['*']}
             javaScriptEnabled
             domStorageEnabled
