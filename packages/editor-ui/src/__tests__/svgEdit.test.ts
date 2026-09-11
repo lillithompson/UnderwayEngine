@@ -4,7 +4,7 @@
  * images.
  */
 
-import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndCaps, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRows } from '../logic/svgEdit';
+import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndCaps, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
 import type { SVGSubtypeKind } from '../adapter';
 
 const SUBTYPES: SVGSubtypeKind[] = ['line', 'arc', 'rectangle', 'circle', 'polygon', 'shape', 'stroke'];
@@ -213,6 +213,19 @@ describe('svgStrokeRows', () => {
     expect(svgStrokeRows('line')).toEqual({ position: false });
     expect(svgStrokeRows('arc')).toEqual({ position: false });
     expect(svgStrokeRows('stroke')).toEqual({ position: false });
+  });
+
+  it('lets only a CLOSED shape remove its stroke — an open path IS its stroke', () => {
+    // A line with no stroke is not a fainter line: it is an invisible
+    // object you can still select and drag.
+    for (const subtype of ['line', 'arc', 'stroke'] as SVGSubtypeKind[]) {
+      expect(svgStrokeRemovable(subtype)).toBe(false);
+    }
+    for (const subtype of FILLED) expect(svgStrokeRemovable(subtype)).toBe(true);
+    // It is exactly the complement of "has loose ends to decorate".
+    for (const subtype of SUBTYPES) {
+      expect(svgStrokeRemovable(subtype)).toBe(!svgHasEndpoints(subtype));
+    }
   });
 
   it('never offers Shape without Position — a roundable corner implies a closed path', () => {

@@ -82,6 +82,9 @@ describe('the sheet: a tab row over the well', () => {
     for (const label of ['Remove fill', 'Remove drop shadow', 'Remove border', 'Remove stroke', 'Remove endpoints']) {
       expect(PANEL).toContain(`removeAction = { label: '${label}'`);
     }
+    // …and the stroke's is gated: an open path IS its stroke, so a line
+    // cannot remove one (svgStrokeRemovable).
+    expect(PANEL).toContain("if (svgStrokeRemovable(model.svgSubtype ?? 'stroke')) {");
     // Opacity is not a layer an object can be without, so it has no Remove.
     for (const key of ['opacity', 'transform', 'layout', 'crop', 'patternTiles', 'patternTools', 'patternSymmetry', 'font']) {
       const branch = PANEL.slice(PANEL.indexOf(`displaySub === '${key}'`), PANEL.indexOf('} else if', PANEL.indexOf(`displaySub === '${key}'`) + 1));

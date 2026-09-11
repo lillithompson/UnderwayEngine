@@ -109,6 +109,20 @@ export function svgHasOpacity(subtype: SVGSubtypeKind): boolean {
 }
 
 /**
+ * Whether a subtype's stroke can be REMOVED — the Stroke page's Remove line,
+ * which clears the object's stroke overrides back to the composition-wide
+ * default.
+ *
+ * Only a CLOSED shape: it has an interior that goes on being a shape without
+ * an outline. An OPEN path is nothing but its stroke — a line with no stroke
+ * is not a fainter line, it is an invisible object you can still select and
+ * drag — so the line is not offered, rather than offered and misleading.
+ */
+export function svgStrokeRemovable(subtype: SVGSubtypeKind): boolean {
+  return !svgHasEndpoints(subtype);
+}
+
+/**
  * Whether a subtype offers the Shape page — the Radius slider that rounds the
  * path's own corners. A control for the subtypes whose corners are LINE→LINE
  * joins (`roundPathCorners` only rounds those): the rectangle and the

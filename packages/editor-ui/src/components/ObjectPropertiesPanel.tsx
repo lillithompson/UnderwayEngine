@@ -10,7 +10,7 @@ import {
 import { multiSelectionOptions } from '../logic/multiOptions';
 import { isValueDragging } from '../logic/slider';
 import { SubmenuKey, editSheetHeight, emptyEffectHeight, submenuHeight } from '../logic/submenuHeight';
-import { svgEditOptions, svgHasEndCaps, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRows } from '../logic/svgEdit';
+import { svgEditOptions, svgHasEndCaps, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import {
   OBJECT_DOTS_BOTTOM,
@@ -988,7 +988,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onCornerRadius={() => {}}
       />
     );
-    removeAction = { label: 'Remove stroke', onPress: removeStroke };
+    // …and only a CLOSED shape can lose its stroke: an open path IS its
+    // stroke, so Remove there would leave an invisible object you can still
+    // select and drag (svgStrokeRemovable).
+    if (svgStrokeRemovable(model.svgSubtype ?? 'stroke')) {
+      removeAction = { label: 'Remove stroke', onPress: removeStroke };
+    }
   } else if (displaySub && rigPartOfSubmenu(displaySub)) {
     activeBarEl = (
       <RigPoseBar
