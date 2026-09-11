@@ -295,16 +295,43 @@ describe('the panel drives the sheet', () => {
   it('pops it over the panel, rounded, sized to its page', () => {
     // The rise: sized first, then slid up from below the screen edge.
     const open = PANEL.slice(PANEL.indexOf('if (sheetOpen && !prevSheetOpen.current) {'), PANEL.indexOf('if (!sheetOpen && prevSheetOpen.current) {'));
-    expect(open).toContain('sheetH.setValue(sheetHeight);');
-    expect(open).toContain('sheetY.setValue(sheetHeight);');
+    expect(open).toContain('sheetH.setValue(sheetHeightRef.current);');
+    expect(open).toContain('sheetY.setValue(sheetHeightRef.current);');
     expect(open).toContain('Animated.timing(sheetY, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: false })');
     // The sheet's height is what the arithmetic says for the showing page.
     expect(PANEL).toContain('const sheetHeight = editSheetHeight(contentHeight, { removable: !!removeAction, safeBottom });');
     expect(PANEL).toContain('{ height: sheetH, transform: [{ translateY: sheetY }] },');
   });
 
+  it('a height change can never cancel the rise — they are separate effects', () => {
+    // They shared one effect with `sheetHeight` in its deps, so a height
+    // change re-ran it, React ran the previous cleanup first, and the
+    // cleanup stopped the rise MID-FLIGHT: sheetY froze partway and the
+    // sheet sat pushed past the screen edge with only its tabs showing.
+    // A height change is guaranteed the moment the sheet opens (the page
+    // lands a render after the flag), so this was the common case.
+    expect(PANEL).toContain('}, [sheetOpen, sheetH, sheetY]);');
+    expect(PANEL).toContain('}, [sheetOpen, sheetHeight, sheetH]);');
+    // The rise reads the height through a ref, which is what keeps it out
+    // of those deps.
+    expect(PANEL).toContain('const sheetHeightRef = useRef(sheetHeight);');
+    expect(PANEL).toContain('sheetHeightRef.current = sheetHeight;');
+    // No effect drives BOTH values: one would be able to stop the other.
+    const rise = PANEL.slice(PANEL.indexOf('if (sheetOpen && !prevSheetOpen.current) {'), PANEL.indexOf('}, [sheetOpen, sheetH, sheetY]);'));
+    expect(rise).not.toContain('Animated.timing(sheetH');
+    const resize = PANEL.slice(PANEL.indexOf('if (!sheetOpen) return undefined;'), PANEL.indexOf('}, [sheetOpen, sheetHeight, sheetH]);'));
+    expect(resize).not.toContain('sheetY');
+  });
+
+  it('rises at the height of the page it is ABOUT to land on, not the bare tab row', () => {
+    // For the frame between asking for the sheet and the page arriving,
+    // `activeSub` is null — and measuring the sheet at its tab-row height
+    // there made it rise short and grow in a second motion.
+    expect(PANEL).toContain("?? (sheetOpen ? landingSubmenu(submenuOrder, lastSubRef.current) : lastSubRef.current);");
+  });
+
   it('animates the height when a tab is chosen — a shorter page pushes the top edge down', () => {
-    const resize = PANEL.slice(PANEL.indexOf('if (sheetOpen) {\n      // A tab change'), PANEL.indexOf('}, [sheetOpen, sheetHeight, sheetH, sheetY]);'));
+    const resize = PANEL.slice(PANEL.indexOf('if (!sheetOpen) return undefined;'), PANEL.indexOf('}, [sheetOpen, sheetHeight, sheetH]);'));
     expect(resize).toContain('Animated.timing(sheetH, { toValue: sheetHeight, duration: PANEL_ANIM_MS, useNativeDriver: false })');
     // The height rides the page: the Crop mode from the live draft, the
     // stroke rows from the subtype.
@@ -339,7 +366,10 @@ describe('the panel drives the sheet', () => {
   });
 
   it('keeps showing the last page through the slide down', () => {
-    expect(PANEL).toContain('const displaySub: SubmenuKey | null = activeSub ?? (sheetOpen ? null : lastSubRef.current);');
+    // Closed, the well keeps what it last showed so it doesn't empty as the
+    // sheet drops; open with nothing yet, it shows what it is landing on.
+    expect(PANEL).toContain('const displaySub: SubmenuKey | null = activeSub');
+    expect(PANEL).toContain(': lastSubRef.current);');
   });
 
   it('the text tabs are named for their pages: Font, not the component’s "Type"', () => {

@@ -550,7 +550,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // on when it has that page too (landingSubmenu).
   const lastSubRef = useRef<SubmenuKey | null>(null);
   if (activeSub) lastSubRef.current = activeSub;
-  const displaySub: SubmenuKey | null = activeSub ?? (sheetOpen ? null : lastSubRef.current);
+  // What the well holds. While the sheet is UP with no page yet — the frame
+  // between asking for the sheet and the landing effect's page arriving,
+  // which for a host-owned page is a whole render — it shows the page it is
+  // ABOUT to land on rather than nothing. Otherwise the sheet was measured
+  // at its bare tab-row height for that frame and rose to it, then grew in a
+  // second motion once the page landed. Through the slide DOWN it keeps the
+  // page it last showed, so the well doesn't empty as it goes.
+  const displaySub: SubmenuKey | null = activeSub
+    ?? (sheetOpen ? landingSubmenu(submenuOrder, lastSubRef.current) : lastSubRef.current);
 
   /** Pop the sheet up. Asking is ALL it does: the landing effect below sees
    *  a sheet with no page and opens the tab it lands on (the remembered one
@@ -1088,34 +1096,51 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   });
   const sheetHeight = editSheetHeight(contentHeight, { removable: !!removeAction, safeBottom });
 
-  // Rise on open, drop on close, and — while up — animate between the
-  // heights of the pages the tabs switch to. Opening sizes the sheet to its
-  // page first and slides the whole thing up from below the screen edge;
-  // closing slides it down by its current height, then unmounts it.
+  // The target height, readable by the rise and the fall WITHOUT their
+  // having to list it as a dependency — see the effect below for why that
+  // matters.
+  const sheetHeightRef = useRef(sheetHeight);
+  sheetHeightRef.current = sheetHeight;
+
+  // Rise on open, drop on close. Keyed on the open flag ALONE.
+  //
+  // The rise and the resize used to share one effect, with `sheetHeight` in
+  // its deps, and that made the sheet open wrong: a height change re-ran the
+  // effect, React ran the previous cleanup first, and the cleanup stopped
+  // the rise MID-FLIGHT. `sheetY` froze partway, leaving the sheet pushed
+  // down past the screen edge with only its tab row showing — which is
+  // exactly what a height change does the moment the sheet opens, since the
+  // page lands a render after the flag (the host owns most pages' open
+  // state, so its answer arrives on the next pass).
   useEffect(() => {
     if (sheetOpen && !prevSheetOpen.current) {
       prevSheetOpen.current = true;
       setSheetMounted(true);
-      sheetH.setValue(sheetHeight);
-      sheetY.setValue(sheetHeight);
+      sheetH.setValue(sheetHeightRef.current);
+      sheetY.setValue(sheetHeightRef.current);
       const anim = Animated.timing(sheetY, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: false });
       anim.start();
       return () => anim.stop();
     }
     if (!sheetOpen && prevSheetOpen.current) {
       prevSheetOpen.current = false;
-      const anim = Animated.timing(sheetY, { toValue: sheetHeight, duration: PANEL_ANIM_MS, useNativeDriver: false });
+      const anim = Animated.timing(sheetY, { toValue: sheetHeightRef.current, duration: PANEL_ANIM_MS, useNativeDriver: false });
       anim.start(({ finished }) => { if (finished) setSheetMounted(false); });
       return () => anim.stop();
     }
-    if (sheetOpen) {
-      // A tab change to a shorter page pushes the sheet's top edge down, a
-      // taller one lifts it — the resize is what the eye follows.
-      const anim = Animated.timing(sheetH, { toValue: sheetHeight, duration: PANEL_ANIM_MS, useNativeDriver: false });
-      anim.start();
-      return () => anim.stop();
-    }
-  }, [sheetOpen, sheetHeight, sheetH, sheetY]);
+    return undefined;
+  }, [sheetOpen, sheetH, sheetY]);
+
+  // …and, while it is up, the resize between the heights of the pages the
+  // tabs switch to: a shorter page pushes the sheet's top edge down, a
+  // taller one lifts it. Its own effect, so its cleanup can only ever stop
+  // a resize — never the rise above.
+  useEffect(() => {
+    if (!sheetOpen) return undefined;
+    const anim = Animated.timing(sheetH, { toValue: sheetHeight, duration: PANEL_ANIM_MS, useNativeDriver: false });
+    anim.start();
+    return () => anim.stop();
+  }, [sheetOpen, sheetHeight, sheetH]);
 
   // Bottom-edge occlusion report — see the prop doc. The sheet covers the
   // panel while it is up, so the two never add.
