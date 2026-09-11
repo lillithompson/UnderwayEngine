@@ -88,7 +88,10 @@ export function TransformBar({ onCopies, onCopiesPreview }: {
           commit: (n) => set({ count: Math.round(clamp(n, COPIES_MIN, COPIES_MAX)) }),
         }}
       />
-      <ActionRow label="Copies" options={CREATE_OPTION} onPress={() => onCopies(copies)} />
+      {/* No label column: the button says "Create copies", and a "Copies"
+          beside it named the page over again — and clashed with the Copies
+          slider directly above, which is the count this button acts on. */}
+      <ActionRow options={CREATE_OPTION} onPress={() => onCopies(copies)} />
     </BarBody>
   );
 }

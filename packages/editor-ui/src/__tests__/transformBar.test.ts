@@ -66,6 +66,10 @@ describe('the Copies page', () => {
     expect(SRC).toContain("rightReadout={{ text: factorText(copies.sy), commit: (n) => set({ sy: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}");
     expect(SRC).toContain("onPress={() => onCopies(copies)}");
     expect(SRC).toContain("label: 'Create copies'");
+    // The button stands without a label column: "Create copies" says it,
+    // and a "Copies" beside it clashed with the Copies SLIDER above —
+    // which is the count this button acts on.
+    expect(SRC).toContain('<ActionRow options={CREATE_OPTION} onPress={() => onCopies(copies)} />');
   });
 
   it('reports the copies draft live — on mount, on every change, and null as it unmounts', () => {

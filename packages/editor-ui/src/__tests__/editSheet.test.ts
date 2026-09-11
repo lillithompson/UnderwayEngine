@@ -265,7 +265,12 @@ describe('the panel drives the sheet', () => {
     expect(PANEL).toContain('const displaySub: SubmenuKey | null = activeSub ?? (sheetOpen ? null : lastSubRef.current);');
   });
 
-  it('the Type page carries no Font or Weight label — the pill and the segments name themselves', () => {
+  it('the text tabs are named for their pages: Font, not the component’s "Type"', () => {
+    expect(PANEL).toContain("{ key: 'font', label: 'Font', sub: 'font', onPress: () => openSubmenu('font') },");
+    expect(PANEL).not.toContain("label: 'Type'");
+  });
+
+  it('the Font page carries no Font or Weight label — the pill and the segments name themselves', () => {
     const text = SRC('components', 'TextBar.tsx');
     expect(text).not.toContain('>Font</Text>');
     expect(text).not.toContain('label="Weight"');

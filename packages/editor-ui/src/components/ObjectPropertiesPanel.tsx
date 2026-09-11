@@ -1270,15 +1270,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // — the open-path page, which the host lands on all of them.
     typeSpecs = [strokeSpec()];
   } else if (model.showTextStyle) {
-    // Type (opens the Text controls on the Font page) · Spacing · Align
-    // (each opening the Text controls straight on its page) · Shadow. The
-    // three text tabs show the same component; they differ only in which
-    // page it lands on. Shadow is the image's own page, unchanged — one Drop
-    // Shadow control for every object that can cast one. Editing the
-    // CONTENT is not a tab: a tap on the selected text opens the host's
-    // overlay.
+    // Font · Spacing · Align (each opening the Text controls straight on
+    // its page) · Shadow. The three text tabs show the same component; they
+    // differ only in which page it lands on, and each is named for what its
+    // page holds — the first reads Font, after the family pill that leads
+    // it, rather than the "Type" that named the whole component. Shadow is
+    // the image's own page, unchanged — one Drop Shadow control for every
+    // object that can cast one. Editing the CONTENT is not a tab: a tap on
+    // the selected text opens the host's overlay.
     typeSpecs = [
-      { key: 'type', label: 'Type', sub: 'font', onPress: () => openSubmenu('font') },
+      { key: 'font', label: 'Font', sub: 'font', onPress: () => openSubmenu('font') },
       { key: 'spacing', label: 'Spacing', sub: 'spacing', onPress: () => openSubmenu('spacing') },
       { key: 'align', label: 'Align', sub: 'align', onPress: () => openSubmenu('align') },
       { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },
