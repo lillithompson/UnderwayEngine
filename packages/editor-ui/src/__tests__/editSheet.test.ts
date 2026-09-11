@@ -43,6 +43,16 @@ describe('the sheet: a tab row over the well', () => {
     expect(SHEET).toMatch(/tabsContent: \{[^}]*gap: TAB_GAP/s);
     expect(SHEET).not.toContain("'space-evenly'");
     expect(SHEET).not.toContain('flexGrow');
+    // Edge to edge, so the last reachable tab is cut by the SCREEN rather
+    // than stopping neatly inside the sheet's margin (which read as a row
+    // that had simply ended) — and its content puts that margin back, so
+    // the first tab still lines up with the well below.
+    expect(SHEET).toContain('marginHorizontal: -SHEET_PAD_HORIZONTAL');
+    expect(SHEET).toMatch(/tabsContent: \{[^}]*paddingHorizontal: SHEET_PAD_HORIZONTAL/s);
+    // The fade is wide enough to take a word from ink to nothing, so the
+    // cut reads as a fade rather than a chop.
+    expect(SHEET).toMatch(/const TAB_FADE = (4[0-9]|[5-9][0-9]);/);
+    expect(SHEET).toMatch(/fade: \{[^}]*width: TAB_FADE/s);
     // The fades are worked out from the measured row, its content and the
     // scroll offset: only an overflowing row fades, and only at the end
     // that has more.

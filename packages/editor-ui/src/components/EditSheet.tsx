@@ -28,8 +28,15 @@ import { ColorSwatchFill } from './ColorSwatch';
 // while its page is showing; a tab that is a one-press action (Group, Edit)
 // fires and stays unlit; a toggle (Repeat, Invert) lights in its own colour
 // while on. The row runs from the left edge, one gap apart, and SCROLLS when
-// it outgrows the sheet — the tab running off the edge fades out into the
-// sheet, which is what says there is more to swipe to. There is no swiping between
+// it outgrows the sheet.
+//
+// An overflowing row runs EDGE TO EDGE: the tab strip cancels the sheet's
+// side padding and scrolls the full width of the screen (its content keeps
+// that padding, so the first tab still lines up with everything below it).
+// That is what makes the last reachable tab visibly CUT — it is clipped by
+// the screen rather than stopping neatly inside a margin, which read as a
+// row that simply ended — and the fade laid over the cut turns the clip
+// into a soft edge that says there is more to swipe to. There is no swiping between
 // pages: the tabs are the navigation. No title over the tabs: the lit tab
 // says what the sheet is showing, and a heading only pushed it down.
 //
@@ -59,8 +66,9 @@ export interface EditTabSpec {
 }
 
 /** The fade at either end of an overflowing tab row. Wide enough to take a
- *  word from ink to nothing across it. */
-const TAB_FADE = 40;
+ *  word from ink to nothing across it, so the cut-off tab under it reads as
+ *  fading out rather than as chopped. */
+const TAB_FADE = 44;
 /** The space between neighbouring tabs, the same whatever the row holds. */
 const TAB_GAP = 12;
 
@@ -193,7 +201,10 @@ const styles = StyleSheet.create({
     paddingTop: SHEET_PAD_TOP,
     paddingHorizontal: SHEET_PAD_HORIZONTAL,
   },
-  tabs: { height: SHEET_TABS },
+  // Edge to edge: the strip cancels the sheet's side padding so an
+  // overflowing row is cut by the SCREEN, and its content puts that padding
+  // back so the first tab still lines up with the well below it.
+  tabs: { height: SHEET_TABS, marginHorizontal: -SHEET_PAD_HORIZONTAL },
   // The tabs run from the LEFT edge, one gap apart — not spread across the
   // row — so a sheet with two tabs and one with six start the same way, and
   // a row that outgrows the sheet simply continues past the edge (which is
@@ -203,6 +214,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: TAB_GAP,
+    paddingHorizontal: SHEET_PAD_HORIZONTAL,
   },
   tab: { height: SHEET_TABS, justifyContent: 'center' },
   tabPill: {

@@ -221,7 +221,7 @@ describe('editSheetHeight (the sheet around a page)', () => {
     const sheet = readFileSync(resolve(__dirname, '..', 'components', 'EditSheet.tsx'), 'utf8');
     expect(sheet).toMatch(/sheet: \{\s*paddingTop: SHEET_PAD_TOP/);
     expect(sheet).toContain('paddingBottom: SHEET_PAD_BOTTOM + safeBottom');
-    expect(sheet).toMatch(/tabs: \{ height: SHEET_TABS \}/);
+    expect(sheet).toMatch(/tabs: \{ height: SHEET_TABS, marginHorizontal: -SHEET_PAD_HORIZONTAL \}/);
     expect(sheet).toMatch(/well: \{\s*marginTop: SHEET_CONTENT_TOP/);
     expect(sheet).toMatch(/removeRow: \{ height: SHEET_REMOVE/);
   });
