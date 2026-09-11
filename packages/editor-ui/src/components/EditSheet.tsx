@@ -4,10 +4,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { RGBLike } from '../adapter';
 import {
   CONTENT_PAD, SHEET_CONTENT_TOP, SHEET_PAD_BOTTOM, SHEET_PAD_HORIZONTAL, SHEET_PAD_TOP,
-  SHEET_REMOVE, SHEET_TABS, SHEET_TABS_TOP, SHEET_TITLE,
+  SHEET_REMOVE, SHEET_TABS,
 } from '../logic/submenuHeight';
 import {
-  PANEL_BG, PANEL_BG_CLEAR, PANEL_CONTENT_WELL, PANEL_INK, PANEL_INK_LABEL, PANEL_INK_MUTED,
+  PANEL_BG, PANEL_BG_CLEAR, PANEL_CONTENT_WELL, PANEL_INK, PANEL_INK_MUTED,
   PANEL_SWATCH_BORDER, STATE_ACTIVE,
 } from '../theme';
 import { ColorSwatchFill } from './ColorSwatch';
@@ -15,7 +15,6 @@ import { ColorSwatchFill } from './ColorSwatch';
 // The Edit sheet: the type-specific half of the object-properties panel,
 // popped up OVER the panel's common-actions row.
 //
-//   Edit                       ← the title
 //   Crop  Shadow  Border  …    ← one tab per option, evenly spaced
 //   ┌────────────────────────┐
 //   │ the showing page's     │ ← a slightly darkened, rounded well holding
@@ -31,7 +30,8 @@ import { ColorSwatchFill } from './ColorSwatch';
 // while on. The row is evenly spaced when the tabs fit, and SCROLLS when
 // they don't — the tab running off the edge fades out into the sheet, which
 // is what says there is more to swipe to. There is no swiping between
-// pages: the tabs are the navigation.
+// pages: the tabs are the navigation. No title over the tabs: the lit tab
+// says what the sheet is showing, and a heading only pushed it down.
 //
 // The sheet is presentational: the panel (ObjectPropertiesPanel) owns which
 // tab is lit, what the well holds, the slide-up / swipe-down and the height
@@ -161,7 +161,6 @@ export function EditSheet({ tabs, content, remove, safeBottom = 0 }: {
 }) {
   return (
     <View style={[styles.sheet, { paddingBottom: SHEET_PAD_BOTTOM + safeBottom }]}>
-      <Text style={styles.title} accessibilityRole="header">Edit</Text>
       <EditTabs tabs={tabs} />
       {content != null ? <View style={styles.well}>{content}</View> : null}
       {content != null && remove ? (
@@ -185,17 +184,7 @@ const styles = StyleSheet.create({
     paddingTop: SHEET_PAD_TOP,
     paddingHorizontal: SHEET_PAD_HORIZONTAL,
   },
-  // The title: large, bold, a step down from full ink — a heading for the
-  // sheet, not a control in it.
-  title: {
-    height: SHEET_TITLE,
-    lineHeight: SHEET_TITLE,
-    fontSize: 26,
-    fontWeight: '700',
-    color: PANEL_INK_LABEL,
-    paddingHorizontal: 4,
-  },
-  tabs: { marginTop: SHEET_TABS_TOP, height: SHEET_TABS },
+  tabs: { height: SHEET_TABS },
   // The row's content grows to the row when the tabs fit — which is what
   // lets `space-evenly` spread them — and past it when they don't, which
   // is what makes it scroll.

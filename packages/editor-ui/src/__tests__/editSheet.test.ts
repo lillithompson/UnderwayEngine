@@ -21,10 +21,12 @@ const PAGE_FILES = [
   'PatternBars.tsx',
 ];
 
-describe('the sheet: an Edit title over a tab row over the well', () => {
-  it('is titled Edit, with the tabs under the title and the well under the tabs', () => {
-    expect(SHEET).toContain('<Text style={styles.title} accessibilityRole="header">Edit</Text>');
-    const order = ['styles.title', '<EditTabs tabs={tabs} />', '<View style={styles.well}>{content}</View>']
+describe('the sheet: a tab row over the well', () => {
+  it('opens straight on its tabs — no title — with the well under them', () => {
+    expect(SHEET).not.toContain('accessibilityRole="header"');
+    expect(SHEET).not.toContain('>Edit<');
+    expect(SHEET).not.toContain('SHEET_TITLE');
+    const order = ['<EditTabs tabs={tabs} />', '<View style={styles.well}>{content}</View>']
       .map((s) => SHEET.indexOf(s));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));

@@ -3,10 +3,9 @@ import type { ImageFramingMode, TintType } from '../adapter';
 // How tall each property page's CONTENT AREA is, and therefore how tall the
 // Edit sheet stands while that page is showing.
 //
-// The Edit sheet (components/EditSheet.tsx) is a bottom sheet with an "Edit"
-// title, a row of tabs — one per property page the selection offers — and,
-// under them, a darkened rounded content area holding the showing page's
-// controls. Each page is only as tall as its own controls need, so the sheet
+// The Edit sheet (components/EditSheet.tsx) is a bottom sheet with a row of
+// tabs — one per property page the selection offers — and, under them, a
+// darkened rounded content area holding the showing page's controls. Each page is only as tall as its own controls need, so the sheet
 // RESIZES as the tabs change (the panel animates the height), and the
 // arithmetic here is what it animates TO: the target is known the moment a
 // tab is chosen, before any layout has happened, which is also what lets the
@@ -58,13 +57,9 @@ export const SHADOW_PAD_SIZE = 106;
 export const SHADOW_ASIDE = SHADOW_PAD_SIZE + ASIDE_GAP + ASIDE_SWATCH;
 
 // ── The Edit sheet's own chrome (components/EditSheet.tsx) ───────────
-/** Padding above the title. */
-export const SHEET_PAD_TOP = 18;
-/** The "Edit" title line. */
-export const SHEET_TITLE = 32;
-/** Gap between the title and the tab row… */
-export const SHEET_TABS_TOP = 6;
-/** …and the tab row itself. */
+/** Padding above the tab row. */
+export const SHEET_PAD_TOP = 14;
+/** The tab row. */
 export const SHEET_TABS = 40;
 /** Gap between the tab row and the content area. */
 export const SHEET_CONTENT_TOP = 14;
@@ -288,18 +283,18 @@ export function emptyEffectHeight(): number {
   return contentArea([ROW_SEGMENTED]);
 }
 
-/** How tall the Edit sheet stands: its title and tab row, then — when a page
- *  is showing — the content area holding it (`content`, a
+/** How tall the Edit sheet stands: its tab row, then — when a page is
+ *  showing — the content area holding it (`content`, a
  *  {@link submenuHeight}) and, when that page can be removed, the Remove line
  *  under it; then the bottom padding and the device's bottom inset, which
  *  the sheet pads so its last line clears the home indicator. A sheet whose
  *  tabs are all one-press actions (a word sticker's Invert) shows no content
- *  area at all, and is the title and tabs alone. */
+ *  area at all, and is the tabs alone. */
 export function editSheetHeight(
   content: number | null,
   opts: { removable?: boolean; safeBottom?: number } = {},
 ): number {
-  return SHEET_PAD_TOP + SHEET_TITLE + SHEET_TABS_TOP + SHEET_TABS
+  return SHEET_PAD_TOP + SHEET_TABS
     + (content != null ? SHEET_CONTENT_TOP + content : 0)
     + (content != null && opts.removable ? SHEET_REMOVE : 0)
     + SHEET_PAD_BOTTOM + (opts.safeBottom ?? 0);

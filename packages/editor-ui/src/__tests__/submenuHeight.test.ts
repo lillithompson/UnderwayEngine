@@ -17,8 +17,6 @@ import {
   SHEET_PAD_TOP,
   SHEET_REMOVE,
   SHEET_TABS,
-  SHEET_TABS_TOP,
-  SHEET_TITLE,
   SLIDER_CONTROL,
   SLIDER_LABEL,
   SLIDER_LABEL_GAP,
@@ -160,9 +158,10 @@ describe('submenuHeight (a page’s content area)', () => {
 });
 
 describe('editSheetHeight (the sheet around a page)', () => {
-  const HEAD = SHEET_PAD_TOP + SHEET_TITLE + SHEET_TABS_TOP + SHEET_TABS;
+  // No title over the tabs: the sheet opens straight on its tab row.
+  const HEAD = SHEET_PAD_TOP + SHEET_TABS;
 
-  test('a sheet with a page showing is its title and tabs, the well, and the bottom padding', () => {
+  test('a sheet with a page showing is its tabs, the well, and the bottom padding', () => {
     const content = submenuHeight('opacity');
     expect(editSheetHeight(content)).toBe(HEAD + SHEET_CONTENT_TOP + content + SHEET_PAD_BOTTOM);
   });
@@ -183,7 +182,7 @@ describe('editSheetHeight (the sheet around a page)', () => {
     expect(editSheetHeight(content, { removable: false })).toBe(editSheetHeight(content));
   });
 
-  test('a sheet with no page (every tab an action) is the title and tabs alone', () => {
+  test('a sheet with no page (every tab an action) is the tabs alone', () => {
     expect(editSheetHeight(null)).toBe(HEAD + SHEET_PAD_BOTTOM);
     // Remove means nothing without a page under it.
     expect(editSheetHeight(null, { removable: true })).toBe(editSheetHeight(null));
@@ -200,8 +199,7 @@ describe('editSheetHeight (the sheet around a page)', () => {
     const sheet = readFileSync(resolve(__dirname, '..', 'components', 'EditSheet.tsx'), 'utf8');
     expect(sheet).toMatch(/sheet: \{\s*paddingTop: SHEET_PAD_TOP/);
     expect(sheet).toContain('paddingBottom: SHEET_PAD_BOTTOM + safeBottom');
-    expect(sheet).toMatch(/title: \{\s*height: SHEET_TITLE,\s*lineHeight: SHEET_TITLE/);
-    expect(sheet).toMatch(/tabs: \{ marginTop: SHEET_TABS_TOP, height: SHEET_TABS \}/);
+    expect(sheet).toMatch(/tabs: \{ height: SHEET_TABS \}/);
     expect(sheet).toMatch(/well: \{\s*marginTop: SHEET_CONTENT_TOP/);
     expect(sheet).toMatch(/removeRow: \{ height: SHEET_REMOVE/);
   });

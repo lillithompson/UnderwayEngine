@@ -69,8 +69,8 @@ import {
 //            opacity; text: edit / type / align / shadow) followed by what
 //            the SELECTION offers (Layout · Group · Merge, multi-selections
 //            only — a mixed selection has just those), as a row of tabs
-//            under an "Edit" title, over a darkened well holding the lit
-//            tab's controls. Present when the selection has any option.
+//            over a darkened well holding the lit tab's controls. Present
+//            when the selection has any option.
 //
 // The sheet is not a row the panel swaps in. A sideways swipe on the panel
 // (or a press on the second dot) POPS IT UP over the panel, rounded corners
