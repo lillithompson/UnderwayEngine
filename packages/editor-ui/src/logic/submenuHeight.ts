@@ -108,9 +108,9 @@ export type SubmenuKey =
   // spread per side), four for the feet, three for the spine, two for the
   // head.
   | 'rigRoot' | 'rigHands' | 'rigFeet' | 'rigSpine' | 'rigHead'
-  // A pattern object's three pages: the tile menu, the grid tools, and the
-  // painting-symmetry grid.
-  | 'patternTiles' | 'patternTools' | 'patternSymmetry';
+  // A pattern object's pages: the Tile page (its Repeat toggle), the tile
+  // menu, the grid tools, and the painting-symmetry grid.
+  | 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry';
 
 /** The current state of everything that changes a page's row count. Values are
  *  optional so a caller can describe only the pages its selection can open; a
@@ -303,6 +303,9 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       const pair = rowGroupHeight([ROW_SLIDER, ROW_SLIDER]);
       return bareArea([pair, pair, pair, ROW_SEGMENTED], GROUP_GAP);
     }
+    case 'patternTile':
+      // The Tile page: the Repeat toggle, and nothing else.
+      return contentArea([ROW_SEGMENTED]);
     case 'patternTiles':
       // The arming grid: two rows of square buttons.
       return contentArea([PATTERN_TILE_GRID]);

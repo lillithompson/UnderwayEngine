@@ -323,37 +323,45 @@ export const PATTERN_GRID_ACTIONS: readonly { action: PatternGridAction; label: 
 
 // ── The options row ─────────────────────────────────────────────────
 
-export type PatternEditAction = 'symmetry' | 'tiles' | 'tools';
+export type PatternEditAction = 'tile' | 'symmetry' | 'tiles' | 'tools';
 
 export interface PatternEditOption {
   action: PatternEditAction;
   label: string;
 }
 
-/** The pattern type options, in display order: none — the panel adds the
- *  Stroke bar, so a pattern's page reads Stroke alone. The Tiles and
- *  Symmetry pages came off the row first (2026-09-10): the canvas paints
- *  from the Tile tool's own choice and mirrors by the toolbar's Symmetry
- *  setting. Tools followed (2026-09-11): its grid actions (Flood / Close /
- *  Clear) ride the host's floating capsule whenever a pattern is in hand,
- *  and Repeat became the host's Tile | Repeat pill under the toolbar, so
- *  the page said those things twice too. The three bars, their keys and
- *  heights stand (PatternEditAction, patternActionSubmenu) for a host
- *  that opens them itself. */
-export const PATTERN_EDIT_OPTIONS: readonly PatternEditOption[] = [];
+/** The pattern type options, in display order: the Tile page, which holds
+ *  the Repeat toggle and nothing else — the panel adds the Stroke bar
+ *  beside it, so a pattern's page reads Tile · Stroke.
+ *
+ *  The row emptied out first: Tiles and Symmetry came off (2026-09-10 —
+ *  the canvas paints from the Tile tool's own choice and mirrors by the
+ *  toolbar's Symmetry setting), then Tools (2026-09-11 — its grid actions
+ *  ride the host's floating capsule). Repeat went with Tools onto a
+ *  floating pill, and came back here (2026-09-11): it is a property of the
+ *  object, which is what this panel is for, and a pill at the top of the
+ *  screen for one object's one setting was chrome the page already had a
+ *  place for. The other three bars, their keys and heights stand
+ *  (PatternEditAction, patternActionSubmenu) for a host that opens them
+ *  itself. */
+export const PATTERN_EDIT_OPTIONS: readonly PatternEditOption[] = [
+  { action: 'tile', label: 'Tile' },
+];
 
 /** The submenu key an action's bar rides under (see submenuHeight's
  *  SubmenuKey), and its inverse — the same pairing rigEdit keeps. */
 export function patternActionSubmenu(
   action: PatternEditAction,
-): 'patternTiles' | 'patternTools' | 'patternSymmetry' {
-  return action === 'tiles' ? 'patternTiles'
+): 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry' {
+  return action === 'tile' ? 'patternTile'
+    : action === 'tiles' ? 'patternTiles'
     : action === 'tools' ? 'patternTools'
     : 'patternSymmetry';
 }
 
 export function patternActionOfSubmenu(key: string): PatternEditAction | null {
-  return key === 'patternTiles' ? 'tiles'
+  return key === 'patternTile' ? 'tile'
+    : key === 'patternTiles' ? 'tiles'
     : key === 'patternTools' ? 'tools'
     : key === 'patternSymmetry' ? 'symmetry'
     : null;

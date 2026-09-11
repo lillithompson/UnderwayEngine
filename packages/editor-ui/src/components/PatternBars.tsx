@@ -149,6 +149,41 @@ export function PatternTilesBar({ model }: {
   );
 }
 
+/**
+ * Repeat: lay the grid across the bounding box as a tile instead of
+ * stretching it to fill. Named for what each choice does to the drawing,
+ * since 'Repeat / off' says nothing about the other half. A grouped
+ * pattern can't repeat, and gets no row at all.
+ *
+ * One definition, shown as the whole of the Tile page and as a row of the
+ * Tools page, so the two can never offer the setting differently.
+ */
+export function PatternRepeatRow({ model }: { model: ObjectPropertiesModel }) {
+  if (!model.onToggleRepeat) return null;
+  return (
+    <SegmentedRow
+      label="Repeat"
+      options={[
+        { value: 'stretch' as const, label: 'Stretch' },
+        { value: 'tile' as const, label: 'Tile' },
+      ]}
+      value={model.repeat ? 'tile' : 'stretch'}
+      onChange={(v) => {
+        if ((v === 'tile') !== !!model.repeat) model.onToggleRepeat?.();
+      }}
+    />
+  );
+}
+
+/** The Tile page: the object's Repeat toggle, and nothing else. */
+export function PatternTileBar({ model }: { model: ObjectPropertiesModel }) {
+  return (
+    <BarBody>
+      <PatternRepeatRow model={model} />
+    </BarBody>
+  );
+}
+
 export function PatternToolsBar({ model }: {
   model: ObjectPropertiesModel;
 }) {
@@ -177,23 +212,7 @@ export function PatternToolsBar({ model }: {
             if (allow !== (model.patternAllowBorder !== false)) model.onPatternToggleBorder?.();
           }}
         />
-        {model.onToggleRepeat && (
-          // Repeat: lay the grid across the bounding box as a tile instead
-          // of stretching it to fill. Named for what each choice does to
-          // the drawing, since 'Repeat / off' says nothing about the other
-          // half. A grouped pattern can't repeat, and gets no row.
-          <SegmentedRow
-            label="Repeat"
-            options={[
-              { value: 'stretch' as const, label: 'Stretch' },
-              { value: 'tile' as const, label: 'Tile' },
-            ]}
-            value={model.repeat ? 'tile' : 'stretch'}
-            onChange={(v) => {
-              if ((v === 'tile') !== !!model.repeat) model.onToggleRepeat?.();
-            }}
-          />
-        )}
+        <PatternRepeatRow model={model} />
         {sets.length > 0 && (
           <ActionRow
             label="Sets"

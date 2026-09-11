@@ -34,7 +34,7 @@ import { TintBar } from './TintBar';
 import { EndpointsBar } from './EndpointsBar';
 import { TransformBar } from './TransformBar';
 import { LayoutBar } from './LayoutBar';
-import { PatternSymmetryBar, PatternTilesBar, PatternToolsBar } from './PatternBars';
+import { PatternSymmetryBar, PatternTileBar, PatternTilesBar, PatternToolsBar } from './PatternBars';
 import { EmptyEffectBar } from './effectBar';
 import { ColorBar, ColorRowSpec } from './ColorBar';
 import { ShapeBar } from './ShapeBar';
@@ -1047,6 +1047,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onCommit={(f) => applyFraming(f, true)}
       />
     );
+  } else if (displaySub === 'patternTile') {
+    activeBarEl = <PatternTileBar model={model} />;
   } else if (displaySub === 'patternTiles') {
     activeBarEl = <PatternTilesBar model={model} />;
   } else if (displaySub === 'patternTools') {

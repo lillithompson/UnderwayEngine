@@ -31,12 +31,14 @@ import { patternModalTileSize } from '../logic/patternEdit';
 import { submenuHeight } from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
-  it('offers no page of its own — the panel adds Stroke; Tiles, Symmetry and then Tools came off the row', () => {
-    // Tools' grid actions ride the host's floating capsule and Repeat its
-    // Tile | Repeat pill, so the page said them twice.
-    expect(PATTERN_EDIT_OPTIONS).toEqual([]);
-    // The bars themselves stand, keyed and sized, for a host that opens them.
-    for (const action of ['tiles', 'symmetry'] as const) {
+  it('offers the Tile page alone — the panel adds Stroke beside it', () => {
+    // Tiles, Symmetry and Tools came off the row (their work is the
+    // canvas's tools and the host's floating capsule); Repeat came BACK on
+    // it as the Tile page, being a property of the object.
+    expect(PATTERN_EDIT_OPTIONS.map((o) => [o.action, o.label])).toEqual([['tile', 'Tile']]);
+    // The bars all stand, keyed and sized — the three off the row for a
+    // host that opens them itself, the Tile page for this one.
+    for (const action of ['tile', 'tiles', 'tools', 'symmetry'] as const) {
       const sub = patternActionSubmenu(action);
       expect(patternActionOfSubmenu(sub)).toBe(action);
       expect(submenuHeight(sub)).toBeGreaterThan(0);
@@ -489,7 +491,7 @@ describe('the tile pose gestures (double-tap turn, long-press transform)', () =>
 // setting, not a page, and the pattern's top row was already four pages
 // long — so it moved down into the Tools bar. The svg branch keeps its own
 // capsule: legacy tiled vectors have no Tools bar to move it into.
-describe('Repeat rides the Tools bar', () => {
+describe('Repeat is the Tile page, and a row of the Tools bar', () => {
   const BARS = readFileSync(resolve(__dirname, '..', 'components', 'PatternBars.tsx'), 'utf8');
   const PANEL = readFileSync(
     resolve(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'), 'utf8',
@@ -499,15 +501,30 @@ describe('Repeat rides the Tools bar', () => {
     PANEL.indexOf('} else if (model.showTextStyle) {'),
   );
 
-  it('is a row on the Tools bar, toggled through the same handler', () => {
+  it('is ONE row definition, shown by both pages', () => {
+    // Two copies could offer the setting differently; there is one.
+    const row = BARS.slice(
+      BARS.indexOf('export function PatternRepeatRow'),
+      BARS.indexOf('export function PatternTileBar'),
+    );
+    expect(row).toContain('if (!model.onToggleRepeat) return null;');
+    expect(row).toContain("value={model.repeat ? 'tile' : 'stretch'}");
+    // Pressing the side already showing must not toggle back off.
+    expect(row).toContain("if ((v === 'tile') !== !!model.repeat) model.onToggleRepeat?.();");
+    // The Tile page is that row and nothing else; the Tools bar shows it too.
+    const tileBar = BARS.slice(
+      BARS.indexOf('export function PatternTileBar'),
+      BARS.indexOf('export function PatternToolsBar'),
+    );
+    expect(tileBar).toContain('<PatternRepeatRow model={model} />');
     const toolsBar = BARS.slice(
       BARS.indexOf('export function PatternToolsBar'),
       BARS.indexOf('export function PatternSymmetryBar'),
     );
-    expect(toolsBar).toContain('{model.onToggleRepeat && (');
-    expect(toolsBar).toContain("value={model.repeat ? 'tile' : 'stretch'}");
-    // Pressing the side already showing must not toggle back off.
-    expect(toolsBar).toContain("if ((v === 'tile') !== !!model.repeat) model.onToggleRepeat?.();");
+    expect(toolsBar).toContain('<PatternRepeatRow model={model} />');
+    // …and the panel renders the page the Tile tab names.
+    expect(PANEL).toContain("} else if (displaySub === 'patternTile') {");
+    expect(PANEL).toContain('<PatternTileBar model={model} />');
   });
 
   it("is gone from the pattern's type row, but kept on the svg branch", () => {
