@@ -2,8 +2,9 @@ import React from 'react';
 import type { BorderModel, BorderPosition } from '../adapter';
 import { BarBody, SegmentedRow, SliderRow } from './effectBar';
 
-// The Border (stroke) page (design "3a"): Width, Radius, Position, Dash.
-// It's a sibling of the Drop Shadow page and shares its grammar (see
+// The Border (stroke) page (design "3a"): Width, Radius, Dash, Position —
+// the line's own two properties together, then where it sits against the
+// edge. It's a sibling of the Drop Shadow page and shares its grammar (see
 // effectBar.tsx); the border's colour is the Color page's.
 // The Radius row rounds the object itself (folding in the former standalone
 // Round control), so it rides the app's cornerRadius fields rather than the
@@ -93,14 +94,6 @@ export function BorderBar({ border, cornerRadius, showRadius = true, showPositio
       {showRadius ? (
         <RadiusRow cornerRadius={cornerRadius} onCornerRadius={onCornerRadius} />
       ) : null}
-      {showPosition ? (
-        <SegmentedRow
-          label={labelPosition ? 'Position' : undefined}
-          options={POSITIONS}
-          value={border.position}
-          onChange={(position) => set({ position }, true)}
-        />
-      ) : null}
       <SliderRow
         label="Dash"
         value={border.dash / MAX_DASH}
@@ -112,6 +105,17 @@ export function BorderBar({ border, cornerRadius, showRadius = true, showPositio
           commit: (n) => set({ dash: Math.round(Math.min(Math.max(n, 0), MAX_DASH)) }, true),
         }}
       />
+      {/* Position last: the two sliders describe the line ITSELF — how thick
+          it is drawn, and whether it is dashed — and this says where that
+          line sits against the shape's edge. It used to divide them. */}
+      {showPosition ? (
+        <SegmentedRow
+          label={labelPosition ? 'Position' : undefined}
+          options={POSITIONS}
+          value={border.position}
+          onChange={(position) => set({ position }, true)}
+        />
+      ) : null}
     </BarBody>
   );
 }

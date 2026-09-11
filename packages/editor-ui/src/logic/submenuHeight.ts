@@ -201,14 +201,14 @@ function tintRows(type: TintType = 'solid'): number[] {
   ];
 }
 
-/** Border / Stroke rows: Width, the subtype's optional Radius and Position,
- *  then Dash. */
+/** Border / Stroke rows: Width, the optional Radius, Dash, then the optional
+ *  Position — the line's own properties together, then where it sits. */
 function borderRows(rows: { radius: boolean; position: boolean } = { radius: true, position: true }): number[] {
   return [
     ROW_SLIDER,
     ...(rows.radius ? [ROW_SLIDER] : []),
-    ...(rows.position ? [ROW_SEGMENTED] : []),
     ROW_SLIDER,
+    ...(rows.position ? [ROW_SEGMENTED] : []),
   ];
 }
 

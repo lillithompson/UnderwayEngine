@@ -470,6 +470,10 @@ describe('the panel drives the sheet', () => {
     expect(stroke).toContain('labelPosition={false}');
     const border = SRC('components', 'BorderBar.tsx');
     expect(border).toContain("label={labelPosition ? 'Position' : undefined}");
+    // Width, Dash, then Position: the line's own two properties together,
+    // then where it sits against the edge (Position used to divide them).
+    expect(border.indexOf('label="Dash"')).toBeLessThan(border.indexOf("'Position'"));
+    expect(border.indexOf('label="Width"')).toBeLessThan(border.indexOf('label="Dash"'));
     // The image's Border page keeps both, untouched.
     const imageBorder = PANEL.slice(PANEL.indexOf("} else if (displaySub === 'border') {"), PANEL.indexOf("} else if (displaySub === 'stroke') {"));
     expect(imageBorder).not.toContain('showRadius');
