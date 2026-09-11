@@ -26,12 +26,12 @@ describe('the sheet: a tab row over the well', () => {
     expect(SHEET).not.toContain('accessibilityRole="header"');
     expect(SHEET).not.toContain('>Edit<');
     expect(SHEET).not.toContain('SHEET_TITLE');
-    const order = ['<EditTabs tabs={tabs} />', '<View style={styles.well}>{content}</View>']
+    const order = ['<EditTabs tabs={tabs} />', 'styles.well : styles.bare']
       .map((s) => SHEET.indexOf(s));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
     // No well at all when no tab has a page showing (every tab an action).
-    expect(SHEET).toContain("{content != null ? <View style={styles.well}>{content}</View> : null}");
+    expect(SHEET).toContain('{content != null ? (');
   });
 
   it('runs the tabs from the left edge one gap apart, and scrolls them with a fade when they overflow', () => {

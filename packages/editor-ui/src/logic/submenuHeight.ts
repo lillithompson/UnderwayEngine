@@ -155,6 +155,28 @@ function contentArea(rows: readonly number[], aside = 0, gap = ROW_GAP): number 
   return CONTENT_PAD * 2 + Math.max(stack(rows, gap), aside) + BAR_CUSHION;
 }
 
+/** The same rows with NO well around them — see {@link pageIsWelled}: no
+ *  padding of the well's, since there is no well, just the cushion. */
+function bareArea(rows: readonly number[], gap = ROW_GAP): number {
+  return stack(rows, gap) + BAR_CUSHION;
+}
+
+/**
+ * Whether a page is drawn inside the Edit sheet's content WELL — the
+ * darkened rounded area the controls sit in.
+ *
+ * Nearly all are: the well is what separates a page's controls from the
+ * tabs above them. The Copies page is not, because it brings its own boxes
+ * (three RowGroups), and a well around those drew a second rectangle around
+ * every section — each one framed twice, for no extra meaning.
+ *
+ * Both the arithmetic here and EditSheet's markup read this, so a page
+ * cannot be measured one way and drawn the other.
+ */
+export function pageIsWelled(key: SubmenuKey): boolean {
+  return key !== 'transform';
+}
+
 /** A GROUP of rows (effectBar's RowGroup): a shaded rounded box around rows
  *  that are one setting in several parts. Its padding all round… */
 export const GROUP_PAD = 10;
@@ -269,10 +291,11 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'transform': {
       // The Copies page: Create copies' six settings, a slider row each, in
       // three groups of two — the offsets, the scales, then the count
-      // beside the turn — and the button that fires it, standing below them
-      // on the bare well.
+      // beside the turn — and the button that fires it, standing below
+      // them. Its groups ARE its boxes, so it is drawn with no well around
+      // them (pageIsWelled) and measured without the well's padding.
       const pair = rowGroupHeight([ROW_SLIDER, ROW_SLIDER]);
-      return contentArea([pair, pair, pair, ROW_SEGMENTED], 0, GROUP_GAP);
+      return bareArea([pair, pair, pair, ROW_SEGMENTED], GROUP_GAP);
     }
     case 'patternTiles':
       // The arming grid: two rows of square buttons.

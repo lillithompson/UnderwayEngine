@@ -9,7 +9,7 @@ import {
 } from '../logic/patternEdit';
 import { multiSelectionOptions } from '../logic/multiOptions';
 import { isValueDragging } from '../logic/slider';
-import { SubmenuKey, editSheetHeight, emptyEffectHeight, submenuHeight } from '../logic/submenuHeight';
+import { SubmenuKey, editSheetHeight, emptyEffectHeight, pageIsWelled, submenuHeight } from '../logic/submenuHeight';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import {
@@ -1399,7 +1399,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
           ]}
           {...sheetPan.panHandlers}
         >
-          <EditSheet tabs={tabs} content={activeBarEl} remove={removeAction} safeBottom={safeBottom} />
+          <EditSheet
+            tabs={tabs}
+            content={activeBarEl}
+            welled={!displaySub || pageIsWelled(displaySub)}
+            remove={removeAction}
+            safeBottom={safeBottom}
+          />
         </Animated.View>
       ) : null}
     </>

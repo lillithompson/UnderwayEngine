@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import { svgEditOptions, SVG_EDIT_OPTIONS } from '../logic/svgEdit';
 import {
   BAR_CUSHION, CONTENT_PAD, GROUP_GAP, GROUP_PAD, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER,
-  rowGroupHeight, submenuHeight,
+  pageIsWelled, rowGroupHeight, submenuHeight,
 } from '../logic/submenuHeight';
 import {
   COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
@@ -25,15 +25,28 @@ describe('the Copies option', () => {
     expect(svgEditOptions('line').map((o) => o.action)).toEqual(['stroke', 'endpoints', 'transform']);
   });
 
-  it('stands as three two-slider groups and a button row — no rotation row', () => {
+  it('stands as three two-slider groups and a button row — no rotation row, and no well', () => {
     const pair = rowGroupHeight([ROW_SLIDER, ROW_SLIDER]);
     // The group's own padding is counted, and the groups are spaced wider
     // than bare rows (GROUP_GAP) so the boxes read as separate.
     expect(pair).toBe(GROUP_PAD * 2 + ROW_SLIDER * 2 + ROW_GAP);
+    // Its groups ARE its boxes, so the sheet draws no well around them —
+    // that framed every section twice — and the height counts none of the
+    // well's padding.
+    expect(pageIsWelled('transform')).toBe(false);
     expect(submenuHeight('transform', {}))
-      .toBe(CONTENT_PAD * 2 + BAR_CUSHION + pair * 3 + ROW_SEGMENTED + GROUP_GAP * 3);
+      .toBe(BAR_CUSHION + pair * 3 + ROW_SEGMENTED + GROUP_GAP * 3);
     expect(GROUP_GAP).toBeGreaterThan(ROW_GAP);
-    expect(submenuHeight('transform', {})).toBeGreaterThan(submenuHeight('endpoints', {}));
+    // Every other page keeps the well, and is measured with its padding.
+    expect(pageIsWelled('opacity')).toBe(true);
+    expect(submenuHeight('opacity', {})).toBe(CONTENT_PAD * 2 + BAR_CUSHION + ROW_SLIDER * 2 + ROW_GAP);
+    // The sheet asks the same predicate the arithmetic does, so a page
+    // cannot be measured one way and drawn the other.
+    const panel = read('ObjectPropertiesPanel.tsx');
+    expect(panel).toContain('welled={!displaySub || pageIsWelled(displaySub)}');
+    const sheet = readFileSync(resolve(__dirname, '..', 'components', 'EditSheet.tsx'), 'utf8');
+    expect(sheet).toContain('<View style={welled ? styles.well : styles.bare}>{content}</View>');
+    expect(sheet).toContain('bare: { marginTop: SHEET_CONTENT_TOP },');
   });
 });
 

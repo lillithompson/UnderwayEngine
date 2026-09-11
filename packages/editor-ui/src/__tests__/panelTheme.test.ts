@@ -109,7 +109,9 @@ describe('object-properties chrome matches the toolbar', () => {
     // the Edit sheet's tabs, the lit one being whichever page is showing.
     expect(/interface OptionSpec extends Omit<EditTabSpec, 'selected'>/.test(panel)).toBe(true);
     expect(panel).toContain("selected: sub !== undefined ? subOpen(sub) : undefined,");
-    expect(panel).toContain('<EditSheet tabs={tabs} content={activeBarEl} remove={removeAction} safeBottom={safeBottom} />');
+    expect(panel).toContain('<EditSheet');
+    expect(panel).toContain('content={activeBarEl}');
+    expect(panel).toContain('remove={removeAction}');
     // The row of word pills that used to sit in the panel is gone with the
     // sliding capsule that lit them.
     expect(/function OptionPill\(/.test(panel)).toBe(false);

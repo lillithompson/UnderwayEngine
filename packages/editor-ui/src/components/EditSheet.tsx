@@ -149,11 +149,16 @@ export function EditTabs({ tabs }: { tabs: readonly EditTabSpec[] }) {
   );
 }
 
-export function EditSheet({ tabs, content, remove, safeBottom = 0 }: {
+export function EditSheet({ tabs, content, welled = true, remove, safeBottom = 0 }: {
   tabs: readonly EditTabSpec[];
   /** The showing page's controls, held in the well; null when no tab has a
    *  page showing (every tab is an action), which drops the well. */
   content: React.ReactNode | null;
+  /** Draw the well around the content. False for a page that brings its own
+   *  boxes (the Copies page's row groups), where a well would frame every
+   *  section a second time — see logic/submenuHeight's pageIsWelled, which
+   *  is what decides it and what measures the page to match. */
+  welled?: boolean;
   /** The Remove line under the well, for a page whose effect can be
    *  removed (a drop shadow, a border) or reset (opacity). `label` is its
    *  accessibility name; the visible word is always Remove. */
@@ -164,7 +169,9 @@ export function EditSheet({ tabs, content, remove, safeBottom = 0 }: {
   return (
     <View style={[styles.sheet, { paddingBottom: SHEET_PAD_BOTTOM + safeBottom }]}>
       <EditTabs tabs={tabs} />
-      {content != null ? <View style={styles.well}>{content}</View> : null}
+      {content != null ? (
+        <View style={welled ? styles.well : styles.bare}>{content}</View>
+      ) : null}
       {content != null && remove ? (
         <View style={styles.removeRow}>
           <Pressable
@@ -227,6 +234,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: PANEL_CONTENT_WELL,
   },
+  // A page that brings its own boxes takes the same seat under the tabs
+  // with none of the well's dress — no fill, no radius, no padding.
+  bare: { marginTop: SHEET_CONTENT_TOP },
   // The Remove line: right-aligned under the well, dim — a way out of the
   // effect, not one of its controls.
   removeRow: { height: SHEET_REMOVE, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'flex-end', paddingHorizontal: 4 },
