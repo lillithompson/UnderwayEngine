@@ -91,7 +91,6 @@ import {
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 const ICON_COLOR = PANEL_ICON; // the toolbar's inactive-tool grey
-const ICON_COLOR_STRONG = PANEL_INK; // full ink — the locked state, a step up
 const COMPACT_MAX_WIDTH = 500;
 const DEFAULT_SHADOW_MODEL: ShadowModel = {
   dx: 0.75, dy: 0.875, blur: 1.125, spread: 0.125, color: { r: 0, g: 0, b: 0 }, opacity: 0.45,
@@ -1157,19 +1156,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     <GridButton key="flipH" label="Mirror H" icon="arrow-left-right" onPress={model.onMirrorH} compact={compact} />,
     <GridButton key="flipV" label="Mirror V" icon="arrow-up-down" onPress={model.onMirrorV} compact={compact} />,
     <GridButton key="copy" label="Duplicate" icon="content-copy" onPress={model.onDuplicate} compact={compact} />,
-    // Lock acts per object, so a multi-selection gets it too: it locks each
-    // member individually. `locked` then means EVERY member is locked (the
-    // host's own reading, so the button's state and what a press does can't
-    // disagree) — a partly-locked selection reads unlocked and one press
-    // finishes the job rather than inverting into a differently-mixed one.
-    <GridButton
-      key="lock"
-      label={model.locked ? 'Locked' : 'Lock'}
-      icon={model.locked ? 'lock' : 'lock-open-outline'}
-      iconColor={model.locked ? ICON_COLOR_STRONG : ICON_COLOR}
-      onPress={model.onToggleLock}
-      compact={compact}
-    />,
     <GridButton key="delete" label="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
   ];
   // A multi-selection's Group / Merge live in the Edit sheet (tabs, beside
@@ -1180,6 +1166,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   if (model.onUngroup && !model.showFrameOptions && !multi) row1.push(<GridButton key="ungroup" label="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
   if (model.onJoin) row1.push(<GridButton key="join" label="Join" icon="vector-combine" onPress={model.onJoin} compact={compact} />);
   if (model.onUnion && !multi) row1.push(<GridButton key="union" label="Union" icon="vector-union" onPress={model.onUnion} compact={compact} />);
+  // …and LAST, the way into the type pages: the sheet the row's second dot
+  // and a sideways swipe also raise (openSheet — one opener, so the button
+  // and the gestures can't land differently). It took Lock's place on the
+  // row (2026-09-11): the tabs were reachable only by a gesture nothing on
+  // screen announced, while locking stays a press away on the canvas
+  // radial. Absent on a selection with no pages to open — there would be
+  // nothing behind it.
+  if (hasOptions) {
+    row1.push(
+      <GridButton key="properties" label="Properties" icon="tune" onPress={openSheet} compact={compact} />,
+    );
+  }
 
   // The sheet's type tabs (images: the image-edit set; text: Edit + Type),
   // null when the selection's kind offers none — a mixed multi-selection, say,

@@ -308,6 +308,34 @@ describe('every page can be opened and shown', () => {
   });
 });
 
+describe('the common row ends on Properties, the way in', () => {
+  const row = PANEL.slice(PANEL.indexOf('const row1: React.ReactNode[] = ['), PANEL.indexOf('// The sheet\'s type tabs'));
+
+  it('is the row\'s LAST button, and opens the sheet through the one opener', () => {
+    expect(row).toContain('<GridButton key="properties" label="Properties" icon="tune" onPress={openSheet} compact={compact} />');
+    // Last: after the optional Group / Ungroup / Join / Union pushes.
+    expect(row.indexOf('key="properties"')).toBeGreaterThan(row.indexOf('key="union"'));
+    // The gestures raise the same sheet through the same function, so the
+    // button and a swipe can never land differently.
+    expect(PANEL).toContain('const openSheet = () => setSheetWanted(true);');
+    expect(PANEL).toContain('openSheetRef.current = openSheet;');
+  });
+
+  it('is absent on a selection with no pages — there would be nothing behind it', () => {
+    expect(row).toContain('if (hasOptions) {');
+  });
+
+  it('took Lock\'s place: the row no longer locks (the canvas radial still does)', () => {
+    expect(row).not.toContain('key="lock"');
+    expect(row).not.toContain('onToggleLock');
+    expect(PANEL).not.toContain('ICON_COLOR_STRONG');
+    // Rotate, the mirrors, Duplicate and Delete stand as they were.
+    for (const key of ['rotate', 'flipH', 'flipV', 'copy', 'delete']) {
+      expect(row).toContain(`key="${key}"`);
+    }
+  });
+});
+
 describe('the panel drives the sheet', () => {
   it('pops it over the panel, rounded, sized to its page', () => {
     // The rise: sized first, then slid up from below the screen edge.
