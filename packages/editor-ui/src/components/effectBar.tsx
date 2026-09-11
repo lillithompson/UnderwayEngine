@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import {
-  ASIDE_GAP, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, SLIDER_CONTROL, SLIDER_LABEL,
-  SLIDER_LABEL_GAP,
+  ASIDE_GAP, GROUP_GAP, GROUP_PAD, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, SLIDER_CONTROL,
+  SLIDER_LABEL, SLIDER_LABEL_GAP,
 } from '../logic/submenuHeight';
 import { percentText, percentToValue } from '../logic/slider';
 import {
   PANEL_CONTROL,
+  PANEL_GROUP_WELL,
   PANEL_INK,
   PANEL_INK_DIM,
   PANEL_INK_LABEL,
@@ -80,6 +81,23 @@ export function BarBody({ aside, spread, children }: {
       <View style={[styles.rows, styles.rowsBeside, spread ? styles.rowsSpread : null]}>{children}</View>
     </View>
   );
+}
+
+/** A GROUP of rows: a rounded box, a shade darker than the well it sits in,
+ *  around rows that are one setting in several parts — the Copies page's
+ *  two offsets, its two scales, its count beside its turn. Each row keeps
+ *  its own full width inside the box, so the halves read as a pair without
+ *  the squeeze of sharing one line (which halved every track and set two
+ *  readouts fighting for the width — the dual slider row this replaced).
+ *  submenuHeight's rowGroupHeight counts the same padding. */
+export function RowGroup({ children }: { children: React.ReactNode }) {
+  return <View style={styles.group}>{children}</View>;
+}
+
+/** A page whose rows are GROUPS: the same stack, spaced by GROUP_GAP so the
+ *  boxes read as separate rather than as one long field. */
+export function GroupedBody({ children }: { children: React.ReactNode }) {
+  return <View style={styles.groupedRows}>{children}</View>;
 }
 
 /** A dim hint line under a control, indented to the control column (label
@@ -201,50 +219,6 @@ export function SliderRow({ label, value, apply, readout, accent, checker, onDar
   );
 }
 
-/** Two sliders sharing one row, each in the SliderRow dress (caption over
- *  the track, value box beside it), split down the middle. Lets a bar pack
- *  two related controls (e.g. the Text bar's Character + Line spacing) into
- *  a single slider row instead of two, shaving a row's height off the bar.
- *  Each half's `apply(t, committed)` fires live (false) and once on release
- *  (true), same as SliderRow; each reads out as a percent unless handed a
- *  `readout` in its own unit, SliderRow's contract. */
-export function DualSliderRow({
-  leftLabel, leftValue, leftApply, leftReadout, rightLabel, rightValue, rightApply, rightReadout,
-}: {
-  leftLabel: string;
-  leftValue: number;
-  leftApply: (t: number, committed: boolean) => void;
-  leftReadout?: { text: string; commit: (n: number) => void };
-  rightLabel: string;
-  rightValue: number;
-  rightApply: (t: number, committed: boolean) => void;
-  rightReadout?: { text: string; commit: (n: number) => void };
-}) {
-  const half = (
-    label: string, value: number, apply: (t: number, committed: boolean) => void,
-    readout?: { text: string; commit: (n: number) => void },
-  ) => (
-    <View style={styles.dualHalf}>
-      <Text style={styles.segLabel}>{label}</Text>
-      <View style={styles.rowControl}>
-        <View style={styles.rowSlider}>
-          <Slider value={value} accent={CONTROL_ACCENT} trackColor={TRACK} onChange={(v) => apply(v, false)} onCommit={(v) => apply(v, true)} />
-        </View>
-        <SliderReadout
-          text={readout ? readout.text : percentText(value)}
-          commit={readout ? readout.commit : (n) => apply(percentToValue(n), true)}
-        />
-      </View>
-    </View>
-  );
-  return (
-    <View style={styles.dualRow}>
-      {half(leftLabel, leftValue, leftApply, leftReadout)}
-      {half(rightLabel, rightValue, rightApply, rightReadout)}
-    </View>
-  );
-}
-
 /** One segmented row: a 50pt label column + an equal-width segmented control.
  *  Selection applies immediately. An option may carry an `icon` (MCI glyph)
  *  to render in place of its text label (the align row), keeping its `label`
@@ -352,10 +326,11 @@ export function MultiToggleRow<T extends string>({ label, options, onToggle }: {
   );
 }
 
-/** Two segmented controls sharing one row, split down the middle — the
- *  segmented sibling of {@link DualSliderRow}, for a bar that has the same
- *  choice to offer about two related things (the Endpoints bar's per-end cap).
- *  Selection applies immediately, as in {@link SegmentedRow}. */
+/** Two segmented controls sharing one row, split down the middle, for a page
+ *  that has the same choice to offer about two related things (the Endpoints
+ *  page's per-end cap). Selection applies immediately, as in
+ *  {@link SegmentedRow}. Two SLIDERS no longer share a row anywhere — a pair
+ *  of those is a {@link RowGroup} now, each on its own full-width line. */
 export function DualSegmentedRow<T extends string>({ label, options, leftLabel, leftValue, onLeftChange, rightLabel, rightValue, onRightChange }: {
   label: string;
   /** The same choices on both halves — the point of the row is that they ask
@@ -402,6 +377,14 @@ export function DualSegmentedRow<T extends string>({ label, options, leftLabel, 
 const styles = StyleSheet.create({
   // A page's rows, stacked — the metrics submenuHeight's `stack` counts.
   rows: { gap: ROW_GAP },
+  // …and a page of GROUPS, spaced wider (submenuHeight's GROUP_GAP).
+  groupedRows: { gap: GROUP_GAP },
+  group: {
+    padding: GROUP_PAD,
+    borderRadius: 12,
+    backgroundColor: PANEL_GROUP_WELL,
+    gap: ROW_GAP,
+  },
   // …and beside an aside column: the column hugs its content, the rows take
   // the rest.
   body: { flexDirection: 'row', alignItems: 'flex-start', gap: ASIDE_GAP },
@@ -419,9 +402,6 @@ const styles = StyleSheet.create({
   rowLabelDark: { color: 'rgba(255, 255, 255, 0.75)' },
   rowControl: { flexDirection: 'row', alignItems: 'center', gap: 10, height: SLIDER_CONTROL },
   rowSlider: { flex: 1 },
-  // Dual-slider row: two caption-over-track halves split evenly with a gap between.
-  dualRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SLIDER, gap: 16 },
-  dualHalf: { flex: 1, height: ROW_SLIDER, gap: SLIDER_LABEL_GAP },
   // The 50pt label column the segmented rows keep.
   segLabel: { width: 50, color: LABEL, fontSize: 12 },
   segmentedRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SEGMENTED },
@@ -429,6 +409,8 @@ const styles = StyleSheet.create({
   // equal halves each with a compact label of its own.
   dualSegmentedRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SEGMENTED, gap: 10 },
   dualSegLabel: { width: 36, color: LABEL, fontSize: 12 },
+  // One half of a dual row: its own compact label over its control.
+  dualHalf: { flex: 1, height: ROW_SLIDER, gap: SLIDER_LABEL_GAP },
   segmented: { flex: 1, flexDirection: 'row', backgroundColor: SEG_TRACK, borderRadius: 9, padding: 2, gap: 2 },
   segment: { flex: 1, paddingVertical: 6, alignItems: 'center', justifyContent: 'center', borderRadius: 7 },
   // The selected cell is the one thing LIGHTER than the recessed track — the

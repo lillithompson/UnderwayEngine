@@ -145,16 +145,29 @@ export interface SubmenuHeightContext {
 }
 
 /** Total height of a stack of rows, including the gaps between them. */
-function stack(rows: readonly number[]): number {
+function stack(rows: readonly number[], gap = ROW_GAP): number {
   if (rows.length === 0) return 0;
-  return rows.reduce((sum, h) => sum + h, 0) + (rows.length - 1) * ROW_GAP;
+  return rows.reduce((sum, h) => sum + h, 0) + (rows.length - 1) * gap;
 }
 
 /** A page's content area: its padding around the taller of its row stack and
  *  its aside column (the Shadow page's pad — 0 for a page with no aside),
- *  plus the cushion. */
-function contentArea(rows: readonly number[], aside = 0): number {
-  return CONTENT_PAD * 2 + Math.max(stack(rows), aside) + BAR_CUSHION;
+ *  plus the cushion. `gap` is the space between its rows, which a page of
+ *  GROUPS widens (the Copies page — see GROUP_GAP). */
+function contentArea(rows: readonly number[], aside = 0, gap = ROW_GAP): number {
+  return CONTENT_PAD * 2 + Math.max(stack(rows, gap), aside) + BAR_CUSHION;
+}
+
+/** A GROUP of rows (effectBar's RowGroup): a shaded rounded box around rows
+ *  that are one setting in several parts. Its padding all round… */
+export const GROUP_PAD = 10;
+/** …and the space between one group and the next, wider than the gap
+ *  between bare rows so the boxes read as separate. */
+export const GROUP_GAP = 8;
+
+/** How tall a {@link GROUP_PAD}-padded group of `rows` stands. */
+export function rowGroupHeight(rows: readonly number[]): number {
+  return GROUP_PAD * 2 + stack(rows);
 }
 
 /** Tint / Fill rows: Type, then the gradient stop editor and (linear only) the
@@ -259,11 +272,14 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
         ROW_SEGMENTED, ROW_SEGMENTED,
         ...(ctx.endpointCaps === false ? [] : [ROW_SEGMENTED]),
       ]);
-    case 'transform':
-      // The Copies page: Create copies' six settings two to a row (offset X
-      // + Y, scale X + Y, rotation offset + count) and the button row that
-      // fires it.
-      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
+    case 'transform': {
+      // The Copies page: Create copies' six settings, a slider row each, in
+      // three groups of two — the offsets, the scales, then the count
+      // beside the turn — and the button that fires it, standing below them
+      // on the bare well.
+      const pair = rowGroupHeight([ROW_SLIDER, ROW_SLIDER]);
+      return contentArea([pair, pair, pair, ROW_SEGMENTED], 0, GROUP_GAP);
+    }
     case 'patternTiles':
       // The arming grid: two rows of square buttons.
       return contentArea([PATTERN_TILE_GRID]);

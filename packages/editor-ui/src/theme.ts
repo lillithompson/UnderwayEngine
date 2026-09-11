@@ -67,6 +67,11 @@ export const PANEL_TRACK = 'rgba(42, 42, 42, 0.12)'; // slider / segmented / pil
 // sheet that the showing page's controls sit in. A shade past the track, so a
 // track inside it still reads as recessed against it.
 export const PANEL_CONTENT_WELL = 'rgba(42, 42, 42, 0.16)';
+// A GROUP of rows inside that well (effectBar's RowGroup): rounded, and
+// darker again by a hair — enough that two sliders read as one setting in
+// two parts, not enough to compete with the tracks inside it, which darken
+// from here in turn.
+export const PANEL_GROUP_WELL = 'rgba(42, 42, 42, 0.07)';
 export const PANEL_CONTROL = '#ffffff'; // selected segment, raised cell
 export const PANEL_SWATCH_BORDER = 'rgba(42, 42, 42, 0.45)'; // ring around a color swatch
 // Popover sheets presented over a bar (font list, tint presets): a hair

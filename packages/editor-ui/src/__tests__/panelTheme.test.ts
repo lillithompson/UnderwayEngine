@@ -93,9 +93,10 @@ describe('object-properties chrome matches the toolbar', () => {
     const bar = read('effectBar.tsx');
     expect(/^export const CONTROL_ACCENT = STATE_ACTIVE;/m.test(bar)).toBe(true);
     expect(/accent=\{ACCENT\}/.test(bar)).toBe(false);
-    // Two sliders live here — SliderRow (whose accent a color picker may
-    // override) and DualSliderRow's shared half — both on the token.
-    expect(bar.match(/accent=\{(accent \?\? )?CONTROL_ACCENT\}/g)).toHaveLength(2);
+    // One slider lives here now — SliderRow, whose accent a color picker
+    // may override — on the token. (The dual slider row that shared it went
+    // when its last pair became a RowGroup.)
+    expect(bar.match(/accent=\{(accent \?\? )?CONTROL_ACCENT\}/g)).toHaveLength(1);
     // The Shadow page's XY pad is the same control on two axes.
     expect(/backgroundColor: CONTROL_ACCENT/.test(read('ShadowBar.tsx'))).toBe(true);
   });

@@ -1,7 +1,10 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { svgEditOptions, SVG_EDIT_OPTIONS } from '../logic/svgEdit';
-import { ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, submenuHeight } from '../logic/submenuHeight';
+import {
+  BAR_CUSHION, CONTENT_PAD, GROUP_GAP, GROUP_PAD, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER,
+  rowGroupHeight, submenuHeight,
+} from '../logic/submenuHeight';
 import {
   COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
 } from '../logic/transform';
@@ -22,11 +25,14 @@ describe('the Copies option', () => {
     expect(svgEditOptions('line').map((o) => o.action)).toEqual(['stroke', 'endpoints', 'transform']);
   });
 
-  it('has a page height of three slider rows and a button row — no rotation row', () => {
-    // Three doubled rows (offsets, scales, turn + count) and the button.
-    // Measured against the Opacity page (two slider rows, same chrome).
-    expect(submenuHeight('transform', {}) - submenuHeight('opacity', {}))
-      .toBe((ROW_SLIDER + ROW_GAP) + (ROW_SEGMENTED + ROW_GAP));
+  it('stands as three two-slider groups and a button row — no rotation row', () => {
+    const pair = rowGroupHeight([ROW_SLIDER, ROW_SLIDER]);
+    // The group's own padding is counted, and the groups are spaced wider
+    // than bare rows (GROUP_GAP) so the boxes read as separate.
+    expect(pair).toBe(GROUP_PAD * 2 + ROW_SLIDER * 2 + ROW_GAP);
+    expect(submenuHeight('transform', {}))
+      .toBe(CONTENT_PAD * 2 + BAR_CUSHION + pair * 3 + ROW_SEGMENTED + GROUP_GAP * 3);
+    expect(GROUP_GAP).toBeGreaterThan(ROW_GAP);
     expect(submenuHeight('transform', {})).toBeGreaterThan(submenuHeight('endpoints', {}));
   });
 });
@@ -54,22 +60,34 @@ describe('the Copies page', () => {
     expect(SRC).not.toContain('label="Rotation"');
     expect(SRC).not.toContain('onRotate');
     expect(SRC).not.toContain('TransformModel');
-    // The copy settings pair up: offsets, scales, then the turn beside the
-    // count — each half reading out in its own unit.
-    for (const [left, right] of [['Offset X', 'Offset Y'], ['Scale X', 'Scale Y'], ['Rotation offset', 'Copies']]) {
-      expect(SRC).toContain(`leftLabel="${left}"`);
-      expect(SRC).toContain(`rightLabel="${right}"`);
+    // Six sliders, a line each, in three groups of two: the offsets, the
+    // scales, then the count beside the turn. They shared a line per pair
+    // before, which halved every track and set two readouts fighting for
+    // the width.
+    for (const label of ['Offset X', 'Offset Y', 'Scale X', 'Scale Y', 'Copies', 'Rotation offset']) {
+      expect(SRC).toContain(`label="${label}"`);
     }
-    expect(SRC.match(/<DualSliderRow/g)).toHaveLength(3);
-    expect(SRC.match(/<SliderRow/g)).toBeNull();
-    expect(SRC).toContain("leftReadout={{ text: factorText(copies.sx), commit: (n) => set({ sx: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}");
-    expect(SRC).toContain("rightReadout={{ text: factorText(copies.sy), commit: (n) => set({ sy: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}");
+    expect(SRC.match(/<SliderRow/g)).toHaveLength(6);
+    expect(SRC.match(/<RowGroup>/g)).toHaveLength(3);
+    expect(SRC).not.toContain('<DualSliderRow');
+    // Each reads out in its own unit.
+    expect(SRC).toContain("readout={{ text: factorText(copies.sx), commit: (n) => set({ sx: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}");
+    expect(SRC).toContain("readout={{ text: factorText(copies.sy), commit: (n) => set({ sy: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}");
     expect(SRC).toContain("onPress={() => onCopies(copies)}");
     expect(SRC).toContain("label: 'Create copies'");
     // The button stands without a label column: "Create copies" says it,
     // and a "Copies" beside it clashed with the Copies SLIDER above —
-    // which is the count this button acts on.
+    // which is the count this button acts on. It sits BELOW the three
+    // groups, on the bare well: it is the thing they describe, not one
+    // more of them.
     expect(SRC).toContain('<ActionRow options={CREATE_OPTION} onPress={() => onCopies(copies)} />');
+    expect(SRC.indexOf('<ActionRow')).toBeGreaterThan(SRC.lastIndexOf('</RowGroup>'));
+    // The group's chrome is the shared one, counted by the same metrics.
+    const bar = read('effectBar.tsx');
+    expect(bar).toContain('export function RowGroup(');
+    expect(bar).toContain('export function GroupedBody(');
+    expect(bar).toMatch(/group: \{\s*padding: GROUP_PAD,[^}]*backgroundColor: PANEL_GROUP_WELL/s);
+    expect(bar).toMatch(/groupedRows: \{ gap: GROUP_GAP \}/);
   });
 
   it('reports the copies draft live — on mount, on every change, and null as it unmounts', () => {
