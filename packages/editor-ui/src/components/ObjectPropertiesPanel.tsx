@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, ShadowModel, TextStyleModel, TintModel } from '../adapter';
-import { IMAGE_EDIT_OPTIONS, swipeDismissDirection } from '../logic/imageEdit';
+import { IMAGE_EDIT_OPTIONS, formatPixelSize, isSingleImageAction, swipeDismissDirection } from '../logic/imageEdit';
 import { PAINT_EDIT_OPTIONS } from '../logic/paintEdit';
 import {
   PATTERN_EDIT_OPTIONS, patternActionOfSubmenu, patternActionSubmenu,
@@ -28,6 +28,7 @@ import {
   RIG_PART_PAGES, restRigSliders, rigPartOfSubmenu, rigPartSubmenu,
 } from '../logic/rigEdit';
 import { CropBar } from './CropBar';
+import { ImageBar } from './ImageBar';
 import { TextBar, TextPage } from './TextBar';
 import { TintBar } from './TintBar';
 import { EndpointsBar } from './EndpointsBar';
@@ -407,7 +408,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const typeSubmenuOrder: SubmenuKey[] =
     model.showImageEdit ? (multi
       ? ['shadow', 'border', 'opacity']
-      : ['crop', 'shadow', 'border', 'opacity'])
+      : [...(model.onReplaceImage ? (['image'] as const) : []), 'crop', 'shadow', 'border', 'opacity'])
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'spacing', 'align', 'shadow']
     // A word sticker: Opacity (its Color page joins below).
@@ -1013,6 +1014,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onCommit={(o) => applyOpacity(o, true)}
       />
     );
+  } else if (displaySub === 'image') {
+    activeBarEl = (
+      <ImageBar
+        pixelSize={model.imagePixelSize}
+        // Straight out of the press: the host opens a file picker, and
+        // WebKit only shows the dialog while the gesture's activation lives.
+        onReplace={() => model.onReplaceImage?.()}
+      />
+    );
   } else if (displaySub === 'crop') {
     activeBarEl = (
       <CropBar
@@ -1047,6 +1057,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // down (displaySub) keeps its height, so the sheet drops as it stood.
   const contentHeight = !displaySub ? null : addPage ? emptyEffectHeight() : submenuHeight(displaySub, {
     cropMode: framingForBar.mode,
+    // The Image page's resolution line renders only when it is known.
+    imageHasResolution: formatPixelSize(model.imagePixelSize) !== null,
     // A word sticker fades as a whole: no Soften row. Its Color page is the
     // one Invert row.
     opacitySoften: !model.showInvert,
@@ -1147,8 +1159,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const strokeSpec = () => ({ key: 'stroke', label: 'Stroke', sub: 'stroke' as const, onPress: () => openSubmenu('stroke') });
   if (model.showImageEdit) {
     typeSpecs = IMAGE_EDIT_OPTIONS
-      // Crop is single-target only — a mixed selection has no one frame to fit.
-      .filter((opt) => !multi || opt.action !== 'crop')
+      // Image and Crop are single-target only — a mixed selection has no one
+      // photo to swap, and no one frame to fit.
+      .filter((opt) => !multi || !isSingleImageAction(opt.action))
+      // …and the Image page is the host's Replace: no callback, no page.
+      .filter((opt) => opt.action !== 'image' || !!model.onReplaceImage)
       // Every image action names a page, and shares its key.
       .map((opt) => ({
         key: opt.action,

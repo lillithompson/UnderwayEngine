@@ -171,7 +171,7 @@ describe('the pages have no chrome of their own', () => {
     expect(PANEL).toContain('typeSpecs = colorFirst ? [colorTab, ...(typeSpecs ?? [])] : [...(typeSpecs ?? []), colorTab];');
   });
 
-  it('the Crop page: no Mode label, no Replace, no resolution line', () => {
+  it('the Crop page: no Mode label, no Replace, no resolution line — those are the Image page’s', () => {
     const crop = SRC('components', 'CropBar.tsx');
     // The Fill / Fit / Crop / Tile row names itself.
     expect(crop).toMatch(/<SegmentedRow\s+options=\{MODES\}/);
@@ -184,11 +184,33 @@ describe('the pages have no chrome of their own', () => {
     expect(crop).not.toContain('formatPixelSize');
     // An unlabelled segmented row spans the whole line.
     expect(BAR).toContain('{label ? <Text style={styles.segLabel}>{label}</Text> : null}');
-    // …and neither the model nor the height context carries what they fed.
-    expect(SRC('adapter.ts')).not.toContain('onReplaceImage');
-    expect(SRC('adapter.ts')).not.toContain('imagePixelSize');
+    // …and the height context no longer grows the Crop page for either.
     expect(SRC('logic', 'submenuHeight.ts')).not.toContain('cropCanReplace');
     expect(SRC('logic', 'submenuHeight.ts')).not.toContain('cropHasResolution');
+  });
+
+  it('the Image page holds the photo’s own two facts: Replace, and the resolution', () => {
+    const image = SRC('components', 'ImageBar.tsx');
+    // Replace is an ACTION (it is something you do, not a state the image
+    // is in) and fires straight out of the press — the host opens a file
+    // picker, which WebKit only shows while the gesture's activation lives.
+    expect(image).toContain('<ActionRow options={REPLACE_OPTION} onPress={onReplace} />');
+    expect(image).toContain("label: 'Replace'");
+    expect(image).not.toMatch(/onPress=\{\s*async/);
+    // The resolution reads under it, and is omitted when unknown.
+    expect(image).toContain('const resolution = formatPixelSize(pixelSize);');
+    expect(image).toContain('{resolution ? (');
+    expect(image).toContain('accessibilityLabel={`Image resolution ${resolution}`}');
+    // The page leads an image's tabs, and exists only where the host wired
+    // Replace up.
+    expect(PANEL).toContain("[...(model.onReplaceImage ? (['image'] as const) : []), 'crop', 'shadow', 'border', 'opacity'])");
+    expect(PANEL).toContain(".filter((opt) => opt.action !== 'image' || !!model.onReplaceImage)");
+    // A multi-selection drops it with Crop: one photo, one frame.
+    expect(PANEL).toContain('.filter((opt) => !multi || !isSingleImageAction(opt.action))');
+    // Its height counts the resolution line only when there is one.
+    expect(PANEL).toContain('imageHasResolution: formatPixelSize(model.imagePixelSize) !== null,');
+    expect(SRC('adapter.ts')).toContain('onReplaceImage?(): void;');
+    expect(SRC('adapter.ts')).toContain('imagePixelSize?: { width: number; height: number };');
   });
 });
 

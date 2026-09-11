@@ -3,19 +3,27 @@
 // share. Kept pure (no react-native) so the option order and swipe maths are
 // unit-tested in node; the component only owns the animation.
 
-/** The image-specific editing actions, in display order — all of them visual
- *  adjustments, each opening its own page. Corner rounding lives inside the
- *  Border page (its Radius slider), so there is no standalone Round action.
- *  Opacity opens the Opacity page (whole-image opacity + edge soften).
- *  Swapping an image's pixels is not an option here: replace-in-place is
- *  reached by tapping an unfilled photo placeholder (and the floating
- *  Replace capsule), not from this row. Tint was removed from the row:
- *  pages saved with a tint keep rendering it, but the page is gone. */
+/** The image-specific editing actions, in display order. Image leads — the
+ *  photo ITSELF: which pixels these are (Replace) and what they are
+ *  (resolution) — and the rest are visual adjustments to them, each opening
+ *  its own page. Corner rounding lives inside the Border page (its Radius
+ *  slider), so there is no standalone Round action. Opacity opens the
+ *  Opacity page (whole-image opacity + edge soften). Tint was removed from
+ *  the row: pages saved with a tint keep rendering it, but the page is gone.
+ *
+ *  `image` is SINGLE-TARGET, like `crop`: one photo to swap, one resolution
+ *  to read. A multi-selection drops both. */
 export type ImageEditAction =
+  | 'image'
   | 'crop'
   | 'shadow'
   | 'border'
   | 'opacity';
+
+/** The actions a MULTI-selection of images drops — the single-target ones. */
+export function isSingleImageAction(action: ImageEditAction): boolean {
+  return action === 'image' || action === 'crop';
+}
 
 export interface ImageEditOption {
   action: ImageEditAction;
@@ -26,6 +34,7 @@ export interface ImageEditOption {
 }
 
 export const IMAGE_EDIT_OPTIONS: readonly ImageEditOption[] = [
+  { action: 'image', label: 'Image', icon: 'image-outline' },
   { action: 'crop', label: 'Crop', icon: 'crop' },
   { action: 'shadow', label: 'Shadow', icon: 'box-shadow' },
   { action: 'border', label: 'Border', icon: 'border-outside' },
@@ -47,4 +56,18 @@ export function swipeDismissDirection(
   if (dragDx <= -thresholdPx) return -1;
   if (dragDx >= thresholdPx) return 1;
   return 0;
+}
+
+/** The source-resolution line on the Image page, e.g. `3024 × 4032 px`.
+ *  Null when the size is unknown or degenerate (a host that never learned
+ *  the pixel dimensions), so the line is omitted rather than reading
+ *  `0 × 0 px`. Dimensions are rounded — pixel counts are whole. */
+export function formatPixelSize(
+  size: { width: number; height: number } | undefined | null,
+): string | null {
+  if (!size) return null;
+  const w = Math.round(size.width);
+  const h = Math.round(size.height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  return `${w} × ${h} px`;
 }

@@ -686,6 +686,20 @@ export interface ObjectPropertiesModel {
    *  stays open. Not surfaced by the Crop page; kept for hosts that drive a
    *  framing reset from elsewhere. */
   onResetFraming?(): void;
+  /** The selected image's source resolution in pixels, read out on the
+   *  Image page. Omitted (or non-positive) when the host doesn't know it —
+   *  the line is then hidden. */
+  imagePixelSize?: { width: number; height: number };
+  /**
+   * Swap the selected image's pixels for a newly picked file, keeping the
+   * node, its box and its place in the scene. The Image page's Replace
+   * button; absent → the page is not offered.
+   *
+   * The host opens a file picker here, so it MUST be called straight out of
+   * the press: WebKit only shows the dialog while the gesture's activation
+   * is still live, and anything awaited first loses it.
+   */
+  onReplaceImage?(): void;
   /** Selected image's current corner rounding, a fraction (0–0.5) of the
    *  shorter side — seeds the Border panel's Radius slider. */
   cornerRadius?: number;
