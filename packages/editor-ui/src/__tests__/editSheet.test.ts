@@ -198,6 +198,13 @@ describe('the pages have no chrome of their own', () => {
     expect(image).toContain("label: 'Replace'");
     expect(image).not.toMatch(/onPress=\{\s*async/);
     // The resolution reads under it, and is omitted when unknown.
+    // Radius rounds the PICTURE, so it came off the Border page (where
+    // everything around it dressed the outline drawn on top) onto the
+    // image's own page, through the same shared row a shape's Shape page
+    // uses.
+    expect(image).toContain('<RadiusRow cornerRadius={cornerRadius} onCornerRadius={onCornerRadius} />');
+    expect(PANEL).toContain('cornerRadius={model.cornerRadius ?? 0}');
+    expect(image.indexOf('REPLACE_OPTION')).toBeLessThan(image.indexOf('<RadiusRow'));
     expect(image).toContain('const resolution = formatPixelSize(pixelSize);');
     expect(image).toContain('{resolution ? (');
     expect(image).toContain('accessibilityLabel={`Image resolution ${resolution}`}');
@@ -464,20 +471,25 @@ describe('the panel drives the sheet', () => {
     expect(PANEL).toContain('onCornerRadius={(r, committed) => model.onStrokeRadius?.(r, committed)}');
     const shape = SRC('components', 'ShapeBar.tsx');
     expect(shape).toContain('<RadiusRow cornerRadius={cornerRadius} onCornerRadius={onCornerRadius} />');
-    // The Stroke page: no Radius, and Position's cells name themselves.
+    // The Stroke page: Position's cells name themselves. Neither it nor the
+    // image's Border page draws a Radius row any more — the page that owns
+    // the rounding draws it (an image's Image page, a shape's Shape page),
+    // so BorderBar has no such row at all.
     const stroke = PANEL.slice(PANEL.indexOf("} else if (displaySub === 'stroke') {"), PANEL.indexOf("} else if (displaySub && rigPartOfSubmenu(displaySub)) {"));
-    expect(stroke).toContain('showRadius={false}');
     expect(stroke).toContain('labelPosition={false}');
     const border = SRC('components', 'BorderBar.tsx');
+    expect(border).not.toContain('showRadius');
+    expect(border).not.toContain('<RadiusRow');
+    expect(border).toContain('export function RadiusRow(');
     expect(border).toContain("label={labelPosition ? 'Position' : undefined}");
     // Width, Dash, then Position: the line's own two properties together,
     // then where it sits against the edge (Position used to divide them).
     expect(border.indexOf('label="Dash"')).toBeLessThan(border.indexOf("'Position'"));
     expect(border.indexOf('label="Width"')).toBeLessThan(border.indexOf('label="Dash"'));
-    // The image's Border page keeps both, untouched.
+    // The image's Border page keeps its label column, and rounds nothing.
     const imageBorder = PANEL.slice(PANEL.indexOf("} else if (displaySub === 'border') {"), PANEL.indexOf("} else if (displaySub === 'stroke') {"));
-    expect(imageBorder).not.toContain('showRadius');
     expect(imageBorder).not.toContain('labelPosition');
+    expect(imageBorder).not.toContain('cornerRadius');
   });
 
   it('a tab that opens a page opens it — it never toggles the page closed', () => {

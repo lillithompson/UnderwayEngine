@@ -56,7 +56,9 @@ describe('submenuHeight (a page’s content area)', () => {
     // The swatch that used to stand in an aside column beside these rows, and
     // set a floor under their height, is a Color row now.
     expect(submenuHeight('svgFill')).toBe(pageOf([ROW_SLIDER]));
-    expect(submenuHeight('border')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER]));
+    // Width, Dash, Position — and no Radius: rounding is the object's, so
+    // an image rounds itself on its Image page.
+    expect(submenuHeight('border')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]));
   });
 
   test('the Text pages: Type is three rows, Spacing three sliders, Align two segmented rows', () => {
@@ -88,9 +90,10 @@ describe('submenuHeight (a page’s content area)', () => {
     // A line has no stroke position: Width + Dash only.
     const line = submenuHeight('stroke', { strokeRows: svgStrokeRows('line') });
     expect(line).toBe(pageOf([ROW_SLIDER, ROW_SLIDER]));
-    // A rectangle adds Position — its corner Radius is the Shape page's.
+    // A rectangle adds Position, last — its corner Radius is the Shape
+    // page's.
     const rect = submenuHeight('stroke', { strokeRows: svgStrokeRows('rectangle') });
-    expect(rect).toBe(pageOf([ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER]));
+    expect(rect).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]));
     expect(rect).toBeGreaterThan(line);
     expect(submenuHeight('shape')).toBe(pageOf([ROW_SLIDER]));
   });

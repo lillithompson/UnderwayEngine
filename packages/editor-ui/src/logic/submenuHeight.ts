@@ -130,7 +130,7 @@ export interface SubmenuHeightContext {
   /** Color page: how many rows it lists (a swatch or a toggle each). */
   colorRows?: number;
   /** Border page: which optional rows the image / frame border shows. */
-  borderRows?: { radius: boolean; position: boolean };
+  borderRows?: { position: boolean };
   /** Stroke page: the same page, with the rows this vector subtype supports
    *  (never Radius — that is the Shape page's). */
   strokeRows?: { position: boolean };
@@ -207,12 +207,12 @@ function tintRows(type: TintType = 'solid'): number[] {
   ];
 }
 
-/** Border / Stroke rows: Width, the optional Radius, Dash, then the optional
- *  Position — the line's own properties together, then where it sits. */
-function borderRows(rows: { radius: boolean; position: boolean } = { radius: true, position: true }): number[] {
+/** Border / Stroke rows: Width, Dash, then the optional Position — the
+ *  line's own properties together, then where it sits. No Radius: rounding
+ *  belongs to the object, so it is the Image and Shape pages' row. */
+function borderRows(rows: { position: boolean } = { position: true }): number[] {
   return [
     ROW_SLIDER,
-    ...(rows.radius ? [ROW_SLIDER] : []),
     ROW_SLIDER,
     ...(rows.position ? [ROW_SEGMENTED] : []),
   ];
@@ -246,17 +246,17 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'border':
       return contentArea(borderRows(ctx.borderRows));
     case 'stroke':
-      return contentArea(borderRows({ radius: false, position: ctx.strokeRows?.position ?? true }));
+      return contentArea(borderRows({ position: ctx.strokeRows?.position ?? true }));
     case 'shape':
       // The Radius slider alone.
       return contentArea([ROW_SLIDER]);
     case 'crop':
       return contentArea(cropRows(ctx.cropMode));
     case 'image':
-      // The Replace button, then the source-resolution line under it when
-      // the host knows it.
+      // The Replace button and the picture's corner Radius, then the
+      // source-resolution line under them when the host knows it.
       return contentArea(
-        [ROW_SEGMENTED, ...(ctx.imageHasResolution ? [IMAGE_CAPTION_HEIGHT] : [])],
+        [ROW_SEGMENTED, ROW_SLIDER, ...(ctx.imageHasResolution ? [IMAGE_CAPTION_HEIGHT] : [])],
       );
     case 'opacity':
       return contentArea(ctx.opacitySoften === false ? [ROW_SLIDER] : [ROW_SLIDER, ROW_SLIDER]);

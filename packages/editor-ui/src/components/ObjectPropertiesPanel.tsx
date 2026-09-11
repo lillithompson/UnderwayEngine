@@ -979,10 +979,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     activeBarEl = (
       <BorderBar
         border={borderForBar}
-        cornerRadius={model.cornerRadius ?? 0}
         onChange={(b) => applyBorder(b, false)}
         onCommit={(b) => applyBorder(b, true)}
-        onCornerRadius={(r, committed) => model.onCornerRadius?.(r, committed)}
       />
     );
     removeAction = { label: 'Remove border', onPress: removeBorder };
@@ -995,13 +993,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     activeBarEl = (
       <BorderBar
         border={strokeForBar}
-        cornerRadius={0}
-        showRadius={false}
         showPosition={rows.position}
         labelPosition={false}
         onChange={(b) => applyStroke(b, false)}
         onCommit={(b) => applyStroke(b, true)}
-        onCornerRadius={() => {}}
       />
     );
     // …and only a CLOSED shape can lose its stroke: an open path IS its
@@ -1033,6 +1028,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     activeBarEl = (
       <ImageBar
         pixelSize={model.imagePixelSize}
+        cornerRadius={model.cornerRadius ?? 0}
+        onCornerRadius={(r, committed) => model.onCornerRadius?.(r, committed)}
         // Straight out of the press: the host opens a file picker, and
         // WebKit only shows the dialog while the gesture's activation lives.
         onReplace={() => model.onReplaceImage?.()}
@@ -1080,7 +1077,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     colorRows: colorRows.length,
     // The image / frame border offers every row; a vector's stroke drops the
     // ones its subtype has no answer for.
-    borderRows: { radius: true, position: true },
+    borderRows: { position: true },
     strokeRows: svgStrokeRows(model.svgSubtype ?? 'stroke'),
     // The Layout page grows an Arrange row exactly when the page will render it.
     layoutHasGrid: !!model.onGrid,

@@ -2,21 +2,22 @@ import React from 'react';
 import type { BorderModel, BorderPosition } from '../adapter';
 import { BarBody, SegmentedRow, SliderRow } from './effectBar';
 
-// The Border (stroke) page (design "3a"): Width, Radius, Dash, Position —
-// the line's own two properties together, then where it sits against the
-// edge. It's a sibling of the Drop Shadow page and shares its grammar (see
+// The Border (stroke) page (design "3a"): Width, Dash, Position — the
+// line's own two properties together, then where it sits against the edge.
+// It's a sibling of the Drop Shadow page and shares its grammar (see
 // effectBar.tsx); the border's colour is the Color page's.
-// The Radius row rounds the object itself (folding in the former standalone
-// Round control), so it rides the app's cornerRadius fields rather than the
-// border model.
+//
+// It draws no Radius row. Rounding is a property of the OBJECT, not of the
+// outline drawn on it, and it lives with the object: an image's on its
+// Image page, a polygonal shape's on its Shape page — both through
+// RadiusRow below, which is why that row still lives here. It rides the
+// app's own cornerRadius fields, never the border model.
 //
 // A vector selection reuses this page as its STROKE menu — same rows, same
 // ranges — pointed at the path's own stroke instead of a rect around a bbox.
 // It drops the rows its subtype has no answer for (Position needs a closed
 // path), which is why this is a row toggle rather than a copy of the
-// component; a shape's corner Radius is not a Stroke row at all but the
-// Shape page's (ShapeBar, which borrows RadiusRow below). Width and Dash
-// are universal and always render.
+// component. Width and Dash are universal and always render.
 
 // ── Ranges (world cells; design pt ÷ 16) ─────────────────────────────
 const MAX_WIDTH = 1.5; // 0…24pt
@@ -41,7 +42,8 @@ const POSITIONS: readonly { value: BorderPosition; label: string }[] = [
 ];
 
 /** The Radius row: corner rounding as a 0–0.5 fraction of the shorter side.
- *  An image's Border page keeps it; a polygonal shape's is its Shape page. */
+ *  Lives here because the ranges around it do; it is rendered by the pages
+ *  that own the rounding — an image's Image page, a shape's Shape page. */
 export function RadiusRow({ cornerRadius, onCornerRadius }: {
   cornerRadius: number;
   onCornerRadius: (radius: number, committed: boolean) => void;
@@ -55,13 +57,8 @@ export function RadiusRow({ cornerRadius, onCornerRadius }: {
   );
 }
 
-export function BorderBar({ border, cornerRadius, showRadius = true, showPosition = true, labelPosition = true, onChange, onCommit, onCornerRadius }: {
+export function BorderBar({ border, showPosition = true, labelPosition = true, onChange, onCommit }: {
   border: BorderModel;
-  /** Object corner rounding, a 0–0.5 fraction of the shorter side. */
-  cornerRadius: number;
-  /** Render the Radius row. Off for a vector's Stroke page, whose corners
-   *  (when it has any) round on the Shape page. */
-  showRadius?: boolean;
   /** Render the Position row. Off for a selection with no inside to align a
    *  stroke to (an open path: line, arc, freehand stroke). */
   showPosition?: boolean;
@@ -70,9 +67,6 @@ export function BorderBar({ border, cornerRadius, showRadius = true, showPositio
   labelPosition?: boolean;
   onChange: (b: BorderModel) => void;
   onCommit: (b: BorderModel) => void;
-  /** Fires the Radius row: `radius` is a 0–0.5 fraction; `committed` marks the
-   *  drag release (one undo step) vs. a live preview. */
-  onCornerRadius: (radius: number, committed: boolean) => void;
 }) {
   const set = (patch: Partial<BorderModel>, committed: boolean) =>
     (committed ? onCommit : onChange)({ ...border, ...patch });
@@ -91,9 +85,6 @@ export function BorderBar({ border, cornerRadius, showRadius = true, showPositio
           }, true),
         }}
       />
-      {showRadius ? (
-        <RadiusRow cornerRadius={cornerRadius} onCornerRadius={onCornerRadius} />
-      ) : null}
       <SliderRow
         label="Dash"
         value={border.dash / MAX_DASH}
