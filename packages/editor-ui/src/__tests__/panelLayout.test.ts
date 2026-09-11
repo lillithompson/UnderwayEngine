@@ -101,13 +101,18 @@ describe('the panel’s two pages', () => {
     expect(PANEL).toContain('hitSlop={10}');
   });
 
-  test('a sideways swipe on the row pops the sheet, either direction, and the row never leaves', () => {
+  test('a sideways swipe on the row pops the sheet, either direction, and the row does not move at all', () => {
     const pan = PANEL.slice(PANEL.indexOf('const swapPan = useRef('), PANEL.indexOf('// Multi-selection mode'));
     expect(pan).toContain('if (swipeDismissDirection(g.dx) !== 0 && canSwapRef.current) openSheetRef.current();');
-    // The row follows the finger a little and springs back — it is not
-    // thrown off an edge for another row to replace it.
-    expect(pan).toContain('swapX.setValue(Math.max(-SWIPE_FOLLOW_PX, Math.min(SWIPE_FOLLOW_PX, g.dx)));');
+    // No travel: the row neither follows the finger nor slides off an edge.
+    // The sheet coming up is the whole answer to the gesture, so there is
+    // nothing to animate sideways and nothing to spring back.
+    expect(pan).not.toContain('onPanResponderMove');
+    expect(PANEL).not.toContain('swapX');
+    expect(PANEL).not.toContain('SWIPE_FOLLOW_PX');
     expect(PANEL).not.toContain('stepPanelPage');
     expect(PANEL).not.toContain('animateSwap');
+    // …and the row renders as a plain View, not an Animated one.
+    expect(PANEL).toContain('<View style={styles.swapArea} {...(canSwap ? swapPan.panHandlers : {})}>\n          <View style={styles.gridRow}>');
   });
 });

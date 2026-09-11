@@ -92,10 +92,6 @@ type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 const ICON_COLOR = PANEL_ICON; // the toolbar's inactive-tool grey
 const ICON_COLOR_STRONG = PANEL_INK; // full ink — the locked state, a step up
 const COMPACT_MAX_WIDTH = 500;
-// How far the common row follows a sideways finger before the sheet pops:
-// enough to say the gesture registered, not enough to look like a page
-// leaving.
-const SWIPE_FOLLOW_PX = 40;
 const DEFAULT_SHADOW_MODEL: ShadowModel = {
   dx: 0.75, dy: 0.875, blur: 1.125, spread: 0.125, color: { r: 0, g: 0, b: 0 }, opacity: 0.45,
 };
@@ -224,11 +220,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   }, [model.visible, translateY, hiddenY]);
 
   // ── The sideways swipe that pops the Edit sheet ──────────────────────
-  // The common row follows the finger a little (swapX, capped), then springs
-  // back; a swipe past the threshold in EITHER direction pops the sheet up
-  // over the panel. There is nothing to slide the row to any more — the
-  // options are the sheet's tabs — so the row never leaves.
-  const swapX = useRef(new Animated.Value(0)).current;
+  // A swipe past the threshold in EITHER direction pops the sheet up over
+  // the panel. The row itself DOES NOT MOVE: it used to follow the finger
+  // and spring back, a leftover from when a swipe slid one row of options
+  // out and another in, and once the options became the sheet's tabs that
+  // travel was saying something untrue — nothing is going anywhere
+  // sideways. The sheet rising is the whole answer to the gesture.
+  //
   // Whether the sheet has been ASKED for — by a swipe, the edit dot, or a
   // page the host opened. It is what keeps the sheet up across selections
   // (see sheetOpen below); a downward swipe or the common dot clears it.
@@ -243,15 +241,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       onMoveShouldSetPanResponder: (_e, g) =>
         !isValueDragging()
         && canSwapRef.current && Math.abs(g.dx) > 5 && Math.abs(g.dx) > Math.abs(g.dy),
-      onPanResponderMove: (_e, g) => {
-        swapX.setValue(Math.max(-SWIPE_FOLLOW_PX, Math.min(SWIPE_FOLLOW_PX, g.dx)));
-      },
+      // Nothing to do as the finger travels: the row is still, and the
+      // release decides whether the sheet comes up.
       onPanResponderRelease: (_e, g) => {
         if (swipeDismissDirection(g.dx) !== 0 && canSwapRef.current) openSheetRef.current();
-        Animated.spring(swapX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
       },
-      onPanResponderTerminate: () =>
-        Animated.spring(swapX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start(),
     }),
   ).current;
 
@@ -1303,13 +1297,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       <View style={styles.clip} pointerEvents="box-none">
         <Animated.View style={[styles.panel, { height: panelBox.height, paddingBottom: panelBox.paddingBottom, transform: [{ translateY }] }]}>
         {/* The common-actions row. A sideways swipe anywhere over it pops the
-            Edit sheet; the dots below say which of the two pages is up. */}
+            Edit sheet — the row itself holds still — and the dots below say
+            which of the two pages is up. */}
         <View style={styles.swapArea} {...(canSwap ? swapPan.panHandlers : {})}>
-          <Animated.View style={{ transform: [{ translateX: swapX }] }}>
-            <View style={styles.gridRow}>
-              {row1}
-            </View>
-          </Animated.View>
+          <View style={styles.gridRow}>
+            {row1}
+          </View>
         </View>
         {canSwap ? (
           <View style={styles.dotsRow}>
