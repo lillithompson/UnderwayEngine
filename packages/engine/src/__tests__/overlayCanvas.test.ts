@@ -1,5 +1,4 @@
 import {
-  CPU_CANVAS_2D_OPTIONS,
   PAINT_OVERLAY_CANVAS_ATTR,
   OverlayCanvasLike,
   drawOverlayToCanvas,
@@ -30,7 +29,6 @@ afterAll(() => {
 function fakeCanvas(width = 0, height = 0, withContext = true) {
   const puts: Array<{ data: ImageData; dx: number; dy: number }> = [];
   const resets: string[] = [];
-  const contextCalls: unknown[][] = [];
   const canvas = {
     _w: width,
     _h: height,
@@ -38,14 +36,11 @@ function fakeCanvas(width = 0, height = 0, withContext = true) {
     set width(v: number) { this._w = v; resets.push(`w=${v}`); },
     get height() { return this._h; },
     set height(v: number) { this._h = v; resets.push(`h=${v}`); },
-    getContext: (id: '2d', options?: unknown) => {
-      contextCalls.push([id, options]);
-      return withContext && id === '2d'
-        ? { putImageData: (data: ImageData, dx: number, dy: number) => { puts.push({ data, dx, dy }); } }
-        : null;
-    },
+    getContext: (id: '2d') => (withContext && id === '2d'
+      ? { putImageData: (data: ImageData, dx: number, dy: number) => { puts.push({ data, dx, dy }); } }
+      : null),
   };
-  return { canvas: canvas as unknown as OverlayCanvasLike, puts, resets, contextCalls };
+  return { canvas: canvas as unknown as OverlayCanvasLike, puts, resets };
 }
 
 function painted(cols = 8, rows = 6): ImagePaintOverlay {
@@ -110,13 +105,6 @@ describe('drawOverlayToCanvas', () => {
     const { canvas, resets } = fakeCanvas(8, 6);
     drawOverlayToCanvas(canvas, painted(4, 6));
     expect(resets).toEqual(['w=4']);
-  });
-
-  test('asks for a CPU-backed context — the canvas must never become a compositing layer', () => {
-    const { canvas, contextCalls } = fakeCanvas();
-    drawOverlayToCanvas(canvas, painted());
-    expect(contextCalls).toEqual([['2d', { willReadFrequently: true }]]);
-    expect(CPU_CANVAS_2D_OPTIONS).toEqual({ willReadFrequently: true });
   });
 
   test('reports a missing 2D context', () => {

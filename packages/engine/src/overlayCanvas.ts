@@ -28,30 +28,12 @@ export interface OverlayCanvasContext {
   putImageData(data: ImageData, dx: number, dy: number): void;
 }
 
-/**
- * The 2D-context options EVERY canvas that lives inside the editor's scaled
- * world must be created with. `willReadFrequently` makes WebKit back the
- * canvas on the CPU instead of the GPU — and a CPU-backed canvas is painted
- * into its parent's layer like an image, where a GPU-backed one is a
- * compositing layer of its own. That distinction is the whole cost: under
- * the world's CSS `scale`, WebKit re-rasterizes every composited layer it
- * finds beneath at each new scale, and by its overlap rule every node
- * painted above a composited canvas becomes a composited layer too. On a
- * page with paint, a pinch then re-allocated ~28 page-sized backing stores
- * per frame (20 GB of IOSurface in a few seconds of zooming — Instruments,
- * crash_01) until iOS killed the WebContent process. The canvases here are
- * all fed by putImageData, a CPU path regardless, so nothing is lost.
- * Pass this to the FIRST getContext call on a canvas — later calls return
- * the context already made and ignore their options.
- */
-export const CPU_CANVAS_2D_OPTIONS: CanvasRenderingContext2DSettings = Object.freeze({ willReadFrequently: true });
-
 /** The slice of an HTMLCanvasElement the overlay draw uses — narrow so the
  *  helper can be exercised under node with a fake. */
 export interface OverlayCanvasLike {
   width: number;
   height: number;
-  getContext(contextId: '2d', options?: { willReadFrequently?: boolean }): OverlayCanvasContext | null;
+  getContext(contextId: '2d'): OverlayCanvasContext | null;
 }
 
 // One ImageData view per overlay byte-array, shared across redraws: the view
@@ -88,7 +70,7 @@ export function overlayImageData(overlay: ImagePaintOverlay): ImageData {
 export function drawOverlayToCanvas(canvas: OverlayCanvasLike, overlay: ImagePaintOverlay): boolean {
   if (canvas.width !== overlay.cols) canvas.width = overlay.cols;
   if (canvas.height !== overlay.rows) canvas.height = overlay.rows;
-  const ctx = canvas.getContext('2d', CPU_CANVAS_2D_OPTIONS);
+  const ctx = canvas.getContext('2d');
   if (!ctx) return false;
   ctx.putImageData(overlayImageData(overlay), 0, 0);
   return true;
