@@ -41,7 +41,7 @@ const degText = (deg: number) => `${Math.round(deg)}°`;
 const cellText = (cells: number) => String(Math.round(cells * 10) / 10);
 const factorText = (f: number) => `${Math.round(f * 100)}%`;
 
-const CREATE_OPTION = [{ value: 'create' as const, label: 'Create copies' }];
+const CREATE_OPTION = [{ value: 'create' as const, label: 'Create' }];
 
 export function TransformBar({ onCopies, onCopiesPreview }: {
   onCopies: (spec: TransformCopiesSpec) => void;
@@ -106,9 +106,11 @@ export function TransformBar({ onCopies, onCopiesPreview }: {
           }}
         />
       </RowGroup>
-      {/* No label column: the button says "Create copies", and a "Copies"
-          beside it named the page over again — and clashed with the Copies
-          slider directly above, which is the count this button acts on. */}
+      {/* No label column: a "Copies" beside it named the page over again —
+          and clashed with the Copies slider directly above, which is the
+          count this button acts on. The word is "Create" for the same
+          reason: the page is Copies and the slider says how many, so
+          naming them again on the button only repeated them. */}
       <ActionRow options={CREATE_OPTION} onPress={() => onCopies(copies)} />
     </GroupedBody>
   );

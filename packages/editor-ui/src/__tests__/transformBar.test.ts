@@ -88,12 +88,14 @@ describe('the Copies page', () => {
     expect(SRC).toContain("readout={{ text: factorText(copies.sx), commit: (n) => set({ sx: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}");
     expect(SRC).toContain("readout={{ text: factorText(copies.sy), commit: (n) => set({ sy: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}");
     expect(SRC).toContain("onPress={() => onCopies(copies)}");
-    expect(SRC).toContain("label: 'Create copies'");
-    // The button stands without a label column: "Create copies" says it,
-    // and a "Copies" beside it clashed with the Copies SLIDER above —
-    // which is the count this button acts on. It sits BELOW the three
-    // groups, on the bare well: it is the thing they describe, not one
-    // more of them.
+    // "Create", not "Create copies": the page is Copies and the slider
+    // above says how many, so the button naming them again repeated them.
+    expect(SRC).toContain("label: 'Create'");
+    expect(SRC).not.toContain("label: 'Create copies'");
+    // The button stands without a label column: a "Copies" beside it
+    // clashed with the Copies SLIDER above — which is the count this
+    // button acts on. It sits BELOW the three groups, on the bare well:
+    // it is the thing they describe, not one more of them.
     expect(SRC).toContain('<ActionRow options={CREATE_OPTION} onPress={() => onCopies(copies)} />');
     expect(SRC.indexOf('<ActionRow')).toBeGreaterThan(SRC.lastIndexOf('</RowGroup>'));
     // The group's chrome is the shared one, counted by the same metrics.
