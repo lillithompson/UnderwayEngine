@@ -40,7 +40,6 @@ export const ROW_GAP = 2;
  *  + 2 below. */
 export const HINT_HEIGHT = 17;
 /** The Image page's source-resolution line: 8 above + an 11pt line. */
-export const IMAGE_CAPTION_HEIGHT = 21;
 
 // ── The content area (every page's container) ───────────────────────
 /** Inner padding of the darkened content area, all four sides. */
@@ -121,10 +120,7 @@ export interface SubmenuHeightContext {
   tintType?: TintType;
   /** Crop page: each framing mode brings its own rows. */
   cropMode?: ImageFramingMode;
-  /** Image page: whether the source resolution is known, which is the only
-   *  thing on it that can be absent. */
-  imageHasResolution?: boolean;
-  /** Opacity page: whether it shows the Soften row under Opacity (default
+    /** Opacity page: whether it shows the Soften row under Opacity (default
    *  true). A word sticker fades as a whole and offers no soften. */
   opacitySoften?: boolean;
   /** Color page: how many rows it lists (a swatch or a toggle each). */
@@ -253,11 +249,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'crop':
       return contentArea(cropRows(ctx.cropMode));
     case 'image':
-      // The Replace button and the picture's corner Radius, then the
-      // source-resolution line under them when the host knows it.
-      return contentArea(
-        [ROW_SEGMENTED, ROW_SLIDER, ...(ctx.imageHasResolution ? [IMAGE_CAPTION_HEIGHT] : [])],
-      );
+      // The Replace button and the picture's corner Radius.
+      return contentArea([ROW_SEGMENTED, ROW_SLIDER]);
     case 'opacity':
       return contentArea(ctx.opacitySoften === false ? [ROW_SLIDER] : [ROW_SLIDER, ROW_SLIDER]);
     case 'color':

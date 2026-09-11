@@ -199,7 +199,7 @@ describe('the pages have no chrome of their own', () => {
     expect(SRC('logic', 'submenuHeight.ts')).not.toContain('cropHasResolution');
   });
 
-  it('the Image page holds the photo’s own two facts: Replace, and the resolution', () => {
+  it('the Image page holds the photo’s own two controls: Replace and Radius', () => {
     const image = SRC('components', 'ImageBar.tsx');
     // Replace is an ACTION (it is something you do, not a state the image
     // is in) and fires straight out of the press — the host opens a file
@@ -207,7 +207,6 @@ describe('the pages have no chrome of their own', () => {
     expect(image).toContain('<ActionRow options={REPLACE_OPTION} onPress={onReplace} />');
     expect(image).toContain("label: 'Replace'");
     expect(image).not.toMatch(/onPress=\{\s*async/);
-    // The resolution reads under it, and is omitted when unknown.
     // Radius rounds the PICTURE, so it came off the Border page (where
     // everything around it dressed the outline drawn on top) onto the
     // image's own page, through the same shared row a shape's Shape page
@@ -215,19 +214,22 @@ describe('the pages have no chrome of their own', () => {
     expect(image).toContain('<RadiusRow cornerRadius={cornerRadius} onCornerRadius={onCornerRadius} />');
     expect(PANEL).toContain('cornerRadius={model.cornerRadius ?? 0}');
     expect(image.indexOf('REPLACE_OPTION')).toBeLessThan(image.indexOf('<RadiusRow'));
-    expect(image).toContain('const resolution = formatPixelSize(pixelSize);');
-    expect(image).toContain('{resolution ? (');
-    expect(image).toContain('accessibilityLabel={`Image resolution ${resolution}`}');
+    // A source-resolution caption stood under them and came off: a number
+    // to read, on a page of things to do. Nothing measures it any more.
+    expect(image).not.toContain('formatPixelSize');
+    expect(image).not.toContain('accessibilityLabel={`Image resolution');
+    expect(image).not.toContain('<Text');
+    expect(SRC('logic', 'imageEdit.ts')).not.toContain('formatPixelSize');
+    expect(SRC('logic', 'submenuHeight.ts')).not.toContain('imageHasResolution');
+    expect(SRC('logic', 'submenuHeight.ts')).not.toContain('IMAGE_CAPTION_HEIGHT');
+    expect(SRC('adapter.ts')).not.toContain('imagePixelSize');
     // The page leads an image's tabs, and exists only where the host wired
     // Replace up.
     expect(PANEL).toContain("[...(model.onReplaceImage ? (['image'] as const) : []), 'crop', 'shadow', 'border', 'opacity', 'transform'])");
     expect(PANEL).toContain(".filter((opt) => opt.action !== 'image' || !!model.onReplaceImage)");
     // A multi-selection drops it with Crop: one photo, one frame.
     expect(PANEL).toContain('.filter((opt) => !multi || !isSingleImageAction(opt.action))');
-    // Its height counts the resolution line only when there is one.
-    expect(PANEL).toContain('imageHasResolution: formatPixelSize(model.imagePixelSize) !== null,');
     expect(SRC('adapter.ts')).toContain('onReplaceImage?(): void;');
-    expect(SRC('adapter.ts')).toContain('imagePixelSize?: { width: number; height: number };');
   });
 });
 

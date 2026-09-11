@@ -686,10 +686,6 @@ export interface ObjectPropertiesModel {
    *  stays open. Not surfaced by the Crop page; kept for hosts that drive a
    *  framing reset from elsewhere. */
   onResetFraming?(): void;
-  /** The selected image's source resolution in pixels, read out on the
-   *  Image page. Omitted (or non-positive) when the host doesn't know it —
-   *  the line is then hidden. */
-  imagePixelSize?: { width: number; height: number };
   /**
    * Swap the selected image's pixels for a newly picked file, keeping the
    * node, its box and its place in the scene. The Image page's Replace

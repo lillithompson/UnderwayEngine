@@ -60,16 +60,3 @@ export function swipeDismissDirection(
   return 0;
 }
 
-/** The source-resolution line on the Image page, e.g. `3024 × 4032 px`.
- *  Null when the size is unknown or degenerate (a host that never learned
- *  the pixel dimensions), so the line is omitted rather than reading
- *  `0 × 0 px`. Dimensions are rounded — pixel counts are whole. */
-export function formatPixelSize(
-  size: { width: number; height: number } | undefined | null,
-): string | null {
-  if (!size) return null;
-  const w = Math.round(size.width);
-  const h = Math.round(size.height);
-  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
-  return `${w} × ${h} px`;
-}

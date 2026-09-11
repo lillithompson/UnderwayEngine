@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, ShadowModel, TextStyleModel, TintModel } from '../adapter';
-import { IMAGE_EDIT_OPTIONS, formatPixelSize, isSingleImageAction, swipeDismissDirection } from '../logic/imageEdit';
+import { IMAGE_EDIT_OPTIONS, isSingleImageAction, swipeDismissDirection } from '../logic/imageEdit';
 import { PAINT_EDIT_OPTIONS } from '../logic/paintEdit';
 import {
   PATTERN_EDIT_OPTIONS, patternActionOfSubmenu, patternActionSubmenu,
@@ -1031,7 +1031,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   } else if (displaySub === 'image') {
     activeBarEl = (
       <ImageBar
-        pixelSize={model.imagePixelSize}
         cornerRadius={model.cornerRadius ?? 0}
         onCornerRadius={(r, committed) => model.onCornerRadius?.(r, committed)}
         // Straight out of the press: the host opens a file picker, and
@@ -1076,7 +1075,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const contentHeight = !displaySub ? null : addPage ? emptyEffectHeight() : submenuHeight(displaySub, {
     cropMode: framingForBar.mode,
     // The Image page's resolution line renders only when it is known.
-    imageHasResolution: formatPixelSize(model.imagePixelSize) !== null,
     // A word sticker fades as a whole: no Soften row. Its Color page is the
     // one Invert row.
     opacitySoften: !model.showInvert && !model.showTextStyle,
