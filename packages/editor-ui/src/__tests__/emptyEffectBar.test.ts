@@ -24,8 +24,11 @@ describe('EmptyEffectBar (effectBar.tsx)', () => {
     // The one control: a full-width accessible Add button.
     expect(bar).toContain('accessibilityLabel={addLabel}');
     expect(bar).toContain('onPress={onAdd}');
-    // It wears the control accent — pressing it is what SETS a value.
-    expect(bar).toContain('backgroundColor: CONTROL_ACCENT,');
+    // Bare white text on the well, no filled pill: a fill read as a control
+    // already set, when the page's whole point is that nothing is.
+    expect(bar).toMatch(/addButton: \{[^}]*\}/s);
+    expect(/addButton: \{[^}]*backgroundColor/s.test(bar)).toBe(false);
+    expect(bar).toMatch(/addLabel: \{ color: '#fff'/);
     // The per-page header is gone from every page: the Edit sheet's title
     // and tabs are the chrome now.
     expect(bar).not.toContain('EffectBarHeader');

@@ -502,12 +502,13 @@ const styles = StyleSheet.create({
   // The absent-effect page (EmptyEffectBar): one segmented-row-tall Add
   // button as its only control.
   emptyControls: { height: ROW_SEGMENTED, flexDirection: 'row' },
-  // The Add button wears the control accent (a filled pill, like a selected
-  // segment lit in the value color): pressing it is what SETS a value.
+  // The Add button is bare white text on the well — no fill: a filled pill
+  // read as a control already set, when the page's whole point is that
+  // nothing is.
   addButton: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, borderRadius: 9, backgroundColor: CONTROL_ACCENT,
+    gap: 6, borderRadius: 9,
   },
   addButtonPressed: { opacity: 0.7 },
-  addLabel: { color: '#fff', fontSize: 12.5, fontWeight: '600' },
+  addLabel: { color: '#fff', fontSize: 14, fontWeight: '600' },
 });
