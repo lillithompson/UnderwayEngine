@@ -34,13 +34,15 @@ describe('the sheet: a tab row over the well', () => {
     expect(SHEET).toContain("{content != null ? <View style={styles.well}>{content}</View> : null}");
   });
 
-  it('spaces the tabs evenly when they fit, and scrolls them with a fade when they do not', () => {
-    // A horizontal ScrollView whose content grows to the row — which is what
-    // lets space-evenly spread the tabs — and past it when it must scroll.
+  it('runs the tabs from the left edge one gap apart, and scrolls them with a fade when they overflow', () => {
+    // A horizontal ScrollView: the tabs start at the left and never spread
+    // to fill the row, so two tabs and six start the same way.
     expect(SHEET).toContain('horizontal');
     expect(SHEET).toContain('showsHorizontalScrollIndicator={false}');
-    expect(SHEET).toMatch(/tabsContent: \{[^}]*flexGrow: 1/s);
-    expect(SHEET).toMatch(/tabsContent: \{[^}]*justifyContent: 'space-evenly'/s);
+    expect(SHEET).toMatch(/tabsContent: \{[^}]*justifyContent: 'flex-start'/s);
+    expect(SHEET).toMatch(/tabsContent: \{[^}]*gap: TAB_GAP/s);
+    expect(SHEET).not.toContain("'space-evenly'");
+    expect(SHEET).not.toContain('flexGrow');
     // The fades are worked out from the measured row, its content and the
     // scroll offset: only an overflowing row fades, and only at the end
     // that has more.

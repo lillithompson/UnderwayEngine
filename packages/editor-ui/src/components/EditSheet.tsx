@@ -15,7 +15,7 @@ import { ColorSwatchFill } from './ColorSwatch';
 // The Edit sheet: the type-specific half of the object-properties panel,
 // popped up OVER the panel's common-actions row.
 //
-//   Crop  Shadow  Border  …    ← one tab per option, evenly spaced
+//   Crop  Shadow  Border  …    ← one tab per option, from the left
 //   ┌────────────────────────┐
 //   │ the showing page's     │ ← a slightly darkened, rounded well holding
 //   │ controls               │   the lit tab's controls (a property page)
@@ -27,9 +27,9 @@ import { ColorSwatchFill } from './ColorSwatch';
 // a multi-selection). A tab that opens a page lights up in selection blue
 // while its page is showing; a tab that is a one-press action (Group, Edit)
 // fires and stays unlit; a toggle (Repeat, Invert) lights in its own colour
-// while on. The row is evenly spaced when the tabs fit, and SCROLLS when
-// they don't — the tab running off the edge fades out into the sheet, which
-// is what says there is more to swipe to. There is no swiping between
+// while on. The row runs from the left edge, one gap apart, and SCROLLS when
+// it outgrows the sheet — the tab running off the edge fades out into the
+// sheet, which is what says there is more to swipe to. There is no swiping between
 // pages: the tabs are the navigation. No title over the tabs: the lit tab
 // says what the sheet is showing, and a heading only pushed it down.
 //
@@ -61,6 +61,8 @@ export interface EditTabSpec {
 /** The fade at either end of an overflowing tab row. Wide enough to take a
  *  word from ink to nothing across it. */
 const TAB_FADE = 40;
+/** The space between neighbouring tabs, the same whatever the row holds. */
+const TAB_GAP = 12;
 
 function EditTab({ tab }: { tab: EditTabSpec }) {
   const lit = !!tab.selected || !!tab.toggled;
@@ -92,8 +94,8 @@ function EditTab({ tab }: { tab: EditTabSpec }) {
   );
 }
 
-/** The tab row: evenly spaced when the tabs fit, a horizontal scroller when
- *  they don't, with the overflowing end faded into the sheet. The fades are
+/** The tab row: left-justified, a horizontal scroller when the tabs outgrow
+ *  it, with the overflowing end faded into the sheet. The fades are
  *  worked out from the row's measured width, its content's, and the scroll
  *  offset — and held as the two booleans they decide, so a scroll re-renders
  *  the row only when a fade actually appears or goes. */
@@ -185,15 +187,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: SHEET_PAD_HORIZONTAL,
   },
   tabs: { height: SHEET_TABS },
-  // The row's content grows to the row when the tabs fit — which is what
-  // lets `space-evenly` spread them — and past it when they don't, which
-  // is what makes it scroll.
+  // The tabs run from the LEFT edge, one gap apart — not spread across the
+  // row — so a sheet with two tabs and one with six start the same way, and
+  // a row that outgrows the sheet simply continues past the edge (which is
+  // what makes it scroll).
   tabsContent: {
-    flexGrow: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-evenly',
-    gap: 4,
+    justifyContent: 'flex-start',
+    gap: TAB_GAP,
   },
   tab: { height: SHEET_TABS, justifyContent: 'center' },
   tabPill: {
