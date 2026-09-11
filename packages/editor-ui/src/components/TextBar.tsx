@@ -4,7 +4,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TextFontOption, TextHAlign, TextStyleModel, TextVAlign, TextWeight } from '../adapter';
 import { ROW_PILL } from '../logic/submenuHeight';
 import {
-  ACCENT, BarBody, ColorAside, DualSliderRow, LABEL,
+  ACCENT, BarBody, ColorAside, DualSliderRow,
   PILL_CHEVRON, PILL_TRACK, SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL,
   SHEET_ROW_ACTIVE, SHEET_TEXT, SliderRow,
 } from './effectBar';
@@ -54,11 +54,11 @@ const VALIGNS: readonly { value: TextVAlign; label: string; icon: MCIName }[] = 
 ];
 
 /** The Font row: a full-width pill showing the current family, tapping it
- *  opens the font sheet. */
+ *  opens the font sheet. No label column — the family's name says what the
+ *  pill is. */
 function FontRow({ label, onOpen }: { label: string; onOpen: () => void }) {
   return (
     <View style={styles.row}>
-      <Text style={styles.rowLabel}>Font</Text>
       <Pressable style={styles.pill} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`Font: ${label}`}>
         <Text style={styles.pillText} numberOfLines={1}>{label}</Text>
         <MaterialCommunityIcons name="chevron-down" size={16} color={PILL_CHEVRON} />
@@ -142,8 +142,8 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onPickColor, o
         {isFont ? (
           <>
             <FontRow label={currentLabel} onOpen={() => setSheetOpen(true)} />
+            {/* Light / Regular / Semibold / Bold name themselves: no label. */}
             <SegmentedRow
-              label="Weight"
               options={WEIGHTS}
               value={style.weight}
               onChange={(weight) => set({ weight }, true)}
@@ -206,7 +206,6 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onPickColor, o
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', height: ROW_PILL },
-  rowLabel: { width: 50, color: LABEL, fontSize: 12 },
   pill: {
     flex: 1, height: 32, flexDirection: 'row', alignItems: 'center',
     backgroundColor: PILL_TRACK, borderRadius: 9, paddingHorizontal: 12,

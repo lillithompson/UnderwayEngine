@@ -205,6 +205,13 @@ describe('the panel drives the sheet', () => {
     expect(PANEL).toContain('const displaySub: SubmenuKey | null = activeSub ?? (sheetOpen ? null : lastSubRef.current);');
   });
 
+  it('the Type page carries no Font or Weight label — the pill and the segments name themselves', () => {
+    const text = SRC('components', 'TextBar.tsx');
+    expect(text).not.toContain('>Font</Text>');
+    expect(text).not.toContain('label="Weight"');
+    expect(text).toContain('accessibilityLabel={`Font: ${label}`}');
+  });
+
   it('text offers Type · Align · Shadow — no Edit tab; a tap on the text edits its content', () => {
     expect(PANEL).not.toContain("key: 'edit'");
     expect(PANEL).not.toContain('showEdit');
