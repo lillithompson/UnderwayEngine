@@ -214,6 +214,83 @@ describe('the pages have no chrome of their own', () => {
   });
 });
 
+// Every page the sheet can land on must actually OPEN, and having opened,
+// must be the one the sheet shows. A page is opened either by the panel
+// itself (a LocalSubmenu, for a page holding nothing the host must track)
+// or by a host flag openSubmenu sets — and a key that is neither falls
+// through every branch, silently. That is what left the Image page dead:
+// pressing its tab did nothing, and since it LEADS an image's tabs the
+// sheet landed on it and came up as a bare tab row with nothing lit.
+describe('every page can be opened and shown', () => {
+  /** The SubmenuKey union, read from its own source so a page added there
+   *  is a page this suite demands the panel can open. */
+  const ALL_KEYS: string[] = (() => {
+    const src = SRC('logic', 'submenuHeight.ts');
+    const union = src.slice(
+      src.indexOf('export type SubmenuKey ='),
+      src.indexOf(';', src.indexOf('export type SubmenuKey =')),
+    );
+    return [...union.matchAll(/'([a-zA-Z]+)'/g)].map((m) => m[1]);
+  })();
+  const openBody = PANEL.slice(
+    PANEL.indexOf('const openSubmenu = (key: SubmenuKey) => {'),
+    PANEL.indexOf('const dismissHostSubmenus = () => {'),
+  );
+  const localList = PANEL.slice(
+    PANEL.indexOf('const isLocalSubmenu ='),
+    PANEL.indexOf('interface OptionSpec'),
+  );
+  const activeSubChain = PANEL.slice(
+    PANEL.indexOf('const activeSub: SubmenuKey | null ='),
+    PANEL.indexOf('const submenuOpen = activeSub != null;'),
+  );
+  /** The two families openSubmenu dispatches through a lookup rather than
+   *  by name — their keys are covered by that call, not by a branch. */
+  const viaLookup = (key: string) => key.startsWith('rig') || key.startsWith('pattern');
+  /** RETIRED pages: keys still in the union with nothing left to offer
+   *  them. `tint` is the image Tint page, which came off the options row
+   *  (images no longer tint) while its key and its height stayed for
+   *  TintBar, which lives on as the shape Fill page. Listed by name so a
+   *  page that is merely BROKEN can't hide here — anything else unopenable
+   *  fails these tests, which is how the dead Image tab was found. */
+  const RETIRED = ['tint'];
+
+  test('the union really was read (a parse failure must not pass this suite)', () => {
+    expect(ALL_KEYS).toContain('image');
+    expect(ALL_KEYS).toContain('crop');
+    expect(ALL_KEYS.length).toBeGreaterThanOrEqual(20);
+  });
+
+  test.each(ALL_KEYS)('openSubmenu(%s) reaches something', (key) => {
+    const handled = RETIRED.includes(key)
+      || localList.includes(`'${key}'`)
+      || openBody.includes(`key === '${key}'`)
+      || viaLookup(key);
+    expect([key, handled]).toEqual([key, true]);
+  });
+
+  test.each(ALL_KEYS)('activeSub can report %s', (key) => {
+    // A page the panel opens but activeSub can never name would open and
+    // then show nothing — the same empty sheet by the other route.
+    const shown = RETIRED.includes(key)
+      || localList.includes(`'${key}'`)
+      || activeSubChain.includes(`'${key}'`)
+      || viaLookup(key)
+      // The text pages ride one host flag; `textPage` names which shows.
+      || (['font', 'spacing', 'align'].includes(key) && activeSubChain.includes('textPage'));
+    expect([key, shown]).toEqual([key, true]);
+  });
+
+  test.each(ALL_KEYS)('the sheet has a body to put in the well for %s', (key) => {
+    // …and one that renders: a key with no branch here would open, be
+    // named, and still leave the well empty.
+    const rendered = RETIRED.includes(key)
+      || PANEL.includes(`displaySub === '${key}'`)
+      || (viaLookup(key) && PANEL.includes('rigPartOfSubmenu(displaySub)'));
+    expect([key, rendered]).toEqual([key, true]);
+  });
+});
+
 describe('the panel drives the sheet', () => {
   it('pops it over the panel, rounded, sized to its page', () => {
     // The rise: sized first, then slid up from below the screen edge.

@@ -170,8 +170,9 @@ function GridButton({ label, icon, iconColor, onPress, compact }: {
 /** One type-specific option, described rather than rendered — it becomes a
  *  tab of the Edit sheet (EditTabSpec), lit while its page is showing. */
 /** The pages whose open state the panel keeps itself (see `localSub`). */
-type LocalSubmenu = 'color' | 'shape';
-const isLocalSubmenu = (key: SubmenuKey): key is LocalSubmenu => key === 'color' || key === 'shape';
+type LocalSubmenu = 'color' | 'shape' | 'image';
+const isLocalSubmenu = (key: SubmenuKey): key is LocalSubmenu =>
+  key === 'color' || key === 'shape' || key === 'image';
 
 interface OptionSpec extends Omit<EditTabSpec, 'selected'> {
   /** The page this option opens. Options carrying one light up as tabs while
@@ -350,11 +351,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // points own it: the Type tab opens on 'font', Spacing on 'spacing', Align
   // on 'align' (all via openSubmenu).
   const [textPage, setTextPage] = useState<TextPage>('font');
-  // The Color and Shape pages are the panel's own: they hold nothing the
-  // host has to know is open (a swatch opens the host's picker, a toggle
-  // fires its action, the Radius slider writes through onStrokeRadius as
-  // it always did), so unlike the effect pages their open state lives here
-  // rather than on the model.
+  // The Color, Shape and Image pages are the panel's own: they hold nothing
+  // the host has to know is open (a swatch opens the host's picker, a toggle
+  // fires its action, the Radius slider writes through onStrokeRadius as it
+  // always did, Replace is one press and the resolution is just read), so
+  // unlike the effect pages their open state lives here rather than on the
+  // model. A page NOT on this list and not wired to a host flag can never
+  // open at all — which is what left the Image tab dead, and an image's
+  // sheet landing on it empty.
   const [localSub, setLocalSub] = useState<LocalSubmenu | null>(null);
   // ── The pages (Crop / Shadow / Border / Text …) ──────────────────────
   // The open page is what the Edit sheet's well holds, and its tab is the lit
@@ -548,15 +552,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   if (activeSub) lastSubRef.current = activeSub;
   const displaySub: SubmenuKey | null = activeSub ?? (sheetOpen ? null : lastSubRef.current);
 
-  /** Pop the sheet up, opening the tab it lands on (the remembered one when
-   *  this selection has it, else the first page). Both land in one render:
-   *  the wanted flag and the host's open flag batch, so the sheet rises
-   *  already sized to its page rather than growing from its tab row. */
-  const openSheet = () => {
-    setSheetWanted(true);
-    const target = landingSubmenu(submenuOrder, lastSubRef.current);
-    if (target) openSubmenu(target);
-  };
+  /** Pop the sheet up. Asking is ALL it does: the landing effect below sees
+   *  a sheet with no page and opens the tab it lands on (the remembered one
+   *  when this selection has it, else the first page).
+   *
+   *  That effect is the single way in, which is the point — this used to
+   *  land the page itself, so the edit dot ran one path and the host's own
+   *  Edit button (model.editOpen, which only sets the flag) ran another,
+   *  and the two could disagree about what came up. */
+  const openSheet = () => setSheetWanted(true);
   openSheetRef.current = openSheet;
   /** Drop the sheet: no page open, and none asked for. */
   const closeSheet = () => {
@@ -650,11 +654,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   }, [model.visible, model.showImageEdit, model.showPaintOptions, svgOpacityable, model.showRigOptions, model.showInvert, model.opacityOpen]);
   // The panel-kept pages fold away when the selection stops offering them
   // (or the panel hides), like the host's pages do.
+  const imageable = !!model.showImageEdit && !!model.onReplaceImage && !multi;
   useEffect(() => {
-    if (!model.visible || (localSub === 'color' && !colorable) || (localSub === 'shape' && !svgShapeable)) {
+    if (!model.visible
+      || (localSub === 'color' && !colorable)
+      || (localSub === 'shape' && !svgShapeable)
+      || (localSub === 'image' && !imageable)) {
       setLocalSub(null);
     }
-  }, [model.visible, colorable, svgShapeable, localSub]);
+  }, [model.visible, colorable, svgShapeable, imageable, localSub]);
 
   // Seed the shadow / border drafts from the current effect each time the
   // controls open.
