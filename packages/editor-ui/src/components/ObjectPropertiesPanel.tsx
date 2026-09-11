@@ -855,11 +855,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
 
   // Endpoints keeps no draft: every control is a segmented pick, so there is no
   // drag for a live preview to smooth over and the model is always the truth.
-  const removeEndpoints = () => {
-    model.onEndpoints?.(null);
-    model.onEndpointsOpenChange?.(false);
-  };
-
   // Params tracked by the sliders/pad come from the local draft; color comes
   // from the model (it's changed externally, via the full-screen picker).
   const shadowForBar: ShadowModel = shadowDraft
@@ -962,7 +957,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onChange={(e) => model.onEndpoints?.(e)}
       />
     );
-    removeAction = { label: 'Remove endpoints', onPress: removeEndpoints };
   } else if (displaySub === 'layout') {
     activeBarEl = (
       <LayoutBar

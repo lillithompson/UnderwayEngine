@@ -89,9 +89,13 @@ describe('the sheet: a tab row over the well', () => {
     expect(SHEET).toContain('{content != null && remove ? (');
     // …and the panel names it per page: the pages that can be removed or
     // reset, and no others.
-    for (const label of ['Remove fill', 'Remove drop shadow', 'Remove border', 'Remove stroke', 'Remove endpoints']) {
+    for (const label of ['Remove fill', 'Remove drop shadow', 'Remove border', 'Remove stroke']) {
       expect(PANEL).toContain(`removeAction = { label: '${label}'`);
     }
+    // The Ends page has none: its markers are a shape each end wears, and
+    // 'None' is one of the shapes the page already offers — the line said
+    // twice what one of its own controls says once.
+    expect(PANEL).not.toContain('Remove endpoints');
     // …and the stroke's is gated: an open path IS its stroke, so a line
     // cannot remove one (svgStrokeRemovable).
     expect(PANEL).toContain("if (svgStrokeRemovable(model.svgSubtype ?? 'stroke')) {");
