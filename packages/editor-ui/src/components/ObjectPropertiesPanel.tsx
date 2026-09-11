@@ -1211,11 +1211,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       onPress: toggleOpacity,
     }));
   } else if (model.showPatternOptions) {
-    // Inline tile pattern: its three pages (Tiles / Tools / Symmetry).
+    // Inline tile pattern: its Tools page (PATTERN_EDIT_OPTIONS — the
+    // Tiles and Symmetry pages came off the row; see patternEdit.ts).
     // Repeat is NOT a capsule here the way it is on the svg branch below —
     // it rides the Tools bar as a row, with the grid actions and Borders,
-    // because a pattern object's top row is already four pages long and
-    // Repeat is a setting rather than a place to go.
+    // because Repeat is a setting rather than a place to go.
     typeSpecs = PATTERN_EDIT_OPTIONS.map((opt) => ({
       key: opt.action,
       label: opt.label,

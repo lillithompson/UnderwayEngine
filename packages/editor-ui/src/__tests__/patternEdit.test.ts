@@ -31,9 +31,14 @@ import { patternModalTileSize } from '../logic/patternEdit';
 import { submenuHeight } from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
-  it('offers Tiles, Tools and Symmetry, in that order', () => {
-    expect(PATTERN_EDIT_OPTIONS.map((o) => o.action)).toEqual(['tiles', 'tools', 'symmetry']);
-    for (const o of PATTERN_EDIT_OPTIONS) expect(o.label.length).toBeGreaterThan(0);
+  it('offers Tools alone — the panel adds Stroke beside it; Tiles and Symmetry came off the row', () => {
+    expect(PATTERN_EDIT_OPTIONS.map((o) => [o.action, o.label])).toEqual([['tools', 'Tools']]);
+    // The bars themselves stand, keyed and sized, for a host that opens them.
+    for (const action of ['tiles', 'symmetry'] as const) {
+      const sub = patternActionSubmenu(action);
+      expect(patternActionOfSubmenu(sub)).toBe(action);
+      expect(submenuHeight(sub)).toBeGreaterThan(0);
+    }
   });
 
   it('the Tools bar runs Flood, Close and Clear on the grid', () => {
@@ -85,7 +90,7 @@ describe('the symmetry grid', () => {
 // No test renderer for the panel component, so its flag-enumeration sites
 // are pinned by source — the bug this guards: showPatternOptions had a
 // typeSpecs branch but was missing from `hasTypeOptions`, so the type page
-// carrying Tiles / Tools / Symmetry was never offered for a pattern
+// carrying the pattern's options was never offered for a pattern
 // selection.
 describe('the panel offers the pattern type page', () => {
   const SRC = readFileSync(

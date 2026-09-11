@@ -330,15 +330,17 @@ export interface PatternEditOption {
   label: string;
 }
 
-/** The pattern type options, in display order. Tiles leads — picking what
- *  to paint with is the main loop — then the Tools that operate on the
- *  grid, then the Symmetry the painting mirrors by. (Repeat is not here:
- *  it is a toggle, added by the panel exactly as the legacy svg pattern's
- *  Repeat is.) */
+/** The pattern type options, in display order: the Tools that operate on
+ *  the grid (Flood / Close / Clear, Borders, Repeat, Sets), and that is
+ *  all — the panel adds the Stroke bar beside it, so a pattern's page
+ *  reads Tools · Stroke. The Tiles and Symmetry pages came off the row
+ *  (2026-09-10): the canvas paints from the Tile tool's own choice and
+ *  mirrors by the toolbar's Symmetry setting, and two more pages on the
+ *  row said the same things twice. Their bars, keys and heights stand
+ *  (PatternEditAction, patternActionSubmenu) for a host that opens them
+ *  itself. (Repeat is not here: it is a row of the Tools bar.) */
 export const PATTERN_EDIT_OPTIONS: readonly PatternEditOption[] = [
-  { action: 'tiles', label: 'Tiles' },
   { action: 'tools', label: 'Tools' },
-  { action: 'symmetry', label: 'Symmetry' },
 ];
 
 /** The submenu key an action's bar rides under (see submenuHeight's
