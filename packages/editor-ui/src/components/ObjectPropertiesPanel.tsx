@@ -35,6 +35,7 @@ import { TransformBar } from './TransformBar';
 import { LayoutBar } from './LayoutBar';
 import { PatternSymmetryBar, PatternTilesBar, PatternToolsBar } from './PatternBars';
 import { EmptyEffectBar } from './effectBar';
+import { ColorBar, ColorRowSpec } from './ColorBar';
 import { EditSheet, EditTabSpec } from './EditSheet';
 import { SHEET_RADIUS } from '../logic/submenuHeight';
 import {
@@ -337,6 +338,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // points own it: the Type tab opens on 'font', Spacing on 'spacing', Align
   // on 'align' (all via openSubmenu).
   const [textPage, setTextPage] = useState<TextPage>('font');
+  // The Color page is the panel's own: it holds nothing the host has to
+  // preview (a swatch opens the host's picker, a toggle fires its action),
+  // so unlike the effect pages its open state lives here rather than on
+  // the model.
+  const [colorOpen, setColorOpen] = useState(false);
   // ── The pages (Crop / Shadow / Border / Text …) ──────────────────────
   // The open page is what the Edit sheet's well holds, and its tab is the lit
   // one. The pages are separate components but only one shows at a time.
@@ -351,6 +357,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       : ['crop', 'shadow', 'border', 'opacity'])
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'spacing', 'align', 'shadow']
+    // A word sticker: its Color page (the Invert toggle) and Opacity.
+    : model.showInvert ? ['color', 'opacity']
     : model.showPaintOptions ? ['opacity']
     // A pattern object's pages, in the order its tab row lists them, plus
     // the Stroke page its baked tile paths share with the vectors.
@@ -389,6 +397,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     : model.svgFillOpen ? 'svgFill'
     : model.endpointsOpen ? 'endpoints'
     : model.transformOpen ? 'transform'
+    : colorOpen ? 'color'
     : model.rigPartOpen ? rigPartSubmenu(model.rigPartOpen)
     : model.patternBarOpen ? patternActionSubmenu(model.patternBarOpen)
     : model.textStyleOpen ? textPage
@@ -429,6 +438,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
 
   const openSubmenu = (key: SubmenuKey) => {
     fontSheetOpenRef.current = false;
+    // One page at a time: the Color page closes as any host page opens (the
+    // host closes its own siblings the same way), and opens alone.
+    setColorOpen(key === 'color');
+    if (key === 'color') { dismissHostSubmenus(); return; }
     if (key === 'crop') model.onCropOpenChange?.(true);
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
     else if (key === 'border') model.onBorderOpenChange?.(true);
@@ -447,8 +460,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       model.onTextStyleOpenChange?.(true);
     }
   };
-  const dismissSubmenu = () => {
-    fontSheetOpenRef.current = false;
+  const dismissHostSubmenus = () => {
     model.onShadowOpenChange?.(false);
     model.onBorderOpenChange?.(false);
     model.onCropOpenChange?.(false);
@@ -461,6 +473,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     model.onTextStyleOpenChange?.(false);
     model.onRigPartOpenChange?.(null);
     model.onPatternBarOpenChange?.(null);
+  };
+  const dismissSubmenu = () => {
+    fontSheetOpenRef.current = false;
+    setColorOpen(false);
+    dismissHostSubmenus();
   };
 
   // The page the sheet last showed — what the sheet keeps rendering through
@@ -560,17 +577,23 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showImageEdit, model.showFrameOptions, model.showTextStyle]);
   // The Opacity page is shared by images, paint islands, the closed vector
-  // shapes and rigs, so it folds away only when the selection is none of
-  // those (or the panel hides).
+  // shapes, rigs and word stickers, so it folds away only when the
+  // selection is none of those (or the panel hides).
   useEffect(() => {
-    const canOpacity = model.showImageEdit || model.showPaintOptions || svgOpacityable || model.showRigOptions;
+    const canOpacity = model.showImageEdit || model.showPaintOptions || svgOpacityable || model.showRigOptions || model.showInvert;
     if ((!model.visible || !canOpacity) && model.opacityOpen) {
       model.onOpacityOpenChange?.(false);
     }
     // model.on* are stable setters; listing the whole model would re-run this
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showImageEdit, model.showPaintOptions, svgOpacityable, model.showRigOptions, model.opacityOpen]);
+  }, [model.visible, model.showImageEdit, model.showPaintOptions, svgOpacityable, model.showRigOptions, model.showInvert, model.opacityOpen]);
+  // The Color page folds away when the selection stops offering it (or the
+  // panel hides), like the host's pages do.
+  const colorable = !!model.showInvert;
+  useEffect(() => {
+    if ((!model.visible || !colorable) && colorOpen) setColorOpen(false);
+  }, [model.visible, colorable, colorOpen]);
 
   // Seed the shadow / border drafts from the current effect each time the
   // controls open.
@@ -797,7 +820,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   let activeBarEl: React.ReactNode = null;
   let removeAction: { label: string; onPress: () => void } | undefined;
   let addPage = false;
-  if (displaySub === 'stroke' && model.strokePresent === false && model.onAddStroke) {
+  // The Color page's rows: a word sticker's Invert toggle.
+  const colorRows: ColorRowSpec[] = model.showInvert
+    ? [{ key: 'invert', kind: 'toggle', label: 'Invert', on: !!model.inverted, onToggle: () => model.onInvert?.() }]
+    : [];
+  if (displaySub === 'color') {
+    activeBarEl = <ColorBar rows={colorRows} />;
+  } else if (displaySub === 'stroke' && model.strokePresent === false && model.onAddStroke) {
     addPage = true;
     activeBarEl = (
       <EmptyEffectBar
@@ -913,6 +942,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     activeBarEl = (
       <OpacityBar
         opacity={opacityForBar}
+        showSoften={!model.showInvert}
         onChange={(o) => applyOpacity(o, false)}
         onCommit={(o) => applyOpacity(o, true)}
       />
@@ -952,6 +982,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // down (displaySub) keeps its height, so the sheet drops as it stood.
   const contentHeight = !displaySub ? null : addPage ? emptyEffectHeight() : submenuHeight(displaySub, {
     cropMode: framingForBar.mode,
+    // A word sticker fades as a whole: no Soften row. Its Color page is the
+    // one Invert row.
+    opacitySoften: !model.showInvert,
+    colorRows: colorRows.length,
     // The image / frame border offers every row; a vector's stroke drops the
     // ones its subtype has no answer for.
     borderRows: { radius: true, position: true },
@@ -1123,11 +1157,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       typeSpecs.unshift({ key: 'svgEdit', label: 'Edit', onPress: model.onSvgEdit });
     }
   } else if (model.showInvert) {
-    // Word sticker (magnetic poetry): the single type-specific option is
-    // Invert (dark card ⇄ light card). Content + typography are fixed, so no
-    // Edit / Type / Align. It's a toggle, so the lit tab says what the
-    // black/white swatch used to.
-    typeSpecs = [{ key: 'invert', label: 'Invert', toggled: model.inverted, onPress: model.onInvert }];
+    // Word sticker (magnetic poetry): Color — the page holding its one colour
+    // setting, Invert (dark card ⇄ light card) — and Opacity, the whole
+    // magnet's. Content + typography are fixed, so no Type / Align.
+    typeSpecs = [
+      { key: 'color', label: 'Color', sub: 'color', onPress: () => openSubmenu('color') },
+      { key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },
+    ];
   } else if (model.showPaintOptions) {
     // Paint island: raster brushwork has no Stroke/Fill to edit — its one
     // option is Opacity, opening the same page (opacity + soften) an image's

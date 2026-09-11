@@ -1402,7 +1402,9 @@ export interface TextStyle {
   italic?: boolean;
   color: RGBColor;
   /** Ink opacity in [0, 1] for the whole text (fill, per-char brush colors
-   *  and outline stroke together); undefined = opaque (v55+). */
+   *  and outline stroke together); undefined = opaque (v55+). On a word
+   *  sticker, whose ink is its card scheme's, it is the WHOLE magnet's
+   *  opacity — card, border, shadow and ink fade together. */
   alpha?: number;
   /** Extra letter spacing in em units. */
   letterSpacing?: number;

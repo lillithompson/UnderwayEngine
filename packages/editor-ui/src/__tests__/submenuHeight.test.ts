@@ -39,6 +39,18 @@ describe('submenuHeight (a page’s content area)', () => {
     expect(submenuHeight('opacity')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER]));
   });
 
+  test('the Opacity page drops its Soften row for a selection that fades whole (a word sticker)', () => {
+    expect(submenuHeight('opacity', { opacitySoften: false })).toBe(pageOf([ROW_SLIDER]));
+    expect(submenuHeight('opacity', { opacitySoften: true })).toBe(submenuHeight('opacity'));
+  });
+
+  test('the Color page is a segmented row per colour listed, and never empty', () => {
+    expect(submenuHeight('color', { colorRows: 1 })).toBe(pageOf([ROW_SEGMENTED]));
+    expect(submenuHeight('color', { colorRows: 3 })).toBe(pageOf([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]));
+    expect(submenuHeight('color')).toBe(pageOf([ROW_SEGMENTED]));
+    expect(submenuHeight('color', { colorRows: 0 })).toBe(pageOf([ROW_SEGMENTED]));
+  });
+
   test('a colour-bearing page stands at least as tall as its swatch', () => {
     // The Fill page is one slider (48) beside a 56 swatch: the swatch wins.
     expect(ROW_SLIDER).toBeLessThan(ASIDE_SWATCH);
@@ -125,15 +137,16 @@ describe('submenuHeight (a page’s content area)', () => {
 
   test('every page reports a real height, not a fallback', () => {
     // A key with no case would fall through; each of these is a whole page,
-    // so none may come back as bare chrome.
+    // so none may come back as bare chrome — at least one row (the Color
+    // page's single segmented row is the shortest real page).
     const ALL: SubmenuKey[] = [
       'tint', 'crop', 'shadow', 'border', 'opacity',
-      'font', 'spacing', 'align', 'stroke', 'svgFill', 'endpoints', 'transform', 'layout',
+      'font', 'spacing', 'align', 'stroke', 'svgFill', 'endpoints', 'transform', 'layout', 'color',
       'rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead',
       'patternTiles', 'patternTools', 'patternSymmetry',
     ];
     for (const key of ALL) {
-      expect([key, submenuHeight(key) >= CHROME + ROW_SLIDER]).toEqual([key, true]);
+      expect([key, submenuHeight(key) >= CHROME + ROW_SEGMENTED]).toEqual([key, true]);
     }
   });
 

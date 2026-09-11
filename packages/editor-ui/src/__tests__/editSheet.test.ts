@@ -236,6 +236,32 @@ describe('the panel drives the sheet', () => {
     expect(SRC('adapter.ts')).not.toContain('onEdit(): void;');
   });
 
+  it('a word sticker offers Color (its Invert toggle) and Opacity (whole-magnet, no Soften)', () => {
+    expect(PANEL).toContain("{ key: 'color', label: 'Color', sub: 'color', onPress: () => openSubmenu('color') },");
+    expect(PANEL).toContain("{ key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },");
+    expect(PANEL).toContain(": model.showInvert ? ['color', 'opacity']");
+    // Invert is no longer a tab of its own.
+    expect(PANEL).not.toContain("label: 'Invert', toggled: model.inverted");
+    // The Color page lists the Invert toggle as its one row…
+    expect(PANEL).toContain("[{ key: 'invert', kind: 'toggle', label: 'Invert', on: !!model.inverted, onToggle: () => model.onInvert?.() }]");
+    expect(PANEL).toContain("if (displaySub === 'color') {\n    activeBarEl = <ColorBar rows={colorRows} />;");
+    const color = SRC('components', 'ColorBar.tsx');
+    expect(color).toContain('<MultiToggleRow');
+    expect(color).toContain("options={[{ value: 'on' as const, label: row.label, active: row.on }]}");
+    // …and its open state is the panel's own, closed as any host page opens
+    // and folded when the selection stops offering it.
+    expect(PANEL).toContain("setColorOpen(key === 'color');");
+    expect(PANEL).toContain("if (key === 'color') { dismissHostSubmenus(); return; }");
+    expect(PANEL).toContain('if ((!model.visible || !colorable) && colorOpen) setColorOpen(false);');
+    // Opacity: the page an image opens, kept open for a sticker, its Soften
+    // row dropped and its height counted without it.
+    expect(PANEL).toContain('svgOpacityable || model.showRigOptions || model.showInvert;');
+    expect(PANEL).toContain('showSoften={!model.showInvert}');
+    expect(PANEL).toContain('opacitySoften: !model.showInvert,');
+    const opacity = SRC('components', 'OpacityBar.tsx');
+    expect(opacity).toContain('{showSoften ? (');
+  });
+
   it('a tab that opens a page opens it — it never toggles the page closed', () => {
     // The old options toggled their bar; a lit tab pressed again stays lit.
     expect(PANEL).not.toContain('toggleShadow');

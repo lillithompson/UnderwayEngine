@@ -94,6 +94,9 @@ export const PATTERN_TILE_GRID =
 export type SubmenuKey =
   | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
   | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
+  // The Color page: a selection's colours (and a word sticker's Invert, its
+  // one colour setting) as labelled rows — see components/ColorBar.tsx.
+  | 'color'
   // The poseable rig's parts: the whole figure (three axes, plus the Reset
   // that stands it back up), six sliders for the hands (curl / twist /
   // spread per side), four for the feet, three for the spine, two for the
@@ -112,6 +115,11 @@ export interface SubmenuHeightContext {
   tintType?: TintType;
   /** Crop page: each framing mode brings its own rows. */
   cropMode?: ImageFramingMode;
+  /** Opacity page: whether it shows the Soften row under Opacity (default
+   *  true). A word sticker fades as a whole and offers no soften. */
+  opacitySoften?: boolean;
+  /** Color page: how many rows it lists (a swatch or a toggle each). */
+  colorRows?: number;
   /** Border page: which optional rows the image / frame border shows. */
   borderRows?: { radius: boolean; position: boolean };
   /** Stroke page: the same page, with the rows this vector subtype supports. */
@@ -196,7 +204,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'crop':
       return contentArea(cropRows(ctx.cropMode));
     case 'opacity':
-      return contentArea([ROW_SLIDER, ROW_SLIDER]);
+      return contentArea(ctx.opacitySoften === false ? [ROW_SLIDER] : [ROW_SLIDER, ROW_SLIDER]);
+    case 'color':
+      // One segmented-height row per colour (or toggle) listed; at least one.
+      return contentArea(new Array(Math.max(1, ctx.colorRows ?? 1)).fill(ROW_SEGMENTED));
     // The rig pages are sliders and nothing else — no hint line and no IK
     // switch (see RigPoseBar) — so each stands exactly as tall as the
     // controls it renders.

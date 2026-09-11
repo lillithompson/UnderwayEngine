@@ -356,13 +356,14 @@ export function ActionRow<T extends string>({ label, options, onPress }: {
  *  rather than one multiple-choice one (the pattern Tools bar's tile-set
  *  filter is the case this exists for). */
 export function MultiToggleRow<T extends string>({ label, options, onToggle }: {
-  label: string;
+  /** The 50pt label column; without one the chips span the whole row. */
+  label?: string;
   options: readonly { value: T; label: string; active: boolean }[];
   onToggle: (v: T) => void;
 }) {
   return (
     <View style={styles.segmentedRow}>
-      <Text style={styles.segLabel}>{label}</Text>
+      {label ? <Text style={styles.segLabel}>{label}</Text> : null}
       <View style={styles.segmented}>
         {options.map((o) => (
           <Pressable
