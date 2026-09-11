@@ -67,10 +67,13 @@ export interface ResumeHealthPongMessage {
 }
 
 /**
- * Generic app-defined event (web → native). The shell stays app-agnostic:
- * `kind`/`data` semantics belong to the consuming app, which registers a
- * handler via `setAppEventHandler` (nativeBridge). Used for navigation
- * intents, state pushes to the native chrome, etc.
+ * Generic app-defined event, in BOTH directions. The shell stays
+ * app-agnostic: `kind`/`data` semantics belong to the consuming app. Web →
+ * native, the app registers a handler via `setAppEventHandler`
+ * (nativeBridge); native → web, that handler's `reply` sends one back, and
+ * the web listens with `onAppEvent` (webBridge). Used for navigation
+ * intents, state pushes to the native chrome, and the small answers those
+ * pushes need first (what the native cache already holds).
  */
 export interface AppEventMessage {
   type: 'APP_EVENT';
@@ -166,4 +169,5 @@ export type NativeToWebMessage =
   | AppStateMessage
   | CameraRollResultMessage
   | ShareResultMessage
-  | ResumeHealthPingMessage;
+  | ResumeHealthPingMessage
+  | AppEventMessage;

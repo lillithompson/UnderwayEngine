@@ -46,7 +46,11 @@ export function handleNativeMessage(
       break;
 
     case 'APP_EVENT':
-      appEventHandler?.(message.payload.kind, message.payload.data);
+      appEventHandler?.(
+        message.payload.kind,
+        message.payload.data,
+        (kind, data) => sendToWeb({ type: 'APP_EVENT', payload: { kind, data } }),
+      );
       break;
   }
 }
@@ -54,8 +58,12 @@ export function handleNativeMessage(
 // App-defined event channel. The consuming app registers one handler
 // (module-level so WebViewShell needs no prop plumbing); events arriving
 // before registration are dropped by design — apps should re-push state
-// after mount rather than rely on delivery ordering.
-type AppEventHandler = (kind: string, data?: unknown) => void;
+// after mount rather than rely on delivery ordering. `reply` sends an
+// APP_EVENT back to the web page that posted this one (webBridge's
+// onAppEvent receives it) — for the requests the web needs answered
+// before it can act, e.g. what the native cache already holds.
+export type AppEventReply = (kind: string, data?: unknown) => void;
+type AppEventHandler = (kind: string, data: unknown, reply: AppEventReply) => void;
 let appEventHandler: AppEventHandler | null = null;
 
 export function setAppEventHandler(handler: AppEventHandler | null): void {

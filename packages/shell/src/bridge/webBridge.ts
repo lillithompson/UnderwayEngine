@@ -443,6 +443,17 @@ export function logToNative(
   }
 }
 
+/**
+ * Register a handler for one kind of app-defined event from native — the
+ * `reply` leg of `postAppEvent` (nativeBridge's AppEventReply). Returns the
+ * unsubscribe. Other kinds, and every other message, pass through untouched.
+ */
+export function onAppEvent(kind: string, handler: (data: unknown) => void): () => void {
+  return onNativeMessage((msg) => {
+    if (msg.type === 'APP_EVENT' && msg.payload.kind === kind) handler(msg.payload.data);
+  });
+}
+
 /** Register a handler for messages from native. */
 export function onNativeMessage(handler: (msg: NativeToWebMessage) => void): () => void {
   const prev = window.__facetBridgeHandler;

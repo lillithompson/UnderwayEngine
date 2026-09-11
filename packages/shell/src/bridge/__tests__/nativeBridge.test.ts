@@ -94,7 +94,19 @@ describe('APP_EVENT', () => {
       { type: 'APP_EVENT', payload: { kind: 'homeState', data: { entries: 3 } } },
       () => {},
     );
-    expect(handler).toHaveBeenCalledWith('homeState', { entries: 3 });
+    expect(handler).toHaveBeenCalledWith('homeState', { entries: 3 }, expect.any(Function));
+  });
+
+  test('the handler can reply: an APP_EVENT goes back to the web page', () => {
+    const sent: unknown[] = [];
+    setAppEventHandler((kind: string, _data: unknown, reply: (k: string, d?: unknown) => void) => {
+      if (kind === 'manifest?') reply('manifest', { held: 2 });
+    });
+    handleNativeMessage(
+      { type: 'APP_EVENT', payload: { kind: 'manifest?' } },
+      (msg) => sent.push(msg),
+    );
+    expect(sent).toEqual([{ type: 'APP_EVENT', payload: { kind: 'manifest', data: { held: 2 } } }]);
   });
 
   test('drops events with no handler registered', () => {
