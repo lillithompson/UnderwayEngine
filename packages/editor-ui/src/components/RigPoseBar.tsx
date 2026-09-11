@@ -1,19 +1,15 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
 import type { RigPart, RigSliderKey } from '../logic/rigEdit';
-import { rigPartSliders, rigPartTitle } from '../logic/rigEdit';
-import {
-  BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP, ROW_GAP,
-} from '../logic/submenuHeight';
-import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
+import { rigPartSliders } from '../logic/rigEdit';
+import { ActionRow, BarBody, SliderRow } from './effectBar';
 
-// The rig's pose bar: one part per page (RIG · HANDS · FEET · SPINE · HEAD)
+// The rig's pose page: one part per tab (RIG · HANDS · FEET · SPINE · HEAD)
 // and a slider per control. The whole figure turns on three axes, the hands
 // close into fists and roll at the wrist, the feet point or flatten and
 // swivel at the ankle, the spine bends / twists / leans from a centered
 // rest, and the head nods and shakes on its own.
 //
-// No hint line under the controls, unlike the other bars. These pages carry
+// No hint line under the controls, unlike the other pages. These pages carry
 // the most rows in the editor, they stand over the figure being posed, and
 // a slider named 'Bend' running between two labelled ends has already said
 // what a sentence underneath would repeat. Dropping it takes a row off
@@ -37,56 +33,41 @@ import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, SliderRow } from './effec
 // by finger has no single "fistness" — so they sit at their rest positions
 // until touched, and the host only shapes the pose once one moves.
 //
-// And NO TRASH in the header, unlike the effect bars. On those it removes
-// something that was ADDED — a shadow, a border, a tint — and the object is
-// itself again without it. A rig has no such layer: every slider here is a
-// posture the figure is always in, so a trash could only mean "back to
-// rest", which is a pose like any other and one the sliders already reach.
-// It also reset the WHOLE page, the sliders nobody had touched included, so
-// one tap flattened a pair of hands that had been posed finger by finger.
-// Standing the figure up is offered ONCE, over the whole rig, as the labelled
-// Reset row above — not as a per-page trash whose scope you have to guess.
+// And NO Remove line under the page, unlike the effect pages. On those it
+// removes something that was ADDED — a shadow, a border, a tint — and the
+// object is itself again without it. A rig has no such layer: every slider
+// here is a posture the figure is always in, so a Remove could only mean
+// "back to rest", which is a pose like any other and one the sliders
+// already reach. It also reset the WHOLE page, the sliders nobody had
+// touched included, so one tap flattened a pair of hands that had been posed
+// finger by finger. Standing the figure up is offered ONCE, over the whole
+// rig, as the labelled Reset row above — not as a per-page Remove whose
+// scope you have to guess.
 
-export function RigPoseBar({ part, values, onChange, onCommit, onBack, onReset }: {
+export function RigPoseBar({ part, values, onChange, onCommit, onReset }: {
   part: RigPart;
   values: Record<RigSliderKey, number>;
   onChange: (key: RigSliderKey, value: number) => void;
   onCommit: (key: RigSliderKey, value: number) => void;
-  onBack: () => void;
   /** Stand the whole figure back up — see above. Offered on the RIG page
    *  alone, and only when the host passes it. */
   onReset?: () => void;
 }) {
   return (
-    <View style={styles.bar}>
-      <EffectBarHeader title={rigPartTitle(part)} chevron onBack={onBack} />
-      <View style={styles.controls}>
-        {rigPartSliders(part).map((spec) => (
-          <SliderRow
-            key={spec.key}
-            label={spec.label}
-            value={values[spec.key]}
-            apply={(t, committed) => (committed ? onCommit : onChange)(spec.key, t)}
-          />
-        ))}
-        {part === 'rig' && onReset ? (
-          <ActionRow label="Whole figure" options={RESET_OPTION} onPress={onReset} />
-        ) : null}
-      </View>
-    </View>
+    <BarBody>
+      {rigPartSliders(part).map((spec) => (
+        <SliderRow
+          key={spec.key}
+          label={spec.label}
+          value={values[spec.key]}
+          apply={(t, committed) => (committed ? onCommit : onChange)(spec.key, t)}
+        />
+      ))}
+      {part === 'rig' && onReset ? (
+        <ActionRow label="Whole figure" options={RESET_OPTION} onPress={onReset} />
+      ) : null}
+    </BarBody>
   );
 }
 
 const RESET_OPTION = [{ value: 'reset' as const, label: 'Reset' }];
-
-const styles = StyleSheet.create({
-  bar: {
-    backgroundColor: BAR_BG,
-    borderTopWidth: BAR_BORDER,
-    borderTopColor: HAIRLINE,
-    paddingTop: BAR_PAD_TOP,
-    paddingHorizontal: BAR_PAD_HORIZONTAL,
-    paddingBottom: BAR_PAD_BOTTOM,
-  },
-  controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
-});

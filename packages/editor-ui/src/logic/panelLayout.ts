@@ -1,6 +1,8 @@
 import { OBJECT_PANEL_HEIGHT } from '../theme';
+import type { SubmenuKey } from './submenuHeight';
 
-// Bottom-edge layout for the object-properties panel and its submenus.
+// Bottom-edge layout for the object-properties panel, and the two pages it
+// swipes between.
 //
 // The panel ends in a row of carousel dots (which of its pages is showing).
 // Where those dots sit depends on the device: on a notched phone they drop
@@ -10,9 +12,6 @@ import { OBJECT_PANEL_HEIGHT } from '../theme';
 // to drop into, so the dots stay in flow. Callers pass `dotsInSafeArea` — keyed
 // off a measured inset, not the platform: the editor runs as the web bundle
 // even inside the native iOS WebView.
-//
-// The submenu bars carry no dots of their own: they stack directly above the
-// panel, so the lit option in its type row is what says which bar is open.
 
 /** Carousel dot diameter. */
 export const OBJECT_DOT_SIZE = 12;
@@ -39,187 +38,44 @@ export function objectPanelLayout(safeBottom: number, dotsInSafeArea: boolean): 
   };
 }
 
-// ── Carousel pages ───────────────────────────────────────────────────
+// ── Pages ────────────────────────────────────────────────────────────
 //
-// The panel shows one row at a time and a horizontal swipe cycles through
-// them, a dot each. There are three possible pages, always in this order:
+// The panel has at most two pages, a dot each:
 //
 //   common — the icon row (rotate / mirror / copy / lock / delete). Always
 //            present and always FIRST; it is the one page every selection has.
-//   type   — ONE combined options row: the options the selection's KIND
-//            offers (tint / crop / shadow …) followed by the options the
-//            SELECTION offers (Layout · Group · Merge, multi-selections
-//            only). Present when the selection has any option at all.
-//   multi  — the OVERFLOW: only the options that did not fit on the combined
-//            row (see optionPageFitCount). Most selections never have it —
-//            a new page exists only when one page genuinely can't hold them.
+//   edit   — the Edit sheet: everything the selection's KIND offers (crop /
+//            shadow / border …) and everything the SELECTION offers (Layout ·
+//            Group · Merge on a multi-selection), as tabs over a content
+//            area. Present when the selection has any option at all. It is
+//            not a row the panel swaps in: a swipe (or the second dot) pops
+//            the sheet up OVER the panel, and a downward swipe on the sheet
+//            drops it back.
 
-export type PanelPage = 'common' | 'type' | 'multi';
+export type PanelPage = 'common' | 'edit';
 
-/** The pages this selection has, in carousel order. `type` is "any options at
- *  all", `multi` is "they overflowed one row". */
-export function objectPanelPages(has: { type?: boolean; multi?: boolean }): PanelPage[] {
-  const pages: PanelPage[] = ['common'];
-  if (has.type) pages.push('type');
-  if (has.multi) pages.push('multi');
-  return pages;
+/** The pages this selection has, in dot order. */
+export function objectPanelPages(hasOptions: boolean): PanelPage[] {
+  return hasOptions ? ['common', 'edit'] : ['common'];
 }
 
 /**
- * Where a new selection lands.
+ * The tab the Edit sheet opens on, given the pages `order` this selection
+ * offers (each page is one tab; tabs that are one-press actions have no page
+ * and aren't candidates).
  *
- * `preferred` is the page the panel was showing for the LAST selection, and it
- * wins whenever the new one has it: someone working through a drawing's
- * shadows wants the shadow row on the next shape too, and re-landing them on
- * the first page every time makes the carousel something to re-navigate rather
- * than a place to be. Otherwise the panel opens on its FIRST page — the
- * common icon actions every selection has; the option rows are a swipe away.
+ * `remembered` is the page the sheet was last showing, and it wins whenever
+ * the new selection has it: someone working through a drawing's shadows
+ * wants the Shadow page on the next shape too, and re-landing them on the
+ * first tab every time makes the sheet something to re-navigate rather than
+ * a place to be. Otherwise the first page; null when the selection offers
+ * no page at all (its tabs are all actions), and the sheet shows its tabs
+ * alone.
  */
-export function landingPanelPage(
-  pages: readonly PanelPage[],
-  preferred?: PanelPage,
-): PanelPage {
-  if (preferred && pages.includes(preferred)) return preferred;
-  return 'common';
-}
-
-/** The page a swipe lands on. `dir` is the direction the CONTENT travels:
- *  −1 (leftward, out the left edge) advances, +1 goes back. The carousel
- *  wraps, so with two pages either direction is the toggle it has always been.
- *  A page no longer in the set (its options went away mid-swipe) steps from
- *  the start. */
-export function stepPanelPage(
-  pages: readonly PanelPage[],
-  current: PanelPage,
-  dir: -1 | 1,
-): PanelPage {
-  if (pages.length === 0) return 'common';
-  const at = pages.indexOf(current);
-  const from = at >= 0 ? at : 0;
-  const next = (from + (dir === -1 ? 1 : -1) + pages.length) % pages.length;
-  return pages[next];
-}
-
-/** The content-travel direction that brings `target`'s row in from `current` —
- *  a click on a carousel dot, where the destination is named rather than
- *  stepped to. −1 slides the content leftward (the later page comes in from
- *  the right), +1 the reverse — matching stepPanelPage's convention — and 0
- *  means nothing to do (already there, or either page missing from the set).
- *  No wrapping: the dots are laid out in page order, so the row always
- *  travels the way the clicked dot sits relative to the lit one. */
-export function panelPageDirection(
-  pages: readonly PanelPage[],
-  current: PanelPage,
-  target: PanelPage,
-): -1 | 0 | 1 {
-  const from = pages.indexOf(current);
-  const to = pages.indexOf(target);
-  if (from < 0 || to < 0 || from === to) return 0;
-  return to > from ? -1 : 1;
-}
-
-/** Flex weight of the empty cell flanking each side of the COMMON-ACTIONS row
- *  when it has fewer buttons than the row has columns.
- *
- *  That row holds `columns` equal cells — fixed at the larger page's count so
- *  the icons keep one size whatever the selection's option set costs — and is
- *  centred by padding both ends. Returning one fractional weight per side
- *  rather than a whole number of unit cells is the point: an odd pad (5 icons
- *  against 6 options) has no whole-cell split, and rounding it left the group
- *  sitting half a column left of centre. Half of an odd pad is 1.5, which flex
- *  handles exactly.
- *
- *  The type-options row does NOT use this: its cells size to their own words
- *  and share out the slack, so it always fills the row (see OptionPill). */
-export function optionRowSidePad(columns: number, buttons: number): number {
-  return Math.max(0, columns - buttons) / 2;
-}
-
-/** Gap between cells in the option row. */
-export const OPTION_ROW_GAP = 8;
-/** Ceiling on ONE option cell — the toolbar line-mode pushdown's capsule width,
- *  so a wide window doesn't stretch the words into slabs. It is a ceiling only:
- *  a cell hugs its own word (plus its share of the row's slack) below this, and
- *  the row centres the group once every cell has hit the cap. It must stay
- *  above the longest option word at 13/600 plus OPTION_PILL_PAD either side —
- *  today's longest is "Endpoints", comfortably inside it — or that word would
- *  ellipsize on every screen instead of none. */
-export const OPTION_CAPSULE_MAX_WIDTH = 88;
-/** Capsule height: a 13pt word with the pushdown's 4pt vertical padding. */
-export const OPTION_CAPSULE_HEIGHT = 26;
-/** Breathing room either side of an option's word, inside its capsule. The
- *  floor on a cell's width: a cell is never narrower than its word plus this. */
-export const OPTION_PILL_PAD = 10;
-
-/** Rough per-character width of an option's word at the pill's 13/600 type.
- *  Deliberately a little generous: overestimating a word spills an option onto
- *  the overflow page early, underestimating packs a row so tight the words
- *  ellipsize — the first is a swipe, the second is unreadable. */
-export const OPTION_CHAR_WIDTH = 8;
-
-/** Estimated width of one option cell BEFORE layout has measured it: its word
- *  at OPTION_CHAR_WIDTH per character plus the pill padding either side,
- *  capped at the capsule ceiling exactly as a laid-out cell is. */
-export function estimatedOptionCellWidth(label: string): number {
-  return Math.min(
-    OPTION_CAPSULE_MAX_WIDTH,
-    label.length * OPTION_CHAR_WIDTH + 2 * OPTION_PILL_PAD,
-  );
-}
-
-/**
- * How many of `labels` fit on the FIRST options page of a row `rowWidth`
- * wide — the combined type + selection options row. Cells are estimated
- * (estimatedOptionCellWidth) and packed in order with one `gap` between
- * neighbours; the count stops at the first option that would not fit, and
- * everything after it belongs to the overflow page. Always at least 1 with a
- * measured row (a page must hold something), and everything while the row is
- * unmeasured (rowWidth 0, the first render pass) so the panel never flashes
- * an overflow page it may not need.
- */
-export function optionPageFitCount(
-  labels: readonly string[],
-  rowWidth: number,
-  gap: number = OPTION_ROW_GAP,
-): number {
-  if (labels.length === 0) return 0;
-  if (!(rowWidth > 0)) return labels.length;
-  let used = 0;
-  let n = 0;
-  for (const label of labels) {
-    const w = estimatedOptionCellWidth(label) + (n > 0 ? gap : 0);
-    if (n > 0 && used + w > rowWidth) break;
-    used += w;
-    n += 1;
-  }
-  return Math.max(1, n);
-}
-
-/** Left offset of each option cell, given every cell's laid-out width.
- *
- *  The cells size themselves to their words, so their WIDTHS come from the
- *  layout (each cell's onLayout) — but their positions can't: onLayout rides a
- *  ResizeObserver, which says nothing when a cell keeps its width and merely
- *  moves (every cell at the width cap, and the row widening around them). So
- *  the offsets are reproduced here from the row's own rules instead: cells in
- *  order, one `gap` between neighbours, and the group centred in whatever it
- *  doesn't fill — the same `justifyContent: 'center'` the row carries.
- *
- *  `rowWidth` is the row's measured width; 0 (or no widths) before the first
- *  layout pass, which yields no offsets and a capsule the caller skips. */
-export function optionCapsuleLefts(
-  rowWidth: number,
-  widths: readonly number[],
-  gap: number = OPTION_ROW_GAP,
-): number[] {
-  if (rowWidth <= 0 || widths.length === 0) return [];
-  const total = widths.reduce((a, w) => a + w, 0) + gap * (widths.length - 1);
-  // Overfull (the words outgrew the screen and flex shrank them) starts flush
-  // left, exactly as the row does.
-  let x = Math.max(0, (rowWidth - total) / 2);
-  return widths.map((w) => {
-    const left = x;
-    x += w + gap;
-    return left;
-  });
+export function landingSubmenu(
+  order: readonly SubmenuKey[],
+  remembered: SubmenuKey | null,
+): SubmenuKey | null {
+  if (remembered && order.includes(remembered)) return remembered;
+  return order.length > 0 ? order[0] : null;
 }

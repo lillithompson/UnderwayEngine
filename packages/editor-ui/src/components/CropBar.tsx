@@ -1,21 +1,16 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 import type { FramingModel, ImageCropRatio, ImageFramingMode } from '../adapter';
-import { formatPixelSize } from '../logic/imageEdit';
-import { PANEL_INK_MUTED } from '../theme';
-import {
-  BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP, ROW_GAP,
-} from '../logic/submenuHeight';
-import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, Hint, SegmentedRow, SliderRow } from './effectBar';
+import { BarBody, Hint, SegmentedRow, SliderRow } from './effectBar';
 
-// The Crop / framing bar (design "4a"): a full-width light bar with a header
-// (chevron · CROP) and a Mode segmented row (Fill / Fit / Crop / Tile)
-// plus the rows that mode needs. A sibling of the Drop Shadow / Border bars —
-// same container + row grammar (see effectBar.tsx). No color swatch, and no
-// trash (framing is tuned in place, nothing to remove). On-canvas crop-rect
-// handles + panning are canvas-side (deferred); this bar sets mode, zoom,
-// margin, ratio, straighten, tile size and spacing, and closes with an
-// informational line giving the image's source resolution in pixels.
+// The Crop / framing page (design "4a"): the Fill / Fit / Crop / Tile mode
+// row — unlabelled, the four words name it — plus the rows that mode needs.
+// A sibling of the Drop Shadow / Border pages, sharing their row grammar (see
+// effectBar.tsx). No color swatch, and nothing to remove (framing is tuned
+// in place). Swapping the image's pixels is not here either: Replace rides
+// the host's floating capsule, and the source resolution is no longer
+// captioned. On-canvas crop-rect handles + panning are canvas-side
+// (deferred); this page sets mode, zoom, margin, ratio, straighten, tile
+// size and spacing.
 
 // ── Ranges (world cells for lengths; the design's pt/percent → these) ─
 const ZOOM_MIN = 1; // 100%
@@ -38,136 +33,79 @@ const RATIOS: readonly { value: ImageCropRatio; label: string }[] = [
   { value: 'sixteenNine', label: '16:9' },
 ];
 
-export function CropBar({ framing, pixelSize, onChange, onCommit, onReplace, onBack }: {
+export function CropBar({ framing, onChange, onCommit }: {
   framing: FramingModel;
-  /** Source resolution of the image being framed, shown at the bottom. */
-  pixelSize?: { width: number; height: number };
   /** Live preview (slider drag). */
   onChange: (f: FramingModel) => void;
   /** Commit as one undo step (slider release, mode / ratio change). */
   onCommit: (f: FramingModel) => void;
-  /** Swap the pixels, keeping the node and its box. Omitted → no Replace
-   *  row. Fired straight out of the press (it opens a file picker). */
-  onReplace?: () => void;
-  onBack: () => void;
 }) {
-  const resolution = formatPixelSize(pixelSize);
   const set = (patch: Partial<FramingModel>, committed: boolean) =>
     (committed ? onCommit : onChange)({ ...framing, ...patch });
   return (
-    <View style={styles.bar}>
-      <EffectBarHeader
-        title="CROP"
-        chevron
-        // No trash: the Crop bar tunes framing in place; there's nothing to
-        // remove / reset from here.
-        onBack={onBack}
+    <BarBody>
+      <SegmentedRow
+        options={MODES}
+        value={framing.mode}
+        onChange={(mode) => set({ mode }, true)}
       />
-      <View style={styles.controls}>
-        <SegmentedRow
-          label="Mode"
-          options={MODES}
-          value={framing.mode}
-          onChange={(mode) => set({ mode }, true)}
-        />
-        {framing.mode === 'fill' ? (
-          <>
-            <SliderRow
-              label="Zoom"
-              value={(framing.zoom - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN)}
-              apply={(t, c) => set({ zoom: ZOOM_MIN + t * (ZOOM_MAX - ZOOM_MIN) }, c)}
-              readout={{
-                text: `${Math.round(framing.zoom * 100)}%`,
-                commit: (n) => set({ zoom: Math.min(Math.max(n / 100, ZOOM_MIN), ZOOM_MAX) }, true),
-              }}
-            />
-            <Hint>Drag the artwork on the canvas to reposition it inside the frame.</Hint>
-          </>
-        ) : null}
-        {framing.mode === 'fit' ? (
-          <>
-            <SliderRow
-              label="Margin"
-              value={framing.margin / MARGIN_MAX}
-              apply={(t, c) => set({ margin: t * MARGIN_MAX }, c)}
-            />
-            <Hint>Whole artwork stays visible; margin pads it inside the frame.</Hint>
-          </>
-        ) : null}
-        {framing.mode === 'crop' ? (
-          <>
-            <SegmentedRow
-              label="Ratio"
-              options={RATIOS}
-              value={framing.ratio}
-              onChange={(ratio) => set({ ratio }, true)}
-            />
-            <SliderRow
-              label="Straighten"
-              value={(framing.angle + ANGLE_MAX) / (2 * ANGLE_MAX)}
-              apply={(t, c) => set({ angle: Math.round(-ANGLE_MAX + t * 2 * ANGLE_MAX) }, c)}
-              readout={{
-                text: `${Math.round(framing.angle)}°`,
-                commit: (n) => set({ angle: Math.round(Math.min(Math.max(n, -ANGLE_MAX), ANGLE_MAX)) }, true),
-              }}
-            />
-          </>
-        ) : null}
-        {framing.mode === 'tile' ? (
-          <>
-            <SliderRow
-              label="Size"
-              value={framing.tileScale}
-              apply={(t, c) => set({ tileScale: t }, c)}
-            />
-            <SliderRow
-              label="Spacing"
-              value={framing.tileGap / TILE_GAP_MAX}
-              apply={(t, c) => set({ tileGap: t * TILE_GAP_MAX }, c)}
-            />
-          </>
-        ) : null}
-        {/* Last, and in every mode: the rows above are about the FRAME, this
-            one is about what's in it. It sits next to the resolution caption
-            because those two are the bar's only lines about the source image
-            — and an ActionRow because replacing is something you do, not a
-            state the image is in. */}
-        {onReplace ? (
-          <ActionRow
-            label="Image"
-            options={[{ value: 'replace' as const, label: 'Replace' }]}
-            onPress={onReplace}
+      {framing.mode === 'fill' ? (
+        <>
+          <SliderRow
+            label="Zoom"
+            value={(framing.zoom - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN)}
+            apply={(t, c) => set({ zoom: ZOOM_MIN + t * (ZOOM_MAX - ZOOM_MIN) }, c)}
+            readout={{
+              text: `${Math.round(framing.zoom * 100)}%`,
+              commit: (n) => set({ zoom: Math.min(Math.max(n / 100, ZOOM_MIN), ZOOM_MAX) }, true),
+            }}
           />
-        ) : null}
-      </View>
-      {resolution ? (
-        // Informational only (no control): the source resolution of the image
-        // being framed, so a crop can be judged against the pixels available.
-        <Text style={styles.resolution} accessibilityLabel={`Image resolution ${resolution}`}>
-          {resolution}
-        </Text>
+          <Hint>Drag the artwork on the canvas to reposition it inside the frame.</Hint>
+        </>
       ) : null}
-    </View>
+      {framing.mode === 'fit' ? (
+        <>
+          <SliderRow
+            label="Margin"
+            value={framing.margin / MARGIN_MAX}
+            apply={(t, c) => set({ margin: t * MARGIN_MAX }, c)}
+          />
+          <Hint>Whole artwork stays visible; margin pads it inside the frame.</Hint>
+        </>
+      ) : null}
+      {framing.mode === 'crop' ? (
+        <>
+          <SegmentedRow
+            label="Ratio"
+            options={RATIOS}
+            value={framing.ratio}
+            onChange={(ratio) => set({ ratio }, true)}
+          />
+          <SliderRow
+            label="Straighten"
+            value={(framing.angle + ANGLE_MAX) / (2 * ANGLE_MAX)}
+            apply={(t, c) => set({ angle: Math.round(-ANGLE_MAX + t * 2 * ANGLE_MAX) }, c)}
+            readout={{
+              text: `${Math.round(framing.angle)}°`,
+              commit: (n) => set({ angle: Math.round(Math.min(Math.max(n, -ANGLE_MAX), ANGLE_MAX)) }, true),
+            }}
+          />
+        </>
+      ) : null}
+      {framing.mode === 'tile' ? (
+        <>
+          <SliderRow
+            label="Size"
+            value={framing.tileScale}
+            apply={(t, c) => set({ tileScale: t }, c)}
+          />
+          <SliderRow
+            label="Spacing"
+            value={framing.tileGap / TILE_GAP_MAX}
+            apply={(t, c) => set({ tileGap: t * TILE_GAP_MAX }, c)}
+          />
+        </>
+      ) : null}
+    </BarBody>
   );
 }
-
-const styles = StyleSheet.create({
-  bar: {
-    backgroundColor: BAR_BG,
-    borderTopWidth: BAR_BORDER,
-    borderTopColor: HAIRLINE,
-    paddingTop: BAR_PAD_TOP,
-    paddingHorizontal: BAR_PAD_HORIZONTAL,
-    paddingBottom: BAR_PAD_BOTTOM,
-  },
-  // 10pt header→controls gap; rows self-space (32/36pt tall) with a 2pt gap.
-  controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
-  // Dimmer than a Hint and centred: a caption for the whole bar, not a note on
-  // one row, so it doesn't sit in the control column.
-  resolution: {
-    marginTop: 8,
-    textAlign: 'center',
-    color: PANEL_INK_MUTED,
-    fontSize: 11,
-  },
-});

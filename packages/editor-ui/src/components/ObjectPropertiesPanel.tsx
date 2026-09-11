@@ -1,35 +1,25 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
-import { IMAGE_EDIT_OPTIONS, ImageEditAction, formatPixelSize, swipeDismissDirection } from '../logic/imageEdit';
+import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, ShadowModel, TextStyleModel, TintModel } from '../adapter';
+import { IMAGE_EDIT_OPTIONS, swipeDismissDirection } from '../logic/imageEdit';
 import { PAINT_EDIT_OPTIONS } from '../logic/paintEdit';
 import {
   PATTERN_EDIT_OPTIONS, patternActionOfSubmenu, patternActionSubmenu,
 } from '../logic/patternEdit';
 import { multiSelectionOptions } from '../logic/multiOptions';
 import { isValueDragging } from '../logic/slider';
-import { SubmenuKey, typeMenuHeight } from '../logic/submenuHeight';
+import { SubmenuKey, editSheetHeight, emptyEffectHeight, submenuHeight } from '../logic/submenuHeight';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import {
   OBJECT_DOTS_BOTTOM,
   OBJECT_DOT_SIZE,
-  OPTION_CAPSULE_HEIGHT,
-  OPTION_CAPSULE_MAX_WIDTH,
-  OPTION_PILL_PAD,
-  OPTION_ROW_GAP,
   PanelPage,
-  landingPanelPage,
+  landingSubmenu,
   objectPanelLayout,
   objectPanelPages,
-  optionCapsuleLefts,
-  optionPageFitCount,
-  optionRowSidePad,
-  panelPageDirection,
-  stepPanelPage,
 } from '../logic/panelLayout';
-import { ColorSwatchFill } from './ColorSwatch';
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
 import { OpacityBar } from './OpacityBar';
@@ -44,7 +34,9 @@ import { EndpointsBar } from './EndpointsBar';
 import { TransformBar } from './TransformBar';
 import { LayoutBar } from './LayoutBar';
 import { PatternSymmetryBar, PatternTilesBar, PatternToolsBar } from './PatternBars';
-import { BAR_BG, EmptyEffectBar } from './effectBar';
+import { EmptyEffectBar } from './effectBar';
+import { EditSheet, EditTabSpec } from './EditSheet';
+import { SHEET_RADIUS } from '../logic/submenuHeight';
 import {
   PANEL_ANIM_MS,
   PANEL_BG,
@@ -52,10 +44,7 @@ import {
   PANEL_DOT,
   PANEL_ICON,
   PANEL_INK,
-  PANEL_INK_LABEL,
-  PANEL_SWATCH_BORDER,
   PATTERN_ACTIVE,
-  STATE_ACTIVE,
 } from '../theme';
 
 // Facet's ObjectPropertiesPanel: a bottom sheet that slides up (150ms) when
@@ -65,44 +54,46 @@ import {
 // compact (24px icons, flex-weighted groups). The structural actions
 // (group/ungroup/join, and the boolean union) render only when the app
 // supplies them (Facet superset) — and for a multi-selection Group and Merge
-// move off this row onto the selection's own page (below), because they
-// describe the selection rather than what it is made of.
+// move off this row into the Edit sheet (below), because they describe the
+// selection rather than what it is made of.
 //
-// The panel is a compact fixed height (OBJECT_PANEL_HEIGHT) — just one row of
-// buttons and the carousel dots. It shows one row at a time; a horizontal
-// swipe cycles through the pages, sliding the row along, and the dots below
-// track which is showing (logic/panelLayout.ts owns the page order):
+// The panel is a compact fixed height (OBJECT_PANEL_HEIGHT) — one row of
+// buttons and the carousel dots. It has two pages, a dot each
+// (logic/panelLayout.ts):
 //
 //   common — rotate / flip / copy / lock / delete, as bare icons: universal
-//            enough to need no caption. Every selection has this page, first.
-//   type   — ONE combined options row, as word capsules in the toolbar
-//            line-mode pushdown's style: what the selection's KIND offers
-//            (images: crop / shadow / border / opacity; text: edit /
-//            type / align / shadow) followed by what the SELECTION offers
-//            (Layout · Group · Merge, multi-selections only — a mixed
-//            selection has just those).
-//   multi  — the OVERFLOW: only the options the combined row couldn't fit
-//            (optionPageFitCount). Most selections never grow this page.
+//            enough to need no caption. Every selection has this page, first,
+//            and it is the row the panel itself shows.
+//   edit   — the EDIT SHEET (components/EditSheet.tsx): every option the
+//            selection's KIND offers (images: crop / shadow / border /
+//            opacity; text: edit / type / align / shadow) followed by what
+//            the SELECTION offers (Layout · Group · Merge, multi-selections
+//            only — a mixed selection has just those), as a row of tabs
+//            under an "Edit" title, over a darkened well holding the lit
+//            tab's controls. Present when the selection has any option.
 //
-// A new selection lands on the common icon page — the panel's first — unless
-// the previous selection was parked on a page this one also has.
+// The sheet is not a row the panel swaps in. A sideways swipe on the panel
+// (or a press on the second dot) POPS IT UP over the panel, rounded corners
+// and all, sized to the tab it opens on; tapping another tab swaps the well's
+// controls and animates the sheet to that page's own height (each page is
+// only as tall as it needs — logic/submenuHeight.ts); a downward swipe on
+// the sheet (or the first dot) drops it back down, revealing the panel and
+// its dots again. The sheet carries no dots of its own and no sideways
+// carousel: the tabs are the navigation.
 //
-// Crop / Shadow / Border / Text open their full editing bar, which STACKS
-// ABOVE this panel rather than covering it — the bar's bottom edge meets the
-// panel's top, so the options row stays visible underneath and the option that
-// opened the bar wears the pushdown's selection blue to say so. That lit pill
-// is why the bar carries no carousel dots of its own. The bar is still a
-// carousel: a left/right swipe cycles forward/back through the available
-// submenus and a downward swipe dismisses, dropping it back down behind the
-// panel. Its height is the tallest bar THIS selection can reach and no more
-// (logic/submenuHeight.ts), so the top edge holds still across the carousel
-// without a text selection reserving an image bar's room.
+// The sheet opens on the tab the last one was showing when this selection
+// has it, else its first page; it stays up across selections that have
+// options and folds when one has none.
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 const ICON_COLOR = PANEL_ICON; // the toolbar's inactive-tool grey
 const ICON_COLOR_STRONG = PANEL_INK; // full ink — the locked state, a step up
 const COMPACT_MAX_WIDTH = 500;
+// How far the common row follows a sideways finger before the sheet pops:
+// enough to say the gesture registered, not enough to look like a page
+// leaving.
+const SWIPE_FOLLOW_PX = 40;
 const DEFAULT_SHADOW_MODEL: ShadowModel = {
   dx: 0.75, dy: 0.875, blur: 1.125, spread: 0.125, color: { r: 0, g: 0, b: 0 }, opacity: 0.45,
 };
@@ -116,37 +107,34 @@ const DEFAULT_ENDPOINTS_MODEL: EndpointsModel = {
 const DEFAULT_BORDER_MODEL: BorderModel = {
   width: 0.375, position: 'center', dash: 0, color: { r: 58, g: 53, b: 50 },
 };
-// Opacity-bar defaults: fully opaque, hard edges — what every object renders
-// as until it visits the bar, and what the bar's trash resets to.
+// Opacity-page defaults: fully opaque, hard edges — what every object renders
+// as until it visits the page.
 const DEFAULT_OPACITY_MODEL: OpacityModel = { opacity: 1, edgeSoften: 0 };
 // Design default framing (Zoom 130%, Margin 14pt, Ratio 1:1, Straighten 0°,
 // Size 46, Spacing 6pt). Lengths in world cells (pt ÷ 16).
 const DEFAULT_FRAMING_MODEL: FramingModel = {
   mode: 'fill', zoom: 1.3, margin: 0.875, ratio: 'square', angle: 0, tileScale: 0.46, tileGap: 0.375,
 };
-/** Value-equality for the Crop bar's tracked params. A slider's own live edit
+/** Value-equality for the Crop page's tracked params. A slider's own live edit
  *  round-trips to an equal model.framing, so this lets the draft ignore its own
  *  echo while still following genuinely external changes (e.g. the two-finger
  *  pinch-zoom on the canvas). */
 const sameFramingModel = (a: FramingModel, b: FramingModel): boolean =>
   a.mode === b.mode && a.zoom === b.zoom && a.margin === b.margin && a.ratio === b.ratio &&
   a.angle === b.angle && a.tileScale === b.tileScale && a.tileGap === b.tileGap;
-// Fallback seed for the Text bar when the app hasn't supplied a style yet
+// Fallback seed for the Text pages when the app hasn't supplied a style yet
 // (it always does while a text is selected — this only guards the transient
 // frame before model.textStyle lands).
 const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
   fontId: 'system', weight: 'regular', size: 2, letterSpacing: 0, lineHeight: 1.2, bend: 0, align: 'left', vAlign: 'top', color: { r: 58, g: 53, b: 50 },
 };
 
-// The slide-up submenus, in carousel order. Image selections cycle through
-// crop / shadow / border / opacity (matching their type-option order);
-// text cycles through font / align (two pages of the Text bar) and then shadow
-// — the SAME Drop Shadow bar an image opens, cast by the glyphs rather than by
-// the box; a vector selection has stroke, plus its subtype's second bar —
-// svgFill on the closed shapes, endpoints on the open paths — plus opacity on
-// the closed shapes.
-// Kept in this order so a left swipe advances the same way the type-option
-// row reads.
+// The property pages, in tab order. Image selections offer crop / shadow /
+// border / opacity (matching their tab order); text offers font / align (two
+// pages of the Text controls) and then shadow — the SAME Drop Shadow page an
+// image opens, cast by the glyphs rather than by the box; a vector selection
+// has stroke, plus its subtype's second page — svgFill on the closed shapes,
+// endpoints on the open paths — plus opacity on the closed shapes.
 //
 // `layout` is the odd one out: it rides on a MULTI-selection rather than on a
 // type, so it joins whichever of the above the members happen to share (and
@@ -154,14 +142,12 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 // are what the selection came for.
 //
 // SubmenuKey itself lives in logic/submenuHeight.ts, which needs it to say how
-// tall each of these bars stands.
+// tall each of these pages stands.
 
 // One grid cell: a bare icon, weighted (flex) so every button shares the same
-// column width whichever set is showing. The common actions these draw —
-// rotate, flip, copy, lock, delete — are the universal ones, and their glyphs
-// name them without help; `label` survives as the accessibility name. The cell
-// keeps its 48pt height with the caption gone so the row stays put across a
-// swipe to the type options (whose pills are the same height).
+// column width. The common actions these draw — rotate, flip, copy, lock,
+// delete — are the universal ones, and their glyphs name them without help;
+// `label` survives as the accessibility name.
 function GridButton({ label, icon, iconColor, onPress, compact }: {
   label: string;
   icon: string;
@@ -182,185 +168,30 @@ function GridButton({ label, icon, iconColor, onPress, compact }: {
   );
 }
 
-/** The option row's selection capsule, parked over whichever option opened the
- *  bar you're looking at. It takes that option's own box: the cells size to
- *  their words, so the capsule RESIZES as it travels rather than holding one
- *  width for the row.
- *
- *  It SLIDES only when moving between two options. Arriving from nowhere — a
- *  bar opening, or the type row swiping in — it fades up in place instead,
- *  because sliding in from a cell that was never selected would be a lie about
- *  where it came from. `shown` outlives `at` so the fade-out has something to
- *  animate against.
- *
- *  Width can't ride the native driver, and mixing drivers on one node lets the
- *  native side overwrite the JS side's props, so the whole capsule animates in
- *  JS. It is one small view moving for PANEL_ANIM_MS on a tap — not a
- *  per-frame cost — and the editor runs as the web bundle, where the native
- *  driver is a no-op anyway.
- *
- *  Its own component because the panel returns early when it isn't mounted, and
- *  these hooks must not sit behind that.  */
-function OptionCapsule({ at, width }: {
-  /** Left offset of the selected cell, or null when nothing is selected. */
-  at: number | null;
-  /** Width of the selected cell; 0 before the row has been measured. */
-  width: number;
-}) {
-  const x = useRef(new Animated.Value(at ?? 0)).current;
-  const w = useRef(new Animated.Value(width)).current;
-  const fade = useRef(new Animated.Value(0)).current;
-  const [shown, setShown] = useState(at != null);
-  const prevAt = useRef<number | null>(null);
-  useEffect(() => {
-    const from = prevAt.current;
-    prevAt.current = at;
-    if (at == null) {
-      const anim = Animated.timing(fade, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: false });
-      anim.start(({ finished }) => { if (finished) setShown(false); });
-      return () => anim.stop();
-    }
-    setShown(true);
-    if (from == null) {
-      x.setValue(at);
-      w.setValue(width);
-      const anim = Animated.timing(fade, { toValue: 1, duration: PANEL_ANIM_MS, useNativeDriver: false });
-      anim.start();
-      return () => anim.stop();
-    }
-    fade.setValue(1);
-    // Position and width travel together, or the capsule would arrive at the
-    // new option still wearing the old one's width.
-    const anim = Animated.parallel([
-      Animated.timing(x, { toValue: at, duration: PANEL_ANIM_MS, useNativeDriver: false }),
-      Animated.timing(w, { toValue: width, duration: PANEL_ANIM_MS, useNativeDriver: false }),
-    ]);
-    anim.start();
-    return () => anim.stop();
-  }, [at, width, x, w, fade]);
-
-  if (!shown || width <= 0) return null;
-  return (
-    // Untappable, so it can't swallow a press meant for the option it sits on.
-    <Animated.View
-      pointerEvents="none"
-      style={[styles.optionCapsule, { width: w, opacity: fade, transform: [{ translateX: x }] }]}
-    />
-  );
-}
-
-/** One type-specific option, described rather than rendered — the row needs the
- *  set before it can lay the sliding capsule over the selected one. */
-interface OptionSpec {
-  key: string;
-  /** Accessibility name (often longer than the visible word). */
-  label: string;
-  /** Visible word, when it differs from `label`. */
-  caption?: string;
-  /** The submenu this option opens. Options carrying one share the row's single
-   *  sliding capsule; the rest never take it. */
+/** One type-specific option, described rather than rendered — it becomes a
+ *  tab of the Edit sheet (EditTabSpec), lit while its page is showing. */
+interface OptionSpec extends Omit<EditTabSpec, 'selected'> {
+  /** The page this option opens. Options carrying one light up as tabs while
+   *  that page shows; the rest (actions, toggles) never take that lit state. */
   sub?: SubmenuKey;
-  /** An independent on/off state (Repeat, Invert) — not a submenu, so it wears
-   *  a capsule of its own rather than moving the shared one. */
-  toggled?: boolean;
-  /** Fill for a toggled option's capsule; defaults to selection blue. */
-  tint?: string;
-  /** Renders a small swatch of this color before the word — for an option
-   *  whose state is a color rather than on/off (the frame's Fill). */
-  swatchColor?: RGBLike;
-  onPress?: () => void;
-}
-
-// One type-specific option: a word on a capsule, borrowed wholesale from the
-// toolbar's line-mode pushdown (Freehand | Line | Arc) — same 13/600 word, same
-// fully-round capsule, the same selection blue under the one that's on. No
-// glyph: these options name a thing you're about to open or turn on, and the
-// pushdown makes the case that the word alone carries that better than an icon.
-//
-// The SELECTED option's capsule isn't drawn here — the row owns one shared
-// capsule that slides between cells (see `capsuleX`), so this draws only the
-// word. A `toggled` option is the exception: its state is independent of which
-// bar is open, so it carries a static capsule of its own.
-//
-// It keeps the GridButton's 48pt height, so a swipe between the two pages
-// doesn't change the row's height — but NOT its equal-width cell. The words
-// vary in length and the icons don't, so equal columns sized by the icon page
-// meant the long words ("Opacity", "Endpoints") ellipsized on a phone while
-// short ones sat in half-empty cells. Here each cell hugs its own word and the
-// row's leftover width is shared out equally between them, so the row is always
-// full and nothing truncates until the words genuinely outgrow the screen.
-// On a wide window a cell stops at OPTION_CAPSULE_MAX_WIDTH — what keeps a
-// three-option set from stretching into slabs, the row centring what it then
-// doesn't fill. That cap comes OFF below COMPACT_MAX_WIDTH: a phone has no
-// width to spare, and spending it all is the whole point there.
-//
-// `onMeasure` reports the width the cell actually took — the capsule that parks
-// over it can't know a word's width without the layout having happened.
-function OptionPill({ spec, selected, compact, onMeasure }: {
-  spec: OptionSpec;
-  /** True when this option's submenu is the open one — colors the word for the
-   *  capsule sliding underneath it. */
-  selected: boolean;
-  /** Narrow screen: the width cap comes off, so the row is spent in full. */
-  compact: boolean;
-  /** Reports this cell's laid-out width, for the capsule that parks over it. */
-  onMeasure: (key: string, width: number) => void;
-}) {
-  const lit = selected || !!spec.toggled;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={spec.label}
-      accessibilityState={spec.sub || spec.toggled !== undefined ? { selected: lit } : undefined}
-      onPress={spec.onPress}
-      onLayout={(e) => onMeasure(spec.key, e.nativeEvent.layout.width)}
-      style={[styles.optionCell, compact ? null : styles.optionCellCapped]}
-    >
-      <View
-        style={[
-          styles.optionPill,
-          // Only a toggle paints its own capsule; a selected submenu option is
-          // covered by the shared one sliding under it.
-          spec.toggled ? { backgroundColor: spec.tint ?? STATE_ACTIVE } : null,
-        ]}
-      >
-        {spec.swatchColor ? (
-          <View style={styles.optionSwatch}>
-            <ColorSwatchFill color={spec.swatchColor} />
-          </View>
-        ) : null}
-        <Text
-          style={[styles.optionLabel, lit && styles.optionLabelActive]}
-          numberOfLines={1}
-        >
-          {spec.caption ?? spec.label}
-        </Text>
-      </View>
-    </Pressable>
-  );
 }
 
 export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight }: {
   model: ObjectPropertiesModel;
-  /** Bottom safe-area inset (home indicator). Padded under the bottom-anchored
-   *  effect bars so their controls clear it; 0 on non-notched / web. */
+  /** Bottom safe-area inset (home indicator). Padded under the panel's row
+   *  and the Edit sheet's last line so they clear it; 0 on non-notched / web. */
   safeBottom?: number;
   /** Reports how many px of the screen's bottom edge the panel claims — the
-   *  base row when visible, plus the open submenu's layer — so the shell can
-   *  scroll the selection clear of it. Fired with the TARGET height the
-   *  moment visibility / submenu state changes (not after the slide), so a
-   *  camera animation can run alongside the panel's own. 0 when hidden. */
+   *  base row when visible, or the Edit sheet while it is up (it covers the
+   *  row) — so the shell can scroll the selection clear of it. Fired with the
+   *  TARGET height the moment visibility / sheet state changes (not after
+   *  the slide), so a camera animation can run alongside the panel's own.
+   *  0 when hidden. */
   onOccludedHeight?: (px: number) => void;
 }) {
   const { width } = useWindowDimensions();
   const compact = width < COMPACT_MAX_WIDTH;
   const [mounted, setMounted] = useState(model.visible);
-  // Which page the single row shows — common actions, the selection's type
-  // options, or (multi only) the selection-level ones. A horizontal swipe
-  // cycles. Held as the page's NAME rather than an index so a selection change
-  // that drops a page can't leave the row pointing at a different one; a page
-  // the current selection doesn't have falls back below.
-  const [page, setPage] = useState<PanelPage>('common');
   // The panel rests against the bottom edge. Where a device reports a bottom
   // inset (iOS home indicator / curved corners) the carousel dots sit *in* that
   // strip — nothing there is tappable anyway — and the panel reclaims their
@@ -386,68 +217,19 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     return () => anim.stop();
   }, [model.visible, translateY, hiddenY]);
 
-  // ── Row swap (the page carousel) ────────────────────────────────────
-  // The visible row slides on a shared translateX. `dir` is the direction the
-  // content travels: −1 = leftward (out the left edge, new row in from the
-  // right) and so forward through the pages, +1 = rightward and back. A swap
-  // throws the current row off one edge, steps the page, then brings the new
-  // row in from the opposite edge; a drag lets the row follow the finger first,
-  // then completes in the drag direction. The carousel wraps, so with two pages
-  // it stays the straight toggle it was.
+  // ── The sideways swipe that pops the Edit sheet ──────────────────────
+  // The common row follows the finger a little (swapX, capped), then springs
+  // back; a swipe past the threshold in EITHER direction pops the sheet up
+  // over the panel. There is nothing to slide the row to any more — the
+  // options are the sheet's tabs — so the row never leaves.
   const swapX = useRef(new Animated.Value(0)).current;
-  const swapping = useRef(false);
-  // Measured width of the button row, and of each type option's cell (keyed by
-  // option key). The cells size themselves to their words, so the selection
-  // capsule takes its width from the layout that actually happened and its
-  // offset from optionCapsuleLefts. Empty until the first layout pass, when
-  // there's nothing for the capsule to sit on and it isn't drawn.
-  const [rowWidth, setRowWidth] = useState(0);
-  const [optionWidths, setOptionWidths] = useState<Record<string, number>>({});
-  const onOptionMeasure = useCallback((key: string, width: number) => {
-    setOptionWidths((prev) => {
-      // onLayout fires on every pass; only a real change is worth a re-render
-      // (and sub-pixel jitter would otherwise loop).
-      if (prev[key] !== undefined && Math.abs(prev[key] - width) < 0.5) return prev;
-      return { ...prev, [key]: width };
-    });
-  }, []);
-  // Latest runner + swipe-eligibility, so the once-created PanResponder always
-  // uses the current window width and set availability. The page set and the
-  // showing page ride refs for the same reason — both are worked out further
-  // down this render, after the model's option flags.
-  const pagesRef = useRef<PanelPage[]>(['common']);
-  const pageRef = useRef<PanelPage>('common');
-  // The swap choreography, shared by the swipe and the dot clicks: throw the
-  // showing row off the `dir` edge, then ask `resolveTarget` which page comes
-  // in — resolved at the throw's END, not its start, so a page whose options
-  // went away mid-animation is never landed on.
-  const animateSwap = (dir: -1 | 1, resolveTarget: () => PanelPage) => {
-    if (swapping.current) return;
-    swapping.current = true;
-    Animated.timing(swapX, { toValue: dir * width, duration: PANEL_ANIM_MS, useNativeDriver: true }).start(({ finished }) => {
-      if (!finished) { swapping.current = false; return; }
-      setPage(resolveTarget());
-      swapX.setValue(dir * -width); // place the incoming row just off the opposite edge
-      Animated.timing(swapX, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true }).start(() => {
-        swapping.current = false;
-      });
-    });
-  };
-  const runSwapRef = useRef<(dir: -1 | 1) => void>(() => {});
-  runSwapRef.current = (dir) => {
-    animateSwap(dir, () => stepPanelPage(pagesRef.current, pageRef.current, dir));
-  };
-  // A click (or tap) on a carousel dot jumps straight to that dot's page —
-  // same slide, but the destination is named rather than stepped to, and the
-  // row travels the way the clicked dot sits relative to the lit one.
-  const runSwapToRef = useRef<(target: PanelPage) => void>(() => {});
-  runSwapToRef.current = (target) => {
-    const dir = panelPageDirection(pagesRef.current, pageRef.current, target);
-    if (dir === 0) return;
-    animateSwap(dir, () => (
-      pagesRef.current.includes(target) ? target : landingPanelPage(pagesRef.current)
-    ));
-  };
+  // Whether the sheet has been ASKED for — by a swipe, the edit dot, or a
+  // page the host opened. It is what keeps the sheet up across selections
+  // (see sheetOpen below); a downward swipe or the common dot clears it.
+  const [sheetWanted, setSheetWanted] = useState(false);
+  // Latest opener + swipe-eligibility, so the once-created PanResponder
+  // always uses the current option set.
+  const openSheetRef = useRef<() => void>(() => {});
   const canSwapRef = useRef(false);
 
   const swapPan = useRef(
@@ -455,11 +237,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       onMoveShouldSetPanResponder: (_e, g) =>
         !isValueDragging()
         && canSwapRef.current && Math.abs(g.dx) > 5 && Math.abs(g.dx) > Math.abs(g.dy),
-      onPanResponderMove: (_e, g) => { if (!swapping.current) swapX.setValue(g.dx); },
+      onPanResponderMove: (_e, g) => {
+        swapX.setValue(Math.max(-SWIPE_FOLLOW_PX, Math.min(SWIPE_FOLLOW_PX, g.dx)));
+      },
       onPanResponderRelease: (_e, g) => {
-        const dir = swipeDismissDirection(g.dx); // −1 left, +1 right, 0 = too short
-        if (dir !== 0 && canSwapRef.current) runSwapRef.current(dir);
-        else Animated.spring(swapX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+        if (swipeDismissDirection(g.dx) !== 0 && canSwapRef.current) openSheetRef.current();
+        Animated.spring(swapX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
       },
       onPanResponderTerminate: () =>
         Animated.spring(swapX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start(),
@@ -480,7 +263,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // Group / Merge ride alongside Layout for the same reason: they are things a
   // SELECTION is, not things its members are. A mixed multi-selection can be
   // bound into a group or flattened into one object without its members
-  // sharing a kind, so they share Layout's page — words, not the common row's
+  // sharing a kind, so they share Layout's row — words, not the common row's
   // icons (where a single selection's Facet-side group actions still live).
   //
   // Merge is the structural flatten, NOT the boolean union (`onUnion`, which
@@ -496,52 +279,32 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const showUngroup = multi && !!model.onUngroup;
   const showMerge = multi && !!model.onMerge;
 
-  // Whether the selection has an options row at all. `type` is what the
+  // Whether the selection has any option — a tab — at all. `type` is what the
   // selection's KIND offers (and a multi-selection's members must share a
   // kind to have one); `multi` is what the SELECTION offers, whatever it is
-  // made of. Both render on ONE combined page — kind options first, then the
-  // selection's — and only an overflow spills onto a second (the pages are
-  // worked out below, once the option specs exist to count).
+  // made of. Both render on the sheet's ONE tab row — kind options first,
+  // then the selection's — which scrolls if it must.
   const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showStrokeOptions || !!model.showRigOptions || showUngroup;
   const hasMultiOptions = showLayout || showGroup || showMerge;
-  // Signature of the current selection's option pages. It changes when the
+  const hasOptions = hasTypeOptions || hasMultiOptions;
+  // Signature of the current selection's option set. It changes when the
   // panel first appears for a selection or the selected object's type changes
   // (image → frame → text …), and empties when the panel hides. The vector
   // subtype is part of it so switching between two vector objects with
-  // different menus (a line → a rectangle) re-lands on the type row.
+  // different menus (a line → a rectangle) re-lands the sheet.
   const typeSig = model.visible
     ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showPatternOptions ? 'P' : ''}${model.showStrokeOptions ? 'S' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
     : '';
   const prevTypeSig = useRef('');
-  // The page the panel was last showing for a real selection — what the next
-  // one lands on when it has that page too. Recorded only while VISIBLE: the
-  // row falls back to 'common' as the panel hides, and letting that overwrite
-  // the memory would make every selection after a deselect start over.
-  const lastPageRef = useRef<PanelPage>('common');
-  // Where a new selection lands. The page LIST is computed after the option
-  // specs are built (further down — it needs their labels to know whether
-  // they overflow one row), and the landing page rides this ref into the
-  // effect: the render assigns it before React runs any effect, so the value
-  // here is always the current render's.
-  const landingPageRef = useRef<PanelPage>('common');
   useEffect(() => {
     if (typeSig === prevTypeSig.current) return;
     prevTypeSig.current = typeSig;
-    // On each new selection, stay on the page the last one was on when this
-    // one has it; otherwise open on the first page — the common icon actions
-    // (also keeps a stale swap from leaving an empty row).
-    setPage(landingPageRef.current);
-  }, [typeSig]);
-  // After the effect above, so the landing decision reads the PREVIOUS
-  // selection's page rather than the one it just set.
-  useEffect(() => {
-    if (model.visible) lastPageRef.current = page;
-  }, [page, model.visible]);
-
-  // A new option set relays out from scratch, so drop the old widths rather
-  // than let a key both sets share (Shadow, Border) size the capsule from the
-  // previous set's layout for a frame.
-  useEffect(() => { setOptionWidths({}); }, [typeSig]);
+    // A selection with no options has no sheet to keep up: the next one
+    // that has options opens on the common row again, exactly as a swipe
+    // down would have left it. (A selection WITH options keeps the sheet,
+    // landing on the remembered tab — see the landing effect below.)
+    if (model.visible && !hasOptions) setSheetWanted(false);
+  }, [typeSig, model.visible, hasOptions]);
 
   // Shadow / Border controls each seed a local draft from model.shadow /
   // model.border when they open, then own the tracked params so live previews
@@ -553,40 +316,30 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const prevBorderOpen = useRef(false);
   const [cropDraft, setCropDraft] = useState<FramingModel | null>(null);
   const prevCropOpen = useRef(false);
-  // The Opacity bar rides the same draft pattern as Crop — the draft owns
+  // The Opacity page rides the same draft pattern as Crop — the draft owns
   // both tracked params (there's no external color to split off).
   const [opacityDraft, setOpacityDraft] = useState<OpacityModel | null>(null);
   const prevOpacityOpen = useRef(false);
-  // The Stroke bar rides the same draft pattern as Border — it IS the Border
-  // bar, pointed at a vector object's own stroke.
+  // The Stroke page rides the same draft pattern as Border — it IS the Border
+  // page, pointed at a vector object's own stroke.
   const [strokeDraft, setStrokeDraft] = useState<BorderModel | null>(null);
   const prevStrokeOpen = useRef(false);
-  // The Fill bar rides the Tint bar's draft pattern — it IS the Tint bar,
+  // The Fill page rides the Tint page's draft pattern — it IS the Tint page,
   // pointed at a closed shape's interior.
   const [svgFillDraft, setSvgFillDraft] = useState<TintModel | null>(null);
   const prevSvgFillOpen = useRef(false);
-  // The Text bar owns its tracked params too (color still comes from the model
-  // — it's changed externally via the full-screen picker).
+  // The Text pages own their tracked params too (color still comes from the
+  // model — it's changed externally via the full-screen picker).
   const [textDraft, setTextDraft] = useState<TextStyleModel | null>(null);
   const prevTextOpen = useRef(false);
-  // The Text bar is a two-page carousel (font / align) sharing the single
+  // The Text controls are two pages (font / align) sharing the single
   // `textStyleOpen` flag; this tracks which page shows. The entry points own
-  // it: the Type button opens on 'font', the Align button on 'align', and the
-  // carousel swaps it (all via openSubmenu).
+  // it: the Type tab opens on 'font', the Align tab on 'align' (both via
+  // openSubmenu).
   const [textPage, setTextPage] = useState<'font' | 'align'>('font');
-  // ── Submenu carousel (Crop / Shadow / Border / Text) ────────────────
-  // The open submenu stacks ABOVE the panel rather than over it: its bottom
-  // edge abuts the panel's top, so the bar and the options row that summoned it
-  // are both on screen and the lit option says which bar you're looking at. A
-  // left/right swipe cycles forward/back through the available submenus, and a
-  // downward swipe dismisses. The submenus are separate bars but only one shows
-  // at a time, so this drives a single layer: `layerY` for the vertical
-  // open/dismiss, `navX` for the horizontal carousel slide.
-  //
-  // The bar needs no bottom inset of its own — the panel beneath it owns the
-  // home-indicator strip. Its height doubles as its slide distance: pushed down
-  // by exactly that, it sits wholly behind the panel (which draws over it) and
-  // below the screen edge, so it reveals by rising out from under the panel.
+  // ── The pages (Crop / Shadow / Border / Text …) ──────────────────────
+  // The open page is what the Edit sheet's well holds, and its tab is the lit
+  // one. The pages are separate components but only one shows at a time.
   const svgFillable = !!model.showSvgOptions && svgHasFill(model.svgSubtype ?? 'stroke');
   const svgEndable = !!model.showSvgOptions && svgHasEndpoints(model.svgSubtype ?? 'stroke');
   const svgOpacityable = !!model.showSvgOptions && svgHasOpacity(model.svgSubtype ?? 'stroke');
@@ -599,16 +352,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'align', 'shadow']
     : model.showPaintOptions ? ['opacity']
-    // A pattern object's pages, in the order its options row lists them,
-    // plus the Stroke bar its baked tile paths share with the vectors.
+    // A pattern object's pages, in the order its tab row lists them, plus
+    // the Stroke page its baked tile paths share with the vectors.
     : model.showPatternOptions
       ? [...PATTERN_EDIT_OPTIONS.map((o) => patternActionSubmenu(o.action)), 'stroke' as const]
-    // Vectors and patterns together: the one bar they share.
+    // Vectors and patterns together: the one page they share.
     : model.showStrokeOptions ? ['stroke']
-    // A rig's pages — the whole-figure RIG bar only; the part pages
+    // A rig's pages — the whole-figure RIG page only; the part pages
     // (Hands/Feet/Spine/Head) came off the row, their sliders living on as
     // the host's floating slider modes. Checked before showSvgOptions: a
-    // rig's figure IS an svg object, and the vector bars have nothing to
+    // rig's figure IS an svg object, and the vector pages have nothing to
     // act on for a baked silhouette.
     : model.showRigOptions ? RIG_PART_PAGES.map((o) => o.sub)
     : model.showSvgOptions
@@ -621,36 +374,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         ]
     : [];
   // Layout joins the tail of whatever the selection's type offers, so a
-  // mixed multi-selection lands on a one-page carousel and a uniform one
-  // swipes from its type's bars into Layout.
+  // mixed multi-selection's sheet has Layout alone to open and a uniform
+  // one's has its type's pages before it.
   const submenuOrder: SubmenuKey[] = showLayout ? [...typeSubmenuOrder, 'layout'] : typeSubmenuOrder;
 
-  // How tall the bar layer stands: the tallest bar THIS selection can reach,
-  // and no taller. Every bar of a type shares it, so swiping the carousel never
-  // moves the bar's top edge.
-  //
-  // Rows are counted from the state the bars will actually render from, drafts
-  // included, so this tracks a live edit: switching the Crop mode genuinely
-  // swaps its rows, and the layer resizes to hold them. (The Fill bar is
-  // solid-only — two fixed rows — so it no longer feeds a type in.)
-  const barHeight = typeMenuHeight(submenuOrder, {
-    cropMode: (cropDraft ?? model.framing ?? DEFAULT_FRAMING_MODEL).mode,
-    cropHasResolution: formatPixelSize(model.imagePixelSize) !== null,
-    // …and its Replace row on the same rule.
-    cropCanReplace: !!model.onReplaceImage,
-    // The image / frame border offers every row; a vector's stroke drops the
-    // ones its subtype has no answer for.
-    borderRows: { radius: true, position: true },
-    strokeRows: svgStrokeRows(model.svgSubtype ?? 'stroke'),
-    // The Layout bar grows an Arrange row exactly when the bar will render it.
-    layoutHasGrid: !!model.onGrid,
-    // …and the RIG bar its Reset row, on the same rule.
-    rigCanReset: !!model.onResetRig,
-    // The pattern Tools bar grows its Sets row (and chip page) when the
-    // host offers a tile-set filter, and its Repeat row on the same rule.
-    patternTileSetCount: model.patternTileSets?.length ?? 0,
-    patternCanRepeat: !!model.onToggleRepeat,
-  });
   const activeSub: SubmenuKey | null =
     model.layoutOpen ? 'layout'
     : model.cropOpen ? 'crop'
@@ -667,36 +394,31 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     : null;
   const submenuOpen = activeSub != null;
 
-  // Bottom-edge occlusion report — see the prop doc. The submenu layer sits
-  // ON TOP of the base panel (bottom: panelBox.height), so the two heights
-  // add while a bar is open.
-  const occludedPx = model.visible ? panelBox.height + (submenuOpen ? barHeight : 0) : 0;
+  // The sheet is up while it has been asked for OR a page is open (a host
+  // can open a page itself — the pattern capsule's Tools — and the sheet
+  // rises to hold it), and only for a selection that has tabs to show.
+  const sheetOpen = model.visible && hasOptions && (sheetWanted || submenuOpen);
+  // A page opened by any route counts as asking for the sheet, so it stays
+  // up when that page later folds (the selection changed) and lands the next
+  // selection on its remembered tab.
   useEffect(() => {
-    onOccludedHeight?.(occludedPx);
-  }, [onOccludedHeight, occludedPx]);
+    if (submenuOpen) setSheetWanted(true);
+  }, [submenuOpen]);
 
-  // Keep rendering the last-open bar through the dismiss slide (activeSub goes
-  // null the instant it closes, but the bar should stay visible sliding down).
-  const lastSubRef = useRef<SubmenuKey | null>(null);
-  if (activeSub) lastSubRef.current = activeSub;
-  const displaySub = activeSub ?? lastSubRef.current;
-  const activeIndex = displaySub ? submenuOrder.indexOf(displaySub) : -1;
-
-  // True while the Text bar's font sheet (a scrollable list) is open. The
-  // submenu pan responder reads this to stand down, so dragging to scroll the
-  // list isn't mistaken for a downward dismiss swipe. Reset on every submenu
-  // change so it can't linger true over a different bar.
+  // True while a page's popover sheet (the Text page's font list, the Tint
+  // page's blend list — scrollable) is open. The sheet's pan responder reads
+  // this to stand down, so dragging to scroll the list isn't mistaken for a
+  // downward dismiss swipe. Reset on every page change so it can't linger
+  // true over a different page.
   const fontSheetOpenRef = useRef(false);
 
-  /** True while `key`'s bar is the one showing — lights that option's pill, so
-   *  the options row doubles as the carousel's position indicator now that the
-   *  bar no longer covers it. */
+  /** True while `key`'s page is the one showing — lights that tab. */
   const subOpen = (key: SubmenuKey) => activeSub === key;
 
-  /** The bar a vector option opens. svgEdit's action names match the submenu
+  /** The page a vector option opens. svgEdit's action names match the page
    *  keys except where the panel has to disambiguate — a shape's `fill` is the
-   *  svgFill bar, not an image's Tint. Named because both the press handler and
-   *  the lit state need it, and they must agree. */
+   *  svgFill page, not an image's Tint. Named because both the press handler
+   *  and the lit state need it, and they must agree. */
   const svgActionSubmenu = (action: string): SubmenuKey =>
     action === 'fill' ? 'svgFill'
     : action === 'endpoints' ? 'endpoints'
@@ -706,13 +428,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
 
   const openSubmenu = (key: SubmenuKey) => {
     fontSheetOpenRef.current = false;
-    // The bar and the row that summoned it are on screen together now, so the
-    // row has to be the page holding that option for its lit capsule to be
-    // visible — the Layout bar's option lives on the multi page, every other
-    // bar's on the type page. A swipe can still take you elsewhere afterwards
-    // (including onto a page where nothing is lit, which is fine: the bar says
-    // what it is).
-    setPage(key === 'layout' ? 'multi' : 'type');
     if (key === 'crop') model.onCropOpenChange?.(true);
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
     else if (key === 'border') model.onBorderOpenChange?.(true);
@@ -726,7 +441,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     else if (patternActionOfSubmenu(key)) model.onPatternBarOpenChange?.(patternActionOfSubmenu(key));
     else if (key === 'font' || key === 'align') {
       // Both text pages ride the single textStyleOpen flag; the page state
-      // picks which one shows (drives the carousel between them).
+      // picks which one shows.
       setTextPage(key);
       model.onTextStyleOpenChange?.(true);
     }
@@ -747,108 +462,89 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     model.onPatternBarOpenChange?.(null);
   };
 
-  const [submenuMounted, setSubmenuMounted] = useState(false);
-  const layerY = useRef(new Animated.Value(0)).current;
-  const navX = useRef(new Animated.Value(0)).current;
-  const prevSubmenuOpen = useRef(false);
-  const navigating = useRef(false);
+  // The page the sheet last showed — what the sheet keeps rendering through
+  // its slide down (activeSub goes null the instant it closes, but the well
+  // should stay filled while it drops), and the tab the next selection lands
+  // on when it has that page too (landingSubmenu).
+  const lastSubRef = useRef<SubmenuKey | null>(null);
+  if (activeSub) lastSubRef.current = activeSub;
+  const displaySub: SubmenuKey | null = activeSub ?? (sheetOpen ? null : lastSubRef.current);
 
-  // Vertical open / dismiss. Skipped while merely navigating between submenus
-  // (submenuOpen stays true), so switching bars is a purely horizontal slide.
-  useEffect(() => {
-    if (submenuOpen && !prevSubmenuOpen.current) {
-      prevSubmenuOpen.current = true;
-      setSubmenuMounted(true);
-      navX.setValue(0);
-      layerY.setValue(barHeight);
-      const anim = Animated.timing(layerY, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true });
-      anim.start();
-      return () => anim.stop();
-    }
-    if (!submenuOpen && prevSubmenuOpen.current) {
-      prevSubmenuOpen.current = false;
-      const anim = Animated.timing(layerY, { toValue: barHeight, duration: PANEL_ANIM_MS, useNativeDriver: true });
-      anim.start(({ finished }) => { if (finished) setSubmenuMounted(false); });
-      return () => anim.stop();
-    }
-  }, [submenuOpen, layerY, navX, barHeight]);
-
-  // Carousel navigation. dir −1 = swipe left → forward (next submenu); +1 =
-  // swipe right → back. The current bar slides off in the swipe direction, the
-  // set switches, and the next bar slides in from the opposite edge.
-  const runNavRef = useRef<(dir: -1 | 1) => void>(() => {});
-  runNavRef.current = (dir) => {
-    if (navigating.current || submenuOrder.length < 2 || activeIndex < 0) return;
-    navigating.current = true;
-    const len = submenuOrder.length;
-    const nextIndex = (activeIndex - dir + len) % len;
-    Animated.timing(navX, { toValue: dir * width, duration: PANEL_ANIM_MS, useNativeDriver: true }).start(({ finished }) => {
-      if (!finished) { navigating.current = false; return; }
-      openSubmenu(submenuOrder[nextIndex]);
-      navX.setValue(dir * -width);
-      Animated.timing(navX, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: true }).start(() => {
-        navigating.current = false;
-      });
-    });
+  /** Pop the sheet up, opening the tab it lands on (the remembered one when
+   *  this selection has it, else the first page). Both land in one render:
+   *  the wanted flag and the host's open flag batch, so the sheet rises
+   *  already sized to its page rather than growing from its tab row. */
+  const openSheet = () => {
+    setSheetWanted(true);
+    const target = landingSubmenu(submenuOrder, lastSubRef.current);
+    if (target) openSubmenu(target);
   };
-  // Latest dismiss + nav-eligibility for the once-created PanResponder.
-  const dismissRef = useRef<() => void>(() => {});
-  dismissRef.current = dismissSubmenu;
-  const canNavRef = useRef(false);
-  canNavRef.current = submenuOrder.length > 1;
+  openSheetRef.current = openSheet;
+  /** Drop the sheet: no page open, and none asked for. */
+  const closeSheet = () => {
+    setSheetWanted(false);
+    dismissSubmenu();
+  };
+  const closeSheetRef = useRef<() => void>(() => {});
+  closeSheetRef.current = closeSheet;
 
-  // Every submenu folds away with the panel. This matters more than it used to:
-  // the bar is anchored to the panel's top edge rather than the screen's bottom,
-  // so a panel that hid with one still open would drop the bar into the space it
-  // vacated and leave it sitting on the canvas. The per-type fold-aways below
-  // only cover the bars whose selection stopped supporting them.
+  // A sheet that is up with no page showing lands on one: the selection
+  // changed and the old page folded (the fold-aways below), or the page the
+  // host had open went away. A selection with no pages at all (every tab an
+  // action) stays as its tabs alone.
+  const landingRef = useRef<() => void>(() => {});
+  landingRef.current = () => {
+    const target = landingSubmenu(submenuOrder, lastSubRef.current);
+    if (target) openSubmenu(target);
+  };
   useEffect(() => {
-    if (!model.visible) dismissRef.current();
+    if (sheetOpen && !submenuOpen) landingRef.current();
+    // The landing reads the current order through the ref; it keys on the
+    // sheet being up without a page, and on the selection changing under it.
+  }, [sheetOpen, submenuOpen, typeSig]);
+
+  // Every page folds away with the panel — and the sheet with it.
+  useEffect(() => {
+    if (!model.visible) closeSheetRef.current();
   }, [model.visible]);
 
-  const submenuPan = useRef(
+  // ── The sheet's rise, fall and resize ────────────────────────────────
+  // `sheetY` is the vertical slide (its own height = fully below the screen
+  // edge), `sheetH` the animated height between pages. Both ride the JS
+  // driver: height can't ride the native one, and mixing drivers on one node
+  // lets the native side overwrite the JS side's props. The editor runs as
+  // the web bundle, where the native driver is a no-op anyway.
+  const [sheetMounted, setSheetMounted] = useState(false);
+  const sheetY = useRef(new Animated.Value(0)).current;
+  const sheetH = useRef(new Animated.Value(0)).current;
+  const prevSheetOpen = useRef(false);
+
+  const sheetPan = useRef(
     PanResponder.create({
-      // Claim a clearly-horizontal fling (carousel) or a clearly-downward drag
-      // (dismiss) — but never while the font sheet is open, so scrolling its
-      // list isn't hijacked as a dismiss / carousel swipe, and never while a
-      // slider is taking a value: dragging Width IS a horizontal drag, and
-      // flinging the bar out from under it strands the gesture and springs
-      // the thumb back to where it started (see logic/slider's drag guard).
+      // Claim a clearly-downward drag (dismiss) — never while a popover list
+      // is open, so scrolling it isn't hijacked as a dismiss swipe, and never
+      // while a slider is taking a value (see logic/slider's drag guard). A
+      // sideways drag is left alone: the tab row scrolls with it, and there
+      // is no page carousel to fling.
       onMoveShouldSetPanResponder: (_e, g) =>
         !fontSheetOpenRef.current && !isValueDragging() &&
-        ((Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5) ||
-          (g.dy > 10 && g.dy > Math.abs(g.dx) * 1.5)),
-      onPanResponderMove: (_e, g) => {
-        if (navigating.current) return;
-        if (Math.abs(g.dx) > Math.abs(g.dy)) { if (canNavRef.current) navX.setValue(g.dx); }
-        else if (g.dy > 0) layerY.setValue(g.dy);
-      },
+        g.dy > 10 && g.dy > Math.abs(g.dx) * 1.5,
+      onPanResponderMove: (_e, g) => { sheetY.setValue(Math.max(0, g.dy)); },
       onPanResponderRelease: (_e, g) => {
-        if (navigating.current) return;
-        const horiz = swipeDismissDirection(g.dx);
-        const down = swipeDismissDirection(g.dy) === 1 && Math.abs(g.dy) >= Math.abs(g.dx);
-        if (down) {
-          dismissRef.current();
-          Animated.spring(navX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
-        } else if (horiz !== 0 && canNavRef.current) {
-          runNavRef.current(horiz);
-        } else {
-          Animated.spring(navX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
-          Animated.spring(layerY, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
-        }
+        if (swipeDismissDirection(g.dy) === 1) closeSheetRef.current();
+        else Animated.spring(sheetY, { toValue: 0, useNativeDriver: false, bounciness: 0 }).start();
       },
       onPanResponderTerminate: () => {
-        Animated.spring(navX, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
-        Animated.spring(layerY, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+        Animated.spring(sheetY, { toValue: 0, useNativeDriver: false, bounciness: 0 }).start();
       },
     }),
   ).current;
 
-  // Fold the effect bars away the moment the selection can no longer use them
+  // Fold the effect pages away the moment the selection can no longer use them
   // (or the whole panel hides) so none lingers over the next object's actions.
-  // Frames reuse the Shadow / Border bars (but never Crop), so keep those open
+  // Frames reuse the Shadow / Border pages (but never Crop), so keep those open
   // while a frame is selected. Shadow and Border part company here: text offers
-  // Shadow but not Border, so a text selection must not drag the Shadow bar
+  // Shadow but not Border, so a text selection must not drag the Shadow page
   // down with a rule written for the pair.
   useEffect(() => {
     const canShadow = model.showImageEdit || model.showFrameOptions || model.showTextStyle;
@@ -862,7 +558,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // re-run this every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showImageEdit, model.showFrameOptions, model.showTextStyle]);
-  // The Opacity bar is shared by images, paint islands, and the closed
+  // The Opacity page is shared by images, paint islands, and the closed
   // vector shapes, so it folds away only when the selection is none of
   // those (or the panel hides).
   useEffect(() => {
@@ -929,16 +625,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   useEffect(() => {
     if (model.svgFillOpen && !prevSvgFillOpen.current) {
       // Seeded from the app, which reports the shape's CURRENT fill — or a
-      // default one when it has never been filled, so the bar opens on
+      // default one when it has never been filled, so the page opens on
       // something coherent rather than on an empty gradient.
       setSvgFillDraft(model.svgFill ?? DEFAULT_TINT_MODEL);
     }
     prevSvgFillOpen.current = !!model.svgFillOpen;
   }, [model.svgFillOpen, model.svgFill]);
-  // Fold the Stroke bar away the moment the selection no longer offers it —
-  // a vector object or a PATTERN (whose tiles share the bar) — or the panel
+  // Fold the Stroke page away the moment the selection no longer offers it —
+  // a vector object or a PATTERN (whose tiles share the page) — or the panel
   // hides, so it never lingers over the next object. The Fill and Endpoints
-  // bars go with it, and also whenever the new vector selection is a subtype
+  // pages go with it, and also whenever the new vector selection is a subtype
   // that doesn't offer that one — a shape with no interior to fill, or a
   // closed one with no loose end to decorate.
   const strokeable = !!model.showSvgOptions || !!model.showPatternOptions || !!model.showStrokeOptions;
@@ -959,7 +655,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, strokeable, model.strokeOpen, svgFillable, model.svgFillOpen, svgEndable, model.endpointsOpen, svgTransformable, model.transformOpen]);
-  // Fold the Layout bar away as soon as the selection stops being a multi one
+  // Fold the Layout page away as soon as the selection stops being a multi one
   // (a tap that drops it to a single object, or clears it), so it never
   // lingers over an object it has nothing to say about.
   useEffect(() => {
@@ -968,8 +664,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, showLayout, model.layoutOpen]);
-  // Fold the Text bar away the moment the selection is no longer editable text
-  // (or the whole bar hides), so it never lingers over the next object.
+  // Fold the Text pages away the moment the selection is no longer editable
+  // text (or the whole panel hides), so they never linger over the next object.
   useEffect(() => {
     if ((!model.visible || !model.showTextStyle) && model.textStyleOpen) {
       model.onTextStyleOpenChange?.(false);
@@ -978,18 +674,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showTextStyle, model.textStyleOpen]);
-
-  const toggleShadow = () => model.onShadowOpenChange?.(!model.shadowOpen);
-  const toggleBorder = () => model.onBorderOpenChange?.(!model.borderOpen);
-  const toggleCrop = () => model.onCropOpenChange?.(!model.cropOpen);
-  const toggleOpacity = () => model.onOpacityOpenChange?.(!model.opacityOpen);
-
-  const runImageAction = (action: ImageEditAction) => {
-    if (action === 'shadow') { toggleShadow(); return; }
-    if (action === 'border') { toggleBorder(); return; }
-    if (action === 'crop') { toggleCrop(); return; }
-    if (action === 'opacity') { toggleOpacity(); return; }
-  };
 
   // Shadow controls → live preview / commit through the model; the draft stays
   // in sync so the sliders keep tracking.
@@ -1012,7 +696,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     model.onBorderOpenChange?.(false);
   };
 
-  // Stroke controls → live preview / commit; same pattern as Border. The trash
+  // Stroke controls → live preview / commit; same pattern as Border. Remove
   // clears the object's stroke overrides, returning it to the composition-wide
   // default rather than deleting anything.
   const applyStroke = (b: BorderModel, committed: boolean) => {
@@ -1032,15 +716,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   };
 
   // Opacity controls → live preview / commit; the draft owns both params
-  // (no external color). The trash resets to the defaults as one undo step
-  // and closes the bar.
+  // (no external color). No Remove: opacity is not a layer an object can be
+  // without — every object has one — so the sliders are the whole page.
   const applyOpacity = (o: OpacityModel, committed: boolean) => {
     setOpacityDraft(o);
     model.onObjectOpacity?.(o, committed);
-  };
-  const removeOpacity = () => {
-    applyOpacity(DEFAULT_OPACITY_MODEL, true);
-    model.onOpacityOpenChange?.(false);
   };
 
   // Text style → live preview / commit; the draft owns the tracked params, so
@@ -1054,7 +734,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // draft owns the tracked params (type, stop positions, angle, opacity,
   // blend, selection) while colors (solid + per-stop) come from the model,
   // changed externally via the full-screen picker — same split as the
-  // effect bars' colors.
+  // effect pages' colors.
   const applySvgFill = (f: TintModel, committed: boolean) => {
     setSvgFillDraft(f);
     model.onSvgFill?.(f, committed);
@@ -1076,11 +756,256 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     model.onEndpointsOpenChange?.(false);
   };
 
+  // Params tracked by the sliders/pad come from the local draft; color comes
+  // from the model (it's changed externally, via the full-screen picker).
+  const shadowForBar: ShadowModel = shadowDraft
+    ? { ...shadowDraft, color: model.shadow?.color ?? shadowDraft.color }
+    : (model.shadow ?? DEFAULT_SHADOW_MODEL);
+  const borderForBar: BorderModel = borderDraft
+    ? { ...borderDraft, color: model.border?.color ?? borderDraft.color }
+    : (model.border ?? DEFAULT_BORDER_MODEL);
+  const framingForBar: FramingModel = cropDraft ?? model.framing ?? DEFAULT_FRAMING_MODEL;
+  const opacityForBar: OpacityModel = opacityDraft ?? model.objectOpacity ?? DEFAULT_OPACITY_MODEL;
+  const strokeForBar: BorderModel = strokeDraft
+    ? { ...strokeDraft, color: model.stroke?.color ?? strokeDraft.color }
+    : (model.stroke ?? DEFAULT_BORDER_MODEL);
+  // Tracked type params come from the draft; color comes from the model (the
+  // full-screen picker changes it externally, like the effect pages' colors).
+  const textForBar: TextStyleModel = textDraft
+    ? { ...textDraft, color: model.textStyle?.color ?? textDraft.color }
+    : (model.textStyle ?? DEFAULT_TEXT_STYLE_MODEL);
+  // Tracked tint params from the draft; the solid + per-stop colors come
+  // from the model (the full-screen picker edits them externally). Stops
+  // are matched by index — add / delete commit immediately, so the counts
+  // stay aligned.
+  const svgFillForBar: TintModel = svgFillDraft
+    ? {
+        ...svgFillDraft,
+        solid: model.svgFill?.solid ?? svgFillDraft.solid,
+        stops: svgFillDraft.stops.map((s, i) => ({ ...s, color: model.svgFill?.stops[i]?.color ?? s.color })),
+      }
+    : (model.svgFill ?? DEFAULT_TINT_MODEL);
+
+  // The showing page and, for a page whose effect can be removed, its Remove
+  // line — built together, because an ABSENT effect renders as the Add page
+  // (EmptyEffectBar) with nothing to remove yet: opening a menu must never
+  // edit the object, so the effect exists only once its Add button is
+  // pressed — the host materializes it, presence flips, and the real
+  // controls (and Remove) swap in here. `addPage` says the well holds that
+  // one button, so the sheet is sized to it rather than to the controls.
+  let activeBarEl: React.ReactNode = null;
+  let removeAction: { label: string; onPress: () => void } | undefined;
+  let addPage = false;
+  if (displaySub === 'stroke' && model.strokePresent === false && model.onAddStroke) {
+    addPage = true;
+    activeBarEl = (
+      <EmptyEffectBar
+        addLabel="Add Stroke"
+        // The draft was seeded when the page opened — on the ABSENT stroke
+        // (width 0) — so drop it as the Add lands: the controls that swap
+        // in read the freshly created stroke off the model instead of
+        // showing a Width slider parked at zero.
+        onAdd={() => { setStrokeDraft(null); model.onAddStroke?.(); }}
+      />
+    );
+  } else if (displaySub === 'svgFill' && model.svgFillPresent === false && model.onAddSvgFill) {
+    addPage = true;
+    activeBarEl = <EmptyEffectBar addLabel="Add Fill" onAdd={() => model.onAddSvgFill?.()} />;
+  } else if (displaySub === 'shadow' && model.shadowPresent === false && model.onAddShadow) {
+    addPage = true;
+    activeBarEl = <EmptyEffectBar addLabel="Add Drop Shadow" onAdd={() => model.onAddShadow?.()} />;
+  } else if (displaySub === 'border' && model.borderPresent === false && model.onAddBorder) {
+    addPage = true;
+    activeBarEl = <EmptyEffectBar addLabel="Add Border" onAdd={() => model.onAddBorder?.()} />;
+  } else if (displaySub === 'svgFill') {
+    // The Tint page retitled, pointed at the closed shape's own interior.
+    // Solid-only: a shape's fill is always one flat color, so the page drops
+    // its Type control and the gradient rows.
+    activeBarEl = (
+      <TintBar
+        title="Fill"
+        solidOnly
+        tint={svgFillForBar}
+        onChange={(t) => applySvgFill(t, false)}
+        onCommit={(t) => applySvgFill(t, true)}
+        onPickColor={() => model.onPickSvgFillColor?.()}
+        onAddStop={addSvgFillStop}
+        onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
+      />
+    );
+    removeAction = { label: 'Remove fill', onPress: removeSvgFill };
+  } else if (displaySub === 'transform') {
+    activeBarEl = (
+      <TransformBar
+        transform={model.transform ?? { angleDeg: 0 }}
+        onRotate={(deg, committed) => model.onTransformRotate?.(deg, committed)}
+        onCopies={(spec) => model.onTransformCopies?.(spec)}
+        onCopiesPreview={(spec) => model.onTransformCopiesPreview?.(spec)}
+      />
+    );
+  } else if (displaySub === 'endpoints') {
+    activeBarEl = (
+      <EndpointsBar
+        endpoints={model.endpoints ?? DEFAULT_ENDPOINTS_MODEL}
+        onChange={(e) => model.onEndpoints?.(e)}
+      />
+    );
+    removeAction = { label: 'Remove endpoints', onPress: removeEndpoints };
+  } else if (displaySub === 'layout') {
+    activeBarEl = (
+      <LayoutBar
+        onAlign={(edge: AlignEdge) => model.onAlign?.(edge)}
+        onGrid={model.onGrid ? () => model.onGrid?.() : undefined}
+      />
+    );
+  } else if (displaySub === 'shadow') {
+    activeBarEl = (
+      <ShadowBar
+        shadow={shadowForBar}
+        onChange={(s) => applyShadow(s, false)}
+        onCommit={(s) => applyShadow(s, true)}
+        onPickColor={() => model.onPickShadowColor?.()}
+      />
+    );
+    removeAction = { label: 'Remove drop shadow', onPress: removeShadow };
+  } else if (displaySub === 'border') {
+    activeBarEl = (
+      <BorderBar
+        border={borderForBar}
+        cornerRadius={model.cornerRadius ?? 0}
+        onChange={(b) => applyBorder(b, false)}
+        onCommit={(b) => applyBorder(b, true)}
+        onCornerRadius={(r, committed) => model.onCornerRadius?.(r, committed)}
+        onPickColor={() => model.onPickBorderColor?.()}
+      />
+    );
+    removeAction = { label: 'Remove border', onPress: removeBorder };
+  } else if (displaySub === 'stroke') {
+    // The Border page pointed at the vector object's own stroke, with the
+    // rows this subtype has no answer for dropped (svgStrokeRows).
+    const rows = svgStrokeRows(model.svgSubtype ?? 'stroke');
+    activeBarEl = (
+      <BorderBar
+        title="Stroke"
+        border={strokeForBar}
+        cornerRadius={model.strokeRadius ?? 0}
+        showRadius={rows.radius}
+        showPosition={rows.position}
+        onChange={(b) => applyStroke(b, false)}
+        onCommit={(b) => applyStroke(b, true)}
+        onCornerRadius={(r, committed) => model.onStrokeRadius?.(r, committed)}
+        onPickColor={() => model.onPickStrokeColor?.()}
+      />
+    );
+    removeAction = { label: 'Remove stroke', onPress: removeStroke };
+  } else if (displaySub && rigPartOfSubmenu(displaySub)) {
+    activeBarEl = (
+      <RigPoseBar
+        part={rigPartOfSubmenu(displaySub)!}
+        values={model.rigSliders ?? restRigSliders()}
+        onChange={(key, v) => model.onRigSlider?.(key, v, false)}
+        onCommit={(key, v) => model.onRigSlider?.(key, v, true)}
+        onReset={model.onResetRig}
+      />
+    );
+  } else if (displaySub === 'opacity') {
+    activeBarEl = (
+      <OpacityBar
+        opacity={opacityForBar}
+        onChange={(o) => applyOpacity(o, false)}
+        onCommit={(o) => applyOpacity(o, true)}
+      />
+    );
+  } else if (displaySub === 'crop') {
+    activeBarEl = (
+      <CropBar
+        framing={framingForBar}
+        onChange={(f) => applyFraming(f, false)}
+        onCommit={(f) => applyFraming(f, true)}
+      />
+    );
+  } else if (displaySub === 'patternTiles') {
+    activeBarEl = <PatternTilesBar model={model} />;
+  } else if (displaySub === 'patternTools') {
+    activeBarEl = <PatternToolsBar model={model} />;
+  } else if (displaySub === 'patternSymmetry') {
+    activeBarEl = <PatternSymmetryBar model={model} />;
+  } else if (displaySub === 'font' || displaySub === 'align') {
+    activeBarEl = (
+      <TextBar
+        page={displaySub}
+        style={textForBar}
+        fonts={model.fonts ?? []}
+        onChange={(s) => applyTextStyle(s, false)}
+        onCommit={(s) => applyTextStyle(s, true)}
+        onPickColor={() => model.onPickTextColor?.()}
+        onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
+      />
+    );
+  }
+  // How tall the sheet stands: its chrome around the showing page's content
+  // area — the page's rows counted from the state it will render from, drafts
+  // included (switching the Crop mode genuinely swaps its rows, and the sheet
+  // resizes to hold them), or the one Add button of an absent effect — plus
+  // the Remove line when the page has one. The page shown through the slide
+  // down (displaySub) keeps its height, so the sheet drops as it stood.
+  const contentHeight = !displaySub ? null : addPage ? emptyEffectHeight() : submenuHeight(displaySub, {
+    cropMode: framingForBar.mode,
+    // The image / frame border offers every row; a vector's stroke drops the
+    // ones its subtype has no answer for.
+    borderRows: { radius: true, position: true },
+    strokeRows: svgStrokeRows(model.svgSubtype ?? 'stroke'),
+    // The Layout page grows an Arrange row exactly when the page will render it.
+    layoutHasGrid: !!model.onGrid,
+    // …and the RIG page its Reset row, on the same rule.
+    rigCanReset: !!model.onResetRig,
+    // The pattern Tools page grows its Sets row when the host offers a
+    // tile-set filter, and its Repeat row on the same rule.
+    patternTileSetCount: model.patternTileSets?.length ?? 0,
+    patternCanRepeat: !!model.onToggleRepeat,
+  });
+  const sheetHeight = editSheetHeight(contentHeight, { removable: !!removeAction, safeBottom });
+
+  // Rise on open, drop on close, and — while up — animate between the
+  // heights of the pages the tabs switch to. Opening sizes the sheet to its
+  // page first and slides the whole thing up from below the screen edge;
+  // closing slides it down by its current height, then unmounts it.
+  useEffect(() => {
+    if (sheetOpen && !prevSheetOpen.current) {
+      prevSheetOpen.current = true;
+      setSheetMounted(true);
+      sheetH.setValue(sheetHeight);
+      sheetY.setValue(sheetHeight);
+      const anim = Animated.timing(sheetY, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: false });
+      anim.start();
+      return () => anim.stop();
+    }
+    if (!sheetOpen && prevSheetOpen.current) {
+      prevSheetOpen.current = false;
+      const anim = Animated.timing(sheetY, { toValue: sheetHeight, duration: PANEL_ANIM_MS, useNativeDriver: false });
+      anim.start(({ finished }) => { if (finished) setSheetMounted(false); });
+      return () => anim.stop();
+    }
+    if (sheetOpen) {
+      // A tab change to a shorter page pushes the sheet's top edge down, a
+      // taller one lifts it — the resize is what the eye follows.
+      const anim = Animated.timing(sheetH, { toValue: sheetHeight, duration: PANEL_ANIM_MS, useNativeDriver: false });
+      anim.start();
+      return () => anim.stop();
+    }
+  }, [sheetOpen, sheetHeight, sheetH, sheetY]);
+
+  // Bottom-edge occlusion report — see the prop doc. The sheet covers the
+  // panel while it is up, so the two never add.
+  const occludedPx = !model.visible ? 0 : sheetOpen ? sheetHeight : panelBox.height;
+  useEffect(() => {
+    onOccludedHeight?.(occludedPx);
+  }, [onOccludedHeight, occludedPx]);
+
   if (!mounted) return null;
 
   // Common actions (rotate / flip / copy / lock / delete, plus the optional
-  // group actions). Built as an array so it and the type-options set share a
-  // column count and the row keeps a stable cell width across a swap.
+  // group actions).
   const row1: React.ReactNode[] = [
     <GridButton key="rotate" label="Rotate" icon="rotate-right" onPress={model.onRotate} compact={compact} />,
     <GridButton key="flipH" label="Mirror H" icon="arrow-left-right" onPress={model.onMirrorH} compact={compact} />,
@@ -1101,39 +1026,38 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     />,
     <GridButton key="delete" label="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
   ];
-  // A multi-selection's Group / Merge live on the selection's own page (words,
-  // beside Layout), not on this icon row — see showGroup / showMerge.
+  // A multi-selection's Group / Merge live in the Edit sheet (tabs, beside
+  // Layout), not on this icon row — see showGroup / showMerge.
   if (model.onGroup && !multi) row1.push(<GridButton key="group" label="Group" icon="group" onPress={model.onGroup} compact={compact} />);
-  // Frames surface Ungroup in their own type-options row (not the common row),
-  // so skip it here when the frame options are showing.
+  // Frames surface Ungroup among their own tabs (not the common row), so skip
+  // it here when the frame options are showing.
   if (model.onUngroup && !model.showFrameOptions && !multi) row1.push(<GridButton key="ungroup" label="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
   if (model.onJoin) row1.push(<GridButton key="join" label="Join" icon="vector-combine" onPress={model.onJoin} compact={compact} />);
   if (model.onUnion && !multi) row1.push(<GridButton key="union" label="Union" icon="vector-union" onPress={model.onUnion} compact={compact} />);
 
-  // The type page's options (images: the image-edit set; text: Edit + Type),
+  // The sheet's type tabs (images: the image-edit set; text: Edit + Type),
   // null when the selection's kind offers none — a mixed multi-selection, say,
   // which has no shared kind to ask. Described rather than rendered, because
-  // the row needs to know WHICH option is selected to park the sliding capsule
-  // over it; the elements come out of these at render time.
+  // the sheet needs to know WHICH tab is lit.
   let typeSpecs: OptionSpec[] | null = null;
-  // The Stroke option as the pattern row and the mixed row both list it:
+  // The Stroke tab as the pattern row and the mixed row both list it:
   // one spec, so the two can't drift.
   const strokeSpec = () => ({ key: 'stroke', label: 'Stroke', sub: 'stroke' as const, onPress: () => openSubmenu('stroke') });
   if (model.showImageEdit) {
     typeSpecs = IMAGE_EDIT_OPTIONS
       // Crop is single-target only — a mixed selection has no one frame to fit.
       .filter((opt) => !multi || opt.action !== 'crop')
-      // Every image action names a bar, and shares its key.
+      // Every image action names a page, and shares its key.
       .map((opt) => ({
         key: opt.action,
         label: opt.label,
         sub: opt.action as SubmenuKey,
-        onPress: () => runImageAction(opt.action),
+        onPress: () => openSubmenu(opt.action as SubmenuKey),
       }));
   } else if (model.showFrameOptions) {
-    // Frame options: Background (circular color swatch) · Shadow · Border ·
-    // Ungroup. Shadow / Border reuse the image effect bars (the frame submenu
-    // carousel). Background opens the shared full-screen color picker.
+    // Frame tabs: Background (circular color swatch) · Shadow · Border ·
+    // Ungroup. Shadow / Border reuse the image effect pages. Background opens
+    // the shared full-screen color picker.
     typeSpecs = [
       {
         key: 'background',
@@ -1142,22 +1066,22 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         swatchColor: model.frameBackgroundColor,
         onPress: model.onPickFrameBackground,
       },
-      { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: toggleShadow },
-      { key: 'border', label: 'Border', sub: 'border', onPress: toggleBorder },
+      { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },
+      { key: 'border', label: 'Border', sub: 'border', onPress: () => openSubmenu('border') },
     ];
     if (model.onUngroup) {
       typeSpecs.push({ key: 'ungroup', label: 'Ungroup', onPress: model.onUngroup });
     }
   } else if (model.showRigOptions) {
-    // Poseable rig: the whole-figure RIG page only — the part pages
+    // Poseable rig: the whole-figure RIG tab only — the part tabs
     // (Hands / Feet / Spine / Head) were removed from the row; their
     // sliders live on as the host's floating slider modes. No Stroke /
     // Fill / Opacity: the figure's silhouette is baked from its pose, so
-    // none of the three has anything to act on. The IK switch is not an
-    // option of its own; it lives on the RIG bar, with the rest of the
+    // none of the three has anything to act on. The IK switch is not a
+    // tab of its own; it lives on the RIG page, with the rest of the
     // posing controls.
     // Reset is NOT one of them: standing the figure back up is a thing you do
-    // to the whole rig, so it rides at the foot of the RIG bar (RigPoseBar),
+    // to the whole rig, so it rides at the foot of the RIG page (RigPoseBar),
     // the page that is already about the figure as a whole — rather than
     // taking a slot in a row of pages you can open.
     typeSpecs = RIG_PART_PAGES.map((opt) => ({
@@ -1177,10 +1101,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     }));
     if (model.onToggleRepeat) {
       // Pattern-mode toggle (tile pattern objects): repeat the tile across
-      // the bounding box instead of scaling it. A toggle rather than a bar, so
-      // it wears its own capsule instead of taking the sliding one — and it
-      // keeps Facet's PATTERN_ACTIVE, which is what separates "pattern mode is
-      // on" from "this is the bar you're looking at".
+      // the bounding box instead of scaling it. A toggle rather than a page,
+      // so it lights on its own rather than as the showing tab — and it
+      // keeps Facet's PATTERN_ACTIVE, which is what separates "pattern mode
+      // is on" from "this is the page you're looking at".
       typeSpecs.unshift({
         key: 'repeat',
         label: 'Repeat',
@@ -1197,24 +1121,24 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   } else if (model.showInvert) {
     // Word sticker (magnetic poetry): the single type-specific option is
     // Invert (dark card ⇄ light card). Content + typography are fixed, so no
-    // Edit / Type / Align. It's a toggle, so the lit pill now says what the
+    // Edit / Type / Align. It's a toggle, so the lit tab says what the
     // black/white swatch used to.
     typeSpecs = [{ key: 'invert', label: 'Invert', toggled: model.inverted, onPress: model.onInvert }];
   } else if (model.showPaintOptions) {
     // Paint island: raster brushwork has no Stroke/Fill to edit — its one
-    // option is Opacity, opening the same bar (opacity + soften) an image's
+    // option is Opacity, opening the same page (opacity + soften) an image's
     // Opacity action does.
     typeSpecs = PAINT_EDIT_OPTIONS.map((opt) => ({
       key: opt.action,
       label: opt.label,
       sub: opt.action as SubmenuKey,
-      onPress: toggleOpacity,
+      onPress: () => openSubmenu('opacity'),
     }));
   } else if (model.showPatternOptions) {
     // Inline tile pattern: its Tools page (PATTERN_EDIT_OPTIONS — the
     // Tiles and Symmetry pages came off the row; see patternEdit.ts).
-    // Repeat is NOT a capsule here the way it is on the svg branch below —
-    // it rides the Tools bar as a row, with the grid actions and Borders,
+    // Repeat is NOT a tab here the way it is on the svg branch below —
+    // it rides the Tools page as a row, with the grid actions and Borders,
     // because Repeat is a setting rather than a place to go.
     typeSpecs = PATTERN_EDIT_OPTIONS.map((opt) => ({
       key: opt.action,
@@ -1222,39 +1146,38 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       sub: patternActionSubmenu(opt.action),
       onPress: () => openSubmenu(patternActionSubmenu(opt.action)),
     }));
-    // The same Stroke bar the vectors get (its open-path form: Width +
+    // The same Stroke page the vectors get (its open-path form: Width +
     // Dash), pointed at the pattern's own stroke block.
     typeSpecs.push(strokeSpec());
   } else if (model.showStrokeOptions) {
     // Vectors and pattern objects selected together: every one of them
     // has a stroke and nothing else in common, so the row is Stroke alone
-    // — the open-path bar, which the host lands on all of them.
+    // — the open-path page, which the host lands on all of them.
     typeSpecs = [strokeSpec()];
   } else if (model.showEdit || model.showTextStyle) {
-    // Edit (content) · Type (opens the Text bar on the Font page) · Align (opens
-    // it straight on the Align page) · Shadow. Type / Align both slide the same
-    // two-page Text bar up; they differ only in which page it lands on. Shadow
-    // is the image's own bar, unchanged — one Drop Shadow control for every
-    // object that can cast one.
+    // Edit (content) · Type (opens the Text controls on the Font page) ·
+    // Align (opens them straight on the Align page) · Shadow. Type / Align
+    // both show the same two-page Text controls; they differ only in which
+    // page it lands on. Shadow is the image's own page, unchanged — one Drop
+    // Shadow control for every object that can cast one.
     typeSpecs = [];
     if (model.showEdit) typeSpecs.push({ key: 'edit', label: 'Edit', onPress: model.onEdit });
     if (model.showTextStyle) typeSpecs.push({ key: 'type', label: 'Type', sub: 'font', onPress: () => openSubmenu('font') });
     if (model.showTextStyle) typeSpecs.push({ key: 'align', label: 'Align', sub: 'align', onPress: () => openSubmenu('align') });
-    if (model.showTextStyle) typeSpecs.push({ key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: toggleShadow });
+    if (model.showTextStyle) typeSpecs.push({ key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') });
   }
   if (showUngroup) {
     // A GROUP is a type of selection, and Ungroup is the option that type has:
     // it closes the row after whatever the members share, and IS the row when
-    // they share nothing. One press, no bar — like the frame Ungroup it mirrors.
+    // they share nothing. One press, no page — like the frame Ungroup it mirrors.
     typeSpecs = [...(typeSpecs ?? []), { key: 'ungroup', label: 'Ungroup', onPress: model.onUngroup }];
   }
-  // The selection-level options (Layout · Group · Merge) — they belong to the
-  // selection rather than to what it is made of, so they are appended AFTER
-  // the kind's own options on the one combined row (a mixed multi-selection
-  // simply has them as its whole row). "Layout" keeps it clear of the text
-  // Align option (which is about a paragraph's own lines, not where objects
-  // sit) now that neither carries a glyph. Only Layout opens a bar; Group and
-  // Merge are one press each, so they never take the sliding capsule — they
+  // The selection-level tabs (Layout · Group · Merge) — they belong to the
+  // selection rather than to what it is made of, so they come AFTER the
+  // kind's own tabs on the one row (a mixed multi-selection simply has them
+  // as its whole row). "Layout" keeps it clear of the text Align tab (which is
+  // about a paragraph's own lines, not where objects sit). Only Layout opens
+  // a page; Group and Merge are one press each, so they never light — they
   // just fire and leave a selection that is one thing instead of several.
   const multiOptions = multiSelectionOptions({ align: showLayout, group: showGroup, merge: showMerge });
   const multiSpecs: OptionSpec[] | null = multiOptions.length > 0
@@ -1264,337 +1187,44 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
           : { key: opt.action, label: opt.label, onPress: opt.action === 'group' ? model.onGroup : model.onMerge })
     : null;
 
-  // ONE combined options row: the selection-level options (Layout · Group ·
-  // Merge) come AFTER the kind's own, and only the options that genuinely do
-  // not fit spill onto a second page — a page of their own is no longer the
-  // default. Fit is estimated from the words (the cells size to them, capped
-  // at the capsule ceiling) against the measured row width; while the row is
-  // unmeasured everything stays on one page.
+  // ONE tab row: the selection-level tabs come AFTER the kind's own. The row
+  // scrolls if it must (EditTabs), so nothing spills onto a page of its own.
   const allOptionSpecs: OptionSpec[] = [...(typeSpecs ?? []), ...(multiSpecs ?? [])];
-  const fitCount = optionPageFitCount(allOptionSpecs.map((s) => s.label), rowWidth);
-  const pageOneSpecs = allOptionSpecs.slice(0, fitCount);
-  const overflowSpecs = allOptionSpecs.slice(fitCount);
-  const pages = objectPanelPages({
-    type: pageOneSpecs.length > 0,
-    multi: overflowSpecs.length > 0,
-  });
-  const landingPage = landingPanelPage(pages, lastPageRef.current);
-  landingPageRef.current = landingPage;
-
-  // Only one page shows at a time; a horizontal swipe cycles through them (the
-  // dots below track which is showing). The icon row's columns stay fixed at
-  // the widest page's count so the icons keep one size across selections, and
-  // empty cells split either side to centre them; an option row sizes its own
-  // cells to its words instead (OptionPill) and so needs no pad.
-  const shownPage: PanelPage = pages.includes(page) ? page : landingPage;
+  const tabs: EditTabSpec[] = allOptionSpecs.map(({ sub, ...spec }) => ({
+    ...spec,
+    selected: sub !== undefined ? subOpen(sub) : undefined,
+  }));
+  const pages = objectPanelPages(allOptionSpecs.length > 0);
+  const shownPage: PanelPage = sheetOpen ? 'edit' : 'common';
   const canSwap = pages.length > 1;
   canSwapRef.current = canSwap;
-  pagesRef.current = pages;
-  pageRef.current = shownPage;
-  // The option specs for the page showing (null on the common-actions page).
-  const activeSpecs: OptionSpec[] | null =
-    shownPage === 'type'
-      ? (pageOneSpecs.length > 0 ? pageOneSpecs : null)
-      : shownPage === 'multi'
-        ? (overflowSpecs.length > 0 ? overflowSpecs : null)
-        : null;
-  const columns = Math.max(row1.length, pageOneSpecs.length, overflowSpecs.length);
-
-  // ── The sliding selection capsule ───────────────────────────────────
-  // Parked over whichever option opened the bar you're looking at, taking that
-  // cell's own width — the cells size to their words, so it resizes as well as
-  // travels. Widths are measured, offsets reproduced from the row's geometry
-  // (optionCapsuleLefts); both need the first layout pass, and until every cell
-  // has reported there is nothing to sit on and the capsule isn't drawn.
-  const selectedOption = activeSpecs
-    ? activeSpecs.findIndex((s) => s.sub !== undefined && subOpen(s.sub))
-    : -1;
-  const cellWidths = activeSpecs ? activeSpecs.map((s) => optionWidths[s.key] ?? 0) : [];
-  const measured = cellWidths.length > 0 && cellWidths.every((w) => w > 0);
-  const lefts = measured ? optionCapsuleLefts(rowWidth, cellWidths) : [];
-  // Only a measured, selected option row gets a capsule.
-  const litCell = selectedOption >= 0 && lefts.length > 0;
-  const capsuleAt = litCell ? lefts[selectedOption] : null;
-  const capsuleWidth = litCell ? cellWidths[selectedOption] : 0;
-
-  const activeButtons: React.ReactNode[] = activeSpecs
-    ? activeSpecs.map((spec, i) => (
-        <OptionPill key={spec.key} spec={spec} selected={i === selectedOption} compact={compact} onMeasure={onOptionMeasure} />
-      ))
-    : row1;
-  // An option row fills the width itself; only the icon row is centred by pads.
-  const sidePad = activeSpecs ? 0 : optionRowSidePad(columns, activeButtons.length);
-
-  // Params tracked by the sliders/pad come from the local draft; color comes
-  // from the model (it's changed externally, via the full-screen picker).
-  const shadowForBar: ShadowModel = shadowDraft
-    ? { ...shadowDraft, color: model.shadow?.color ?? shadowDraft.color }
-    : (model.shadow ?? DEFAULT_SHADOW_MODEL);
-  const borderForBar: BorderModel = borderDraft
-    ? { ...borderDraft, color: model.border?.color ?? borderDraft.color }
-    : (model.border ?? DEFAULT_BORDER_MODEL);
-  const framingForBar: FramingModel = cropDraft ?? model.framing ?? DEFAULT_FRAMING_MODEL;
-  const opacityForBar: OpacityModel = opacityDraft ?? model.objectOpacity ?? DEFAULT_OPACITY_MODEL;
-  const strokeForBar: BorderModel = strokeDraft
-    ? { ...strokeDraft, color: model.stroke?.color ?? strokeDraft.color }
-    : (model.stroke ?? DEFAULT_BORDER_MODEL);
-  // Tracked type params come from the draft; color comes from the model (the
-  // full-screen picker changes it externally, like the effect bars' colors).
-  const textForBar: TextStyleModel = textDraft
-    ? { ...textDraft, color: model.textStyle?.color ?? textDraft.color }
-    : (model.textStyle ?? DEFAULT_TEXT_STYLE_MODEL);
-  // Tracked tint params from the draft; the solid + per-stop colors come
-  // from the model (the full-screen picker edits them externally). Stops
-  // are matched by index — add / delete commit immediately, so the counts
-  // stay aligned.
-  const svgFillForBar: TintModel = svgFillDraft
-    ? {
-        ...svgFillDraft,
-        solid: model.svgFill?.solid ?? svgFillDraft.solid,
-        stops: svgFillDraft.stops.map((s, i) => ({ ...s, color: model.svgFill?.stops[i]?.color ?? s.color })),
-      }
-    : (model.svgFill ?? DEFAULT_TINT_MODEL);
-
-  // The currently-shown submenu bar (retained through the dismiss slide). onBack
-  // (the down chevron) dismisses the whole submenu layer.
-  //
-  // An effect the selection does not carry renders as the ABSENT bar
-  // (EmptyEffectBar): opening a menu must never edit the object, so the
-  // effect exists only once its Add button is pressed — the host
-  // materializes it, presence flips, and the real controls swap in here.
-  let activeBarEl: React.ReactNode = null;
-  if (displaySub === 'stroke' && model.strokePresent === false && model.onAddStroke) {
-    activeBarEl = (
-      <EmptyEffectBar
-        title="STROKE" addLabel="Add Stroke"
-        // The draft was seeded when the page opened — on the ABSENT stroke
-        // (width 0) — so drop it as the Add lands: the controls that swap
-        // in read the freshly created stroke off the model instead of
-        // showing a Width slider parked at zero.
-        onBack={dismissSubmenu}
-        onAdd={() => { setStrokeDraft(null); model.onAddStroke?.(); }}
-      />
-    );
-  } else if (displaySub === 'svgFill' && model.svgFillPresent === false && model.onAddSvgFill) {
-    activeBarEl = (
-      <EmptyEffectBar
-        title="FILL" addLabel="Add Fill"
-        onBack={dismissSubmenu} onAdd={() => model.onAddSvgFill?.()}
-      />
-    );
-  } else if (displaySub === 'shadow' && model.shadowPresent === false && model.onAddShadow) {
-    activeBarEl = (
-      <EmptyEffectBar
-        title="DROP SHADOW" addLabel="Add Drop Shadow"
-        onBack={dismissSubmenu} onAdd={() => model.onAddShadow?.()}
-      />
-    );
-  } else if (displaySub === 'border' && model.borderPresent === false && model.onAddBorder) {
-    activeBarEl = (
-      <EmptyEffectBar
-        title="BORDER" addLabel="Add Border"
-        onBack={dismissSubmenu} onAdd={() => model.onAddBorder?.()}
-      />
-    );
-  } else if (displaySub === 'svgFill') {
-    // The Tint bar retitled, pointed at the closed shape's own interior.
-    // Solid-only: a shape's fill is always one flat color, so the bar drops
-    // its Type control and the gradient rows.
-    activeBarEl = (
-      <TintBar
-        title="FILL"
-        removeLabel="Remove fill"
-        solidOnly
-        tint={svgFillForBar}
-        onChange={(t) => applySvgFill(t, false)}
-        onCommit={(t) => applySvgFill(t, true)}
-        onBack={dismissSubmenu}
-        onRemove={removeSvgFill}
-        onPickColor={() => model.onPickSvgFillColor?.()}
-        onAddStop={addSvgFillStop}
-        onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
-      />
-    );
-  } else if (displaySub === 'transform') {
-    activeBarEl = (
-      <TransformBar
-        transform={model.transform ?? { angleDeg: 0 }}
-        onRotate={(deg, committed) => model.onTransformRotate?.(deg, committed)}
-        onCopies={(spec) => model.onTransformCopies?.(spec)}
-        onCopiesPreview={(spec) => model.onTransformCopiesPreview?.(spec)}
-        onBack={dismissSubmenu}
-      />
-    );
-  } else if (displaySub === 'endpoints') {
-    activeBarEl = (
-      <EndpointsBar
-        endpoints={model.endpoints ?? DEFAULT_ENDPOINTS_MODEL}
-        onChange={(e) => model.onEndpoints?.(e)}
-        onBack={dismissSubmenu}
-        onRemove={removeEndpoints}
-      />
-    );
-  } else if (displaySub === 'layout') {
-    activeBarEl = (
-      <LayoutBar
-        onAlign={(edge: AlignEdge) => model.onAlign?.(edge)}
-        onGrid={model.onGrid ? () => model.onGrid?.() : undefined}
-        onBack={dismissSubmenu}
-      />
-    );
-  } else if (displaySub === 'shadow') {
-    activeBarEl = (
-      <ShadowBar
-        shadow={shadowForBar}
-        onChange={(s) => applyShadow(s, false)}
-        onCommit={(s) => applyShadow(s, true)}
-        onBack={dismissSubmenu}
-        onRemove={removeShadow}
-        onPickColor={() => model.onPickShadowColor?.()}
-      />
-    );
-  } else if (displaySub === 'border') {
-    activeBarEl = (
-      <BorderBar
-        border={borderForBar}
-        cornerRadius={model.cornerRadius ?? 0}
-        onChange={(b) => applyBorder(b, false)}
-        onCommit={(b) => applyBorder(b, true)}
-        onCornerRadius={(r, committed) => model.onCornerRadius?.(r, committed)}
-        onBack={dismissSubmenu}
-        onRemove={removeBorder}
-        onPickColor={() => model.onPickBorderColor?.()}
-      />
-    );
-  } else if (displaySub === 'stroke') {
-    // The Border bar retitled, pointed at the vector object's own stroke, with
-    // the rows this subtype has no answer for dropped (svgStrokeRows).
-    const rows = svgStrokeRows(model.svgSubtype ?? 'stroke');
-    activeBarEl = (
-      <BorderBar
-        title="STROKE"
-        border={strokeForBar}
-        cornerRadius={model.strokeRadius ?? 0}
-        showRadius={rows.radius}
-        showPosition={rows.position}
-        onChange={(b) => applyStroke(b, false)}
-        onCommit={(b) => applyStroke(b, true)}
-        onCornerRadius={(r, committed) => model.onStrokeRadius?.(r, committed)}
-        onBack={dismissSubmenu}
-        onRemove={removeStroke}
-        onPickColor={() => model.onPickStrokeColor?.()}
-      />
-    );
-  } else if (displaySub && rigPartOfSubmenu(displaySub)) {
-    activeBarEl = (
-      <RigPoseBar
-        part={rigPartOfSubmenu(displaySub)!}
-        values={model.rigSliders ?? restRigSliders()}
-        onChange={(key, v) => model.onRigSlider?.(key, v, false)}
-        onCommit={(key, v) => model.onRigSlider?.(key, v, true)}
-        onBack={dismissSubmenu}
-        onReset={model.onResetRig}
-      />
-    );
-  } else if (displaySub === 'opacity') {
-    activeBarEl = (
-      <OpacityBar
-        opacity={opacityForBar}
-        onChange={(o) => applyOpacity(o, false)}
-        onCommit={(o) => applyOpacity(o, true)}
-        onBack={dismissSubmenu}
-        onRemove={removeOpacity}
-      />
-    );
-  } else if (displaySub === 'crop') {
-    activeBarEl = (
-      <CropBar
-        framing={framingForBar}
-        pixelSize={model.imagePixelSize}
-        onChange={(f) => applyFraming(f, false)}
-        onCommit={(f) => applyFraming(f, true)}
-        onReplace={model.onReplaceImage}
-        onBack={dismissSubmenu}
-      />
-    );
-  } else if (displaySub === 'patternTiles') {
-    activeBarEl = <PatternTilesBar model={model} onBack={dismissSubmenu} />;
-  } else if (displaySub === 'patternTools') {
-    activeBarEl = <PatternToolsBar model={model} onBack={dismissSubmenu} />;
-  } else if (displaySub === 'patternSymmetry') {
-    activeBarEl = <PatternSymmetryBar model={model} onBack={dismissSubmenu} />;
-  } else if (displaySub === 'font' || displaySub === 'align') {
-    activeBarEl = (
-      <TextBar
-        page={displaySub}
-        style={textForBar}
-        fonts={model.fonts ?? []}
-        onChange={(s) => applyTextStyle(s, false)}
-        onCommit={(s) => applyTextStyle(s, true)}
-        onBack={dismissSubmenu}
-        onPickColor={() => model.onPickTextColor?.()}
-        onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
-      />
-    );
-  }
 
   return (
     <>
-      {submenuMounted ? (
-        // Anchored to the panel's top edge, not the screen's bottom, and it
-        // rides the panel's own show/hide slide (translateY) on top of its
-        // reveal (layerY) so the two never come apart. It sits BELOW the panel
-        // in z-order, which is what lets it hide by sliding down behind it.
-        <Animated.View
-          style={[
-            styles.effectBarWrap,
-            {
-              bottom: panelBox.height,
-              height: barHeight,
-              backgroundColor: BAR_BG,
-              transform: [{ translateY: Animated.add(layerY, translateY) }],
-            },
-          ]}
-          {...submenuPan.panHandlers}
-        >
-          <Animated.View style={{ transform: [{ translateX: navX }] }}>
-            {activeBarEl}
-          </Animated.View>
-        </Animated.View>
-      ) : null}
       <View style={styles.clip} pointerEvents="box-none">
         <Animated.View style={[styles.panel, { height: panelBox.height, paddingBottom: panelBox.paddingBottom, transform: [{ translateY }] }]}>
-        {/* A single row of buttons — the showing page's — that a horizontal
-            swipe slides between. Empty cells flank the buttons to centre the
-            group. Carousel dots below, one per page, track which is showing. */}
+        {/* The common-actions row. A sideways swipe anywhere over it pops the
+            Edit sheet; the dots below say which of the two pages is up. */}
         <View style={styles.swapArea} {...(canSwap ? swapPan.panHandlers : {})}>
           <Animated.View style={{ transform: [{ translateX: swapX }] }}>
-            <View style={styles.gridRow} onLayout={(e) => setRowWidth(e.nativeEvent.layout.width)}>
-              {/* The selection capsule, first so it paints under the words. */}
-              <OptionCapsule at={capsuleAt} width={capsuleWidth} />
-              {sidePad > 0 ? <View style={{ flex: sidePad }} /> : null}
-              {activeButtons}
-              {sidePad > 0 ? <View style={{ flex: sidePad }} /> : null}
+            <View style={styles.gridRow}>
+              {row1}
             </View>
           </Animated.View>
         </View>
         {canSwap ? (
           <View style={styles.dotsRow}>
             {pages.map((p) => (
-              // Each dot is also a button: clicking it slides straight to its
-              // page (runSwapToRef) — the swipe's equal for a mouse. The
+              // Each dot is also a button: the edit dot pops the sheet, the
+              // common dot drops it — the swipes' equal for a mouse. The
               // hitSlop grows the 12px dot to a comfortable target without
               // touching the row's look.
               <Pressable
                 key={p}
-                onPress={() => runSwapToRef.current(p)}
+                onPress={() => (p === 'edit' ? openSheet() : closeSheet())}
                 hitSlop={10}
                 accessibilityRole="button"
-                accessibilityLabel={
-                  p === 'common' ? 'Show actions page'
-                    : p === 'type' ? 'Show options page'
-                      : 'Show more options page'
-                }
+                accessibilityLabel={p === 'common' ? 'Show actions page' : 'Show edit page'}
                 style={[styles.dot, p === shownPage && styles.dotActive]}
               />
             ))}
@@ -1602,6 +1232,21 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         ) : null}
         </Animated.View>
       </View>
+      {sheetMounted ? (
+        // Anchored to the screen's bottom edge OVER the panel (its z sits
+        // above the panel's clip), rounded at the top, sized to the showing
+        // page. It slides by its own height, so it rises out of the screen
+        // edge and drops back through it; the panel beneath never moves.
+        <Animated.View
+          style={[
+            styles.sheetWrap,
+            { height: sheetH, transform: [{ translateY: sheetY }] },
+          ]}
+          {...sheetPan.panHandlers}
+        >
+          <EditSheet tabs={tabs} content={activeBarEl} remove={removeAction} safeBottom={safeBottom} />
+        </Animated.View>
+      ) : null}
     </>
   );
 }
@@ -1619,96 +1264,42 @@ const styles = StyleSheet.create({
     backgroundColor: PANEL_BG,
     borderTopWidth: 1,
     borderTopColor: PANEL_BORDER,
-    // 16 to match the effect bars' content inset, so the title lands in the
-    // same place whether the panel or an effect bar is showing.
+    // 16 to match the sheet's content inset, so the row's ends land where
+    // the sheet's do.
     paddingHorizontal: 16,
   },
   // Fills the panel so a horizontal swipe anywhere over it (not just on the
-  // buttons) swaps the row.
+  // buttons) pops the sheet.
   swapArea: { flex: 1 },
   // Carousel dots (bottom): one filled for the current page, the other empty.
   dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, paddingTop: 4, paddingBottom: OBJECT_DOTS_BOTTOM },
   dot: { width: OBJECT_DOT_SIZE, height: OBJECT_DOT_SIZE, borderRadius: OBJECT_DOT_SIZE / 2, backgroundColor: PANEL_DOT },
   dotActive: { backgroundColor: ICON_COLOR },
-  // A grid row: cells separated by a gap wide enough that they read as distinct
-  // buttons, not one strip. The common-actions page divides it into equal
-  // columns flanked by one weighted empty cell per side that centres them; the
-  // type-options page sizes each cell to its own word (see optionCell).
-  // `justifyContent` only bites on that second page, and only once every option
-  // has hit its width cap — then the group centres instead of spreading.
+  // The icon row: equal columns separated by a gap wide enough that they read
+  // as distinct buttons, not one strip.
   gridRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'center',
-    gap: OPTION_ROW_GAP,
+    gap: 8,
     paddingTop: 4,
     paddingBottom: 8,
   },
   gridButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
-  // ── Type-specific option pills (the toolbar line-mode pushdown's look) ──
-  // Variable width: `flexBasis: 'auto'` starts the cell at its own word plus
-  // the pill's padding, and flexGrow shares the row's leftover width equally
-  // between the cells, so the row is always full and a long word gets the room
-  // it needs. Allowed to shrink (ellipsizing) only if the words really can't
-  // fit. Keeps the GridButton's 48pt height so a page swap can't change the
-  // row's height.
-  optionCell: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 'auto',
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Wide windows only: stop a short set from stretching into slabs. A phone
-  // keeps every pixel — that's where the words were being clipped.
-  optionCellCapped: { maxWidth: OPTION_CAPSULE_MAX_WIDTH },
-  // The shared selection capsule, sliding between cells. Absolutely placed
-  // (left 0 + an animated translateX) so it moves without touching layout, and
-  // vertically centred on the 48pt cell under the row's 4pt top padding.
-  optionCapsule: {
-    position: 'absolute',
-    left: 0,
-    top: 4 + (48 - OPTION_CAPSULE_HEIGHT) / 2,
-    height: OPTION_CAPSULE_HEIGHT,
-    borderRadius: 999,
-    backgroundColor: STATE_ACTIVE,
-  },
-  // The word's box: the whole cell, so the pill a toggle paints and the shared
-  // capsule that parks over it are the same box the cell was measured as.
-  // Like the pushdown's capsule, but sized by the word rather than hardcoded —
-  // the option sets run to six items and their words vary, so one fixed width
-  // would clip on a phone and float on a desktop.
-  // `alignSelf: stretch` rather than a width: it fills the cell without being a
-  // percentage, which would confuse the cell's own content-sized flex basis.
-  optionPill: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    alignSelf: 'stretch', height: OPTION_CAPSULE_HEIGHT, paddingHorizontal: OPTION_PILL_PAD, borderRadius: 999,
-  },
-  // 13/600, the toolbar line-mode pushdown's word, at every width. Narrow
-  // screens used to drop this to 11 to keep the longest words whole; matching
-  // the pushdown matters more, and a word that outgrows its cell ellipsizes.
-  // The colour is the one departure from the pushdown: its fixed #a3a3a3 was
-  // struck for the toolbar's three-word row and against the panel's #e5e5e5 it
-  // barely cleared the surface. These are the panel's row labels, so they take
-  // the panel ink ramp's label rung instead.
-  optionLabel: { flexShrink: 1, color: PANEL_INK_LABEL, fontSize: 13, fontWeight: '600' },
-  optionLabelActive: { color: '#ffffff' },
-  // A color-valued option (the frame's Fill) keeps a small swatch ahead of its
-  // word — on/off the pill can say itself, a color it can't.
-  optionSwatch: {
-    width: 12, height: 12, borderRadius: 6, overflow: 'hidden',
-    borderWidth: 1, borderColor: PANEL_SWATCH_BORDER,
-  },
-  // Full-width effect bar (Drop Shadow / Border / …), anchored so its bottom
-  // edge meets the panel's top — `bottom` is set inline from the panel's
-  // measured height. Its zIndex sits UNDER the panel's (200) so a dismiss
-  // slides it down behind that opaque surface rather than across it, and above
-  // the floating capsules (100) so it can't be overdrawn by them.
-  effectBarWrap: {
+  // The Edit sheet's box: bottom-anchored over the panel (zIndex above the
+  // panel's clip at 200, and the floating capsules at 100), the panel's
+  // surface with rounded top corners and a soft lift off the canvas. Its
+  // height is animated inline; content that outruns it mid-resize runs off
+  // the bottom of the screen, never over the top edge.
+  sheetWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
-    zIndex: 195,
+    bottom: 0,
+    zIndex: 210,
+    backgroundColor: PANEL_BG,
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
+    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: -4 }, elevation: 8,
   },
 });

@@ -2,27 +2,23 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TextFontOption, TextHAlign, TextStyleModel, TextVAlign, TextWeight } from '../adapter';
+import { ROW_PILL } from '../logic/submenuHeight';
 import {
-  BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP,
-  ROW_GAP, ROW_PILL,
-} from '../logic/submenuHeight';
-import {
-  ACCENT, BAR_BG, DualSliderRow, EffectBarHeader, HAIRLINE, LABEL,
+  ACCENT, BarBody, ColorAside, DualSliderRow, LABEL,
   PILL_CHEVRON, PILL_TRACK, SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL,
   SHEET_ROW_ACTIVE, SHEET_TEXT, SliderRow,
 } from './effectBar';
 
-// The Text typography bar (design "5a"), split into two carousel pages the
-// ObjectPropertiesPanel cycles between:
-//   • FONT  — color (header swatch) · Font (a pill that opens a font sheet) ·
-//     Weight (segmented) · Size (slider).
-//   • ALIGN — Character / Line spacing (dual slider) · Bend (arc curvature,
+// The Text typography controls (design "5a"), split into two pages — two
+// tabs of the Edit sheet:
+//   • Type  — color (the aside swatch) · Font (a pill that opens a font
+//     sheet) · Weight (segmented) · Size (slider).
+//   • Align — Character / Line spacing (dual slider) · Bend (arc curvature,
 //     slider centered at flat) · horizontal justification (left/center/right)
 //     · vertical alignment (top/middle/bottom).
-// Both pages share this component (via `page`), the container, header and row
-// grammar of the image-effect bars (Drop Shadow / Border / Crop; see
-// effectBar.tsx). The slide-in / swipe-out chrome is the
-// ObjectPropertiesPanel's, shared with those bars.
+// Both pages share this component (via `page`) and the row grammar of the
+// image-effect pages (Drop Shadow / Border / Crop; see effectBar.tsx). The
+// sheet around them is the ObjectPropertiesPanel's, shared with those pages.
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -111,8 +107,8 @@ function FontSheet({ fonts, current, onPick, onClose }: {
   );
 }
 
-export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onPickColor, onSheetOpenChange }: {
-  /** Which carousel page to render: font controls or alignment controls. */
+export function TextBar({ page, style, fonts, onChange, onCommit, onPickColor, onSheetOpenChange }: {
+  /** Which page to render: font controls or alignment controls. */
   page: 'font' | 'align';
   style: TextStyleModel;
   fonts: readonly TextFontOption[];
@@ -120,7 +116,6 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onPick
   onChange: (s: TextStyleModel) => void;
   /** Commit as one undo step (slider release, segment / font pick). */
   onCommit: (s: TextStyleModel) => void;
-  onBack: () => void;
   onPickColor: () => void;
   /** Fires when the font sheet opens / closes so the panel can suspend its
    *  swipe-to-dismiss gesture — otherwise scrolling the font list reads as a
@@ -139,18 +134,11 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onPick
   const isFont = page === 'font';
 
   return (
-    <View style={styles.bar}>
-      <EffectBarHeader
-        title={isFont ? 'FONT' : 'ALIGN'}
-        // Color is a font property: only the Font page shows the swatch.
-        color={isFont ? style.color : undefined}
-        chevron
-        // No trash: the Text bar edits an existing text object's type in
-        // place; there's nothing to remove / reset from here.
-        onBack={onBack}
-        onPickColor={isFont ? onPickColor : undefined}
-      />
-      <View style={styles.controls}>
+    <View>
+      {/* Color is a font property: only the Type page keeps the swatch.
+          Nothing to remove on either page: the text's type is edited in
+          place. */}
+      <BarBody aside={isFont ? <ColorAside color={style.color} label="Text color" onPickColor={onPickColor} /> : undefined}>
         {isFont ? (
           <>
             <FontRow label={currentLabel} onOpen={() => setSheetOpen(true)} />
@@ -168,8 +156,8 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onPick
           </>
         ) : (
           <>
-            {/* Character (letter spacing) + Line (line height) share one row to
-                keep the bar within the shared object-menu height. */}
+            {/* Character (letter spacing) + Line (line height) share one row
+                so the page stands a row shorter. */}
             <DualSliderRow
               leftLabel="Char"
               leftValue={(style.letterSpacing - LS_MIN) / (LS_MAX - LS_MIN)}
@@ -203,7 +191,7 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onPick
             />
           </>
         )}
-      </View>
+      </BarBody>
       {isFont && sheetOpen ? (
         <FontSheet
           fonts={fonts}
@@ -217,16 +205,6 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onBack, onPick
 }
 
 const styles = StyleSheet.create({
-  bar: {
-    backgroundColor: BAR_BG,
-    borderTopWidth: BAR_BORDER,
-    borderTopColor: HAIRLINE,
-    paddingTop: BAR_PAD_TOP,
-    paddingHorizontal: BAR_PAD_HORIZONTAL,
-    paddingBottom: BAR_PAD_BOTTOM,
-  },
-  // 10pt header→controls gap; rows self-space (32/36pt tall) with a 2pt gap.
-  controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
   row: { flexDirection: 'row', alignItems: 'center', height: ROW_PILL },
   rowLabel: { width: 50, color: LABEL, fontSize: 12 },
   pill: {
@@ -234,9 +212,9 @@ const styles = StyleSheet.create({
     backgroundColor: PILL_TRACK, borderRadius: 9, paddingHorizontal: 12,
   },
   pillText: { flex: 1, color: SHEET_TEXT, fontSize: 13.5 },
-  // Font sheet — presented over the bar (inset from its sides + bottom).
+  // Font sheet — presented over the page, rising from its foot.
   sheet: {
-    position: 'absolute', left: 16, right: 16, bottom: 14, maxHeight: 288,
+    position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: 288,
     backgroundColor: SHEET_BG, borderWidth: 1, borderColor: SHEET_BORDER,
     borderRadius: 14, padding: 8,
     // Half the dark scheme's shadow opacity: over a light bar this only has to

@@ -19,31 +19,29 @@ import {
 } from '../logic/tint';
 import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK } from '../theme';
 import { CheckerboardFill, ColorSwatchFill } from './ColorSwatch';
+import { ROW_PILL } from '../logic/submenuHeight';
 import {
-  BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP,
-  ROW_GAP, ROW_PILL,
-} from '../logic/submenuHeight';
-import {
-  ACCENT, BAR_BG, EffectBarHeader, HAIRLINE, LABEL, PILL_CHEVRON, PILL_TRACK,
+  ACCENT, BarBody, ColorAside, LABEL, PILL_CHEVRON, PILL_TRACK,
   SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL, SHEET_ROW_ACTIVE,
   SHEET_TEXT, SliderRow,
 } from './effectBar';
 
-// The image Tint bar (design "6a"): a full-width light bar whose contents vary by
-// Type. A header (chevron · TINT · gradient swatch) sits above:
+// The image Tint page (design "6a"): its contents vary by Type. The gradient
+// swatch sits in the aside column; beside it:
 //   • Type      — segmented Solid / Linear / Radial (unless `solidOnly`, which
 //                 drops the control, the gradient rows and the Blend row — the
-//                 shape Fill bar, where a fill is always one flat color
+//                 shape Fill page, where a fill is always one flat color
 //                 composited normally).
 //   • Stops     — a positional gradient editor with draggable stops + add /
 //                 delete (gradient modes only).
 //   • Angle     — the linear gradient angle (Linear only).
 //   • Opacity   — the whole tint layer's opacity (always).
 //   • Blend     — a pill opening the blend-mode sheet (always).
-// It's a sibling of the Shadow / Border / Crop / Text bars and shares their
-// chrome + row grammar (see effectBar.tsx); the slide-in / swipe-out is the
-// ObjectPropertiesPanel's, shared with those bars. The tint is a non-destructive
-// overlay composited onto the image with the chosen blend mode + opacity.
+// It's a sibling of the Shadow / Border / Crop / Text pages and shares their
+// row grammar (see effectBar.tsx); the sheet around it is the
+// ObjectPropertiesPanel's, shared with those pages. The tint is a
+// non-destructive overlay composited onto the image with the chosen blend
+// mode + opacity.
 
 // Sheet tokens are shared with the Text bar's font sheet (design 5a/6a) and
 // come from effectBar.tsx — this file used to keep a private copy of all six.
@@ -55,7 +53,7 @@ const BTN_TRACK = PANEL_TRACK;
 const STOP_SELECTED = PANEL_INK;
 const STOP_UNSELECTED = 'rgba(255,255,255,0.85)';
 
-/** A small gradient fill (expo LinearGradient) used by the header swatch and the
+/** A small gradient fill (expo LinearGradient) used by the aside swatch and the
  *  stop bar. `diagonal` renders a 135°-ish preview (the swatch); otherwise it's
  *  a left→right ramp (the stop bar's positional view). */
 function Ramp({ tint, diagonal }: { tint: TintModel; diagonal?: boolean }) {
@@ -244,26 +242,22 @@ function BlendSheet({ current, onPick, onClose }: {
   );
 }
 
-export function TintBar({ title = 'TINT', removeLabel, tint, solidOnly, onChange, onCommit, onBack, onRemove, onPickColor, onAddStop, onSheetOpenChange }: {
-  /** Bar title. Defaults to the image tint; the Fill bar passes 'FILL' — it is
-   *  this same bar pointed at a closed shape's interior (see `svgHasFill`). */
+export function TintBar({ title = 'Tint', tint, solidOnly, onChange, onCommit, onPickColor, onAddStop, onSheetOpenChange }: {
+  /** What the swatch is the colour of, for accessibility. Defaults to the
+   *  image tint; the Fill page passes 'Fill' — it is this same page pointed
+   *  at a closed shape's interior (see `svgHasFill`). */
   title?: string;
   /** Solid color only: the Type segmented control, the gradient rows and the
    *  Blend row are dropped, and every edit writes `type: 'solid'` and
-   *  `blend: 'normal'` — the shape Fill bar, where a fill is always one flat
+   *  `blend: 'normal'` — the shape Fill page, where a fill is always one flat
    *  color composited normally. A legacy gradient or blended fill renders
    *  until its first edit here, which flattens it. */
   solidOnly?: boolean;
-  /** Accessibility label for the header trash (defaults to `Remove <title>`). */
-  removeLabel?: string;
   tint: TintModel;
   /** Live preview (stop / slider drag, stop selection). */
   onChange: (t: TintModel) => void;
   /** Commit as one undo step (release, Type / blend pick, stop add / delete). */
   onCommit: (t: TintModel) => void;
-  onBack: () => void;
-  /** Remove the whole tint layer (header trash, beside the swatch). */
-  onRemove: () => void;
   /** Open the color picker for the solid color / the selected stop. */
   onPickColor: () => void;
   /** Add a stop (commits) then open the color picker on it — the app sequences
@@ -289,20 +283,10 @@ export function TintBar({ title = 'TINT', removeLabel, tint, solidOnly, onChange
   const isGradient = shown.type !== 'solid';
 
   return (
-    <View style={styles.bar}>
-      <EffectBarHeader
-        title={title}
-        chevron
-        // The swatch previews the tint: solid color, a 135° linear preview, or
-        // the radial gradient. Tapping it targets the solid / selected stop.
-        // The trash beside it removes the whole tint layer.
-        swatch={<Ramp tint={shown} diagonal />}
-        removeLabel={removeLabel ?? 'Remove tint'}
-        onBack={onBack}
-        onRemove={onRemove}
-        onPickColor={onPickColor}
-      />
-      <View style={styles.controls}>
+    <View>
+      {/* The swatch previews the tint: solid color, a 135° linear preview, or
+          the radial gradient. Tapping it targets the solid / selected stop. */}
+      <BarBody aside={<ColorAside swatch={<Ramp tint={shown} diagonal />} label={`${title} color`} onPickColor={onPickColor} />}>
         {!solidOnly && (
           <SegmentedRow
             label="Type"
@@ -346,7 +330,7 @@ export function TintBar({ title = 'TINT', removeLabel, tint, solidOnly, onChange
         {!solidOnly && (
           <BlendRow label={tintBlendLabel(shown.blend)} onOpen={() => setSheetOpen(true)} />
         )}
-      </View>
+      </BarBody>
       {sheetOpen ? (
         <BlendSheet
           current={shown.blend}
@@ -362,16 +346,6 @@ export function TintBar({ title = 'TINT', removeLabel, tint, solidOnly, onChange
 const STOP_HANDLE = 20;
 
 const styles = StyleSheet.create({
-  bar: {
-    backgroundColor: BAR_BG,
-    borderTopWidth: BAR_BORDER,
-    borderTopColor: HAIRLINE,
-    paddingTop: BAR_PAD_TOP,
-    paddingHorizontal: BAR_PAD_HORIZONTAL,
-    paddingBottom: BAR_PAD_BOTTOM,
-  },
-  // 10pt header→controls gap; rows self-space (32/36pt tall) with a 2pt gap.
-  controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
   rowLabel: { width: 50, color: LABEL, fontSize: 12 },
   // Stops row: label + gradient bar (fills) + the two 28pt buttons.
   stopRow: { flexDirection: 'row', alignItems: 'center', height: ROW_PILL, gap: 10 },
@@ -402,9 +376,9 @@ const styles = StyleSheet.create({
     backgroundColor: PILL_TRACK, borderRadius: 9, paddingHorizontal: 12,
   },
   pillText: { flex: 1, color: SHEET_TEXT, fontSize: 13.5 },
-  // Blend sheet — presented over the bar (inset from its sides + bottom).
+  // Blend sheet — presented over the page, rising from its foot.
   sheet: {
-    position: 'absolute', left: 16, right: 16, bottom: 14, maxHeight: 320,
+    position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: 320,
     backgroundColor: SHEET_BG, borderWidth: 1, borderColor: SHEET_BORDER,
     borderRadius: 14, padding: 8,
     // Half the dark scheme's shadow opacity: over a light bar this only has to

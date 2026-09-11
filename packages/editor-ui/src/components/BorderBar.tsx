@@ -1,24 +1,21 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
 import type { BorderModel, BorderPosition } from '../adapter';
-import {
-  BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP, ROW_GAP,
-} from '../logic/submenuHeight';
-import { BAR_BG, EffectBarHeader, HAIRLINE, SegmentedRow, SliderRow } from './effectBar';
+import { BarBody, ColorAside, SegmentedRow, SliderRow } from './effectBar';
 
-// The Border (stroke) editing bar (design "3a"): a full-width light bar with a
-// header (chevron · BORDER · color swatch · trash) and four rows — Width,
-// Radius, Position, Dash. It's a sibling of the Drop Shadow bar and shares its
-// chrome (see effectBar.tsx). The Radius row rounds the object itself (folding
-// in the former standalone Round control), so it rides the app's cornerRadius
-// fields rather than the border model.
+// The Border (stroke) page (design "3a"): the colour swatch in the aside
+// column and four rows beside it — Width, Radius, Position, Dash. It's a
+// sibling of the Drop Shadow page and shares its grammar (see effectBar.tsx).
+// The Radius row rounds the object itself (folding in the former standalone
+// Round control), so it rides the app's cornerRadius fields rather than the
+// border model.
 //
-// A vector selection reuses this bar as its STROKE menu — same rows, same
-// ranges, same chrome — pointed at the path's own stroke instead of a rect
-// around a bbox. It overrides the title and drops the rows its subtype has no
-// answer for (Position needs a closed path; Radius is a rectangle control),
-// which is why this is a `title` + two row toggles rather than a copy of the
-// component. Width and Dash are universal and always render.
+// A vector selection reuses this page as its STROKE menu — same rows, same
+// ranges — pointed at the path's own stroke instead of a rect around a bbox.
+// It drops the rows its subtype has no answer for (Position needs a closed
+// path; Radius is a rectangle control), which is why this is two row toggles
+// rather than a copy of the component. Width and Dash are universal and
+// always render. `title` names the swatch for accessibility (Border color /
+// Stroke color).
 
 // ── Ranges (world cells; design pt ÷ 16) ─────────────────────────────
 const MAX_WIDTH = 1.5; // 0…24pt
@@ -42,11 +39,12 @@ const POSITIONS: readonly { value: BorderPosition; label: string }[] = [
   { value: 'outside', label: 'Outside' },
 ];
 
-export function BorderBar({ border, cornerRadius, title = 'BORDER', showRadius = true, showPosition = true, onChange, onCommit, onCornerRadius, onBack, onRemove, onPickColor }: {
+export function BorderBar({ border, cornerRadius, title = 'Border', showRadius = true, showPosition = true, onChange, onCommit, onCornerRadius, onPickColor }: {
   border: BorderModel;
   /** Object corner rounding, a 0–0.5 fraction of the shorter side. */
   cornerRadius: number;
-  /** Header title. Defaults to BORDER; a vector selection passes STROKE. */
+  /** What the swatch is the colour of, for accessibility. Defaults to
+   *  Border; a vector selection passes Stroke. */
   title?: string;
   /** Render the Radius row. Off for a selection whose corners aren't roundable
    *  (every vector subtype except a rectangle). */
@@ -59,76 +57,51 @@ export function BorderBar({ border, cornerRadius, title = 'BORDER', showRadius =
   /** Fires the Radius row: `radius` is a 0–0.5 fraction; `committed` marks the
    *  drag release (one undo step) vs. a live preview. */
   onCornerRadius: (radius: number, committed: boolean) => void;
-  onBack: () => void;
-  onRemove: () => void;
   onPickColor: () => void;
 }) {
   const set = (patch: Partial<BorderModel>, committed: boolean) =>
     (committed ? onCommit : onChange)({ ...border, ...patch });
   return (
-    <View style={styles.bar}>
-      <EffectBarHeader
-        title={title}
-        color={border.color}
-        chevron
-        onBack={onBack}
-        onRemove={onRemove}
-        onPickColor={onPickColor}
+    <BarBody aside={<ColorAside color={border.color} label={`${title} color`} onPickColor={onPickColor} />}>
+      <SliderRow
+        label="Width"
+        value={border.width / MAX_WIDTH}
+        apply={(t, c) => set({ width: t * MAX_WIDTH }, c)}
+        readout={{
+          text: widthPtText(border.width),
+          // A typed number is pt; clamp to the slider's own range so the
+          // field can never author a width the slider can't show.
+          commit: (n) => set({
+            width: Math.min(Math.max(n, 0), MAX_WIDTH * PT_PER_CELL) / PT_PER_CELL,
+          }, true),
+        }}
       />
-      <View style={styles.controls}>
+      {showRadius ? (
         <SliderRow
-          label="Width"
-          value={border.width / MAX_WIDTH}
-          apply={(t, c) => set({ width: t * MAX_WIDTH }, c)}
-          readout={{
-            text: widthPtText(border.width),
-            // A typed number is pt; clamp to the slider's own range so the
-            // field can never author a width the slider can't show.
-            commit: (n) => set({
-              width: Math.min(Math.max(n, 0), MAX_WIDTH * PT_PER_CELL) / PT_PER_CELL,
-            }, true),
-          }}
+          label="Radius"
+          value={cornerRadius / MAX_CORNER_RADIUS}
+          apply={(t, c) => onCornerRadius(t * MAX_CORNER_RADIUS, c)}
         />
-        {showRadius ? (
-          <SliderRow
-            label="Radius"
-            value={cornerRadius / MAX_CORNER_RADIUS}
-            apply={(t, c) => onCornerRadius(t * MAX_CORNER_RADIUS, c)}
-          />
-        ) : null}
-        {showPosition ? (
-          <SegmentedRow
-            label="Position"
-            options={POSITIONS}
-            value={border.position}
-            onChange={(position) => set({ position }, true)}
-          />
-        ) : null}
-        <SliderRow
-          label="Dash"
-          value={border.dash / MAX_DASH}
-          apply={(t, c) => set({ dash: Math.round(t * MAX_DASH) }, c)}
-          // The dash is a whole step (0 = solid … MAX_DASH = dots), so the box
-          // shows the step, not a percent of the track.
-          readout={{
-            text: String(Math.round(border.dash)),
-            commit: (n) => set({ dash: Math.round(Math.min(Math.max(n, 0), MAX_DASH)) }, true),
-          }}
+      ) : null}
+      {showPosition ? (
+        <SegmentedRow
+          label="Position"
+          options={POSITIONS}
+          value={border.position}
+          onChange={(position) => set({ position }, true)}
         />
-      </View>
-    </View>
+      ) : null}
+      <SliderRow
+        label="Dash"
+        value={border.dash / MAX_DASH}
+        apply={(t, c) => set({ dash: Math.round(t * MAX_DASH) }, c)}
+        // The dash is a whole step (0 = solid … MAX_DASH = dots), so the box
+        // shows the step, not a percent of the track.
+        readout={{
+          text: String(Math.round(border.dash)),
+          commit: (n) => set({ dash: Math.round(Math.min(Math.max(n, 0), MAX_DASH)) }, true),
+        }}
+      />
+    </BarBody>
   );
 }
-
-const styles = StyleSheet.create({
-  bar: {
-    backgroundColor: BAR_BG,
-    borderTopWidth: BAR_BORDER,
-    borderTopColor: HAIRLINE,
-    paddingTop: BAR_PAD_TOP,
-    paddingHorizontal: BAR_PAD_HORIZONTAL,
-    paddingBottom: BAR_PAD_BOTTOM,
-  },
-  // 10pt header→controls gap; rows self-space (32/36pt tall) with a 2pt gap.
-  controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
-});

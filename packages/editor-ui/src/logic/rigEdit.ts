@@ -170,11 +170,6 @@ export function rigSliderPart(key: RigSliderKey): RigPart {
   return 'rig';
 }
 
-/** The bar's title. */
-export function rigPartTitle(part: RigPart): string {
-  return part.toUpperCase();
-}
-
 /** A fresh set of slider positions (every part at rest). */
 export function restRigSliders(): Record<RigSliderKey, number> {
   return { ...RIG_SLIDER_REST };

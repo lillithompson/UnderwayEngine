@@ -1,19 +1,18 @@
 import React, { useRef } from 'react';
 import { GestureResponderEvent, PanResponder, StyleSheet, View } from 'react-native';
 import type { ShadowModel } from '../adapter';
-import {
-  BAR_BORDER, BAR_PAD_HORIZONTAL, SHADOW_CONTROLS_TOP, SHADOW_PAD_BOTTOM,
-  SHADOW_PAD_SIZE, SHADOW_PAD_TOP,
-} from '../logic/submenuHeight';
-import { BAR_BG, CONTROL_ACCENT, EffectBarHeader, HAIRLINE, SliderRow } from './effectBar';
+import { SHADOW_PAD_SIZE } from '../logic/submenuHeight';
+import { BarBody, ColorAside, CONTROL_ACCENT, SliderRow } from './effectBar';
 import { beginValueDrag, endValueDrag, padOffsetFromTouch, VALUE_DRAG_SURFACE } from '../logic/slider';
 import { rgbCss, withAlpha } from '../logic/hsv';
 
-// The Drop Shadow editing bar (design "2a"): a full-width light bar with a
-// header (title · color swatch · trash), an XY offset pad, and Blur / Spread /
-// Opacity sliders. Values are the app's world-cell units (see the ranges
-// below, mapped from the design's iOS-point ranges at 16px/cell). Header and
-// slider rows come from the shared effect-bar chrome (see effectBar.tsx).
+// The Drop Shadow page (design "2a"): an aside column holding the XY offset
+// pad over the colour swatch, and Blur / Spread / Opacity sliders beside it,
+// spread to the column's height. Values are the app's world-cell units (see
+// the ranges below, mapped from the design's iOS-point ranges at 16px/cell).
+// The slider rows and the body layout come from the shared page grammar
+// (see effectBar.tsx); the sheet around the page — its Shadow tab and the
+// Remove line — is the Edit sheet's.
 
 // ── Ranges (world cells; design pt ÷ 16) ─────────────────────────────
 const MAX_OFFSET = 1.5; // ±  (≈ ±24pt)
@@ -21,7 +20,7 @@ const MAX_BLUR = 3.75; // 0…60pt
 const MIN_SPREAD = -0.75; // −12pt
 const MAX_SPREAD = 1.5; // 24pt
 
-// The pad is a recessed well on the light bar: a faint dark wash with a
+// The pad is a recessed well on the light page: a faint dark wash with a
 // slightly stronger edge, its guides darker still so they stay readable.
 const PAD_FILL = 'rgba(42,42,42,0.08)';
 const PAD_BORDER = 'rgba(42,42,42,0.16)';
@@ -59,7 +58,7 @@ function XYPad({ dx, dy, onChange, onCommit }: {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      // Keep the touch once the pad is grabbed so the bar's swipe-to-dismiss
+      // Keep the touch once the pad is grabbed so the sheet's swipe-to-dismiss
       // can't steal it mid-drag (see Slider for the same guard).
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => { draggingRef.current = true; beginValueDrag(); const [x, y] = track(e); cbRef.current.onChange(x, y); },
@@ -81,69 +80,49 @@ function XYPad({ dx, dy, onChange, onCommit }: {
   );
 }
 
-export function ShadowBar({ shadow, onChange, onCommit, onBack, onRemove, onPickColor }: {
+export function ShadowBar({ shadow, onChange, onCommit, onPickColor }: {
   shadow: ShadowModel;
   onChange: (s: ShadowModel) => void;
   onCommit: (s: ShadowModel) => void;
-  onBack: () => void;
-  onRemove: () => void;
   onPickColor: () => void;
 }) {
   const set = (patch: Partial<ShadowModel>, committed: boolean) =>
     (committed ? onCommit : onChange)({ ...shadow, ...patch });
   return (
-    <View style={styles.bar}>
-      <EffectBarHeader
-        title="DROP SHADOW"
-        color={shadow.color}
-        chevron
-        align="top"
-        onBack={onBack}
-        onRemove={onRemove}
-        onPickColor={onPickColor}
+    <BarBody
+      spread
+      aside={(
+        <>
+          <XYPad
+            dx={shadow.dx}
+            dy={shadow.dy}
+            onChange={(dx, dy) => set({ dx, dy }, false)}
+            onCommit={(dx, dy) => set({ dx, dy }, true)}
+          />
+          <ColorAside color={shadow.color} label="Drop shadow color" onPickColor={onPickColor} />
+        </>
+      )}
+    >
+      <SliderRow label="Blur" value={shadow.blur / MAX_BLUR} apply={(t, c) => set({ blur: t * MAX_BLUR }, c)} />
+      <SliderRow
+        label="Spread"
+        value={(shadow.spread - MIN_SPREAD) / (MAX_SPREAD - MIN_SPREAD)}
+        apply={(t, c) => set({ spread: MIN_SPREAD + t * (MAX_SPREAD - MIN_SPREAD) }, c)}
       />
-      <View style={styles.controls}>
-        <XYPad
-          dx={shadow.dx}
-          dy={shadow.dy}
-          onChange={(dx, dy) => set({ dx, dy }, false)}
-          onCommit={(dx, dy) => set({ dx, dy }, true)}
-        />
-        <View style={styles.sliders}>
-          <SliderRow label="Blur" value={shadow.blur / MAX_BLUR} apply={(t, c) => set({ blur: t * MAX_BLUR }, c)} />
-          <SliderRow
-            label="Spread"
-            value={(shadow.spread - MIN_SPREAD) / (MAX_SPREAD - MIN_SPREAD)}
-            apply={(t, c) => set({ spread: MIN_SPREAD + t * (MAX_SPREAD - MIN_SPREAD) }, c)}
-          />
-          {/* The shadow's own color ramping up over the alpha checker — "how
-              much of THIS shadow", as the color picker's Opacity reads. */}
-          <SliderRow
-            label="Opacity"
-            value={shadow.opacity}
-            accent={rgbCss(withAlpha(shadow.color, 1))}
-            checker
-            apply={(t, c) => set({ opacity: t }, c)}
-          />
-        </View>
-      </View>
-    </View>
+      {/* The shadow's own color ramping up over the alpha checker — "how
+          much of THIS shadow", as the color picker's Opacity reads. */}
+      <SliderRow
+        label="Opacity"
+        value={shadow.opacity}
+        accent={rgbCss(withAlpha(shadow.color, 1))}
+        checker
+        apply={(t, c) => set({ opacity: t }, c)}
+      />
+    </BarBody>
   );
 }
 
 const styles = StyleSheet.create({
-  bar: {
-    backgroundColor: BAR_BG,
-    borderTopWidth: BAR_BORDER,
-    borderTopColor: HAIRLINE,
-    // 6 bar padding + 6 header nudge (the header no longer carries its own
-    // marginTop); the controls' marginTop absorbs the difference so the
-    // overall bar height is unchanged from the tuned design.
-    paddingTop: SHADOW_PAD_TOP,
-    paddingHorizontal: BAR_PAD_HORIZONTAL,
-    paddingBottom: SHADOW_PAD_BOTTOM,
-  },
-  controls: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: SHADOW_CONTROLS_TOP },
   pad: {
     width: PAD_SIZE, height: PAD_SIZE, borderRadius: 12, backgroundColor: PAD_FILL,
     borderWidth: 1, borderColor: PAD_BORDER,
@@ -164,5 +143,4 @@ const styles = StyleSheet.create({
     // separate from the pale well behind it.
     shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 4,
   },
-  sliders: { flex: 1 },
 });

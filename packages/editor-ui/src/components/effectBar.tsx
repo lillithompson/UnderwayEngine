@@ -3,16 +3,14 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { RGBLike } from '../adapter';
 import {
-  BAR_BORDER, BAR_CONTROLS_TOP, BAR_HEADER, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP,
-  ROW_SEGMENTED, ROW_SLIDER, SLIDER_CONTROL, SLIDER_LABEL, SLIDER_LABEL_GAP,
+  ASIDE_GAP, ASIDE_SWATCH, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, SLIDER_CONTROL, SLIDER_LABEL,
+  SLIDER_LABEL_GAP,
 } from '../logic/submenuHeight';
 import { percentText, percentToValue } from '../logic/slider';
 import {
-  PANEL_BG,
   PANEL_CONTROL,
   PANEL_INK,
   PANEL_INK_DIM,
-  PANEL_INK_HAIRLINE,
   PANEL_INK_LABEL,
   PANEL_INK_MUTED,
   PANEL_SHEET_BG,
@@ -25,26 +23,23 @@ import {
 import { ColorSwatchFill } from './ColorSwatch';
 import { SLIDER_TRACK, Slider } from './Slider';
 
-// Shared chrome for the image-effect editing bars (Drop Shadow, Border): the
-// full-width light bar's header (back · color swatch · trash) and the row
-// grammar (a slider row is its caption over the track, with the value box
-// on the right; a segmented row keeps the 50pt label column). Both bars are
-// siblings of the same design, so this is their single source of truth — the
-// bars themselves only supply their specific controls (the shadow XY pad, the
-// border segmented control) and container padding.
+// Shared grammar for the property pages (Drop Shadow, Border, Crop, …) that
+// the Edit sheet shows in its content area: the row grammar (a slider row is
+// its caption over the track, with the value box on the right; a segmented
+// row keeps the 50pt label column) and the page body that lays a page's rows
+// beside its aside column — the colour swatch a colour-bearing page keeps to
+// the left of its rows (where its header used to hold it), or the Shadow
+// page's offset pad over that swatch. The pages are siblings of the same
+// design, so this is their single source of truth — each page supplies only
+// its specific controls. The sheet around them (title, tabs, the content
+// area's well, the Remove line) is components/EditSheet.tsx.
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
-// ── Design tokens (shared by every effect bar) ───────────────────────
-// Submenu (effect bar) surface — matches the object-properties panel's light
-// grey so the two read as one continuous surface, and that surface is the
-// toolbar's (see PANEL_BG in theme.ts). Every token here is the light-scheme
-// value; nothing in a properties menu should reach for a raw color.
-export const BAR_BG = PANEL_BG;
-export const HAIRLINE = PANEL_INK_HAIRLINE;
-export const LABEL_DIM = PANEL_INK_DIM;
+// ── Design tokens (shared by every page) ─────────────────────────────
+// Every token here is the light-scheme value; nothing in a properties menu
+// should reach for a raw color.
 export const LABEL = PANEL_INK_LABEL;
-export const TRASH = PANEL_INK_DIM;
 export const TRACK = PANEL_TRACK;
 // The filled portion of any value control — every slider, and the Shadow bar's
 // XY pad handle, which is the same control on two axes. Selection blue, so a
@@ -70,97 +65,82 @@ const SEG_TRACK = PANEL_TRACK;
 const SEG_ACTIVE = PANEL_CONTROL;
 const SEG_TEXT = PANEL_INK_DIM;
 
-/** Bar header: a back-Pressable (title, with an optional chevron) on the
- *  left, and — when a color is supplied — a color swatch, then the trash, on
- *  the right. The Crop bar omits the swatch (no color); bars that pass no
- *  `onRemove` omit the trash entirely (Text / Crop). */
-export function EffectBarHeader({ title, color, swatch, chevron, align = 'center', removeLabel, onBack, onRemove, onPickColor }: {
-  title: string;
-  /** Swatch color; omit (with onPickColor) for a bar without a color control. */
+/** The colour swatch a colour-bearing page keeps: a large circle in the
+ *  page's aside column, tapping it opens the full-screen picker. A flat
+ *  `color` renders as a ColorSwatchFill (not a background color) so a picked
+ *  opacity shows as a checkerboard behind it, the same as the picker's own
+ *  preview; a custom `swatch` (the Tint page's gradient preview) renders in
+ *  its place. The clip is its own inner layer because `overflow: hidden` on
+ *  the outer would take the swatch's drop shadow with it (RN maps it to
+ *  clipsToBounds). */
+export function ColorAside({ color, swatch, label, onPickColor }: {
   color?: RGBLike;
-  /** Custom swatch fill (e.g. the Tint bar's gradient preview), rendered inside
-   *  the circular swatch instead of a flat `color`. Clipped to the circle. */
   swatch?: React.ReactNode;
-  /** Show a leading down-chevron before the title (the bar dismisses downward). */
-  chevron?: boolean;
-  /** 'top' aligns the swatch's top with the title's top (Shadow's tweak);
-   *  'center' vertically centers the cluster (Border's default). */
-  align?: 'top' | 'center';
-  /** Accessibility label for the trash (defaults to `Remove <title>`). */
-  removeLabel?: string;
-  onBack: () => void;
-  /** Removes / resets the effect (renders a trash affordance). Omit to hide
-   *  the trash for bars that shouldn't offer it (Text, Crop). */
-  onRemove?: () => void;
-  onPickColor?: () => void;
+  /** Accessibility name, e.g. "Drop shadow color". */
+  label: string;
+  onPickColor: () => void;
 }) {
   return (
-    <View style={[styles.header, { alignItems: align === 'top' ? 'flex-start' : 'center' }]}>
-      <Pressable style={styles.back} onPress={onBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to edit options">
-        {chevron ? <MaterialCommunityIcons name="chevron-down" size={19} color={LABEL_DIM} /> : null}
-        <Text style={styles.title}>{title}</Text>
-      </Pressable>
-      <View style={styles.headerRight}>
-        {(color || swatch) && onPickColor ? (
-          <Pressable
-            onPress={onPickColor}
-            accessibilityRole="button"
-            accessibilityLabel={`${title} color`}
-            style={styles.swatch}
-          >
-            {/* A flat color renders as a ColorSwatchFill (not a background
-                color) so a picked opacity shows as a checkerboard behind it,
-                the same as the picker's own preview. The clip is its own inner
-                layer because `overflow: hidden` on the outer would take the
-                swatch's drop shadow with it (RN maps it to clipsToBounds). */}
-            <View style={styles.swatchClip}>{swatch ?? <ColorSwatchFill color={color!} />}</View>
-          </Pressable>
-        ) : null}
-        {onRemove ? (
-          <Pressable onPress={onRemove} hitSlop={10} accessibilityRole="button" accessibilityLabel={removeLabel ?? `Remove ${title.toLowerCase()}`}>
-            <MaterialCommunityIcons name={'trash-can-outline' as MCIName} size={22} color={TRASH} />
-          </Pressable>
-        ) : null}
-      </View>
+    <Pressable
+      onPress={onPickColor}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={styles.swatch}
+    >
+      <View style={styles.swatchClip}>{swatch ?? <ColorSwatchFill color={color!} />}</View>
+    </Pressable>
+  );
+}
+
+/** A page's body: its rows stacked (ROW_GAP apart) and, when the page has
+ *  one, its `aside` column to their left — the colour swatch, or the Shadow
+ *  page's pad over its swatch. `spread` spaces the rows out to the aside's
+ *  full height instead of stacking them at the top (the Shadow page, whose
+ *  three sliders sit beside a taller column). submenuHeight counts the same
+ *  metrics: the taller of the aside and the row stack. */
+export function BarBody({ aside, spread, children }: {
+  aside?: React.ReactNode;
+  spread?: boolean;
+  children: React.ReactNode;
+}) {
+  if (!aside) return <View style={styles.rows}>{children}</View>;
+  return (
+    <View style={styles.body}>
+      <View style={styles.aside}>{aside}</View>
+      <View style={[styles.rows, styles.rowsBeside, spread ? styles.rowsSpread : null]}>{children}</View>
     </View>
   );
 }
 
 /** A dim hint line under a control, indented to the control column (label
- *  column + gap = 60pt). Used by the Crop bar's Fill / Fit modes. */
+ *  column + gap = 60pt). Used by the Crop page's Fill / Fit modes. */
 export function Hint({ children }: { children: React.ReactNode }) {
   return <Text style={styles.hint}>{children}</Text>;
 }
 
 /**
- * The bar an ABSENT effect opens: the standard chrome (hairline, padding,
- * the header with its back chevron — no swatch and no trash, there being
- * nothing to recolor or remove yet) over one full-width "Add …" button.
- * Opening a menu must never edit the object, so the effect is created only
- * by this press: the host materializes it (one undo step), presence flips,
- * and the panel re-renders the bar as its normal controls in place.
+ * The page an ABSENT effect opens: one full-width "Add …" button and nothing
+ * else (there being nothing to recolor or remove yet). Opening a menu must
+ * never edit the object, so the effect is created only by this press: the
+ * host materializes it (one undo step), presence flips, and the panel
+ * re-renders the page as its normal controls in place.
  */
-export function EmptyEffectBar({ title, addLabel, onBack, onAdd }: {
-  title: string;
+export function EmptyEffectBar({ addLabel, onAdd }: {
   /** The button's text (and accessibility label), e.g. "Add Drop Shadow". */
   addLabel: string;
-  onBack: () => void;
   onAdd: () => void;
 }) {
   return (
-    <View style={styles.emptyBar}>
-      <EffectBarHeader title={title} chevron onBack={onBack} />
-      <View style={styles.emptyControls}>
-        <Pressable
-          onPress={onAdd}
-          accessibilityRole="button"
-          accessibilityLabel={addLabel}
-          style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
-        >
-          <MaterialCommunityIcons name={'plus' as MCIName} size={16} color="#fff" />
-          <Text style={styles.addLabel}>{addLabel}</Text>
-        </Pressable>
-      </View>
+    <View style={styles.emptyControls}>
+      <Pressable
+        onPress={onAdd}
+        accessibilityRole="button"
+        accessibilityLabel={addLabel}
+        style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
+      >
+        <MaterialCommunityIcons name={'plus' as MCIName} size={16} color="#fff" />
+        <Text style={styles.addLabel}>{addLabel}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -298,16 +278,17 @@ export function DualSliderRow({
 /** One segmented row: a 50pt label column + an equal-width segmented control.
  *  Selection applies immediately. An option may carry an `icon` (MCI glyph)
  *  to render in place of its text label (the align row), keeping its `label`
- *  for accessibility. */
+ *  for accessibility. Without a `label` the control spans the whole row
+ *  (the Crop page's Fill / Fit / Crop / Tile, which names itself). */
 export function SegmentedRow<T extends string>({ label, options, value, onChange }: {
-  label: string;
+  label?: string;
   options: readonly { value: T; label: string; icon?: MCIName }[];
   value: T;
   onChange: (v: T) => void;
 }) {
   return (
     <View style={styles.segmentedRow}>
-      <Text style={styles.segLabel}>{label}</Text>
+      {label ? <Text style={styles.segLabel}>{label}</Text> : null}
       <View style={styles.segmented}>
         {options.map((o) => {
           const active = o.value === value;
@@ -446,19 +427,24 @@ export function DualSegmentedRow<T extends string>({ label, options, leftLabel, 
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', justifyContent: 'space-between', minHeight: BAR_HEADER },
-  back: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  title: { color: LABEL_DIM, fontSize: 11, lineHeight: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  // A page's rows, stacked — the metrics submenuHeight's `stack` counts.
+  rows: { gap: ROW_GAP },
+  // …and beside an aside column: the column hugs its content, the rows take
+  // the rest.
+  body: { flexDirection: 'row', alignItems: 'flex-start', gap: ASIDE_GAP },
+  aside: { alignItems: 'center', gap: ASIDE_GAP },
+  rowsBeside: { flex: 1, alignSelf: 'stretch' },
+  rowsSpread: { justifyContent: 'space-between' },
   swatch: {
-    width: 22, height: 22, borderRadius: 11, borderWidth: 1.8, borderColor: SWATCH_BORDER,
+    width: ASIDE_SWATCH, height: ASIDE_SWATCH, borderRadius: ASIDE_SWATCH / 2,
+    borderWidth: 2, borderColor: SWATCH_BORDER,
     // Lighter than the dark scheme's drop shadow: on a light surface the same
     // 0.5 black reads as grime around the swatch rather than lift.
     shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
   },
-  // Clips the swatch's fill — flat color or a custom one (the Tint bar's
+  // Clips the swatch's fill — flat color or a custom one (the Tint page's
   // gradient preview) — to the circle, inside the border.
-  swatchClip: { ...StyleSheet.absoluteFillObject, borderRadius: 11, overflow: 'hidden' },
+  swatchClip: { ...StyleSheet.absoluteFillObject, borderRadius: ASIDE_SWATCH / 2, overflow: 'hidden' },
   // A slider row stacks: caption, gap, then the control line (track + value
   // box). The three metrics are submenuHeight's, so its arithmetic and this
   // layout are one number.
@@ -513,17 +499,9 @@ const styles = StyleSheet.create({
   },
   // Hint line under a slider row: flush with its track, dim.
   hint: { marginTop: 2, paddingBottom: 2, color: PANEL_INK_MUTED, fontSize: 11 },
-  // The absent-effect bar (EmptyEffectBar): the stacked bars' standard
-  // container, one segmented-row-tall Add button as its only control.
-  emptyBar: {
-    backgroundColor: BAR_BG,
-    borderTopWidth: BAR_BORDER,
-    borderTopColor: HAIRLINE,
-    paddingTop: BAR_PAD_TOP,
-    paddingHorizontal: BAR_PAD_HORIZONTAL,
-    paddingBottom: BAR_PAD_BOTTOM,
-  },
-  emptyControls: { marginTop: BAR_CONTROLS_TOP, height: ROW_SEGMENTED, flexDirection: 'row' },
+  // The absent-effect page (EmptyEffectBar): one segmented-row-tall Add
+  // button as its only control.
+  emptyControls: { height: ROW_SEGMENTED, flexDirection: 'row' },
   // The Add button wears the control accent (a filled pill, like a selected
   // segment lit in the value color): pressing it is what SETS a value.
   addButton: {

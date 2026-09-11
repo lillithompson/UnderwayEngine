@@ -1,21 +1,23 @@
 import type { ImageFramingMode, TintType } from '../adapter';
 
-// How tall each submenu bar is, and therefore how tall the bar layer stands for
-// a given selection.
+// How tall each property page's CONTENT AREA is, and therefore how tall the
+// Edit sheet stands while that page is showing.
 //
-// Every bar used to share ONE height, sized to the tallest bar in the editor —
-// so a text selection, whose two bars are three rows each, still reserved room
-// for the five-row linear-gradient Tint an image can open. The bars for a
-// selection now size to the tallest bar THAT selection can reach, and no more.
+// The Edit sheet (components/EditSheet.tsx) is a bottom sheet with an "Edit"
+// title, a row of tabs — one per property page the selection offers — and,
+// under them, a darkened rounded content area holding the showing page's
+// controls. Each page is only as tall as its own controls need, so the sheet
+// RESIZES as the tabs change (the panel animates the height), and the
+// arithmetic here is what it animates TO: the target is known the moment a
+// tab is chosen, before any layout has happened, which is also what lets the
+// panel report the space it will occlude to the host at once.
 //
-// A bar's height is its chrome plus its rows, and the rows are counted from the
-// same state the bar will render from — a solid Tint really is three rows, so
-// an image whose tint is solid gets a shorter layer than one mid-gradient. That
-// is the point: reserving the worst case everywhere is the thing being fixed.
-//
-// The metrics below are the SAME numbers the bars' StyleSheets lay out with —
-// effectBar.tsx and each bar import them from here rather than repeating the
-// literals — so this arithmetic cannot drift from the layout it predicts.
+// A page's height is its rows, counted from the same state the page will
+// render from — a Crop page in Tile mode really is two sliders, so a live
+// mode switch resizes the sheet to hold them. The metrics below are the SAME
+// numbers the pages' StyleSheets lay out with — effectBar.tsx and each page
+// import them from here rather than repeating the literals — so this
+// arithmetic cannot drift from the layout it predicts.
 
 // ── Row metrics (effectBar.tsx's row styles) ────────────────────────
 /** A slider row's label line: the small uppercase caption OVER the track. */
@@ -30,45 +32,58 @@ export const SLIDER_CONTROL = 32;
 export const ROW_SLIDER = SLIDER_LABEL + SLIDER_LABEL_GAP + SLIDER_CONTROL;
 /** A label + segmented-control row (SegmentedRow, ActionRow, DualSegmentedRow). */
 export const ROW_SEGMENTED = 36;
-/** A label + full-width pill row (the Text bar's Font, the Tint bar's Blend and
+/** A label + full-width pill row (the Text page's Font, the Tint page's Blend and
  *  its gradient stop editor). */
 export const ROW_PILL = 36;
-/** Space between rows inside a bar's `controls` stack. */
+/** Space between rows inside a page's `controls` stack. */
 export const ROW_GAP = 2;
 /** A dim hint line under a control (effectBar's Hint): 2 above + an 11pt line
  *  + 2 below. */
 export const HINT_HEIGHT = 17;
 
-// ── Bar chrome (each bar's container + header) ──────────────────────
-export const BAR_BORDER = 1;
-export const BAR_PAD_TOP = 10;
-export const BAR_PAD_BOTTOM = 14;
-export const BAR_PAD_HORIZONTAL = 16;
-/** EffectBarHeader's minHeight. */
-export const BAR_HEADER = 22;
-/** Gap between the header and the first row (`controls` marginTop). */
-export const BAR_CONTROLS_TOP = 10;
-/** A cushion on every bar so font metrics can't clip its last row. */
+// ── The content area (every page's container) ───────────────────────
+/** Inner padding of the darkened content area, all four sides. */
+export const CONTENT_PAD = 14;
+/** A cushion on every page so font metrics can't clip its last row. */
 export const BAR_CUSHION = 3;
-
-// ── Bars that don't use the standard container ──────────────────────
-/** The Drop Shadow bar sits its XY pad beside its sliders, so it pads and
- *  spaces differently from the stacked bars. */
-export const SHADOW_PAD_TOP = 12;
-export const SHADOW_PAD_BOTTOM = 16;
-export const SHADOW_CONTROLS_TOP = 4;
-/** The XY offset pad — taller than the three sliders beside it, so it alone
- *  sets that bar's content height. */
+/** The colour swatch a colour-bearing page keeps in an aside column to the
+ *  LEFT of its rows (where its header used to hold it): its diameter… */
+export const ASIDE_SWATCH = 56;
+/** …and the gap between the aside column and the rows, and between the
+ *  Shadow page's offset pad and the swatch under it. */
+export const ASIDE_GAP = 16;
+/** The Shadow page's XY offset pad, at the top of its aside column. */
 export const SHADOW_PAD_SIZE = 106;
-/** The Crop bar's source-resolution caption, below `controls`: 8 above + an
- *  11pt line. */
-export const CROP_CAPTION_HEIGHT = 21;
+/** The Shadow page's aside: the pad over the swatch. */
+export const SHADOW_ASIDE = SHADOW_PAD_SIZE + ASIDE_GAP + ASIDE_SWATCH;
 
-/** One square button of the pattern Tiles bar's arming grid, and the gap
- *  between them. Six fit across a phone's bar (6×52 + 5×6 = 342 clears an
- *  SE-width 375 − 2×16 padding), which is what makes the grid's twelve
- *  buttons (Random over Erase, nine recent tiles, '...') exactly two
- *  rows — see PATTERN_TILE_GRID_COLUMNS. */
+// ── The Edit sheet's own chrome (components/EditSheet.tsx) ───────────
+/** Padding above the title. */
+export const SHEET_PAD_TOP = 18;
+/** The "Edit" title line. */
+export const SHEET_TITLE = 32;
+/** Gap between the title and the tab row… */
+export const SHEET_TABS_TOP = 6;
+/** …and the tab row itself. */
+export const SHEET_TABS = 40;
+/** Gap between the tab row and the content area. */
+export const SHEET_CONTENT_TOP = 14;
+/** The Remove line under the content area, when the page has one: its gap
+ *  above plus the line. */
+export const SHEET_REMOVE = 30;
+/** Padding under the last element (before any safe-area inset). */
+export const SHEET_PAD_BOTTOM = 14;
+/** Side padding of everything in the sheet. */
+export const SHEET_PAD_HORIZONTAL = 16;
+/** The sheet's top corners. */
+export const SHEET_RADIUS = 24;
+
+/** One square button of the pattern Tiles page's arming grid, and the gap
+ *  between them. Six fit across a phone's sheet (6×52 + 5×6 = 342 clears an
+ *  SE-width 375 − 2×16 sheet padding − 2×14 content padding… nearly: the grid
+ *  wraps column-wise, so a seventh column simply starts), which is what makes
+ *  the grid's twelve buttons (Random over Erase, nine recent tiles, '...')
+ *  two rows. */
 export const PATTERN_TILE_BUTTON = 52;
 export const PATTERN_TILE_GRID_GAP = 6;
 
@@ -76,10 +91,10 @@ export const PATTERN_TILE_GRID_GAP = 6;
 export const PATTERN_TILE_GRID =
   PATTERN_TILE_BUTTON * 2 + PATTERN_TILE_GRID_GAP;
 
-/** The slide-up submenus. Image selections cycle through tint / crop / shadow /
- *  border / opacity; text through font / align (two pages of the Text bar) and
- *  shadow (the image bar, reused); a vector through stroke plus whichever of
- *  svgFill / endpoints / opacity its subtype has. `layout` rides on a
+/** The property pages. An image selection offers crop / shadow / border /
+ *  opacity; text font / align (two pages of the Text controls) and shadow
+ *  (the image page, reused); a vector stroke plus whichever of svgFill /
+ *  endpoints / opacity / transform its subtype has. `layout` rides on a
  *  multi-selection rather than on a type. */
 export type SubmenuKey =
   | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
@@ -93,33 +108,28 @@ export type SubmenuKey =
   // painting-symmetry grid.
   | 'patternTiles' | 'patternTools' | 'patternSymmetry';
 
-/** The current state of everything that changes a bar's row count. Values are
- *  optional so a caller can describe only the bars its selection can open; a
+/** The current state of everything that changes a page's row count. Values are
+ *  optional so a caller can describe only the pages its selection can open; a
  *  missing one falls back to the shortest reading, which is what an unopened
- *  bar of that kind would render. */
+ *  page of that kind would render. */
 export interface SubmenuHeightContext {
-  /** Tint bar: gradients add a stop editor, linear adds an angle slider. */
+  /** Tint page: gradients add a stop editor, linear adds an angle slider. */
   tintType?: TintType;
-  /** Crop bar: each framing mode brings its own rows. */
+  /** Crop page: each framing mode brings its own rows. */
   cropMode?: ImageFramingMode;
-  /** Crop bar: the source-resolution caption only renders when it's known. */
-  cropHasResolution?: boolean;
-  /** Crop bar: whether the host wired up Replace, which adds its row. */
-  cropCanReplace?: boolean;
-  /** Border bar: which optional rows the image / frame border shows. */
+  /** Border page: which optional rows the image / frame border shows. */
   borderRows?: { radius: boolean; position: boolean };
-  /** Stroke bar: the same bar, with the rows this vector subtype supports. */
+  /** Stroke page: the same page, with the rows this vector subtype supports. */
   strokeRows?: { radius: boolean; position: boolean };
-  /** Layout bar: whether the host wired up Grid, which adds the Arrange row. */
+  /** Layout page: whether the host wired up Grid, which adds the Arrange row. */
   layoutHasGrid?: boolean;
-  /** RIG bar: whether the host wired up Reset, which adds its row. A locked
-   *  rig offers none, and its bar is three sliders tall. */
+  /** RIG page: whether the host wired up Reset, which adds its row. A locked
+   *  rig offers none, and its page is three sliders tall. */
   rigCanReset?: boolean;
-  /** Pattern Tools bar: how many tile sets the filter offers. Nonzero adds
-   *  the Sets row, and sizes the bar to whichever of its two pages (tools /
-   *  the chip grid) stands taller. */
+  /** Pattern Tools page: how many tile sets the filter offers. Nonzero adds
+   *  the Sets row. */
   patternTileSetCount?: number;
-  /** Pattern Tools bar: whether the host wired up the Repeat toggle, which
+  /** Pattern Tools page: whether the host wired up the Repeat toggle, which
    *  adds its row. A grouped pattern can't repeat, so it doesn't. */
   patternCanRepeat?: boolean;
 }
@@ -130,11 +140,11 @@ function stack(rows: readonly number[]): number {
   return rows.reduce((sum, h) => sum + h, 0) + (rows.length - 1) * ROW_GAP;
 }
 
-/** A bar built the standard way: hairline, padding, header, then its rows.
- *  `below` is anything outside the row stack (the Crop bar's caption). */
-function standardBar(rows: readonly number[], below = 0): number {
-  return BAR_BORDER + BAR_PAD_TOP + BAR_HEADER + BAR_CONTROLS_TOP
-    + stack(rows) + below + BAR_PAD_BOTTOM + BAR_CUSHION;
+/** A page's content area: its padding around the taller of its row stack and
+ *  its aside column (the colour swatch, or the Shadow page's pad and swatch —
+ *  0 for a page with no aside), plus the cushion. */
+function contentArea(rows: readonly number[], aside = 0): number {
+  return CONTENT_PAD * 2 + Math.max(stack(rows), aside) + BAR_CUSHION;
 }
 
 /** Tint / Fill rows: Type, then the gradient stop editor and (linear only) the
@@ -160,125 +170,137 @@ function borderRows(rows: { radius: boolean; position: boolean } = { radius: tru
   ];
 }
 
-/** Crop rows: Mode, then whatever that mode asks for, then — when the host
- *  offers it — the Replace action, which every mode shows. */
-function cropRows(mode: ImageFramingMode = 'fill', canReplace = false): number[] {
-  const replace = canReplace ? [ROW_SEGMENTED] : [];
+/** Crop rows: the Fill / Fit / Crop / Tile mode row, then whatever that mode
+ *  asks for. Nothing else — the source-resolution caption and the Replace
+ *  row came off the page (Replace rides the host's floating capsule). */
+function cropRows(mode: ImageFramingMode = 'fill'): number[] {
   switch (mode) {
-    case 'fit': return [ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT, ...replace];
-    case 'crop': return [ROW_SEGMENTED, ROW_SEGMENTED, ROW_SLIDER, ...replace];
-    case 'tile': return [ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER, ...replace];
+    case 'fit': return [ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT];
+    case 'crop': return [ROW_SEGMENTED, ROW_SEGMENTED, ROW_SLIDER];
+    case 'tile': return [ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER];
     case 'fill':
-    default: return [ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT, ...replace];
+    default: return [ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT];
   }
 }
 
-/** How tall one submenu bar stands, given the state it will render from. */
+/** How tall one page's content area stands, given the state it will render
+ *  from. The sheet around it is {@link editSheetHeight}. */
 export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): number {
   switch (key) {
     case 'tint':
-      return standardBar(tintRows(ctx.tintType));
+      return contentArea(tintRows(ctx.tintType), ASIDE_SWATCH);
     case 'svgFill':
-      // The Fill bar is the Tint bar solid-only (a shape's fill is always
+      // The Fill page is the Tint page solid-only (a shape's fill is always
       // one flat color at Normal blend): no Type control, no gradient rows,
-      // no Blend row — the Opacity slider alone.
-      return standardBar([ROW_SLIDER]);
+      // no Blend row — the Opacity slider alone, beside the swatch.
+      return contentArea([ROW_SLIDER], ASIDE_SWATCH);
     case 'border':
-      return standardBar(borderRows(ctx.borderRows));
+      return contentArea(borderRows(ctx.borderRows), ASIDE_SWATCH);
     case 'stroke':
-      return standardBar(borderRows(ctx.strokeRows));
+      return contentArea(borderRows(ctx.strokeRows), ASIDE_SWATCH);
     case 'crop':
-      return standardBar(
-        cropRows(ctx.cropMode, ctx.cropCanReplace),
-        ctx.cropHasResolution ? CROP_CAPTION_HEIGHT : 0,
-      );
+      return contentArea(cropRows(ctx.cropMode));
     case 'opacity':
-      return standardBar([ROW_SLIDER, ROW_SLIDER]);
+      return contentArea([ROW_SLIDER, ROW_SLIDER]);
     // The rig pages are sliders and nothing else — no hint line and no IK
     // switch (see RigPoseBar) — so each stands exactly as tall as the
     // controls it renders.
     case 'rigHands':
       // Left and Right, and a Twist, a Spread and a Bend each.
-      return standardBar([
+      return contentArea([
         ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER,
         ROW_SLIDER, ROW_SLIDER,
       ]);
     case 'rigFeet':
       // Left and Right, each with its own Twist and its ball's Bend.
-      return standardBar([
+      return contentArea([
         ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER,
       ]);
     case 'rigSpine':
       // Bend / Twist / Lean.
-      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
+      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
     case 'rigRoot':
       // The three axes the figure stands on, and — when the host offers it —
       // the Reset that puts the whole figure back at rest. It lives on THIS
       // page because this is the page about the figure as a whole.
-      return standardBar([
+      return contentArea([
         ROW_SLIDER, ROW_SLIDER, ROW_SLIDER,
         ...(ctx.rigCanReset ? [ROW_SEGMENTED] : []),
       ]);
     case 'rigHead':
       // Nod / Shake / Tilt.
-      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
+      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
     case 'endpoints':
-      return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
+      return contentArea([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'transform':
       // Rotation, then Create copies' six settings two to a row (offset X
       // + Y, scale X + Y, rotation offset + count) and the button row that
       // fires it.
-      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
+      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
     case 'patternTiles':
       // The arming grid: two rows of square buttons.
-      return standardBar([PATTERN_TILE_GRID]);
+      return contentArea([PATTERN_TILE_GRID]);
     case 'patternTools': {
       // Grid actions and Borders, plus Repeat when the pattern can take it
       // and the Sets row when the host offers a tile-set filter. (Random
-      // and Erase left for the Tiles bar, where they sit beside the tiles
+      // and Erase left for the Tiles page, where they sit beside the tiles
       // they compete with.) The Sets row's filter opens as a full-screen
-      // takeover (PatternSetsModal), so the bar reserves nothing for it.
+      // takeover (PatternSetsModal), so the page reserves nothing for it.
       const setCount = ctx.patternTileSetCount ?? 0;
       const mainRows = 2 + (ctx.patternCanRepeat ? 1 : 0) + (setCount > 0 ? 1 : 0);
-      return standardBar(new Array(mainRows).fill(ROW_SEGMENTED));
+      return contentArea(new Array(mainRows).fill(ROW_SEGMENTED));
     }
     case 'patternSymmetry':
       // The mode grid: 4×3 label-less rectangles, each row at the
       // segmented-row height (Off rides row 3).
-      return standardBar([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
+      return contentArea([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'layout':
       // Horizontal and Vertical, plus Arrange when the host offers Grid.
-      return standardBar([
+      return contentArea([
         ROW_SEGMENTED, ROW_SEGMENTED,
         ...(ctx.layoutHasGrid ? [ROW_SEGMENTED] : []),
       ]);
     case 'font':
-      // Font pill, Weight segmented, Size slider.
-      return standardBar([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER]);
+      // Font pill, Weight segmented, Size slider — beside the colour swatch.
+      return contentArea([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH);
     case 'align':
       // Char/Line sharing one slider row, then Bend, Align and Vertical.
-      return standardBar([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SEGMENTED]);
+      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'shadow':
-      // The odd one out: its XY pad sits BESIDE three sliders rather than above
-      // them, so the taller of the two columns sets the height (three of the
-      // label-over-track rows, since they grew past the pad) — and its
-      // container pads differently from the stacked bars.
-      return BAR_BORDER + SHADOW_PAD_TOP + BAR_HEADER + SHADOW_CONTROLS_TOP
-        + Math.max(SHADOW_PAD_SIZE, ROW_SLIDER * 3)
-        + SHADOW_PAD_BOTTOM + BAR_CUSHION;
+      // The XY pad over the swatch on the left, three sliders on the right:
+      // the taller column sets the height.
+      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER], SHADOW_ASIDE);
     default: {
       // Exhaustiveness guard: adding a SubmenuKey without giving it rows here
-      // is a compile error, not a silently stunted bar.
+      // is a compile error, not a silently stunted page.
       const unhandled: never = key;
       return unhandled;
     }
   }
 }
 
-/** How tall the bar layer stands for a selection: the tallest of the bars that
- *  selection can reach, so swiping the carousel never moves the bar's top edge
- *  — but a type whose bars are all short never reserves a taller type's room.
- *  Zero for a selection with no submenus at all. */
-export function typeMenuHeight(keys: readonly SubmenuKey[], ctx: SubmenuHeightContext = {}): number {
-  return keys.reduce((tallest, key) => Math.max(tallest, submenuHeight(key, ctx)), 0);
+/** How tall an ABSENT effect's page stands: the one Add button
+ *  (EmptyEffectBar), a segmented row tall, in the well's chrome — not the
+ *  controls that will swap in once it is pressed. Without this a shadowless
+ *  image's Shadow tab stood as tall as the pad and three sliders it wasn't
+ *  showing. */
+export function emptyEffectHeight(): number {
+  return contentArea([ROW_SEGMENTED]);
+}
+
+/** How tall the Edit sheet stands: its title and tab row, then — when a page
+ *  is showing — the content area holding it (`content`, a
+ *  {@link submenuHeight}) and, when that page can be removed, the Remove line
+ *  under it; then the bottom padding and the device's bottom inset, which
+ *  the sheet pads so its last line clears the home indicator. A sheet whose
+ *  tabs are all one-press actions (a word sticker's Invert) shows no content
+ *  area at all, and is the title and tabs alone. */
+export function editSheetHeight(
+  content: number | null,
+  opts: { removable?: boolean; safeBottom?: number } = {},
+): number {
+  return SHEET_PAD_TOP + SHEET_TITLE + SHEET_TABS_TOP + SHEET_TABS
+    + (content != null ? SHEET_CONTENT_TOP + content : 0)
+    + (content != null && opts.removable ? SHEET_REMOVE : 0)
+    + SHEET_PAD_BOTTOM + (opts.safeBottom ?? 0);
 }

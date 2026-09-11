@@ -41,7 +41,11 @@ export const PANEL_HAIRLINE = '#6b7280'; // Facet TEXT_DIM — modal dividers / 
 // read as one set of controls bracketing the canvas rather than two opposite
 // ones. The modal surfaces above (color picker, rename, view settings) stay
 // dark — they float over the whole editor, not alongside the toolbar.
-export const PANEL_BG = HEADER_BG; // #e5e5e5 — panel + submenu surface
+export const PANEL_BG = HEADER_BG; // #e5e5e5 — panel + Edit sheet surface
+// The same surface at zero alpha — the far end of a fade INTO the surface
+// (the Edit sheet's tab row fading its overflow out). Spelled out rather than
+// 'transparent', which iOS blends as black and would darken the fade.
+export const PANEL_BG_CLEAR = 'rgba(229, 229, 229, 0)';
 export const PANEL_INK = HEADER_INK; // #2a2a2a — full-strength ink (body text)
 // The panel's buttons are the toolbar's buttons, so they take the toolbar's
 // icon grey rather than full ink: an unselected tool up top and an action
@@ -59,6 +63,10 @@ export const PANEL_BORDER = 'rgba(42, 42, 42, 0.22)'; // panel top border (again
 // white; inverted, the track darkens the surface and the selected cell is the
 // one thing lighter than it.
 export const PANEL_TRACK = 'rgba(42, 42, 42, 0.12)'; // slider / segmented / pill track
+// The Edit sheet's content area: a slightly darkened, rounded well on the
+// sheet that the showing page's controls sit in. A shade past the track, so a
+// track inside it still reads as recessed against it.
+export const PANEL_CONTENT_WELL = 'rgba(42, 42, 42, 0.16)';
 export const PANEL_CONTROL = '#ffffff'; // selected segment, raised cell
 export const PANEL_SWATCH_BORDER = 'rgba(42, 42, 42, 0.45)'; // ring around a color swatch
 // Popover sheets presented over a bar (font list, tint presets): a hair
@@ -66,12 +74,11 @@ export const PANEL_SWATCH_BORDER = 'rgba(42, 42, 42, 0.45)'; // ring around a co
 export const PANEL_SHEET_BG = 'rgba(246, 246, 246, 0.98)';
 export const PANEL_SHEET_BORDER = 'rgba(42, 42, 42, 0.14)';
 export const PANEL_SHEET_ROW_ACTIVE = 'rgba(42, 42, 42, 0.10)';
-// The effect bars used to share one fixed height here, sized to the tallest bar
-// in the editor. They now size per selection — see logic/submenuHeight.ts,
-// which derives each bar's height from its rows and takes the tallest a given
-// selection can reach.
+// The property pages live in the Edit sheet, which sizes to the page showing —
+// see logic/submenuHeight.ts, which derives each page's height from its rows
+// and the sheet's from the page.
 //
-// The main object-properties panel holds only one row of options and the
+// The main object-properties panel holds only the common-actions row and the
 // carousel dots:
 //   1 border + 60 row + 34 dots (4 + 12 dot + 18 clearance) = 95.
 // On a notched phone the dots move into the home-indicator strip and this

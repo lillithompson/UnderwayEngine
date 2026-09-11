@@ -3,8 +3,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { ObjectPropertiesModel } from '../adapter';
 import {
-  BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP,
-  PATTERN_TILE_BUTTON, PATTERN_TILE_GRID_GAP, ROW_GAP, ROW_SEGMENTED,
+  PATTERN_TILE_BUTTON, PATTERN_TILE_GRID_GAP, ROW_SEGMENTED,
 } from '../logic/submenuHeight';
 import {
   PATTERN_ARM_TOOLS,
@@ -16,13 +15,13 @@ import {
   rotatePatternTileTransform,
 } from '../logic/patternEdit';
 import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
-import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE, SegmentedRow } from './effectBar';
+import { ActionRow, BarBody, SegmentedRow } from './effectBar';
 import { PatternSetsModal } from './PatternSetsModal';
 import { PatternTileModal } from './PatternTileModal';
 import { PatternTileTransformModal } from './PatternTileTransformModal';
 
-// The pattern object's three submenu bars — siblings of the effect bars,
-// sharing their chrome and row grammar (effectBar.tsx):
+// The pattern object's three property pages — siblings of the effect pages,
+// sharing their row grammar (effectBar.tsx):
 //
 //   • Tiles    — the ARMING grid: Random, Erase, the five most recently
 //                used tiles, and a '...' that takes over the screen with
@@ -35,13 +34,8 @@ import { PatternTileTransformModal } from './PatternTileTransformModal';
 //   • Symmetry — the painting-mirror grid (the old symmetry modal's modes),
 //                exclusive, with Off closing the set.
 
-function barTitle(kind: 'tiles' | 'tools' | 'symmetry'): string {
-  return kind === 'tiles' ? 'TILES' : kind === 'tools' ? 'TOOLS' : 'SYMMETRY';
-}
-
-export function PatternTilesBar({ model, onBack }: {
+export function PatternTilesBar({ model }: {
   model: ObjectPropertiesModel;
-  onBack: () => void;
 }) {
   const [showAll, setShowAll] = useState(false);
   // The tile whose pose the long-press transform modal is editing, if any.
@@ -59,12 +53,11 @@ export function PatternTilesBar({ model, onBack }: {
   // COLUMN (Facet's palette flow: a fixed two-row height wraps a column
   // stack), so Random sits over Erase in the leftmost column, the nine
   // recents make the next columns, and the twelve buttons fill two rows of
-  // six (PATTERN_TILE_GRID_COLUMNS) exactly — the bar's height is the same
+  // six (PATTERN_TILE_GRID_COLUMNS) exactly — the page's height is the same
   // whatever is in hand.
   return (
-    <View style={styles.bar}>
-      <EffectBarHeader title={barTitle('tiles')} chevron onBack={onBack} />
-      <View style={styles.controls}>
+    <View>
+      <BarBody>
         <View style={styles.tileGrid}>
           {PATTERN_ARM_TOOLS.map((t) => {
             const active = tool === t.tool;
@@ -133,7 +126,7 @@ export function PatternTilesBar({ model, onBack }: {
             <Text style={styles.tileWord}>•••</Text>
           </Pressable>
         </View>
-      </View>
+      </BarBody>
       <PatternTileModal
         visible={showAll}
         tiles={model.patternTiles ?? []}
@@ -156,19 +149,17 @@ export function PatternTilesBar({ model, onBack }: {
   );
 }
 
-export function PatternToolsBar({ model, onBack }: {
+export function PatternToolsBar({ model }: {
   model: ObjectPropertiesModel;
-  onBack: () => void;
 }) {
   // The Sets row's 'Tiles' button takes over the screen with the tile-set
-  // filter (Facet's Randomization Settings) rather than flipping the bar
+  // filter (Facet's Randomization Settings) rather than flipping the page
   // to a chip page — see PatternSetsModal.
   const [showSets, setShowSets] = useState(false);
   const sets = model.patternTileSets ?? [];
   return (
-    <View style={styles.bar}>
-      <EffectBarHeader title={barTitle('tools')} chevron onBack={onBack} />
-      <View style={styles.controls}>
+    <View>
+      <BarBody>
         <ActionRow
           label="Grid"
           options={PATTERN_GRID_ACTIONS.map((a) => ({ value: a.action, label: a.label }))}
@@ -210,7 +201,7 @@ export function PatternToolsBar({ model, onBack }: {
             onPress={() => setShowSets(true)}
           />
         )}
-      </View>
+      </BarBody>
       <PatternSetsModal
         visible={showSets}
         safeTop={model.safeTop}
@@ -224,23 +215,21 @@ export function PatternToolsBar({ model, onBack }: {
   );
 }
 
-export function PatternSymmetryBar({ model, onBack }: {
+export function PatternSymmetryBar({ model }: {
   model: ObjectPropertiesModel;
-  onBack: () => void;
 }) {
   const current = model.patternSymmetry ?? 'off';
   // The 11 modes + Off as a 4×3 grid of rectangles (the old modal's grid,
   // read in rows, with Off closing the set). No label column: the cells
-  // stretch to split the bar's full width evenly.
+  // stretch to split the page's full width evenly.
   const cells = [
     ...PATTERN_SYMMETRY_ENTRIES.map((e) => ({ value: e.key, label: e.label })),
     { value: 'off', label: 'Off' },
   ];
   const rows = [cells.slice(0, 4), cells.slice(4, 8), cells.slice(8, 12)];
   return (
-    <View style={styles.bar}>
-      <EffectBarHeader title={barTitle('symmetry')} chevron onBack={onBack} />
-      <View style={styles.controls}>
+    <View>
+      <BarBody>
         {rows.map((row, i) => (
           <View key={i} style={styles.symRow}>
             {row.map((o) => {
@@ -264,7 +253,7 @@ export function PatternSymmetryBar({ model, onBack }: {
             })}
           </View>
         ))}
-      </View>
+      </BarBody>
     </View>
   );
 }
@@ -272,18 +261,9 @@ export function PatternSymmetryBar({ model, onBack }: {
 const TILE = PATTERN_TILE_BUTTON;
 
 const styles = StyleSheet.create({
-  bar: {
-    backgroundColor: BAR_BG,
-    borderTopWidth: BAR_BORDER,
-    borderTopColor: HAIRLINE,
-    paddingTop: BAR_PAD_TOP,
-    paddingHorizontal: BAR_PAD_HORIZONTAL,
-    paddingBottom: BAR_PAD_BOTTOM,
-  },
-  controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
   // Fixed-size squares wrapping COLUMN-WISE inside the two-row height
   // submenuHeight reserves (Facet's sectionWrap): the first column is
-  // Random over Erase, and six columns of twelve buttons fit a phone's bar.
+  // Random over Erase, and six columns of twelve buttons fit a phone's page.
   tileGrid: {
     flexDirection: 'column',
     flexWrap: 'wrap',

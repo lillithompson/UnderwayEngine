@@ -171,7 +171,7 @@ describe('the Fill bar is solid-only (source pins — the bars are RN components
 
   test('the panel opens the shape Fill bar solid-only', () => {
     const panel = read('components', 'ObjectPropertiesPanel.tsx');
-    const fill = panel.slice(panel.indexOf('title="FILL"'), panel.indexOf('onAddStop={addSvgFillStop}'));
+    const fill = panel.slice(panel.indexOf('title="Fill"'), panel.indexOf('onAddStop={addSvgFillStop}'));
     expect(fill).toContain('solidOnly');
   });
 });

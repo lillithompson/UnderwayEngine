@@ -1,28 +1,24 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { AlignEdge } from '../adapter';
 import type { AlignOption } from '../logic/layout';
 import { HORIZONTAL_ALIGN_OPTIONS, VERTICAL_ALIGN_OPTIONS } from '../logic/layout';
-import {
-  BAR_BORDER, BAR_CONTROLS_TOP, BAR_PAD_BOTTOM, BAR_PAD_HORIZONTAL, BAR_PAD_TOP, ROW_GAP,
-} from '../logic/submenuHeight';
-import { ActionRow, BAR_BG, EffectBarHeader, HAIRLINE } from './effectBar';
+import { ActionRow, BarBody } from './effectBar';
 
-// The Layout bar: where a MULTI-selection's members sit relative to each
-// other. A sibling of the Stroke / Fill / Endpoints bars sharing their chrome
-// (see effectBar.tsx), with up to three rows — Horizontal pushes every member
-// to the left edge, the centre line, or the right edge of the selection's
-// combined box; Vertical does the same top / middle / bottom; Arrange reflows
-// them into a grid instead of pushing them at an edge.
+// The Layout page: where a MULTI-selection's members sit relative to each
+// other. A sibling of the Stroke / Fill / Endpoints pages sharing their
+// grammar (see effectBar.tsx), with up to three rows — Horizontal pushes
+// every member to the left edge, the centre line, or the right edge of the
+// selection's combined box; Vertical does the same top / middle / bottom;
+// Arrange reflows them into a grid instead of pushing them at an edge.
 //
 // The Arrange row renders only when the host supplies `onGrid`, and
-// submenuHeight('layout') is told the same thing (`layoutHasGrid`) so the bar
-// layer reserves two rows or three to match.
+// submenuHeight('layout') is told the same thing (`layoutHasGrid`) so the
+// sheet reserves two rows or three to match.
 //
-// No color swatch in the header (nothing here is colored) and no trash: an
-// align has no state to remove — undo is the way back, the same as any other
-// move. Every control is an action rather than a pick, so the cells light only
+// No color swatch (nothing here is colored) and nothing to remove: an align
+// has no state to remove — undo is the way back, the same as any other move.
+// Every control is an action rather than a pick, so the cells light only
 // while held (ActionRow) and each tap is one finished edit, i.e. one undo
 // step — which is why `onAlign` takes no `committed` flag.
 
@@ -41,37 +37,19 @@ const GRID_CELLS = [
   { value: 'grid' as const, label: 'Arrange in grid', icon: 'view-grid-outline' as MCIName },
 ];
 
-export function LayoutBar({ onAlign, onGrid, onBack }: {
+export function LayoutBar({ onAlign, onGrid }: {
   /** Fires once per tap — an align is always a finished edit. */
   onAlign: (edge: AlignEdge) => void;
   /** Lay the members out as a grid. Omit and the Arrange row doesn't render. */
   onGrid?: () => void;
-  onBack: () => void;
 }) {
   return (
-    <View style={styles.bar}>
-      <EffectBarHeader title="LAYOUT" chevron onBack={onBack} />
-      <View style={styles.controls}>
-        <ActionRow label="Horizontal" options={H_CELLS} onPress={onAlign} />
-        <ActionRow label="Vertical" options={V_CELLS} onPress={onAlign} />
-        {onGrid ? (
-          <ActionRow label="Arrange" options={GRID_CELLS} onPress={onGrid} />
-        ) : null}
-      </View>
-    </View>
+    <BarBody>
+      <ActionRow label="Horizontal" options={H_CELLS} onPress={onAlign} />
+      <ActionRow label="Vertical" options={V_CELLS} onPress={onAlign} />
+      {onGrid ? (
+        <ActionRow label="Arrange" options={GRID_CELLS} onPress={onGrid} />
+      ) : null}
+    </BarBody>
   );
 }
-
-const styles = StyleSheet.create({
-  bar: {
-    backgroundColor: BAR_BG,
-    borderTopWidth: BAR_BORDER,
-    borderTopColor: HAIRLINE,
-    paddingTop: BAR_PAD_TOP,
-    paddingHorizontal: BAR_PAD_HORIZONTAL,
-    paddingBottom: BAR_PAD_BOTTOM,
-  },
-  // Matches the Endpoints / Border bars: 10pt header→controls gap, rows
-  // self-space.
-  controls: { marginTop: BAR_CONTROLS_TOP, gap: ROW_GAP },
-});

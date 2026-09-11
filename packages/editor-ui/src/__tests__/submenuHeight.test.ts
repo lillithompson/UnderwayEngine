@@ -1,57 +1,63 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
-  BAR_BORDER,
-  BAR_CONTROLS_TOP,
+  ASIDE_GAP,
+  ASIDE_SWATCH,
   BAR_CUSHION,
-  BAR_HEADER,
-  BAR_PAD_BOTTOM,
-  BAR_PAD_TOP,
-  CROP_CAPTION_HEIGHT,
+  CONTENT_PAD,
+  HINT_HEIGHT,
   ROW_GAP,
   ROW_PILL,
   ROW_SEGMENTED,
   ROW_SLIDER,
+  SHADOW_ASIDE,
+  SHADOW_PAD_SIZE,
+  SHEET_CONTENT_TOP,
+  SHEET_PAD_BOTTOM,
+  SHEET_PAD_TOP,
+  SHEET_REMOVE,
+  SHEET_TABS,
+  SHEET_TABS_TOP,
+  SHEET_TITLE,
   SLIDER_CONTROL,
   SLIDER_LABEL,
   SLIDER_LABEL_GAP,
-  SHADOW_CONTROLS_TOP,
-  SHADOW_PAD_BOTTOM,
-  SHADOW_PAD_SIZE,
-  SHADOW_PAD_TOP,
   SubmenuKey,
+  editSheetHeight,
   submenuHeight,
-  typeMenuHeight,
 } from '../logic/submenuHeight';
 import { svgStrokeRows } from '../logic/svgEdit';
 
-/** The chrome every stacked bar carries, independent of its rows. */
-const CHROME = BAR_BORDER + BAR_PAD_TOP + BAR_HEADER + BAR_CONTROLS_TOP + BAR_PAD_BOTTOM + BAR_CUSHION;
-/** What a bar of `rows` rows of height `h` should measure. */
-const barOf = (rows: number[]) =>
-  CHROME + rows.reduce((a, b) => a + b, 0) + (rows.length - 1) * ROW_GAP;
+/** The content area's chrome around any page: its padding and the cushion. */
+const CHROME = CONTENT_PAD * 2 + BAR_CUSHION;
+/** What a page of `rows` should measure, beside an aside `aside` tall (0 for
+ *  a page with none): the taller of the two, in the chrome. */
+const pageOf = (rows: number[], aside = 0) =>
+  CHROME + Math.max(rows.reduce((a, b) => a + b, 0) + (rows.length - 1) * ROW_GAP, aside);
 
-// The submenus each selection type can reach, mirroring the panel's
-// typeSubmenuOrder. Named here so the per-type expectations below read as the
-// product question they are: how tall is a text selection's menu?
-const IMAGE: SubmenuKey[] = ['tint', 'crop', 'shadow', 'border', 'opacity'];
-const TEXT: SubmenuKey[] = ['font', 'align', 'shadow'];
-const FRAME: SubmenuKey[] = ['shadow', 'border'];
-
-describe('submenuHeight', () => {
-  test('a bar is its chrome plus its rows and their gaps', () => {
-    // Opacity is the plain case: two sliders, nothing conditional.
-    expect(submenuHeight('opacity')).toBe(barOf([ROW_SLIDER, ROW_SLIDER]));
+describe('submenuHeight (a page’s content area)', () => {
+  test('a page is its chrome plus its rows and their gaps', () => {
+    // Opacity is the plain case: two sliders, nothing conditional, no aside.
+    expect(submenuHeight('opacity')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER]));
   });
 
-  test('the Text pages: Font is three rows, Align four (Bend added a slider)', () => {
-    expect(submenuHeight('font')).toBe(barOf([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER]));
+  test('a colour-bearing page stands at least as tall as its swatch', () => {
+    // The Fill page is one slider (48) beside a 56 swatch: the swatch wins.
+    expect(ROW_SLIDER).toBeLessThan(ASIDE_SWATCH);
+    expect(submenuHeight('svgFill')).toBe(pageOf([ROW_SLIDER], ASIDE_SWATCH));
+    expect(submenuHeight('svgFill')).toBe(CHROME + ASIDE_SWATCH);
+    // A four-row Border outstands its swatch, so the rows set it.
+    expect(submenuHeight('border')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH));
+  });
+
+  test('the Text pages: Type is three rows beside the swatch, Align four with none', () => {
+    expect(submenuHeight('font')).toBe(pageOf([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH));
     // Char/Line still share a row; the Bend slider stands on its own.
     expect(submenuHeight('align'))
-      .toBe(barOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SEGMENTED]));
+      .toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SEGMENTED]));
   });
 
-  test('the Tint bar grows a row per gradient feature', () => {
+  test('the Tint page grows a row per gradient feature', () => {
     const solid = submenuHeight('tint', { tintType: 'solid' });
     const radial = submenuHeight('tint', { tintType: 'radial' });
     const linear = submenuHeight('tint', { tintType: 'linear' });
@@ -60,56 +66,42 @@ describe('submenuHeight', () => {
     expect(linear - radial).toBe(ROW_SLIDER + ROW_GAP);
   });
 
-  test('the Fill bar is solid-only: one fixed row, deaf to any tint type', () => {
-    // A shape's fill is always one flat color at Normal blend, so the bar
-    // drops the Type control, the gradient rows and the Blend row: the
-    // Opacity slider alone, always.
-    expect(submenuHeight('svgFill')).toBe(barOf([ROW_SLIDER]));
+  test('the Fill page is solid-only: one fixed row, deaf to any tint type', () => {
     // No context feeds it — a mid-gradient image tint doesn't grow it.
     expect(submenuHeight('svgFill', { tintType: 'linear' }))
       .toBe(submenuHeight('svgFill'));
-    // …which keeps it strictly shorter than the full Tint bar.
+    // …which keeps it strictly shorter than the full Tint page.
     expect(submenuHeight('svgFill'))
       .toBeLessThan(submenuHeight('tint', { tintType: 'solid' }));
   });
 
-  test('the Stroke bar drops the rows a subtype has no answer for', () => {
+  test('the Stroke page drops the rows a subtype has no answer for', () => {
     // A line has neither corner radius nor stroke position: Width + Dash only.
     const line = submenuHeight('stroke', { strokeRows: svgStrokeRows('line') });
-    expect(line).toBe(barOf([ROW_SLIDER, ROW_SLIDER]));
+    expect(line).toBe(pageOf([ROW_SLIDER, ROW_SLIDER], ASIDE_SWATCH));
     // A rectangle has both, so it is the full four rows.
     const rect = submenuHeight('stroke', { strokeRows: svgStrokeRows('rectangle') });
-    expect(rect).toBe(barOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER]));
+    expect(rect).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH));
     expect(rect).toBeGreaterThan(line);
   });
 
-  test('the Crop bar counts the rows its mode brings, plus the caption', () => {
-    const crop = submenuHeight('crop', { cropMode: 'crop', cropHasResolution: true });
-    expect(crop).toBe(barOf([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SLIDER]) + CROP_CAPTION_HEIGHT);
-    // An image whose pixel size never arrived shows no caption.
-    expect(submenuHeight('crop', { cropMode: 'crop', cropHasResolution: false }))
-      .toBe(crop - CROP_CAPTION_HEIGHT);
+  test('the Crop page counts the rows its mode brings — and nothing else', () => {
+    // The mode row, then the mode's own rows. No resolution caption, no
+    // Replace row: both came off the page.
+    expect(submenuHeight('crop', { cropMode: 'crop' })).toBe(pageOf([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SLIDER]));
+    expect(submenuHeight('crop', { cropMode: 'fill' })).toBe(pageOf([ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT]));
+    expect(submenuHeight('crop', { cropMode: 'fit' })).toBe(pageOf([ROW_SEGMENTED, ROW_SLIDER, HINT_HEIGHT]));
+    expect(submenuHeight('crop', { cropMode: 'tile' })).toBe(pageOf([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER]));
+    // A live mode switch resizes the page.
+    expect(submenuHeight('crop', { cropMode: 'tile' })).not.toBe(submenuHeight('crop', { cropMode: 'fill' }));
   });
 
-  test('the Crop bar grows a row for Replace, in every mode', () => {
-    // Replace is about the image rather than the frame, so it rides every
-    // mode — and a host that doesn't wire it up doesn't reserve its room.
-    for (const cropMode of ['fill', 'fit', 'crop', 'tile'] as const) {
-      const without = submenuHeight('crop', { cropMode });
-      const to = submenuHeight('crop', { cropMode, cropCanReplace: true });
-      expect(to - without).toBe(ROW_SEGMENTED + ROW_GAP);
-    }
-  });
-
-  test('the Shadow bar is sized by the taller of its XY pad and the sliders beside it', () => {
-    // Its pad sits alongside three sliders rather than above them, so the
-    // taller column wins — and it pads differently from the stacked bars.
-    expect(submenuHeight('shadow')).toBe(
-      BAR_BORDER + SHADOW_PAD_TOP + BAR_HEADER + SHADOW_CONTROLS_TOP
-      + Math.max(SHADOW_PAD_SIZE, ROW_SLIDER * 3) + SHADOW_PAD_BOTTOM + BAR_CUSHION,
-    );
-    // Three caption-over-track rows outstand the pad, so they set it.
-    expect(ROW_SLIDER * 3).toBeGreaterThan(SHADOW_PAD_SIZE);
+  test('the Shadow page is sized by the taller of its pad-over-swatch column and the sliders beside it', () => {
+    expect(SHADOW_ASIDE).toBe(SHADOW_PAD_SIZE + ASIDE_GAP + ASIDE_SWATCH);
+    expect(submenuHeight('shadow')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER], SHADOW_ASIDE));
+    // The pad over the swatch outstands three slider rows, so the column
+    // sets it (and the sliders spread to fill it).
+    expect(SHADOW_ASIDE).toBeGreaterThan(ROW_SLIDER * 3 + ROW_GAP * 2);
   });
 
   test('a slider row is its caption, the gap under it, and the control line', () => {
@@ -124,99 +116,93 @@ describe('submenuHeight', () => {
     expect(SLIDER_CONTROL - track).toBeLessThanOrEqual(6);
   });
 
-  test('the Layout bar grows the Arrange row only when Grid is wired up', () => {
-    const aligns = barOf([ROW_SEGMENTED, ROW_SEGMENTED]);
+  test('the Layout page grows the Arrange row only when Grid is wired up', () => {
+    const aligns = pageOf([ROW_SEGMENTED, ROW_SEGMENTED]);
     expect(submenuHeight('layout')).toBe(aligns);
     expect(submenuHeight('layout', { layoutHasGrid: false })).toBe(aligns);
     expect(submenuHeight('layout', { layoutHasGrid: true }))
       .toBe(aligns + ROW_SEGMENTED + ROW_GAP);
   });
 
-  test('every submenu reports a real height, not a fallback', () => {
-    // A key with no case would fall through; each of these is a whole bar, so
-    // none may come back as bare chrome. At least one row (svgFill, solid-only,
-    // is exactly its Opacity slider — the shortest real bar).
+  test('every page reports a real height, not a fallback', () => {
+    // A key with no case would fall through; each of these is a whole page,
+    // so none may come back as bare chrome.
     const ALL: SubmenuKey[] = [
       'tint', 'crop', 'shadow', 'border', 'opacity',
       'font', 'align', 'stroke', 'svgFill', 'endpoints', 'transform', 'layout',
+      'rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead',
+      'patternTiles', 'patternTools', 'patternSymmetry',
     ];
     for (const key of ALL) {
       expect([key, submenuHeight(key) >= CHROME + ROW_SLIDER]).toEqual([key, true]);
     }
   });
 
-  test('defaults to the shortest reading when a bar is undescribed', () => {
+  test('defaults to the shortest reading when a page is undescribed', () => {
     // An unopened Tint is solid; an unopened Crop is Fill.
     expect(submenuHeight('tint')).toBe(submenuHeight('tint', { tintType: 'solid' }));
     expect(submenuHeight('crop')).toBe(submenuHeight('crop', { cropMode: 'fill' }));
   });
+
+  test('the page metrics are the ones the layouts draw with', () => {
+    // The well's padding, the aside column and the swatch are laid out from
+    // these same constants (effectBar.tsx / EditSheet.tsx), so the
+    // arithmetic can't drift from the layout it predicts.
+    const bar = readFileSync(resolve(__dirname, '..', 'components', 'effectBar.tsx'), 'utf8');
+    expect(bar).toMatch(/swatch: \{\s*width: ASIDE_SWATCH, height: ASIDE_SWATCH/);
+    expect(bar).toMatch(/body: \{[^}]*gap: ASIDE_GAP/);
+    expect(bar).toMatch(/rows: \{ gap: ROW_GAP \}/);
+    const sheet = readFileSync(resolve(__dirname, '..', 'components', 'EditSheet.tsx'), 'utf8');
+    expect(sheet).toMatch(/well: \{[^}]*padding: CONTENT_PAD/s);
+    const shadow = readFileSync(resolve(__dirname, '..', 'components', 'ShadowBar.tsx'), 'utf8');
+    expect(shadow).toContain('const PAD_SIZE = SHADOW_PAD_SIZE;');
+  });
 });
 
-describe('typeMenuHeight', () => {
-  test("a type's menu is as tall as its tallest bar, and no taller", () => {
-    const ctx = { tintType: 'solid' as const, cropMode: 'fill' as const, cropHasResolution: true };
-    const tallest = Math.max(...IMAGE.map((k) => submenuHeight(k, ctx)));
-    expect(typeMenuHeight(IMAGE, ctx)).toBe(tallest);
-    for (const key of IMAGE) expect(submenuHeight(key, ctx)).toBeLessThanOrEqual(tallest);
+describe('editSheetHeight (the sheet around a page)', () => {
+  const HEAD = SHEET_PAD_TOP + SHEET_TITLE + SHEET_TABS_TOP + SHEET_TABS;
+
+  test('a sheet with a page showing is its title and tabs, the well, and the bottom padding', () => {
+    const content = submenuHeight('opacity');
+    expect(editSheetHeight(content)).toBe(HEAD + SHEET_CONTENT_TOP + content + SHEET_PAD_BOTTOM);
   });
 
-  test('text stands as tall as its own tallest bar — not the five rows an image can need', () => {
-    // The reported bug: text's bars reserved room for the tallest bar
-    // anywhere in the editor (a linear-gradient Tint, five rows). Text's
-    // tallest is now its own Align page (Char/Line + Bend + two segmented
-    // rows); the Font page stands shorter, and the image's worst case
-    // shorter still is not.
-    expect(typeMenuHeight(TEXT)).toBe(submenuHeight('align'));
-    expect(submenuHeight('font')).toBeLessThan(submenuHeight('align'));
-    const imageAtWorst = typeMenuHeight(IMAGE, { tintType: 'linear' });
-    expect(typeMenuHeight(TEXT)).toBeLessThan(imageAtWorst);
+  test('each page stands only as tall as it needs — the sheet resizes between tabs', () => {
+    // An image's Crop (Fill mode) and Border pages are different heights,
+    // and the sheet is different with them: nothing is reserved for the
+    // tallest page a selection can reach.
+    const crop = editSheetHeight(submenuHeight('crop', { cropMode: 'fill' }));
+    const border = editSheetHeight(submenuHeight('border'), { removable: true });
+    expect(crop).not.toBe(border);
+    expect(border - crop).toBe(submenuHeight('border') - submenuHeight('crop', { cropMode: 'fill' }) + SHEET_REMOVE);
   });
 
-  test("text's menu is the taller of its Shadow bar and its typography bars", () => {
-    // Text carries the image's Drop Shadow bar. Whichever of it and the
-    // Font/Align pair stands taller sets the menu, so swiping between them
-    // never moves the top edge.
-    expect(typeMenuHeight(TEXT)).toBe(Math.max(submenuHeight('shadow'), typeMenuHeight(['font', 'align'])));
+  test('a removable page adds the Remove line; an absent one adds nothing', () => {
+    const content = submenuHeight('shadow');
+    expect(editSheetHeight(content, { removable: true }) - editSheetHeight(content)).toBe(SHEET_REMOVE);
+    expect(editSheetHeight(content, { removable: false })).toBe(editSheetHeight(content));
   });
 
-  test('an image stands four rows tall — the Border bar sets it', () => {
-    // The other half of the report: the tallest image bar is Border's four
-    // rows, so every image bar should be four, not five.
-    const ctx = { tintType: 'solid' as const, cropMode: 'fill' as const, cropHasResolution: true };
-    expect(typeMenuHeight(IMAGE, ctx)).toBe(submenuHeight('border', ctx));
-    expect(typeMenuHeight(IMAGE, ctx))
-      .toBe(barOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER]));
+  test('a sheet with no page (every tab an action) is the title and tabs alone', () => {
+    expect(editSheetHeight(null)).toBe(HEAD + SHEET_PAD_BOTTOM);
+    // Remove means nothing without a page under it.
+    expect(editSheetHeight(null, { removable: true })).toBe(editSheetHeight(null));
   });
 
-  test('a live edit that adds a row grows the menu with it', () => {
-    const solid = { tintType: 'solid' as const, cropMode: 'fill' as const };
-    const linear = { tintType: 'linear' as const, cropMode: 'fill' as const };
-    expect(typeMenuHeight(IMAGE, linear)).toBeGreaterThan(typeMenuHeight(IMAGE, solid));
+  test('pads the device’s bottom inset under its last line', () => {
+    expect(editSheetHeight(null, { safeBottom: 34 })).toBe(editSheetHeight(null) + 34);
+    const content = submenuHeight('border');
+    expect(editSheetHeight(content, { removable: true, safeBottom: 34 }))
+      .toBe(editSheetHeight(content, { removable: true }) + 34);
   });
 
-  test('a frame reaches only Shadow and Border, so it sizes to those', () => {
-    expect(typeMenuHeight(FRAME)).toBe(Math.max(submenuHeight('shadow'), submenuHeight('border')));
-    // Never the taller Crop / Tint bars an image can open but a frame cannot.
-    expect(typeMenuHeight(FRAME)).toBeLessThan(typeMenuHeight(IMAGE, { tintType: 'linear' }));
-  });
-
-  test('a selection with no submenus needs no bar layer at all', () => {
-    expect(typeMenuHeight([])).toBe(0);
-  });
-
-  test('every submenu fits inside the menu height offered for its type', () => {
-    // The invariant that matters: nothing clips. Checked across the states the
-    // variable bars can be in.
-    const states = [
-      { tintType: 'solid' as const, cropMode: 'fill' as const, cropHasResolution: true },
-      { tintType: 'radial' as const, cropMode: 'crop' as const, cropHasResolution: true },
-      { tintType: 'linear' as const, cropMode: 'tile' as const, cropHasResolution: false },
-    ];
-    for (const ctx of states) {
-      for (const order of [IMAGE, TEXT, FRAME]) {
-        const height = typeMenuHeight(order, ctx);
-        for (const key of order) expect(submenuHeight(key, ctx)).toBeLessThanOrEqual(height);
-      }
-    }
+  test('the sheet metrics are the ones EditSheet lays out with', () => {
+    const sheet = readFileSync(resolve(__dirname, '..', 'components', 'EditSheet.tsx'), 'utf8');
+    expect(sheet).toMatch(/sheet: \{\s*paddingTop: SHEET_PAD_TOP/);
+    expect(sheet).toContain('paddingBottom: SHEET_PAD_BOTTOM + safeBottom');
+    expect(sheet).toMatch(/title: \{\s*height: SHEET_TITLE,\s*lineHeight: SHEET_TITLE/);
+    expect(sheet).toMatch(/tabs: \{ marginTop: SHEET_TABS_TOP, height: SHEET_TABS \}/);
+    expect(sheet).toMatch(/well: \{\s*marginTop: SHEET_CONTENT_TOP/);
+    expect(sheet).toMatch(/removeRow: \{ height: SHEET_REMOVE/);
   });
 });

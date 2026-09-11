@@ -102,23 +102,25 @@ describe('the rig option set', () => {
       .toBe(submenuHeight('rigSpine') + 5 * (ROW_SLIDER + ROW_GAP));
   });
 
-  it('has no trash in its header, on any of the pages', () => {
-    // On an effect bar the trash removes something that was ADDED — a
+  it('has no Remove line under it, on any of the pages', () => {
+    // On an effect page Remove takes away something that was ADDED — a
     // shadow, a border — and the object is itself again. A rig has no such
-    // layer: every slider is a posture the figure is always in, so a trash
+    // layer: every slider is a posture the figure is always in, so a Remove
     // could only mean "this part back to rest" — and it reset the whole
     // page, untouched sliders included, so one tap flattened a pair of
     // hands posed finger by finger. Resetting is offered over the WHOLE
-    // figure instead, from the options row (see below).
+    // figure instead, from the RIG page's own row (see below).
     const BAR = readFileSync(join(__dirname, '..', 'components', 'RigPoseBar.tsx'), 'utf8');
     expect(BAR).not.toContain('onRemove');
-    // The RIG page's Reset is not a trash and is not per-part: it is a
+    // The RIG page's Reset is not a Remove and is not per-part: it is a
     // labelled row saying "whole figure" (see below), and no other page has
     // one.
     expect(BAR).not.toContain('removeLabel');
-    // The header still carries the title and the way back out.
-    expect(BAR).toContain('<EffectBarHeader title={rigPartTitle(part)} chevron onBack={onBack} />');
-    // …and the panel hands the bar nothing to reset with.
+    // The panel gives the rig pages no Remove line — only the effect pages
+    // set one.
+    const rigBranch = SRC.slice(SRC.indexOf('<RigPoseBar'), SRC.indexOf("} else if (displaySub === 'opacity') {"));
+    expect(rigBranch).not.toContain('removeAction =');
+    // …and the panel hands the page nothing to reset with.
     expect(SRC).not.toContain('onResetRigPart');
     const ADAPTER = readFileSync(join(__dirname, '..', 'adapter.ts'), 'utf8');
     expect(ADAPTER).not.toContain('onResetRigPart');
