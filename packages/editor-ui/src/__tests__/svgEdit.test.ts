@@ -27,20 +27,29 @@ describe('svgEditOptions', () => {
     }
   });
 
-  it('adds Fill then Opacity to the shapes with an interior, and to nothing else', () => {
+  it('adds Fill to the shapes with an interior, and to nothing else', () => {
     for (const subtype of FILLED) {
       expect(svgEditOptions(subtype).map((o) => o.action).filter((a) => a !== 'shape'))
-        .toEqual(['stroke', 'fill', 'opacity', 'transform']);
+        .toEqual(['stroke', 'fill', 'shadow', 'opacity', 'transform']);
     }
     for (const subtype of SUBTYPES.filter((s) => !FILLED.includes(s))) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('fill');
-      expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('opacity');
+    }
+  });
+
+  it('ends every subtype on the SHARED TAIL — Shadow, Opacity, Copies', () => {
+    // The pages an image, a text and a line have in common, in the same
+    // order wherever you are.
+    for (const subtype of SUBTYPES) {
+      expect(svgEditOptions(subtype).map((o) => o.action).slice(-3))
+        .toEqual(['shadow', 'opacity', 'transform']);
     }
   });
 
   it('adds Ends to the three open paths, and to nothing else', () => {
     for (const subtype of ['line', 'arc', 'stroke'] as SVGSubtypeKind[]) {
-      expect(svgEditOptions(subtype).map((o) => o.action)).toEqual(['stroke', 'endpoints', 'transform']);
+      expect(svgEditOptions(subtype).map((o) => o.action))
+        .toEqual(['stroke', 'endpoints', 'shadow', 'opacity', 'transform']);
     }
     for (const subtype of ['rectangle', 'circle', 'polygon', 'shape'] as SVGSubtypeKind[]) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('endpoints');
@@ -69,12 +78,12 @@ describe('svgEditOptions', () => {
     // However the outline came to be — merged, joined, unioned, drawn — a
     // closed path has an inside to paint. (No Shape page: a freeform has
     // no line→line corners to round.)
-    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity', 'transform']);
+    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke', 'fill', 'shadow', 'opacity', 'transform']);
   });
 
   it('adds Shape — the corner Radius page — right after Stroke on the polygonal shapes only', () => {
-    expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'opacity', 'transform']);
-    expect(svgEditOptions('polygon').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'opacity', 'transform']);
+    expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'shadow', 'opacity', 'transform']);
+    expect(svgEditOptions('polygon').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'shadow', 'opacity', 'transform']);
     for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'polygon')) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('shape');
       expect(svgHasShape(subtype)).toBe(false);
@@ -125,10 +134,9 @@ describe('svgEditOptions', () => {
     const options = svgEditOptions('mystery' as SVGSubtypeKind);
     expect(options[0].icon).toBe('vector-polyline');
     expect(options[0].action).toBe('stroke');
-    // …and offers it neither of the two subtype-specific bars.
-    // …plus Transform, which every subtype has.
-    expect(options).toHaveLength(2);
-    expect(options[1].action).toBe('transform');
+    // …and offers it neither of the two subtype-specific bars — just
+    // Stroke and the shared tail.
+    expect(options.map((o) => o.action)).toEqual(['stroke', 'shadow', 'opacity', 'transform']);
   });
 
   it('exposes the same menus through the whole-table export', () => {
@@ -172,11 +180,8 @@ describe('svgHasFill', () => {
 });
 
 describe('svgHasOpacity', () => {
-  it('is true for every closed subtype and no open one', () => {
-    for (const subtype of FILLED) expect(svgHasOpacity(subtype)).toBe(true);
-    for (const subtype of SUBTYPES.filter((s) => !FILLED.includes(s))) {
-      expect(svgHasOpacity(subtype)).toBe(false);
-    }
+  it('is true for EVERY subtype — a line fades as readily as a rectangle', () => {
+    for (const subtype of SUBTYPES) expect(svgHasOpacity(subtype)).toBe(true);
   });
 
   it('agrees with the option menu', () => {

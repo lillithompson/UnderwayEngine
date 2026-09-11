@@ -41,7 +41,7 @@ describe('the rig option set', () => {
     expect(SRC).toContain('RIG_PART_PAGES.map((opt) => ({');
     expect(SRC).toContain("typeSpecs.push({ key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') });");
     // …and the Opacity page stays open for a rig rather than folding away.
-    expect(SRC).toContain('const canOpacity = model.showImageEdit || model.showPaintOptions || svgOpacityable || model.showRigOptions || model.showInvert;');
+    expect(SRC).toContain('model.showRigOptions || model.showInvert || model.showTextStyle;');
     expect(SRC).not.toContain('RIG_PART_OPTIONS');
   });
 

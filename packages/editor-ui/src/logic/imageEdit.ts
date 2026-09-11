@@ -18,7 +18,8 @@ export type ImageEditAction =
   | 'crop'
   | 'shadow'
   | 'border'
-  | 'opacity';
+  | 'opacity'
+  | 'transform';
 
 /** The actions a MULTI-selection of images drops — the single-target ones. */
 export function isSingleImageAction(action: ImageEditAction): boolean {
@@ -39,6 +40,7 @@ export const IMAGE_EDIT_OPTIONS: readonly ImageEditOption[] = [
   { action: 'shadow', label: 'Shadow', icon: 'box-shadow' },
   { action: 'border', label: 'Border', icon: 'border-outside' },
   { action: 'opacity', label: 'Opacity', icon: 'opacity' },
+  { action: 'transform', label: 'Copies', icon: 'content-copy' },
 ];
 
 /** Travel (px, either direction) that commits a swipe — the panel's sideways

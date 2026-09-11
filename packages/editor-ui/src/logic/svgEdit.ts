@@ -28,6 +28,8 @@ import type { SVGSubtypeKind } from '../adapter';
  *  - `endpoints` opens the Endpoints page — a marker (none / circle / arrow)
  *    for each of an open path's two loose ends. (The cap control that used
  *    to sit under them is gone; see EndpointsBar.)
+ *  - `shadow` opens the Drop Shadow page — the same page an image and a
+ *    text open, cast by the path instead of by a box.
  *  - `opacity` opens the Opacity bar — the whole object's render opacity plus
  *    an edge soften (0 = hard edges, 1 = transparent toward the edges).
  *  - `transform` opens the Copies page — Create copies: a count, a position
@@ -35,7 +37,7 @@ import type { SVGSubtypeKind } from '../adapter';
  *    the one before. Every subtype has it; a line repeats as readily as a
  *    shape. (The key predates the page's rename; the object's own rotation
  *    is the two-finger twist and the selection tool's Rotate slider.) */
-export type SVGEditAction = 'stroke' | 'shape' | 'fill' | 'endpoints' | 'opacity' | 'transform';
+export type SVGEditAction = 'stroke' | 'shape' | 'fill' | 'endpoints' | 'shadow' | 'opacity' | 'transform';
 
 export interface SVGEditOption {
   action: SVGEditAction;
@@ -86,17 +88,18 @@ export function svgHasEndpoints(subtype: SVGSubtypeKind): boolean {
 }
 
 /**
- * Whether a subtype offers the Opacity bar (whole-object opacity + edge
+ * Whether a subtype offers the Opacity page (whole-object opacity + edge
  * soften).
  *
- * The same closed shapes the Fill bar takes — softening an edge into
- * transparency needs an enclosed silhouette to fade, and the open paths
- * already read as weightless lines. Kept a separate predicate from
- * {@link svgHasFill} rather than an alias because the two menus answer
- * different questions and are free to diverge again.
+ * EVERY subtype does. It was once the closed shapes alone, on the reasoning
+ * that softening an edge into transparency wants an enclosed silhouette —
+ * but the first slider on that page is plain opacity, which a line wants as
+ * much as a rectangle does, and fading one was simply unreachable. Kept as
+ * a predicate rather than inlined: Shadow and Opacity now go to every
+ * subtype together, and naming them says so.
  */
-export function svgHasOpacity(subtype: SVGSubtypeKind): boolean {
-  return svgHasFill(subtype);
+export function svgHasOpacity(_subtype: SVGSubtypeKind): boolean {
+  return true;
 }
 
 /**
@@ -124,11 +127,14 @@ export function svgHasShape(subtype: SVGSubtypeKind): boolean {
   return subtype === 'rectangle' || subtype === 'polygon';
 }
 
-/** The option menu for one vector subtype, in display order. Stroke leads — it
- *  is the one action every subtype has — then Shape on the polygonal ones,
- *  then the subtype's own next action: Fill on the shapes that enclose an
- *  area, Endpoints on the paths that don't close — then Opacity on the
- *  closed shapes, and Copies last. */
+/** The option menu for one vector subtype, in display order. Stroke leads —
+ *  it is the one action every subtype has — then Shape on the polygonal
+ *  ones, then the subtype's own next action: Fill on the shapes that
+ *  enclose an area, Endpoints on the paths that don't.
+ *
+ *  The last three are the SHARED TAIL every kind of object ends on, vector
+ *  or not — Shadow, Opacity, Copies — so the pages an image, a text and a
+ *  line have in common sit in the same order wherever you are. */
 export function svgEditOptions(subtype: SVGSubtypeKind): readonly SVGEditOption[] {
   const options: SVGEditOption[] = [
     { action: 'stroke', label: 'Stroke', icon: STROKE_ICON[subtype] ?? STROKE_ICON.stroke },
@@ -136,6 +142,7 @@ export function svgEditOptions(subtype: SVGSubtypeKind): readonly SVGEditOption[
   if (svgHasShape(subtype)) options.push({ action: 'shape', label: 'Shape', icon: 'rounded-corner' });
   if (svgHasFill(subtype)) options.push({ action: 'fill', label: 'Fill', icon: 'format-color-fill' });
   if (svgHasEndpoints(subtype)) options.push({ action: 'endpoints', label: 'Ends', icon: 'ray-start-end' });
+  options.push({ action: 'shadow', label: 'Shadow', icon: 'box-shadow' });
   if (svgHasOpacity(subtype)) options.push({ action: 'opacity', label: 'Opacity', icon: 'opacity' });
   options.push({ action: 'transform', label: 'Copies', icon: 'content-copy' });
   return options;

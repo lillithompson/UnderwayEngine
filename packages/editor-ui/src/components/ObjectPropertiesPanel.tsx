@@ -411,10 +411,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const colorable = colorRows.length > 0;
   const typeSubmenuOrder: SubmenuKey[] =
     model.showImageEdit ? (multi
-      ? ['shadow', 'border', 'opacity']
-      : [...(model.onReplaceImage ? (['image'] as const) : []), 'crop', 'shadow', 'border', 'opacity'])
+      ? ['shadow', 'border', 'opacity', 'transform']
+      : [...(model.onReplaceImage ? (['image'] as const) : []), 'crop', 'shadow', 'border', 'opacity', 'transform'])
     : model.showFrameOptions ? ['shadow', 'border']
-    : model.showTextStyle ? ['font', 'spacing', 'align', 'shadow']
+    : model.showTextStyle ? ['font', 'spacing', 'align', 'shadow', 'opacity', 'transform']
     // A word sticker: Opacity (its Color page joins below).
     : model.showInvert ? ['opacity']
     : model.showPaintOptions ? ['opacity']
@@ -437,6 +437,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
           ...(svgShapeable ? (['shape'] as const) : []),
           ...(svgFillable ? (['svgFill'] as const) : []),
           ...(svgEndable ? (['endpoints'] as const) : []),
+          // …then the tail every kind shares — Shadow, Opacity, Copies.
+          'shadow',
           ...(svgOpacityable ? (['opacity'] as const) : []),
           ...(svgTransformable ? (['transform'] as const) : []),
         ]
@@ -494,6 +496,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const svgActionSubmenu = (action: string): SubmenuKey =>
     action === 'fill' ? 'svgFill'
     : action === 'shape' ? 'shape'
+    : action === 'shadow' ? 'shadow'
     : action === 'endpoints' ? 'endpoints'
     : action === 'opacity' ? 'opacity'
     : action === 'transform' ? 'transform'
@@ -637,7 +640,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // Shadow but not Border, so a text selection must not drag the Shadow page
   // down with a rule written for the pair.
   useEffect(() => {
-    const canShadow = model.showImageEdit || model.showFrameOptions || model.showTextStyle;
+    const canShadow = model.showImageEdit || model.showFrameOptions || model.showTextStyle
+      || model.showSvgOptions;
     const canBorder = model.showImageEdit || model.showFrameOptions;
     if (!model.visible || !canShadow) model.onShadowOpenChange?.(false);
     if (!model.visible || !canBorder) model.onBorderOpenChange?.(false);
@@ -647,19 +651,20 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // model.on*OpenChange are stable setters; listing the whole model would
     // re-run this every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showImageEdit, model.showFrameOptions, model.showTextStyle]);
+  }, [model.visible, model.showImageEdit, model.showFrameOptions, model.showTextStyle, model.showSvgOptions]);
   // The Opacity page is shared by images, paint islands, the closed vector
   // shapes, rigs and word stickers, so it folds away only when the
   // selection is none of those (or the panel hides).
   useEffect(() => {
-    const canOpacity = model.showImageEdit || model.showPaintOptions || svgOpacityable || model.showRigOptions || model.showInvert;
+    const canOpacity = model.showImageEdit || model.showPaintOptions || svgOpacityable
+      || model.showRigOptions || model.showInvert || model.showTextStyle;
     if ((!model.visible || !canOpacity) && model.opacityOpen) {
       model.onOpacityOpenChange?.(false);
     }
     // model.on* are stable setters; listing the whole model would re-run this
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showImageEdit, model.showPaintOptions, svgOpacityable, model.showRigOptions, model.showInvert, model.opacityOpen]);
+  }, [model.visible, model.showImageEdit, model.showPaintOptions, svgOpacityable, model.showRigOptions, model.showInvert, model.showTextStyle, model.opacityOpen]);
   // The panel-kept pages fold away when the selection stops offering them
   // (or the panel hides), like the host's pages do.
   const imageable = !!model.showImageEdit && !!model.onReplaceImage && !multi;
@@ -1019,7 +1024,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     activeBarEl = (
       <OpacityBar
         opacity={opacityForBar}
-        showSoften={!model.showInvert}
+        showSoften={!model.showInvert && !model.showTextStyle}
         onChange={(o) => applyOpacity(o, false)}
         onCommit={(o) => applyOpacity(o, true)}
       />
@@ -1073,7 +1078,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     imageHasResolution: formatPixelSize(model.imagePixelSize) !== null,
     // A word sticker fades as a whole: no Soften row. Its Color page is the
     // one Invert row.
-    opacitySoften: !model.showInvert,
+    opacitySoften: !model.showInvert && !model.showTextStyle,
     colorRows: colorRows.length,
     // The image / frame border offers every row; a vector's stroke drops the
     // ones its subtype has no answer for.
@@ -1310,6 +1315,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       { key: 'spacing', label: 'Spacing', sub: 'spacing', onPress: () => openSubmenu('spacing') },
       { key: 'align', label: 'Align', sub: 'align', onPress: () => openSubmenu('align') },
       { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },
+      { key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },
+      { key: 'transform', label: 'Copies', sub: 'transform', onPress: () => openSubmenu('transform') },
     ];
   }
   if (colorable) {

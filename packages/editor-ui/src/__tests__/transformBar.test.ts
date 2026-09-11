@@ -22,7 +22,8 @@ describe('the Copies option', () => {
       const last = options[options.length - 1];
       expect(last).toEqual({ action: 'transform', label: 'Copies', icon: 'content-copy' });
     }
-    expect(svgEditOptions('line').map((o) => o.action)).toEqual(['stroke', 'endpoints', 'transform']);
+    expect(svgEditOptions('line').map((o) => o.action))
+      .toEqual(['stroke', 'endpoints', 'shadow', 'opacity', 'transform']);
   });
 
   it('stands as three two-slider groups and a button row — no rotation row, and no well', () => {

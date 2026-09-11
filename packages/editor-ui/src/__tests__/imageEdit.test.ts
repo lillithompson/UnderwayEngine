@@ -11,7 +11,7 @@ describe('IMAGE_EDIT_OPTIONS', () => {
     // Pages saved with an image tint keep rendering it; only the page is
     // gone from the row.
     expect(IMAGE_EDIT_OPTIONS.map((o) => o.action)).toEqual([
-      'image', 'crop', 'shadow', 'border', 'opacity',
+      'image', 'crop', 'shadow', 'border', 'opacity', 'transform',
     ]);
   });
   test('every option opens a page — Replace is a control ON the Image page, not an option', () => {

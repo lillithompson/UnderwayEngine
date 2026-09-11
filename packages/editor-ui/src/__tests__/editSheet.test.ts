@@ -210,7 +210,7 @@ describe('the pages have no chrome of their own', () => {
     expect(image).toContain('accessibilityLabel={`Image resolution ${resolution}`}');
     // The page leads an image's tabs, and exists only where the host wired
     // Replace up.
-    expect(PANEL).toContain("[...(model.onReplaceImage ? (['image'] as const) : []), 'crop', 'shadow', 'border', 'opacity'])");
+    expect(PANEL).toContain("[...(model.onReplaceImage ? (['image'] as const) : []), 'crop', 'shadow', 'border', 'opacity', 'transform'])");
     expect(PANEL).toContain(".filter((opt) => opt.action !== 'image' || !!model.onReplaceImage)");
     // A multi-selection drops it with Crop: one photo, one frame.
     expect(PANEL).toContain('.filter((opt) => !multi || !isSingleImageAction(opt.action))');
@@ -404,7 +404,7 @@ describe('the panel drives the sheet', () => {
     expect(align).not.toContain('Bend');
     // …and the panel offers them as two tabs.
     expect(PANEL).toContain("{ key: 'spacing', label: 'Spacing', sub: 'spacing', onPress: () => openSubmenu('spacing') },");
-    expect(PANEL).toContain("model.showTextStyle ? ['font', 'spacing', 'align', 'shadow']");
+    expect(PANEL).toContain("model.showTextStyle ? ['font', 'spacing', 'align', 'shadow', 'opacity', 'transform']");
   });
 
   it('text offers Type · Spacing · Align · Shadow — no Edit tab; a tap on the text edits its content', () => {
@@ -422,6 +422,9 @@ describe('the panel drives the sheet', () => {
     expect(PANEL).toContain("const colorTab: OptionSpec = { key: 'color', label: 'Color', sub: 'color', onPress: () => openSubmenu('color') };");
     expect(PANEL).toContain("{ key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },");
     expect(PANEL).toContain(": model.showInvert ? ['opacity']");
+    // A sticker's opacity is its ink alpha, so the page drops Soften — as
+    // plain text's does, for the same reason.
+    expect(PANEL).toContain('!model.showInvert && !model.showTextStyle');
     // Its card scheme IS its colour, so the Color tab leads.
     expect(PANEL).toContain('model.showFrameOptions || !!model.showInvert;');
     // Invert is no longer a tab of its own.
@@ -439,9 +442,9 @@ describe('the panel drives the sheet', () => {
     expect(PANEL).toContain("(localSub === 'color' && !colorable)");
     // Opacity: the page an image opens, kept open for a sticker, its Soften
     // row dropped and its height counted without it.
-    expect(PANEL).toContain('svgOpacityable || model.showRigOptions || model.showInvert;');
-    expect(PANEL).toContain('showSoften={!model.showInvert}');
-    expect(PANEL).toContain('opacitySoften: !model.showInvert,');
+    expect(PANEL).toContain('model.showRigOptions || model.showInvert || model.showTextStyle;');
+    expect(PANEL).toContain('showSoften={!model.showInvert && !model.showTextStyle}');
+    expect(PANEL).toContain('opacitySoften: !model.showInvert && !model.showTextStyle,');
     const opacity = SRC('components', 'OpacityBar.tsx');
     expect(opacity).toContain('{showSoften ? (');
   });
