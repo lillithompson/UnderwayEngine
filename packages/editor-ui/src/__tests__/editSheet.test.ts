@@ -205,6 +205,14 @@ describe('the panel drives the sheet', () => {
     expect(PANEL).toContain('const displaySub: SubmenuKey | null = activeSub ?? (sheetOpen ? null : lastSubRef.current);');
   });
 
+  it('text offers Type · Align · Shadow — no Edit tab; a tap on the text edits its content', () => {
+    expect(PANEL).not.toContain("key: 'edit'");
+    expect(PANEL).not.toContain('showEdit');
+    expect(PANEL).not.toContain('model.onEdit');
+    expect(SRC('adapter.ts')).not.toContain('showEdit');
+    expect(SRC('adapter.ts')).not.toContain('onEdit(): void;');
+  });
+
   it('a tab that opens a page opens it — it never toggles the page closed', () => {
     // The old options toggled their bar; a lit tab pressed again stays lit.
     expect(PANEL).not.toContain('toggleShadow');

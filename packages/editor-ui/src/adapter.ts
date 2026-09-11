@@ -362,25 +362,22 @@ export interface ObjectPropertiesModel {
    *  (Replace / Crop), and the selection gets a carousel page of its own
    *  (see {@link onAlign}). Default 'single'. */
   mode?: 'single' | 'multi' | 'group';
-  /** Show the Edit action (editable text selected): a second-row button that
-   *  invokes onEdit to edit the text content. */
-  showEdit: boolean;
   /** Selection is an editable image: the panel's second row shows the image-
    *  edit options (replace / tint / crop / shadow / border), Crop/Shadow/Border
    *  opening their effect bar. Text vs image are mutually exclusive. */
   showImageEdit?: boolean;
-  /** Show the Type action (editable text selected): a second-row button that
-   *  slides the Text bar in over the panel — a two-page carousel of Font
-   *  (color / family / weight / size) and Align (character / line spacing /
-   *  horizontal + vertical alignment). Sits beside the Edit button (which edits
-   *  the content). It also brings the Shadow option, which opens the SAME Drop
-   *  Shadow bar an image gets (see `shadow` / `onShadow`). */
+  /** Selection is editable text: the Edit sheet offers the Type and Align
+   *  tabs (the Text pages: color / family / weight / size, and character /
+   *  line spacing / horizontal + vertical alignment) and the Shadow tab,
+   *  which opens the SAME Drop Shadow page an image gets (see `shadow` /
+   *  `onShadow`). Editing the CONTENT is not a tab: a tap on the selected
+   *  text opens the host's text overlay. */
   showTextStyle?: boolean;
   /** Selection is a word sticker (magnetic poetry): the panel's second row
    *  shows a single Invert toggle instead of the text typography options. The
-   *  sticker's content and typography are fixed, so Edit / Type / Align are
+   *  sticker's content and typography are fixed, so Type / Align are
    *  suppressed and this is the only type-specific option. Mutually exclusive
-   *  with showTextStyle / showEdit (a sticker sets neither). */
+   *  with showTextStyle (a sticker sets neither). */
   showInvert?: boolean;
   /** The sticker's current invert state, so the Invert button can reflect it. */
   inverted?: boolean;
@@ -626,7 +623,6 @@ export interface ObjectPropertiesModel {
    *  unlocked so one press finishes the job instead of inverting it into a
    *  differently-mixed one. */
   locked: boolean;
-  onEdit(): void;
   // (The image Tint page was removed: images no longer offer a tint bar.
   // TintModel lives on as the Fill bar's model — see `svgFill` — and pages
   // saved with an image tint keep rendering it; only the UI is gone.)

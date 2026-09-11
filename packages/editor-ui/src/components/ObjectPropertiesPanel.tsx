@@ -284,7 +284,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // kind to have one); `multi` is what the SELECTION offers, whatever it is
   // made of. Both render on the sheet's ONE tab row — kind options first,
   // then the selection's — which scrolls if it must.
-  const hasTypeOptions = !!model.showImageEdit || !!model.showEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showStrokeOptions || !!model.showRigOptions || showUngroup;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showStrokeOptions || !!model.showRigOptions || showUngroup;
   const hasMultiOptions = showLayout || showGroup || showMerge;
   const hasOptions = hasTypeOptions || hasMultiOptions;
   // Signature of the current selection's option set. It changes when the
@@ -293,7 +293,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // subtype is part of it so switching between two vector objects with
   // different menus (a line → a rectangle) re-lands the sheet.
   const typeSig = model.visible
-    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showEdit ? 'e' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showPatternOptions ? 'P' : ''}${model.showStrokeOptions ? 'S' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
+    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showPatternOptions ? 'P' : ''}${model.showStrokeOptions ? 'S' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
     : '';
   const prevTypeSig = useRef('');
   useEffect(() => {
@@ -1154,17 +1154,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // has a stroke and nothing else in common, so the row is Stroke alone
     // — the open-path page, which the host lands on all of them.
     typeSpecs = [strokeSpec()];
-  } else if (model.showEdit || model.showTextStyle) {
-    // Edit (content) · Type (opens the Text controls on the Font page) ·
-    // Align (opens them straight on the Align page) · Shadow. Type / Align
-    // both show the same two-page Text controls; they differ only in which
-    // page it lands on. Shadow is the image's own page, unchanged — one Drop
-    // Shadow control for every object that can cast one.
-    typeSpecs = [];
-    if (model.showEdit) typeSpecs.push({ key: 'edit', label: 'Edit', onPress: model.onEdit });
-    if (model.showTextStyle) typeSpecs.push({ key: 'type', label: 'Type', sub: 'font', onPress: () => openSubmenu('font') });
-    if (model.showTextStyle) typeSpecs.push({ key: 'align', label: 'Align', sub: 'align', onPress: () => openSubmenu('align') });
-    if (model.showTextStyle) typeSpecs.push({ key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') });
+  } else if (model.showTextStyle) {
+    // Type (opens the Text controls on the Font page) · Align (opens them
+    // straight on the Align page) · Shadow. Type / Align both show the same
+    // two-page Text controls; they differ only in which page it lands on.
+    // Shadow is the image's own page, unchanged — one Drop Shadow control
+    // for every object that can cast one. Editing the CONTENT is not a tab:
+    // a tap on the selected text opens the host's overlay.
+    typeSpecs = [
+      { key: 'type', label: 'Type', sub: 'font', onPress: () => openSubmenu('font') },
+      { key: 'align', label: 'Align', sub: 'align', onPress: () => openSubmenu('align') },
+      { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },
+    ];
   }
   if (showUngroup) {
     // A GROUP is a type of selection, and Ungroup is the option that type has:

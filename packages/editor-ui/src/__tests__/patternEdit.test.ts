@@ -496,7 +496,7 @@ describe('Repeat rides the Tools bar', () => {
   );
   const patternBranch = PANEL.slice(
     PANEL.indexOf('} else if (model.showPatternOptions) {'),
-    PANEL.indexOf('} else if (model.showEdit || model.showTextStyle) {'),
+    PANEL.indexOf('} else if (model.showTextStyle) {'),
   );
 
   it('is a row on the Tools bar, toggled through the same handler', () => {

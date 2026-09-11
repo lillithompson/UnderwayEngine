@@ -39,7 +39,7 @@ describe('the panel offers a Stroke-only type row for a mixed vector + pattern s
     expect(SRC).toContain('} else if (model.showStrokeOptions) {');
     const branch = SRC.slice(
       SRC.indexOf('} else if (model.showStrokeOptions) {'),
-      SRC.indexOf('} else if (model.showEdit || model.showTextStyle) {'),
+      SRC.indexOf('} else if (model.showTextStyle) {'),
     );
     expect(branch).toContain('typeSpecs = [strokeSpec()];');
     // One definition of the Stroke option: the pattern row lists it too.
