@@ -110,27 +110,62 @@ describe('the pages have no chrome of their own', () => {
     }
   });
 
-  it('a colour-bearing page keeps its swatch in an aside column to the left of its rows', () => {
-    expect(BAR).toContain('export function ColorAside(');
+  it('no page carries a colour swatch any more — a colour is a Color row', () => {
     expect(BAR).toContain('export function BarBody(');
-    for (const [file, label] of [
-      ['BorderBar.tsx', '{`${title} color`}'],
-      ['TintBar.tsx', '{`${title} color`}'],
-      ['TextBar.tsx', '"Text color"'],
-      ['ShadowBar.tsx', '"Drop shadow color"'],
-    ]) {
-      const src = SRC('components', file);
-      expect([file, src.includes('<ColorAside')]).toEqual([file, true]);
-      expect([file, src.includes(`label=${label}`)]).toEqual([file, true]);
+    expect(BAR).not.toContain('ColorAside');
+    // Not one page opens the picker itself: the Color page's rows do (the
+    // Tint page's onPickColor is the gradient STOP editor's, a control
+    // inside the page).
+    for (const file of PAGE_FILES) {
+      expect([file, SRC('components', file).includes('<ColorAside')]).toEqual([file, false]);
     }
-    // The Shadow page: the offset pad over the swatch, its sliders spread to
-    // the column's height beside them.
+    for (const file of PAGE_FILES.filter((f) => f !== 'TintBar.tsx')) {
+      expect([file, SRC('components', file).includes('onPickColor')]).toEqual([file, false]);
+    }
+    // The one aside left is the Shadow page's offset pad, with its sliders
+    // spread beside it.
     const shadow = SRC('components', 'ShadowBar.tsx');
-    expect(shadow).toMatch(/<BarBody\s+spread\s+aside=\{\(\s*<>\s*<XYPad/);
-    // Pages with nothing coloured have no aside.
-    for (const file of ['OpacityBar.tsx', 'CropBar.tsx', 'EndpointsBar.tsx', 'LayoutBar.tsx', 'TransformBar.tsx', 'RigPoseBar.tsx']) {
+    expect(shadow).toMatch(/<BarBody\s+spread\s+aside=\{\(\s*<XYPad/);
+    for (const file of PAGE_FILES.filter((f) => f !== 'ShadowBar.tsx')) {
       expect([file, SRC('components', file).includes('aside=')]).toEqual([file, false]);
     }
+  });
+
+  it('the Color page lists every colour the selection can pick, labelled, in one place', () => {
+    const color = SRC('components', 'ColorBar.tsx');
+    // A row is a swatch that opens the host's picker, or a toggle (a word
+    // sticker's Invert, its one colour setting).
+    expect(color).toContain("kind: 'swatch'");
+    expect(color).toContain("kind: 'toggle'");
+    expect(color).toContain('<ColorSwatchFill color={row.color} />');
+    expect(color).toContain('accessibilityLabel={`${row.label} color`}');
+    expect(color).toContain('<Text style={styles.swatchLabel}>{row.label}</Text>');
+    // The panel builds the rows off the MODEL (the host's picker changes the
+    // colours; nothing here drafts them), one per colour the selection has.
+    for (const [label, pick] of [
+      ['Background', 'model.onPickFrameBackground'],
+      ['Text', 'model.onPickTextColor'],
+      ['Fill', 'model.onPickSvgFillColor'],
+      ['Stroke', 'model.onPickStrokeColor'],
+      ['Shadow', 'model.onPickShadowColor'],
+      ['Border', 'model.onPickBorderColor'],
+    ]) {
+      const row = PANEL.slice(PANEL.indexOf(`label: '${label}'`), PANEL.indexOf(`label: '${label}'`) + 220);
+      expect([label, row.includes(pick)]).toEqual([label, true]);
+    }
+    // An effect with no colour yet (its Add page is where it starts) lists
+    // no row.
+    expect(PANEL).toContain("model.shadowPresent !== false && model.onPickShadowColor");
+    expect(PANEL).toContain("model.borderPresent !== false && model.onPickBorderColor");
+    expect(PANEL).toContain("model.svgFillPresent !== false && model.onPickSvgFillColor");
+    expect(PANEL).toContain("model.strokePresent !== false && model.onPickStrokeColor");
+    // A selection with no colour at all (a rig, a paint island) gets no tab.
+    expect(PANEL).toContain('const colorable = colorRows.length > 0;');
+    // The tab leads for a selection whose colour IS the thing, trails
+    // otherwise — the tab row and the page order agree on which.
+    expect(PANEL).toContain('const colorFirst = !!model.showFrameOptions || !!model.showInvert;');
+    expect(PANEL).toContain("? ['color', ...typeSubmenuOrder] : [...typeSubmenuOrder, 'color']");
+    expect(PANEL).toContain('typeSpecs = colorFirst ? [colorTab, ...(typeSpecs ?? [])] : [...(typeSpecs ?? []), colorTab];');
   });
 
   it('the Crop page: no Mode label, no Replace, no resolution line', () => {
@@ -236,14 +271,16 @@ describe('the panel drives the sheet', () => {
     expect(SRC('adapter.ts')).not.toContain('onEdit(): void;');
   });
 
-  it('a word sticker offers Color (its Invert toggle) and Opacity (whole-magnet, no Soften)', () => {
-    expect(PANEL).toContain("{ key: 'color', label: 'Color', sub: 'color', onPress: () => openSubmenu('color') },");
+  it('a word sticker offers Color (its Invert toggle) first, then Opacity (whole-magnet, no Soften)', () => {
+    expect(PANEL).toContain("const colorTab: OptionSpec = { key: 'color', label: 'Color', sub: 'color', onPress: () => openSubmenu('color') };");
     expect(PANEL).toContain("{ key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },");
-    expect(PANEL).toContain(": model.showInvert ? ['color', 'opacity']");
+    expect(PANEL).toContain(": model.showInvert ? ['opacity']");
+    // Its card scheme IS its colour, so the Color tab leads.
+    expect(PANEL).toContain('model.showFrameOptions || !!model.showInvert;');
     // Invert is no longer a tab of its own.
     expect(PANEL).not.toContain("label: 'Invert', toggled: model.inverted");
-    // The Color page lists the Invert toggle as its one row…
-    expect(PANEL).toContain("[{ key: 'invert', kind: 'toggle', label: 'Invert', on: !!model.inverted, onToggle: () => model.onInvert?.() }]");
+    // The Color page lists the Invert toggle as its row…
+    expect(PANEL).toContain("colorRows.push({ key: 'invert', kind: 'toggle', label: 'Invert', on: !!model.inverted, onToggle: () => model.onInvert?.() });");
     expect(PANEL).toContain("if (displaySub === 'color') {\n    activeBarEl = <ColorBar rows={colorRows} />;");
     const color = SRC('components', 'ColorBar.tsx');
     expect(color).toContain('<MultiToggleRow');
@@ -282,13 +319,13 @@ describe('the panel drives the sheet', () => {
     const shape = SRC('components', 'ShapeBar.tsx');
     expect(shape).toContain('<RadiusRow cornerRadius={cornerRadius} onCornerRadius={onCornerRadius} />');
     // The Stroke page: no Radius, and Position's cells name themselves.
-    const stroke = PANEL.slice(PANEL.indexOf('title="Stroke"'), PANEL.indexOf("} else if (displaySub && rigPartOfSubmenu(displaySub)) {"));
+    const stroke = PANEL.slice(PANEL.indexOf("} else if (displaySub === 'stroke') {"), PANEL.indexOf("} else if (displaySub && rigPartOfSubmenu(displaySub)) {"));
     expect(stroke).toContain('showRadius={false}');
     expect(stroke).toContain('labelPosition={false}');
     const border = SRC('components', 'BorderBar.tsx');
     expect(border).toContain("label={labelPosition ? 'Position' : undefined}");
     // The image's Border page keeps both, untouched.
-    const imageBorder = PANEL.slice(PANEL.indexOf("} else if (displaySub === 'border') {"), PANEL.indexOf('title="Stroke"'));
+    const imageBorder = PANEL.slice(PANEL.indexOf("} else if (displaySub === 'border') {"), PANEL.indexOf("} else if (displaySub === 'stroke') {"));
     expect(imageBorder).not.toContain('showRadius');
     expect(imageBorder).not.toContain('labelPosition');
   });

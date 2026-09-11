@@ -21,13 +21,13 @@ import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK } from '../theme';
 import { CheckerboardFill, ColorSwatchFill } from './ColorSwatch';
 import { ROW_PILL } from '../logic/submenuHeight';
 import {
-  ACCENT, BarBody, ColorAside, LABEL, PILL_CHEVRON, PILL_TRACK,
+  ACCENT, BarBody, LABEL, PILL_CHEVRON, PILL_TRACK,
   SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL, SHEET_ROW_ACTIVE,
   SHEET_TEXT, SliderRow,
 } from './effectBar';
 
-// The image Tint page (design "6a"): its contents vary by Type. The gradient
-// swatch sits in the aside column; beside it:
+// The image Tint page (design "6a"): its contents vary by Type (the colour
+// itself is the Color page's):
 //   • Type      — segmented Solid / Linear / Radial (unless `solidOnly`, which
 //                 drops the control, the gradient rows and the Blend row — the
 //                 shape Fill page, where a fill is always one flat color
@@ -53,10 +53,10 @@ const BTN_TRACK = PANEL_TRACK;
 const STOP_SELECTED = PANEL_INK;
 const STOP_UNSELECTED = 'rgba(255,255,255,0.85)';
 
-/** A small gradient fill (expo LinearGradient) used by the aside swatch and the
- *  stop bar. `diagonal` renders a 135°-ish preview (the swatch); otherwise it's
- *  a left→right ramp (the stop bar's positional view). */
-function Ramp({ tint, diagonal }: { tint: TintModel; diagonal?: boolean }) {
+/** The stop bar's gradient fill (expo LinearGradient): a left→right ramp,
+ *  the positional view the stops are dragged along. (Its 135° form was the
+ *  aside swatch's, which the Color page replaced.) */
+function Ramp({ tint }: { tint: TintModel }) {
   if (tint.type === 'solid') {
     return <ColorSwatchFill color={tint.solid} />;
   }
@@ -71,7 +71,7 @@ function Ramp({ tint, diagonal }: { tint: TintModel; diagonal?: boolean }) {
         colors={colors as [string, string, ...string[]]}
         locations={locations as [number, number, ...number[]]}
         start={{ x: 0, y: 0 }}
-        end={diagonal ? { x: 1, y: 1 } : { x: 1, y: 0 }}
+        end={{ x: 1, y: 0 }}
         style={StyleSheet.absoluteFill}
       />
     </>
@@ -242,11 +242,7 @@ function BlendSheet({ current, onPick, onClose }: {
   );
 }
 
-export function TintBar({ title = 'Tint', tint, solidOnly, onChange, onCommit, onPickColor, onAddStop, onSheetOpenChange }: {
-  /** What the swatch is the colour of, for accessibility. Defaults to the
-   *  image tint; the Fill page passes 'Fill' — it is this same page pointed
-   *  at a closed shape's interior (see `svgHasFill`). */
-  title?: string;
+export function TintBar({ tint, solidOnly, onChange, onCommit, onPickColor, onAddStop, onSheetOpenChange }: {
   /** Solid color only: the Type segmented control, the gradient rows and the
    *  Blend row are dropped, and every edit writes `type: 'solid'` and
    *  `blend: 'normal'` — the shape Fill page, where a fill is always one flat
@@ -258,7 +254,8 @@ export function TintBar({ title = 'Tint', tint, solidOnly, onChange, onCommit, o
   onChange: (t: TintModel) => void;
   /** Commit as one undo step (release, Type / blend pick, stop add / delete). */
   onCommit: (t: TintModel) => void;
-  /** Open the color picker for the solid color / the selected stop. */
+  /** Open the color picker for the selected stop (a solid tint's colour is
+   *  the Color page's row; this serves the gradient stop editor). */
   onPickColor: () => void;
   /** Add a stop (commits) then open the color picker on it — the app sequences
    *  the picker so a fresh stop is never a dead end. */
@@ -284,9 +281,7 @@ export function TintBar({ title = 'Tint', tint, solidOnly, onChange, onCommit, o
 
   return (
     <View>
-      {/* The swatch previews the tint: solid color, a 135° linear preview, or
-          the radial gradient. Tapping it targets the solid / selected stop. */}
-      <BarBody aside={<ColorAside swatch={<Ramp tint={shown} diagonal />} label={`${title} color`} onPickColor={onPickColor} />}>
+      <BarBody>
         {!solidOnly && (
           <SegmentedRow
             label="Type"

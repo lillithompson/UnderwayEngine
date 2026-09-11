@@ -2,17 +2,17 @@ import React, { useRef } from 'react';
 import { GestureResponderEvent, PanResponder, StyleSheet, View } from 'react-native';
 import type { ShadowModel } from '../adapter';
 import { SHADOW_PAD_SIZE } from '../logic/submenuHeight';
-import { BarBody, ColorAside, CONTROL_ACCENT, SliderRow } from './effectBar';
+import { BarBody, CONTROL_ACCENT, SliderRow } from './effectBar';
 import { beginValueDrag, endValueDrag, padOffsetFromTouch, VALUE_DRAG_SURFACE } from '../logic/slider';
 import { rgbCss, withAlpha } from '../logic/hsv';
 
 // The Drop Shadow page (design "2a"): an aside column holding the XY offset
-// pad over the colour swatch, and Blur / Spread / Opacity sliders beside it,
-// spread to the column's height. Values are the app's world-cell units (see
-// the ranges below, mapped from the design's iOS-point ranges at 16px/cell).
-// The slider rows and the body layout come from the shared page grammar
-// (see effectBar.tsx); the sheet around the page — its Shadow tab and the
-// Remove line — is the Edit sheet's.
+// pad, and Blur / Spread / Opacity sliders beside it, spread to the pad's
+// height. Values are the app's world-cell units (see the ranges below,
+// mapped from the design's iOS-point ranges at 16px/cell). The slider rows
+// and the body layout come from the shared page grammar (see
+// effectBar.tsx); the sheet around the page — its Shadow tab and the Remove
+// line — is the Edit sheet's, and the shadow's colour is the Color page's.
 
 // ── Ranges (world cells; design pt ÷ 16) ─────────────────────────────
 const MAX_OFFSET = 1.5; // ±  (≈ ±24pt)
@@ -80,11 +80,10 @@ function XYPad({ dx, dy, onChange, onCommit }: {
   );
 }
 
-export function ShadowBar({ shadow, onChange, onCommit, onPickColor }: {
+export function ShadowBar({ shadow, onChange, onCommit }: {
   shadow: ShadowModel;
   onChange: (s: ShadowModel) => void;
   onCommit: (s: ShadowModel) => void;
-  onPickColor: () => void;
 }) {
   const set = (patch: Partial<ShadowModel>, committed: boolean) =>
     (committed ? onCommit : onChange)({ ...shadow, ...patch });
@@ -92,15 +91,12 @@ export function ShadowBar({ shadow, onChange, onCommit, onPickColor }: {
     <BarBody
       spread
       aside={(
-        <>
-          <XYPad
-            dx={shadow.dx}
-            dy={shadow.dy}
-            onChange={(dx, dy) => set({ dx, dy }, false)}
-            onCommit={(dx, dy) => set({ dx, dy }, true)}
-          />
-          <ColorAside color={shadow.color} label="Drop shadow color" onPickColor={onPickColor} />
-        </>
+        <XYPad
+          dx={shadow.dx}
+          dy={shadow.dy}
+          onChange={(dx, dy) => set({ dx, dy }, false)}
+          onCommit={(dx, dy) => set({ dx, dy }, true)}
+        />
       )}
     >
       <SliderRow label="Blur" value={shadow.blur / MAX_BLUR} apply={(t, c) => set({ blur: t * MAX_BLUR }, c)} />

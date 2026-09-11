@@ -1,10 +1,10 @@
 import React from 'react';
 import type { BorderModel, BorderPosition } from '../adapter';
-import { BarBody, ColorAside, SegmentedRow, SliderRow } from './effectBar';
+import { BarBody, SegmentedRow, SliderRow } from './effectBar';
 
-// The Border (stroke) page (design "3a"): the colour swatch in the aside
-// column and its rows beside it — Width, Radius, Position, Dash. It's a
-// sibling of the Drop Shadow page and shares its grammar (see effectBar.tsx).
+// The Border (stroke) page (design "3a"): Width, Radius, Position, Dash.
+// It's a sibling of the Drop Shadow page and shares its grammar (see
+// effectBar.tsx); the border's colour is the Color page's.
 // The Radius row rounds the object itself (folding in the former standalone
 // Round control), so it rides the app's cornerRadius fields rather than the
 // border model.
@@ -15,8 +15,7 @@ import { BarBody, ColorAside, SegmentedRow, SliderRow } from './effectBar';
 // path), which is why this is a row toggle rather than a copy of the
 // component; a shape's corner Radius is not a Stroke row at all but the
 // Shape page's (ShapeBar, which borrows RadiusRow below). Width and Dash
-// are universal and always render. `title` names the swatch for
-// accessibility (Border color / Stroke color).
+// are universal and always render.
 
 // ── Ranges (world cells; design pt ÷ 16) ─────────────────────────────
 const MAX_WIDTH = 1.5; // 0…24pt
@@ -55,13 +54,10 @@ export function RadiusRow({ cornerRadius, onCornerRadius }: {
   );
 }
 
-export function BorderBar({ border, cornerRadius, title = 'Border', showRadius = true, showPosition = true, labelPosition = true, onChange, onCommit, onCornerRadius, onPickColor }: {
+export function BorderBar({ border, cornerRadius, showRadius = true, showPosition = true, labelPosition = true, onChange, onCommit, onCornerRadius }: {
   border: BorderModel;
   /** Object corner rounding, a 0–0.5 fraction of the shorter side. */
   cornerRadius: number;
-  /** What the swatch is the colour of, for accessibility. Defaults to
-   *  Border; a vector selection passes Stroke. */
-  title?: string;
   /** Render the Radius row. Off for a vector's Stroke page, whose corners
    *  (when it has any) round on the Shape page. */
   showRadius?: boolean;
@@ -76,12 +72,11 @@ export function BorderBar({ border, cornerRadius, title = 'Border', showRadius =
   /** Fires the Radius row: `radius` is a 0–0.5 fraction; `committed` marks the
    *  drag release (one undo step) vs. a live preview. */
   onCornerRadius: (radius: number, committed: boolean) => void;
-  onPickColor: () => void;
 }) {
   const set = (patch: Partial<BorderModel>, committed: boolean) =>
     (committed ? onCommit : onChange)({ ...border, ...patch });
   return (
-    <BarBody aside={<ColorAside color={border.color} label={`${title} color`} onPickColor={onPickColor} />}>
+    <BarBody>
       <SliderRow
         label="Width"
         value={border.width / MAX_WIDTH}

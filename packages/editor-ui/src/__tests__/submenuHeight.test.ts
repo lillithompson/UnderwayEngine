@@ -1,8 +1,6 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
-  ASIDE_GAP,
-  ASIDE_SWATCH,
   BAR_CUSHION,
   CONTENT_PAD,
   HINT_HEIGHT,
@@ -10,7 +8,6 @@ import {
   ROW_PILL,
   ROW_SEGMENTED,
   ROW_SLIDER,
-  SHADOW_ASIDE,
   SHADOW_PAD_SIZE,
   SHEET_CONTENT_TOP,
   SHEET_PAD_BOTTOM,
@@ -58,17 +55,15 @@ describe('submenuHeight (a page’s content area)', () => {
     expect(submenuHeight('color', { colorRows: 0 })).toBe(pageOf([ROW_SEGMENTED]));
   });
 
-  test('a colour-bearing page stands at least as tall as its swatch', () => {
-    // The Fill page is one slider (48) beside a 56 swatch: the swatch wins.
-    expect(ROW_SLIDER).toBeLessThan(ASIDE_SWATCH);
-    expect(submenuHeight('svgFill')).toBe(pageOf([ROW_SLIDER], ASIDE_SWATCH));
-    expect(submenuHeight('svgFill')).toBe(CHROME + ASIDE_SWATCH);
-    // A four-row Border outstands its swatch, so the rows set it.
-    expect(submenuHeight('border')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH));
+  test('a colour-bearing page is its rows alone — its colour is the Color page’s', () => {
+    // The swatch that used to stand in an aside column beside these rows, and
+    // set a floor under their height, is a Color row now.
+    expect(submenuHeight('svgFill')).toBe(pageOf([ROW_SLIDER]));
+    expect(submenuHeight('border')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER]));
   });
 
-  test('the Text pages: Type is three rows beside the swatch, Spacing three sliders, Align two segmented rows', () => {
-    expect(submenuHeight('font')).toBe(pageOf([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH));
+  test('the Text pages: Type is three rows, Spacing three sliders, Align two segmented rows', () => {
+    expect(submenuHeight('font')).toBe(pageOf([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER]));
     // Char, Line and Bend each on a line of their own.
     expect(submenuHeight('spacing')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]));
     expect(submenuHeight('align')).toBe(pageOf([ROW_SEGMENTED, ROW_SEGMENTED]));
@@ -95,10 +90,10 @@ describe('submenuHeight (a page’s content area)', () => {
   test('the Stroke page drops the rows a subtype has no answer for, and never has Radius', () => {
     // A line has no stroke position: Width + Dash only.
     const line = submenuHeight('stroke', { strokeRows: svgStrokeRows('line') });
-    expect(line).toBe(pageOf([ROW_SLIDER, ROW_SLIDER], ASIDE_SWATCH));
+    expect(line).toBe(pageOf([ROW_SLIDER, ROW_SLIDER]));
     // A rectangle adds Position — its corner Radius is the Shape page's.
     const rect = submenuHeight('stroke', { strokeRows: svgStrokeRows('rectangle') });
-    expect(rect).toBe(pageOf([ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH));
+    expect(rect).toBe(pageOf([ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER]));
     expect(rect).toBeGreaterThan(line);
     expect(submenuHeight('shape')).toBe(pageOf([ROW_SLIDER]));
   });
@@ -115,12 +110,12 @@ describe('submenuHeight (a page’s content area)', () => {
     expect(submenuHeight('crop', { cropMode: 'tile' })).not.toBe(submenuHeight('crop', { cropMode: 'fill' }));
   });
 
-  test('the Shadow page is sized by the taller of its pad-over-swatch column and the sliders beside it', () => {
-    expect(SHADOW_ASIDE).toBe(SHADOW_PAD_SIZE + ASIDE_GAP + ASIDE_SWATCH);
-    expect(submenuHeight('shadow')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER], SHADOW_ASIDE));
-    // The pad over the swatch outstands three slider rows, so the column
-    // sets it (and the sliders spread to fill it).
-    expect(SHADOW_ASIDE).toBeGreaterThan(ROW_SLIDER * 3 + ROW_GAP * 2);
+  test('the Shadow page is sized by the taller of its offset pad and the sliders beside it', () => {
+    expect(submenuHeight('shadow')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER], SHADOW_PAD_SIZE));
+    // Its swatch left for the Color page, so the pad stands alone in the
+    // aside column — and three slider rows now outstand it, setting the
+    // height (the pad sits at their top).
+    expect(SHADOW_PAD_SIZE).toBeLessThan(ROW_SLIDER * 3 + ROW_GAP * 2);
   });
 
   test('a slider row is its caption, the gap under it, and the control line', () => {
@@ -165,11 +160,10 @@ describe('submenuHeight (a page’s content area)', () => {
   });
 
   test('the page metrics are the ones the layouts draw with', () => {
-    // The well's padding, the aside column and the swatch are laid out from
-    // these same constants (effectBar.tsx / EditSheet.tsx), so the
-    // arithmetic can't drift from the layout it predicts.
+    // The well's padding and the aside column are laid out from these same
+    // constants (effectBar.tsx / EditSheet.tsx), so the arithmetic can't
+    // drift from the layout it predicts.
     const bar = readFileSync(resolve(__dirname, '..', 'components', 'effectBar.tsx'), 'utf8');
-    expect(bar).toMatch(/swatch: \{\s*width: ASIDE_SWATCH, height: ASIDE_SWATCH/);
     expect(bar).toMatch(/body: \{[^}]*gap: ASIDE_GAP/);
     expect(bar).toMatch(/rows: \{ gap: ROW_GAP \}/);
     const sheet = readFileSync(resolve(__dirname, '..', 'components', 'EditSheet.tsx'), 'utf8');

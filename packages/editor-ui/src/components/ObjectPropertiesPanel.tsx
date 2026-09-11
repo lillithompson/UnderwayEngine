@@ -359,14 +359,53 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const svgTransformable = !!model.showSvgOptions;
   // A polygonal shape rounds its corners on the Shape page.
   const svgShapeable = !!model.showSvgOptions && svgHasShape(model.svgSubtype ?? 'stroke');
+  // Vectors and patterns share the Stroke page (and its colour).
+  const strokeable = !!model.showSvgOptions || !!model.showPatternOptions || !!model.showStrokeOptions;
+
+  // ── The Color page's rows ─────────────────────────────────────────────
+  // Every colour this selection can pick, one labelled row each, in one
+  // place: the object's own ink first (a frame's Background, a text's ink, a
+  // shape's Fill), then its Stroke, then the effects (Shadow, Border). An
+  // effect that is absent has no colour yet, so no row — its Add page is
+  // where it starts. A word sticker's colours are its card scheme, so its
+  // one row is the Invert toggle. Colours come off the MODEL (the host's
+  // picker changes them), never a draft. Empty for a selection with no
+  // colour at all (a rig, a paint island), which then has no Color tab.
+  const colorRows: ColorRowSpec[] = [];
+  if (model.showInvert) {
+    colorRows.push({ key: 'invert', kind: 'toggle', label: 'Invert', on: !!model.inverted, onToggle: () => model.onInvert?.() });
+  }
+  if (model.showFrameOptions && model.onPickFrameBackground) {
+    colorRows.push({ key: 'background', kind: 'swatch', label: 'Background', color: model.frameBackgroundColor, onPick: model.onPickFrameBackground });
+  }
+  if (model.showTextStyle && model.onPickTextColor) {
+    colorRows.push({ key: 'text', kind: 'swatch', label: 'Text', color: model.textStyle?.color, onPick: () => model.onPickTextColor?.() });
+  }
+  if (svgFillable && model.svgFillPresent !== false && model.onPickSvgFillColor) {
+    colorRows.push({ key: 'fill', kind: 'swatch', label: 'Fill', color: model.svgFill?.solid, onPick: () => model.onPickSvgFillColor?.() });
+  }
+  if (strokeable && model.strokePresent !== false && model.onPickStrokeColor) {
+    colorRows.push({ key: 'stroke', kind: 'swatch', label: 'Stroke', color: model.stroke?.color, onPick: () => model.onPickStrokeColor?.() });
+  }
+  if ((model.showImageEdit || model.showFrameOptions || model.showTextStyle) && model.shadowPresent !== false && model.onPickShadowColor) {
+    colorRows.push({ key: 'shadow', kind: 'swatch', label: 'Shadow', color: model.shadow?.color, onPick: () => model.onPickShadowColor?.() });
+  }
+  if ((model.showImageEdit || model.showFrameOptions) && model.borderPresent !== false && model.onPickBorderColor) {
+    colorRows.push({ key: 'border', kind: 'swatch', label: 'Border', color: model.border?.color, onPick: () => model.onPickBorderColor?.() });
+  }
+  // Where the Color tab sits: first for a selection whose colour IS the
+  // thing (a frame's background, a word's card scheme), after the kind's own
+  // pages otherwise.
+  const colorFirst = !!model.showFrameOptions || !!model.showInvert;
+  const colorable = colorRows.length > 0;
   const typeSubmenuOrder: SubmenuKey[] =
     model.showImageEdit ? (multi
       ? ['shadow', 'border', 'opacity']
       : ['crop', 'shadow', 'border', 'opacity'])
     : model.showFrameOptions ? ['shadow', 'border']
     : model.showTextStyle ? ['font', 'spacing', 'align', 'shadow']
-    // A word sticker: its Color page (the Invert toggle) and Opacity.
-    : model.showInvert ? ['color', 'opacity']
+    // A word sticker: Opacity (its Color page joins below).
+    : model.showInvert ? ['opacity']
     : model.showPaintOptions ? ['opacity']
     // A pattern object's pages, in the order its tab row lists them, plus
     // the Stroke page its baked tile paths share with the vectors.
@@ -391,10 +430,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
           ...(svgTransformable ? (['transform'] as const) : []),
         ]
     : [];
-  // Layout joins the tail of whatever the selection's type offers, so a
-  // mixed multi-selection's sheet has Layout alone to open and a uniform
-  // one's has its type's pages before it.
-  const submenuOrder: SubmenuKey[] = showLayout ? [...typeSubmenuOrder, 'layout'] : typeSubmenuOrder;
+  // The Color page joins the kind's pages (first or last — colorFirst), and
+  // Layout the tail of whatever the selection's type offers, so a mixed
+  // multi-selection's sheet has Layout alone to open and a uniform one's has
+  // its type's pages before it.
+  const colouredOrder: SubmenuKey[] = !colorable ? typeSubmenuOrder
+    : colorFirst ? ['color', ...typeSubmenuOrder] : [...typeSubmenuOrder, 'color'];
+  const submenuOrder: SubmenuKey[] = showLayout ? [...colouredOrder, 'layout'] : colouredOrder;
 
   const activeSub: SubmenuKey | null =
     model.layoutOpen ? 'layout'
@@ -601,7 +643,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   }, [model.visible, model.showImageEdit, model.showPaintOptions, svgOpacityable, model.showRigOptions, model.showInvert, model.opacityOpen]);
   // The panel-kept pages fold away when the selection stops offering them
   // (or the panel hides), like the host's pages do.
-  const colorable = !!model.showInvert;
   useEffect(() => {
     if (!model.visible || (localSub === 'color' && !colorable) || (localSub === 'shape' && !svgShapeable)) {
       setLocalSub(null);
@@ -674,7 +715,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // pages go with it, and also whenever the new vector selection is a subtype
   // that doesn't offer that one — a shape with no interior to fill, or a
   // closed one with no loose end to decorate.
-  const strokeable = !!model.showSvgOptions || !!model.showPatternOptions || !!model.showStrokeOptions;
   useEffect(() => {
     if ((!model.visible || !strokeable) && model.strokeOpen) {
       model.onStrokeOpenChange?.(false);
@@ -833,10 +873,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   let activeBarEl: React.ReactNode = null;
   let removeAction: { label: string; onPress: () => void } | undefined;
   let addPage = false;
-  // The Color page's rows: a word sticker's Invert toggle.
-  const colorRows: ColorRowSpec[] = model.showInvert
-    ? [{ key: 'invert', kind: 'toggle', label: 'Invert', on: !!model.inverted, onToggle: () => model.onInvert?.() }]
-    : [];
   if (displaySub === 'color') {
     activeBarEl = <ColorBar rows={colorRows} />;
   } else if (displaySub === 'shape') {
@@ -875,7 +911,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // its Type control and the gradient rows.
     activeBarEl = (
       <TintBar
-        title="Fill"
         solidOnly
         tint={svgFillForBar}
         onChange={(t) => applySvgFill(t, false)}
@@ -915,7 +950,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         shadow={shadowForBar}
         onChange={(s) => applyShadow(s, false)}
         onCommit={(s) => applyShadow(s, true)}
-        onPickColor={() => model.onPickShadowColor?.()}
       />
     );
     removeAction = { label: 'Remove drop shadow', onPress: removeShadow };
@@ -927,7 +961,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onChange={(b) => applyBorder(b, false)}
         onCommit={(b) => applyBorder(b, true)}
         onCornerRadius={(r, committed) => model.onCornerRadius?.(r, committed)}
-        onPickColor={() => model.onPickBorderColor?.()}
       />
     );
     removeAction = { label: 'Remove border', onPress: removeBorder };
@@ -939,7 +972,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     const rows = svgStrokeRows(model.svgSubtype ?? 'stroke');
     activeBarEl = (
       <BorderBar
-        title="Stroke"
         border={strokeForBar}
         cornerRadius={0}
         showRadius={false}
@@ -948,7 +980,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onChange={(b) => applyStroke(b, false)}
         onCommit={(b) => applyStroke(b, true)}
         onCornerRadius={() => {}}
-        onPickColor={() => model.onPickStrokeColor?.()}
       />
     );
     removeAction = { label: 'Remove stroke', onPress: removeStroke };
@@ -993,7 +1024,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         fonts={model.fonts ?? []}
         onChange={(s) => applyTextStyle(s, false)}
         onCommit={(s) => applyTextStyle(s, true)}
-        onPickColor={() => model.onPickTextColor?.()}
         onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
       />
     );
@@ -1116,17 +1146,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onPress: () => openSubmenu(opt.action as SubmenuKey),
       }));
   } else if (model.showFrameOptions) {
-    // Frame tabs: Background (circular color swatch) · Shadow · Border ·
-    // Ungroup. Shadow / Border reuse the image effect pages. Background opens
-    // the shared full-screen color picker.
+    // Frame tabs: Shadow · Border · Ungroup, after the Color tab that joins
+    // below (its Background row is where the frame's fill is picked). Shadow
+    // / Border reuse the image effect pages.
     typeSpecs = [
-      {
-        key: 'background',
-        label: 'Background color',
-        caption: 'Fill',
-        swatchColor: model.frameBackgroundColor,
-        onPress: model.onPickFrameBackground,
-      },
       { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },
       { key: 'border', label: 'Border', sub: 'border', onPress: () => openSubmenu('border') },
     ];
@@ -1183,11 +1206,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       typeSpecs.unshift({ key: 'svgEdit', label: 'Edit', onPress: model.onSvgEdit });
     }
   } else if (model.showInvert) {
-    // Word sticker (magnetic poetry): Color — the page holding its one colour
-    // setting, Invert (dark card ⇄ light card) — and Opacity, the whole
-    // magnet's. Content + typography are fixed, so no Type / Align.
+    // Word sticker (magnetic poetry): Opacity, the whole magnet's, after the
+    // Color tab that joins below (holding its one colour setting, Invert:
+    // dark card ⇄ light card). Content + typography are fixed, so no Type /
+    // Align.
     typeSpecs = [
-      { key: 'color', label: 'Color', sub: 'color', onPress: () => openSubmenu('color') },
       { key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },
     ];
   } else if (model.showPaintOptions) {
@@ -1234,6 +1257,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       { key: 'align', label: 'Align', sub: 'align', onPress: () => openSubmenu('align') },
       { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },
     ];
+  }
+  if (colorable) {
+    // The Color tab: every colour the selection can pick, on one page (the
+    // rows are worked out above). First where the colour IS the thing, after
+    // the kind's own pages otherwise — the same place submenuOrder puts it.
+    const colorTab: OptionSpec = { key: 'color', label: 'Color', sub: 'color', onPress: () => openSubmenu('color') };
+    typeSpecs = colorFirst ? [colorTab, ...(typeSpecs ?? [])] : [...(typeSpecs ?? []), colorTab];
   }
   if (showUngroup) {
     // A GROUP is a type of selection, and Ungroup is the option that type has:

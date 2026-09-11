@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { RGBLike } from '../adapter';
 import {
-  ASIDE_GAP, ASIDE_SWATCH, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, SLIDER_CONTROL, SLIDER_LABEL,
+  ASIDE_GAP, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, SLIDER_CONTROL, SLIDER_LABEL,
   SLIDER_LABEL_GAP,
 } from '../logic/submenuHeight';
 import { percentText, percentToValue } from '../logic/slider';
@@ -16,23 +15,21 @@ import {
   PANEL_SHEET_BG,
   PANEL_SHEET_BORDER,
   PANEL_SHEET_ROW_ACTIVE,
-  PANEL_SWATCH_BORDER,
   PANEL_TRACK,
   STATE_ACTIVE,
 } from '../theme';
-import { ColorSwatchFill } from './ColorSwatch';
 import { SLIDER_TRACK, Slider } from './Slider';
 
 // Shared grammar for the property pages (Drop Shadow, Border, Crop, …) that
 // the Edit sheet shows in its content area: the row grammar (a slider row is
 // its caption over the track, with the value box on the right; a segmented
 // row keeps the 50pt label column) and the page body that lays a page's rows
-// beside its aside column — the colour swatch a colour-bearing page keeps to
-// the left of its rows (where its header used to hold it), or the Shadow
-// page's offset pad over that swatch. The pages are siblings of the same
-// design, so this is their single source of truth — each page supplies only
-// its specific controls. The sheet around them (title, tabs, the content
-// area's well, the Remove line) is components/EditSheet.tsx.
+// beside its aside column (the Shadow page's offset pad). The pages are
+// siblings of the same design, so this is their single source of truth —
+// each page supplies only its specific controls. The sheet around them
+// (tabs, the content area's well, the Remove line) is
+// components/EditSheet.tsx; a selection's colours are its Color page's
+// (components/ColorBar.tsx).
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -60,44 +57,17 @@ export const SHEET_ROW_ACTIVE = PANEL_SHEET_ROW_ACTIVE;
 export const SHEET_TEXT = PANEL_INK;
 export const PILL_TRACK = PANEL_TRACK;
 export const PILL_CHEVRON = PANEL_INK_DIM;
-const SWATCH_BORDER = PANEL_SWATCH_BORDER;
 const SEG_TRACK = PANEL_TRACK;
 const SEG_ACTIVE = PANEL_CONTROL;
 const SEG_TEXT = PANEL_INK_DIM;
 
-/** The colour swatch a colour-bearing page keeps: a large circle in the
- *  page's aside column, tapping it opens the full-screen picker. A flat
- *  `color` renders as a ColorSwatchFill (not a background color) so a picked
- *  opacity shows as a checkerboard behind it, the same as the picker's own
- *  preview; a custom `swatch` (the Tint page's gradient preview) renders in
- *  its place. The clip is its own inner layer because `overflow: hidden` on
- *  the outer would take the swatch's drop shadow with it (RN maps it to
- *  clipsToBounds). */
-export function ColorAside({ color, swatch, label, onPickColor }: {
-  color?: RGBLike;
-  swatch?: React.ReactNode;
-  /** Accessibility name, e.g. "Drop shadow color". */
-  label: string;
-  onPickColor: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPickColor}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={styles.swatch}
-    >
-      <View style={styles.swatchClip}>{swatch ?? <ColorSwatchFill color={color!} />}</View>
-    </Pressable>
-  );
-}
-
 /** A page's body: its rows stacked (ROW_GAP apart) and, when the page has
- *  one, its `aside` column to their left — the colour swatch, or the Shadow
- *  page's pad over its swatch. `spread` spaces the rows out to the aside's
- *  full height instead of stacking them at the top (the Shadow page, whose
- *  three sliders sit beside a taller column). submenuHeight counts the same
- *  metrics: the taller of the aside and the row stack. */
+ *  one, its `aside` column to their left — the Shadow page's offset pad.
+ *  `spread` spaces the rows out to the aside's full height instead of
+ *  stacking them at the top (the Shadow page, whose three sliders sit
+ *  beside a taller column). submenuHeight counts the same metrics: the
+ *  taller of the aside and the row stack. (Colours are not asides any
+ *  more: a selection's colours are its Color page's rows — ColorBar.) */
 export function BarBody({ aside, spread, children }: {
   aside?: React.ReactNode;
   spread?: boolean;
@@ -438,16 +408,6 @@ const styles = StyleSheet.create({
   aside: { alignItems: 'center', gap: ASIDE_GAP },
   rowsBeside: { flex: 1, alignSelf: 'stretch' },
   rowsSpread: { justifyContent: 'space-between' },
-  swatch: {
-    width: ASIDE_SWATCH, height: ASIDE_SWATCH, borderRadius: ASIDE_SWATCH / 2,
-    borderWidth: 2, borderColor: SWATCH_BORDER,
-    // Lighter than the dark scheme's drop shadow: on a light surface the same
-    // 0.5 black reads as grime around the swatch rather than lift.
-    shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
-  },
-  // Clips the swatch's fill — flat color or a custom one (the Tint page's
-  // gradient preview) — to the circle, inside the border.
-  swatchClip: { ...StyleSheet.absoluteFillObject, borderRadius: ASIDE_SWATCH / 2, overflow: 'hidden' },
   // A slider row stacks: caption, gap, then the control line (track + value
   // box). The three metrics are submenuHeight's, so its arithmetic and this
   // layout are one number.

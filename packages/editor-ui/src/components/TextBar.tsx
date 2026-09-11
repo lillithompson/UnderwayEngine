@@ -4,15 +4,15 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TextFontOption, TextHAlign, TextStyleModel, TextVAlign, TextWeight } from '../adapter';
 import { ROW_PILL } from '../logic/submenuHeight';
 import {
-  ACCENT, BarBody, ColorAside,
+  ACCENT, BarBody,
   PILL_CHEVRON, PILL_TRACK, SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL,
   SHEET_ROW_ACTIVE, SHEET_TEXT, SliderRow,
 } from './effectBar';
 
 // The Text typography controls (design "5a"), split into three pages — three
-// tabs of the Edit sheet:
-//   • Type    — color (the aside swatch) · Font (a pill that opens a font
-//     sheet) · Weight (segmented) · Size (slider).
+// tabs of the Edit sheet (the text's colour is the Color page's):
+//   • Type    — Font (a pill that opens a font sheet) · Weight (segmented)
+//     · Size (slider).
 //   • Spacing — Character spacing · Line spacing · Bend (arc curvature,
 //     slider centered at flat), a slider row each.
 //   • Align   — horizontal justification (left/center/right) · vertical
@@ -110,7 +110,7 @@ function FontSheet({ fonts, current, onPick, onClose }: {
   );
 }
 
-export function TextBar({ page, style, fonts, onChange, onCommit, onPickColor, onSheetOpenChange }: {
+export function TextBar({ page, style, fonts, onChange, onCommit, onSheetOpenChange }: {
   /** Which page to render: font, spacing or alignment controls. */
   page: TextPage;
   style: TextStyleModel;
@@ -119,7 +119,6 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onPickColor, o
   onChange: (s: TextStyleModel) => void;
   /** Commit as one undo step (slider release, segment / font pick). */
   onCommit: (s: TextStyleModel) => void;
-  onPickColor: () => void;
   /** Fires when the font sheet opens / closes so the panel can suspend its
    *  swipe-to-dismiss gesture — otherwise scrolling the font list reads as a
    *  downward dismiss swipe. */
@@ -138,10 +137,8 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onPickColor, o
 
   return (
     <View>
-      {/* Color is a font property: only the Type page keeps the swatch.
-          Nothing to remove on either page: the text's type is edited in
-          place. */}
-      <BarBody aside={isFont ? <ColorAside color={style.color} label="Text color" onPickColor={onPickColor} /> : undefined}>
+      {/* Nothing to remove on any page: the text's type is edited in place. */}
+      <BarBody>
         {isFont ? (
           <>
             <FontRow label={currentLabel} onOpen={() => setSheetOpen(true)} />

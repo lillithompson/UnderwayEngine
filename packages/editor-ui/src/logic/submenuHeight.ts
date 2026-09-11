@@ -45,16 +45,11 @@ export const HINT_HEIGHT = 17;
 export const CONTENT_PAD = 14;
 /** A cushion on every page so font metrics can't clip its last row. */
 export const BAR_CUSHION = 3;
-/** The colour swatch a colour-bearing page keeps in an aside column to the
- *  LEFT of its rows (where its header used to hold it): its diameter… */
-export const ASIDE_SWATCH = 56;
-/** …and the gap between the aside column and the rows, and between the
- *  Shadow page's offset pad and the swatch under it. */
+/** The gap between a page's aside column (the Shadow page's offset pad) and
+ *  its rows. */
 export const ASIDE_GAP = 16;
-/** The Shadow page's XY offset pad, at the top of its aside column. */
+/** The Shadow page's XY offset pad — its aside column. */
 export const SHADOW_PAD_SIZE = 106;
-/** The Shadow page's aside: the pad over the swatch. */
-export const SHADOW_ASIDE = SHADOW_PAD_SIZE + ASIDE_GAP + ASIDE_SWATCH;
 
 // ── The Edit sheet's own chrome (components/EditSheet.tsx) ───────────
 /** Padding above the tab row. */
@@ -96,8 +91,8 @@ export type SubmenuKey =
   | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
   // The Shape page: a polygonal shape's corner Radius (see svgHasShape).
   | 'shape'
-  // The Color page: a selection's colours (and a word sticker's Invert, its
-  // one colour setting) as labelled rows — see components/ColorBar.tsx.
+  // The Color page: every colour a selection can pick (and a word sticker's
+  // Invert, its one colour setting) as labelled rows — components/ColorBar.tsx.
   | 'color'
   // The poseable rig's parts: the whole figure (three axes, plus the Reset
   // that stands it back up), six sliders for the hands (curl / twist /
@@ -150,8 +145,8 @@ function stack(rows: readonly number[]): number {
 }
 
 /** A page's content area: its padding around the taller of its row stack and
- *  its aside column (the colour swatch, or the Shadow page's pad and swatch —
- *  0 for a page with no aside), plus the cushion. */
+ *  its aside column (the Shadow page's pad — 0 for a page with no aside),
+ *  plus the cushion. */
 function contentArea(rows: readonly number[], aside = 0): number {
   return CONTENT_PAD * 2 + Math.max(stack(rows), aside) + BAR_CUSHION;
 }
@@ -197,16 +192,17 @@ function cropRows(mode: ImageFramingMode = 'fill'): number[] {
 export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): number {
   switch (key) {
     case 'tint':
-      return contentArea(tintRows(ctx.tintType), ASIDE_SWATCH);
+      return contentArea(tintRows(ctx.tintType));
     case 'svgFill':
       // The Fill page is the Tint page solid-only (a shape's fill is always
       // one flat color at Normal blend): no Type control, no gradient rows,
-      // no Blend row — the Opacity slider alone, beside the swatch.
-      return contentArea([ROW_SLIDER], ASIDE_SWATCH);
+      // no Blend row — the Opacity slider alone (its colour is the Color
+      // page's).
+      return contentArea([ROW_SLIDER]);
     case 'border':
-      return contentArea(borderRows(ctx.borderRows), ASIDE_SWATCH);
+      return contentArea(borderRows(ctx.borderRows));
     case 'stroke':
-      return contentArea(borderRows({ radius: false, position: ctx.strokeRows?.position ?? true }), ASIDE_SWATCH);
+      return contentArea(borderRows({ radius: false, position: ctx.strokeRows?.position ?? true }));
     case 'shape':
       // The Radius slider alone.
       return contentArea([ROW_SLIDER]);
@@ -280,8 +276,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
         ...(ctx.layoutHasGrid ? [ROW_SEGMENTED] : []),
       ]);
     case 'font':
-      // Font pill, Weight segmented, Size slider — beside the colour swatch.
-      return contentArea([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH);
+      // Font pill, Weight segmented, Size slider.
+      return contentArea([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER]);
     case 'spacing':
       // Char, Line and Bend, a slider row each.
       return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
@@ -289,9 +285,9 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // The horizontal and the vertical alignment rows.
       return contentArea([ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'shadow':
-      // The XY pad over the swatch on the left, three sliders on the right:
-      // the taller column sets the height.
-      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER], SHADOW_ASIDE);
+      // The XY pad on the left, three sliders on the right: the taller
+      // column sets the height.
+      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER], SHADOW_PAD_SIZE);
     default: {
       // Exhaustiveness guard: adding a SubmenuKey without giving it rows here
       // is a compile error, not a silently stunted page.
