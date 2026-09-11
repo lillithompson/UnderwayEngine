@@ -92,14 +92,15 @@ describe('submenuHeight (a page’s content area)', () => {
       .toBeLessThan(submenuHeight('tint', { tintType: 'solid' }));
   });
 
-  test('the Stroke page drops the rows a subtype has no answer for', () => {
-    // A line has neither corner radius nor stroke position: Width + Dash only.
+  test('the Stroke page drops the rows a subtype has no answer for, and never has Radius', () => {
+    // A line has no stroke position: Width + Dash only.
     const line = submenuHeight('stroke', { strokeRows: svgStrokeRows('line') });
     expect(line).toBe(pageOf([ROW_SLIDER, ROW_SLIDER], ASIDE_SWATCH));
-    // A rectangle has both, so it is the full four rows.
+    // A rectangle adds Position — its corner Radius is the Shape page's.
     const rect = submenuHeight('stroke', { strokeRows: svgStrokeRows('rectangle') });
-    expect(rect).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH));
+    expect(rect).toBe(pageOf([ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH));
     expect(rect).toBeGreaterThan(line);
+    expect(submenuHeight('shape')).toBe(pageOf([ROW_SLIDER]));
   });
 
   test('the Crop page counts the rows its mode brings — and nothing else', () => {
@@ -148,7 +149,7 @@ describe('submenuHeight (a page’s content area)', () => {
     // page's single segmented row is the shortest real page).
     const ALL: SubmenuKey[] = [
       'tint', 'crop', 'shadow', 'border', 'opacity',
-      'font', 'spacing', 'align', 'stroke', 'svgFill', 'endpoints', 'transform', 'layout', 'color',
+      'font', 'spacing', 'align', 'stroke', 'svgFill', 'endpoints', 'transform', 'layout', 'color', 'shape',
       'rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead',
       'patternTiles', 'patternTools', 'patternSymmetry',
     ];

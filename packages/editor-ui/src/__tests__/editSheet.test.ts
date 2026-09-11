@@ -250,9 +250,9 @@ describe('the panel drives the sheet', () => {
     expect(color).toContain("options={[{ value: 'on' as const, label: row.label, active: row.on }]}");
     // …and its open state is the panel's own, closed as any host page opens
     // and folded when the selection stops offering it.
-    expect(PANEL).toContain("setColorOpen(key === 'color');");
-    expect(PANEL).toContain("if (key === 'color') { dismissHostSubmenus(); return; }");
-    expect(PANEL).toContain('if ((!model.visible || !colorable) && colorOpen) setColorOpen(false);');
+    expect(PANEL).toContain('setLocalSub(isLocalSubmenu(key) ? key : null);');
+    expect(PANEL).toContain('if (isLocalSubmenu(key)) { dismissHostSubmenus(); return; }');
+    expect(PANEL).toContain("(localSub === 'color' && !colorable)");
     // Opacity: the page an image opens, kept open for a sticker, its Soften
     // row dropped and its height counted without it.
     expect(PANEL).toContain('svgOpacityable || model.showRigOptions || model.showInvert;');
@@ -267,6 +267,30 @@ describe('the panel drives the sheet', () => {
     expect(ends).toContain('{showCaps ? (');
     expect(PANEL).toContain("showCaps={svgHasEndCaps(model.svgSubtype ?? 'stroke')}");
     expect(PANEL).toContain("endpointCaps: svgHasEndCaps(model.svgSubtype ?? 'stroke'),");
+  });
+
+  it('a polygonal shape rounds its corners on a Shape page; its Stroke page has no Radius row and an unlabelled Position row', () => {
+    expect(PANEL).toContain("...(svgShapeable ? (['shape'] as const) : []),");
+    expect(PANEL).toContain("const svgShapeable = !!model.showSvgOptions && svgHasShape(model.svgSubtype ?? 'stroke');");
+    expect(PANEL).toContain(": action === 'shape' ? 'shape'");
+    // The Shape page is the panel's own (like Color) and folds when the
+    // subtype stops offering it.
+    expect(PANEL).toContain("(localSub === 'shape' && !svgShapeable)");
+    expect(PANEL).toContain('<ShapeBar');
+    expect(PANEL).toContain('cornerRadius={model.strokeRadius ?? 0}');
+    expect(PANEL).toContain('onCornerRadius={(r, committed) => model.onStrokeRadius?.(r, committed)}');
+    const shape = SRC('components', 'ShapeBar.tsx');
+    expect(shape).toContain('<RadiusRow cornerRadius={cornerRadius} onCornerRadius={onCornerRadius} />');
+    // The Stroke page: no Radius, and Position's cells name themselves.
+    const stroke = PANEL.slice(PANEL.indexOf('title="Stroke"'), PANEL.indexOf("} else if (displaySub && rigPartOfSubmenu(displaySub)) {"));
+    expect(stroke).toContain('showRadius={false}');
+    expect(stroke).toContain('labelPosition={false}');
+    const border = SRC('components', 'BorderBar.tsx');
+    expect(border).toContain("label={labelPosition ? 'Position' : undefined}");
+    // The image's Border page keeps both, untouched.
+    const imageBorder = PANEL.slice(PANEL.indexOf("} else if (displaySub === 'border') {"), PANEL.indexOf('title="Stroke"'));
+    expect(imageBorder).not.toContain('showRadius');
+    expect(imageBorder).not.toContain('labelPosition');
   });
 
   it('a tab that opens a page opens it — it never toggles the page closed', () => {

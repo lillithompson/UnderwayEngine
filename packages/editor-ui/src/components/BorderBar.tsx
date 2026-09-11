@@ -3,7 +3,7 @@ import type { BorderModel, BorderPosition } from '../adapter';
 import { BarBody, ColorAside, SegmentedRow, SliderRow } from './effectBar';
 
 // The Border (stroke) page (design "3a"): the colour swatch in the aside
-// column and four rows beside it — Width, Radius, Position, Dash. It's a
+// column and its rows beside it — Width, Radius, Position, Dash. It's a
 // sibling of the Drop Shadow page and shares its grammar (see effectBar.tsx).
 // The Radius row rounds the object itself (folding in the former standalone
 // Round control), so it rides the app's cornerRadius fields rather than the
@@ -12,10 +12,11 @@ import { BarBody, ColorAside, SegmentedRow, SliderRow } from './effectBar';
 // A vector selection reuses this page as its STROKE menu — same rows, same
 // ranges — pointed at the path's own stroke instead of a rect around a bbox.
 // It drops the rows its subtype has no answer for (Position needs a closed
-// path; Radius is a rectangle control), which is why this is two row toggles
-// rather than a copy of the component. Width and Dash are universal and
-// always render. `title` names the swatch for accessibility (Border color /
-// Stroke color).
+// path), which is why this is a row toggle rather than a copy of the
+// component; a shape's corner Radius is not a Stroke row at all but the
+// Shape page's (ShapeBar, which borrows RadiusRow below). Width and Dash
+// are universal and always render. `title` names the swatch for
+// accessibility (Border color / Stroke color).
 
 // ── Ranges (world cells; design pt ÷ 16) ─────────────────────────────
 const MAX_WIDTH = 1.5; // 0…24pt
@@ -39,19 +40,37 @@ const POSITIONS: readonly { value: BorderPosition; label: string }[] = [
   { value: 'outside', label: 'Outside' },
 ];
 
-export function BorderBar({ border, cornerRadius, title = 'Border', showRadius = true, showPosition = true, onChange, onCommit, onCornerRadius, onPickColor }: {
+/** The Radius row: corner rounding as a 0–0.5 fraction of the shorter side.
+ *  An image's Border page keeps it; a polygonal shape's is its Shape page. */
+export function RadiusRow({ cornerRadius, onCornerRadius }: {
+  cornerRadius: number;
+  onCornerRadius: (radius: number, committed: boolean) => void;
+}) {
+  return (
+    <SliderRow
+      label="Radius"
+      value={cornerRadius / MAX_CORNER_RADIUS}
+      apply={(t, c) => onCornerRadius(t * MAX_CORNER_RADIUS, c)}
+    />
+  );
+}
+
+export function BorderBar({ border, cornerRadius, title = 'Border', showRadius = true, showPosition = true, labelPosition = true, onChange, onCommit, onCornerRadius, onPickColor }: {
   border: BorderModel;
   /** Object corner rounding, a 0–0.5 fraction of the shorter side. */
   cornerRadius: number;
   /** What the swatch is the colour of, for accessibility. Defaults to
    *  Border; a vector selection passes Stroke. */
   title?: string;
-  /** Render the Radius row. Off for a selection whose corners aren't roundable
-   *  (every vector subtype except a rectangle). */
+  /** Render the Radius row. Off for a vector's Stroke page, whose corners
+   *  (when it has any) round on the Shape page. */
   showRadius?: boolean;
   /** Render the Position row. Off for a selection with no inside to align a
    *  stroke to (an open path: line, arc, freehand stroke). */
   showPosition?: boolean;
+  /** Keep the Position row's label column. Off for a shape's Stroke page —
+   *  Inside / Center / Outside name themselves. */
+  labelPosition?: boolean;
   onChange: (b: BorderModel) => void;
   onCommit: (b: BorderModel) => void;
   /** Fires the Radius row: `radius` is a 0–0.5 fraction; `committed` marks the
@@ -77,15 +96,11 @@ export function BorderBar({ border, cornerRadius, title = 'Border', showRadius =
         }}
       />
       {showRadius ? (
-        <SliderRow
-          label="Radius"
-          value={cornerRadius / MAX_CORNER_RADIUS}
-          apply={(t, c) => onCornerRadius(t * MAX_CORNER_RADIUS, c)}
-        />
+        <RadiusRow cornerRadius={cornerRadius} onCornerRadius={onCornerRadius} />
       ) : null}
       {showPosition ? (
         <SegmentedRow
-          label="Position"
+          label={labelPosition ? 'Position' : undefined}
           options={POSITIONS}
           value={border.position}
           onChange={(position) => set({ position }, true)}

@@ -16,9 +16,12 @@ import type { SVGSubtypeKind } from '../adapter';
 
 /** The vector-specific editing actions.
  *
- *  - `stroke` opens the Stroke bar — the Border bar's four rows (Width /
- *    Radius / Position / Dash) plus its color swatch, pointed at the path's
- *    own stroke.
+ *  - `stroke` opens the Stroke page — the Border page's rows (Width /
+ *    Position / Dash) plus its color swatch, pointed at the path's own
+ *    stroke.
+ *  - `shape` opens the Shape page — the Radius slider that rounds the
+ *    path's own corners, on the subtypes whose corners are LINE→LINE joins
+ *    (the rectangle and the polygon; see {@link svgHasShape}).
  *  - `fill` opens the Fill bar — the image Tint bar's rows (Type / Stops /
  *    Angle / Opacity / Blend) plus its gradient swatch, pointed at the closed
  *    path's interior.
@@ -31,7 +34,7 @@ import type { SVGSubtypeKind } from '../adapter';
  *    the one before. Every subtype has it; a line repeats as readily as a
  *    shape. (The key predates the page's rename; the object's own rotation
  *    is the two-finger twist and the selection tool's Rotate slider.) */
-export type SVGEditAction = 'stroke' | 'fill' | 'endpoints' | 'opacity' | 'transform';
+export type SVGEditAction = 'stroke' | 'shape' | 'fill' | 'endpoints' | 'opacity' | 'transform';
 
 export interface SVGEditOption {
   action: SVGEditAction;
@@ -105,14 +108,27 @@ export function svgHasOpacity(subtype: SVGSubtypeKind): boolean {
   return svgHasFill(subtype);
 }
 
+/**
+ * Whether a subtype offers the Shape page — the Radius slider that rounds the
+ * path's own corners. A control for the subtypes whose corners are LINE→LINE
+ * joins (`roundPathCorners` only rounds those): the rectangle and the
+ * polygon. A circle has no corners, and the other subtypes either have none
+ * or aren't offered the control.
+ */
+export function svgHasShape(subtype: SVGSubtypeKind): boolean {
+  return subtype === 'rectangle' || subtype === 'polygon';
+}
+
 /** The option menu for one vector subtype, in display order. Stroke leads — it
- *  is the one action every subtype has — then the subtype's own second action:
- *  Fill on the shapes that enclose an area, Endpoints on the paths that don't
- *  close — then Opacity on the closed shapes. */
+ *  is the one action every subtype has — then Shape on the polygonal ones,
+ *  then the subtype's own next action: Fill on the shapes that enclose an
+ *  area, Endpoints on the paths that don't close — then Opacity on the
+ *  closed shapes, and Copies last. */
 export function svgEditOptions(subtype: SVGSubtypeKind): readonly SVGEditOption[] {
   const options: SVGEditOption[] = [
     { action: 'stroke', label: 'Stroke', icon: STROKE_ICON[subtype] ?? STROKE_ICON.stroke },
   ];
+  if (svgHasShape(subtype)) options.push({ action: 'shape', label: 'Shape', icon: 'rounded-corner' });
   if (svgHasFill(subtype)) options.push({ action: 'fill', label: 'Fill', icon: 'format-color-fill' });
   if (svgHasEndpoints(subtype)) options.push({ action: 'endpoints', label: 'Ends', icon: 'ray-start-end' });
   if (svgHasOpacity(subtype)) options.push({ action: 'opacity', label: 'Opacity', icon: 'opacity' });
@@ -120,20 +136,18 @@ export function svgEditOptions(subtype: SVGSubtypeKind): readonly SVGEditOption[
   return options;
 }
 
-/** Which of the Stroke bar's optional rows a subtype offers. Width and Dash
+/** Which of the Stroke page's optional rows a subtype offers. Width and Dash
  *  are universal (every stroke has a weight and can be dashed) and so aren't
- *  listed; these two are the ones a subtype can have no answer for.
+ *  listed; this is the one a subtype can have no answer for.
  *
  *  - `position` (inside / center / outside) needs an enclosed area to align
  *    against, so it is closed-path only: a line, an arc and a freehand stroke
  *    have no inside and the row is dropped rather than shown inert.
- *  - `radius` rounds the path's own corners — a control for the subtypes
- *    whose corners are LINE→LINE joins (`roundPathCorners` only rounds
- *    those): the rectangle and the polygon. A circle has no corners, and the
- *    other subtypes either have none or aren't offered the control. */
-export function svgStrokeRows(subtype: SVGSubtypeKind): { radius: boolean; position: boolean } {
+ *
+ *  (Radius used to be a Stroke row too; it is the Shape page now — see
+ *  {@link svgHasShape}.) */
+export function svgStrokeRows(subtype: SVGSubtypeKind): { position: boolean } {
   return {
-    radius: subtype === 'rectangle' || subtype === 'polygon',
     position: subtype === 'rectangle' || subtype === 'circle' || subtype === 'polygon'
       || subtype === 'shape',
   };

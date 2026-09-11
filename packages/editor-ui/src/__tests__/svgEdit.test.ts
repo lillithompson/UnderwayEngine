@@ -4,7 +4,7 @@
  * images.
  */
 
-import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndCaps, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
+import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndCaps, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRows } from '../logic/svgEdit';
 import type { SVGSubtypeKind } from '../adapter';
 
 const SUBTYPES: SVGSubtypeKind[] = ['line', 'arc', 'rectangle', 'circle', 'polygon', 'shape', 'stroke'];
@@ -25,7 +25,8 @@ describe('svgEditOptions', () => {
 
   it('adds Fill then Opacity to the shapes with an interior, and to nothing else', () => {
     for (const subtype of FILLED) {
-      expect(svgEditOptions(subtype).map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity', 'transform']);
+      expect(svgEditOptions(subtype).map((o) => o.action).filter((a) => a !== 'shape'))
+        .toEqual(['stroke', 'fill', 'opacity', 'transform']);
     }
     for (const subtype of SUBTYPES.filter((s) => !FILLED.includes(s))) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('fill');
@@ -64,8 +65,19 @@ describe('svgEditOptions', () => {
 
   it('gives the closed freeform `shape` the same interior options as a drawn one', () => {
     // However the outline came to be — merged, joined, unioned, drawn — a
-    // closed path has an inside to paint.
+    // closed path has an inside to paint. (No Shape page: a freeform has
+    // no line→line corners to round.)
     expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke', 'fill', 'opacity', 'transform']);
+  });
+
+  it('adds Shape — the corner Radius page — right after Stroke on the polygonal shapes only', () => {
+    expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'opacity', 'transform']);
+    expect(svgEditOptions('polygon').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'opacity', 'transform']);
+    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'polygon')) {
+      expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('shape');
+      expect(svgHasShape(subtype)).toBe(false);
+    }
+    expect(svgEditOptions('polygon').find((o) => o.action === 'shape')).toEqual({ action: 'shape', label: 'Shape', icon: 'rounded-corner' });
   });
 
   it('labels and glyphs the Ends option the same way whichever path it is on', () => {
@@ -186,25 +198,26 @@ describe('svgStrokeRows', () => {
     expect(svgStrokeRows('stroke').position).toBe(false);
   });
 
-  it('offers Radius only for the subtypes with line→line corners to round', () => {
-    expect(svgStrokeRows('rectangle').radius).toBe(true);
-    expect(svgStrokeRows('polygon').radius).toBe(true);
+  it('offers the Shape page (Radius) only for the subtypes with line→line corners to round', () => {
+    expect(svgHasShape('rectangle')).toBe(true);
+    expect(svgHasShape('polygon')).toBe(true);
     for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'polygon')) {
-      expect(svgStrokeRows(subtype).radius).toBe(false);
+      expect(svgHasShape(subtype)).toBe(false);
     }
+    // Radius is no Stroke row any more.
+    expect(svgStrokeRows('rectangle')).not.toHaveProperty('radius');
   });
 
-  it('gives a rectangle the full bar and an open path the Width/Dash pair only', () => {
-    expect(svgStrokeRows('rectangle')).toEqual({ radius: true, position: true });
-    expect(svgStrokeRows('line')).toEqual({ radius: false, position: false });
-    expect(svgStrokeRows('arc')).toEqual({ radius: false, position: false });
-    expect(svgStrokeRows('stroke')).toEqual({ radius: false, position: false });
+  it('gives a rectangle the Position row and an open path the Width/Dash pair only', () => {
+    expect(svgStrokeRows('rectangle')).toEqual({ position: true });
+    expect(svgStrokeRows('line')).toEqual({ position: false });
+    expect(svgStrokeRows('arc')).toEqual({ position: false });
+    expect(svgStrokeRows('stroke')).toEqual({ position: false });
   });
 
-  it('never offers Radius without Position — Radius implies a closed path', () => {
+  it('never offers Shape without Position — a roundable corner implies a closed path', () => {
     for (const subtype of SUBTYPES) {
-      const rows = svgStrokeRows(subtype);
-      if (rows.radius) expect(rows.position).toBe(true);
+      if (svgHasShape(subtype)) expect(svgStrokeRows(subtype).position).toBe(true);
     }
   });
 });

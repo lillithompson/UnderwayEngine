@@ -10,7 +10,7 @@ import {
 import { multiSelectionOptions } from '../logic/multiOptions';
 import { isValueDragging } from '../logic/slider';
 import { SubmenuKey, editSheetHeight, emptyEffectHeight, submenuHeight } from '../logic/submenuHeight';
-import { svgEditOptions, svgHasEndCaps, svgHasEndpoints, svgHasFill, svgHasOpacity, svgStrokeRows } from '../logic/svgEdit';
+import { svgEditOptions, svgHasEndCaps, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import {
   OBJECT_DOTS_BOTTOM,
@@ -36,6 +36,7 @@ import { LayoutBar } from './LayoutBar';
 import { PatternSymmetryBar, PatternTilesBar, PatternToolsBar } from './PatternBars';
 import { EmptyEffectBar } from './effectBar';
 import { ColorBar, ColorRowSpec } from './ColorBar';
+import { ShapeBar } from './ShapeBar';
 import { EditSheet, EditTabSpec } from './EditSheet';
 import { SHEET_RADIUS } from '../logic/submenuHeight';
 import {
@@ -171,6 +172,10 @@ function GridButton({ label, icon, iconColor, onPress, compact }: {
 
 /** One type-specific option, described rather than rendered — it becomes a
  *  tab of the Edit sheet (EditTabSpec), lit while its page is showing. */
+/** The pages whose open state the panel keeps itself (see `localSub`). */
+type LocalSubmenu = 'color' | 'shape';
+const isLocalSubmenu = (key: SubmenuKey): key is LocalSubmenu => key === 'color' || key === 'shape';
+
 interface OptionSpec extends Omit<EditTabSpec, 'selected'> {
   /** The page this option opens. Options carrying one light up as tabs while
    *  that page shows; the rest (actions, toggles) never take that lit state. */
@@ -338,19 +343,22 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // points own it: the Type tab opens on 'font', Spacing on 'spacing', Align
   // on 'align' (all via openSubmenu).
   const [textPage, setTextPage] = useState<TextPage>('font');
-  // The Color page is the panel's own: it holds nothing the host has to
-  // preview (a swatch opens the host's picker, a toggle fires its action),
-  // so unlike the effect pages its open state lives here rather than on
-  // the model.
-  const [colorOpen, setColorOpen] = useState(false);
+  // The Color and Shape pages are the panel's own: they hold nothing the
+  // host has to know is open (a swatch opens the host's picker, a toggle
+  // fires its action, the Radius slider writes through onStrokeRadius as
+  // it always did), so unlike the effect pages their open state lives here
+  // rather than on the model.
+  const [localSub, setLocalSub] = useState<LocalSubmenu | null>(null);
   // ── The pages (Crop / Shadow / Border / Text …) ──────────────────────
   // The open page is what the Edit sheet's well holds, and its tab is the lit
   // one. The pages are separate components but only one shows at a time.
   const svgFillable = !!model.showSvgOptions && svgHasFill(model.svgSubtype ?? 'stroke');
   const svgEndable = !!model.showSvgOptions && svgHasEndpoints(model.svgSubtype ?? 'stroke');
   const svgOpacityable = !!model.showSvgOptions && svgHasOpacity(model.svgSubtype ?? 'stroke');
-  // Every vector subtype turns and repeats (svgEditOptions' Transform).
+  // Every vector subtype repeats (svgEditOptions' Copies).
   const svgTransformable = !!model.showSvgOptions;
+  // A polygonal shape rounds its corners on the Shape page.
+  const svgShapeable = !!model.showSvgOptions && svgHasShape(model.svgSubtype ?? 'stroke');
   const typeSubmenuOrder: SubmenuKey[] =
     model.showImageEdit ? (multi
       ? ['shadow', 'border', 'opacity']
@@ -376,6 +384,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     : model.showSvgOptions
       ? [
           'stroke',
+          ...(svgShapeable ? (['shape'] as const) : []),
           ...(svgFillable ? (['svgFill'] as const) : []),
           ...(svgEndable ? (['endpoints'] as const) : []),
           ...(svgOpacityable ? (['opacity'] as const) : []),
@@ -397,7 +406,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     : model.svgFillOpen ? 'svgFill'
     : model.endpointsOpen ? 'endpoints'
     : model.transformOpen ? 'transform'
-    : colorOpen ? 'color'
+    : localSub ? localSub
     : model.rigPartOpen ? rigPartSubmenu(model.rigPartOpen)
     : model.patternBarOpen ? patternActionSubmenu(model.patternBarOpen)
     : model.textStyleOpen ? textPage
@@ -431,6 +440,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
    *  and the lit state need it, and they must agree. */
   const svgActionSubmenu = (action: string): SubmenuKey =>
     action === 'fill' ? 'svgFill'
+    : action === 'shape' ? 'shape'
     : action === 'endpoints' ? 'endpoints'
     : action === 'opacity' ? 'opacity'
     : action === 'transform' ? 'transform'
@@ -438,10 +448,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
 
   const openSubmenu = (key: SubmenuKey) => {
     fontSheetOpenRef.current = false;
-    // One page at a time: the Color page closes as any host page opens (the
-    // host closes its own siblings the same way), and opens alone.
-    setColorOpen(key === 'color');
-    if (key === 'color') { dismissHostSubmenus(); return; }
+    // One page at a time: a panel-kept page (Color, Shape) closes as any
+    // host page opens (the host closes its own siblings the same way), and
+    // opens alone.
+    setLocalSub(isLocalSubmenu(key) ? key : null);
+    if (isLocalSubmenu(key)) { dismissHostSubmenus(); return; }
     if (key === 'crop') model.onCropOpenChange?.(true);
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
     else if (key === 'border') model.onBorderOpenChange?.(true);
@@ -476,7 +487,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   };
   const dismissSubmenu = () => {
     fontSheetOpenRef.current = false;
-    setColorOpen(false);
+    setLocalSub(null);
     dismissHostSubmenus();
   };
 
@@ -588,12 +599,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, model.showImageEdit, model.showPaintOptions, svgOpacityable, model.showRigOptions, model.showInvert, model.opacityOpen]);
-  // The Color page folds away when the selection stops offering it (or the
-  // panel hides), like the host's pages do.
+  // The panel-kept pages fold away when the selection stops offering them
+  // (or the panel hides), like the host's pages do.
   const colorable = !!model.showInvert;
   useEffect(() => {
-    if ((!model.visible || !colorable) && colorOpen) setColorOpen(false);
-  }, [model.visible, colorable, colorOpen]);
+    if (!model.visible || (localSub === 'color' && !colorable) || (localSub === 'shape' && !svgShapeable)) {
+      setLocalSub(null);
+    }
+  }, [model.visible, colorable, svgShapeable, localSub]);
 
   // Seed the shadow / border drafts from the current effect each time the
   // controls open.
@@ -826,6 +839,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     : [];
   if (displaySub === 'color') {
     activeBarEl = <ColorBar rows={colorRows} />;
+  } else if (displaySub === 'shape') {
+    // A polygonal shape's corner Radius — the host's strokeRadius plumbing,
+    // which it used to reach as a Stroke row.
+    activeBarEl = (
+      <ShapeBar
+        cornerRadius={model.strokeRadius ?? 0}
+        onCornerRadius={(r, committed) => model.onStrokeRadius?.(r, committed)}
+      />
+    );
   } else if (displaySub === 'stroke' && model.strokePresent === false && model.onAddStroke) {
     addPage = true;
     activeBarEl = (
@@ -911,18 +933,21 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     removeAction = { label: 'Remove border', onPress: removeBorder };
   } else if (displaySub === 'stroke') {
     // The Border page pointed at the vector object's own stroke, with the
-    // rows this subtype has no answer for dropped (svgStrokeRows).
+    // rows this subtype has no answer for dropped (svgStrokeRows). Never a
+    // Radius row — a shape's corners round on its Shape page — and the
+    // Position row's cells name themselves, so no label column.
     const rows = svgStrokeRows(model.svgSubtype ?? 'stroke');
     activeBarEl = (
       <BorderBar
         title="Stroke"
         border={strokeForBar}
-        cornerRadius={model.strokeRadius ?? 0}
-        showRadius={rows.radius}
+        cornerRadius={0}
+        showRadius={false}
         showPosition={rows.position}
+        labelPosition={false}
         onChange={(b) => applyStroke(b, false)}
         onCommit={(b) => applyStroke(b, true)}
-        onCornerRadius={(r, committed) => model.onStrokeRadius?.(r, committed)}
+        onCornerRadius={() => {}}
         onPickColor={() => model.onPickStrokeColor?.()}
       />
     );

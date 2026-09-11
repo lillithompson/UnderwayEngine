@@ -94,6 +94,8 @@ export const PATTERN_TILE_GRID =
 export type SubmenuKey =
   | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
   | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
+  // The Shape page: a polygonal shape's corner Radius (see svgHasShape).
+  | 'shape'
   // The Color page: a selection's colours (and a word sticker's Invert, its
   // one colour setting) as labelled rows — see components/ColorBar.tsx.
   | 'color'
@@ -122,8 +124,9 @@ export interface SubmenuHeightContext {
   colorRows?: number;
   /** Border page: which optional rows the image / frame border shows. */
   borderRows?: { radius: boolean; position: boolean };
-  /** Stroke page: the same page, with the rows this vector subtype supports. */
-  strokeRows?: { radius: boolean; position: boolean };
+  /** Stroke page: the same page, with the rows this vector subtype supports
+   *  (never Radius — that is the Shape page's). */
+  strokeRows?: { position: boolean };
   /** Endpoints page: whether it shows the Caps row under the markers
    *  (default true). A freehand curve drops it — see svgHasEndCaps. */
   endpointCaps?: boolean;
@@ -203,7 +206,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'border':
       return contentArea(borderRows(ctx.borderRows), ASIDE_SWATCH);
     case 'stroke':
-      return contentArea(borderRows(ctx.strokeRows), ASIDE_SWATCH);
+      return contentArea(borderRows({ radius: false, position: ctx.strokeRows?.position ?? true }), ASIDE_SWATCH);
+    case 'shape':
+      // The Radius slider alone.
+      return contentArea([ROW_SLIDER]);
     case 'crop':
       return contentArea(cropRows(ctx.cropMode));
     case 'opacity':
