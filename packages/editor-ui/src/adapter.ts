@@ -356,6 +356,21 @@ export interface ObjectPropertiesModel {
    *  (Replace / Crop), and the selection gets a carousel page of its own
    *  (see {@link onAlign}). Default 'single'. */
   mode?: 'single' | 'multi' | 'group';
+  /**
+   * Whether the EDIT SHEET is up — the type-specific half of the panel,
+   * popped over its common-actions row.
+   *
+   * Omit and the panel keeps that state itself: a sideways swipe or the
+   * edit dot raises the sheet, a downward swipe or the common dot drops
+   * it. Pass it (with {@link onEditOpenChange}, which the panel calls for
+   * every one of those gestures) and the HOST owns it, so chrome outside
+   * the panel — a floating Edit button — can raise the same sheet.
+   *
+   * Either way a page the host opens itself (the pattern capsule's Tools)
+   * still brings the sheet up to hold it.
+   */
+  editOpen?: boolean;
+  onEditOpenChange?(open: boolean): void;
   /** Selection is an editable image: the panel's second row shows the image-
    *  edit options (replace / tint / crop / shadow / border), Crop/Shadow/Border
    *  opening their effect bar. Text vs image are mutually exclusive. */

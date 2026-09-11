@@ -82,6 +82,19 @@ describe('the panel’s two pages', () => {
     expect(PANEL).toContain('if (submenuOpen) setSheetWanted(true);');
   });
 
+  test('the host can own the sheet’s open state, and hears every gesture either way', () => {
+    // Controlled when `editOpen` is passed (a floating Edit button raising
+    // the same sheet), the panel's own when it isn't — and onEditOpenChange
+    // fires for the swipe and the dots regardless, so the host's button can
+    // read as lit while the sheet stands.
+    expect(PANEL).toContain('const sheetWanted = model.editOpen ?? localSheetWanted;');
+    expect(PANEL).toContain('setLocalSheetWanted(open);');
+    expect(PANEL).toContain('onEditOpenChange?.(open);');
+    const adapter = readFileSync(resolve(__dirname, '..', 'adapter.ts'), 'utf8');
+    expect(adapter).toContain('editOpen?: boolean;');
+    expect(adapter).toContain('onEditOpenChange?(open: boolean): void;');
+  });
+
   test('lands each new selection on the remembered page, else its first', () => {
     expect(PANEL).toContain('const target = landingSubmenu(submenuOrder, lastSubRef.current);');
     // …both when the sheet is popped and when it is already up with nothing

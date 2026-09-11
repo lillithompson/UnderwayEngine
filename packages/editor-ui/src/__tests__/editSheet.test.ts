@@ -266,7 +266,10 @@ describe('the panel drives the sheet', () => {
   it('text offers Type · Spacing · Align · Shadow — no Edit tab; a tap on the text edits its content', () => {
     expect(PANEL).not.toContain("key: 'edit'");
     expect(PANEL).not.toContain('showEdit');
-    expect(PANEL).not.toContain('model.onEdit');
+    // No tab fires an edit-the-content callback. (model.onEditOpenChange is
+    // a different thing entirely: the sheet's own open state.)
+    expect(PANEL).not.toContain('model.onEdit}');
+    expect(PANEL).not.toContain('model.onEdit(');
     expect(SRC('adapter.ts')).not.toContain('showEdit');
     expect(SRC('adapter.ts')).not.toContain('onEdit(): void;');
   });

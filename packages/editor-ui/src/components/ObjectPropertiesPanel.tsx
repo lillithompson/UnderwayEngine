@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, ShadowModel, TextStyleModel, TintModel } from '../adapter';
@@ -227,10 +227,22 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // travel was saying something untrue — nothing is going anywhere
   // sideways. The sheet rising is the whole answer to the gesture.
   //
-  // Whether the sheet has been ASKED for — by a swipe, the edit dot, or a
-  // page the host opened. It is what keeps the sheet up across selections
-  // (see sheetOpen below); a downward swipe or the common dot clears it.
-  const [sheetWanted, setSheetWanted] = useState(false);
+  // Whether the sheet has been ASKED for — by a swipe, the edit dot, a page
+  // the host opened, or the host itself (model.editOpen: a floating Edit
+  // button outside the panel). It is what keeps the sheet up across
+  // selections (see sheetOpen below); a downward swipe or the common dot
+  // clears it.
+  //
+  // Controlled when the host passes `editOpen`, the panel's own otherwise —
+  // and the host hears every gesture through onEditOpenChange either way,
+  // so its button can read as lit while the sheet stands.
+  const [localSheetWanted, setLocalSheetWanted] = useState(false);
+  const sheetWanted = model.editOpen ?? localSheetWanted;
+  const onEditOpenChange = model.onEditOpenChange;
+  const setSheetWanted = useCallback((open: boolean) => {
+    setLocalSheetWanted(open);
+    onEditOpenChange?.(open);
+  }, [onEditOpenChange]);
   // Latest opener + swipe-eligibility, so the once-created PanResponder
   // always uses the current option set.
   const openSheetRef = useRef<() => void>(() => {});
