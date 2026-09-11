@@ -1,18 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { TransformCopiesSpec, TransformModel } from '../adapter';
-import { ActionRow, BarBody, DualSliderRow, SliderRow } from './effectBar';
+import type { TransformCopiesSpec } from '../adapter';
+import { ActionRow, BarBody, DualSliderRow } from './effectBar';
 import {
   COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
 } from '../logic/transform';
 
-// The Transform page, on every vector shape and line: a Rotation slider for
-// the object itself (degrees clockwise, the same free rotation the two-finger
-// twist sets), then Create copies — how far each sits from the one before
-// (X and Y, in cells), how much each is scaled (X and Y, a factor that
-// compounds copy over copy), how much further each is turned and how many
-// — and the button that lays them down. The copy settings are the PAGE's own
-// draft (a request, not a property of the object), so they survive between
-// presses: set 6 copies 2 cells apart at 15°, press, undo, press again.
+// The Copies page, on every vector shape and line (the 'transform' page —
+// its key predates the rename): Create copies — how far each sits from the
+// one before (X and Y, in cells), how much each is scaled (X and Y, a
+// factor that compounds copy over copy), how much further each is turned
+// and how many — and the button that lays them down. The settings are the
+// PAGE's own draft (a request, not a property of the object), so they
+// survive between presses: set 6 copies 2 cells apart at 15°, press, undo,
+// press again. Rotating the object itself is not here: that is the
+// two-finger twist and the selection tool's Rotate slider.
 //
 // The settings pair up two to a row — the offsets, the scales, then the
 // turn beside the count — so the page stands no taller for the scales.
@@ -36,10 +37,7 @@ const factorText = (f: number) => `${Math.round(f * 100)}%`;
 
 const CREATE_OPTION = [{ value: 'create' as const, label: 'Create copies' }];
 
-export function TransformBar({ transform, onRotate, onCopies, onCopiesPreview }: {
-  transform: TransformModel;
-  /** The Rotation slider: live while dragging, committed on release. */
-  onRotate: (angleDeg: number, committed: boolean) => void;
+export function TransformBar({ onCopies, onCopiesPreview }: {
   onCopies: (spec: TransformCopiesSpec) => void;
   /** The live draft: every change while the page is up, null on the way out. */
   onCopiesPreview?: (spec: TransformCopiesSpec | null) => void;
@@ -54,15 +52,6 @@ export function TransformBar({ transform, onRotate, onCopies, onCopiesPreview }:
   useEffect(() => () => { previewRef.current?.(null); }, []);
   return (
     <BarBody>
-      <SliderRow
-        label="Rotation"
-        value={toT(transform.angleDeg, ROTATE_MIN, ROTATE_MAX)}
-        apply={(t, c) => onRotate(fromT(t, ROTATE_MIN, ROTATE_MAX), c)}
-        readout={{
-          text: degText(transform.angleDeg),
-          commit: (n) => onRotate(clamp(n, ROTATE_MIN, ROTATE_MAX), true),
-        }}
-      />
       <DualSliderRow
         leftLabel="Offset X"
         leftValue={toT(copies.dx, -OFFSET_MAX, OFFSET_MAX)}

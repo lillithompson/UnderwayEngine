@@ -867,8 +867,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   } else if (displaySub === 'transform') {
     activeBarEl = (
       <TransformBar
-        transform={model.transform ?? { angleDeg: 0 }}
-        onRotate={(deg, committed) => model.onTransformRotate?.(deg, committed)}
         onCopies={(spec) => model.onTransformCopies?.(spec)}
         onCopiesPreview={(spec) => model.onTransformCopiesPreview?.(spec)}
       />

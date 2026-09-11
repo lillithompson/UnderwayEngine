@@ -202,13 +202,7 @@ export type AlignEdge = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom
 export type EndMarkerKind = 'none' | 'circle' | 'arrow';
 export type EndCapKind = 'round' | 'square';
 
-/** What the Transform bar reads off the selected object. */
-export interface TransformModel {
-  /** Free rotation, degrees clockwise about the bbox centre; 0 = upright. */
-  angleDeg: number;
-}
-
-/** The Create copies request (the Transform bar's lower half). */
+/** The Create copies request (the Copies page). */
 export interface TransformCopiesSpec {
   count: number;
   /** Position offset per copy, in world cells. */
@@ -585,25 +579,22 @@ export interface ObjectPropertiesModel {
    *  every control is a segmented pick, so each call is one finished edit and
    *  one undo step. `endpoints=null` resets both ends to the defaults. */
   onEndpoints?(endpoints: EndpointsModel | null): void;
-  /** Whether the Transform bar is shown — every vector subtype offers it
-   *  (svgEditOptions). App-owned like the other bars. */
+  /** Whether the Copies page (the 'transform' page: Create copies) is shown
+   *  — every vector subtype offers it (svgEditOptions). App-owned like the
+   *  other pages. Rotation is not on it: the object turns by the two-finger
+   *  twist and the selection tool's Rotate slider. */
   transformOpen?: boolean;
   onTransformOpenChange?(open: boolean): void;
-  /** The selected object's transform, seeding the bar's Rotation row. */
-  transform?: TransformModel;
-  /** The Rotation slider: live (committed=false) while the thumb moves, once
-   *  on release — one undo step. Degrees clockwise, (-180, 180]. */
-  onTransformRotate?(angleDeg: number, committed: boolean): void;
   /** Create copies: `count` copies of the object, the i-th laid `i × (dx,
    *  dy)` cells from it, turned `i × dAngleDeg` further and scaled by
    *  `sx` / `sy` i times over — so each copy is the one before with the
    *  offsets added. One undo step. */
   onTransformCopies?(spec: TransformCopiesSpec): void;
-  /** The bar's Create copies DRAFT, live: called with the current settings
-   *  whenever the bar opens or any of them changes, and with null when the
-   *  bar goes away (dismissed, folded, another bar picked) — so the host can
-   *  ghost the copies the press would lay down, and take the ghosts away
-   *  with the bar. Never fires for the press itself; that is
+  /** The page's Create copies DRAFT, live: called with the current settings
+   *  whenever the page opens or any of them changes, and with null when the
+   *  page goes away (dismissed, folded, another page picked) — so the host
+   *  can ghost the copies the press would lay down, and take the ghosts away
+   *  with the page. Never fires for the press itself; that is
    *  {@link onTransformCopies}. */
   onTransformCopiesPreview?(spec: TransformCopiesSpec | null): void;
   /** Selection is a Figma-style frame: the panel's second row shows the frame

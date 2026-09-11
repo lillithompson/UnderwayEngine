@@ -246,10 +246,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
         ...(ctx.endpointCaps === false ? [] : [ROW_SEGMENTED]),
       ]);
     case 'transform':
-      // Rotation, then Create copies' six settings two to a row (offset X
+      // The Copies page: Create copies' six settings two to a row (offset X
       // + Y, scale X + Y, rotation offset + count) and the button row that
       // fires it.
-      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
+      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
     case 'patternTiles':
       // The arming grid: two rows of square buttons.
       return contentArea([PATTERN_TILE_GRID]);

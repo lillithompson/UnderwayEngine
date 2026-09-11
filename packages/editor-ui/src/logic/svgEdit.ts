@@ -26,10 +26,11 @@ import type { SVGSubtypeKind } from '../adapter';
  *    a cap (round / square) for each of an open path's two loose ends.
  *  - `opacity` opens the Opacity bar — the whole object's render opacity plus
  *    an edge soften (0 = hard edges, 1 = transparent toward the edges).
- *  - `transform` opens the Transform bar — a rotation slider for the object,
- *    and Create copies: a count, a position offset and a rotation offset,
- *    each copy laid the offsets past the one before. Every subtype has it;
- *    a line turns and repeats as readily as a shape. */
+ *  - `transform` opens the Copies page — Create copies: a count, a position
+ *    offset, a scale and a rotation offset, each copy laid the offsets past
+ *    the one before. Every subtype has it; a line repeats as readily as a
+ *    shape. (The key predates the page's rename; the object's own rotation
+ *    is the two-finger twist and the selection tool's Rotate slider.) */
 export type SVGEditAction = 'stroke' | 'fill' | 'endpoints' | 'opacity' | 'transform';
 
 export interface SVGEditOption {
@@ -115,7 +116,7 @@ export function svgEditOptions(subtype: SVGSubtypeKind): readonly SVGEditOption[
   if (svgHasFill(subtype)) options.push({ action: 'fill', label: 'Fill', icon: 'format-color-fill' });
   if (svgHasEndpoints(subtype)) options.push({ action: 'endpoints', label: 'Ends', icon: 'ray-start-end' });
   if (svgHasOpacity(subtype)) options.push({ action: 'opacity', label: 'Opacity', icon: 'opacity' });
-  options.push({ action: 'transform', label: 'Transform', icon: 'rotate-right' });
+  options.push({ action: 'transform', label: 'Copies', icon: 'content-copy' });
   return options;
 }
 
