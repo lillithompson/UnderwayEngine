@@ -31,8 +31,10 @@ import { patternModalTileSize } from '../logic/patternEdit';
 import { submenuHeight } from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
-  it('offers Tools alone — the panel adds Stroke beside it; Tiles and Symmetry came off the row', () => {
-    expect(PATTERN_EDIT_OPTIONS.map((o) => [o.action, o.label])).toEqual([['tools', 'Tools']]);
+  it('offers no page of its own — the panel adds Stroke; Tiles, Symmetry and then Tools came off the row', () => {
+    // Tools' grid actions ride the host's floating capsule and Repeat its
+    // Tile | Repeat pill, so the page said them twice.
+    expect(PATTERN_EDIT_OPTIONS).toEqual([]);
     // The bars themselves stand, keyed and sized, for a host that opens them.
     for (const action of ['tiles', 'symmetry'] as const) {
       const sub = patternActionSubmenu(action);

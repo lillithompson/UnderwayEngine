@@ -330,18 +330,17 @@ export interface PatternEditOption {
   label: string;
 }
 
-/** The pattern type options, in display order: the Tools that operate on
- *  the grid (Flood / Close / Clear, Borders, Repeat, Sets), and that is
- *  all — the panel adds the Stroke bar beside it, so a pattern's page
- *  reads Tools · Stroke. The Tiles and Symmetry pages came off the row
- *  (2026-09-10): the canvas paints from the Tile tool's own choice and
- *  mirrors by the toolbar's Symmetry setting, and two more pages on the
- *  row said the same things twice. Their bars, keys and heights stand
- *  (PatternEditAction, patternActionSubmenu) for a host that opens them
- *  itself. (Repeat is not here: it is a row of the Tools bar.) */
-export const PATTERN_EDIT_OPTIONS: readonly PatternEditOption[] = [
-  { action: 'tools', label: 'Tools' },
-];
+/** The pattern type options, in display order: none — the panel adds the
+ *  Stroke bar, so a pattern's page reads Stroke alone. The Tiles and
+ *  Symmetry pages came off the row first (2026-09-10): the canvas paints
+ *  from the Tile tool's own choice and mirrors by the toolbar's Symmetry
+ *  setting. Tools followed (2026-09-11): its grid actions (Flood / Close /
+ *  Clear) ride the host's floating capsule whenever a pattern is in hand,
+ *  and Repeat became the host's Tile | Repeat pill under the toolbar, so
+ *  the page said those things twice too. The three bars, their keys and
+ *  heights stand (PatternEditAction, patternActionSubmenu) for a host
+ *  that opens them itself. */
+export const PATTERN_EDIT_OPTIONS: readonly PatternEditOption[] = [];
 
 /** The submenu key an action's bar rides under (see submenuHeight's
  *  SubmenuKey), and its inverse — the same pairing rigEdit keeps. */
