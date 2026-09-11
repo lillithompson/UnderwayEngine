@@ -107,12 +107,18 @@ describe('submenuHeight (a page’s content area)', () => {
     expect(submenuHeight('crop', { cropMode: 'tile' })).not.toBe(submenuHeight('crop', { cropMode: 'fill' }));
   });
 
-  test('the Shadow page is sized by the taller of its offset pad and the sliders beside it', () => {
+  test('the Shadow page is its three sliders, and the offset pad is the SQUARE beside them', () => {
     expect(submenuHeight('shadow')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER], SHADOW_PAD_SIZE));
-    // Its swatch left for the Color page, so the pad stands alone in the
-    // aside column — and three slider rows now outstand it, setting the
-    // height (the pad sits at their top).
-    expect(SHADOW_PAD_SIZE).toBeLessThan(ROW_SLIDER * 3 + ROW_GAP * 2);
+    // The pad is exactly as tall as the three rows it stands against, and
+    // square — a direction chooser has to read the same distance on both
+    // axes, and a smaller square in a taller column read as squat. Derived
+    // from the rows, so neither can drift from the other.
+    expect(SHADOW_PAD_SIZE).toBe(ROW_SLIDER * 3 + ROW_GAP * 2);
+    // …which leaves the page exactly as tall as its rows: the pad fills the
+    // column rather than setting a floor above it.
+    expect(submenuHeight('shadow')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]));
+    const shadow = readFileSync(resolve(__dirname, '..', 'components', 'ShadowBar.tsx'), 'utf8');
+    expect(shadow).toContain('width: PAD_SIZE, height: PAD_SIZE,');
   });
 
   test('a slider row is its caption, the gap under it, and the control line', () => {

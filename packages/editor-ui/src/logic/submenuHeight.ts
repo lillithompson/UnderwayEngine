@@ -50,8 +50,14 @@ export const BAR_CUSHION = 3;
 /** The gap between a page's aside column (the Shadow page's offset pad) and
  *  its rows. */
 export const ASIDE_GAP = 16;
-/** The Shadow page's XY offset pad — its aside column. */
-export const SHADOW_PAD_SIZE = 106;
+/** The Shadow page's XY offset pad — its aside column, and a SQUARE one: it
+ *  is a direction chooser, so its two axes have to read as the same
+ *  distance. It takes the exact height of the three sliders beside it
+ *  (Blur / Spread / Opacity), which is what makes it square in the page
+ *  rather than merely square in its own style — at 106 it was a small
+ *  square sitting in a taller column, which reads as squat. Derived from
+ *  those rows so the two can't drift apart. */
+export const SHADOW_PAD_SIZE = ROW_SLIDER * 3 + ROW_GAP * 2;
 
 // ── The Edit sheet's own chrome (components/EditSheet.tsx) ───────────
 /** Padding above the tab row. */

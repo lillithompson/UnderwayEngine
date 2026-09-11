@@ -6,13 +6,21 @@ import { BarBody, CONTROL_ACCENT, SliderRow } from './effectBar';
 import { beginValueDrag, endValueDrag, padOffsetFromTouch, VALUE_DRAG_SURFACE } from '../logic/slider';
 import { rgbCss, withAlpha } from '../logic/hsv';
 
-// The Drop Shadow page (design "2a"): an aside column holding the XY offset
-// pad, and Blur / Spread / Opacity sliders beside it, spread to the pad's
-// height. Values are the app's world-cell units (see the ranges below,
-// mapped from the design's iOS-point ranges at 16px/cell). The slider rows
-// and the body layout come from the shared page grammar (see
-// effectBar.tsx); the sheet around the page — its Shadow tab and the Remove
-// line — is the Edit sheet's, and the shadow's colour is the Color page's.
+// The Drop Shadow page (design "2a"): the XY offset pad on the left and
+// Blur / Spread / Opacity beside it, the sliders spread to the pad's height
+// so the two columns square off against each other. The pad is exactly as
+// tall as those three rows (SHADOW_PAD_SIZE) and exactly as wide — a
+// direction chooser has to read the same distance on both axes, and a
+// smaller square parked in a taller column read as squat.
+//
+// Values are the app's world-cell units (see the ranges below, mapped from
+// the design's iOS-point ranges at 16px/cell). The slider rows and the body
+// layout come from the shared page grammar (see effectBar.tsx); the sheet
+// around the page — its Shadow tab and the Remove line — is the Edit
+// sheet's, and the shadow's colour is the Color page's.
+//
+// ONE page, shared: an image, a frame and a TEXT all open this, so the
+// layout is the same wherever a shadow is cast.
 
 // ── Ranges (world cells; design pt ÷ 16) ─────────────────────────────
 const MAX_OFFSET = 1.5; // ±  (≈ ±24pt)
