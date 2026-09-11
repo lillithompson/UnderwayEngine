@@ -4,8 +4,12 @@
  * images.
  */
 
-import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndCaps, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
+import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
 import type { SVGSubtypeKind } from '../adapter';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+
+const SRC_LOGIC = readFileSync(resolve(__dirname, '..', 'logic', 'svgEdit.ts'), 'utf8');
 
 const SUBTYPES: SVGSubtypeKind[] = ['line', 'arc', 'rectangle', 'circle', 'polygon', 'shape', 'stroke'];
 
@@ -43,16 +47,14 @@ describe('svgEditOptions', () => {
     }
   });
 
-  it('offers Caps on a line and an arc, but not on a freehand curve (nor a closed shape)', () => {
-    // A freehand curve's ends are wherever the pen lifted: markers stay,
-    // the Caps row goes.
-    expect(svgHasEndCaps('line')).toBe(true);
-    expect(svgHasEndCaps('arc')).toBe(true);
-    expect(svgHasEndCaps('stroke')).toBe(false);
-    for (const subtype of FILLED) expect(svgHasEndCaps(subtype)).toBe(false);
-    // Caps are a subset of Ends: never a cap without a loose end.
+  it('offers no end CAPS at all any more — markers are the whole page', () => {
+    // Round vs square ends went from the freehand curve first, then the
+    // line; the arc alone keeping a control its two siblings had dropped
+    // was a private oddity worth less than the choice. Caps a drawing
+    // already carries still render — only the control is gone.
+    expect(SRC_LOGIC).not.toContain('svgHasEndCaps');
     for (const subtype of SUBTYPES) {
-      if (svgHasEndCaps(subtype)) expect(svgHasEndpoints(subtype)).toBe(true);
+      expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('caps');
     }
   });
 

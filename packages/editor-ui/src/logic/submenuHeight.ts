@@ -128,9 +128,6 @@ export interface SubmenuHeightContext {
   /** Stroke page: the same page, with the rows this vector subtype supports
    *  (never Radius — that is the Shape page's). */
   strokeRows?: { position: boolean };
-  /** Endpoints page: whether it shows the Caps row under the markers
-   *  (default true). A freehand curve drops it — see svgHasEndCaps. */
-  endpointCaps?: boolean;
   /** Layout page: whether the host wired up Grid, which adds the Arrange row. */
   layoutHasGrid?: boolean;
   /** RIG page: whether the host wired up Reset, which adds its row. A locked
@@ -267,11 +264,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // Nod / Shake / Tilt.
       return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
     case 'endpoints':
-      // Start and End markers, then Caps unless the subtype has none.
-      return contentArea([
-        ROW_SEGMENTED, ROW_SEGMENTED,
-        ...(ctx.endpointCaps === false ? [] : [ROW_SEGMENTED]),
-      ]);
+      // A marker row per end. (The Caps row went — see EndpointsBar.)
+      return contentArea([ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'transform': {
       // The Copies page: Create copies' six settings, a slider row each, in
       // three groups of two — the offsets, the scales, then the count

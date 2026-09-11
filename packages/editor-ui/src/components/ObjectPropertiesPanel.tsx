@@ -10,7 +10,7 @@ import {
 import { multiSelectionOptions } from '../logic/multiOptions';
 import { isValueDragging } from '../logic/slider';
 import { SubmenuKey, editSheetHeight, emptyEffectHeight, submenuHeight } from '../logic/submenuHeight';
-import { svgEditOptions, svgHasEndCaps, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
+import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import {
   OBJECT_DOTS_BOTTOM,
@@ -955,7 +955,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     activeBarEl = (
       <EndpointsBar
         endpoints={model.endpoints ?? DEFAULT_ENDPOINTS_MODEL}
-        showCaps={svgHasEndCaps(model.svgSubtype ?? 'stroke')}
         onChange={(e) => model.onEndpoints?.(e)}
       />
     );
@@ -1083,8 +1082,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // ones its subtype has no answer for.
     borderRows: { radius: true, position: true },
     strokeRows: svgStrokeRows(model.svgSubtype ?? 'stroke'),
-    // …and the Endpoints page drops its Caps row on a freehand curve.
-    endpointCaps: svgHasEndCaps(model.svgSubtype ?? 'stroke'),
     // The Layout page grows an Arrange row exactly when the page will render it.
     layoutHasGrid: !!model.onGrid,
     // …and the RIG page its Reset row, on the same rule.

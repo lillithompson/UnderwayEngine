@@ -25,8 +25,9 @@ import type { SVGSubtypeKind } from '../adapter';
  *  - `fill` opens the Fill bar — the image Tint bar's rows (Type / Stops /
  *    Angle / Opacity / Blend) plus its gradient swatch, pointed at the closed
  *    path's interior.
- *  - `endpoints` opens the Endpoints bar — a marker (none / circle / arrow) and
- *    a cap (round / square) for each of an open path's two loose ends.
+ *  - `endpoints` opens the Endpoints page — a marker (none / circle / arrow)
+ *    for each of an open path's two loose ends. (The cap control that used
+ *    to sit under them is gone; see EndpointsBar.)
  *  - `opacity` opens the Opacity bar — the whole object's render opacity plus
  *    an edge soften (0 = hard edges, 1 = transparent toward the edges).
  *  - `transform` opens the Copies page — Create copies: a count, a position
@@ -82,16 +83,6 @@ export function svgHasFill(subtype: SVGSubtypeKind): boolean {
  */
 export function svgHasEndpoints(subtype: SVGSubtypeKind): boolean {
   return subtype === 'line' || subtype === 'arc' || subtype === 'stroke';
-}
-
-/**
- * Whether a subtype's Endpoints page offers the Caps row (round / square per
- * end) beside its markers. A line and an arc do; the freehand stroke does
- * not — its ends are wherever the pen lifted, and a cap on a hand-drawn
- * curve reads as noise rather than a choice. Markers stay on all three.
- */
-export function svgHasEndCaps(subtype: SVGSubtypeKind): boolean {
-  return svgHasEndpoints(subtype) && subtype !== 'stroke';
 }
 
 /**

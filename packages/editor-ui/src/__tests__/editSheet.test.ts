@@ -439,11 +439,17 @@ describe('the panel drives the sheet', () => {
     expect(opacity).toContain('{showSoften ? (');
   });
 
-  it('the Endpoints page drops its Caps row on a freehand curve, and its height with it', () => {
+  it('the Endpoints page carries markers alone — no Caps row, and no plumbing left for one', () => {
     const ends = SRC('components', 'EndpointsBar.tsx');
-    expect(ends).toContain('{showCaps ? (');
-    expect(PANEL).toContain("showCaps={svgHasEndCaps(model.svgSubtype ?? 'stroke')}");
-    expect(PANEL).toContain("endpointCaps: svgHasEndCaps(model.svgSubtype ?? 'stroke'),");
+    expect(ends).toContain('label="Start"');
+    expect(ends).toContain('label="End"');
+    // No Caps CONTROL (the comment explaining its removal may say the word).
+    expect(ends).not.toContain('label="Caps"');
+    expect(ends).not.toContain('showCaps');
+    expect(ends).not.toContain('EndCapKind');
+    expect(ends).not.toContain('DualSegmentedRow');
+    expect(PANEL).not.toContain('svgHasEndCaps');
+    expect(SRC('logic', 'submenuHeight.ts')).not.toContain('endpointCaps');
   });
 
   it('a polygonal shape rounds its corners on a Shape page; its Stroke page has no Radius row and an unlabelled Position row', () => {
