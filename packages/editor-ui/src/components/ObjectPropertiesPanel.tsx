@@ -28,7 +28,7 @@ import {
   RIG_PART_PAGES, restRigSliders, rigPartOfSubmenu, rigPartSubmenu,
 } from '../logic/rigEdit';
 import { CropBar } from './CropBar';
-import { TextBar } from './TextBar';
+import { TextBar, TextPage } from './TextBar';
 import { TintBar } from './TintBar';
 import { EndpointsBar } from './EndpointsBar';
 import { TransformBar } from './TransformBar';
@@ -332,11 +332,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // model — it's changed externally via the full-screen picker).
   const [textDraft, setTextDraft] = useState<TextStyleModel | null>(null);
   const prevTextOpen = useRef(false);
-  // The Text controls are two pages (font / align) sharing the single
-  // `textStyleOpen` flag; this tracks which page shows. The entry points own
-  // it: the Type tab opens on 'font', the Align tab on 'align' (both via
-  // openSubmenu).
-  const [textPage, setTextPage] = useState<'font' | 'align'>('font');
+  // The Text controls are three pages (font / spacing / align) sharing the
+  // single `textStyleOpen` flag; this tracks which page shows. The entry
+  // points own it: the Type tab opens on 'font', Spacing on 'spacing', Align
+  // on 'align' (all via openSubmenu).
+  const [textPage, setTextPage] = useState<TextPage>('font');
   // ── The pages (Crop / Shadow / Border / Text …) ──────────────────────
   // The open page is what the Edit sheet's well holds, and its tab is the lit
   // one. The pages are separate components but only one shows at a time.
@@ -350,7 +350,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       ? ['shadow', 'border', 'opacity']
       : ['crop', 'shadow', 'border', 'opacity'])
     : model.showFrameOptions ? ['shadow', 'border']
-    : model.showTextStyle ? ['font', 'align', 'shadow']
+    : model.showTextStyle ? ['font', 'spacing', 'align', 'shadow']
     : model.showPaintOptions ? ['opacity']
     // A pattern object's pages, in the order its tab row lists them, plus
     // the Stroke page its baked tile paths share with the vectors.
@@ -439,8 +439,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     else if (key === 'layout') model.onLayoutOpenChange?.(true);
     else if (rigPartOfSubmenu(key)) model.onRigPartOpenChange?.(rigPartOfSubmenu(key));
     else if (patternActionOfSubmenu(key)) model.onPatternBarOpenChange?.(patternActionOfSubmenu(key));
-    else if (key === 'font' || key === 'align') {
-      // Both text pages ride the single textStyleOpen flag; the page state
+    else if (key === 'font' || key === 'spacing' || key === 'align') {
+      // The text pages ride the single textStyleOpen flag; the page state
       // picks which one shows.
       setTextPage(key);
       model.onTextStyleOpenChange?.(true);
@@ -930,7 +930,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     activeBarEl = <PatternToolsBar model={model} />;
   } else if (displaySub === 'patternSymmetry') {
     activeBarEl = <PatternSymmetryBar model={model} />;
-  } else if (displaySub === 'font' || displaySub === 'align') {
+  } else if (displaySub === 'font' || displaySub === 'spacing' || displaySub === 'align') {
     activeBarEl = (
       <TextBar
         page={displaySub}
@@ -1155,14 +1155,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // — the open-path page, which the host lands on all of them.
     typeSpecs = [strokeSpec()];
   } else if (model.showTextStyle) {
-    // Type (opens the Text controls on the Font page) · Align (opens them
-    // straight on the Align page) · Shadow. Type / Align both show the same
-    // two-page Text controls; they differ only in which page it lands on.
-    // Shadow is the image's own page, unchanged — one Drop Shadow control
-    // for every object that can cast one. Editing the CONTENT is not a tab:
-    // a tap on the selected text opens the host's overlay.
+    // Type (opens the Text controls on the Font page) · Spacing · Align
+    // (each opening the Text controls straight on its page) · Shadow. The
+    // three text tabs show the same component; they differ only in which
+    // page it lands on. Shadow is the image's own page, unchanged — one Drop
+    // Shadow control for every object that can cast one. Editing the
+    // CONTENT is not a tab: a tap on the selected text opens the host's
+    // overlay.
     typeSpecs = [
       { key: 'type', label: 'Type', sub: 'font', onPress: () => openSubmenu('font') },
+      { key: 'spacing', label: 'Spacing', sub: 'spacing', onPress: () => openSubmenu('spacing') },
       { key: 'align', label: 'Align', sub: 'align', onPress: () => openSubmenu('align') },
       { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },
     ];

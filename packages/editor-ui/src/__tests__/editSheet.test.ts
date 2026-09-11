@@ -212,7 +212,23 @@ describe('the panel drives the sheet', () => {
     expect(text).toContain('accessibilityLabel={`Font: ${label}`}');
   });
 
-  it('text offers Type · Align · Shadow — no Edit tab; a tap on the text edits its content', () => {
+  it('the Spacing page is Char, Line and Bend on separate lines; Align is the two unlabelled alignment rows', () => {
+    const text = SRC('components', 'TextBar.tsx');
+    const spacing = text.slice(text.indexOf("page === 'spacing' ? ("), text.indexOf(') : (', text.indexOf("page === 'spacing' ? (")));
+    for (const label of ['Char', 'Line', 'Bend']) expect(spacing).toContain(`label="${label}"`);
+    expect(text).not.toContain('DualSliderRow');
+    const align = text.slice(text.lastIndexOf(') : (\n          <>'), text.indexOf('</BarBody>'));
+    expect(align).toContain('options={ALIGNS}');
+    expect(align).toContain('options={VALIGNS}');
+    expect(align).not.toContain('label="Align"');
+    expect(align).not.toContain('label="Vertical"');
+    expect(align).not.toContain('Bend');
+    // …and the panel offers them as two tabs.
+    expect(PANEL).toContain("{ key: 'spacing', label: 'Spacing', sub: 'spacing', onPress: () => openSubmenu('spacing') },");
+    expect(PANEL).toContain("model.showTextStyle ? ['font', 'spacing', 'align', 'shadow']");
+  });
+
+  it('text offers Type · Spacing · Align · Shadow — no Edit tab; a tap on the text edits its content', () => {
     expect(PANEL).not.toContain("key: 'edit'");
     expect(PANEL).not.toContain('showEdit');
     expect(PANEL).not.toContain('model.onEdit');

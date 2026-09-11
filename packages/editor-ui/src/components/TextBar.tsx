@@ -4,21 +4,24 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TextFontOption, TextHAlign, TextStyleModel, TextVAlign, TextWeight } from '../adapter';
 import { ROW_PILL } from '../logic/submenuHeight';
 import {
-  ACCENT, BarBody, ColorAside, DualSliderRow,
+  ACCENT, BarBody, ColorAside,
   PILL_CHEVRON, PILL_TRACK, SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL,
   SHEET_ROW_ACTIVE, SHEET_TEXT, SliderRow,
 } from './effectBar';
 
-// The Text typography controls (design "5a"), split into two pages — two
+// The Text typography controls (design "5a"), split into three pages — three
 // tabs of the Edit sheet:
-//   • Type  — color (the aside swatch) · Font (a pill that opens a font
+//   • Type    — color (the aside swatch) · Font (a pill that opens a font
 //     sheet) · Weight (segmented) · Size (slider).
-//   • Align — Character / Line spacing (dual slider) · Bend (arc curvature,
-//     slider centered at flat) · horizontal justification (left/center/right)
-//     · vertical alignment (top/middle/bottom).
-// Both pages share this component (via `page`) and the row grammar of the
+//   • Spacing — Character spacing · Line spacing · Bend (arc curvature,
+//     slider centered at flat), a slider row each.
+//   • Align   — horizontal justification (left/center/right) · vertical
+//     alignment (top/middle/bottom), unlabelled: the glyphs say it.
+// All three share this component (via `page`) and the row grammar of the
 // image-effect pages (Drop Shadow / Border / Crop; see effectBar.tsx). The
 // sheet around them is the ObjectPropertiesPanel's, shared with those pages.
+
+export type TextPage = 'font' | 'spacing' | 'align';
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -108,8 +111,8 @@ function FontSheet({ fonts, current, onPick, onClose }: {
 }
 
 export function TextBar({ page, style, fonts, onChange, onCommit, onPickColor, onSheetOpenChange }: {
-  /** Which page to render: font controls or alignment controls. */
-  page: 'font' | 'align';
+  /** Which page to render: font, spacing or alignment controls. */
+  page: TextPage;
   style: TextStyleModel;
   fonts: readonly TextFontOption[];
   /** Live preview (slider drag). */
@@ -154,17 +157,18 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onPickColor, o
               apply={(t, c) => set({ size: SIZE_MIN + t * (SIZE_MAX - SIZE_MIN) }, c)}
             />
           </>
-        ) : (
+        ) : page === 'spacing' ? (
           <>
-            {/* Character (letter spacing) + Line (line height) share one row
-                so the page stands a row shorter. */}
-            <DualSliderRow
-              leftLabel="Char"
-              leftValue={(style.letterSpacing - LS_MIN) / (LS_MAX - LS_MIN)}
-              leftApply={(t, c) => set({ letterSpacing: LS_MIN + t * (LS_MAX - LS_MIN) }, c)}
-              rightLabel="Line"
-              rightValue={(style.lineHeight - LH_MIN) / (LH_MAX - LH_MIN)}
-              rightApply={(t, c) => set({ lineHeight: LH_MIN + t * (LH_MAX - LH_MIN) }, c)}
+            {/* Character (letter spacing) and Line (line height), a row each. */}
+            <SliderRow
+              label="Char"
+              value={(style.letterSpacing - LS_MIN) / (LS_MAX - LS_MIN)}
+              apply={(t, c) => set({ letterSpacing: LS_MIN + t * (LS_MAX - LS_MIN) }, c)}
+            />
+            <SliderRow
+              label="Line"
+              value={(style.lineHeight - LH_MIN) / (LH_MAX - LH_MIN)}
+              apply={(t, c) => set({ lineHeight: LH_MIN + t * (LH_MAX - LH_MIN) }, c)}
             />
             {/* Bend: curve the lines along an arc — up past the middle,
                 down before it; the readout speaks signed percent (0% flat). */}
@@ -177,14 +181,17 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onPickColor, o
                 commit: (n) => set({ bend: Math.max(BEND_MIN, Math.min(BEND_MAX, n / 100)) }, true),
               }}
             />
+          </>
+        ) : (
+          <>
+            {/* Horizontal, then vertical — unlabelled: the align glyphs say
+                which row is which. */}
             <SegmentedRow
-              label="Align"
               options={ALIGNS}
               value={style.align}
               onChange={(align) => set({ align }, true)}
             />
             <SegmentedRow
-              label="Vertical"
               options={VALIGNS}
               value={style.vAlign}
               onChange={(vAlign) => set({ vAlign }, true)}

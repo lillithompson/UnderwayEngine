@@ -48,11 +48,11 @@ describe('submenuHeight (a page’s content area)', () => {
     expect(submenuHeight('border')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH));
   });
 
-  test('the Text pages: Type is three rows beside the swatch, Align four with none', () => {
+  test('the Text pages: Type is three rows beside the swatch, Spacing three sliders, Align two segmented rows', () => {
     expect(submenuHeight('font')).toBe(pageOf([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH));
-    // Char/Line still share a row; the Bend slider stands on its own.
-    expect(submenuHeight('align'))
-      .toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SEGMENTED]));
+    // Char, Line and Bend each on a line of their own.
+    expect(submenuHeight('spacing')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]));
+    expect(submenuHeight('align')).toBe(pageOf([ROW_SEGMENTED, ROW_SEGMENTED]));
   });
 
   test('the Tint page grows a row per gradient feature', () => {
@@ -128,7 +128,7 @@ describe('submenuHeight (a page’s content area)', () => {
     // so none may come back as bare chrome.
     const ALL: SubmenuKey[] = [
       'tint', 'crop', 'shadow', 'border', 'opacity',
-      'font', 'align', 'stroke', 'svgFill', 'endpoints', 'transform', 'layout',
+      'font', 'spacing', 'align', 'stroke', 'svgFill', 'endpoints', 'transform', 'layout',
       'rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead',
       'patternTiles', 'patternTools', 'patternSymmetry',
     ];

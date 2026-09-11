@@ -87,13 +87,13 @@ export const PATTERN_TILE_GRID =
   PATTERN_TILE_BUTTON * 2 + PATTERN_TILE_GRID_GAP;
 
 /** The property pages. An image selection offers crop / shadow / border /
- *  opacity; text font / align (two pages of the Text controls) and shadow
- *  (the image page, reused); a vector stroke plus whichever of svgFill /
+ *  opacity; text font / spacing / align (three pages of the Text controls)
+ *  and shadow (the image page, reused); a vector stroke plus whichever of svgFill /
  *  endpoints / opacity / transform its subtype has. `layout` rides on a
  *  multi-selection rather than on a type. */
 export type SubmenuKey =
   | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
-  | 'font' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
+  | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
   // The poseable rig's parts: the whole figure (three axes, plus the Reset
   // that stands it back up), six sliders for the hands (curl / twist /
   // spread per side), four for the feet, three for the spine, two for the
@@ -258,9 +258,12 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'font':
       // Font pill, Weight segmented, Size slider — beside the colour swatch.
       return contentArea([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER], ASIDE_SWATCH);
+    case 'spacing':
+      // Char, Line and Bend, a slider row each.
+      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
     case 'align':
-      // Char/Line sharing one slider row, then Bend, Align and Vertical.
-      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED, ROW_SEGMENTED]);
+      // The horizontal and the vertical alignment rows.
+      return contentArea([ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'shadow':
       // The XY pad over the swatch on the left, three sliders on the right:
       // the taller column sets the height.
