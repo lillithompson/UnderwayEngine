@@ -56,7 +56,6 @@ export const PANEL_ICON = STATE_INACTIVE; // rgba(42, 42, 42, 0.8) — icons + c
 export const PANEL_INK_LABEL = 'rgba(42, 42, 42, 0.75)'; // row labels
 export const PANEL_INK_DIM = 'rgba(42, 42, 42, 0.55)'; // bar titles, sheet labels, trash
 export const PANEL_INK_MUTED = 'rgba(42, 42, 42, 0.45)'; // hints, captions under a control
-export const PANEL_DOT = 'rgba(42, 42, 42, 0.28)'; // unfilled carousel dot
 export const PANEL_INK_HAIRLINE = 'rgba(42, 42, 42, 0.14)'; // bar top borders + dividers
 export const PANEL_BORDER = 'rgba(42, 42, 42, 0.22)'; // panel top border (against the canvas)
 // Recessed vs raised: on a dark sheet a track was black and the selected cell
@@ -83,12 +82,13 @@ export const PANEL_SHEET_ROW_ACTIVE = 'rgba(42, 42, 42, 0.10)';
 // see logic/submenuHeight.ts, which derives each page's height from its rows
 // and the sheet's from the page.
 //
-// The main object-properties panel holds only the common-actions row and the
-// carousel dots:
-//   1 border + 60 row + 34 dots (4 + 12 dot + 18 clearance) = 95.
-// On a notched phone the dots move into the home-indicator strip and this
-// shrinks by the dot row (see logic/panelLayout.ts).
-export const OBJECT_PANEL_HEIGHT = 95;
+// The main object-properties panel holds the common-actions row and nothing
+// else: 1 border + 60 row = 61. It ended in a row of carousel dots saying
+// which of its two pages was showing — 34pt of chrome for a fact the sheet
+// itself tells, since the sheet is either up or it is not. The dots are
+// gone; the swipe (and the Edit capsule) that raised the page stands.
+// The device's bottom inset is added on top — see logic/panelLayout.ts.
+export const OBJECT_PANEL_HEIGHT = 61;
 
 // ── Modal surfaces (Facet AppModal / ViewModal) ──
 export const MODAL_BG = '#3f3f3f'; // Facet BG_RAISED_ALT

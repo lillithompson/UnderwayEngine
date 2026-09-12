@@ -4,38 +4,20 @@ import type { SubmenuKey } from './submenuHeight';
 // Bottom-edge layout for the object-properties panel, and the two pages it
 // swipes between.
 //
-// The panel ends in a row of carousel dots (which of its pages is showing).
-// Where those dots sit depends on the device: on a notched phone they drop
-// *into* the home-indicator strip (the "unsafe" space at the very bottom)
-// rather than sitting above it, so the panel reclaims the dot row's height and
-// the whole sheet reads shorter. With no inset (desktop web) there is no strip
-// to drop into, so the dots stay in flow. Callers pass `dotsInSafeArea` — keyed
-// off a measured inset, not the platform: the editor runs as the web bundle
-// even inside the native iOS WebView.
-
-/** Carousel dot diameter. */
-export const OBJECT_DOT_SIZE = 12;
-/** Clearance under the dots — how far they ride above the bottom edge, on both
- *  surfaces. Deep enough that the dots sit in the upper half of a home-indicator
- *  strip rather than against the screen edge. */
-export const OBJECT_DOTS_BOTTOM = 18;
-/** Dot row box: paddingTop (4) + dot + the bottom clearance. */
-export const OBJECT_DOTS_ROW_HEIGHT = 4 + OBJECT_DOT_SIZE + OBJECT_DOTS_BOTTOM;
+// The panel is its common-actions row and the device's bottom inset under it,
+// and nothing else. It used to end in a row of carousel dots saying which of
+// its two pages was showing, with a whole rule about where they sat: on a
+// notched phone they dropped INTO the home-indicator strip so the panel could
+// reclaim their height, and stayed in flow where there was no strip to drop
+// into. The dots are gone — the sheet says which page is up by being up —
+// and with them that rule, so the inset is simply padded and the panel is the
+// same height everywhere.
 
 /** Panel box for a given inset. `height` is the full slide distance (so the
  *  hidden position clears the screen edge); `paddingBottom` keeps the button
- *  row clear of the inset — zero when the dots have taken the strip over, since
- *  the strip is then part of the panel's own content. */
-export function objectPanelLayout(safeBottom: number, dotsInSafeArea: boolean): { height: number; paddingBottom: number } {
-  if (!dotsInSafeArea) {
-    return { height: OBJECT_PANEL_HEIGHT + safeBottom, paddingBottom: safeBottom };
-  }
-  // The strip replaces the dot row — unless it is shorter than the dots need,
-  // in which case the dots set the floor and nothing is reclaimed.
-  return {
-    height: OBJECT_PANEL_HEIGHT - OBJECT_DOTS_ROW_HEIGHT + Math.max(safeBottom, OBJECT_DOTS_ROW_HEIGHT),
-    paddingBottom: 0,
-  };
+ *  row clear of the inset. */
+export function objectPanelLayout(safeBottom: number): { height: number; paddingBottom: number } {
+  return { height: OBJECT_PANEL_HEIGHT + safeBottom, paddingBottom: safeBottom };
 }
 
 // ── Pages ────────────────────────────────────────────────────────────

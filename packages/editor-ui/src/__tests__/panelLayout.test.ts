@@ -1,7 +1,6 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
-  OBJECT_DOTS_ROW_HEIGHT,
   landingSubmenu,
   objectPanelLayout,
   objectPanelPages,
@@ -9,23 +8,19 @@ import {
 import { OBJECT_PANEL_HEIGHT } from '../theme';
 
 describe('objectPanelLayout', () => {
-  test('web / non-notched: the inset is plain bottom padding', () => {
-    expect(objectPanelLayout(0, false)).toEqual({ height: OBJECT_PANEL_HEIGHT, paddingBottom: 0 });
-    expect(objectPanelLayout(34, false)).toEqual({ height: OBJECT_PANEL_HEIGHT + 34, paddingBottom: 34 });
+  // The panel is its button row and the device's inset under it, the same
+  // height everywhere. The carousel dots are gone, and with them the rule
+  // that dropped them into the home-indicator strip on a notched phone so
+  // the panel could reclaim their height.
+  test('the inset is plain bottom padding, whatever the device', () => {
+    expect(objectPanelLayout(0)).toEqual({ height: OBJECT_PANEL_HEIGHT, paddingBottom: 0 });
+    expect(objectPanelLayout(34)).toEqual({ height: OBJECT_PANEL_HEIGHT + 34, paddingBottom: 34 });
+    expect(objectPanelLayout(8)).toEqual({ height: OBJECT_PANEL_HEIGHT + 8, paddingBottom: 8 });
   });
 
-  test('dots in the safe area: the strip replaces the dot row, no padding', () => {
-    const { height, paddingBottom } = objectPanelLayout(34, true);
-    expect(height).toBe(OBJECT_PANEL_HEIGHT - OBJECT_DOTS_ROW_HEIGHT + 34);
-    expect(paddingBottom).toBe(0);
-  });
-
-  test('a notched panel is shorter than the padded one by the reclaimed row', () => {
-    expect(objectPanelLayout(34, false).height - objectPanelLayout(34, true).height).toBe(OBJECT_DOTS_ROW_HEIGHT);
-  });
-
-  test('a strip shorter than the dots never clips them', () => {
-    expect(objectPanelLayout(8, true).height).toBe(OBJECT_PANEL_HEIGHT);
+  test('the row alone: no dot row is reserved', () => {
+    // 1 border + 60 row. The 34pt of dots it used to end in are gone.
+    expect(OBJECT_PANEL_HEIGHT).toBe(61);
   });
 });
 
@@ -106,12 +101,17 @@ describe('the panel’s two pages', () => {
     expect(PANEL).toContain('if (model.visible && !hasOptions) setSheetWanted(false);');
   });
 
-  test('the dots: the edit dot pops the sheet, the common dot drops it', () => {
-    expect(PANEL).toContain("onPress={() => (p === 'edit' ? openSheet() : closeSheet())}");
-    expect(PANEL).toContain("const shownPage: PanelPage = sheetOpen ? 'edit' : 'common';");
+  // The dots said which of two pages was showing — 34pt of chrome for a
+  // fact the sheet itself tells, by standing up. The swipe that raised the
+  // page (and the host's floating Edit capsule) is the whole affordance now.
+  test('no carousel dots: the sheet says which page is up by being up', () => {
+    expect(PANEL).not.toMatch(/dotsRow|dotActive/);
+    expect(PANEL).not.toContain('shownPage');
+    expect(PANEL).not.toContain('PANEL_DOT');
+    // The two pages are still counted — that is what says whether there is
+    // anything to swipe TO.
     expect(PANEL).toContain('const pages = objectPanelPages(allOptionSpecs.length > 0);');
-    // The 12px dot gets a hit area a fingertip (and a cursor) can trust.
-    expect(PANEL).toContain('hitSlop={10}');
+    expect(PANEL).toContain('const canSwap = pages.length > 1;');
   });
 
   test('a sideways swipe on the row pops the sheet, either direction, and the row does not move at all', () => {

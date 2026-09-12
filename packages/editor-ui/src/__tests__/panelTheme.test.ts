@@ -14,7 +14,6 @@ import {
   PANEL_BORDER,
   PANEL_CONTENT_WELL,
   PANEL_CONTROL,
-  PANEL_DOT,
   PANEL_ICON,
   PANEL_INK,
   PANEL_INK_DIM,
@@ -68,7 +67,7 @@ describe('object-properties chrome matches the toolbar', () => {
   it('renders every ink token as dark ink, never as white-on-dark', () => {
     const inks = {
       PANEL_INK, PANEL_ICON, PANEL_INK_LABEL, PANEL_INK_DIM, PANEL_INK_MUTED,
-      PANEL_DOT, PANEL_INK_HAIRLINE, PANEL_BORDER, PANEL_TRACK, PANEL_CONTENT_WELL,
+      PANEL_INK_HAIRLINE, PANEL_BORDER, PANEL_TRACK, PANEL_CONTENT_WELL,
       PANEL_SWATCH_BORDER, PANEL_SHEET_BORDER, PANEL_SHEET_ROW_ACTIVE,
     };
     for (const [name, value] of Object.entries(inks)) {
@@ -137,9 +136,10 @@ describe('object-properties chrome matches the toolbar', () => {
     // The well the controls sit in is the darkened token, rounded.
     expect(/well: \{[^}]*backgroundColor: PANEL_CONTENT_WELL/s.test(sheet)).toBe(true);
     expect(/well: \{[^}]*borderRadius: 16/s.test(sheet)).toBe(true);
-    // The sheet has no carousel dots of its own — the panel's row keeps them.
+    // Neither surface has carousel dots any more: the sheet standing up is
+    // what says which page is showing.
     expect(/dot/i.test(sheet)).toBe(false);
-    expect(/dotsRow/.test(panel)).toBe(true);
+    expect(/dotsRow/.test(panel)).toBe(false);
   });
 
   it('keeps the dark modal surface out of every menu file', () => {

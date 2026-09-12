@@ -13,9 +13,6 @@ import { SubmenuKey, editSheetHeight, emptyEffectHeight, pageIsWelled, submenuHe
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import {
-  OBJECT_DOTS_BOTTOM,
-  OBJECT_DOT_SIZE,
-  PanelPage,
   landingSubmenu,
   objectPanelLayout,
   objectPanelPages,
@@ -43,7 +40,6 @@ import {
   PANEL_ANIM_MS,
   PANEL_BG,
   PANEL_BORDER,
-  PANEL_DOT,
   PANEL_ICON,
   PANEL_INK,
   PATTERN_ACTIVE,
@@ -60,8 +56,9 @@ import {
 // selection rather than what it is made of.
 //
 // The panel is a compact fixed height (OBJECT_PANEL_HEIGHT) — one row of
-// buttons and the carousel dots. It has two pages, a dot each
-// (logic/panelLayout.ts):
+// buttons. It has two pages (logic/panelLayout.ts), swiped between; the row
+// of carousel dots that said which was showing is gone, the sheet saying so
+// by standing up:
 //
 //   common — rotate / flip / copy / lock / delete, as bare icons: universal
 //            enough to need no caption. Every selection has this page, first,
@@ -205,8 +202,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // must clear the full height either way, to slide fully off.
   // Note the editor always runs as the web bundle, inside a WebView on native,
   // so this keys off the measured inset rather than Platform.OS.
-  const dotsInSafeArea = safeBottom > 0;
-  const panelBox = objectPanelLayout(safeBottom, dotsInSafeArea);
+  const panelBox = objectPanelLayout(safeBottom);
   const hiddenY = panelBox.height;
   const translateY = useRef(new Animated.Value(model.visible ? 0 : hiddenY)).current;
 
@@ -1410,7 +1406,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     selected: sub !== undefined ? subOpen(sub) : undefined,
   }));
   const pages = objectPanelPages(allOptionSpecs.length > 0);
-  const shownPage: PanelPage = sheetOpen ? 'edit' : 'common';
   const canSwap = pages.length > 1;
   canSwapRef.current = canSwap;
 
@@ -1426,24 +1421,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
             {row1}
           </View>
         </View>
-        {canSwap ? (
-          <View style={styles.dotsRow}>
-            {pages.map((p) => (
-              // Each dot is also a button: the edit dot pops the sheet, the
-              // common dot drops it — the swipes' equal for a mouse. The
-              // hitSlop grows the 12px dot to a comfortable target without
-              // touching the row's look.
-              <Pressable
-                key={p}
-                onPress={() => (p === 'edit' ? openSheet() : closeSheet())}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel={p === 'common' ? 'Show actions page' : 'Show edit page'}
-                style={[styles.dot, p === shownPage && styles.dotActive]}
-              />
-            ))}
-          </View>
-        ) : null}
         </Animated.View>
       </View>
       {sheetMounted ? (
@@ -1491,10 +1468,6 @@ const styles = StyleSheet.create({
   // Fills the panel so a horizontal swipe anywhere over it (not just on the
   // buttons) pops the sheet.
   swapArea: { flex: 1 },
-  // Carousel dots (bottom): one filled for the current page, the other empty.
-  dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, paddingTop: 4, paddingBottom: OBJECT_DOTS_BOTTOM },
-  dot: { width: OBJECT_DOT_SIZE, height: OBJECT_DOT_SIZE, borderRadius: OBJECT_DOT_SIZE / 2, backgroundColor: PANEL_DOT },
-  dotActive: { backgroundColor: ICON_COLOR },
   // The icon row: equal columns separated by a gap wide enough that they read
   // as distinct buttons, not one strip.
   gridRow: {
