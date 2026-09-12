@@ -70,6 +70,31 @@ export const SHEET_CONTENT_TOP = 14;
 export const SHEET_REMOVE = 30;
 /** Padding under the last element (before any safe-area inset). */
 export const SHEET_PAD_BOTTOM = 14;
+/**
+ * The least clearance the sheet keeps between its last row and the bottom of
+ * the screen, whatever inset the device reports.
+ *
+ * A page's last row is now often a DRAGGABLE one — the hue rows (the Fill
+ * page's Color, and the Stroke page's on a subtype with no Position row
+ * under it, which is every pattern). iOS claims a band along the bottom edge
+ * for the home-indicator gesture: a drag that starts inside it is taken by
+ * the system before the page sees a move, so the handle simply refuses to
+ * travel. A device WITH a home indicator reports an inset big enough to
+ * clear that band, but one without reports 0, and the row was left sitting
+ * {@link SHEET_PAD_BOTTOM} from the glass — visible, and immovable.
+ *
+ * So the sheet stands off the edge by at least this much, and by the
+ * device's own inset wherever that is larger.
+ */
+export const SHEET_EDGE_CLEAR = 24;
+
+/** Everything the sheet reserves under its last row: its own padding over
+ *  the larger of the device's bottom inset and {@link SHEET_EDGE_CLEAR}.
+ *  Both {@link editSheetHeight} and EditSheet's own padding read THIS, so
+ *  the height predicted and the height laid out cannot drift. */
+export function sheetBottomInset(safeBottom = 0): number {
+  return SHEET_PAD_BOTTOM + Math.max(safeBottom, SHEET_EDGE_CLEAR);
+}
 /** Side padding of everything in the sheet. */
 export const SHEET_PAD_HORIZONTAL = 16;
 /** The sheet's top corners. */
@@ -388,8 +413,8 @@ export function emptyEffectHeight(): number {
 /** How tall the Edit sheet stands: its tab row, then — when a page is
  *  showing — the content area holding it (`content`, a
  *  {@link submenuHeight}) and, when that page can be removed, the Remove line
- *  under it; then the bottom padding and the device's bottom inset, which
- *  the sheet pads so its last line clears the home indicator. A sheet whose
+ *  under it; then the bottom padding and the clearance its last row keeps
+ *  off the screen's edge ({@link sheetBottomInset}). A sheet whose
  *  tabs are all one-press actions (a group's Ungroup) shows no content area at
  *  all, and is the tabs alone. */
 export function editSheetHeight(
@@ -399,5 +424,5 @@ export function editSheetHeight(
   return SHEET_PAD_TOP + SHEET_TABS
     + (content != null ? SHEET_CONTENT_TOP + content : 0)
     + (content != null && opts.removable ? SHEET_REMOVE : 0)
-    + SHEET_PAD_BOTTOM + (opts.safeBottom ?? 0);
+    + sheetBottomInset(opts.safeBottom);
 }

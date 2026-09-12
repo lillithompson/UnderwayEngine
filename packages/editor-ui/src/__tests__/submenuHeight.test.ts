@@ -10,6 +10,7 @@ import {
   ROW_SLIDER,
   SHADOW_PAD_SIZE,
   SHEET_CONTENT_TOP,
+  SHEET_EDGE_CLEAR,
   SHEET_PAD_BOTTOM,
   SHEET_PAD_TOP,
   SHEET_REMOVE,
@@ -19,6 +20,7 @@ import {
   SLIDER_LABEL_GAP,
   SubmenuKey,
   editSheetHeight,
+  sheetBottomInset,
   submenuHeight,
 } from '../logic/submenuHeight';
 import { svgStrokeRows } from '../logic/svgEdit';
@@ -195,7 +197,8 @@ describe('editSheetHeight (the sheet around a page)', () => {
 
   test('a sheet with a page showing is its tabs, the well, and the bottom padding', () => {
     const content = submenuHeight('opacity');
-    expect(editSheetHeight(content)).toBe(HEAD + SHEET_CONTENT_TOP + content + SHEET_PAD_BOTTOM);
+    expect(editSheetHeight(content))
+      .toBe(HEAD + SHEET_CONTENT_TOP + content + sheetBottomInset());
   });
 
   test('each page stands only as tall as it needs — the sheet resizes between tabs', () => {
@@ -215,22 +218,37 @@ describe('editSheetHeight (the sheet around a page)', () => {
   });
 
   test('a sheet with no page (every tab an action) is the tabs alone', () => {
-    expect(editSheetHeight(null)).toBe(HEAD + SHEET_PAD_BOTTOM);
+    expect(editSheetHeight(null)).toBe(HEAD + sheetBottomInset());
     // Remove means nothing without a page under it.
     expect(editSheetHeight(null, { removable: true })).toBe(editSheetHeight(null));
   });
 
   test('pads the device’s bottom inset under its last line', () => {
-    expect(editSheetHeight(null, { safeBottom: 34 })).toBe(editSheetHeight(null) + 34);
+    const grew = 34 - SHEET_EDGE_CLEAR;
+    expect(editSheetHeight(null, { safeBottom: 34 })).toBe(editSheetHeight(null) + grew);
     const content = submenuHeight('border');
     expect(editSheetHeight(content, { removable: true, safeBottom: 34 }))
-      .toBe(editSheetHeight(content, { removable: true }) + 34);
+      .toBe(editSheetHeight(content, { removable: true }) + grew);
+  });
+
+  // A page's last row is often a DRAGGABLE one now — the Fill page's Color,
+  // and the Stroke page's wherever no Position row follows it (every
+  // pattern). A drag that starts in the screen's bottom edge band is taken
+  // by the system before the page sees it, so a device that reports NO
+  // bottom inset left that row visible and immovable.
+  test('the last row clears the screen’s edge even where the device reports no inset', () => {
+    expect(sheetBottomInset(0)).toBe(SHEET_PAD_BOTTOM + SHEET_EDGE_CLEAR);
+    expect(sheetBottomInset()).toBe(sheetBottomInset(0));
+    // A smaller inset than the band is raised to it…
+    expect(sheetBottomInset(10)).toBe(SHEET_PAD_BOTTOM + SHEET_EDGE_CLEAR);
+    // …and a home indicator's own inset, which already clears it, stands.
+    expect(sheetBottomInset(34)).toBe(SHEET_PAD_BOTTOM + 34);
   });
 
   test('the sheet metrics are the ones EditSheet lays out with', () => {
     const sheet = readFileSync(resolve(__dirname, '..', 'components', 'EditSheet.tsx'), 'utf8');
     expect(sheet).toMatch(/sheet: \{\s*paddingTop: SHEET_PAD_TOP/);
-    expect(sheet).toContain('paddingBottom: SHEET_PAD_BOTTOM + safeBottom');
+    expect(sheet).toContain('paddingBottom: sheetBottomInset(safeBottom)');
     expect(sheet).toMatch(/tabs: \{ height: SHEET_TABS, marginHorizontal: -SHEET_PAD_HORIZONTAL \}/);
     expect(sheet).toMatch(/well: \{\s*marginTop: SHEET_CONTENT_TOP/);
     expect(sheet).toMatch(/removeRow: \{ height: SHEET_REMOVE/);

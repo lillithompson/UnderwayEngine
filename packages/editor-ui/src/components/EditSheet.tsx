@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { RGBLike } from '../adapter';
 import {
-  CONTENT_PAD, SHEET_CONTENT_TOP, SHEET_PAD_BOTTOM, SHEET_PAD_HORIZONTAL, SHEET_PAD_TOP,
+  CONTENT_PAD, SHEET_CONTENT_TOP, SHEET_PAD_HORIZONTAL, SHEET_PAD_TOP, sheetBottomInset,
   SHEET_REMOVE, SHEET_TABS,
 } from '../logic/submenuHeight';
 import {
@@ -171,11 +171,15 @@ export function EditSheet({ tabs, content, welled = true, remove, safeBottom = 0
    *  removed (a drop shadow, a border) or reset (opacity). `label` is its
    *  accessibility name; the visible word is always Remove. */
   remove?: { label: string; onPress: () => void };
-  /** Bottom safe-area inset (home indicator), padded under the last line. */
+  /** The device's bottom safe-area inset. The sheet reserves the larger of
+   *  it and SHEET_EDGE_CLEAR under its last line, so a draggable last row
+   *  (the hue rows) is never left inside the screen's edge-gesture band —
+   *  see logic/submenuHeight's sheetBottomInset, which is also what
+   *  editSheetHeight measures. */
   safeBottom?: number;
 }) {
   return (
-    <View style={[styles.sheet, { paddingBottom: SHEET_PAD_BOTTOM + safeBottom }]}>
+    <View style={[styles.sheet, { paddingBottom: sheetBottomInset(safeBottom) }]}>
       <EditTabs tabs={tabs} />
       {content != null ? (
         <View style={welled ? styles.well : styles.bare}>{content}</View>
