@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { TransformCopiesSpec } from '../adapter';
-import { ActionRow, CollapsibleRowGroup, GroupedBody, RowGroup, SliderRow } from './effectBar';
+import { ActionRow, GroupedBody, RowGroup, SegmentedRow, SliderRow } from './effectBar';
 import {
   COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
 } from '../logic/transform';
@@ -16,10 +16,12 @@ import {
 // two-finger twist and the selection tool's Rotate slider.
 //
 // The settings come in pairs — the count beside the turn, then the offsets
-// and the scales — and each pair is a GROUP: a shaded rounded box holding
+// or the scales — and each pair is a GROUP: a shaded rounded box holding
 // its two sliders on lines of their own. The count and the turn LEAD (they
 // are what a press lays down, and the two most presses set); the offsets
-// and the scales FOLD, shut until asked for, so the page opens short. They shared a line each before
+// and the scales SHARE the second box, its tabs switching which pair shows,
+// because they answer the same question — how each copy differs from the
+// one before — and so want one place on the page, not two. They shared a line each before
 // (one DualSliderRow per pair), which kept the page short but halved every
 // track and set the two readouts fighting for the width; the box says the
 // same "these two are one setting" without the squeeze. Create copies
@@ -45,15 +47,23 @@ const factorText = (f: number) => `${Math.round(f * 100)}%`;
 
 const CREATE_OPTION = [{ value: 'create' as const, label: 'Create' }];
 
-export function TransformBar({ onCopies, onCopiesPreview, folds, onToggleFold }: {
+/** The second group's two faces: how far each copy sits from the one
+ *  before, or how much each is scaled. One section, one at a time. */
+export type CopiesSection = 'offset' | 'scale';
+
+const SECTIONS = [
+  { value: 'offset' as const, label: 'Offset' },
+  { value: 'scale' as const, label: 'Scale' },
+];
+
+export function TransformBar({ onCopies, onCopiesPreview, section, onSection }: {
   onCopies: (spec: TransformCopiesSpec) => void;
   /** The live draft: every change while the page is up, null on the way out. */
   onCopiesPreview?: (spec: TransformCopiesSpec | null) => void;
-  /** Which folding sections stand open. The PANEL holds this — the sheet
-   *  animates to a height computed ahead of the render (submenuHeight), so
-   *  a section folding itself would leave the sheet at the old height. */
-  folds: { offset: boolean; scale: boolean };
-  onToggleFold: (section: 'offset' | 'scale') => void;
+  /** Which face the second group shows. The PANEL holds it so the page's
+   *  height is the same either way and known before the render. */
+  section: CopiesSection;
+  onSection: (section: CopiesSection) => void;
 }) {
   const [copies, setCopies] = useState<TransformCopiesSpec>(DEFAULT_COPIES);
   const set = (patch: Partial<TransformCopiesSpec>) => setCopies((c) => ({ ...c, ...patch }));
@@ -88,7 +98,15 @@ export function TransformBar({ onCopies, onCopiesPreview, folds, onToggleFold }:
           }}
         />
       </RowGroup>
-      <CollapsibleRowGroup label="Offset" open={folds.offset} onToggle={() => onToggleFold('offset')}>
+      {/* ONE shaded section for both pairs, its tabs switching the two
+          sliders under them: the offsets and the scales answer the same
+          question — how each copy differs from the one before — so they
+          take one box and one place on the page rather than two that had
+          to be opened and shut. */}
+      <RowGroup>
+        <SegmentedRow options={SECTIONS} value={section} onChange={onSection} />
+        {section === 'offset' ? (
+          <>
         <SliderRow
           label="Offset X"
           value={toT(copies.dx, -OFFSET_MAX, OFFSET_MAX)}
@@ -101,8 +119,9 @@ export function TransformBar({ onCopies, onCopiesPreview, folds, onToggleFold }:
           apply={(t) => set({ dy: Math.round(fromT(t, -OFFSET_MAX, OFFSET_MAX) * 10) / 10 })}
           readout={{ text: cellText(copies.dy), commit: (n) => set({ dy: clamp(n, -OFFSET_MAX, OFFSET_MAX) }) }}
         />
-      </CollapsibleRowGroup>
-      <CollapsibleRowGroup label="Scale" open={folds.scale} onToggle={() => onToggleFold('scale')}>
+          </>
+        ) : (
+          <>
         <SliderRow
           label="Scale X"
           value={toT(copies.sx, SCALE_MIN, SCALE_MAX)}
@@ -115,7 +134,9 @@ export function TransformBar({ onCopies, onCopiesPreview, folds, onToggleFold }:
           apply={(t) => set({ sy: Math.round(fromT(t, SCALE_MIN, SCALE_MAX) * 100) / 100 })}
           readout={{ text: factorText(copies.sy), commit: (n) => set({ sy: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}
         />
-      </CollapsibleRowGroup>
+          </>
+        )}
+      </RowGroup>
       {/* No label column: a "Copies" beside it named the page over again —
           and clashed with the Copies slider directly above, which is the
           count this button acts on. The word is "Create" for the same

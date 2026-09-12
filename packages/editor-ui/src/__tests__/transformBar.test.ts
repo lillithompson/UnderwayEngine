@@ -26,7 +26,7 @@ describe('the Copies option', () => {
       .toEqual(['stroke', 'endpoints', 'shadow', 'opacity', 'transform']);
   });
 
-  it('stands as the count group, two FOLDED sections and a button row — no rotation row, and no well', () => {
+  it('stands as the count group, ONE tabbed section and a button row — no rotation row, and no well', () => {
     const pair = rowGroupHeight([ROW_SLIDER, ROW_SLIDER]);
     // The group's own padding is counted, and the groups are spaced wider
     // than bare rows (GROUP_GAP) so the boxes read as separate.
@@ -35,19 +35,12 @@ describe('the Copies option', () => {
     // that framed every section twice — and the height counts none of the
     // well's padding.
     expect(pageIsWelled('transform')).toBe(false);
-    // Shut, a folding section is its title line alone; open, the line plus
-    // its two sliders. The page opens with both shut.
-    const shut = rowGroupHeight([ROW_SEGMENTED]);
-    const open = rowGroupHeight([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER]);
+    // The second box is ONE section with tabs: its row of tabs and the two
+    // sliders the lit tab shows. Both faces stand the same height, so the
+    // page is one number and never resizes under a tab press.
+    const tabbed = rowGroupHeight([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER]);
     expect(submenuHeight('transform', {}))
-      .toBe(BAR_CUSHION + pair + shut * 2 + ROW_SEGMENTED + GROUP_GAP * 3);
-    expect(submenuHeight('transform', { copiesOffsetOpen: true }))
-      .toBe(BAR_CUSHION + pair + open + shut + ROW_SEGMENTED + GROUP_GAP * 3);
-    expect(submenuHeight('transform', { copiesOffsetOpen: true, copiesScaleOpen: true }))
-      .toBe(BAR_CUSHION + pair + open * 2 + ROW_SEGMENTED + GROUP_GAP * 3);
-    // …and each opening grows the page.
-    expect(submenuHeight('transform', { copiesScaleOpen: true }))
-      .toBeGreaterThan(submenuHeight('transform', {}));
+      .toBe(BAR_CUSHION + pair + tabbed + ROW_SEGMENTED + GROUP_GAP * 2);
     expect(GROUP_GAP).toBeGreaterThan(ROW_GAP);
     // Every other page keeps the well, and is measured with its padding.
     expect(pageIsWelled('opacity')).toBe(true);
@@ -94,19 +87,24 @@ describe('the Copies page', () => {
     }
     expect(SRC.match(/<SliderRow/g)).toHaveLength(6);
     expect(SRC).not.toContain('<DualSliderRow');
-    // The count group LEADS — it is what a press lays down — and the other
-    // two fold, shut until asked for (the panel holds the state, so the
-    // sheet's height can be computed before the render).
-    expect(SRC.match(/<RowGroup>/g)).toHaveLength(1);
-    expect(SRC.match(/<CollapsibleRowGroup/g)).toHaveLength(2);
+    // The count group LEADS — it is what a press lays down — and the
+    // offsets and the scales SHARE the second box, its tabs switching
+    // which pair shows (the panel holds which, so the sheet's height is
+    // one number known before the render).
+    expect(SRC.match(/<RowGroup>/g)).toHaveLength(2);
+    expect(SRC).not.toContain('CollapsibleRowGroup');
     expect(SRC.indexOf('label="Copies"')).toBeLessThan(SRC.indexOf('label="Offset X"'));
-    expect(SRC).toContain('<CollapsibleRowGroup label="Offset" open={folds.offset} onToggle={() => onToggleFold(\'offset\')}>');
-    expect(SRC).toContain('<CollapsibleRowGroup label="Scale" open={folds.scale} onToggle={() => onToggleFold(\'scale\')}>');
+    expect(SRC).toContain('<SegmentedRow options={SECTIONS} value={section} onChange={onSection} />');
+    expect(SRC).toContain("{ value: 'offset' as const, label: 'Offset' },");
+    expect(SRC).toContain("{ value: 'scale' as const, label: 'Scale' },");
+    expect(SRC).toContain("{section === 'offset' ? (");
     const panelSrc = read('ObjectPropertiesPanel.tsx');
-    expect(panelSrc).toContain("const [copiesFolds, setCopiesFolds] = useState({ offset: false, scale: false });");
-    expect(panelSrc).toContain('folds={copiesFolds}');
-    expect(panelSrc).toContain('copiesOffsetOpen: copiesFolds.offset,');
-    expect(panelSrc).toContain('copiesScaleOpen: copiesFolds.scale,');
+    expect(panelSrc).toContain("const [copiesSection, setCopiesSection] = useState<CopiesSection>('offset');");
+    expect(panelSrc).toContain('section={copiesSection}');
+    expect(panelSrc).toContain('onSection={setCopiesSection}');
+    // Nothing about the page's height depends on which face shows.
+    expect(readFileSync(resolve(__dirname, '..', 'logic', 'submenuHeight.ts'), 'utf8'))
+      .not.toContain('copiesOffsetOpen');
     // Each reads out in its own unit.
     expect(SRC).toContain("readout={{ text: factorText(copies.sx), commit: (n) => set({ sx: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}");
     expect(SRC).toContain("readout={{ text: factorText(copies.sy), commit: (n) => set({ sy: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}");

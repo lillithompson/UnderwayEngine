@@ -32,7 +32,7 @@ import { ImageBar } from './ImageBar';
 import { TextBar, TextPage } from './TextBar';
 import { TintBar } from './TintBar';
 import { EndpointsBar } from './EndpointsBar';
-import { TransformBar } from './TransformBar';
+import { TransformBar, type CopiesSection } from './TransformBar';
 import { LayoutBar } from './LayoutBar';
 import { PatternSymmetryBar, PatternTileBar, PatternTilesBar, PatternToolsBar } from './PatternBars';
 import { EmptyEffectBar } from './effectBar';
@@ -237,16 +237,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // Controlled when the host passes `editOpen`, the panel's own otherwise —
   // and the host hears every gesture through onEditOpenChange either way,
   // so its button can read as lit while the sheet stands.
-  // The Copies page's folding sections (its offsets and its scales). Held
-  // HERE rather than in the bar: the sheet animates to a height computed
-  // ahead of the render (submenuHeight below), so a section that folded
-  // itself would leave the sheet at the old height with empty space under
-  // it. Both start shut — the page opens on the count and the turn, which
-  // is what most presses set.
-  const [copiesFolds, setCopiesFolds] = useState({ offset: false, scale: false });
-  const toggleCopiesFold = useCallback((section: 'offset' | 'scale') => {
-    setCopiesFolds((f) => ({ ...f, [section]: !f[section] }));
-  }, []);
+  // Which face the Copies page's second box shows — its offsets or its
+  // scales. Held HERE rather than in the bar for the same reason its other
+  // drafts are: the page belongs to the panel, and the sheet's height is
+  // computed ahead of the render. (Both faces stand the same height, so the
+  // sheet never moves under a tab press.)
+  const [copiesSection, setCopiesSection] = useState<CopiesSection>('offset');
   const [localSheetWanted, setLocalSheetWanted] = useState(false);
   const sheetWanted = model.editOpen ?? localSheetWanted;
   const onEditOpenChange = model.onEditOpenChange;
@@ -963,8 +959,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       <TransformBar
         onCopies={(spec) => model.onTransformCopies?.(spec)}
         onCopiesPreview={(spec) => model.onTransformCopiesPreview?.(spec)}
-        folds={copiesFolds}
-        onToggleFold={toggleCopiesFold}
+        section={copiesSection}
+        onSection={setCopiesSection}
       />
     );
   } else if (displaySub === 'endpoints') {
@@ -1103,10 +1099,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // tile-set filter, and its Repeat row on the same rule.
     patternTileSetCount: model.patternTileSets?.length ?? 0,
     patternCanRepeat: !!model.onToggleRepeat,
-    // …and the Copies page grows each folding section exactly when the bar
-    // will render its sliders.
-    copiesOffsetOpen: copiesFolds.offset,
-    copiesScaleOpen: copiesFolds.scale,
   });
   const sheetHeight = editSheetHeight(contentHeight, { removable: !!removeAction, safeBottom });
 
