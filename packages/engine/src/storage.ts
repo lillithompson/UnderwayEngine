@@ -1,4 +1,4 @@
-import { get, set, del, clear } from 'idb-keyval';
+import { get, set, del, clear, keys } from 'idb-keyval';
 
 type KeyValuePairs = [string, string | null][];
 
@@ -11,6 +11,13 @@ interface Storage {
   clear(): Promise<void>;
   getBinary(key: string): Promise<Uint8Array | null>;
   setBinary(key: string, value: Uint8Array): Promise<void>;
+  /** Whether a binary key is present, WITHOUT reading its value. The point
+   *  is the value that isn't read: an image blob can be several megabytes
+   *  (compositionImageImport keeps a full-resolution export original beside
+   *  the display copy), and `getBinary` pulls every one of those bytes over
+   *  the structured-clone boundary. Asking for the key list costs a scan of
+   *  short strings instead. */
+  hasBinary(key: string): Promise<boolean>;
 }
 
 const storage: Storage = {
@@ -23,6 +30,7 @@ const storage: Storage = {
   clear,
   getBinary: (key: string) => get(key).then((v: unknown) => (v instanceof Uint8Array ? v : null)),
   setBinary: (key: string, value: Uint8Array) => set(key, value),
+  hasBinary: (key: string) => keys().then((ks: IDBValidKey[]) => ks.includes(key)),
 };
 
 export default storage;

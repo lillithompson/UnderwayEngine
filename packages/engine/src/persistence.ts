@@ -384,6 +384,16 @@ function _getPaintBlobCache(): Map<string, readonly CanvasPaintIsland[]> {
   return w.__facetPaintBlobCache;
 }
 
+// Which image blob keys this session has already seen in storage. Image
+// bytes are IMMUTABLE per imageId (a new id is minted for new bytes), so
+// "present" is a fact that never goes back on itself and one answer serves
+// the rest of the session. globalThis-hosted, like the caches above.
+function _getImageBlobPresent(): Set<string> {
+  const w = globalThis as any;
+  if (!w.__facetImageBlobPresent) w.__facetImageBlobPresent = new Set<string>();
+  return w.__facetImageBlobPresent;
+}
+
 /** A paint object's JSON-safe meta form: scalar fields only, tiles omitted
  *  (they go to the object's own binary key). */
 function serializePaintForMeta(p: PaintObject): unknown {
@@ -578,19 +588,32 @@ export async function saveCompositionState(
   const blobs = state.imageBlobs ?? {};
   if (images.length > 0) {
     const seen = new Set<string>();
+    const present = _getImageBlobPresent();
     // Persist the display blob and, when present, the higher-res original —
     // both live in `imageBlobs` under distinct ids and each gets its own
     // binary key so the original survives reload and export stays full-res.
+    //
+    // The skip asks whether the KEY is there, never what is under it. It
+    // used to fetch the stored blob and compare its length, which pulled
+    // every image's bytes back out of IndexedDB on every debounced autosave
+    // — and that means the export original too, which is the big one: a
+    // single phone photo keeps a ~3.4 MB original beside its ~340 KB
+    // display copy (ORIGINAL_MAX_EDGE_PX 4096 vs MAX_EDGE_PX 1024), so a
+    // page with three photos read some 11 MB per save, for an answer of
+    // "unchanged" every time. That is the "very slow to edit once there are
+    // several images" report: the cost scaled with the photos on the page
+    // and with nothing else.
     for (const img of images) {
       for (const id of [img.imageId, img.originalImageId]) {
         if (id == null || seen.has(id)) continue;
         seen.add(id);
         const bytes = blobs[id];
         if (!bytes) continue;
-        const existing = await storage.getBinary(imgBlobKey(id));
-        if (!existing || existing.length !== bytes.length) {
+        if (present.has(id)) continue;
+        if (!(await storage.hasBinary(imgBlobKey(id)))) {
           await storage.setBinary(imgBlobKey(id), bytes);
         }
+        present.add(id);
       }
     }
   }
