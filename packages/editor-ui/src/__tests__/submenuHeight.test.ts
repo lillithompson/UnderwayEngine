@@ -61,8 +61,12 @@ describe('submenuHeight (a page’s content area)', () => {
     expect(submenuHeight('border')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]));
   });
 
-  test('the Text pages: Type is three rows, Spacing three sliders, Align two segmented rows', () => {
-    expect(submenuHeight('font')).toBe(pageOf([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER]));
+  test('the Text pages: Text is its colours and Size, Type two rows, Spacing three sliders, Align two segmented rows', () => {
+    // The text's own page: a row per colour it can pick, then Size.
+    expect(submenuHeight('text')).toBe(pageOf([ROW_SEGMENTED, ROW_SLIDER]));
+    expect(submenuHeight('text', { colorRows: 2 })).toBe(pageOf([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SLIDER]));
+    // Size came off Type onto it, beside the ink it sizes.
+    expect(submenuHeight('font')).toBe(pageOf([ROW_PILL, ROW_SEGMENTED]));
     // Char, Line and Bend each on a line of their own.
     expect(submenuHeight('spacing')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]));
     expect(submenuHeight('align')).toBe(pageOf([ROW_SEGMENTED, ROW_SEGMENTED]));

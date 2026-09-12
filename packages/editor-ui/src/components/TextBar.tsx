@@ -8,6 +8,7 @@ import {
   PILL_CHEVRON, PILL_TRACK, SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL,
   SHEET_ROW_ACTIVE, SHEET_TEXT, SliderRow,
 } from './effectBar';
+import { ColorRows, type ColorRowSpec } from './ColorBar';
 
 // The Text typography controls (design "5a"), split into three pages — three
 // tabs of the Edit sheet (the text's colour is the Color page's):
@@ -21,7 +22,7 @@ import {
 // image-effect pages (Drop Shadow / Border / Crop; see effectBar.tsx). The
 // sheet around them is the ObjectPropertiesPanel's, shared with those pages.
 
-export type TextPage = 'font' | 'spacing' | 'align';
+export type TextPage = 'text' | 'font' | 'spacing' | 'align';
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -110,11 +111,16 @@ function FontSheet({ fonts, current, onPick, onClose }: {
   );
 }
 
-export function TextBar({ page, style, fonts, onChange, onCommit, onSheetOpenChange }: {
-  /** Which page to render: font, spacing or alignment controls. */
+export function TextBar({ page, style, fonts, colorRows, onChange, onCommit, onSheetOpenChange }: {
+  /** Which page to render: the text itself, or its font, spacing or
+   *  alignment controls. */
   page: TextPage;
   style: TextStyleModel;
   fonts: readonly TextFontOption[];
+  /** The Text page's colour rows — the selection's own (ColorRows, the same
+   *  rows the Color page lays out for every other kind). A text has no Color
+   *  tab of its own: its ink IS the text, so it reads here beside Size. */
+  colorRows?: readonly ColorRowSpec[];
   /** Live preview (slider drag). */
   onChange: (s: TextStyleModel) => void;
   /** Commit as one undo step (slider release, segment / font pick). */
@@ -139,7 +145,18 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onSheetOpenCha
     <View>
       {/* Nothing to remove on any page: the text's type is edited in place. */}
       <BarBody>
-        {isFont ? (
+        {page === 'text' ? (
+          <>
+            {/* The text ITSELF: its ink and how big it is. Everything else
+                on the row dresses it. */}
+            <ColorRows rows={colorRows ?? []} />
+            <SliderRow
+              label="Size"
+              value={(style.size - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)}
+              apply={(t, c) => set({ size: SIZE_MIN + t * (SIZE_MAX - SIZE_MIN) }, c)}
+            />
+          </>
+        ) : isFont ? (
           <>
             <FontRow label={currentLabel} onOpen={() => setSheetOpen(true)} />
             {/* Light / Regular / Semibold / Bold name themselves: no label. */}
@@ -147,11 +164,6 @@ export function TextBar({ page, style, fonts, onChange, onCommit, onSheetOpenCha
               options={WEIGHTS}
               value={style.weight}
               onChange={(weight) => set({ weight }, true)}
-            />
-            <SliderRow
-              label="Size"
-              value={(style.size - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)}
-              apply={(t, c) => set({ size: SIZE_MIN + t * (SIZE_MAX - SIZE_MIN) }, c)}
             />
           </>
         ) : page === 'spacing' ? (

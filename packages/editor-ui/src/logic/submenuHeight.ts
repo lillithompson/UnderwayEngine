@@ -96,7 +96,7 @@ export const PATTERN_TILE_GRID =
 export type SubmenuKey =
   | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
   | 'image'
-  | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
+  | 'text' | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
   // The Shape page: a polygonal shape's corner Radius (see svgHasShape).
   | 'shape'
   // The Color page: every colour a selection can pick (and a word sticker's
@@ -334,9 +334,17 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
         ROW_SEGMENTED, ROW_SEGMENTED,
         ...(ctx.layoutHasGrid ? [ROW_SEGMENTED] : []),
       ]);
+    case 'text':
+      // The text itself: its colour rows (one segmented row each, at least
+      // one) and Size under them.
+      return contentArea([
+        ...new Array(Math.max(1, ctx.colorRows ?? 1)).fill(ROW_SEGMENTED),
+        ROW_SLIDER,
+      ]);
     case 'font':
-      // Font pill, Weight segmented, Size slider.
-      return contentArea([ROW_PILL, ROW_SEGMENTED, ROW_SLIDER]);
+      // Font pill and Weight segmented. Size reads on the Text page, beside
+      // the ink it sizes.
+      return contentArea([ROW_PILL, ROW_SEGMENTED]);
     case 'spacing':
       // Char, Line and Bend, a slider row each.
       return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);

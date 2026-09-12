@@ -57,9 +57,13 @@ function SwatchRow({ row }: { row: Extract<ColorRowSpec, { kind: 'swatch' }> }) 
   );
 }
 
-export function ColorBar({ rows }: { rows: readonly ColorRowSpec[] }) {
+/** The colour rows themselves, with no body around them — so a page that
+ *  holds MORE than colours (the text's own Text page, which pairs them with
+ *  Size) can lay them in its own body rather than restating them. The one
+ *  definition both that page and {@link ColorBar} render. */
+export function ColorRows({ rows }: { rows: readonly ColorRowSpec[] }) {
   return (
-    <BarBody>
+    <>
       {rows.map((row) => (row.kind === 'swatch' ? (
         <SwatchRow key={row.key} row={row} />
       ) : (
@@ -69,6 +73,14 @@ export function ColorBar({ rows }: { rows: readonly ColorRowSpec[] }) {
           onToggle={() => row.onToggle()}
         />
       )))}
+    </>
+  );
+}
+
+export function ColorBar({ rows }: { rows: readonly ColorRowSpec[] }) {
+  return (
+    <BarBody>
+      <ColorRows rows={rows} />
     </BarBody>
   );
 }

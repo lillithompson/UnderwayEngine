@@ -176,8 +176,14 @@ describe('the pages have no chrome of their own', () => {
     expect(PANEL).toContain("model.borderPresent !== false && model.onPickBorderColor");
     expect(PANEL).toContain("model.svgFillPresent !== false && model.onPickSvgFillColor");
     expect(PANEL).toContain("model.strokePresent !== false && model.onPickStrokeColor");
-    // A selection with no colour at all (a rig, a paint island) gets no tab.
-    expect(PANEL).toContain('const colorable = colorRows.length > 0;');
+    // A selection with no colour at all (a rig, a paint island) gets no tab
+    // — nor does a TEXT, whose colours read on its own Text page.
+    expect(PANEL).toContain('const colorable = colorRows.length > 0 && !model.showTextStyle;');
+    // …and that page lays them out through the SAME rows the Color page
+    // does, so the two can never list a selection's colours differently.
+    expect(color).toContain('export function ColorRows(');
+    expect(color).toContain('<ColorRows rows={rows} />');
+    expect(SRC('components', 'TextBar.tsx')).toContain('<ColorRows rows={colorRows ?? []} />');
     // The tab leads for a selection whose colour IS the thing, trails
     // otherwise — the tab row and the page order agree on which.
     expect(PANEL).toContain('const colorFirst = !!model.showFrameOptions || !!model.showInvert;');
@@ -300,7 +306,7 @@ describe('every page can be opened and shown', () => {
       || activeSubChain.includes(`'${key}'`)
       || viaLookup(key)
       // The text pages ride one host flag; `textPage` names which shows.
-      || (['font', 'spacing', 'align'].includes(key) && activeSubChain.includes('textPage'));
+      || (['text', 'font', 'spacing', 'align'].includes(key) && activeSubChain.includes('textPage'));
     expect([key, shown]).toEqual([key, true]);
   });
 
@@ -435,6 +441,24 @@ describe('the panel drives the sheet', () => {
     expect(text).toContain('accessibilityLabel={`Font: ${label}`}');
   });
 
+  it('the Text page is the text itself — its colours and its Size — and leads the row', () => {
+    const text = SRC('components', 'TextBar.tsx');
+    const page = text.slice(text.indexOf("{page === 'text' ? ("), text.indexOf(") : isFont ? ("));
+    expect(page).toContain('<ColorRows rows={colorRows ?? []} />');
+    expect(page).toContain('label="Size"');
+    // Size came OFF the Type page, where it sat under the weight row.
+    const font = text.slice(text.indexOf('isFont ? ('), text.indexOf("page === 'spacing' ? ("));
+    expect(font).not.toContain('label="Size"');
+    expect(PANEL).toContain("model.showTextStyle ? ['text', 'font', 'spacing', 'align', 'shadow', 'opacity', 'transform']");
+    // …and the panel opens it through the same one flag the other text
+    // pages ride, landing on it by default.
+    expect(PANEL).toContain("else if (key === 'text' || key === 'font' || key === 'spacing' || key === 'align') {");
+    expect(PANEL).toContain("const [textPage, setTextPage] = useState<TextPage>('text');");
+    // …and it LEADS the tab row, in the order the pages come.
+    expect(PANEL).toContain("{ key: 'text', label: 'Text', sub: 'text', onPress: () => openSubmenu('text') },");
+    expect(PANEL.indexOf("key: 'text', label: 'Text'")).toBeLessThan(PANEL.indexOf("key: 'font', label: 'Font'"));
+  });
+
   it('the Spacing page is Char, Line and Bend on separate lines; Align is the two unlabelled alignment rows', () => {
     const text = SRC('components', 'TextBar.tsx');
     const spacing = text.slice(text.indexOf("page === 'spacing' ? ("), text.indexOf(') : (', text.indexOf("page === 'spacing' ? (")));
@@ -448,7 +472,6 @@ describe('the panel drives the sheet', () => {
     expect(align).not.toContain('Bend');
     // …and the panel offers them as two tabs.
     expect(PANEL).toContain("{ key: 'spacing', label: 'Spacing', sub: 'spacing', onPress: () => openSubmenu('spacing') },");
-    expect(PANEL).toContain("model.showTextStyle ? ['font', 'spacing', 'align', 'shadow', 'opacity', 'transform']");
   });
 
   it('text offers Type · Spacing · Align · Shadow — no Edit tab; a tap on the text edits its content', () => {

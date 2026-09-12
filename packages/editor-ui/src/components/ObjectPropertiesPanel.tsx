@@ -359,7 +359,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // single `textStyleOpen` flag; this tracks which page shows. The entry
   // points own it: the Type tab opens on 'font', Spacing on 'spacing', Align
   // on 'align' (all via openSubmenu).
-  const [textPage, setTextPage] = useState<TextPage>('font');
+  const [textPage, setTextPage] = useState<TextPage>('text');
   // The Color, Shape and Image pages are the panel's own: they hold nothing
   // the host has to know is open (a swatch opens the host's picker, a toggle
   // fires its action, the Radius slider writes through onStrokeRadius as it
@@ -417,13 +417,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // thing (a frame's background, a word's card scheme), after the kind's own
   // pages otherwise.
   const colorFirst = !!model.showFrameOptions || !!model.showInvert;
-  const colorable = colorRows.length > 0;
+  // …but a text's colours are ITS OWN page's first rows (the 'text' page),
+  // so the shared Color tab would say them twice.
+  const colorable = colorRows.length > 0 && !model.showTextStyle;
   const typeSubmenuOrder: SubmenuKey[] =
     model.showImageEdit ? (multi
       ? ['shadow', 'border', 'opacity', 'transform']
       : [...(model.onReplaceImage ? (['image'] as const) : []), 'crop', 'shadow', 'border', 'opacity', 'transform'])
     : model.showFrameOptions ? ['shadow', 'border']
-    : model.showTextStyle ? ['font', 'spacing', 'align', 'shadow', 'opacity', 'transform']
+    // A text leads on the text ITSELF — its ink and its size — then the
+    // pages that dress it. Its colours read there, so it grows no Color tab
+    // of its own (see `colorable` below).
+    : model.showTextStyle ? ['text', 'font', 'spacing', 'align', 'shadow', 'opacity', 'transform']
     // A word sticker: Opacity (its Color page joins below).
     : model.showInvert ? ['opacity']
     : model.showPaintOptions ? ['opacity']
@@ -529,7 +534,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     else if (key === 'layout') model.onLayoutOpenChange?.(true);
     else if (rigPartOfSubmenu(key)) model.onRigPartOpenChange?.(rigPartOfSubmenu(key));
     else if (patternActionOfSubmenu(key)) model.onPatternBarOpenChange?.(patternActionOfSubmenu(key));
-    else if (key === 'font' || key === 'spacing' || key === 'align') {
+    else if (key === 'text' || key === 'font' || key === 'spacing' || key === 'align') {
       // The text pages ride the single textStyleOpen flag; the page state
       // picks which one shows.
       setTextPage(key);
@@ -1060,12 +1065,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     activeBarEl = <PatternToolsBar model={model} />;
   } else if (displaySub === 'patternSymmetry') {
     activeBarEl = <PatternSymmetryBar model={model} />;
-  } else if (displaySub === 'font' || displaySub === 'spacing' || displaySub === 'align') {
+  } else if (displaySub === 'text' || displaySub === 'font' || displaySub === 'spacing' || displaySub === 'align') {
     activeBarEl = (
       <TextBar
         page={displaySub}
         style={textForBar}
         fonts={model.fonts ?? []}
+        colorRows={colorRows}
         onChange={(s) => applyTextStyle(s, false)}
         onCommit={(s) => applyTextStyle(s, true)}
         onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
@@ -1310,15 +1316,17 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // — the open-path page, which the host lands on all of them.
     typeSpecs = [strokeSpec()];
   } else if (model.showTextStyle) {
-    // Font · Spacing · Align (each opening the Text controls straight on
-    // its page) · Shadow. The three text tabs show the same component; they
-    // differ only in which page it lands on, and each is named for what its
-    // page holds — the first reads Font, after the family pill that leads
-    // it, rather than the "Type" that named the whole component. Shadow is
+    // Text · Font · Spacing · Align (each opening the Text controls straight
+    // on its page) · Shadow. The four text tabs show the same component;
+    // they differ only in which page it lands on, and each is named for
+    // what its page holds — Text leads with the ink and the size (the text
+    // itself, where the others dress it), so a text grows no Color tab of
+    // its own. Shadow is
     // the image's own page, unchanged — one Drop Shadow control for every
     // object that can cast one. Editing the CONTENT is not a tab: a tap on
     // the selected text opens the host's overlay.
     typeSpecs = [
+      { key: 'text', label: 'Text', sub: 'text', onPress: () => openSubmenu('text') },
       { key: 'font', label: 'Font', sub: 'font', onPress: () => openSubmenu('font') },
       { key: 'spacing', label: 'Spacing', sub: 'spacing', onPress: () => openSubmenu('spacing') },
       { key: 'align', label: 'Align', sub: 'align', onPress: () => openSubmenu('align') },
