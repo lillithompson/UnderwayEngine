@@ -33,8 +33,9 @@ import type { RGBLike } from '../adapter';
 // siblings of the same design, so this is their single source of truth —
 // each page supplies only its specific controls. The sheet around them
 // (tabs, the content area's well, the Remove line) is
-// components/EditSheet.tsx; a selection's colours are its Color page's
-// (components/ColorBar.tsx).
+// components/EditSheet.tsx. A colour is a row of the page that owns the thing
+// it colours — the Stroke page's, the Fill page's, the Shadow page's — on the
+// slider's own proportions with the hue wheel as its track (ColorSliderRow).
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -72,7 +73,8 @@ const SEG_TEXT = PANEL_INK_DIM;
  *  stacking them at the top (the Shadow page, whose three sliders sit
  *  beside a taller column). submenuHeight counts the same metrics: the
  *  taller of the aside and the row stack. (Colours are not asides any
- *  more: a selection's colours are its Color page's rows — ColorBar.) */
+ *  more: each is a row of the page that owns what it colours —
+ *  ColorSliderRow.) */
 export function BarBody({ aside, spread, children }: {
   aside?: React.ReactNode;
   spread?: boolean;

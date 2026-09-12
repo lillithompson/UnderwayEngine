@@ -45,26 +45,31 @@ describe('submenuHeight (a page’s content area)', () => {
     expect(submenuHeight('endpoints')).toBe(pageOf([ROW_SEGMENTED, ROW_SEGMENTED]));
   });
 
-  test('the Color page is a segmented row per colour listed, and never empty', () => {
-    expect(submenuHeight('color', { colorRows: 1 })).toBe(pageOf([ROW_SEGMENTED]));
-    expect(submenuHeight('color', { colorRows: 3 })).toBe(pageOf([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]));
-    expect(submenuHeight('color')).toBe(pageOf([ROW_SEGMENTED]));
-    expect(submenuHeight('color', { colorRows: 0 })).toBe(pageOf([ROW_SEGMENTED]));
+  test('the two colour-only pages: a frame’s Background is one hue row, a sticker’s Card one chip', () => {
+    expect(submenuHeight('background')).toBe(pageOf([ROW_SLIDER]));
+    expect(submenuHeight('card')).toBe(pageOf([ROW_SEGMENTED]));
   });
 
-  test('a colour-bearing page is its rows alone — its colour is the Color page’s', () => {
-    // The swatch that used to stand in an aside column beside these rows, and
-    // set a floor under their height, is a Color row now.
+  test('a page counts its own hue row — exactly when the host has that colour to write', () => {
+    // The shared Color page is gone: a colour is a row of the page that owns
+    // the thing it colours, so each page grows a slider row for it.
     expect(submenuHeight('svgFill')).toBe(pageOf([ROW_SLIDER]));
-    // Width, Dash, Position — and no Radius: rounding is the object's, so
-    // an image rounds itself on its Image page.
+    expect(submenuHeight('svgFill', { svgFillColor: true })).toBe(pageOf([ROW_SLIDER, ROW_SLIDER]));
+    // Width, Dash, (Color), Position — and no Radius: rounding is the
+    // object's, so an image rounds itself on its Image page.
     expect(submenuHeight('border')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]));
+    expect(submenuHeight('border', { borderRows: { position: true, color: true } }))
+      .toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]));
+    // The Shadow page's rows only outgrow its offset pad once the colour row
+    // joins them — three sliders are exactly the pad's height.
+    expect(submenuHeight('shadow', { shadowColor: true }))
+      .toBeGreaterThan(submenuHeight('shadow'));
   });
 
   test('the Text pages: Text is its colours and Size, Type two rows, Spacing three sliders, Align two segmented rows', () => {
-    // The text's own page: a row per colour it can pick, then Size.
-    expect(submenuHeight('text')).toBe(pageOf([ROW_SEGMENTED, ROW_SLIDER]));
-    expect(submenuHeight('text', { colorRows: 2 })).toBe(pageOf([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SLIDER]));
+    // The text's own page: its ink, then the Size that sets it.
+    expect(submenuHeight('text')).toBe(pageOf([ROW_SLIDER]));
+    expect(submenuHeight('text', { textColor: true })).toBe(pageOf([ROW_SLIDER, ROW_SLIDER]));
     // Size came off Type onto it, beside the ink it sizes.
     expect(submenuHeight('font')).toBe(pageOf([ROW_PILL, ROW_SEGMENTED]));
     // Char, Line and Bend each on a line of their own.
@@ -150,11 +155,12 @@ describe('submenuHeight (a page’s content area)', () => {
 
   test('every page reports a real height, not a fallback', () => {
     // A key with no case would fall through; each of these is a whole page,
-    // so none may come back as bare chrome — at least one row (the Color
-    // page's single segmented row is the shortest real page).
+    // so none may come back as bare chrome — at least one row (a word
+    // sticker's Card page, one chip, is the shortest real page).
     const ALL: SubmenuKey[] = [
       'tint', 'crop', 'shadow', 'border', 'opacity',
-      'font', 'spacing', 'align', 'stroke', 'svgFill', 'endpoints', 'transform', 'layout', 'color', 'shape',
+      'font', 'spacing', 'align', 'stroke', 'svgFill', 'endpoints', 'transform', 'layout', 'shape',
+      'background', 'card',
       'rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead',
       'patternTiles', 'patternTools', 'patternSymmetry',
     ];

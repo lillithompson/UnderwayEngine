@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, ShadowModel, TextStyleModel, TintModel } from '../adapter';
+import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, isSingleImageAction, swipeDismissDirection } from '../logic/imageEdit';
 import { PAINT_EDIT_OPTIONS } from '../logic/paintEdit';
 import {
@@ -35,8 +35,7 @@ import { EndpointsBar } from './EndpointsBar';
 import { TransformBar, type CopiesSection } from './TransformBar';
 import { LayoutBar } from './LayoutBar';
 import { PatternSymmetryBar, PatternTileBar, PatternTilesBar, PatternToolsBar } from './PatternBars';
-import { EmptyEffectBar } from './effectBar';
-import { ColorBar, ColorRowSpec } from './ColorBar';
+import { BarBody, ColorSliderRow, EmptyEffectBar, MultiToggleRow } from './effectBar';
 import { ShapeBar } from './ShapeBar';
 import { EditSheet, EditTabSpec } from './EditSheet';
 import { SHEET_RADIUS } from '../logic/submenuHeight';
@@ -105,6 +104,10 @@ const DEFAULT_ENDPOINTS_MODEL: EndpointsModel = {
 const DEFAULT_BORDER_MODEL: BorderModel = {
   width: 0.375, position: 'center', dash: 0, color: { r: 58, g: 53, b: 50 },
 };
+// What a hue row shows before the host has reported a colour — only a
+// fallback for the transient frame before the model lands, since every host
+// that offers one of these pages resolves the real colour.
+const DEFAULT_ROW_COLOR: RGBLike = { r: 255, g: 255, b: 255 };
 // Opacity-page defaults: fully opaque, hard edges — what every object renders
 // as until it visits the page.
 const DEFAULT_OPACITY_MODEL: OpacityModel = { opacity: 1, edgeSoften: 0 };
@@ -169,9 +172,9 @@ function GridButton({ label, icon, iconColor, onPress, compact }: {
 /** One type-specific option, described rather than rendered — it becomes a
  *  tab of the Edit sheet (EditTabSpec), lit while its page is showing. */
 /** The pages whose open state the panel keeps itself (see `localSub`). */
-type LocalSubmenu = 'color' | 'shape' | 'image';
+type LocalSubmenu = 'background' | 'card' | 'shape' | 'image';
 const isLocalSubmenu = (key: SubmenuKey): key is LocalSubmenu =>
-  key === 'color' || key === 'shape' || key === 'image';
+  key === 'background' || key === 'card' || key === 'shape' || key === 'image';
 
 interface OptionSpec extends Omit<EditTabSpec, 'selected'> {
   /** The page this option opens. Options carrying one light up as tabs while
@@ -378,60 +381,40 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // Vectors and patterns share the Stroke page (and its colour).
   const strokeable = !!model.showSvgOptions || !!model.showPatternOptions || !!model.showStrokeOptions;
 
-  // ── The Color page's rows ─────────────────────────────────────────────
-  // Every colour this selection can pick, one labelled row each, in one
-  // place: the object's own ink first (a frame's Background, a text's ink, a
-  // shape's Fill), then its Stroke, then the effects (Shadow, Border). An
-  // effect that is absent has no colour yet, so no row — its Add page is
-  // where it starts. A word sticker's colours are its card scheme, so its
-  // one row is the Invert toggle. Colours come off the MODEL (the host's
-  // picker changes them), never a draft. Empty for a selection with no
-  // colour at all (a rig, a paint island), which then has no Color tab.
-  const colorRows: ColorRowSpec[] = [];
-  if (model.showInvert) {
-    colorRows.push({ key: 'invert', kind: 'toggle', label: 'Invert', on: !!model.inverted, onToggle: () => model.onInvert?.() });
-  }
-  if (model.showFrameOptions && model.onPickFrameBackground) {
-    colorRows.push({ key: 'background', kind: 'swatch', label: 'Background', color: model.frameBackgroundColor, onPick: model.onPickFrameBackground });
-  }
-  if (model.showTextStyle && model.onPickTextColor) {
-    colorRows.push({ key: 'text', kind: 'swatch', label: 'Text', color: model.textStyle?.color, onPick: () => model.onPickTextColor?.() });
-  }
-  if (svgFillable && model.svgFillPresent !== false && model.onPickSvgFillColor) {
-    colorRows.push({ key: 'fill', kind: 'swatch', label: 'Fill', color: model.svgFill?.solid, onPick: () => model.onPickSvgFillColor?.() });
-  }
-  // A vector's stroke colour is NOT here: it reads on the Stroke page
-  // itself, under Dash, on the hue row that opens this same picker
-  // (ColorSliderRow) — it is part of the line, not a colour off on a page
-  // of its own. A PATTERN keeps its row: its Stroke page is the baked
-  // tiles' and has no colour of its own to show.
-  if (strokeable && !model.showSvgOptions && model.strokePresent !== false && model.onPickStrokeColor) {
-    colorRows.push({ key: 'stroke', kind: 'swatch', label: 'Stroke', color: model.stroke?.color, onPick: () => model.onPickStrokeColor?.() });
-  }
-  if ((model.showImageEdit || model.showFrameOptions || model.showTextStyle) && model.shadowPresent !== false && model.onPickShadowColor) {
-    colorRows.push({ key: 'shadow', kind: 'swatch', label: 'Shadow', color: model.shadow?.color, onPick: () => model.onPickShadowColor?.() });
-  }
-  if ((model.showImageEdit || model.showFrameOptions) && model.borderPresent !== false && model.onPickBorderColor) {
-    colorRows.push({ key: 'border', kind: 'swatch', label: 'Border', color: model.border?.color, onPick: () => model.onPickBorderColor?.() });
-  }
-  // Where the Color tab sits: first for a selection whose colour IS the
-  // thing (a frame's background, a word's card scheme), after the kind's own
-  // pages otherwise.
-  const colorFirst = !!model.showFrameOptions || !!model.showInvert;
-  // …but a text's colours are ITS OWN page's first rows (the 'text' page),
-  // so the shared Color tab would say them twice.
-  const colorable = colorRows.length > 0 && !model.showTextStyle;
+  // ── Where a colour reads ──────────────────────────────────────────────
+  // On the page of the thing it colours, and nowhere else: the Stroke page's
+  // hue row is the line's ink, the Fill page's is the fill, the Shadow and
+  // Border pages' are their own, and a text's ink leads its Text page. There
+  // is no shared Color page any more — it collected every colour onto one tab
+  // and left the pages named after them unable to set them (a Fill page whose
+  // only control was Opacity), which is the whole reason it goes.
+  //
+  // Two colour settings have no page of that kind to sit on, so they get one
+  // of their own, first among their type's tabs:
+  //
+  //  • a FRAME's Background — its boundary rect's fill, the frame's own
+  //    colour, on a page that is that one hue row;
+  //  • a word STICKER's card scheme — Invert, which is not a hue at all but a
+  //    flip between light card / dark ink and the reverse, so it stays a chip.
+  //
+  // Both are the panel's own pages (LocalSubmenu): a hue row writes through
+  // the host's callback and a chip fires its action, so neither has open state
+  // the host must track.
+  const backgroundable = !!model.showFrameOptions && !!model.onPickFrameBackground;
+  const cardable = !!model.showInvert;
   const typeSubmenuOrder: SubmenuKey[] =
     model.showImageEdit ? (multi
       ? ['shadow', 'border', 'opacity', 'transform']
       : [...(model.onReplaceImage ? (['image'] as const) : []), 'crop', 'shadow', 'border', 'opacity', 'transform'])
-    : model.showFrameOptions ? ['shadow', 'border']
+    // A frame leads on its own fill — Background — then the two effects it
+    // dresses its edge with.
+    : model.showFrameOptions
+      ? [...(backgroundable ? (['background'] as const) : []), 'shadow', 'border']
     // A text leads on the text ITSELF — its ink and its size — then the
-    // pages that dress it. Its colours read there, so it grows no Color tab
-    // of its own (see `colorable` below).
+    // pages that dress it.
     : model.showTextStyle ? ['text', 'font', 'spacing', 'align', 'shadow', 'opacity', 'transform']
-    // A word sticker: Opacity (its Color page joins below).
-    : model.showInvert ? ['opacity']
+    // A word sticker: its card scheme, then Opacity.
+    : model.showInvert ? [...(cardable ? (['card'] as const) : []), 'opacity']
     : model.showPaintOptions ? ['opacity']
     // A pattern object's pages, in the order its tab row lists them, plus
     // the Stroke page its baked tile paths share with the vectors.
@@ -458,13 +441,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
           ...(svgTransformable ? (['transform'] as const) : []),
         ]
     : [];
-  // The Color page joins the kind's pages (first or last — colorFirst), and
-  // Layout the tail of whatever the selection's type offers, so a mixed
+  // Layout joins the tail of whatever the selection's type offers, so a mixed
   // multi-selection's sheet has Layout alone to open and a uniform one's has
   // its type's pages before it.
-  const colouredOrder: SubmenuKey[] = !colorable ? typeSubmenuOrder
-    : colorFirst ? ['color', ...typeSubmenuOrder] : [...typeSubmenuOrder, 'color'];
-  const submenuOrder: SubmenuKey[] = showLayout ? [...colouredOrder, 'layout'] : colouredOrder;
+  const submenuOrder: SubmenuKey[] = showLayout ? [...typeSubmenuOrder, 'layout'] : typeSubmenuOrder;
 
   const activeSub: SubmenuKey | null =
     model.layoutOpen ? 'layout'
@@ -685,12 +665,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   const imageable = !!model.showImageEdit && !!model.onReplaceImage && !multi;
   useEffect(() => {
     if (!model.visible
-      || (localSub === 'color' && !colorable)
+      || (localSub === 'background' && !backgroundable)
+      || (localSub === 'card' && !cardable)
       || (localSub === 'shape' && !svgShapeable)
       || (localSub === 'image' && !imageable)) {
       setLocalSub(null);
     }
-  }, [model.visible, colorable, svgShapeable, imageable, localSub]);
+  }, [model.visible, backgroundable, cardable, svgShapeable, imageable, localSub]);
 
   // Seed the shadow / border drafts from the current effect each time the
   // controls open.
@@ -911,8 +892,31 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   let activeBarEl: React.ReactNode = null;
   let removeAction: { label: string; onPress: () => void } | undefined;
   let addPage = false;
-  if (displaySub === 'color') {
-    activeBarEl = <ColorBar rows={colorRows} />;
+  if (displaySub === 'background') {
+    // A frame's own fill, on the one row that says it. The colour comes off
+    // the model (the picker behind the trailing circle changes it externally),
+    // so the row is fed by what the frame actually wears.
+    activeBarEl = (
+      <BarBody>
+        <ColorSliderRow
+          label="Background"
+          color={model.frameBackgroundColor ?? DEFAULT_ROW_COLOR}
+          onColor={(color, committed) => model.onFrameBackgroundColor?.(color, committed)}
+          onOpenPicker={() => model.onPickFrameBackground?.()}
+        />
+      </BarBody>
+    );
+  } else if (displaySub === 'card') {
+    // A word sticker's card scheme: light card / dark ink, or the inverse.
+    // A flip, not a hue, so it is the one chip it always was.
+    activeBarEl = (
+      <BarBody>
+        <MultiToggleRow
+          options={[{ value: 'invert' as const, label: 'Invert', active: !!model.inverted }]}
+          onToggle={() => model.onInvert?.()}
+        />
+      </BarBody>
+    );
   } else if (displaySub === 'shape') {
     // A polygonal shape's corner Radius — the host's strokeRadius plumbing,
     // which it used to reach as a Stroke row.
@@ -951,6 +955,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       <TintBar
         solidOnly
         tint={svgFillForBar}
+        // The fill's own colour, above its Opacity. This page is called Fill
+        // and could not set one: its swatch had gone to a shared Color page,
+        // leaving an Opacity slider alone under the name of the thing it
+        // could not colour.
+        onColor={model.onSvgFillColor ? (color, committed) => model.onSvgFillColor?.(color, committed) : undefined}
         onChange={(t) => applySvgFill(t, false)}
         onCommit={(t) => applySvgFill(t, true)}
         onPickColor={() => model.onPickSvgFillColor?.()}
@@ -986,6 +995,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     activeBarEl = (
       <ShadowBar
         shadow={shadowForBar}
+        // The shadow's own ink, under Spread: the colour is the SHADOW's, not
+        // a field of the draft the sliders keep, so the host writes it down
+        // its own path (the one the full picker writes too) and reports it
+        // back each move — which is what moves the handle.
+        color={shadowForBar.color}
+        onColor={model.onShadowColor ? (color, committed) => model.onShadowColor?.(color, committed) : undefined}
+        onOpenColorPicker={model.onPickShadowColor ? () => model.onPickShadowColor?.() : undefined}
         onChange={(s) => applyShadow(s, false)}
         onCommit={(s) => applyShadow(s, true)}
       />
@@ -995,6 +1011,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     activeBarEl = (
       <BorderBar
         border={borderForBar}
+        // …and the border's, on the same rule as the Stroke page's below.
+        color={borderForBar.color}
+        onColor={model.onBorderColor ? (color, committed) => model.onBorderColor?.(color, committed) : undefined}
+        onOpenColorPicker={model.onPickBorderColor ? () => model.onPickBorderColor?.() : undefined}
         onChange={(b) => applyBorder(b, false)}
         onCommit={(b) => applyBorder(b, true)}
       />
@@ -1083,7 +1103,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         page={displaySub}
         style={textForBar}
         fonts={model.fonts ?? []}
-        colorRows={colorRows}
+        // The ink leads the Text page, above the Size that sets it.
+        color={textForBar.color}
+        onColor={model.onTextColor ? (color, committed) => model.onTextColor?.(color, committed) : undefined}
+        onOpenColorPicker={model.onPickTextColor ? () => model.onPickTextColor?.() : undefined}
         onChange={(s) => applyTextStyle(s, false)}
         onCommit={(s) => applyTextStyle(s, true)}
         onSheetOpenChange={(open) => { fontSheetOpenRef.current = open; }}
@@ -1098,18 +1121,22 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // down (displaySub) keeps its height, so the sheet drops as it stood.
   const contentHeight = !displaySub ? null : addPage ? emptyEffectHeight() : submenuHeight(displaySub, {
     cropMode: framingForBar.mode,
-    // The Image page's resolution line renders only when it is known.
-    // A word sticker fades as a whole: no Soften row. Its Color page is the
-    // one Invert row.
+    // A word sticker fades as a whole: no Soften row.
     opacitySoften: !model.showInvert && !model.showTextStyle,
-    colorRows: colorRows.length,
+    // Every hue row is counted exactly where its page will render it — the
+    // page grows by a slider row when the host has that colour to write.
+    svgFillColor: !!model.onSvgFillColor,
+    shadowColor: !!model.onShadowColor && !!model.onPickShadowColor,
+    textColor: !!model.onTextColor && !!model.onPickTextColor,
     // The image / frame border offers every row; a vector's stroke drops the
     // ones its subtype has no answer for.
-    borderRows: { position: true },
-    // …and the hue row exactly when the Stroke page will render it.
+    borderRows: {
+      position: true,
+      color: !!model.onBorderColor && !!model.onPickBorderColor,
+    },
     strokeRows: {
       ...svgStrokeRows(model.svgSubtype ?? 'stroke'),
-      color: !!model.showSvgOptions && !!model.onStrokeColor,
+      color: !!model.onStrokeColor,
     },
     // The Layout page grows an Arrange row exactly when the page will render it.
     layoutHasGrid: !!model.onGrid,
@@ -1233,10 +1260,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         onPress: () => openSubmenu(opt.action as SubmenuKey),
       }));
   } else if (model.showFrameOptions) {
-    // Frame tabs: Shadow · Border · Ungroup, after the Color tab that joins
-    // below (its Background row is where the frame's fill is picked). Shadow
-    // / Border reuse the image effect pages.
+    // Frame tabs: Background · Shadow · Border · Ungroup. Background leads —
+    // it is the frame's OWN colour, where Shadow and Border dress its edge —
+    // and those two reuse the image effect pages.
     typeSpecs = [
+      ...(backgroundable
+        ? [{ key: 'background', label: 'Background', sub: 'background' as const, onPress: () => openSubmenu('background') }]
+        : []),
       { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },
       { key: 'border', label: 'Border', sub: 'border', onPress: () => openSubmenu('border') },
     ];
@@ -1293,11 +1323,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       typeSpecs.unshift({ key: 'svgEdit', label: 'Edit', onPress: model.onSvgEdit });
     }
   } else if (model.showInvert) {
-    // Word sticker (magnetic poetry): Opacity, the whole magnet's, after the
-    // Color tab that joins below (holding its one colour setting, Invert:
-    // dark card ⇄ light card). Content + typography are fixed, so no Type /
-    // Align.
+    // Word sticker (magnetic poetry): Card — its one colour setting, Invert
+    // (dark card ⇄ light card) — then Opacity, the whole magnet's. Content +
+    // typography are fixed, so no Type / Align.
     typeSpecs = [
+      ...(cardable
+        ? [{ key: 'card', label: 'Card', sub: 'card' as const, onPress: () => openSubmenu('card') }]
+        : []),
       { key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },
     ];
   } else if (model.showPaintOptions) {
@@ -1335,8 +1367,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // on its page) · Shadow. The four text tabs show the same component;
     // they differ only in which page it lands on, and each is named for
     // what its page holds — Text leads with the ink and the size (the text
-    // itself, where the others dress it), so a text grows no Color tab of
-    // its own. Shadow is
+    // itself, where the others dress it). Shadow is
     // the image's own page, unchanged — one Drop Shadow control for every
     // object that can cast one. Editing the CONTENT is not a tab: a tap on
     // the selected text opens the host's overlay.
@@ -1349,13 +1380,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       { key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },
       { key: 'transform', label: 'Copies', sub: 'transform', onPress: () => openSubmenu('transform') },
     ];
-  }
-  if (colorable) {
-    // The Color tab: every colour the selection can pick, on one page (the
-    // rows are worked out above). First where the colour IS the thing, after
-    // the kind's own pages otherwise — the same place submenuOrder puts it.
-    const colorTab: OptionSpec = { key: 'color', label: 'Color', sub: 'color', onPress: () => openSubmenu('color') };
-    typeSpecs = colorFirst ? [colorTab, ...(typeSpecs ?? [])] : [...(typeSpecs ?? []), colorTab];
   }
   if (showUngroup) {
     // A GROUP is a type of selection, and Ungroup is the option that type has:

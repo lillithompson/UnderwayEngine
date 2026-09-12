@@ -3,7 +3,7 @@ import { LayoutChangeEvent, PanResponder, Pressable, ScrollView, StyleSheet, Tex
 import { VALUE_DRAG_SURFACE } from '../logic/slider';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { TintModel } from '../adapter';
+import type { RGBLike, TintModel } from '../adapter';
 import { isTranslucent, rgbCss, withAlpha } from '../logic/hsv';
 import {
   TINT_ANGLE_MAX,
@@ -21,20 +21,22 @@ import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK } from '../theme';
 import { CheckerboardFill, ColorSwatchFill } from './ColorSwatch';
 import { ROW_PILL } from '../logic/submenuHeight';
 import {
-  ACCENT, BarBody, LABEL, PILL_CHEVRON, PILL_TRACK,
+  ACCENT, BarBody, ColorSliderRow, LABEL, PILL_CHEVRON, PILL_TRACK,
   SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL, SHEET_ROW_ACTIVE,
   SHEET_TEXT, SliderRow,
 } from './effectBar';
 
-// The image Tint page (design "6a"): its contents vary by Type (the colour
-// itself is the Color page's):
+// The image Tint page (design "6a"): its contents vary by Type:
 //   • Type      — segmented Solid / Linear / Radial (unless `solidOnly`, which
 //                 drops the control, the gradient rows and the Blend row — the
 //                 shape Fill page, where a fill is always one flat color
 //                 composited normally).
 //   • Stops     — a positional gradient editor with draggable stops + add /
-//                 delete (gradient modes only).
+//                 delete (gradient modes only). A gradient's colours are its
+//                 stops', picked through the swatch on each handle.
 //   • Angle     — the linear gradient angle (Linear only).
+//   • Color     — the flat fill's own hue (`solidOnly` + `onColor`), where a
+//                 gradient has its stops instead.
 //   • Opacity   — the whole tint layer's opacity (always).
 //   • Blend     — a pill opening the blend-mode sheet (always).
 // It's a sibling of the Shadow / Border / Crop / Text pages and shares their
@@ -242,7 +244,9 @@ function BlendSheet({ current, onPick, onClose }: {
   );
 }
 
-export function TintBar({ tint, solidOnly, onChange, onCommit, onPickColor, onAddStop, onSheetOpenChange }: {
+export function TintBar({
+  tint, solidOnly, onChange, onCommit, onColor, onPickColor, onAddStop, onSheetOpenChange,
+}: {
   /** Solid color only: the Type segmented control, the gradient rows and the
    *  Blend row are dropped, and every edit writes `type: 'solid'` and
    *  `blend: 'normal'` — the shape Fill page, where a fill is always one flat
@@ -254,8 +258,17 @@ export function TintBar({ tint, solidOnly, onChange, onCommit, onPickColor, onAd
   onChange: (t: TintModel) => void;
   /** Commit as one undo step (release, Type / blend pick, stop add / delete). */
   onCommit: (t: TintModel) => void;
-  /** Open the color picker for the selected stop (a solid tint's colour is
-   *  the Color page's row; this serves the gradient stop editor). */
+  /** The solid fill's own colour, live while the hue row drags and once on
+   *  release. Given (with `solidOnly`) it renders that row above Opacity; the
+   *  fill IS a colour, so its page is where that colour reads. Absent leaves
+   *  the page its Opacity slider alone — a host with no fill colour to write.
+   *
+   *  The colour shown comes from `tint.solid`, i.e. off the MODEL rather than
+   *  the panel's draft: the picker below changes it externally, and a row that
+   *  read its own writes back would stand still while the object recoloured. */
+  onColor?: (color: RGBLike, committed: boolean) => void;
+  /** Open the full colour picker — the hue row's trailing circle (saturation,
+   *  brightness and alpha live there), and the gradient stop editor's swatch. */
   onPickColor: () => void;
   /** Add a stop (commits) then open the color picker on it — the app sequences
    *  the picker so a fresh stop is never a dead end. */
@@ -311,6 +324,19 @@ export function TintBar({ tint, solidOnly, onChange, onCommit, onPickColor, onAd
               text: `${Math.round(shown.angle)}°`,
               commit: (n) => set({ angle: Math.round(Math.min(Math.max(n, 0), TINT_ANGLE_MAX)) }, true),
             }}
+          />
+        ) : null}
+        {/* …the fill's own colour, on the slider's own proportions: the hue
+            wheel along the track, the colour under the thumb, and the circle
+            at the end opening the full picker. It sits HERE, on the page of
+            the thing it colours, where it was a row of a shared Color page a
+            tab away — a page called Fill that could not set the fill colour. */}
+        {solidOnly && onColor ? (
+          <ColorSliderRow
+            label="Color"
+            color={shown.solid}
+            onColor={onColor}
+            onOpenPicker={onPickColor}
           />
         ) : null}
         {/* The tint ramping up over the alpha checker: a solid tint's own

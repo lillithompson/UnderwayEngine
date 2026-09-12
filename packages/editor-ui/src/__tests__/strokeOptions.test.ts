@@ -93,9 +93,14 @@ describe('a line\'s colour reads on its Stroke page, under Dash', () => {
     expect(READ('adapter.ts')).toContain('onStrokeColor?(color: RGBLike, committed: boolean): void;');
   });
 
-  it('came OFF the shared Color page for a vector — a pattern keeps its row', () => {
-    expect(PANEL).toContain("if (strokeable && !model.showSvgOptions && model.strokePresent !== false && model.onPickStrokeColor) {");
-    // …and the page reserves the row exactly when the bar renders it.
-    expect(PANEL).toContain('color: !!model.showSvgOptions && !!model.onStrokeColor,');
+  it('is where a PATTERN reads its ink too — there is no shared Color page left', () => {
+    // The Color page is gone: a colour reads on the page of the thing it
+    // colours. A pattern's Stroke page is its baked tiles', so its ink goes
+    // there with every other object's, rather than on a tab of its own.
+    expect(PANEL).not.toContain("colorRows.push({ key: 'stroke'");
+    expect(PANEL).not.toContain("label: 'Color', sub: 'color'");
+    // …and the page reserves the row exactly when the bar renders it, for
+    // every kind that offers the page.
+    expect(PANEL).toContain('color: !!model.onStrokeColor,');
   });
 });

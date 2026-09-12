@@ -1,8 +1,8 @@
 import React, { useRef } from 'react';
 import { GestureResponderEvent, PanResponder, StyleSheet, View } from 'react-native';
-import type { ShadowModel } from '../adapter';
+import type { RGBLike, ShadowModel } from '../adapter';
 import { SHADOW_PAD_SIZE } from '../logic/submenuHeight';
-import { BarBody, CONTROL_ACCENT, SliderRow } from './effectBar';
+import { BarBody, ColorSliderRow, CONTROL_ACCENT, SliderRow } from './effectBar';
 import { beginValueDrag, endValueDrag, padOffsetFromTouch, VALUE_DRAG_SURFACE } from '../logic/slider';
 import { rgbCss, withAlpha } from '../logic/hsv';
 
@@ -17,7 +17,8 @@ import { rgbCss, withAlpha } from '../logic/hsv';
 // the design's iOS-point ranges at 16px/cell). The slider rows and the body
 // layout come from the shared page grammar (see effectBar.tsx); the sheet
 // around the page — its Shadow tab and the Remove line — is the Edit
-// sheet's, and the shadow's colour is the Color page's.
+// sheet's. The shadow's own colour reads HERE, above the Opacity that says
+// how much of it there is, rather than on a shared Color page a tab away.
 //
 // ONE page, shared: an image, a frame and a TEXT all open this, so the
 // layout is the same wherever a shadow is cast.
@@ -88,8 +89,18 @@ function XYPad({ dx, dy, onChange, onCommit }: {
   );
 }
 
-export function ShadowBar({ shadow, onChange, onCommit }: {
+export function ShadowBar({ shadow, color, onColor, onOpenColorPicker, onChange, onCommit }: {
   shadow: ShadowModel;
+  /** The shadow's own ink, shown as a hue row above Opacity. Given with
+   *  `onColor` and `onOpenColorPicker` — omit all three and the row is absent
+   *  (a page whose host has no colour to write).
+   *
+   *  Read off `shadow.color`, i.e. the MODEL, not the panel's draft: the full
+   *  picker changes it externally, and a row fed by its own writes would stand
+   *  still while the shadow recoloured. */
+  color?: RGBLike;
+  onColor?: (color: RGBLike, committed: boolean) => void;
+  onOpenColorPicker?: () => void;
   onChange: (s: ShadowModel) => void;
   onCommit: (s: ShadowModel) => void;
 }) {
@@ -113,6 +124,17 @@ export function ShadowBar({ shadow, onChange, onCommit }: {
         value={(shadow.spread - MIN_SPREAD) / (MAX_SPREAD - MIN_SPREAD)}
         apply={(t, c) => set({ spread: MIN_SPREAD + t * (MAX_SPREAD - MIN_SPREAD) }, c)}
       />
+      {/* …then what colour it is: the hue wheel along the track, the colour
+          under the thumb, and the circle at the end opening the full picker
+          for saturation and brightness. */}
+      {color && onColor && onOpenColorPicker ? (
+        <ColorSliderRow
+          label="Color"
+          color={color}
+          onColor={onColor}
+          onOpenPicker={onOpenColorPicker}
+        />
+      ) : null}
       {/* The shadow's own color ramping up over the alpha checker — "how
           much of THIS shadow", as the color picker's Opacity reads. */}
       <SliderRow

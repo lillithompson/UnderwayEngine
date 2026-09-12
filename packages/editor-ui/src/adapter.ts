@@ -582,9 +582,21 @@ export interface ObjectPropertiesModel {
    *  Type, stop add/delete, blend pick (`committed=true`, one undo step).
    *  `fill=null` removes the fill, leaving the shape an outline. */
   onSvgFill?(fill: TintModel | null, committed: boolean): void;
-  /** Open the full-screen color picker for the fill. Targets the solid color in
-   *  Solid mode or `svgFill.stops[svgFill.selectedStop]` in gradient modes; the
-   *  app reads the current fill to know which. */
+  /** The fill's own colour: live while the Fill page's hue row drags
+   *  (`committed=false`), once on release. Absent → that page shows no colour
+   *  row and is its Opacity slider alone.
+   *
+   *  Separate from {@link onSvgFill} because the panel deliberately reads a
+   *  fill's colours back off THIS model rather than off its draft (the picker
+   *  below changes them externally) — a row writing into the draft would move
+   *  nothing, which is exactly how a page called Fill came to be unable to set
+   *  one. Write the same field {@link onPickSvgFillColor}'s picker writes and
+   *  the handle follows. */
+  onSvgFillColor?(color: RGBLike, committed: boolean): void;
+  /** Open the full-screen color picker for the fill — the hue row's trailing
+   *  circle, where saturation, brightness and alpha live. Targets the solid
+   *  color in Solid mode or `svgFill.stops[svgFill.selectedStop]` in gradient
+   *  modes; the app reads the current fill to know which. */
   onPickSvgFillColor?(): void;
   /** Whether the Endpoints bar is shown. App-owned so a tap-off dismisses it
    *  before the panel (same as the Stroke / Fill bars). Only reachable from a
@@ -622,11 +634,16 @@ export interface ObjectPropertiesModel {
    *  reusing the image effect bars (frame submenu carousel = shadow, border).
    *  Mutually exclusive with the image / text type-options. */
   showFrameOptions?: boolean;
-  /** The frame's current background color (its boundary rect fill), shown as a
-   *  circular swatch on the Background button. */
+  /** The frame's current background color (its boundary rect fill) — what the
+   *  Background page's hue row shows. */
   frameBackgroundColor?: RGBLike;
+  /** The frame's background colour: live while that hue row drags
+   *  (`committed=false`), once on release. Absent (with
+   *  {@link onPickFrameBackground}) and a frame grows no Background page at
+   *  all — it is the whole of that page. */
+  onFrameBackgroundColor?(color: RGBLike, committed: boolean): void;
   /** Open the full-screen color picker for the frame background (the same
-   *  picker the toolbar color tool uses). */
+   *  picker the toolbar color tool uses) — the hue row's trailing circle. */
   onPickFrameBackground?(): void;
   /** Lit state of the common row's Lock button. On a `mode: 'multi'` selection
    *  this must read TRUE ONLY WHEN EVERY MEMBER IS LOCKED: {@link onToggleLock}
@@ -655,8 +672,15 @@ export interface ObjectPropertiesModel {
    *  and once on release (`committed=true`, one undo step). `shadow=null`
    *  removes the shadow. */
   onShadow?(shadow: ShadowModel | null, committed: boolean): void;
+  /** The shadow's own colour: live while the Shadow page's hue row drags
+   *  (`committed=false`), once on release. Absent → that page shows no colour
+   *  row. Kept out of {@link onShadow} for the reason {@link onSvgFillColor}
+   *  is kept out of the fill's controls: the panel reads a shadow's colour off
+   *  the MODEL, not its draft, so the row has to write where the picker
+   *  writes. */
+  onShadowColor?(color: RGBLike, committed: boolean): void;
   /** Open the full-screen color picker for the shadow color (the same picker
-   *  the top-toolbar color tool uses). */
+   *  the top-toolbar color tool uses) — the hue row's trailing circle. */
   onPickShadowColor?(): void;
   /** Whether the Border controls are shown. App-owned so a tap-off dismisses
    *  them before the panel (same as the Shadow bar). */
@@ -675,7 +699,12 @@ export interface ObjectPropertiesModel {
    *  and once on release (`committed=true`, one undo step). `border=null`
    *  removes the border. */
   onBorder?(border: BorderModel | null, committed: boolean): void;
-  /** Open the full-screen color picker for the border color. */
+  /** The border's own colour: live while the Border page's hue row drags
+   *  (`committed=false`), once on release. Absent → that page shows no colour
+   *  row. Same split as {@link onShadowColor}. */
+  onBorderColor?(color: RGBLike, committed: boolean): void;
+  /** Open the full-screen color picker for the border color — the hue row's
+   *  trailing circle. */
   onPickBorderColor?(): void;
   /** Whether the Crop / framing controls are shown. App-owned so a tap-off
    *  dismisses them before the panel (same as the Shadow / Border bars). */
@@ -733,8 +762,12 @@ export interface ObjectPropertiesModel {
   /** Text-style callback: fires live while dragging (`committed=false`) and
    *  once on release / segment change (`committed=true`, one undo step). */
   onTextStyle?(style: TextStyleModel, committed: boolean): void;
+  /** The text's ink: live while the Text page's hue row drags
+   *  (`committed=false`), once on release. Absent → that page is its Size
+   *  slider alone. Same split as {@link onShadowColor}. */
+  onTextColor?(color: RGBLike, committed: boolean): void;
   /** Open the full-screen color picker for the text color (same picker the
-   *  toolbar color tool uses). */
+   *  toolbar color tool uses) — the hue row's trailing circle. */
   onPickTextColor?(): void;
   /** Reset type settings (size / character / line / weight) to defaults,
    *  keeping the font family and color. One undo step; the bar stays open.

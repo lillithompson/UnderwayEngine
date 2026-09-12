@@ -99,9 +99,13 @@ export type SubmenuKey =
   | 'text' | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
   // The Shape page: a polygonal shape's corner Radius (see svgHasShape).
   | 'shape'
-  // The Color page: every colour a selection can pick (and a word sticker's
-  // Invert, its one colour setting) as labelled rows — components/ColorBar.tsx.
-  | 'color'
+  // A frame's Background page: the one hue row its boundary rect's fill reads
+  // on. The frame's own colour, so it leads the frame's tabs.
+  | 'background'
+  // A word sticker's Card page: the Invert chip, its card scheme (light card /
+  // dark ink, or the inverse) — the one colour setting a magnet has, and not a
+  // hue, so it is a toggle rather than a slider row.
+  | 'card'
   // The poseable rig's parts: the whole figure (three axes, plus the Reset
   // that stands it back up), six sliders for the hands (curl / twist /
   // spread per side), four for the feet, three for the spine, two for the
@@ -123,10 +127,17 @@ export interface SubmenuHeightContext {
     /** Opacity page: whether it shows the Soften row under Opacity (default
    *  true). A word sticker fades as a whole and offers no soften. */
   opacitySoften?: boolean;
-  /** Color page: how many rows it lists (a swatch or a toggle each). */
-  colorRows?: number;
-  /** Border page: which optional rows the image / frame border shows. */
-  borderRows?: { position: boolean };
+  /** Fill page: whether it shows the hue row above Opacity — exactly when the
+   *  host offers a fill colour to write. */
+  svgFillColor?: boolean;
+  /** Shadow page: whether it shows the hue row above Opacity, on the same
+   *  rule. */
+  shadowColor?: boolean;
+  /** Text page: whether it shows the ink's hue row above Size. */
+  textColor?: boolean;
+  /** Border page: which optional rows the image / frame border shows —
+   *  `color` adds the hue row the border's own ink reads on, under Dash. */
+  borderRows?: { position: boolean; color?: boolean };
   /** Stroke page: the same page, with the rows this vector subtype supports
    *  (never Radius — that is the Shape page's). `color` adds the hue row a
    *  VECTOR's own stroke reads on, under Dash. */
@@ -239,9 +250,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'svgFill':
       // The Fill page is the Tint page solid-only (a shape's fill is always
       // one flat color at Normal blend): no Type control, no gradient rows,
-      // no Blend row — the Opacity slider alone (its colour is the Color
-      // page's).
-      return contentArea([ROW_SLIDER]);
+      // no Blend row — the fill's own hue row, then how opaque it is.
+      return contentArea([...(ctx.svgFillColor ? [ROW_SLIDER] : []), ROW_SLIDER]);
     case 'border':
       return contentArea(borderRows(ctx.borderRows));
     case 'stroke':
@@ -259,9 +269,12 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return contentArea([ROW_SEGMENTED, ROW_SLIDER]);
     case 'opacity':
       return contentArea(ctx.opacitySoften === false ? [ROW_SLIDER] : [ROW_SLIDER, ROW_SLIDER]);
-    case 'color':
-      // One segmented-height row per colour (or toggle) listed; at least one.
-      return contentArea(new Array(Math.max(1, ctx.colorRows ?? 1)).fill(ROW_SEGMENTED));
+    case 'background':
+      // The frame's fill: one hue row.
+      return contentArea([ROW_SLIDER]);
+    case 'card':
+      // The word sticker's scheme: the Invert chip, one row.
+      return contentArea([ROW_SEGMENTED]);
     // The rig pages are sliders and nothing else — no hint line and no IK
     // switch (see RigPoseBar) — so each stands exactly as tall as the
     // controls it renders.
@@ -331,10 +344,9 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
         ...(ctx.layoutHasGrid ? [ROW_SEGMENTED] : []),
       ]);
     case 'text':
-      // The text itself: its colour rows (one segmented row each, at least
-      // one) and Size under them.
+      // The text itself: the ink's hue row, and Size under it.
       return contentArea([
-        ...new Array(Math.max(1, ctx.colorRows ?? 1)).fill(ROW_SEGMENTED),
+        ...(ctx.textColor ? [ROW_SLIDER] : []),
         ROW_SLIDER,
       ]);
     case 'font':
@@ -348,9 +360,13 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // The horizontal and the vertical alignment rows.
       return contentArea([ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'shadow':
-      // The XY pad on the left, three sliders on the right: the taller
-      // column sets the height.
-      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER], SHADOW_PAD_SIZE);
+      // The XY pad on the left, Blur / Spread / (Color) / Opacity on the
+      // right: the taller column sets the height, so the colour row is what
+      // grows the page past the pad.
+      return contentArea(
+        [ROW_SLIDER, ROW_SLIDER, ...(ctx.shadowColor ? [ROW_SLIDER] : []), ROW_SLIDER],
+        SHADOW_PAD_SIZE,
+      );
     default: {
       // Exhaustiveness guard: adding a SubmenuKey without giving it rows here
       // is a compile error, not a silently stunted page.
@@ -374,8 +390,8 @@ export function emptyEffectHeight(): number {
  *  {@link submenuHeight}) and, when that page can be removed, the Remove line
  *  under it; then the bottom padding and the device's bottom inset, which
  *  the sheet pads so its last line clears the home indicator. A sheet whose
- *  tabs are all one-press actions (a word sticker's Invert) shows no content
- *  area at all, and is the tabs alone. */
+ *  tabs are all one-press actions (a group's Ungroup) shows no content area at
+ *  all, and is the tabs alone. */
 export function editSheetHeight(
   content: number | null,
   opts: { removable?: boolean; safeBottom?: number } = {},

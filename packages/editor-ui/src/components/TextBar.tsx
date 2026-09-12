@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { TextFontOption, TextHAlign, TextStyleModel, TextVAlign, TextWeight } from '../adapter';
+import type {
+  RGBLike, TextFontOption, TextHAlign, TextStyleModel, TextVAlign, TextWeight,
+} from '../adapter';
 import { ROW_PILL } from '../logic/submenuHeight';
 import {
-  ACCENT, BarBody,
+  ACCENT, BarBody, ColorSliderRow,
   PILL_CHEVRON, PILL_TRACK, SegmentedRow, SHEET_BG, SHEET_BORDER, SHEET_LABEL,
   SHEET_ROW_ACTIVE, SHEET_TEXT, SliderRow,
 } from './effectBar';
-import { ColorRows, type ColorRowSpec } from './ColorBar';
 
 // The Text typography controls (design "5a"), split into three pages — three
-// tabs of the Edit sheet (the text's colour is the Color page's):
+// tabs of the Edit sheet (the text's ink reads on the Text page, with the
+// Size that sets it — the ink IS the text):
 //   • Type    — Font (a pill that opens a font sheet) · Weight (segmented)
 //     · Size (slider).
 //   • Spacing — Character spacing · Line spacing · Bend (arc curvature,
@@ -111,16 +113,25 @@ function FontSheet({ fonts, current, onPick, onClose }: {
   );
 }
 
-export function TextBar({ page, style, fonts, colorRows, onChange, onCommit, onSheetOpenChange }: {
+export function TextBar({
+  page, style, fonts, color, onColor, onOpenColorPicker, onChange, onCommit, onSheetOpenChange,
+}: {
   /** Which page to render: the text itself, or its font, spacing or
    *  alignment controls. */
   page: TextPage;
   style: TextStyleModel;
   fonts: readonly TextFontOption[];
-  /** The Text page's colour rows — the selection's own (ColorRows, the same
-   *  rows the Color page lays out for every other kind). A text has no Color
-   *  tab of its own: its ink IS the text, so it reads here beside Size. */
-  colorRows?: readonly ColorRowSpec[];
+  /** The text's own ink, shown as a hue row above Size on the Text page.
+   *  Given with `onColor` and `onOpenColorPicker` — omit all three and the row
+   *  is absent. The ink IS the text, so it reads on the text's own page; a text
+   *  grows no Color tab.
+   *
+   *  Taken off the MODEL rather than the panel's type draft: the full picker
+   *  changes it externally, and a row fed by its own writes would stand still
+   *  while the glyphs recoloured. */
+  color?: RGBLike;
+  onColor?: (color: RGBLike, committed: boolean) => void;
+  onOpenColorPicker?: () => void;
   /** Live preview (slider drag). */
   onChange: (s: TextStyleModel) => void;
   /** Commit as one undo step (slider release, segment / font pick). */
@@ -149,7 +160,14 @@ export function TextBar({ page, style, fonts, colorRows, onChange, onCommit, onS
           <>
             {/* The text ITSELF: its ink and how big it is. Everything else
                 on the row dresses it. */}
-            <ColorRows rows={colorRows ?? []} />
+            {color && onColor && onOpenColorPicker ? (
+              <ColorSliderRow
+                label="Color"
+                color={color}
+                onColor={onColor}
+                onOpenPicker={onOpenColorPicker}
+              />
+            ) : null}
             <SliderRow
               label="Size"
               value={(style.size - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)}
