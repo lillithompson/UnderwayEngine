@@ -89,21 +89,40 @@ const PALETTE_STEPS: Array<{ s: number; v: number }> = [
 
 /** A grid of swatches: one row per hue (light→dark), plus a trailing
  *  grayscale row. Deterministic, so the picker layout is stable. */
+/**
+ * The saturation and value a hue slider works AT for `c` — the one rule
+ * {@link withHue} writes by and {@link hueRampColors} draws by, so the
+ * track a finger lands on is the colour it gets.
+ *
+ * A colour with no saturation (a grey) or no value (black) has no hue to
+ * move, so the slider gives it one: sliding out of grey walks into colour
+ * rather than staying grey forever. The ramp has to make the same
+ * substitution or a black swatch would show a black track under a slider
+ * that writes vivid hues.
+ */
+export function hueSliderSV(c: RGBLike): { s: number; v: number } {
+  const { s, v } = rgbToHsv(c);
+  return { s: s > 0 ? s : 1, v: v > 0 ? v : 1 };
+}
+
 /** The hue wheel as a gradient's stops, red round to red — the track of a
  *  {@link ColorSliderRow}, where left-to-right IS the wheel. Six sixths plus
  *  the closing red, so each stop is a pure hue and the ramp between two of
- *  them is the shortest way round. */
-export function hueRampColors(): string[] {
-  return [0, 60, 120, 180, 240, 300, 360].map((h) => rgbCss(hsvToRgb({ h: h % 360, s: 1, v: 1 })));
+ *  them is the shortest way round.
+ *
+ *  Drawn at the colour's OWN saturation and value ({@link hueSliderSV}),
+ *  which is what the slider keeps as it moves the hue: a muted or dark
+ *  colour gets a muted or dark rainbow, so the stop under the thumb IS the
+ *  colour that lands there. The track used to be a full-strength wheel
+ *  whatever the colour was, promising a vivid hue and writing a dusty one. */
+export function hueRampColors(s = 1, v = 1): string[] {
+  return [0, 60, 120, 180, 240, 300, 360].map((h) => rgbCss(hsvToRgb({ h: h % 360, s, v })));
 }
 
 /** `c` with its hue moved to `h`, keeping how saturated and how bright it
- *  is — what a hue slider writes. A colour with no saturation (a grey, a
- *  black, a white) has no hue to move, so the slider gives it one: sliding
- *  from grey walks into colour rather than staying grey forever. */
+ *  is — what a hue slider writes (see {@link hueSliderSV}). */
 export function withHue(c: RGBLike, h: number): RGBLike {
-  const { s, v } = rgbToHsv(c);
-  const out = hsvToRgb({ h, s: s > 0 ? s : 1, v: v > 0 ? v : 1 });
+  const out = hsvToRgb({ h, ...hueSliderSV(c) });
   return c.a !== undefined ? { ...out, a: c.a } : out;
 }
 

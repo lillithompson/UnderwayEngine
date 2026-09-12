@@ -22,7 +22,7 @@ import {
 } from '../theme';
 import { SLIDER_TRACK, Slider } from './Slider';
 import { ColorSwatchFill } from './ColorSwatch';
-import { hueRampColors, rgbCss, rgbToHsv, withHue } from '../logic/hsv';
+import { hueRampColors, hueSliderSV, rgbCss, rgbToHsv, withHue } from '../logic/hsv';
 import type { RGBLike } from '../adapter';
 
 // Shared grammar for the property pages (Drop Shadow, Border, Crop, …) that
@@ -244,7 +244,12 @@ export function ColorSliderRow({ label, color, onColor, onOpenPicker }: {
   /** The trailing circle's press: the host's full colour picker. */
   onOpenPicker: () => void;
 }) {
-  const ramp = useMemo(() => hueRampColors(), []);
+  // The track is drawn at the colour's own saturation and value, so the
+  // stop under the thumb is the colour the thumb writes (hueSliderSV —
+  // the same rule withHue keeps below). Memoized on those two numbers
+  // rather than on `color`, which is a fresh object every render.
+  const { s: rampS, v: rampV } = hueSliderSV(color);
+  const ramp = useMemo(() => hueRampColors(rampS, rampV), [rampS, rampV]);
   const hue = rgbToHsv(color).h;
   const apply = (t: number, committed: boolean) =>
     onColor(withHue(color, Math.max(0, Math.min(360, t * 360))), committed);

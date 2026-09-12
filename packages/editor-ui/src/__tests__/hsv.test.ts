@@ -1,5 +1,8 @@
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { rgbToHsv, hsvToRgb, buildPaletteGrid, colorAlpha, isTranslucent, rgbCss, withAlpha,
   hueRampColors,
+  hueSliderSV,
   withHue,
 } from '../logic/hsv';
 
@@ -108,13 +111,66 @@ describe('buildPaletteGrid', () => {
 });
 
 describe('the hue row’s own arithmetic (ColorSliderRow)', () => {
-  it('the ramp is the wheel: pure hues, red round to red', () => {
+  it('the ramp is the wheel: red round to red, at full strength by default', () => {
     const ramp = hueRampColors();
     expect(ramp).toHaveLength(7);
     expect(ramp[0]).toBe(ramp[6]);
-    // Each stop is a pure hue — fully saturated, fully bright.
     for (const css of ramp) expect(css).toMatch(/^rgb/);
     expect(rgbToHsv(hsvToRgb({ h: 0, s: 1, v: 1 }))).toMatchObject({ s: 1, v: 1 });
+  });
+
+  // The track promised a vivid hue and the slider wrote a dusty one: it was
+  // a full-strength wheel whatever the colour was, while withHue keeps the
+  // colour's own saturation and value.
+  it('the ramp is drawn at the saturation and value it is given', () => {
+    const ramp = hueRampColors(0.4, 0.6);
+    expect(ramp).toHaveLength(7);
+    for (const css of ramp) {
+      const m = /rgb\((\d+), (\d+), (\d+)\)/.exec(css)!;
+      const hsv = rgbToHsv({ r: +m[1], g: +m[2], b: +m[3] });
+      expect(hsv.s).toBeCloseTo(0.4, 1);
+      expect(hsv.v).toBeCloseTo(0.6, 1);
+    }
+  });
+
+  it('the stop under the thumb IS the colour the thumb writes', () => {
+    // The whole point: track and result read off ONE rule (hueSliderSV).
+    for (const c of [
+      hsvToRgb({ h: 20, s: 0.4, v: 0.6 }),   // muted
+      hsvToRgb({ h: 200, s: 1, v: 0.25 }),   // dark
+      { r: 128, g: 128, b: 128 },            // grey — no hue to move
+      { r: 0, g: 0, b: 0 },                  // black
+    ]) {
+      const { s, v } = hueSliderSV(c);
+      const ramp = hueRampColors(s, v);
+      // The ramp's 240° stop (index 4) against what the slider writes there.
+      const m = /rgb\((\d+), (\d+), (\d+)\)/.exec(ramp[4])!;
+      const stop = { r: +m[1], g: +m[2], b: +m[3] };
+      expect(withHue(c, 240)).toMatchObject(stop);
+    }
+  });
+
+  it('hueSliderSV gives a grey and a black full strength, so their tracks are not flat', () => {
+    // Without the substitution a black swatch would show a black track
+    // under a slider that writes vivid hues.
+    // Black has neither: both are substituted.
+    expect(hueSliderSV({ r: 0, g: 0, b: 0 })).toEqual({ s: 1, v: 1 });
+    // A grey has no saturation but a real brightness, and KEEPS it — the
+    // track for mid-grey is a half-bright rainbow, which is exactly what
+    // the slider writes there.
+    expect(hueSliderSV({ r: 128, g: 128, b: 128 }).s).toBe(1);
+    expect(hueSliderSV({ r: 128, g: 128, b: 128 }).v).toBeCloseTo(0.5, 2);
+    expect(hueSliderSV({ r: 255, g: 255, b: 255 })).toEqual({ s: 1, v: 1 });
+    // …and leaves a real colour alone.
+    const sv = hueSliderSV(hsvToRgb({ h: 20, s: 0.4, v: 0.6 }));
+    expect(sv.s).toBeCloseTo(0.4, 2);
+    expect(sv.v).toBeCloseTo(0.6, 2);
+  });
+
+  it('the row memoizes the ramp on those two numbers, not on the colour object', () => {
+    const eb = readFileSync(resolve(__dirname, '..', 'components', 'effectBar.tsx'), 'utf8');
+    expect(eb).toContain('const { s: rampS, v: rampV } = hueSliderSV(color);');
+    expect(eb).toContain('const ramp = useMemo(() => hueRampColors(rampS, rampV), [rampS, rampV]);');
   });
 
   it('withHue moves only the hue, keeping how saturated and how bright', () => {
