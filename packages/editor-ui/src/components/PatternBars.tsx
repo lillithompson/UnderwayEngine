@@ -169,8 +169,12 @@ export function PatternRepeatRow({ model }: { model: ObjectPropertiesModel }) {
     <SwitchRow
       label="Repeat"
       value={!!model.repeat}
+      // Several patterns, set differently: the row says Multiple instead of
+      // showing one side's value as everyone's, and flipping it FORCES the
+      // new value on all of them (the host's toggle converges).
+      mixed={!!model.repeatMixed}
       onValueChange={(next) => {
-        if (next !== !!model.repeat) model.onToggleRepeat?.();
+        if (model.repeatMixed || next !== !!model.repeat) model.onToggleRepeat?.();
       }}
     />
   );

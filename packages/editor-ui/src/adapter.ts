@@ -517,9 +517,17 @@ export interface ObjectPropertiesModel {
    *  box REPEATS the tile rather than scaling it. Only rendered when
    *  `onToggleRepeat` is set; ignored unless `showSvgOptions`. */
   onToggleRepeat?(): void;
-  /** Whether the selection is currently in pattern (repeat) mode, tinting the
-   *  Repeat button. Facet's `repeat` prop. */
+  /** Whether the selection is currently in pattern (repeat) mode, lighting
+   *  the Repeat switch. Facet's `repeat` prop. True only when EVERY member
+   *  repeats — see `repeatMixed` for what a selection that disagrees does. */
   repeat?: boolean;
+  /** The selected objects do NOT agree about repeat. The switch rests off
+   *  and reads "Multiple" rather than showing one side's value as if it
+   *  were everyone's, and flipping it forces repeat ON for all of them
+   *  (the host's toggle converges the selection). A selection that used to
+   *  disagree simply read as "off", so the switch quietly misreported half
+   *  the objects it was speaking for. */
+  repeatMixed?: boolean;
   /** Whether the Stroke bar is shown. App-owned so a tap-off dismisses it
    *  before the panel (same as the Shadow / Border bars). */
   strokeOpen?: boolean;

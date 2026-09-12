@@ -507,7 +507,7 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     // In that order: the label column, the control, the state word.
     expect(row.indexOf('styles.segLabel')).toBeLessThan(row.indexOf('<Switch'));
     expect(row.indexOf('<Switch')).toBeLessThan(row.indexOf('styles.switchState'));
-    expect(row).toContain("{value ? 'ON' : 'OFF'}");
+    expect(row).toContain("{mixed ? 'MULTIPLE' : on ? 'ON' : 'OFF'}");
     // The word is a readout, not a second control: nothing presses it.
     expect(row).not.toContain('Pressable');
     // Measured as a segmented row, so a page that mixes the two keeps one
@@ -516,6 +516,27 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     expect(ROW_SWITCH).toBe(ROW_SEGMENTED);
     // The Tile page is that one row: as tall as any other single-row page.
     expect(submenuHeight('patternTile')).toBe(submenuHeight('card'));
+  });
+
+  // Several patterns set differently: the switch showed one side's value as
+  // if it were everyone's, so it quietly misreported half the objects it
+  // was speaking for.
+  it('a selection that disagrees reads Multiple, and flipping it forces ON', () => {
+    const EB = readFileSync(resolve(__dirname, '..', 'components', 'effectBar.tsx'), 'utf8');
+    const row = EB.slice(EB.indexOf('export function SwitchRow'), EB.indexOf('/** One segmented row:'));
+    // Mixed rests OFF, whatever `value` says…
+    expect(row).toContain('const on = !mixed && value;');
+    expect(row).toContain('value={on}');
+    // …says so in the word and to the screen reader…
+    expect(row).toContain("{mixed ? 'MULTIPLE' : on ? 'ON' : 'OFF'}");
+    expect(row).toContain("accessibilityState={mixed ? { checked: 'mixed' } : undefined}");
+    // …and a flip from mixed reaches the host, which converges the
+    // selection (buildTogglePatternRepeatMulti: not-all-repeating → all on).
+    const bars = readFileSync(resolve(__dirname, '..', 'components', 'PatternBars.tsx'), 'utf8');
+    expect(bars).toContain('mixed={!!model.repeatMixed}');
+    expect(bars).toContain('if (model.repeatMixed || next !== !!model.repeat) model.onToggleRepeat?.();');
+    const adapter = readFileSync(resolve(__dirname, '..', 'adapter.ts'), 'utf8');
+    expect(adapter).toContain('repeatMixed?: boolean;');
   });
 
   it('is ONE row definition, shown by both pages', () => {
@@ -533,7 +554,7 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     expect(row).toContain('value={!!model.repeat}');
     expect(row).not.toContain('SegmentedRow');
     // Setting it to the side it already shows must not toggle back off.
-    expect(row).toContain('if (next !== !!model.repeat) model.onToggleRepeat?.();');
+    expect(row).toContain('if (model.repeatMixed || next !== !!model.repeat) model.onToggleRepeat?.();');
     // The Tile page is that row and nothing else; the Tools bar shows it too.
     const tileBar = BARS.slice(
       BARS.indexOf('export function PatternTileBar'),

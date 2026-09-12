@@ -285,21 +285,28 @@ export function ColorSliderRow({ label, color, onColor, onOpenPicker }: {
  * switch is set to, so the row can be read without reading the switch as a
  * picture.
  */
-export function SwitchRow({ label, value, onValueChange }: {
+export function SwitchRow({ label, value, mixed, onValueChange }: {
   label: string;
   value: boolean;
+  /** The selection does not AGREE — several objects, set differently. The
+   *  switch rests off and the word says Multiple rather than showing one
+   *  side's value as if it were everyone's; flipping it forces ON, the
+   *  value every member then shares. */
+  mixed?: boolean;
   onValueChange: (next: boolean) => void;
 }) {
+  const on = !mixed && value;
   return (
     <View style={styles.switchRow}>
       <Text style={styles.segLabel}>{label}</Text>
       <Switch
-        value={value}
+        value={on}
         onValueChange={onValueChange}
         trackColor={{ false: TRACK, true: CONTROL_ACCENT }}
         accessibilityLabel={label}
+        accessibilityState={mixed ? { checked: 'mixed' } : undefined}
       />
-      <Text style={styles.switchState}>{value ? 'ON' : 'OFF'}</Text>
+      <Text style={styles.switchState}>{mixed ? 'MULTIPLE' : on ? 'ON' : 'OFF'}</Text>
     </View>
   );
 }
