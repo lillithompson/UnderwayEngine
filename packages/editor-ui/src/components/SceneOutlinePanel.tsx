@@ -50,10 +50,30 @@ import { RenameModal } from './RenameModal';
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 const icon = (glyph: string) => glyph as MCIName;
 
-/** Slop around the row's drag handle. The handle is icon-sized by design —
- *  the name beside it belongs to tap/rename — but a thumb is not, so the
- *  grabbable area reaches past the glyph without moving anything. */
+/** Slop around the row's kind icon. Grabbing it starts a reorder AT ONCE
+ *  (no hold — see the row's own grab below); the icon is icon-sized by
+ *  design but a thumb is not, so its area reaches past the glyph without
+ *  moving anything. */
 const DRAG_HANDLE_HIT_SLOP = { top: 0, bottom: 0, left: 10, right: 10 } as const;
+
+// ── Grabbing a row anywhere along its line ──────────────────────────
+//
+// The kind icon used to be the ONLY grab: a reorder meant finding a 18pt
+// glyph. Now the whole line grabs — but it cannot grab the way the icon
+// does, on touch-down, because the rows live in a ScrollView and a row that
+// took every touch on sight would leave the list with nothing to scroll by.
+//
+// So the line arms on a HOLD: press, wait {@link DRAG_HOLD_MS}, then drag.
+// A flick still scrolls the list, a tap still selects, and a still hold of
+// `delayLongPress` still opens the rename dialog — the three gestures the
+// row already answered, each told apart by what the finger does after it
+// lands rather than by where it landed.
+/** How long a finger must rest on a row before a move reorders rather than
+ *  scrolls. Under the rename's own delay, so a drag arms before a rename
+ *  would, and the rename's Pressable is terminated the moment it does. */
+const DRAG_HOLD_MS = 180;
+/** …and how far it must then travel, so the hold's own tremor is not a drag. */
+const DRAG_SLOP_PX = 4;
 
 interface SceneOutlinePanelProps {
   model: SceneOutlineModel;
@@ -112,7 +132,7 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
   rowsRef.current = rows;
   const treeRef = useRef(tree);
   treeRef.current = tree;
-  const respondersRef = useRef<Map<number, ReturnType<typeof PanResponder.create>>>(new Map());
+  const respondersRef = useRef<Map<string, ReturnType<typeof PanResponder.create>>>(new Map());
 
   // While dragging, the dragged row (+ its visible subtree) follows the finger
   // and every OTHER row shifts to close the vacated slot and open the drop slot
@@ -135,11 +155,27 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
     return { blockStart: dragRowIndex, blockEnd: end, newIndexOf, dropTop, depth: dropTarget.depth };
   })();
 
+  // When the finger came down on a row, for the hold that arms a line grab.
+  const touchDownAtRef = useRef(0);
+  // Where the gesture stood when the drag was granted. The icon grants at
+  // touch-down, so it is zero there; a line grab is granted partway through
+  // the gesture, and without this the row would jump by however far the
+  // finger had already travelled during the hold.
+  const grantRef = useRef({ dx: 0, dy: 0 });
+
   const createDragResponder = useCallback(
-    (index: number) =>
+    (index: number, arm: 'touch' | 'hold') =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponder: () => {
+          // Even when this responder is not the one claiming, the touch's
+          // moment is worth keeping: it is what the hold is measured from.
+          touchDownAtRef.current = Date.now();
+          return arm === 'touch';
+        },
+        onMoveShouldSetPanResponder: (_e, g) => (arm === 'touch' ? true : (
+          Date.now() - touchDownAtRef.current >= DRAG_HOLD_MS
+          && Math.hypot(g.dx, g.dy) > DRAG_SLOP_PX
+        )),
         // The rows live inside a ScrollView, whose NATIVE pan recognizer
         // competes with this one for the same vertical drag. Losing that
         // race is what made rows feel impossible to grab (the list scrolled
@@ -151,7 +187,8 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
         // on the handle a drag until the finger lifts.
         onPanResponderTerminationRequest: () => false,
         onShouldBlockNativeResponder: () => true,
-        onPanResponderGrant: () => {
+        onPanResponderGrant: (_e, g) => {
+          grantRef.current = { dx: g.dx, dy: g.dy };
           dragDyRef.current = 0;
           dragDxRef.current = 0;
           setDragRowIndex(index);
@@ -159,10 +196,14 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
           setDragDx(0);
         },
         onPanResponderMove: (_e, g) => {
-          dragDyRef.current = g.dy;
-          dragDxRef.current = g.dx;
-          setDragDy(g.dy);
-          setDragDx(g.dx);
+          // Measured from the GRANT, not from the touch: the hold that arms
+          // a line grab is over by the time this runs.
+          const dx = g.dx - grantRef.current.dx;
+          const dy = g.dy - grantRef.current.dy;
+          dragDyRef.current = dy;
+          dragDxRef.current = dx;
+          setDragDy(dy);
+          setDragDx(dx);
         },
         onPanResponderRelease: () => {
           const m = modelRef.current;
@@ -197,10 +238,11 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
     [],
   );
 
-  const getResponder = useCallback((index: number) => {
+  const getResponder = useCallback((index: number, arm: 'touch' | 'hold') => {
     const cache = respondersRef.current;
-    if (!cache.has(index)) cache.set(index, createDragResponder(index));
-    return cache.get(index)!;
+    const key = `${index}:${arm}`;
+    if (!cache.has(key)) cache.set(key, createDragResponder(index, arm));
+    return cache.get(key)!;
   }, [createDragResponder]);
 
   useEffect(() => { respondersRef.current.clear(); }, [rows.length]);
@@ -278,6 +320,13 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                 return (
                   <Animated.View
                     key={row.id}
+                    // The WHOLE line grabs: press, hold, drag (DRAG_HOLD_MS).
+                    // The children claim the touch first — a tap on the name
+                    // selects, the eye and the lock toggle — and this takes
+                    // it off them once the hold is served, which is what
+                    // leaves a flick to the ScrollView and a still hold to
+                    // the rename.
+                    {...getResponder(index, 'hold').panHandlers}
                     style={[
                       styles.row,
                       selected && styles.rowSelected,
@@ -305,14 +354,16 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                     ) : (
                       <View style={styles.chevron} />
                     )}
-                    {/* The kind icon IS the drag handle. Its hit area is
+                    {/* The kind icon grabs the row AT ONCE — no hold — for
+                        a reorder aimed straight at it. Its hit area is
                         widened past the glyph (hitSlop, no layout change) so
                         a thumb aimed at the icon lands on it rather than on
-                        the scrolling list beside it. */}
+                        the scrolling list beside it. The rest of the line
+                        grabs too, on a hold: see the row above. */}
                     <View
                       style={styles.dragHandle}
                       hitSlop={DRAG_HANDLE_HIT_SLOP}
-                      {...getResponder(index).panHandlers}
+                      {...getResponder(index, 'touch').panHandlers}
                     >
                       <MaterialCommunityIcons name={icon(glyph)} size={18} color={OUTLINE_ICON} />
                     </View>

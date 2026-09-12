@@ -32,9 +32,36 @@ describe('a row drag keeps the gesture it started', () => {
     expect(responder).toContain('onShouldBlockNativeResponder: () => true');
   });
 
-  it('still claims the gesture on touch-down and on the first move', () => {
-    expect(responder).toContain('onStartShouldSetPanResponder: () => true');
-    expect(responder).toContain('onMoveShouldSetPanResponder: () => true');
+  it('claims on touch-down for an icon grab, and on a held move for a line grab', () => {
+    // One factory, two arms: the icon grabs at once ('touch'), the line
+    // waits out a hold ('hold') so a flick still scrolls the list.
+    expect(responder).toContain("return arm === 'touch';");
+    expect(responder).toContain("onMoveShouldSetPanResponder: (_e, g) => (arm === 'touch' ? true : (");
+    expect(responder).toContain('Date.now() - touchDownAtRef.current >= DRAG_HOLD_MS');
+    expect(responder).toContain('Math.hypot(g.dx, g.dy) > DRAG_SLOP_PX');
+    // The touch's moment is taken whether or not this responder claims —
+    // it is what the hold is measured from.
+    expect(responder).toContain('touchDownAtRef.current = Date.now();');
+  });
+
+  it('measures the drag from the GRANT, so a held grab does not jump', () => {
+    // The icon grants at touch-down (zero), but a line grab is granted
+    // partway through the gesture: gestureState.dy already holds whatever
+    // the finger travelled during the hold.
+    expect(responder).toContain('grantRef.current = { dx: g.dx, dy: g.dy };');
+    expect(responder).toContain('const dy = g.dy - grantRef.current.dy;');
+    expect(responder).toContain('const dx = g.dx - grantRef.current.dx;');
+  });
+
+  it('arms the line grab before a rename would fire, and after a flick', () => {
+    const hold = /const DRAG_HOLD_MS = (\d+);/.exec(SRC)?.[1];
+    expect(hold).toBeDefined();
+    // Under the rename's delayLongPress: a drag arms first and terminates
+    // the Pressable, so a hold-and-drag never also opens the rename.
+    const rename = /delayLongPress=\{(\d+)\}/.exec(SRC)?.[1];
+    expect(Number(hold)).toBeLessThan(Number(rename));
+    // …and long enough that a quick flick is still the list's to scroll.
+    expect(Number(hold)).toBeGreaterThan(0);
   });
 
   it('holds the list still for the length of the drag', () => {
@@ -56,7 +83,7 @@ describe('the kind icon is the drag handle', () => {
   it('carries the responder, and a hit area wider than the glyph', () => {
     const handle = /<View\s+style=\{styles\.dragHandle\}[\s\S]*?\/>\s*<\/View>/.exec(SRC)?.[0] ?? '';
     expect(handle).toContain('hitSlop={DRAG_HANDLE_HIT_SLOP}');
-    expect(handle).toContain('{...getResponder(index).panHandlers}');
+    expect(handle).toContain("{...getResponder(index, 'touch').panHandlers}");
     // The glyph itself is what the finger aims at.
     expect(handle).toContain('MaterialCommunityIcons');
   });
@@ -69,5 +96,20 @@ describe('the kind icon is the drag handle', () => {
     expect(slop).toMatch(/right: \d+/);
     expect(slop).toContain('top: 0');
     expect(slop).toContain('bottom: 0');
+  });
+});
+
+// The icon used to be the only grab: a reorder meant finding an 18pt glyph.
+describe('the whole line grabs', () => {
+  it('the row carries the held responder, over its own children', () => {
+    const row = SRC.slice(SRC.indexOf('<Animated.View\n                    key={row.id}'), SRC.indexOf('styles.row,'));
+    expect(row).toContain("{...getResponder(index, 'hold').panHandlers}");
+  });
+
+  it('a row and its icon are separate responders, cached apart', () => {
+    expect(SRC).toContain('const key = `${index}:${arm}`;');
+    expect(SRC).toContain('cache.set(key, createDragResponder(index, arm));');
+    // Keyed by string now, not by index alone — two arms per row.
+    expect(SRC).toContain('useRef<Map<string, ReturnType<typeof PanResponder.create>>>');
   });
 });
