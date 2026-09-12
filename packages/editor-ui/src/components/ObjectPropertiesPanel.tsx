@@ -1007,7 +1007,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     activeBarEl = (
       <BorderBar
         border={borderForBar}
-        // …and the border's, on the same rule as the Stroke page's below.
+        // Inside / Center / Outside name themselves, so the row keeps no
+        // label column — the same reading the Stroke page's has always
+        // taken, and the only page that still spelled "Position" out.
+        labelPosition={false}
+        // …and the border's colour, on the same rule as the Stroke page's below.
         color={borderForBar.color}
         onColor={model.onBorderColor ? (color, committed) => model.onBorderColor?.(color, committed) : undefined}
         onOpenColorPicker={model.onPickBorderColor ? () => model.onPickBorderColor?.() : undefined}

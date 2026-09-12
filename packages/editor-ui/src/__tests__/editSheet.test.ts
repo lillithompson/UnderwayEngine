@@ -9,6 +9,7 @@
 
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
+import { submenuHeight } from '../logic/submenuHeight';
 
 const SRC = (...p: string[]) => readFileSync(resolve(__dirname, '..', ...p), 'utf8');
 const fileExists = (...p: string[]) => existsSync(resolve(__dirname, '..', ...p));
@@ -560,10 +561,22 @@ describe('the panel drives the sheet', () => {
     // then where it sits against the edge (Position used to divide them).
     expect(border.indexOf('label="Dash"')).toBeLessThan(border.indexOf("'Position'"));
     expect(border.indexOf('label="Width"')).toBeLessThan(border.indexOf('label="Dash"'));
-    // The image's Border page keeps its label column, and rounds nothing.
+    // The image's Border page drops the label column too — Inside /
+    // Center / Outside name themselves wherever the row is drawn, and this
+    // was the last page that still spelled "Position" out. It rounds
+    // nothing either.
     const imageBorder = PANEL.slice(PANEL.indexOf("} else if (displaySub === 'border') {"), PANEL.indexOf("} else if (displaySub === 'stroke') {"));
-    expect(imageBorder).not.toContain('labelPosition');
+    expect(imageBorder).toContain('labelPosition={false}');
     expect(imageBorder).not.toContain('cornerRadius');
+    // Both pages that draw the row pass it, so none is left labelled.
+    expect(PANEL.match(/labelPosition=\{false\}/g)).toHaveLength(2);
+    expect(PANEL).not.toContain('labelPosition={true}');
+    // The label column costs no height either way — an unlabelled
+    // SegmentedRow spans the row at the same ROW_SEGMENTED — so the
+    // sheet's arithmetic is untouched by this.
+    const eb = SRC('components', 'effectBar.tsx');
+    expect(eb).toContain('segmentedRow: { flexDirection: \'row\', alignItems: \'center\', height: ROW_SEGMENTED }');
+    expect(submenuHeight('border')).toBe(submenuHeight('border', { borderRows: { position: true } }));
   });
 
   it('a tab that opens a page opens it — it never toggles the page closed', () => {

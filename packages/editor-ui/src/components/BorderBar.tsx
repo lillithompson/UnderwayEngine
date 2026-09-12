@@ -71,8 +71,11 @@ export function BorderBar({
   /** Render the Position row. Off for a selection with no inside to align a
    *  stroke to (an open path: line, arc, freehand stroke). */
   showPosition?: boolean;
-  /** Keep the Position row's label column. Off for a shape's Stroke page —
-   *  Inside / Center / Outside name themselves. */
+  /** Keep the Position row's label column. Off on both pages that draw
+   *  the row — a shape's Stroke and an image's Border — since Inside /
+   *  Center / Outside name themselves; the label is left as an option
+   *  rather than deleted so the row can be labelled where the words ever
+   *  stop speaking for themselves. */
   labelPosition?: boolean;
   onChange: (b: BorderModel) => void;
   onCommit: (b: BorderModel) => void;
