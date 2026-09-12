@@ -94,6 +94,45 @@ export function RowGroup({ children }: { children: React.ReactNode }) {
   return <View style={styles.group}>{children}</View>;
 }
 
+/**
+ * A {@link RowGroup} whose rows FOLD: a pressable title line — the section's
+ * name and a chevron — with its rows under it only while open. For a page
+ * whose settings are mostly left alone (the Copies page's offsets and
+ * scales, which most presses never touch): the page opens short, and a
+ * section opens when it is wanted.
+ *
+ * The open state belongs to the PANEL, not to this box: the sheet animates
+ * to a height the panel computes ahead of the render (submenuHeight), so a
+ * section that folded itself would leave the sheet standing at the old
+ * height with empty space under the rows.
+ */
+export function CollapsibleRowGroup({ label, open, onToggle, children }: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.group}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ expanded: open }}
+        onPress={onToggle}
+        style={styles.foldHeader}
+      >
+        <Text style={styles.foldLabel}>{label}</Text>
+        <MaterialCommunityIcons
+          name={open ? 'chevron-up' : 'chevron-down'}
+          size={20}
+          color={PANEL_INK_DIM}
+        />
+      </Pressable>
+      {open ? children : null}
+    </View>
+  );
+}
+
 /** A page whose rows are GROUPS: the same stack, spaced by GROUP_GAP so the
  *  boxes read as separate rather than as one long field. */
 export function GroupedBody({ children }: { children: React.ReactNode }) {
@@ -385,6 +424,16 @@ const styles = StyleSheet.create({
     backgroundColor: PANEL_GROUP_WELL,
     gap: ROW_GAP,
   },
+  // A folding group's title line: the name at the left, the chevron at the
+  // right, exactly a segmented row tall so the page's arithmetic can count
+  // it as one (ROW_SEGMENTED).
+  foldHeader: {
+    height: ROW_SEGMENTED,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  foldLabel: { color: PANEL_INK_LABEL, fontSize: 13 },
   // …and beside an aside column: the column hugs its content, the rows take
   // the rest.
   body: { flexDirection: 'row', alignItems: 'flex-start', gap: ASIDE_GAP },

@@ -141,6 +141,10 @@ export interface SubmenuHeightContext {
   /** Pattern Tools page: whether the host wired up the Repeat toggle, which
    *  adds its row. A grouped pattern can't repeat, so it doesn't. */
   patternCanRepeat?: boolean;
+  /** Copies page: whether its two FOLDING sections stand open. Each is its
+   *  title line alone when shut, the line plus its two sliders when open. */
+  copiesOffsetOpen?: boolean;
+  copiesScaleOpen?: boolean;
 }
 
 /** Total height of a stack of rows, including the gaps between them. */
@@ -288,13 +292,21 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // A marker row per end. (The Caps row went — see EndpointsBar.)
       return contentArea([ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'transform': {
-      // The Copies page: Create copies' six settings, a slider row each, in
-      // three groups of two — the offsets, the scales, then the count
-      // beside the turn — and the button that fires it, standing below
-      // them. Its groups ARE its boxes, so it is drawn with no well around
-      // them (pageIsWelled) and measured without the well's padding.
+      // The Copies page: Create's six settings, a slider row each, in three
+      // groups of two — the count beside the turn, then the offsets and the
+      // scales — and the button that fires it, standing below them. The
+      // count group always stands; the other two FOLD to their title line
+      // (a segmented row tall) until the host says they are open. Its
+      // groups ARE its boxes, so it is drawn with no well around them
+      // (pageIsWelled) and measured without the well's padding.
       const pair = rowGroupHeight([ROW_SLIDER, ROW_SLIDER]);
-      return bareArea([pair, pair, pair, ROW_SEGMENTED], GROUP_GAP);
+      const fold = (open: boolean | undefined) => (open
+        ? rowGroupHeight([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER])
+        : rowGroupHeight([ROW_SEGMENTED]));
+      return bareArea(
+        [pair, fold(ctx.copiesOffsetOpen), fold(ctx.copiesScaleOpen), ROW_SEGMENTED],
+        GROUP_GAP,
+      );
     }
     case 'patternTile':
       // The Tile page: the Repeat toggle, and nothing else.

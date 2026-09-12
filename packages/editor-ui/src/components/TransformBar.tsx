@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { TransformCopiesSpec } from '../adapter';
-import { ActionRow, GroupedBody, RowGroup, SliderRow } from './effectBar';
+import { ActionRow, CollapsibleRowGroup, GroupedBody, RowGroup, SliderRow } from './effectBar';
 import {
   COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
 } from '../logic/transform';
@@ -15,9 +15,11 @@ import {
 // press again. Rotating the object itself is not here: that is the
 // two-finger twist and the selection tool's Rotate slider.
 //
-// The settings come in pairs — the offsets, the scales, then the count
-// beside the turn — and each pair is a GROUP: a shaded rounded box holding
-// its two sliders on lines of their own. They shared a line each before
+// The settings come in pairs — the count beside the turn, then the offsets
+// and the scales — and each pair is a GROUP: a shaded rounded box holding
+// its two sliders on lines of their own. The count and the turn LEAD (they
+// are what a press lays down, and the two most presses set); the offsets
+// and the scales FOLD, shut until asked for, so the page opens short. They shared a line each before
 // (one DualSliderRow per pair), which kept the page short but halved every
 // track and set the two readouts fighting for the width; the box says the
 // same "these two are one setting" without the squeeze. Create copies
@@ -43,10 +45,15 @@ const factorText = (f: number) => `${Math.round(f * 100)}%`;
 
 const CREATE_OPTION = [{ value: 'create' as const, label: 'Create' }];
 
-export function TransformBar({ onCopies, onCopiesPreview }: {
+export function TransformBar({ onCopies, onCopiesPreview, folds, onToggleFold }: {
   onCopies: (spec: TransformCopiesSpec) => void;
   /** The live draft: every change while the page is up, null on the way out. */
   onCopiesPreview?: (spec: TransformCopiesSpec | null) => void;
+  /** Which folding sections stand open. The PANEL holds this — the sheet
+   *  animates to a height computed ahead of the render (submenuHeight), so
+   *  a section folding itself would leave the sheet at the old height. */
+  folds: { offset: boolean; scale: boolean };
+  onToggleFold: (section: 'offset' | 'scale') => void;
 }) {
   const [copies, setCopies] = useState<TransformCopiesSpec>(DEFAULT_COPIES);
   const set = (patch: Partial<TransformCopiesSpec>) => setCopies((c) => ({ ...c, ...patch }));
@@ -58,34 +65,9 @@ export function TransformBar({ onCopies, onCopiesPreview }: {
   useEffect(() => () => { previewRef.current?.(null); }, []);
   return (
     <GroupedBody>
-      <RowGroup>
-        <SliderRow
-          label="Offset X"
-          value={toT(copies.dx, -OFFSET_MAX, OFFSET_MAX)}
-          apply={(t) => set({ dx: Math.round(fromT(t, -OFFSET_MAX, OFFSET_MAX) * 10) / 10 })}
-          readout={{ text: cellText(copies.dx), commit: (n) => set({ dx: clamp(n, -OFFSET_MAX, OFFSET_MAX) }) }}
-        />
-        <SliderRow
-          label="Offset Y"
-          value={toT(copies.dy, -OFFSET_MAX, OFFSET_MAX)}
-          apply={(t) => set({ dy: Math.round(fromT(t, -OFFSET_MAX, OFFSET_MAX) * 10) / 10 })}
-          readout={{ text: cellText(copies.dy), commit: (n) => set({ dy: clamp(n, -OFFSET_MAX, OFFSET_MAX) }) }}
-        />
-      </RowGroup>
-      <RowGroup>
-        <SliderRow
-          label="Scale X"
-          value={toT(copies.sx, SCALE_MIN, SCALE_MAX)}
-          apply={(t) => set({ sx: Math.round(fromT(t, SCALE_MIN, SCALE_MAX) * 100) / 100 })}
-          readout={{ text: factorText(copies.sx), commit: (n) => set({ sx: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}
-        />
-        <SliderRow
-          label="Scale Y"
-          value={toT(copies.sy, SCALE_MIN, SCALE_MAX)}
-          apply={(t) => set({ sy: Math.round(fromT(t, SCALE_MIN, SCALE_MAX) * 100) / 100 })}
-          readout={{ text: factorText(copies.sy), commit: (n) => set({ sy: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}
-        />
-      </RowGroup>
+      {/* The count and the turn lead: they are what a press lays down, and
+          the two most presses set. The offsets and the scales fold away
+          under them, shut until asked for. */}
       <RowGroup>
         <SliderRow
           label="Copies"
@@ -106,6 +88,34 @@ export function TransformBar({ onCopies, onCopiesPreview }: {
           }}
         />
       </RowGroup>
+      <CollapsibleRowGroup label="Offset" open={folds.offset} onToggle={() => onToggleFold('offset')}>
+        <SliderRow
+          label="Offset X"
+          value={toT(copies.dx, -OFFSET_MAX, OFFSET_MAX)}
+          apply={(t) => set({ dx: Math.round(fromT(t, -OFFSET_MAX, OFFSET_MAX) * 10) / 10 })}
+          readout={{ text: cellText(copies.dx), commit: (n) => set({ dx: clamp(n, -OFFSET_MAX, OFFSET_MAX) }) }}
+        />
+        <SliderRow
+          label="Offset Y"
+          value={toT(copies.dy, -OFFSET_MAX, OFFSET_MAX)}
+          apply={(t) => set({ dy: Math.round(fromT(t, -OFFSET_MAX, OFFSET_MAX) * 10) / 10 })}
+          readout={{ text: cellText(copies.dy), commit: (n) => set({ dy: clamp(n, -OFFSET_MAX, OFFSET_MAX) }) }}
+        />
+      </CollapsibleRowGroup>
+      <CollapsibleRowGroup label="Scale" open={folds.scale} onToggle={() => onToggleFold('scale')}>
+        <SliderRow
+          label="Scale X"
+          value={toT(copies.sx, SCALE_MIN, SCALE_MAX)}
+          apply={(t) => set({ sx: Math.round(fromT(t, SCALE_MIN, SCALE_MAX) * 100) / 100 })}
+          readout={{ text: factorText(copies.sx), commit: (n) => set({ sx: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}
+        />
+        <SliderRow
+          label="Scale Y"
+          value={toT(copies.sy, SCALE_MIN, SCALE_MAX)}
+          apply={(t) => set({ sy: Math.round(fromT(t, SCALE_MIN, SCALE_MAX) * 100) / 100 })}
+          readout={{ text: factorText(copies.sy), commit: (n) => set({ sy: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}
+        />
+      </CollapsibleRowGroup>
       {/* No label column: a "Copies" beside it named the page over again —
           and clashed with the Copies slider directly above, which is the
           count this button acts on. The word is "Create" for the same

@@ -26,7 +26,7 @@ describe('the Copies option', () => {
       .toEqual(['stroke', 'endpoints', 'shadow', 'opacity', 'transform']);
   });
 
-  it('stands as three two-slider groups and a button row — no rotation row, and no well', () => {
+  it('stands as the count group, two FOLDED sections and a button row — no rotation row, and no well', () => {
     const pair = rowGroupHeight([ROW_SLIDER, ROW_SLIDER]);
     // The group's own padding is counted, and the groups are spaced wider
     // than bare rows (GROUP_GAP) so the boxes read as separate.
@@ -35,8 +35,19 @@ describe('the Copies option', () => {
     // that framed every section twice — and the height counts none of the
     // well's padding.
     expect(pageIsWelled('transform')).toBe(false);
+    // Shut, a folding section is its title line alone; open, the line plus
+    // its two sliders. The page opens with both shut.
+    const shut = rowGroupHeight([ROW_SEGMENTED]);
+    const open = rowGroupHeight([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER]);
     expect(submenuHeight('transform', {}))
-      .toBe(BAR_CUSHION + pair * 3 + ROW_SEGMENTED + GROUP_GAP * 3);
+      .toBe(BAR_CUSHION + pair + shut * 2 + ROW_SEGMENTED + GROUP_GAP * 3);
+    expect(submenuHeight('transform', { copiesOffsetOpen: true }))
+      .toBe(BAR_CUSHION + pair + open + shut + ROW_SEGMENTED + GROUP_GAP * 3);
+    expect(submenuHeight('transform', { copiesOffsetOpen: true, copiesScaleOpen: true }))
+      .toBe(BAR_CUSHION + pair + open * 2 + ROW_SEGMENTED + GROUP_GAP * 3);
+    // …and each opening grows the page.
+    expect(submenuHeight('transform', { copiesScaleOpen: true }))
+      .toBeGreaterThan(submenuHeight('transform', {}));
     expect(GROUP_GAP).toBeGreaterThan(ROW_GAP);
     // Every other page keeps the well, and is measured with its padding.
     expect(pageIsWelled('opacity')).toBe(true);
@@ -74,16 +85,28 @@ describe('the Copies page', () => {
     expect(SRC).not.toContain('label="Rotation"');
     expect(SRC).not.toContain('onRotate');
     expect(SRC).not.toContain('TransformModel');
-    // Six sliders, a line each, in three groups of two: the offsets, the
-    // scales, then the count beside the turn. They shared a line per pair
-    // before, which halved every track and set two readouts fighting for
-    // the width.
+    // Six sliders, a line each, in three groups of two: the count beside
+    // the turn, then the offsets and the scales. They shared a line per
+    // pair before, which halved every track and set two readouts fighting
+    // for the width.
     for (const label of ['Offset X', 'Offset Y', 'Scale X', 'Scale Y', 'Copies', 'Rotation offset']) {
       expect(SRC).toContain(`label="${label}"`);
     }
     expect(SRC.match(/<SliderRow/g)).toHaveLength(6);
-    expect(SRC.match(/<RowGroup>/g)).toHaveLength(3);
     expect(SRC).not.toContain('<DualSliderRow');
+    // The count group LEADS — it is what a press lays down — and the other
+    // two fold, shut until asked for (the panel holds the state, so the
+    // sheet's height can be computed before the render).
+    expect(SRC.match(/<RowGroup>/g)).toHaveLength(1);
+    expect(SRC.match(/<CollapsibleRowGroup/g)).toHaveLength(2);
+    expect(SRC.indexOf('label="Copies"')).toBeLessThan(SRC.indexOf('label="Offset X"'));
+    expect(SRC).toContain('<CollapsibleRowGroup label="Offset" open={folds.offset} onToggle={() => onToggleFold(\'offset\')}>');
+    expect(SRC).toContain('<CollapsibleRowGroup label="Scale" open={folds.scale} onToggle={() => onToggleFold(\'scale\')}>');
+    const panelSrc = read('ObjectPropertiesPanel.tsx');
+    expect(panelSrc).toContain("const [copiesFolds, setCopiesFolds] = useState({ offset: false, scale: false });");
+    expect(panelSrc).toContain('folds={copiesFolds}');
+    expect(panelSrc).toContain('copiesOffsetOpen: copiesFolds.offset,');
+    expect(panelSrc).toContain('copiesScaleOpen: copiesFolds.scale,');
     // Each reads out in its own unit.
     expect(SRC).toContain("readout={{ text: factorText(copies.sx), commit: (n) => set({ sx: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}");
     expect(SRC).toContain("readout={{ text: factorText(copies.sy), commit: (n) => set({ sy: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}");
