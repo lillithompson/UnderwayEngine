@@ -126,7 +126,9 @@ export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, track
       <View style={[styles.track, { backgroundColor: trackColor }]}>
         {checker ? <CheckerboardFill /> : null}
         <LinearGradient
-          colors={ramp as string[]}
+          // Two stops at least, by construction: sliderRampColors returns a
+          // pair, and an override shorter than that is refused above.
+          colors={ramp as readonly [string, string, ...string[]]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={StyleSheet.absoluteFill}

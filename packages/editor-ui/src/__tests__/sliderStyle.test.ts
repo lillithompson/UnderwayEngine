@@ -16,7 +16,7 @@ describe('the shared Slider', () => {
   it('is a pill track carrying a clear→full ramp of its color', () => {
     expect(SRC).toContain("import { LinearGradient } from 'expo-linear-gradient';");
     expect(SRC).toContain('const accentRamp = useMemo(() => sliderRampColors(accent), [accent]);');
-    expect(SRC).toContain('colors={ramp as string[]}');
+    expect(SRC).toContain('colors={ramp as readonly [string, string, ...string[]]}');
     // …unless the caller hands one over: a hue slider's track is the wheel,
     // where the value is a POSITION rather than more-or-less of one colour.
     expect(SRC).toContain('const ramp = rampOverride && rampOverride.length >= 2 ? rampOverride : accentRamp;');
