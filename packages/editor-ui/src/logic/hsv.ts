@@ -89,6 +89,24 @@ const PALETTE_STEPS: Array<{ s: number; v: number }> = [
 
 /** A grid of swatches: one row per hue (light→dark), plus a trailing
  *  grayscale row. Deterministic, so the picker layout is stable. */
+/** The hue wheel as a gradient's stops, red round to red — the track of a
+ *  {@link ColorSliderRow}, where left-to-right IS the wheel. Six sixths plus
+ *  the closing red, so each stop is a pure hue and the ramp between two of
+ *  them is the shortest way round. */
+export function hueRampColors(): string[] {
+  return [0, 60, 120, 180, 240, 300, 360].map((h) => rgbCss(hsvToRgb({ h: h % 360, s: 1, v: 1 })));
+}
+
+/** `c` with its hue moved to `h`, keeping how saturated and how bright it
+ *  is — what a hue slider writes. A colour with no saturation (a grey, a
+ *  black, a white) has no hue to move, so the slider gives it one: sliding
+ *  from grey walks into colour rather than staying grey forever. */
+export function withHue(c: RGBLike, h: number): RGBLike {
+  const { s, v } = rgbToHsv(c);
+  const out = hsvToRgb({ h, s: s > 0 ? s : 1, v: v > 0 ? v : 1 });
+  return c.a !== undefined ? { ...out, a: c.a } : out;
+}
+
 export function buildPaletteGrid(): RGBLike[][] {
   const rows = PALETTE_HUES.map((h) => PALETTE_STEPS.map((step) => hsvToRgb({ h, s: step.s, v: step.v })));
   const grays: RGBLike[] = [];

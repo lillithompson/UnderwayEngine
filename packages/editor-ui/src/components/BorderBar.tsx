@@ -1,6 +1,7 @@
 import React from 'react';
 import type { BorderModel, BorderPosition } from '../adapter';
-import { BarBody, SegmentedRow, SliderRow } from './effectBar';
+import { BarBody, SegmentedRow, SliderRow, ColorSliderRow } from './effectBar';
+import type { RGBLike } from '../adapter';
 
 // The Border (stroke) page (design "3a"): Width, Dash, Position — the
 // line's own two properties together, then where it sits against the edge.
@@ -57,8 +58,16 @@ export function RadiusRow({ cornerRadius, onCornerRadius }: {
   );
 }
 
-export function BorderBar({ border, showPosition = true, labelPosition = true, onChange, onCommit }: {
+export function BorderBar({
+  border, showPosition = true, labelPosition = true, color, onColor, onOpenColorPicker, onChange, onCommit,
+}: {
   border: BorderModel;
+  /** The line's own colour, shown as a hue row under Dash. Given with
+   *  `onColor` and `onOpenColorPicker` — omit all three and the row is
+   *  absent (a page whose host has no colour to offer). */
+  color?: RGBLike;
+  onColor?: (color: RGBLike, committed: boolean) => void;
+  onOpenColorPicker?: () => void;
   /** Render the Position row. Off for a selection with no inside to align a
    *  stroke to (an open path: line, arc, freehand stroke). */
   showPosition?: boolean;
@@ -96,9 +105,22 @@ export function BorderBar({ border, showPosition = true, labelPosition = true, o
           commit: (n) => set({ dash: Math.round(Math.min(Math.max(n, 0), MAX_DASH)) }, true),
         }}
       />
-      {/* Position last: the two sliders describe the line ITSELF — how thick
-          it is drawn, and whether it is dashed — and this says where that
-          line sits against the shape's edge. It used to divide them. */}
+      {/* …then its colour, on the slider's own proportions: the hue wheel
+          along the track, the colour under the thumb, and the circle at the
+          end opening the full picker for saturation, brightness and alpha.
+          It sits with Width and Dash because all three describe the line
+          ITSELF; it was a row of the shared Color page, a tab away. */}
+      {color && onColor && onOpenColorPicker ? (
+        <ColorSliderRow
+          label="Color"
+          color={color}
+          onColor={onColor}
+          onOpenPicker={onOpenColorPicker}
+        />
+      ) : null}
+      {/* Position last: the rows above describe the line ITSELF — how thick
+          it is drawn, whether it is dashed, what colour it is — and this
+          says where that line sits against the shape's edge. */}
       {showPosition ? (
         <SegmentedRow
           label={labelPosition ? 'Position' : undefined}

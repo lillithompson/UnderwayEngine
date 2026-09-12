@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import {
@@ -18,8 +18,12 @@ import {
   PANEL_SHEET_ROW_ACTIVE,
   PANEL_TRACK,
   STATE_ACTIVE,
+  PANEL_SWATCH_BORDER,
 } from '../theme';
 import { SLIDER_TRACK, Slider } from './Slider';
+import { ColorSwatchFill } from './ColorSwatch';
+import { hueRampColors, rgbCss, rgbToHsv, withHue } from '../logic/hsv';
+import type { RGBLike } from '../adapter';
 
 // Shared grammar for the property pages (Drop Shadow, Border, Crop, …) that
 // the Edit sheet shows in its content area: the row grammar (a slider row is
@@ -219,6 +223,57 @@ export function SliderRow({ label, value, apply, readout, accent, checker, onDar
   );
 }
 
+/**
+ * A COLOUR row built on the slider's own proportions: the same label
+ * column, the same track and thumb, with the hue wheel as its ramp — so
+ * left-to-right walks the hues — and, where a number would read, a circle
+ * of the colour itself that opens the full picker.
+ *
+ * The thumb wears the colour, not the accent blue: the handle is the thing
+ * being chosen. Saturation and brightness are the picker's; this row moves
+ * the hue and leaves them as they are (logic/hsv withHue), which is what
+ * makes it a quick reach rather than a second picker.
+ */
+export function ColorSliderRow({ label, color, onColor, onOpenPicker }: {
+  label: string;
+  color: RGBLike;
+  /** The colour the hue landed on — live while dragging, once on release. */
+  onColor: (color: RGBLike, committed: boolean) => void;
+  /** The trailing circle's press: the host's full colour picker. */
+  onOpenPicker: () => void;
+}) {
+  const ramp = useMemo(() => hueRampColors(), []);
+  const hue = rgbToHsv(color).h;
+  const apply = (t: number, committed: boolean) =>
+    onColor(withHue(color, Math.max(0, Math.min(360, t * 360))), committed);
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <View style={styles.rowControl}>
+        <View style={styles.rowSlider}>
+          <Slider
+            value={hue / 360}
+            accent={rgbCss(color)}
+            trackColor={TRACK}
+            ramp={ramp}
+            onChange={(v) => apply(v, false)}
+            onCommit={(v) => apply(v, true)}
+          />
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${label} color, open picker`}
+          onPress={onOpenPicker}
+          hitSlop={6}
+          style={styles.colorEnd}
+        >
+          <View style={styles.colorEndClip}><ColorSwatchFill color={color} /></View>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 /** One segmented row: a 50pt label column + an equal-width segmented control.
  *  Selection applies immediately. An option may carry an `icon` (MCI glyph)
  *  to render in place of its text label (the align row), keeping its `label`
@@ -403,6 +458,20 @@ const styles = StyleSheet.create({
   rowLabelDark: { color: 'rgba(255, 255, 255, 0.75)' },
   rowControl: { flexDirection: 'row', alignItems: 'center', gap: 10, height: SLIDER_CONTROL },
   rowSlider: { flex: 1 },
+  // The colour row's trailing circle, where a slider row reads its number:
+  // the same height as the thumb, so the row's line is unbroken.
+  colorEnd: {
+    width: SLIDER_TRACK,
+    height: SLIDER_TRACK,
+    borderRadius: SLIDER_TRACK / 2,
+    borderWidth: 1.5,
+    borderColor: PANEL_SWATCH_BORDER,
+  },
+  colorEndClip: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: SLIDER_TRACK / 2,
+    overflow: 'hidden',
+  },
   // The 50pt label column the segmented rows keep.
   segLabel: { width: 50, color: LABEL, fontSize: 12 },
   segmentedRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SEGMENTED },

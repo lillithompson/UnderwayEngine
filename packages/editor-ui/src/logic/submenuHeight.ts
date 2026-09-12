@@ -128,8 +128,9 @@ export interface SubmenuHeightContext {
   /** Border page: which optional rows the image / frame border shows. */
   borderRows?: { position: boolean };
   /** Stroke page: the same page, with the rows this vector subtype supports
-   *  (never Radius — that is the Shape page's). */
-  strokeRows?: { position: boolean };
+   *  (never Radius — that is the Shape page's). `color` adds the hue row a
+   *  VECTOR's own stroke reads on, under Dash. */
+  strokeRows?: { position: boolean; color?: boolean };
   /** Layout page: whether the host wired up Grid, which adds the Arrange row. */
   layoutHasGrid?: boolean;
   /** RIG page: whether the host wired up Reset, which adds its row. A locked
@@ -206,10 +207,12 @@ function tintRows(type: TintType = 'solid'): number[] {
 /** Border / Stroke rows: Width, Dash, then the optional Position — the
  *  line's own properties together, then where it sits. No Radius: rounding
  *  belongs to the object, so it is the Image and Shape pages' row. */
-function borderRows(rows: { position: boolean } = { position: true }): number[] {
+function borderRows(rows: { position: boolean; color?: boolean } = { position: true }): number[] {
   return [
     ROW_SLIDER,
     ROW_SLIDER,
+    // The colour row rides the slider's own proportions (ColorSliderRow).
+    ...(rows.color ? [ROW_SLIDER] : []),
     ...(rows.position ? [ROW_SEGMENTED] : []),
   ];
 }
@@ -242,7 +245,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'border':
       return contentArea(borderRows(ctx.borderRows));
     case 'stroke':
-      return contentArea(borderRows({ position: ctx.strokeRows?.position ?? true }));
+      return contentArea(borderRows({
+        position: ctx.strokeRows?.position ?? true,
+        color: ctx.strokeRows?.color ?? false,
+      }));
     case 'shape':
       // The Radius slider alone.
       return contentArea([ROW_SLIDER]);

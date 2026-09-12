@@ -400,7 +400,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   if (svgFillable && model.svgFillPresent !== false && model.onPickSvgFillColor) {
     colorRows.push({ key: 'fill', kind: 'swatch', label: 'Fill', color: model.svgFill?.solid, onPick: () => model.onPickSvgFillColor?.() });
   }
-  if (strokeable && model.strokePresent !== false && model.onPickStrokeColor) {
+  // A vector's stroke colour is NOT here: it reads on the Stroke page
+  // itself, under Dash, on the hue row that opens this same picker
+  // (ColorSliderRow) — it is part of the line, not a colour off on a page
+  // of its own. A PATTERN keeps its row: its Stroke page is the baked
+  // tiles' and has no colour of its own to show.
+  if (strokeable && !model.showSvgOptions && model.strokePresent !== false && model.onPickStrokeColor) {
     colorRows.push({ key: 'stroke', kind: 'swatch', label: 'Stroke', color: model.stroke?.color, onPick: () => model.onPickStrokeColor?.() });
   }
   if ((model.showImageEdit || model.showFrameOptions || model.showTextStyle) && model.shadowPresent !== false && model.onPickShadowColor) {
@@ -1006,6 +1011,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         border={strokeForBar}
         showPosition={rows.position}
         labelPosition={false}
+        // The line's colour reads HERE now, under Dash, rather than as a
+        // row of the shared Color page a tab away: it is part of the
+        // stroke's own model, so the hue row commits down the same path
+        // every other row on this page does.
+        color={strokeForBar.color}
+        onColor={(color, committed) => applyStroke({ ...strokeForBar, color }, committed)}
+        onOpenColorPicker={() => model.onPickStrokeColor?.()}
         onChange={(b) => applyStroke(b, false)}
         onCommit={(b) => applyStroke(b, true)}
       />
@@ -1090,7 +1102,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // The image / frame border offers every row; a vector's stroke drops the
     // ones its subtype has no answer for.
     borderRows: { position: true },
-    strokeRows: svgStrokeRows(model.svgSubtype ?? 'stroke'),
+    // …and the hue row exactly when the Stroke page will render it.
+    strokeRows: {
+      ...svgStrokeRows(model.svgSubtype ?? 'stroke'),
+      color: !!model.showSvgOptions && !!model.onPickStrokeColor,
+    },
     // The Layout page grows an Arrange row exactly when the page will render it.
     layoutHasGrid: !!model.onGrid,
     // …and the RIG page its Reset row, on the same rule.

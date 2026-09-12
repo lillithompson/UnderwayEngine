@@ -1,4 +1,7 @@
-import { rgbToHsv, hsvToRgb, buildPaletteGrid, colorAlpha, isTranslucent, rgbCss, withAlpha } from '../logic/hsv';
+import { rgbToHsv, hsvToRgb, buildPaletteGrid, colorAlpha, isTranslucent, rgbCss, withAlpha,
+  hueRampColors,
+  withHue,
+} from '../logic/hsv';
 
 describe('rgbToHsv / hsvToRgb', () => {
   test('round-trips primary colors', () => {
@@ -101,5 +104,35 @@ describe('buildPaletteGrid', () => {
 
   test('every swatch is opaque — the grid picks hue, the slider picks opacity', () => {
     expect(buildPaletteGrid().flat().every((c) => colorAlpha(c) === 1)).toBe(true);
+  });
+});
+
+describe('the hue row’s own arithmetic (ColorSliderRow)', () => {
+  it('the ramp is the wheel: pure hues, red round to red', () => {
+    const ramp = hueRampColors();
+    expect(ramp).toHaveLength(7);
+    expect(ramp[0]).toBe(ramp[6]);
+    // Each stop is a pure hue — fully saturated, fully bright.
+    for (const css of ramp) expect(css).toMatch(/^rgb/);
+    expect(rgbToHsv(hsvToRgb({ h: 0, s: 1, v: 1 }))).toMatchObject({ s: 1, v: 1 });
+  });
+
+  it('withHue moves only the hue, keeping how saturated and how bright', () => {
+    const muted = hsvToRgb({ h: 20, s: 0.4, v: 0.6 });
+    const moved = rgbToHsv(withHue(muted, 200));
+    expect(moved.h).toBeCloseTo(200, 0);
+    expect(moved.s).toBeCloseTo(0.4, 2);
+    expect(moved.v).toBeCloseTo(0.6, 2);
+  });
+
+  it('gives a grey a hue to move — sliding off grey walks into colour', () => {
+    // s and v of 0 have no hue to turn: the row would sit inert on black.
+    expect(rgbToHsv(withHue({ r: 128, g: 128, b: 128 }, 120)).h).toBeCloseTo(120, 0);
+    expect(rgbToHsv(withHue({ r: 0, g: 0, b: 0 }, 240)).h).toBeCloseTo(240, 0);
+  });
+
+  it('keeps an alpha the colour came with', () => {
+    expect(withHue({ r: 200, g: 40, b: 40, a: 0.5 }, 120).a).toBe(0.5);
+    expect(withHue({ r: 200, g: 40, b: 40 }, 120).a).toBeUndefined();
   });
 });

@@ -31,7 +31,7 @@ export const SLIDER_TRACK = 28;
 export const SLIDER_THUMB = SLIDER_TRACK;
 const THUMB_RING = 3;
 
-export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, trackColor = PANEL_TRACK, checker }: {
+export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, trackColor = PANEL_TRACK, checker, ramp: rampOverride }: {
   value: number;
   onChange: (v: number) => void;
   onCommit: (v: number) => void;
@@ -43,6 +43,10 @@ export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, track
   trackColor?: string;
   /** Draw the alpha checkerboard under the ramp — an opacity slider. */
   checker?: boolean;
+  /** The track's gradient, in place of the accent's own ramp: a hue
+   *  slider's rainbow, where the value is a POSITION on a scale rather than
+   *  more-or-less of one colour. Two stops at least. */
+  ramp?: readonly string[];
 }) {
   const [trackW, setTrackW] = useState(0);
   const trackWRef = useRef(0);
@@ -107,7 +111,8 @@ export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, track
 
   // The ramp is a property of the color, not of the value: computed once per
   // accent, never per move.
-  const ramp = useMemo(() => sliderRampColors(accent), [accent]);
+  const accentRamp = useMemo(() => sliderRampColors(accent), [accent]);
+  const ramp = rampOverride && rampOverride.length >= 2 ? rampOverride : accentRamp;
   const clamped = Math.max(0, Math.min(1, value));
   const thumbLeft = clamped * Math.max(0, trackW - SLIDER_THUMB);
   return (
@@ -121,7 +126,7 @@ export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, track
       <View style={[styles.track, { backgroundColor: trackColor }]}>
         {checker ? <CheckerboardFill /> : null}
         <LinearGradient
-          colors={ramp}
+          colors={ramp as string[]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={StyleSheet.absoluteFill}

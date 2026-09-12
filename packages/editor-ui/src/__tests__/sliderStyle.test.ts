@@ -15,8 +15,11 @@ describe('the shared Slider', () => {
 
   it('is a pill track carrying a clear→full ramp of its color', () => {
     expect(SRC).toContain("import { LinearGradient } from 'expo-linear-gradient';");
-    expect(SRC).toContain('const ramp = useMemo(() => sliderRampColors(accent), [accent]);');
-    expect(SRC).toContain('colors={ramp}');
+    expect(SRC).toContain('const accentRamp = useMemo(() => sliderRampColors(accent), [accent]);');
+    expect(SRC).toContain('colors={ramp as string[]}');
+    // …unless the caller hands one over: a hue slider's track is the wheel,
+    // where the value is a POSITION rather than more-or-less of one colour.
+    expect(SRC).toContain('const ramp = rampOverride && rampOverride.length >= 2 ? rampOverride : accentRamp;');
     expect(SRC).toContain("end={{ x: 1, y: 0 }}");
     expect(SRC).toMatch(/track:\s*\{\s*height:\s*SLIDER_TRACK,\s*borderRadius:\s*SLIDER_TRACK \/ 2,\s*overflow:\s*'hidden'/);
     // The ramp is the whole track, not a fill that resizes per move: the
