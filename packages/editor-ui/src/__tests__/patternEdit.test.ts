@@ -28,7 +28,7 @@ import {
   patternTileSetRows,
 } from '../logic/patternEdit';
 import { patternModalTileSize } from '../logic/patternEdit';
-import { submenuHeight } from '../logic/submenuHeight';
+import { ROW_SEGMENTED, ROW_SWITCH, submenuHeight } from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
   it('offers the Tile page alone — the panel adds Stroke beside it', () => {
@@ -501,6 +501,23 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     PANEL.indexOf('} else if (model.showTextStyle) {'),
   );
 
+  it('the switch row says Repeat, then the switch, then ON or OFF', () => {
+    const EB = readFileSync(resolve(__dirname, '..', 'components', 'effectBar.tsx'), 'utf8');
+    const row = EB.slice(EB.indexOf('export function SwitchRow'), EB.indexOf('/** One segmented row:'));
+    // In that order: the label column, the control, the state word.
+    expect(row.indexOf('styles.segLabel')).toBeLessThan(row.indexOf('<Switch'));
+    expect(row.indexOf('<Switch')).toBeLessThan(row.indexOf('styles.switchState'));
+    expect(row).toContain("{value ? 'ON' : 'OFF'}");
+    // The word is a readout, not a second control: nothing presses it.
+    expect(row).not.toContain('Pressable');
+    // Measured as a segmented row, so a page that mixes the two keeps one
+    // rhythm and the sheet's height arithmetic is unchanged.
+    expect(EB).toContain('height: ROW_SWITCH');
+    expect(ROW_SWITCH).toBe(ROW_SEGMENTED);
+    // The Tile page is that one row: as tall as any other single-row page.
+    expect(submenuHeight('patternTile')).toBe(submenuHeight('card'));
+  });
+
   it('is ONE row definition, shown by both pages', () => {
     // Two copies could offer the setting differently; there is one.
     const row = BARS.slice(
@@ -508,9 +525,15 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
       BARS.indexOf('export function PatternTileBar'),
     );
     expect(row).toContain('if (!model.onToggleRepeat) return null;');
-    expect(row).toContain("value={model.repeat ? 'tile' : 'stretch'}");
-    // Pressing the side already showing must not toggle back off.
-    expect(row).toContain("if ((v === 'tile') !== !!model.repeat) model.onToggleRepeat?.();");
+    // A SWITCH with the state in a word beside it (effectBar's SwitchRow),
+    // not a two-cell segmented control: Repeat is simply on or off, and
+    // Stretch | Tile had to name the off side to have a second cell.
+    expect(row).toContain('<SwitchRow');
+    expect(row).toContain('label="Repeat"');
+    expect(row).toContain('value={!!model.repeat}');
+    expect(row).not.toContain('SegmentedRow');
+    // Setting it to the side it already shows must not toggle back off.
+    expect(row).toContain('if (next !== !!model.repeat) model.onToggleRepeat?.();');
     // The Tile page is that row and nothing else; the Tools bar shows it too.
     const tileBar = BARS.slice(
       BARS.indexOf('export function PatternTileBar'),

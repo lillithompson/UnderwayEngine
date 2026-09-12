@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import {
-  ASIDE_GAP, GROUP_GAP, GROUP_PAD, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, SLIDER_CONTROL,
+  ASIDE_GAP, GROUP_GAP, GROUP_PAD, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, ROW_SWITCH, SLIDER_CONTROL,
   SLIDER_LABEL, SLIDER_LABEL_GAP,
 } from '../logic/submenuHeight';
 import { percentText, percentToValue } from '../logic/slider';
@@ -276,6 +276,34 @@ export function ColorSliderRow({ label, color, onColor, onOpenPicker }: {
   );
 }
 
+/**
+ * A label, a switch, and the state in a word — "Repeat [switch] ON".
+ *
+ * For a setting that is simply ON or OFF, where a two-cell segmented
+ * control had to invent a word for each half and then say which half was
+ * lit. The word after the switch is INFO, not a control: it says what the
+ * switch is set to, so the row can be read without reading the switch as a
+ * picture.
+ */
+export function SwitchRow({ label, value, onValueChange }: {
+  label: string;
+  value: boolean;
+  onValueChange: (next: boolean) => void;
+}) {
+  return (
+    <View style={styles.switchRow}>
+      <Text style={styles.segLabel}>{label}</Text>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{ false: TRACK, true: CONTROL_ACCENT }}
+        accessibilityLabel={label}
+      />
+      <Text style={styles.switchState}>{value ? 'ON' : 'OFF'}</Text>
+    </View>
+  );
+}
+
 /** One segmented row: a 50pt label column + an equal-width segmented control.
  *  Selection applies immediately. An option may carry an `icon` (MCI glyph)
  *  to render in place of its text label (the align row), keeping its `label`
@@ -476,6 +504,13 @@ const styles = StyleSheet.create({
   },
   // The 50pt label column the segmented rows keep.
   segLabel: { width: 50, color: LABEL, fontSize: 12 },
+  // The switch row: the same label column the segmented rows keep, the
+  // control, then the state word — dim and spaced like the pages' captions,
+  // so it reads as a readout rather than as a second thing to press.
+  switchRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SWITCH, gap: 12 },
+  switchState: {
+    color: LABEL, fontSize: 11, fontWeight: '600', letterSpacing: 0.6,
+  },
   segmentedRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SEGMENTED },
   // Two segmented controls in one row: the shared label column, then two
   // equal halves each with a compact label of its own.

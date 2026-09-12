@@ -34,6 +34,10 @@ export const ROW_SEGMENTED = 36;
 /** A label + full-width pill row (the Text page's Font, the Tint page's Blend and
  *  its gradient stop editor). */
 export const ROW_PILL = 36;
+/** A label + switch + state-word row (effectBar's SwitchRow — the Tile
+ *  page's Repeat). The segmented row's height, so a page that mixes the two
+ *  keeps one rhythm and the arithmetic does not care which it is. */
+export const ROW_SWITCH = ROW_SEGMENTED;
 /** Space between rows inside a page's `controls` stack. */
 export const ROW_GAP = 2;
 /** A dim hint line under a control (effectBar's Hint): 2 above + an 11pt line
@@ -343,8 +347,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return bareArea([tabbed, ROW_SEGMENTED], GROUP_GAP);
     }
     case 'patternTile':
-      // The Tile page: the Repeat toggle, and nothing else.
-      return contentArea([ROW_SEGMENTED]);
+      // The Tile page: the Repeat switch, and nothing else.
+      return contentArea([ROW_SWITCH]);
     case 'patternTiles':
       // The arming grid: two rows of square buttons.
       return contentArea([PATTERN_TILE_GRID]);

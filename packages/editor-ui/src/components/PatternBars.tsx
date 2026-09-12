@@ -15,7 +15,7 @@ import {
   rotatePatternTileTransform,
 } from '../logic/patternEdit';
 import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
-import { ActionRow, BarBody, SegmentedRow } from './effectBar';
+import { ActionRow, BarBody, SegmentedRow, SwitchRow } from './effectBar';
 import { PatternSetsModal } from './PatternSetsModal';
 import { PatternTileModal } from './PatternTileModal';
 import { PatternTileTransformModal } from './PatternTileTransformModal';
@@ -151,9 +151,14 @@ export function PatternTilesBar({ model }: {
 
 /**
  * Repeat: lay the grid across the bounding box as a tile instead of
- * stretching it to fill. Named for what each choice does to the drawing,
- * since 'Repeat / off' says nothing about the other half. A grouped
- * pattern can't repeat, and gets no row at all.
+ * stretching it to fill. A grouped pattern can't repeat, and gets no row
+ * at all.
+ *
+ * A SWITCH, with the state in a word beside it. It was a two-cell
+ * segmented control — Stretch | Tile — which had to name the off side to
+ * have something to put in the other cell, and then say which cell was lit;
+ * Repeat is one setting that is simply on or off, and a switch says so
+ * without inventing a word for "not repeating".
  *
  * One definition, shown as the whole of the Tile page and as a row of the
  * Tools page, so the two can never offer the setting differently.
@@ -161,15 +166,11 @@ export function PatternTilesBar({ model }: {
 export function PatternRepeatRow({ model }: { model: ObjectPropertiesModel }) {
   if (!model.onToggleRepeat) return null;
   return (
-    <SegmentedRow
+    <SwitchRow
       label="Repeat"
-      options={[
-        { value: 'stretch' as const, label: 'Stretch' },
-        { value: 'tile' as const, label: 'Tile' },
-      ]}
-      value={model.repeat ? 'tile' : 'stretch'}
-      onChange={(v) => {
-        if ((v === 'tile') !== !!model.repeat) model.onToggleRepeat?.();
+      value={!!model.repeat}
+      onValueChange={(next) => {
+        if (next !== !!model.repeat) model.onToggleRepeat?.();
       }}
     />
   );
