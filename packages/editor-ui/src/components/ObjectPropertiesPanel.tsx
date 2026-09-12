@@ -87,6 +87,7 @@ import {
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 const ICON_COLOR = PANEL_ICON; // the toolbar's inactive-tool grey
+const ICON_COLOR_STRONG = PANEL_INK; // full ink — the locked state, a step up
 const COMPACT_MAX_WIDTH = 500;
 const DEFAULT_SHADOW_MODEL: ShadowModel = {
   dx: 0.75, dy: 0.875, blur: 1.125, spread: 0.125, color: { r: 0, g: 0, b: 0 }, opacity: 0.45,
@@ -1213,20 +1214,32 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
 
   if (!mounted) return null;
 
-  // Common actions (rotate / flip / copy / lock / delete, plus the optional
-  // group actions).
+  // Common actions (rotate / flip / copy / lock / properties / delete, plus
+  // the optional group actions).
   const row1: React.ReactNode[] = [
     <GridButton key="rotate" label="Rotate" icon="rotate-right" onPress={model.onRotate} compact={compact} />,
     <GridButton key="flipH" label="Mirror H" icon="arrow-left-right" onPress={model.onMirrorH} compact={compact} />,
     <GridButton key="flipV" label="Mirror V" icon="arrow-up-down" onPress={model.onMirrorV} compact={compact} />,
     <GridButton key="copy" label="Duplicate" icon="content-copy" onPress={model.onDuplicate} compact={compact} />,
-    // The way into the type pages: the sheet the row's second dot and a
-    // sideways swipe also raise (openSheet — one opener, so the button and
-    // the gestures can't land differently). It took Lock's place on the row
-    // (2026-09-11): the tabs were reachable only by a gesture nothing on
-    // screen announced, while locking stays a press away on the canvas
-    // radial. Absent on a selection with no pages to open — there would be
-    // nothing behind it.
+    // Lock acts per object, so a multi-selection gets it too: it locks each
+    // member individually. `locked` then means EVERY member is locked (the
+    // host's own reading, so the button's state and what a press does can't
+    // disagree) — a partly-locked selection reads unlocked and one press
+    // finishes the job rather than inverting into a differently-mixed one.
+    <GridButton
+      key="lock"
+      label={model.locked ? 'Locked' : 'Lock'}
+      icon={model.locked ? 'lock' : 'lock-open-outline'}
+      iconColor={model.locked ? ICON_COLOR_STRONG : ICON_COLOR}
+      onPress={model.onToggleLock}
+      compact={compact}
+    />,
+    // …then the way into the type pages: the sheet the row's sideways swipe
+    // also raises (openSheet — one opener, so the button and the gesture
+    // can't land differently). Absent on a selection with no pages to open
+    // — there would be nothing behind it. It briefly stood in Lock's place
+    // on the row (2026-09-11), the two sharing one seat; they have a seat
+    // each again, Lock to its left.
     ...(hasOptions
       ? [<GridButton key="properties" label="Properties" icon="tune" onPress={openSheet} compact={compact} />]
       : []),

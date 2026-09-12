@@ -379,14 +379,33 @@ describe('the common row ends on Properties, the way in', () => {
     expect(row).toContain('...(hasOptions');
   });
 
-  it('took Lock\'s place: the row no longer locks (the canvas radial still does)', () => {
-    expect(row).not.toContain('key="lock"');
-    expect(row).not.toContain('onToggleLock');
-    expect(PANEL).not.toContain('ICON_COLOR_STRONG');
+  it('has Lock on its left: the row locks again, a seat each', () => {
+    // Properties briefly stood IN Lock's seat (2026-09-11) and the row
+    // stopped locking altogether; they have a seat each again, Lock first.
+    expect(row).toContain('key="lock"');
+    expect(row).toContain('onPress={model.onToggleLock}');
+    expect(row.indexOf('key="copy"')).toBeLessThan(row.indexOf('key="lock"'));
+    expect(row.indexOf('key="lock"')).toBeLessThan(row.indexOf('key="properties"'));
+    // Locked reads as a shut padlock in full ink, a step up from the row's
+    // resting grey — the button's state and what a press does come from the
+    // one `locked` flag the host resolves.
+    expect(row).toContain("label={model.locked ? 'Locked' : 'Lock'}");
+    expect(row).toContain("icon={model.locked ? 'lock' : 'lock-open-outline'}");
+    expect(row).toContain('iconColor={model.locked ? ICON_COLOR_STRONG : ICON_COLOR}');
+    expect(PANEL).toContain('const ICON_COLOR_STRONG = PANEL_INK;');
     // Rotate, the mirrors, Duplicate and Delete stand as they were.
     for (const key of ['rotate', 'flipH', 'flipV', 'copy', 'delete']) {
       expect(row).toContain(`key="${key}"`);
     }
+  });
+
+  it('the whole row, in order', () => {
+    // One reading of the seat order, so a change has to be deliberate.
+    const seats = [...row.matchAll(/key="([a-zA-Z]+)"/g)].map((m) => m[1]);
+    expect(seats).toEqual([
+      'rotate', 'flipH', 'flipV', 'copy', 'lock', 'properties',
+      'group', 'ungroup', 'join', 'union', 'delete',
+    ]);
   });
 });
 
