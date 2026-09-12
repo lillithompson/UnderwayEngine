@@ -137,6 +137,46 @@ describe('the Copies page', () => {
     expect(SRC).not.toContain('onCopiesPreview?.(copies)');
   });
 
+  // Tapping Copies on a TEXT flickered the tab on and off for as long as
+  // it was looked at: the page opened, the fold-away closed it on the next
+  // render for not being a vector, the landing rule re-opened the
+  // remembered page, and round it went. The tab row offers Copies to an
+  // image and a text as well as to every vector — so the guard has to ask
+  // the same question the tab row asks, not "is this a vector".
+  it('folds away on what the TAB ROW offers, not on the vector flag', () => {
+    const panel = read('ObjectPropertiesPanel.tsx');
+    expect(panel).toContain('const transformable = typeSubmenuOrder.includes(\'transform\');');
+    const fold = panel.slice(
+      panel.indexOf('    if ((!model.visible || !strokeable) && model.strokeOpen) {'),
+      panel.indexOf('  // Fold the Layout page away'),
+    );
+    expect(fold).toContain('if ((!model.visible || !transformable) && model.transformOpen) {');
+    // The vector-only flag is gone from the guard AND from its deps, or the
+    // effect would go on running against the old question.
+    expect(fold).not.toContain('svgTransformable');
+    expect(panel).toContain('svgEndable, model.endpointsOpen, transformable, model.transformOpen]);');
+    // svgTransformable still says what it always said — which vectors
+    // repeat — and is read only where the vector branch builds its tabs.
+    expect(panel.match(/svgTransformable/g)).toHaveLength(3); // decl, the svg branch, the note
+  });
+
+  // The kinds that carry the tab, from the tab order itself: if one of
+  // these ever stops listing 'transform', `transformable` follows it and
+  // the guard stays honest — that is the whole point of deriving it.
+  it('an image, a text and a vector all list Copies', () => {
+    const panel = read('ObjectPropertiesPanel.tsx');
+    const order = panel.slice(
+      panel.indexOf('  const typeSubmenuOrder: SubmenuKey[] ='),
+      panel.indexOf('  const transformable ='),
+    );
+    const branch = (from: string, to: string) => order.slice(order.indexOf(from), order.indexOf(to));
+    expect(branch('model.showImageEdit ?', 'model.showFrameOptions')).toContain("'transform'");
+    expect(branch('model.showTextStyle ?', 'model.showInvert ?')).toContain("'transform'");
+    expect(branch('model.showSvgOptions', '    : [];')).toContain("'transform'");
+    // …and the kinds that do NOT: a word sticker and a paint island.
+    expect(branch('model.showInvert ?', 'model.showPaintOptions')).not.toContain("'transform'");
+  });
+
   it('is wired into the panel like its sibling pages, and the model carries no rotation', () => {
     const panel = read('ObjectPropertiesPanel.tsx');
     expect(panel).toContain("...(svgTransformable ? (['transform'] as const) : []),");

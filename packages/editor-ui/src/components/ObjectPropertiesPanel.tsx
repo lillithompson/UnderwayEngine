@@ -437,6 +437,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
           ...(svgTransformable ? (['transform'] as const) : []),
         ]
     : [];
+  // Does THIS selection offer the Copies page? Read off the tab order
+  // itself, so the fold-away below asks exactly the question the tab row
+  // asks. It used to ask `svgTransformable` — "is this a vector" — while
+  // an image and a TEXT carry the tab too: tapping Copies on a text opened
+  // the page, this effect closed it on the next render for not being a
+  // vector, the landing rule re-opened the remembered page, and the tab
+  // flickered on and off for as long as it was looked at.
+  const transformable = typeSubmenuOrder.includes('transform');
+
   // Layout joins the tail of whatever the selection's type offers, so a mixed
   // multi-selection's sheet has Layout alone to open and a uniform one's has
   // its type's pages before it.
@@ -745,13 +754,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     if ((!model.visible || !svgEndable) && model.endpointsOpen) {
       model.onEndpointsOpenChange?.(false);
     }
-    if ((!model.visible || !svgTransformable) && model.transformOpen) {
+    if ((!model.visible || !transformable) && model.transformOpen) {
       model.onTransformOpenChange?.(false);
     }
     // model.on* are stable setters; listing the whole model would re-run this
     // every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, strokeable, model.strokeOpen, svgFillable, model.svgFillOpen, svgEndable, model.endpointsOpen, svgTransformable, model.transformOpen]);
+  }, [model.visible, strokeable, model.strokeOpen, svgFillable, model.svgFillOpen, svgEndable, model.endpointsOpen, transformable, model.transformOpen]);
   // Fold the Layout page away as soon as the selection stops being a multi one
   // (a tap that drops it to a single object, or clears it), so it never
   // lingers over an object it has nothing to say about.
