@@ -1015,8 +1015,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         // row of the shared Color page a tab away: it is part of the
         // stroke's own model, so the hue row commits down the same path
         // every other row on this page does.
+        // The colour is the OBJECT's ink, not a field of the stroke the
+        // other rows draft — the host writes it down its own path (the one
+        // the full-screen picker writes too), and the model reports it back
+        // each move, which is what moves the handle.
         color={strokeForBar.color}
-        onColor={(color, committed) => applyStroke({ ...strokeForBar, color }, committed)}
+        onColor={model.onStrokeColor ? (color, committed) => model.onStrokeColor?.(color, committed) : undefined}
         onOpenColorPicker={() => model.onPickStrokeColor?.()}
         onChange={(b) => applyStroke(b, false)}
         onCommit={(b) => applyStroke(b, true)}
@@ -1105,7 +1109,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // …and the hue row exactly when the Stroke page will render it.
     strokeRows: {
       ...svgStrokeRows(model.svgSubtype ?? 'stroke'),
-      color: !!model.showSvgOptions && !!model.onPickStrokeColor,
+      color: !!model.showSvgOptions && !!model.onStrokeColor,
     },
     // The Layout page grows an Arrange row exactly when the page will render it.
     layoutHasGrid: !!model.onGrid,

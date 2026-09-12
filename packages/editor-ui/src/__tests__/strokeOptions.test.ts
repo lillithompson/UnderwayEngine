@@ -83,13 +83,19 @@ describe('a line\'s colour reads on its Stroke page, under Dash', () => {
     expect(BAR.indexOf('label="Dash"')).toBeLessThan(BAR.indexOf('<ColorSliderRow'));
     expect(BAR.indexOf('<ColorSliderRow')).toBeLessThan(BAR.indexOf('options={POSITIONS}'));
     expect(PANEL).toContain('color={strokeForBar.color}');
-    expect(PANEL).toContain('onColor={(color, committed) => applyStroke({ ...strokeForBar, color }, committed)}');
+    // The colour is the OBJECT's ink, down its own host path — the one the
+    // full-screen picker writes — not a field of the stroke the other rows
+    // draft, which the panel deliberately reads from the model. Folding it
+    // into that draft left the handle unable to move: the row wrote a
+    // colour nothing carried, so the hue it read back never changed.
+    expect(PANEL).toContain('onColor={model.onStrokeColor ? (color, committed) => model.onStrokeColor?.(color, committed) : undefined}');
     expect(PANEL).toContain('onOpenColorPicker={() => model.onPickStrokeColor?.()}');
+    expect(READ('adapter.ts')).toContain('onStrokeColor?(color: RGBLike, committed: boolean): void;');
   });
 
   it('came OFF the shared Color page for a vector — a pattern keeps its row', () => {
     expect(PANEL).toContain("if (strokeable && !model.showSvgOptions && model.strokePresent !== false && model.onPickStrokeColor) {");
     // …and the page reserves the row exactly when the bar renders it.
-    expect(PANEL).toContain('color: !!model.showSvgOptions && !!model.onPickStrokeColor,');
+    expect(PANEL).toContain('color: !!model.showSvgOptions && !!model.onStrokeColor,');
   });
 });

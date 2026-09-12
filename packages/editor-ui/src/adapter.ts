@@ -542,6 +542,11 @@ export interface ObjectPropertiesModel {
    *  the toolbar color tool uses — a vector object's stroke color IS its
    *  color, so this commits through the ordinary color path). */
   onPickStrokeColor?(): void;
+  /** The Stroke page's hue row: the line's own ink, live while the handle
+   *  moves (`committed` false) and once on release. The same field
+   *  {@link onPickStrokeColor}'s picker writes, so the row and the picker
+   *  cannot disagree. Absent → the page shows no colour row. */
+  onStrokeColor?(color: RGBLike, committed: boolean): void;
   /** Whether the Fill bar is shown. App-owned so a tap-off dismisses it before
    *  the panel (same as the Stroke / Shadow / Border bars). Only reachable from
    *  a subtype whose option menu offers Fill — see `svgHasFill`. */
