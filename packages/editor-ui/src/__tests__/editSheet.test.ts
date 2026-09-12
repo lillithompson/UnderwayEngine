@@ -323,10 +323,14 @@ describe('every page can be opened and shown', () => {
 describe('the common row ends on Properties, the way in', () => {
   const row = PANEL.slice(PANEL.indexOf('const row1: React.ReactNode[] = ['), PANEL.indexOf('// The sheet\'s type tabs'));
 
-  it('is the row\'s LAST button, and opens the sheet through the one opener', () => {
+  it('stands where Delete did, and opens the sheet through the one opener', () => {
     expect(row).toContain('<GridButton key="properties" label="Properties" icon="tune" onPress={openSheet} compact={compact} />');
-    // Last: after the optional Group / Ungroup / Join / Union pushes.
-    expect(row.indexOf('key="properties"')).toBeGreaterThan(row.indexOf('key="union"'));
+    // The two traded places: Properties after Duplicate, Delete LAST —
+    // the one press that takes the object off the page, at the end of the
+    // row and away from everything that merely changes it.
+    expect(row.indexOf('key="copy"')).toBeLessThan(row.indexOf('key="properties"'));
+    expect(row.indexOf('key="properties"')).toBeLessThan(row.indexOf('key="delete"'));
+    expect(row.indexOf('key="union"')).toBeLessThan(row.indexOf('key="delete"'));
     // The gestures raise the same sheet through the same function, so the
     // button and a swipe can never land differently.
     expect(PANEL).toContain('const openSheet = () => setSheetWanted(true);');
@@ -334,7 +338,7 @@ describe('the common row ends on Properties, the way in', () => {
   });
 
   it('is absent on a selection with no pages — there would be nothing behind it', () => {
-    expect(row).toContain('if (hasOptions) {');
+    expect(row).toContain('...(hasOptions');
   });
 
   it('took Lock\'s place: the row no longer locks (the canvas radial still does)', () => {

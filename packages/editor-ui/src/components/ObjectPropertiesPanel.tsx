@@ -1184,7 +1184,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     <GridButton key="flipH" label="Mirror H" icon="arrow-left-right" onPress={model.onMirrorH} compact={compact} />,
     <GridButton key="flipV" label="Mirror V" icon="arrow-up-down" onPress={model.onMirrorV} compact={compact} />,
     <GridButton key="copy" label="Duplicate" icon="content-copy" onPress={model.onDuplicate} compact={compact} />,
-    <GridButton key="delete" label="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
+    // The way into the type pages: the sheet the row's second dot and a
+    // sideways swipe also raise (openSheet — one opener, so the button and
+    // the gestures can't land differently). It took Lock's place on the row
+    // (2026-09-11): the tabs were reachable only by a gesture nothing on
+    // screen announced, while locking stays a press away on the canvas
+    // radial. Absent on a selection with no pages to open — there would be
+    // nothing behind it.
+    ...(hasOptions
+      ? [<GridButton key="properties" label="Properties" icon="tune" onPress={openSheet} compact={compact} />]
+      : []),
   ];
   // A multi-selection's Group / Merge live in the Edit sheet (tabs, beside
   // Layout), not on this icon row — see showGroup / showMerge.
@@ -1194,18 +1203,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   if (model.onUngroup && !model.showFrameOptions && !multi) row1.push(<GridButton key="ungroup" label="Ungroup" icon="ungroup" onPress={model.onUngroup} compact={compact} />);
   if (model.onJoin) row1.push(<GridButton key="join" label="Join" icon="vector-combine" onPress={model.onJoin} compact={compact} />);
   if (model.onUnion && !multi) row1.push(<GridButton key="union" label="Union" icon="vector-union" onPress={model.onUnion} compact={compact} />);
-  // …and LAST, the way into the type pages: the sheet the row's second dot
-  // and a sideways swipe also raise (openSheet — one opener, so the button
-  // and the gestures can't land differently). It took Lock's place on the
-  // row (2026-09-11): the tabs were reachable only by a gesture nothing on
-  // screen announced, while locking stays a press away on the canvas
-  // radial. Absent on a selection with no pages to open — there would be
-  // nothing behind it.
-  if (hasOptions) {
-    row1.push(
-      <GridButton key="properties" label="Properties" icon="tune" onPress={openSheet} compact={compact} />,
-    );
-  }
+  // …and LAST, Delete: the one press that takes the object off the page,
+  // at the end of the row and away from everything that merely changes it.
+  // (It sat mid-row, with Properties last, until the two traded places.)
+  row1.push(
+    <GridButton key="delete" label="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
+  );
 
   // The sheet's type tabs (images: the image-edit set; text: Edit + Type),
   // null when the selection's kind offers none — a mixed multi-selection, say,
