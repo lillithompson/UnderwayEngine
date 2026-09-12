@@ -237,12 +237,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
   // Controlled when the host passes `editOpen`, the panel's own otherwise —
   // and the host hears every gesture through onEditOpenChange either way,
   // so its button can read as lit while the sheet stands.
-  // Which face the Copies page's second box shows — its offsets or its
-  // scales. Held HERE rather than in the bar for the same reason its other
-  // drafts are: the page belongs to the panel, and the sheet's height is
-  // computed ahead of the render. (Both faces stand the same height, so the
-  // sheet never moves under a tab press.)
-  const [copiesSection, setCopiesSection] = useState<CopiesSection>('offset');
+  // Which face the Copies page's box shows — its count and turn, its
+  // offsets or its scales. Held HERE rather than in the bar for the same
+  // reason its other drafts are: the page belongs to the panel, and the
+  // sheet's height is computed ahead of the render. (Every face stands the
+  // same height, so the sheet never moves under a tab press.)
+  const [copiesSection, setCopiesSection] = useState<CopiesSection>('copies');
   const [localSheetWanted, setLocalSheetWanted] = useState(false);
   const sheetWanted = model.editOpen ?? localSheetWanted;
   const onEditOpenChange = model.onEditOpenChange;

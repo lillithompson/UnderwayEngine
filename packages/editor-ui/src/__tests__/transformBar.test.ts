@@ -26,21 +26,20 @@ describe('the Copies option', () => {
       .toEqual(['stroke', 'endpoints', 'shadow', 'opacity', 'transform']);
   });
 
-  it('stands as the count group, ONE tabbed section and a button row — no rotation row, and no well', () => {
-    const pair = rowGroupHeight([ROW_SLIDER, ROW_SLIDER]);
-    // The group's own padding is counted, and the groups are spaced wider
-    // than bare rows (GROUP_GAP) so the boxes read as separate.
-    expect(pair).toBe(GROUP_PAD * 2 + ROW_SLIDER * 2 + ROW_GAP);
-    // Its groups ARE its boxes, so the sheet draws no well around them —
-    // that framed every section twice — and the height counts none of the
-    // well's padding.
+  it('stands as ONE tabbed section and a button row — no rotation row, and no well', () => {
+    // The group's own padding is counted, and the group is spaced from the
+    // button below it by GROUP_GAP, wider than the gap between bare rows.
+    expect(rowGroupHeight([ROW_SLIDER, ROW_SLIDER])).toBe(GROUP_PAD * 2 + ROW_SLIDER * 2 + ROW_GAP);
+    // Its group IS its box, so the sheet draws no well around it — that
+    // framed the section twice — and the height counts none of the well's
+    // padding.
     expect(pageIsWelled('transform')).toBe(false);
-    // The second box is ONE section with tabs: its row of tabs and the two
-    // sliders the lit tab shows. Both faces stand the same height, so the
-    // page is one number and never resizes under a tab press.
+    // The box is ONE section with tabs: its row of tabs and the two sliders
+    // the lit tab shows. Every face stands the same height, so the page is
+    // one number and never resizes under a tab press.
     const tabbed = rowGroupHeight([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER]);
     expect(submenuHeight('transform', {}))
-      .toBe(BAR_CUSHION + pair + tabbed + ROW_SEGMENTED + GROUP_GAP * 2);
+      .toBe(BAR_CUSHION + tabbed + ROW_SEGMENTED + GROUP_GAP);
     expect(GROUP_GAP).toBeGreaterThan(ROW_GAP);
     // Every other page keeps the well, and is measured with its padding.
     expect(pageIsWelled('opacity')).toBe(true);
@@ -87,19 +86,19 @@ describe('the Copies page', () => {
     }
     expect(SRC.match(/<SliderRow/g)).toHaveLength(6);
     expect(SRC).not.toContain('<DualSliderRow');
-    // The count group LEADS — it is what a press lays down — and the
-    // offsets and the scales SHARE the second box, its tabs switching
-    // which pair shows (the panel holds which, so the sheet's height is
-    // one number known before the render).
-    expect(SRC.match(/<RowGroup>/g)).toHaveLength(2);
+    // All three pairs SHARE one box, its tabs switching which shows (the
+    // panel holds which, so the sheet's height is one number known before
+    // the render). Copies leads: it is what a press lays down.
+    expect(SRC.match(/<RowGroup>/g)).toHaveLength(1);
     expect(SRC).not.toContain('CollapsibleRowGroup');
-    expect(SRC.indexOf('label="Copies"')).toBeLessThan(SRC.indexOf('label="Offset X"'));
     expect(SRC).toContain('<SegmentedRow options={SECTIONS} value={section} onChange={onSection} />');
+    expect(SRC).toContain("{ value: 'copies' as const, label: 'Copies' },");
     expect(SRC).toContain("{ value: 'offset' as const, label: 'Offset' },");
     expect(SRC).toContain("{ value: 'scale' as const, label: 'Scale' },");
-    expect(SRC).toContain("{section === 'offset' ? (");
+    expect(SRC.indexOf("label: 'Copies'")).toBeLessThan(SRC.indexOf("label: 'Offset'"));
+    expect(SRC).toContain("{section === 'copies' ? (");
     const panelSrc = read('ObjectPropertiesPanel.tsx');
-    expect(panelSrc).toContain("const [copiesSection, setCopiesSection] = useState<CopiesSection>('offset');");
+    expect(panelSrc).toContain("const [copiesSection, setCopiesSection] = useState<CopiesSection>('copies');");
     expect(panelSrc).toContain('section={copiesSection}');
     expect(panelSrc).toContain('onSection={setCopiesSection}');
     // Nothing about the page's height depends on which face shows.

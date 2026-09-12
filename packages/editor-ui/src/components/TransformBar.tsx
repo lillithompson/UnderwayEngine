@@ -15,13 +15,12 @@ import {
 // press again. Rotating the object itself is not here: that is the
 // two-finger twist and the selection tool's Rotate slider.
 //
-// The settings come in pairs — the count beside the turn, then the offsets
-// or the scales — and each pair is a GROUP: a shaded rounded box holding
-// its two sliders on lines of their own. The count and the turn LEAD (they
-// are what a press lays down, and the two most presses set); the offsets
-// and the scales SHARE the second box, its tabs switching which pair shows,
-// because they answer the same question — how each copy differs from the
-// one before — and so want one place on the page, not two. They shared a line each before
+// The settings come in pairs — the count beside the turn, the offsets, the
+// scales — and ALL THREE share one GROUP: a shaded rounded box whose tabs
+// switch which pair shows, each on a line of its own. They answer the same
+// question, what each copy is and how it differs from the one before, so
+// they want one place on the page rather than three boxes down it. Copies
+// leads, being what a press lays down and the pair most presses set. They shared a line each before
 // (one DualSliderRow per pair), which kept the page short but halved every
 // track and set the two readouts fighting for the width; the box says the
 // same "these two are one setting" without the squeeze. Create copies
@@ -47,11 +46,13 @@ const factorText = (f: number) => `${Math.round(f * 100)}%`;
 
 const CREATE_OPTION = [{ value: 'create' as const, label: 'Create' }];
 
-/** The second group's two faces: how far each copy sits from the one
- *  before, or how much each is scaled. One section, one at a time. */
-export type CopiesSection = 'offset' | 'scale';
+/** The page's three faces: how many copies and how much each is turned,
+ *  how far each sits from the one before, or how much each is scaled. One
+ *  section, one at a time. */
+export type CopiesSection = 'copies' | 'offset' | 'scale';
 
 const SECTIONS = [
+  { value: 'copies' as const, label: 'Copies' },
   { value: 'offset' as const, label: 'Offset' },
   { value: 'scale' as const, label: 'Scale' },
 ];
@@ -75,65 +76,64 @@ export function TransformBar({ onCopies, onCopiesPreview, section, onSection }: 
   useEffect(() => () => { previewRef.current?.(null); }, []);
   return (
     <GroupedBody>
-      {/* The count and the turn lead: they are what a press lays down, and
-          the two most presses set. The offsets and the scales fold away
-          under them, shut until asked for. */}
-      <RowGroup>
-        <SliderRow
-          label="Copies"
-          value={toT(copies.count, COPIES_MIN, COPIES_MAX)}
-          apply={(t) => set({ count: Math.round(fromT(t, COPIES_MIN, COPIES_MAX)) })}
-          readout={{
-            text: String(copies.count),
-            commit: (n) => set({ count: Math.round(clamp(n, COPIES_MIN, COPIES_MAX)) }),
-          }}
-        />
-        <SliderRow
-          label="Rotation offset"
-          value={toT(copies.dAngleDeg, ROTATE_MIN, ROTATE_MAX)}
-          apply={(t) => set({ dAngleDeg: Math.round(fromT(t, ROTATE_MIN, ROTATE_MAX)) })}
-          readout={{
-            text: degText(copies.dAngleDeg),
-            commit: (n) => set({ dAngleDeg: Math.round(clamp(n, ROTATE_MIN, ROTATE_MAX)) }),
-          }}
-        />
-      </RowGroup>
-      {/* ONE shaded section for both pairs, its tabs switching the two
-          sliders under them: the offsets and the scales answer the same
-          question — how each copy differs from the one before — so they
-          take one box and one place on the page rather than two that had
-          to be opened and shut. */}
+      {/* ONE shaded section for all three pairs, its tabs switching the two
+          sliders under them: the count beside the turn, the offsets, the
+          scales. Every pair answers the same question — what each copy is,
+          and how it differs from the one before — so they take one box and
+          one place on the page. Copies leads: it is what a press lays
+          down, and the pair most presses set. */}
       <RowGroup>
         <SegmentedRow options={SECTIONS} value={section} onChange={onSection} />
-        {section === 'offset' ? (
+        {section === 'copies' ? (
           <>
-        <SliderRow
-          label="Offset X"
-          value={toT(copies.dx, -OFFSET_MAX, OFFSET_MAX)}
-          apply={(t) => set({ dx: Math.round(fromT(t, -OFFSET_MAX, OFFSET_MAX) * 10) / 10 })}
-          readout={{ text: cellText(copies.dx), commit: (n) => set({ dx: clamp(n, -OFFSET_MAX, OFFSET_MAX) }) }}
-        />
-        <SliderRow
-          label="Offset Y"
-          value={toT(copies.dy, -OFFSET_MAX, OFFSET_MAX)}
-          apply={(t) => set({ dy: Math.round(fromT(t, -OFFSET_MAX, OFFSET_MAX) * 10) / 10 })}
-          readout={{ text: cellText(copies.dy), commit: (n) => set({ dy: clamp(n, -OFFSET_MAX, OFFSET_MAX) }) }}
-        />
+            <SliderRow
+              label="Copies"
+              value={toT(copies.count, COPIES_MIN, COPIES_MAX)}
+              apply={(t) => set({ count: Math.round(fromT(t, COPIES_MIN, COPIES_MAX)) })}
+              readout={{
+                text: String(copies.count),
+                commit: (n) => set({ count: Math.round(clamp(n, COPIES_MIN, COPIES_MAX)) }),
+              }}
+            />
+            <SliderRow
+              label="Rotation offset"
+              value={toT(copies.dAngleDeg, ROTATE_MIN, ROTATE_MAX)}
+              apply={(t) => set({ dAngleDeg: Math.round(fromT(t, ROTATE_MIN, ROTATE_MAX)) })}
+              readout={{
+                text: degText(copies.dAngleDeg),
+                commit: (n) => set({ dAngleDeg: Math.round(clamp(n, ROTATE_MIN, ROTATE_MAX)) }),
+              }}
+            />
+          </>
+        ) : section === 'offset' ? (
+          <>
+            <SliderRow
+              label="Offset X"
+              value={toT(copies.dx, -OFFSET_MAX, OFFSET_MAX)}
+              apply={(t) => set({ dx: Math.round(fromT(t, -OFFSET_MAX, OFFSET_MAX) * 10) / 10 })}
+              readout={{ text: cellText(copies.dx), commit: (n) => set({ dx: clamp(n, -OFFSET_MAX, OFFSET_MAX) }) }}
+            />
+            <SliderRow
+              label="Offset Y"
+              value={toT(copies.dy, -OFFSET_MAX, OFFSET_MAX)}
+              apply={(t) => set({ dy: Math.round(fromT(t, -OFFSET_MAX, OFFSET_MAX) * 10) / 10 })}
+              readout={{ text: cellText(copies.dy), commit: (n) => set({ dy: clamp(n, -OFFSET_MAX, OFFSET_MAX) }) }}
+            />
           </>
         ) : (
           <>
-        <SliderRow
-          label="Scale X"
-          value={toT(copies.sx, SCALE_MIN, SCALE_MAX)}
-          apply={(t) => set({ sx: Math.round(fromT(t, SCALE_MIN, SCALE_MAX) * 100) / 100 })}
-          readout={{ text: factorText(copies.sx), commit: (n) => set({ sx: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}
-        />
-        <SliderRow
-          label="Scale Y"
-          value={toT(copies.sy, SCALE_MIN, SCALE_MAX)}
-          apply={(t) => set({ sy: Math.round(fromT(t, SCALE_MIN, SCALE_MAX) * 100) / 100 })}
-          readout={{ text: factorText(copies.sy), commit: (n) => set({ sy: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}
-        />
+            <SliderRow
+              label="Scale X"
+              value={toT(copies.sx, SCALE_MIN, SCALE_MAX)}
+              apply={(t) => set({ sx: Math.round(fromT(t, SCALE_MIN, SCALE_MAX) * 100) / 100 })}
+              readout={{ text: factorText(copies.sx), commit: (n) => set({ sx: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}
+            />
+            <SliderRow
+              label="Scale Y"
+              value={toT(copies.sy, SCALE_MIN, SCALE_MAX)}
+              apply={(t) => set({ sy: Math.round(fromT(t, SCALE_MIN, SCALE_MAX) * 100) / 100 })}
+              readout={{ text: factorText(copies.sy), commit: (n) => set({ sy: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}
+            />
           </>
         )}
       </RowGroup>

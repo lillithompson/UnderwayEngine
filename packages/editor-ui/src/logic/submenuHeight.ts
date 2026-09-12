@@ -294,16 +294,15 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // A marker row per end. (The Caps row went — see EndpointsBar.)
       return contentArea([ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'transform': {
-      // The Copies page: Create's six settings, a slider row each, in TWO
-      // groups — the count beside the turn, then one tabbed box holding
-      // either the offsets or the scales — and the button that fires it,
-      // standing below them. The tabbed box is the same height on either
-      // face (its tab row and two sliders), so the page never resizes under
-      // a tab press. Its groups ARE its boxes, so it is drawn with no well
-      // around them (pageIsWelled) and measured without the well's padding.
-      const pair = rowGroupHeight([ROW_SLIDER, ROW_SLIDER]);
+      // The Copies page: Create's six settings, a slider row each, in ONE
+      // tabbed box — the count beside the turn, the offsets, the scales,
+      // whichever tab is lit — and the button that fires it, standing
+      // below. Every face is the same height (the tab row and two
+      // sliders), so the page never resizes under a tab press. Its group IS
+      // its box, so it is drawn with no well around it (pageIsWelled) and
+      // measured without the well's padding.
       const tabbed = rowGroupHeight([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER]);
-      return bareArea([pair, tabbed, ROW_SEGMENTED], GROUP_GAP);
+      return bareArea([tabbed, ROW_SEGMENTED], GROUP_GAP);
     }
     case 'patternTile':
       // The Tile page: the Repeat toggle, and nothing else.
