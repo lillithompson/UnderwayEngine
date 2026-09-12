@@ -126,7 +126,7 @@ export interface GeometryAdapter<T extends SceneNodeBase = SceneNodeBase> {
   mirror(node: T, screenAxis: 'h' | 'v'): T;
 
   /** Rescale geometry to fit within newBbox. */
-  rescale(node: T, oldBbox: Bbox, newBbox: Bbox): T;
+  rescale(node: T, oldBbox: Bbox, newBbox: Bbox, opts?: RescaleOptions): T;
 
   /** Hit-test: does this node accept a click at (cellX, cellY)?
    *  When `ignoreLock` is true, locked nodes are still hit-testable. */
@@ -418,6 +418,25 @@ const paintAdapter: GeometryAdapter<PaintObject> = makeBboxAdapter<PaintObject>(
 // takes it.
 const patternBboxAdapter = makeBboxAdapter<PatternObject>('pattern');
 
+/** How a rescale treats what is INSIDE the box.
+ *
+ *  Every kind scales its content with its box as a matter of course — a
+ *  path's points, an image's pixels, a text's type. A REPEAT-mode pattern
+ *  is the exception: its box is a window onto a tiling that keeps its own
+ *  size, so widening the window shows more of the tiling rather than a
+ *  bigger tile. That is right when the pattern's OWN corner is dragged,
+ *  and wrong when the pattern is one member of a group being scaled —
+ *  there the whole arrangement is being made bigger, the live preview
+ *  scales the pattern's picture with everything else, and the drop used to
+ *  re-tile it into more, smaller repeats instead.
+ *
+ *  `scaleContent` is how a caller says which of the two it is doing. No
+ *  other kind reads it: they all scale their content either way. */
+export interface RescaleOptions {
+  /** Scale what is inside the box too — a whole-arrangement scale. */
+  scaleContent?: boolean;
+}
+
 /** Is this pattern actually tiling? Both dims are needed to define the
  *  tile box; without them `repeat` is inert and the bake ignores it. */
 function isRepeating(node: PatternObject): boolean {
@@ -483,8 +502,26 @@ const patternAdapter: GeometryAdapter<PatternObject> = {
     };
   },
 
-  rescale(node, oldBbox, newBbox) {
+  rescale(node, oldBbox, newBbox, opts) {
     if (node.tileMode === 'repeat') {
+      // Scaling the whole arrangement: the tiling scales with the box, so
+      // the picture grows instead of repeating more (RescaleOptions). The
+      // offset is a length inside the box, so it scales too — the tiling
+      // keeps its phase against the region's own edges.
+      if (opts?.scaleContent && isRepeating(node)
+        && oldBbox.cellWidth > 0 && oldBbox.cellHeight > 0) {
+        const kx = newBbox.cellWidth / oldBbox.cellWidth;
+        const ky = newBbox.cellHeight / oldBbox.cellHeight;
+        const ox = (node.tileOffsetXL0 ?? 0) * kx;
+        const oy = (node.tileOffsetYL0 ?? 0) * ky;
+        return { ...node, ...newBbox,
+          tileWidthL0: node.tileWidthL0! * kx,
+          tileHeightL0: node.tileHeightL0! * ky,
+          tileOffsetXL0: ox === 0 ? undefined : ox,
+          tileOffsetYL0: oy === 0 ? undefined : oy };
+      }
+      // The pattern's own corner: the box is a window onto a tiling that
+      // keeps its size, so the tiling holds still under the moving edge.
       const dx = newBbox.cellX - node.cellX;
       const dy = newBbox.cellY - node.cellY;
       const newOx = (node.tileOffsetXL0 ?? 0) - dx;

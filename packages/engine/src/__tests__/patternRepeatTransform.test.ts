@@ -172,3 +172,73 @@ describe('resizing a repeating pattern', () => {
     expect(tileBox(bigger)).toEqual(tileBox(p));
   });
 });
+
+// …and the OTHER kind of resize: the pattern as one member of a group
+// being scaled. There the whole arrangement is being made bigger, so the
+// tiling scales with the region rather than repeating more — which is also
+// what the live preview draws, the group's members being scaled by a
+// transform until the drop.
+describe('scaling a group that holds a repeating pattern', () => {
+  const OLD = { cellX: 2, cellY: 3, cellWidth: 8, cellHeight: 4 };
+  const scaled = (kx: number, ky: number) => A.rescale(
+    pat(),
+    OLD,
+    { cellX: 2, cellY: 3, cellWidth: 8 * kx, cellHeight: 4 * ky },
+    { scaleContent: true },
+  ) as PatternObject;
+
+  it('scales the tile with the region, so the repeat count holds', () => {
+    const q = scaled(2, 2);
+    expect(q.tileWidthL0).toBe(4);
+    expect(q.tileHeightL0).toBe(2);
+    // Four tiles across and four down, before and after.
+    expect(q.cellWidth / q.tileWidthL0!).toBe(OLD.cellWidth / pat().tileWidthL0!);
+    expect(q.cellHeight / q.tileHeightL0!).toBe(OLD.cellHeight / pat().tileHeightL0!);
+  });
+
+  it('scales the offset too, so the tiling keeps its phase in the box', () => {
+    const q = scaled(2, 2);
+    expect(q.tileOffsetXL0).toBe(2);
+    expect(q.tileOffsetYL0).toBe(1);
+  });
+
+  it('takes each axis on its own', () => {
+    const q = scaled(3, 0.5);
+    expect(q.tileWidthL0).toBe(6);
+    expect(q.tileHeightL0).toBe(0.5);
+    expect(q.tileOffsetXL0).toBe(3);
+    expect(q.tileOffsetYL0).toBe(0.25);
+  });
+
+  it('drops an offset that scales to zero rather than storing a 0', () => {
+    const q = A.rescale(
+      pat({ tileOffsetXL0: undefined, tileOffsetYL0: undefined }),
+      OLD, { cellX: 2, cellY: 3, cellWidth: 16, cellHeight: 8 }, { scaleContent: true },
+    ) as PatternObject;
+    expect(q.tileOffsetXL0).toBeUndefined();
+    expect(q.tileOffsetYL0).toBeUndefined();
+  });
+
+  it('leaves a STRETCH pattern to the plain bbox map, option or no', () => {
+    const stretch = pat({ tileMode: undefined, tileWidthL0: undefined, tileHeightL0: undefined });
+    const a = A.rescale(stretch, OLD, { cellX: 0, cellY: 0, cellWidth: 16, cellHeight: 8 }, { scaleContent: true });
+    const b = A.rescale(stretch, OLD, { cellX: 0, cellY: 0, cellWidth: 16, cellHeight: 8 });
+    expect(a).toEqual(b);
+  });
+
+  it('a repeat pattern MISSING a tile dimension is inert, and falls back', () => {
+    // isRepeating: without both dims there is no tile box to scale, so the
+    // window rule applies as before rather than multiplying an undefined.
+    const half = pat({ tileHeightL0: undefined });
+    const q = A.rescale(half, OLD, { cellX: 2, cellY: 3, cellWidth: 16, cellHeight: 8 },
+      { scaleContent: true }) as PatternObject;
+    expect(q.tileWidthL0).toBe(2);
+    expect(q.tileHeightL0).toBeUndefined();
+  });
+
+  it('a degenerate old box scales nothing', () => {
+    const q = A.rescale(pat(), { cellX: 2, cellY: 3, cellWidth: 0, cellHeight: 4 },
+      { cellX: 2, cellY: 3, cellWidth: 8, cellHeight: 8 }, { scaleContent: true }) as PatternObject;
+    expect(q.tileWidthL0).toBe(2);
+  });
+});
