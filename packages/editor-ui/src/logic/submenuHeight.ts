@@ -388,14 +388,17 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'align':
       // The horizontal and the vertical alignment rows.
       return contentArea([ROW_SEGMENTED, ROW_SEGMENTED]);
-    case 'shadow':
-      // The XY pad on the left, Blur / Spread / (Color) / Opacity on the
-      // right: the taller column sets the height, so the colour row is what
-      // grows the page past the pad.
-      return contentArea(
-        [ROW_SLIDER, ROW_SLIDER, ...(ctx.shadowColor ? [ROW_SLIDER] : []), ROW_SLIDER],
-        SHADOW_PAD_SIZE,
-      );
+    case 'shadow': {
+      // The XY pad and its three sliders (Blur / Spread / Opacity) side by
+      // side — the same height by construction, SHADOW_PAD_SIZE being
+      // exactly those three rows — and then, where the host has a colour to
+      // write, one FULL-WIDTH hue row under both columns. The colour row
+      // used to stand in the right-hand column, which grew the page past
+      // the pad; it is a row of the page now, so it adds its own height
+      // rather than deepening the block beside the pad.
+      const block = Math.max(stack([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]), SHADOW_PAD_SIZE);
+      return contentArea(ctx.shadowColor ? [block, ROW_SLIDER] : [block]);
+    }
     default: {
       // Exhaustiveness guard: adding a SubmenuKey without giving it rows here
       // is a compile error, not a silently stunted page.

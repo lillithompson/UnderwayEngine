@@ -9,7 +9,9 @@
 
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
-import { submenuHeight } from '../logic/submenuHeight';
+import {
+  BAR_CUSHION, CONTENT_PAD, ROW_GAP, ROW_SLIDER, SHADOW_PAD_SIZE, submenuHeight,
+} from '../logic/submenuHeight';
 
 const SRC = (...p: string[]) => readFileSync(resolve(__dirname, '..', ...p), 'utf8');
 const fileExists = (...p: string[]) => existsSync(resolve(__dirname, '..', ...p));
@@ -148,6 +150,42 @@ describe('the pages have no chrome of their own', () => {
     for (const file of PAGE_FILES.filter((f) => f !== 'ShadowBar.tsx')) {
       expect([file, SRC('components', file).includes('aside=')]).toEqual([file, false]);
     }
+  });
+
+  // The Shadow page's three sliders are one run of "how much" — how far it
+  // softens, how far it is dilated, how much of it shows — and the colour
+  // used to stand between Spread and Opacity, breaking that run in half and
+  // squeezing the column against the pad. It reads across the foot of the
+  // page now, under the pad and the sliders alike.
+  it('the Shadow page runs Blur · Spread · Opacity, with the colour full width beneath', () => {
+    const shadow = SRC('components', 'ShadowBar.tsx');
+    const at = (needle: string) => {
+      const i = shadow.indexOf(needle);
+      expect([needle, i]).not.toEqual([needle, -1]);
+      return i;
+    };
+    expect(at('label="Blur"')).toBeLessThan(at('label="Spread"'));
+    expect(at('label="Spread"')).toBeLessThan(at('label="Opacity"'));
+    // The colour is OUTSIDE the two-column block, after it closes.
+    expect(at('</BarBody>')).toBeLessThan(at('<ColorSliderRow'));
+    expect(at('label="Opacity"')).toBeLessThan(at('</BarBody>'));
+    // …in a wrapper that stacks the block and the row on the page's own gap.
+    expect(shadow).toContain('<View style={styles.page}>');
+    expect(shadow).toContain('page: { gap: ROW_GAP },');
+  });
+
+  it('…and the page measures the same either way, the colour row included', () => {
+    // The row moved from the right-hand column to the foot; it occupied a
+    // row's height in both places, so the sheet does not resize.
+    const block = ROW_SLIDER * 3 + ROW_GAP * 2;
+    expect(SHADOW_PAD_SIZE).toBe(block);
+    expect(submenuHeight('shadow', { shadowColor: true }))
+      .toBe(CONTENT_PAD * 2 + block + ROW_GAP + ROW_SLIDER + BAR_CUSHION);
+    // No colour to write: the block alone, as tall as the pad.
+    expect(submenuHeight('shadow'))
+      .toBe(CONTENT_PAD * 2 + block + BAR_CUSHION);
+    expect(submenuHeight('shadow', { shadowColor: true }) - submenuHeight('shadow'))
+      .toBe(ROW_GAP + ROW_SLIDER);
   });
 
   it('a colour reads on the page of the thing it colours — there is no Color page', () => {

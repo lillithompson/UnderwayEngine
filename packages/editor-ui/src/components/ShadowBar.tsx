@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { GestureResponderEvent, PanResponder, StyleSheet, View } from 'react-native';
 import type { RGBLike, ShadowModel } from '../adapter';
-import { SHADOW_PAD_SIZE } from '../logic/submenuHeight';
+import { ROW_GAP, SHADOW_PAD_SIZE } from '../logic/submenuHeight';
 import { BarBody, ColorSliderRow, CONTROL_ACCENT, SliderRow } from './effectBar';
 import { beginValueDrag, endValueDrag, padOffsetFromTouch, VALUE_DRAG_SURFACE } from '../logic/slider';
 import { rgbCss, withAlpha } from '../logic/hsv';
@@ -17,8 +17,13 @@ import { rgbCss, withAlpha } from '../logic/hsv';
 // the design's iOS-point ranges at 16px/cell). The slider rows and the body
 // layout come from the shared page grammar (see effectBar.tsx); the sheet
 // around the page — its Shadow tab and the Remove line — is the Edit
-// sheet's. The shadow's own colour reads HERE, above the Opacity that says
-// how much of it there is, rather than on a shared Color page a tab away.
+// sheet's.
+//
+// The shadow's own colour reads UNDER both columns, full width. It is the
+// one setting on the page that belongs to neither the direction nor the
+// amount, and standing it between Spread and Opacity broke the run of
+// "how much" sliders in half and squeezed the column it sat in against
+// the pad.
 //
 // ONE page, shared: an image, a frame and a TEXT all open this, so the
 // layout is the same wherever a shadow is cast.
@@ -107,26 +112,40 @@ export function ShadowBar({ shadow, color, onColor, onOpenColorPicker, onChange,
   const set = (patch: Partial<ShadowModel>, committed: boolean) =>
     (committed ? onCommit : onChange)({ ...shadow, ...patch });
   return (
-    <BarBody
-      spread
-      aside={(
-        <XYPad
-          dx={shadow.dx}
-          dy={shadow.dy}
-          onChange={(dx, dy) => set({ dx, dy }, false)}
-          onCommit={(dx, dy) => set({ dx, dy }, true)}
+    <View style={styles.page}>
+      <BarBody
+        spread
+        aside={(
+          <XYPad
+            dx={shadow.dx}
+            dy={shadow.dy}
+            onChange={(dx, dy) => set({ dx, dy }, false)}
+            onCommit={(dx, dy) => set({ dx, dy }, true)}
+          />
+        )}
+      >
+        {/* How much of a shadow there is, in one run: how far it softens,
+            how far it is dilated, and how much of it shows. */}
+        <SliderRow label="Blur" value={shadow.blur / MAX_BLUR} apply={(t, c) => set({ blur: t * MAX_BLUR }, c)} />
+        <SliderRow
+          label="Spread"
+          value={(shadow.spread - MIN_SPREAD) / (MAX_SPREAD - MIN_SPREAD)}
+          apply={(t, c) => set({ spread: MIN_SPREAD + t * (MAX_SPREAD - MIN_SPREAD) }, c)}
         />
-      )}
-    >
-      <SliderRow label="Blur" value={shadow.blur / MAX_BLUR} apply={(t, c) => set({ blur: t * MAX_BLUR }, c)} />
-      <SliderRow
-        label="Spread"
-        value={(shadow.spread - MIN_SPREAD) / (MAX_SPREAD - MIN_SPREAD)}
-        apply={(t, c) => set({ spread: MIN_SPREAD + t * (MAX_SPREAD - MIN_SPREAD) }, c)}
-      />
-      {/* …then what colour it is: the hue wheel along the track, the colour
-          under the thumb, and the circle at the end opening the full picker
-          for saturation and brightness. */}
+        {/* The shadow's own color ramping up over the alpha checker — "how
+            much of THIS shadow", as the color picker's Opacity reads. */}
+        <SliderRow
+          label="Opacity"
+          value={shadow.opacity}
+          accent={rgbCss(withAlpha(shadow.color, 1))}
+          checker
+          apply={(t, c) => set({ opacity: t }, c)}
+        />
+      </BarBody>
+      {/* …and what colour it is, across the foot of the page — under the
+          pad and the sliders alike: the hue wheel along the track, the
+          colour under the thumb, and the circle at the end opening the
+          full picker for saturation and brightness. */}
       {color && onColor && onOpenColorPicker ? (
         <ColorSliderRow
           label="Color"
@@ -135,20 +154,15 @@ export function ShadowBar({ shadow, color, onColor, onOpenColorPicker, onChange,
           onOpenPicker={onOpenColorPicker}
         />
       ) : null}
-      {/* The shadow's own color ramping up over the alpha checker — "how
-          much of THIS shadow", as the color picker's Opacity reads. */}
-      <SliderRow
-        label="Opacity"
-        value={shadow.opacity}
-        accent={rgbCss(withAlpha(shadow.color, 1))}
-        checker
-        apply={(t, c) => set({ opacity: t }, c)}
-      />
-    </BarBody>
+    </View>
   );
 }
 
+
 const styles = StyleSheet.create({
+  // The two-column block, then the colour row beneath it — the same gap the
+  // rows inside the block keep, so the page reads as one stack.
+  page: { gap: ROW_GAP },
   pad: {
     width: PAD_SIZE, height: PAD_SIZE, borderRadius: 12, backgroundColor: PAD_FILL,
     borderWidth: 1, borderColor: PAD_BORDER,
