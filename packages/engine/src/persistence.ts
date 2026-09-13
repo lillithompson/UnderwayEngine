@@ -302,6 +302,28 @@ interface CompMeta {
   symmetryFrame?: { cellX: number; cellY: number; cellWidth: number; cellHeight: number };
 }
 
+/**
+ * Drop every session-lifetime cache this module keeps: the composition-meta
+ * write-through cache, the paint-tile skip cache, and the set of image blob
+ * keys already known to be stored. Also clears the asset store's byte caches
+ * and storage's key set.
+ *
+ * For a caller that empties the underlying store out from under us — the
+ * developer "reset app" wipe. Each of these caches answers a question about
+ * what IS stored ("do I already have this blob?", "have these tiles
+ * changed?"), and a wipe makes every answer wrong in the direction that
+ * loses data: the next save would skip writing bytes the store no longer
+ * holds, and the page would come back without its photos.
+ */
+export function resetPersistenceCaches(): void {
+  const w = globalThis as any;
+  w.__facetCompMetaCache = undefined;
+  w.__facetPaintBlobCache = undefined;
+  w.__facetImageBlobPresent = undefined;
+  purgeImageAssets();
+  storage.resetKeyCache?.();
+}
+
 /** Storage key for an image's raw bytes — see imageAssetStore, which owns
  *  the key shape, the byte-budgeted cache in front of it, and the janitor
  *  that collects it (sweepImageAssets). Keyed by `imageId` only (not by
@@ -1237,14 +1259,66 @@ export async function exportFileAsPNG(fileId: string, maxSize: number = 1024): P
 
 // ── Composition Bundle Export / Import ─────────────────────────────
 
+/** One asset a split bundle names but does not carry — see
+ *  {@link exportCompositionBundleSplit}. */
+export interface BundleAssetRef {
+  assetId: string;
+  byteLength: number;
+}
+
+/** A composition packed WITHOUT its pixels, and the assets it names. */
+export interface SplitCompositionBundle {
+  /** The document alone: a Haiku page's ~340 KB becomes well under 50 KB,
+   *  and a pure-vector page is byte-for-byte what it always was. */
+  bytes: Uint8Array;
+  /** Every asset the document references, display copies and masters
+   *  alike, in the order the document names them. */
+  assets: BundleAssetRef[];
+}
+
 /**
  * Pack a composition into `.tile` bytes. `opts` are the load-side
  * CompositionIOOptions: a page-anchored consumer passes `{ normalize: false }`
  * so the file holds the page as saved, rather than a copy the default
  * normalization has upscaled into the canonical box (see
  * importCompositionBundle for the other side of that trip).
+ *
+ * This is the MONOLITHIC form: every copy of every photo inside one file.
+ * That is the right shape for a file a person is handed — one
+ * self-contained thing they can save, mail, or open on a machine that has
+ * never seen the account. For SYNC, where the document and its pixels
+ * travel separately, see {@link exportCompositionBundleSplit}.
  */
 export async function exportCompositionBundle(compId: string, opts?: CompositionIOOptions): Promise<Uint8Array | null> {
+  return (await packCompositionBundle(compId, opts, false))?.bytes ?? null;
+}
+
+/**
+ * Pack a composition WITHOUT its pixels, and say which assets it needs.
+ *
+ * The fix for "a page over the share cap never reaches anyone in editable
+ * form". The document and the photos shared one 4 MB cap, so the third photo
+ * on a page silently cost the page its editability everywhere — the owner's
+ * other devices could not open it and no friend could import it. Split, the
+ * document trivially fits and each asset goes up on its own, once, skipped
+ * whenever the far side already has it (which, with content-addressed ids,
+ * is a hash comparison). Re-editing a page's TEXT then re-sends a ~50 KB
+ * document rather than megabytes of unchanged JPEG.
+ *
+ * Null when there is nothing to pack, as {@link exportCompositionBundle}.
+ */
+export async function exportCompositionBundleSplit(
+  compId: string,
+  opts?: CompositionIOOptions,
+): Promise<SplitCompositionBundle | null> {
+  return packCompositionBundle(compId, opts, true);
+}
+
+async function packCompositionBundle(
+  compId: string,
+  opts: CompositionIOOptions | undefined,
+  omitImageBytes: boolean,
+): Promise<SplitCompositionBundle | null> {
   const { serializeComposition } = await import('./compositionBinaryFormat');
   const { compressTile } = await import('./tileIO');
 
@@ -1253,10 +1327,11 @@ export async function exportCompositionBundle(compId: string, opts?: Composition
 
   const figures = partial.figures;
 
-  // A `.tile` is self-contained, so it carries every copy of every photo —
-  // and a loaded composition holds display copies only. Pull the export
-  // masters back for the pack (imageAssetStore); nothing else in the session
-  // wants them, so they are dropped again once the bytes are in the payload.
+  // Both forms need every copy of every photo — the monolithic one to embed
+  // the bytes, the split one to record their LENGTHS — and a loaded
+  // composition holds display copies only. Pull the export masters back
+  // (imageAssetStore); nothing else in the session wants them, so they are
+  // dropped again once the pack is done.
   const images = partial.images ?? [];
   const imageBlobs = {
     ...partial.imageBlobs,
@@ -1310,10 +1385,60 @@ export async function exportCompositionBundle(compId: string, opts?: Composition
       customColors: partial.customColors ?? [],
     },
     embeddedFiles,
+    { omitImageBytes },
   );
 
   purgeImageAssets('original');
-  return compressTile(payload);
+  // The asset list is the blob map the pack just walked — the same ids, in
+  // the same order the document names them.
+  const assets: BundleAssetRef[] = [];
+  const seen = new Set<string>();
+  for (const img of images) {
+    for (const id of [img.imageId, img.originalImageId]) {
+      if (id == null || seen.has(id)) continue;
+      seen.add(id);
+      const bytes = imageBlobs[id];
+      if (bytes) assets.push({ assetId: id, byteLength: bytes.length });
+    }
+  }
+  return { bytes: await compressTile(payload), assets };
+}
+
+/**
+ * The bytes a SPLIT document's asset references resolve to.
+ *
+ * Local first: an id IS its bytes (imageAssetStore's contentImageId), so a
+ * photo this device already holds from another page — or from an earlier
+ * import of this very page — is already the right bytes, and asking the
+ * network for it again would be asking for something we can prove we have.
+ * Only the genuine misses are fetched, and in parallel: a page of eight
+ * photos should cost one round trip, not eight in a row.
+ *
+ * A fetch that fails or returns nothing is dropped rather than thrown: the
+ * page is still worth filing, everything else on it still draws, and the
+ * next import of the same page picks the asset up.
+ */
+async function resolveBundleAssets(
+  refs: { imageId: string }[] | undefined,
+  fetchAsset: ((assetId: string) => Promise<Uint8Array | null>) | undefined,
+): Promise<Record<string, Uint8Array>> {
+  if (!refs || refs.length === 0) return {};
+  const ids = Array.from(new Set(refs.map((r) => r.imageId)));
+  const held = await loadImageAssets(ids);
+  const missing = ids.filter((id) => !held[id]);
+  if (missing.length === 0 || !fetchAsset) return held;
+  const fetched = await Promise.all(missing.map(async (id) => {
+    try {
+      return [id, await fetchAsset(id)] as const;
+    } catch {
+      return [id, null] as const;
+    }
+  }));
+  const out = { ...held };
+  for (const [id, bytes] of fetched) {
+    if (bytes && bytes.length > 0) out[id] = bytes;
+  }
+  return out;
 }
 
 /**
@@ -1324,18 +1449,29 @@ export async function exportCompositionBundle(compId: string, opts?: Composition
  * re-centre any page whose content is smaller than the canonical box, which
  * is how a small drawing synced from another device came back twice its
  * size and off its spot. The consumer must then load with the same option.
+ *
+ * A SPLIT document (v60, exportCompositionBundleSplit) names its pixels
+ * instead of carrying them. Each id is resolved against this device's own
+ * asset store first — with content-addressed ids, a photo already here from
+ * another page is already the right bytes — and `fetchAsset` is asked only
+ * for what is genuinely missing, in parallel. An asset that cannot be
+ * fetched leaves its node without pixels rather than failing the import: the
+ * page is filed, everything else on it draws, and the picture the page
+ * shares still shows it.
  */
 export async function importCompositionBundle(
   data: Uint8Array,
   fileName?: string,
   entryFields?: Partial<CompositionEntry>,
   opts?: CompositionIOOptions,
+  fetchAsset?: (assetId: string) => Promise<Uint8Array | null>,
 ): Promise<string> {
   const { deserializeComposition } = await import('./compositionBinaryFormat');
   const { decompressTile } = await import('./tileIO');
 
   const payload = await decompressTile(data);
   const { meta, embeddedFiles } = deserializeComposition(payload);
+  const resolvedAssets = await resolveBundleAssets(meta.imageAssetRefs, fetchAsset);
 
   // Use file name (sans extension) if provided, otherwise fall back to embedded name
   const compName = fileName
@@ -1374,7 +1510,7 @@ export async function importCompositionBundle(
     figures: remappedFigures,
     svgObjects,
     images,
-    imageBlobs: meta.imageBlobs ?? {},
+    imageBlobs: { ...meta.imageBlobs, ...resolvedAssets },
     texts,
     paintObjects: importedPaints,
     patternObjects,

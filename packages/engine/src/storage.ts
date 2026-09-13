@@ -25,6 +25,11 @@ interface Storage {
    *  (imageAssetStore's sweep), which has to ask what IS stored rather than
    *  whether one named thing is. */
   keys(prefix?: string): Promise<string[]>;
+  /** Forget the cached key list, for a caller that empties the store out
+   *  from under this module (persistence's resetPersistenceCaches).
+   *  Optional: a store implementation that caches nothing has nothing to
+   *  forget. */
+  resetKeyCache?(): void;
 }
 
 /**
@@ -72,6 +77,7 @@ const storage: Storage = {
   getBinary: (key: string) => get(key).then((v: unknown) => (v instanceof Uint8Array ? v : null)),
   setBinary: (key: string, value: Uint8Array) => set(key, value).then(() => { noteKeyWritten(key); }),
   hasBinary: (key: string) => loadKeySet().then((set) => set.has(key)),
+  resetKeyCache: () => { keySet = null; },
   keys: (prefix?: string) => loadKeySet().then((set) => {
     const all = Array.from(set);
     return prefix ? all.filter((k) => k.startsWith(prefix)) : all;
@@ -79,7 +85,7 @@ const storage: Storage = {
 };
 
 /** Drop the cached key list — for tests that swap the underlying store out
- *  from under this module. */
+ *  from under this module. The production path is `storage.resetKeyCache`. */
 export function __resetStorageKeyCacheForTest(): void {
   keySet = null;
 }

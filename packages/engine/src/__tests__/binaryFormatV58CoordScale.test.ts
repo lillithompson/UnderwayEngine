@@ -150,7 +150,9 @@ describe('v58 stored coordinate scale', () => {
     const segs = [line([0.25, 0.5], [4.75, 0.5])];
     const bytes = serializeComposition(makeBundle(1, [makeSVG('s', segs)]), []);
     const asV57 = patchFormatVersion(bytes, 57);
-    expect(asV57.length).toBe(bytes.length - 1);
+    // Two metadata bytes a v57 reader never consumed: v58's coordinate
+    // scale and v60's flags.
+    expect(asV57.length).toBe(bytes.length - 2);
     expect(deserializeComposition(asV57).meta.svgObjects![0].segments).toEqual(segs);
   });
 

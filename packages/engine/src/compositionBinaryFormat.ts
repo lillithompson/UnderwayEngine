@@ -34,6 +34,10 @@ import { compSnapStep } from './compositionCellMath';
 //                               coordinate in the file was encoded at — see
 //                               "Fixed-point encoding". Pre-58 files derive
 //                               it from gridLevel / the legacy ×4.)
+//   flags:       u8            (v60+; bit 0x01 = the image-bytes section
+//                               carries LENGTHS ONLY, not pixels — see the
+//                               v60 note. Spends the one byte of slack the
+//                               allocation has always had.)
 //
 // NORMALIZATION (v23+)
 //   Every save scales the content's AABB by a power-of-2 factor s = 2^k,
@@ -474,7 +478,18 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      shifts everything after it by one byte — the version-patch trick the
 //      legacy tests use goes through test-utils' patchFormatVersion, which
 //      drops the byte for pre-58 targets.
-const FORMAT_VERSION = 59;
+// v60: THE DOCUMENT CAN NAME ITS PIXELS INSTEAD OF CARRYING THEM. A metadata
+//      `flags` byte (spending the allocation's one spare byte) whose bit
+//      0x01 says the image-bytes section holds (imageId, mime, byteLength)
+//      per asset and NO payload — the split form sync uploads, against the
+//      monolithic one a shared file still uses (docs/image_refactor.md §5).
+//      A reader takes those as `meta.imageAssetRefs` and resolves the bytes
+//      from the asset store. The section's shape is otherwise unchanged, so
+//      only the payload write and the payload read are gated.
+//      Every v60 file carries the byte, bit clear for an ordinary bundle.
+const FORMAT_VERSION = 60;
+/** v60+ metadata flags. */
+const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -534,6 +549,18 @@ export interface CompositionBundle {
   /** Pixel bytes per `imageId`, deduplicated across nodes (v10+). Keys
    *  are the same `imageId` strings the `images` array references. */
   imageBlobs?: Record<string, Uint8Array>;
+  /**
+   * The assets a SPLIT document names instead of carrying (v60+, written
+   * when {@link SerializeCompositionOptions.omitImageBytes} is set and read
+   * back in its place).
+   *
+   * One entry per blob the monolithic form would have embedded, in the same
+   * order and with the same ids and mimes — the bytes alone are gone. The
+   * consumer resolves each id against its own asset store and fetches only
+   * what it lacks (imageAssetStore); `byteLength` is there so it can budget
+   * before it fetches.
+   */
+  imageAssetRefs?: ImageAssetRef[];
   /** Unified backâ†’front paint order across every scene-object kind (v11+).
    *  When absent (older bundles), the loader derives it from the kind
    *  arrays in the legacy fixed paint order. */
@@ -557,6 +584,30 @@ export interface CompositionBundle {
   /** Inline tile-pattern scene nodes (v54+). Undefined/empty for older
    *  bundles. */
   patternObjects?: PatternObject[];
+}
+
+/** One asset a split document names — see
+ *  {@link CompositionBundle.imageAssetRefs}. */
+export interface ImageAssetRef {
+  imageId: string;
+  mimeType: ImageObject['mimeType'];
+  byteLength: number;
+}
+
+/** How {@link serializeComposition} writes the image-bytes section. */
+export interface SerializeCompositionOptions {
+  /**
+   * Name the pixels rather than carrying them: the image-bytes section
+   * becomes a list of (imageId, mime, byteLength) and the file is the
+   * document alone — a Haiku page's ~340 KB becomes well under 50 KB, and a
+   * pure-vector page is unchanged.
+   *
+   * For SYNC, where the assets go up separately and are skipped when the
+   * server already has them. A file handed to a person stays monolithic:
+   * one self-contained thing is the right shape for something someone
+   * saves, mails or opens on a machine that has never seen the account.
+   */
+  omitImageBytes?: boolean;
 }
 
 export interface DeserializedComposition {
@@ -2885,12 +2936,13 @@ function readText(
 export function serializeComposition(
   bundle: CompositionBundle,
   embeddedFiles: EmbeddedFile[],
+  opts?: SerializeCompositionOptions,
 ): Uint8Array {
   let coordScaleLog2 = coordScaleLog2For(bundle.gridLevel);
   for (;;) {
     coordMaxAbs = 0;
     coordNeededLog2 = 0;
-    const out = serializeCompositionAt(bundle, embeddedFiles, coordScaleLog2);
+    const out = serializeCompositionAt(bundle, embeddedFiles, coordScaleLog2, opts);
     const wanted = chooseCoordScaleLog2(bundle.gridLevel, coordMaxAbs, coordNeededLog2);
     // The measurement does not depend on the scale, so a second pass always
     // lands on the scale it was asked for.
@@ -2903,7 +2955,10 @@ function serializeCompositionAt(
   bundle: CompositionBundle,
   embeddedFiles: EmbeddedFile[],
   coordScaleLog2: number,
+  opts?: SerializeCompositionOptions,
 ): Uint8Array {
+  // v60+: the document may NAME its pixels instead of carrying them.
+  const omitImageBytes = opts?.omitImageBytes === true;
   // Per-file coordinate precision — must be set before ANY encodeFixed
   // call below, and is what the metadata byte records.
   coordScale = 1 << coordScaleLog2;
@@ -2979,8 +3034,11 @@ function serializeCompositionAt(
   }
   totalSize += 2; // blobCount
   for (const id of usedBlobIds) {
-    // imageIdIdx(2) + mimeBit(1) + dataLen(4) + data
-    totalSize += 7 + (blobMap[id]?.length ?? 0);
+    // imageIdIdx(2) + mimeBit(1) + dataLen(4) + data. A split document
+    // writes the first three and stops (v60 FILE_FLAG_IMAGE_BYTES_OMITTED):
+    // the length is still recorded, so a consumer can budget its fetches
+    // before it makes them.
+    totalSize += 7 + (omitImageBytes ? 0 : (blobMap[id]?.length ?? 0));
   }
 
   // Text objects (v29+) â€” written between the image-bytes section and
@@ -3053,6 +3111,8 @@ function serializeCompositionAt(
   view.setFloat64(pos, bundle.strokeScale, true); pos += 8;
   view.setFloat64(pos, bundle.gridIntensity, true); pos += 8;
   out[pos++] = coordScaleLog2; // v58+
+  // v60+ flags, always written (bit clear for an ordinary bundle).
+  out[pos++] = omitImageBytes ? FILE_FLAG_IMAGE_BYTES_OMITTED : 0;
 
   // String table
   view.setUint16(pos, strings.length, true); pos += 2;
@@ -3225,6 +3285,7 @@ function serializeCompositionAt(
     const refNode = images.find(i => i.imageId === id || i.originalImageId === id)!;
     out[pos++] = imageMimeToByte(refNode.mimeType);
     view.setUint32(pos, bytes.length, true); pos += 4;
+    if (omitImageBytes) continue;
     out.set(bytes, pos); pos += bytes.length;
   }
 
@@ -3559,6 +3620,11 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
   }
   coordScale = 1 << coordScaleLog2;
 
+  // v60+ metadata flags. Written unconditionally from v60 on, so the byte
+  // is there to read whether or not any bit is set.
+  const fileFlags = version >= 60 ? data[pos++] : 0;
+  const imageBytesOmitted = (fileFlags & FILE_FLAG_IMAGE_BYTES_OMITTED) !== 0;
+
   // String table
   const stringCount = view.getUint16(pos, true); pos += 2;
   const decoder = new TextDecoder();
@@ -3808,6 +3874,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
   // Images + image bytes (v10+) â€” empty for older bundles.
   const images: ImageObject[] = [];
   const imageBlobs: Record<string, Uint8Array> = {};
+  const imageAssetRefs: ImageAssetRef[] = [];
   if (version >= 10 && pos < data.byteLength) {
     const imageCount = view.getUint16(pos, true); pos += 2;
     for (let i = 0; i < imageCount; i++) {
@@ -3818,8 +3885,19 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     const blobCount = view.getUint16(pos, true); pos += 2;
     for (let i = 0; i < blobCount; i++) {
       const imageIdIdx = view.getUint16(pos, true); pos += 2;
-      pos++; // mimeBit (already on the node; kept for forward-compat)
+      const mimeByte = data[pos]; pos++; // also on the node; kept for forward-compat
       const dataLen = view.getUint32(pos, true); pos += 4;
+      // A SPLIT document names its pixels and stops here (v60
+      // FILE_FLAG_IMAGE_BYTES_OMITTED) — the consumer resolves the id
+      // against its own asset store and fetches what it lacks.
+      if (imageBytesOmitted) {
+        imageAssetRefs.push({
+          imageId: strings[imageIdIdx],
+          mimeType: byteToImageMime(mimeByte),
+          byteLength: dataLen,
+        });
+        continue;
+      }
       const bytes = data.slice(pos, pos + dataLen); pos += dataLen;
       imageBlobs[strings[imageIdIdx]] = bytes;
     }
@@ -4094,6 +4172,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       svgObjects,
       images,
       imageBlobs,
+      ...(imageAssetRefs.length > 0 ? { imageAssetRefs } : {}),
       sceneOrder,
       nodeTransforms,
       customColors,

@@ -44,26 +44,33 @@ export function makeLayer(id: string, level: GridLevel = 0, order: number = 0): 
 
 /** Offset of the v58+ coordinate-scale byte: header (8) + the 43 metadata
  *  bytes before it (nameIdx, gridLevel, camera ×3, strokeScale,
- *  gridIntensity). */
+ *  gridIntensity). The v60+ flags byte follows it. */
 const COORD_SCALE_BYTE_AT = 8 + 43;
+const FILE_FLAGS_BYTE_AT = COORD_SCALE_BYTE_AT + 1;
+
+/** Cut one byte out of `bytes` at `at`. */
+function spliceByte(bytes: Uint8Array, at: number): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(bytes.length - 1);
+  out.set(bytes.subarray(0, at));
+  out.set(bytes.subarray(at + 1), at);
+  return out;
+}
 
 /**
  * Re-label a freshly serialized composition as an older format version —
  * the legacy-reader tests' trick for "a file an old build wrote" without
- * keeping fixtures. Pre-58 readers do not consume the coordinate-scale
- * byte v58 writes after gridIntensity, so for those targets it is spliced
- * out. The bytes are otherwise unchanged, so this is only faithful for
- * content the old reader decodes at the scale the writer chose: grid-snapped
- * geometry (whole and quarter cells), which stays at the gridLevel-derived
- * scale — every fixture these tests build.
+ * keeping fixtures. Older readers do not consume the metadata bytes later
+ * versions added after gridIntensity — v58's coordinate scale, v60's flags
+ * — so for those targets they are spliced out (the later one first, so the
+ * earlier offset still holds). The bytes are otherwise unchanged, so this is
+ * only faithful for content the old reader decodes at the scale the writer
+ * chose: grid-snapped geometry (whole and quarter cells), which stays at the
+ * gridLevel-derived scale — every fixture these tests build.
  */
 export function patchFormatVersion(bytes: Uint8Array, version: number): Uint8Array {
-  let out = bytes.slice();
-  if (version < 58) {
-    out = new Uint8Array(bytes.length - 1);
-    out.set(bytes.subarray(0, COORD_SCALE_BYTE_AT));
-    out.set(bytes.subarray(COORD_SCALE_BYTE_AT + 1), COORD_SCALE_BYTE_AT);
-  }
+  let out: Uint8Array<ArrayBuffer> = new Uint8Array(bytes);
+  if (version < 60) out = spliceByte(out, FILE_FLAGS_BYTE_AT);
+  if (version < 58) out = spliceByte(out, COORD_SCALE_BYTE_AT);
   new DataView(out.buffer, out.byteOffset, out.byteLength).setUint16(4, version, true);
   return out;
 }
