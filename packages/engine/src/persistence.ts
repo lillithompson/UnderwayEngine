@@ -11,6 +11,7 @@ import { deriveSceneOrderFromKindArrays, repairSceneOrder } from './compositionO
 import { normalizeStrokeScale } from './strokeScale';
 import { normalizeComposition } from './compositionNormalize';
 import { fromBase64, toBase64 } from './pngcodec';
+import { imageAssetKey, loadImageAssets, purgeImageAssets, rememberImageAsset } from './imageAssetStore';
 
 // ── Storage Keys ────────────────────────────────────────────────────
 
@@ -301,14 +302,13 @@ interface CompMeta {
   symmetryFrame?: { cellX: number; cellY: number; cellWidth: number; cellHeight: number };
 }
 
-/** Storage key for an image's raw bytes. Keyed by `imageId` only (not
- *  by composition id) so duplicates and cross-composition uses share
- *  the same blob. NOTE: nothing deletes these — deleteCompositionData
- *  removes only comp_meta_/comp_thumb_ keys, so orphaned image blobs
- *  accumulate until a janitor pass exists. */
-function imgBlobKey(imageId: string): string {
-  return `imgblob_${imageId}`;
-}
+/** Storage key for an image's raw bytes — see imageAssetStore, which owns
+ *  the key shape and the byte-budgeted cache in front of it. Keyed by
+ *  `imageId` only (not by composition id) so duplicates and
+ *  cross-composition uses share the same blob. NOTE: nothing deletes these —
+ *  deleteCompositionData removes only comp_meta_/comp_thumb_ keys, so
+ *  orphaned image blobs accumulate until a janitor pass exists. */
+const imgBlobKey = imageAssetKey;
 
 /** Storage key for a paint island's packed tile bytes. Keyed by the paint
  *  object's own id — unlike image blobs the bytes are MUTABLE (every stroke
@@ -614,6 +614,9 @@ export async function saveCompositionState(
           await storage.setBinary(imgBlobKey(id), bytes);
         }
         present.add(id);
+        // The editor holds these bytes already; hand them to the cache so
+        // the reload that follows a save is not a read (imageAssetStore).
+        rememberImageAsset(id, bytes, id === img.imageId ? 'display' : 'original');
       }
     }
   }
@@ -773,24 +776,22 @@ export async function loadCompositionState(
   // storage / partial copy) are silently skipped — the renderer will
   // log a warning and skip those wrappers, which is preferable to
   // throwing during composition open.
+  //
+  // DISPLAY copies only. The export master beside each one is ten times the
+  // bytes (~3.4 MB against ~340 KB for a phone photo) and the canvas never
+  // draws it — it renders the display copy. Hydrating both pinned ~3.79 MB
+  // per photo in the WebView's heap for the whole editing session, 91 % of
+  // it idle, and re-read every byte of it on each of the five to seven loads
+  // a journal tick used to do. Masters load on demand, on the export path
+  // alone (compositionExport's loadExportMasters), and are dropped as soon
+  // as the raster is encoded.
   const images: ImageObject[] = (parsed.images ?? []).map((img: any) => ({
     ...img,
     paintOverlay: migratePaintOverlay(img.paintOverlay),
   }));
-  const imageBlobs: Record<string, Uint8Array> = {};
-  if (images.length > 0) {
-    const fetched = new Set<string>();
-    // Rehydrate both the display blob and the original (when the node
-    // references one) so export can reach full resolution after a reload.
-    for (const img of images) {
-      for (const id of [img.imageId, img.originalImageId]) {
-        if (id == null || fetched.has(id)) continue;
-        fetched.add(id);
-        const bytes = await storage.getBinary(imgBlobKey(id));
-        if (bytes) imageBlobs[id] = bytes;
-      }
-    }
-  }
+  const imageBlobs = images.length > 0
+    ? await loadImageAssets(images.map((img) => img.imageId))
+    : {};
 
   // Hydrate paint island tiles from their per-object binary keys. A missing
   // or unreadable blob drops the object (an island with no tiles has nothing
@@ -1221,6 +1222,16 @@ export async function exportCompositionBundle(compId: string, opts?: Composition
 
   const figures = partial.figures;
 
+  // A `.tile` is self-contained, so it carries every copy of every photo —
+  // and a loaded composition holds display copies only. Pull the export
+  // masters back for the pack (imageAssetStore); nothing else in the session
+  // wants them, so they are dropped again once the bytes are in the payload.
+  const images = partial.images ?? [];
+  const imageBlobs = {
+    ...partial.imageBlobs,
+    ...await loadImageAssets(images.map((i) => i.originalImageId), 'original'),
+  };
+
   // Gather unique file IDs
   const figureFileIds = new Set<string>();
   for (const fig of figures) {
@@ -1258,8 +1269,8 @@ export async function exportCompositionBundle(compId: string, opts?: Composition
       svgObjects: partial.svgObjects ?? [],
       // Bundle reference images and their bytes inline so the .tile
       // file is self-contained — same model as embedded figure files.
-      images: partial.images ?? [],
-      imageBlobs: partial.imageBlobs ?? {},
+      images,
+      imageBlobs,
       texts: partial.texts ?? [],
       background: partial.background,
       paintObjects: partial.paintObjects ?? [],
@@ -1270,6 +1281,7 @@ export async function exportCompositionBundle(compId: string, opts?: Composition
     embeddedFiles,
   );
 
+  purgeImageAssets('original');
   return compressTile(payload);
 }
 

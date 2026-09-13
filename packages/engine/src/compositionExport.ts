@@ -1,6 +1,7 @@
 import { CompositionFigure, CompositionState, Paint, RGBColor, SVGObject } from './types';
 import type { PaintInk } from './imagePaintOverlay';
 import { loadCompositionState, loadFileStateLite, loadClipBox } from './persistence';
+import { loadImageAssets, purgeImageAssets } from './imageAssetStore';
 import { loadBakedFigurePng } from './bake';
 import { rasterizeSvgToImageDataUri, rasterizeSvgToJpegDataUri, rasterizeSvgToPngDataUri } from './svgRasterize';
 import {
@@ -395,6 +396,9 @@ async function exportCompositionRaster(
   const target = await prepareCompositionRaster(compId, maxDimension, strokeScale, options);
   if (!target) return null;
   const dataUri = await encode(target.svg, target.width, target.height);
+  // The masters this export may have pulled in are megabytes apiece and
+  // nothing else wants them — the bytes are already inside `target.svg`.
+  purgeImageAssets('original');
   return dataUri ? { dataUri, width: target.width, height: target.height } : null;
 }
 
@@ -519,6 +523,47 @@ export async function exportCompositionSVG(
 }
 
 /**
+ * The scene's blobs plus, when this export can actually use them, the export
+ * MASTERS its image nodes reference.
+ *
+ * A loaded composition holds display copies only (persistence's
+ * `loadCompositionState`): the master is ten times the bytes and the canvas
+ * never draws it, so pinning it for a whole editing session bought nothing.
+ * The export path is the one consumer that wants it, and only sometimes —
+ * `preferOriginalImages` is a pixel budget (compositionSVGCore's
+ * `rasterLongEdgePx`), so a 300 px card thumb needs no master at all.
+ *
+ * The filter here is the budget's cheap upper bound: a node draws at most
+ * the whole frame, so it cannot exceed its display copy unless the raster
+ * itself does. That reads zero masters for a thumbnail and every master a
+ * full-size view might sample, without having to know the frame — the
+ * generator's exact per-node check still decides which get used.
+ *
+ * Nothing is written back into the caller's state: the merged record lives
+ * for this one generate, and the masters are dropped from the cache as soon
+ * as the raster is encoded (see `exportCompositionRaster`).
+ */
+async function withExportMasters(
+  scene: Partial<CompositionState>,
+  options: CompositionExportOptions | undefined,
+): Promise<Record<string, Uint8Array>> {
+  const blobs = scene.imageBlobs ?? {};
+  if (!options?.preferOriginalImages) return blobs;
+  const rasterPx = options.rasterLongEdgePx;
+  const wanted: string[] = [];
+  for (const img of scene.images ?? []) {
+    const id = img.originalImageId;
+    if (id == null || blobs[id]) continue;
+    const displayEdge = Math.max(img.pixelWidth ?? 0, img.pixelHeight ?? 0);
+    // No raster size named (a real .svg file, drawn at any scale) → always.
+    if (rasterPx !== undefined && displayEdge > 0 && rasterPx <= displayEdge) continue;
+    wanted.push(id);
+  }
+  if (wanted.length === 0) return blobs;
+  return { ...blobs, ...await loadImageAssets(wanted, 'original') };
+}
+
+/**
  * {@link exportCompositionSVG} without the read: the same generator call,
  * the same host transform and the same defaults, driven from a composition
  * the caller already holds.
@@ -539,12 +584,13 @@ export async function exportCompositionSVGFromState(
   // The host's last word on how its own content draws (rig sketch vs
   // classic, say) — see setExportSceneTransform.
   const partial = exportSceneTransform ? exportSceneTransform(state) : state;
+  const imageBlobs = await withExportMasters(partial, options);
   return generateCompositionSVGCore({
     name: partial.name ?? 'composition',
     figures: partial.figures ?? [],
     svgObjects: partial.svgObjects ?? [],
     images: partial.images ?? [],
-    imageBlobs: partial.imageBlobs ?? {},
+    imageBlobs,
     texts: partial.texts ?? [],
     background: partial.background,
     paintObjects: partial.paintObjects,
