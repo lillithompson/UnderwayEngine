@@ -478,6 +478,46 @@ describe('generateCompositionSVGCore — prefers the original blob on export', (
     }));
     expect(svg).toContain(displayB64);
   });
+
+  // The pixel budget (rasterLongEdgePx): the master is only worth its ~10x
+  // bytes and its 4096² decode when the export actually draws the photo
+  // bigger than the display copy already is. A 300 px card thumb never does.
+  describe('rasterLongEdgePx — the master is a budget, not a switch', () => {
+    // The node is 8 of the page's 32 cells across, so it draws at a quarter
+    // of the raster's long edge; its display copy is 1024 px on the long
+    // edge (MAX_EDGE_PX). The crossover is therefore a 4096 px raster.
+    const photo = makeImage({
+      imageId: 'blob_d', originalImageId: 'blob_o',
+      pixelWidth: 1024, pixelHeight: 1024,
+    });
+    const page = { images: [photo], imageBlobs, preferOriginalImages: true };
+
+    it('a small raster keeps the display copy even with preferOriginalImages on', async () => {
+      const svg = await generateCompositionSVGCore(makeInputs({ ...page, rasterLongEdgePx: 300 }));
+      expect(svg).toContain(displayB64);
+      expect(svg).not.toContain(originalB64);
+    });
+
+    it('a raster that draws the node larger than its display copy takes the master', async () => {
+      const svg = await generateCompositionSVGCore(makeInputs({ ...page, rasterLongEdgePx: 8192 }));
+      expect(svg).toContain(originalB64);
+      expect(svg).not.toContain(displayB64);
+    });
+
+    it('no raster size named (a real .svg file) still takes the master', async () => {
+      const svg = await generateCompositionSVGCore(makeInputs(page));
+      expect(svg).toContain(originalB64);
+    });
+
+    it('a node with no recorded display size takes the master rather than guessing', async () => {
+      const svg = await generateCompositionSVGCore(makeInputs({
+        ...page,
+        images: [makeImage({ imageId: 'blob_d', originalImageId: 'blob_o', pixelWidth: 0, pixelHeight: 0 })],
+        rasterLongEdgePx: 300,
+      }));
+      expect(svg).toContain(originalB64);
+    });
+  });
 });
 
 describe('generateCompositionSVGCore — canvas background', () => {

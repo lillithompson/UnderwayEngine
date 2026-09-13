@@ -99,8 +99,20 @@ export interface CompositionExportOptions {
   fontResolver?: SVGFontResolver;
   /** Emit images from their full-resolution `originalImageId` copy. Set for
    *  real file exports; leave off for thumbnails/previews (see
-   *  {@link CompositionSVGInputs.preferOriginalImages}). */
+   *  {@link CompositionSVGInputs.preferOriginalImages}).
+   *
+   *  On a RASTER export it is a budget rather than a switch: the raster
+   *  exporters below pass their own long edge as
+   *  {@link CompositionSVGInputs.rasterLongEdgePx}, so a 300 px thumbnail of
+   *  a photo page samples the display copy even with this on, and only a
+   *  raster that genuinely draws the photo larger than its display copy pays
+   *  for the master. */
   preferOriginalImages?: boolean;
+  /** The raster's long edge in pixels — see
+   *  {@link CompositionSVGInputs.rasterLongEdgePx}. Set by the raster
+   *  exporters from their own `maxDimension`; a caller generating SVG for a
+   *  file leaves it off. */
+  rasterLongEdgePx?: number;
   /** Export a CUTOUT — only the selected objects, framed tightly on them, on a
    *  transparent canvas. See {@link CompositionSVGInputs.subset}. Pair with
    *  {@link exportCompositionPNG}: JPEG has no alpha, so a cutout exported as
@@ -161,6 +173,22 @@ export interface CompositionExportOptions {
    *  For content-framed exports, where the bare geometry slices boundary
    *  strokes in half. */
   frameInkExtents?: boolean;
+  /**
+   * A composition ALREADY LOADED, used instead of reading the record by id.
+   *
+   * One journal tick draws the same page four or five times over — card
+   * thumb, full-screen view, seed reveal, Today cutout — and each by-id
+   * export used to re-enter {@link loadCompositionState}, which re-reads
+   * every image blob out of IndexedDB across the structured-clone boundary.
+   * For a page with three photos that was tens of megabytes of reads per
+   * tick, for a record that had not changed between the first call and the
+   * last. Load once, pass it here, and the rest is free.
+   *
+   * It must be the load the exports would have done themselves — same id,
+   * same {@link normalize} — because nothing here can check that. `normalize`
+   * is then only about how the CALLER loaded it.
+   */
+  scene?: Partial<CompositionState>;
 }
 
 /**
@@ -248,13 +276,56 @@ function svgAtRasterSize(svg: string, width: number, height: number): string {
  *
  * The SVG comes back sized to those dimensions — see {@link svgAtRasterSize}.
  */
-async function exportCompositionRasterTarget(
+/**
+ * A composition FRAMED AND READY TO ENCODE: the SVG document, already
+ * re-headed to the pixel box it is about to be drawn into, and that box.
+ *
+ * It is a separate step from encoding because the encode can need doing
+ * twice. An export drawn to fit a byte cap (entryRaster's `exportUnderCap`)
+ * overshoots and draws again smaller — and the two attempts differ in
+ * NOTHING but the root `width`/`height`. Re-entering the by-id export for
+ * the retry re-read the record, re-hydrated every photo, and rebuilt the
+ * whole base64'd string to produce a document identical to the one already
+ * in hand. Prepare once, {@link resizePreparedRaster}, encode again.
+ */
+export interface PreparedRaster {
+  svg: string;
+  width: number;
+  height: number;
+  /** The long edge the document is currently headed at, which is what the
+   *  caller asked for — `width` or `height`, whichever the aspect made
+   *  larger. Saves the caller re-deriving it to step the retry down. */
+  longEdge: number;
+}
+
+/** The pixel box `maxDimension` gives a document of this aspect: the long
+ *  edge is `maxDimension`, the short one follows. */
+function rasterBoxFor(svgW: number, svgH: number, maxDimension: number): { width: number; height: number } {
+  return svgW >= svgH
+    ? { width: Math.round(maxDimension), height: Math.round(maxDimension * (svgH / svgW)) }
+    : { height: Math.round(maxDimension), width: Math.round(maxDimension * (svgW / svgH)) };
+}
+
+/**
+ * Frame a composition for a raster of at most `maxDimension` px on the long
+ * edge: generate its SVG, read the aspect off the document, and re-head it at
+ * the pixel box that fits. Null when there is nothing to draw.
+ *
+ * Exported for callers that encode more than once from one document — see
+ * {@link PreparedRaster}. The ordinary exporters below go through it too, so
+ * there is one framing rule rather than two.
+ */
+export async function prepareCompositionRaster(
   compId: string,
   maxDimension: number,
   strokeScale?: number,
   options?: CompositionExportOptions,
-): Promise<{ svg: string; width: number; height: number } | null> {
-  const svg = await exportCompositionSVG(compId, undefined, strokeScale, options);
+): Promise<PreparedRaster | null> {
+  // The raster's long edge IS the export's pixel budget for image masters
+  // (rasterLongEdgePx) — a caller-supplied value would be a second answer to
+  // the same question, so this one wins.
+  const svg = await exportCompositionSVG(
+    compId, undefined, strokeScale, { ...options, rasterLongEdgePx: maxDimension });
   if (!svg) return null;
 
   // Parse SVG width/height to preserve aspect ratio
@@ -264,16 +335,43 @@ async function exportCompositionRasterTarget(
   const svgH = hMatch ? parseFloat(hMatch[1]) : 0;
   if (svgW <= 0 || svgH <= 0) return null;
 
-  let width: number;
-  let height: number;
-  if (svgW >= svgH) {
-    width = Math.round(maxDimension);
-    height = Math.round(maxDimension * (svgH / svgW));
-  } else {
-    height = Math.round(maxDimension);
-    width = Math.round(maxDimension * (svgW / svgH));
-  }
-  return { svg: svgAtRasterSize(svg, width, height), width, height };
+  const { width, height } = rasterBoxFor(svgW, svgH, maxDimension);
+  return { svg: svgAtRasterSize(svg, width, height), width, height, longEdge: maxDimension };
+}
+
+/**
+ * The same document re-headed for a SMALLER (or larger) raster — the retry
+ * of an export that overshot its byte cap.
+ *
+ * Only the root width/height move; the drawing is untouched, so this is a
+ * string splice rather than a re-render. One thing it deliberately does NOT
+ * redo is the image-master budget (`rasterLongEdgePx`): a document prepared
+ * for 2160 px keeps the master a 1080 px retry would not have asked for.
+ * That costs the retry a larger decode, never fidelity — and it is the whole
+ * point, since re-deciding would mean re-reading and re-encoding every photo.
+ */
+export function resizePreparedRaster(prepared: PreparedRaster, maxDimension: number): PreparedRaster {
+  const { width, height } = rasterBoxFor(prepared.width, prepared.height, maxDimension);
+  return {
+    svg: svgAtRasterSize(prepared.svg, width, height),
+    width,
+    height,
+    longEdge: maxDimension,
+  };
+}
+
+/** Encode a prepared raster as the image its pixels call for — PNG where the
+ *  frame has any transparency, JPEG at `jpegQuality` where it is opaque. The
+ *  encode half of {@link exportCompositionImageSized}, for a caller driving
+ *  the two halves itself. */
+export function encodePreparedImage(prepared: PreparedRaster, jpegQuality: number): Promise<string | null> {
+  return rasterizeSvgToImageDataUri(prepared.svg, prepared.width, prepared.height, jpegQuality);
+}
+
+/** Encode a prepared raster as a PNG, alpha intact — the encode half of
+ *  {@link exportCompositionPNGSized}. */
+export function encodePreparedPNG(prepared: PreparedRaster): Promise<string | null> {
+  return rasterizeSvgToPngDataUri(prepared.svg, prepared.width, prepared.height);
 }
 
 /** A raster export together with the pixel dimensions it was drawn at, for
@@ -294,7 +392,7 @@ async function exportCompositionRaster(
   options: CompositionExportOptions | undefined,
   encode: (svg: string, width: number, height: number) => Promise<string | null>,
 ): Promise<SizedRasterExport | null> {
-  const target = await exportCompositionRasterTarget(compId, maxDimension, strokeScale, options);
+  const target = await prepareCompositionRaster(compId, maxDimension, strokeScale, options);
   if (!target) return null;
   const dataUri = await encode(target.svg, target.width, target.height);
   return dataUri ? { dataUri, width: target.width, height: target.height } : null;
@@ -412,14 +510,35 @@ export async function exportCompositionSVG(
   strokeScale?: number,
   options?: CompositionExportOptions,
 ): Promise<string | null> {
-  const loaded = await loadCompositionState(
+  const loaded = options?.scene ?? await loadCompositionState(
     compId,
     options?.normalize === undefined ? undefined : { normalize: options.normalize },
   );
   if (!loaded) return null;
+  return exportCompositionSVGFromState(loaded, strokeScale, options, cancelled);
+}
+
+/**
+ * {@link exportCompositionSVG} without the read: the same generator call,
+ * the same host transform and the same defaults, driven from a composition
+ * the caller already holds.
+ *
+ * It is the body of the by-id wrapper above, exported because a caller that
+ * draws ONE page several ways — the journal's tick: thumb, view, reveal,
+ * cutout — should pay for one hydration rather than one per picture (the
+ * blobs are megabytes; the JSON is not). Callers that go through the raster
+ * exporters get the same saving by passing
+ * {@link CompositionExportOptions.scene}.
+ */
+export async function exportCompositionSVGFromState(
+  state: Partial<CompositionState>,
+  strokeScale?: number,
+  options?: CompositionExportOptions,
+  cancelled?: () => boolean,
+): Promise<string | null> {
   // The host's last word on how its own content draws (rig sketch vs
   // classic, say) — see setExportSceneTransform.
-  const partial = exportSceneTransform ? exportSceneTransform(loaded) : loaded;
+  const partial = exportSceneTransform ? exportSceneTransform(state) : state;
   return generateCompositionSVGCore({
     name: partial.name ?? 'composition',
     figures: partial.figures ?? [],
@@ -432,6 +551,7 @@ export async function exportCompositionSVG(
     patternObjects: partial.patternObjects,
     fontResolver: options?.fontResolver ?? defaultFontResolver,
     preferOriginalImages: options?.preferOriginalImages,
+    rasterLongEdgePx: options?.rasterLongEdgePx,
     subset: options?.subset,
     textColorOverride: options?.textColorOverride,
     strokeColorOverride: options?.strokeColorOverride,

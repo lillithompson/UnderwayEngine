@@ -1,6 +1,7 @@
 import { ImageObject } from './types';
 import { compSnapStep } from './compositionCellMath';
 import { canvasHasTransparency } from './canvasAlpha';
+import { imageHeaderSize } from './imageHeaderSize';
 
 /**
  * Reference-image import pipeline. Decodes a picked PNG/JPG (a picked SVG
@@ -177,23 +178,35 @@ export function svgNominalPixelSize(svgText: string): { width: number; height: n
 async function decodeAndDownsample(
   blob: Blob,
   maxEdge: number = MAX_EDGE_PX,
+  sourceBytes?: Uint8Array,
 ): Promise<{ bitmap: ImageBitmap; width: number; height: number }> {
-  // First decode at native resolution so we can read intrinsic dims
-  // and decide the resize ratio. Skipping this step (decoding directly
-  // with resizeWidth/Height) means we'd have to know the target
-  // dimensions in advance, which we don't.
-  const native = await createImageBitmap(blob);
-  const longest = Math.max(native.width, native.height);
+  // The intrinsic size decides the resize ratio, and the HEADER carries it
+  // (imageHeaderSize) — a few dozen bytes rather than a full decode of a
+  // 12 MP photo (~48 MB of RGBA) read for two numbers and dropped. Only a
+  // source whose header cannot be read falls back to decoding for it, which
+  // is what this used to do unconditionally.
+  const declared = sourceBytes ? imageHeaderSize(sourceBytes) : null;
+  let native: ImageBitmap | null = null;
+  let srcW: number;
+  let srcH: number;
+  if (declared) {
+    srcW = declared.width;
+    srcH = declared.height;
+  } else {
+    native = await createImageBitmap(blob);
+    srcW = native.width;
+    srcH = native.height;
+  }
+  const longest = Math.max(srcW, srcH);
   if (longest <= maxEdge) {
+    native ??= await createImageBitmap(blob);
     return { bitmap: native, width: native.width, height: native.height };
   }
   const scale = maxEdge / longest;
-  const targetW = Math.max(1, Math.round(native.width * scale));
-  const targetH = Math.max(1, Math.round(native.height * scale));
-  // Re-decode (or copy) at the target size. We use createImageBitmap on
-  // the original blob a second time when the platform supports it; the
-  // first decode is then GC'd quickly. On platforms where resizeWidth
-  // is silently ignored, fall back to drawing through OffscreenCanvas.
+  const targetW = Math.max(1, Math.round(srcW * scale));
+  const targetH = Math.max(1, Math.round(srcH * scale));
+  // Decode at the target size. On platforms where resizeWidth is silently
+  // ignored, fall back to drawing a full-size decode through OffscreenCanvas.
   try {
     const resized = await createImageBitmap(blob, {
       resizeWidth: targetW,
@@ -201,13 +214,14 @@ async function decodeAndDownsample(
       resizeQuality: 'high',
     });
     if (resized.width === targetW && resized.height === targetH) {
-      native.close?.();
+      native?.close?.();
       return { bitmap: resized, width: targetW, height: targetH };
     }
     resized.close?.();
   } catch {
     // fall through to canvas resize
   }
+  native ??= await createImageBitmap(blob);
   const canvas = new OffscreenCanvas(targetW, targetH);
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('OffscreenCanvas 2d context unavailable');
@@ -252,12 +266,28 @@ async function prepareScaledEncoding(
   sourceBlob: Blob,
   maxEdge: number,
   forceAlpha?: boolean,
+  sourceBytes?: Uint8Array,
 ): Promise<{ bytes: Uint8Array; mimeType: 'image/png' | 'image/jpeg'; width: number; height: number; hasAlpha: boolean }> {
-  const { bitmap, width, height } = await decodeAndDownsample(sourceBlob, maxEdge);
+  const { bitmap, width, height } = await decodeAndDownsample(sourceBlob, maxEdge, sourceBytes);
   const hasAlpha = forceAlpha ?? bitmapHasAlpha(bitmap);
   const { bytes, mimeType } = await reencodeBitmap(bitmap, width, height, hasAlpha);
   bitmap.close?.();
   return { bytes, mimeType, width, height, hasAlpha };
+}
+
+/**
+ * The alpha answer a source's FORMAT already settles, or undefined when it
+ * has to be looked for. A JPEG has no alpha channel — there is nothing for
+ * {@link bitmapHasAlpha} to find, and finding it costs a full-size draw into
+ * an OffscreenCanvas plus a banded read of every pixel of a 4096 px bitmap.
+ *
+ * Sniffed off the bytes, not off the picker's mime, which is routinely absent
+ * or wrong. Anything else — PNG, or a header this cannot read — is left to
+ * the scan: a PNG usually does carry alpha, and guessing wrong there turns a
+ * transparent import opaque for good.
+ */
+function alphaFromSource(bytes: Uint8Array): boolean | undefined {
+  return bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xd8 ? false : undefined;
 }
 
 /**
@@ -331,11 +361,12 @@ export async function prepareImageReplacement(
     };
   }
   const sourceBlob = new Blob([rawBytes as BlobPart], { type: sourceMimeType });
-  const original = await prepareScaledEncoding(sourceBlob, ORIGINAL_MAX_EDGE_PX);
+  const sourceAlpha = alphaFromSource(rawBytes);
+  const original = await prepareScaledEncoding(sourceBlob, ORIGINAL_MAX_EDGE_PX, sourceAlpha, rawBytes);
   const needsSeparateOriginal =
     Math.max(original.width, original.height) > MAX_EDGE_PX;
   const display = needsSeparateOriginal
-    ? await prepareScaledEncoding(sourceBlob, MAX_EDGE_PX, original.hasAlpha)
+    ? await prepareScaledEncoding(sourceBlob, MAX_EDGE_PX, original.hasAlpha, rawBytes)
     : original;
   const result: ImageReplacementResult = {
     imageId: mintImageId(),
@@ -396,12 +427,15 @@ export async function prepareImageImport(
   // Encode the export-quality original first, then the display copy. When the
   // source already fits the display cap the two are identical, so we skip the
   // second decode and store no separate original. The display copy is pinned
-  // to the original's alpha decision so their mime types can't diverge.
-  const original = await prepareScaledEncoding(sourceBlob, ORIGINAL_MAX_EDGE_PX);
+  // to the original's alpha decision so their mime types can't diverge — and
+  // a JPEG source settles that decision outright (alphaFromSource), so
+  // neither pass scans a 4096 px bitmap for transparency it cannot hold.
+  const sourceAlpha = alphaFromSource(rawBytes);
+  const original = await prepareScaledEncoding(sourceBlob, ORIGINAL_MAX_EDGE_PX, sourceAlpha, rawBytes);
   const needsSeparateOriginal =
     Math.max(original.width, original.height) > MAX_EDGE_PX;
   const display = needsSeparateOriginal
-    ? await prepareScaledEncoding(sourceBlob, MAX_EDGE_PX, original.hasAlpha)
+    ? await prepareScaledEncoding(sourceBlob, MAX_EDGE_PX, original.hasAlpha, rawBytes)
     : original;
 
   const bbox = placementBbox(display.width, display.height, centerCellX, centerCellY, gridLevel ?? 0);

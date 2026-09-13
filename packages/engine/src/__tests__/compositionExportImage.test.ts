@@ -73,3 +73,47 @@ describe('exportCompositionImageSized', () => {
     expect(await exportCompositionImage('img1', 640, 0.9, undefined, { normalize: false })).toBe('data:image/png;base64,AA==');
   });
 });
+
+// The export master is a PIXEL BUDGET, not a switch (compositionSVGCore's
+// rasterLongEdgePx): the raster exporters hand the generator their own long
+// edge, so a card thumbnail of a photo page samples the ~340 KB display copy
+// rather than base64-ing a ~3.4 MB master into the string and asking WebKit
+// to decode 4096² RGBA to sample it down to 300 px.
+describe('the export master, against the raster actually being drawn', () => {
+  const display = new Uint8Array([1, 2, 3, 4]);
+  const original = new Uint8Array([9, 8, 7, 6, 5, 4, 3, 2]);
+  const displayB64 = Buffer.from(display).toString('base64');
+  const originalB64 = Buffer.from(original).toString('base64');
+
+  beforeEach(() => {
+    // One photo filling the canonical 32-cell box, display copy 1024 px.
+    storage['comp_meta_photo'] = JSON.stringify({
+      name: 'Photo',
+      figures: [],
+      images: [{
+        id: 'img_a', imageId: 'blob_d', originalImageId: 'blob_o',
+        mimeType: 'image/jpeg', pixelWidth: 1024, pixelHeight: 1024,
+        cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+      }],
+      camera: { offsetX: 0, offsetY: 0, zoom: 1 },
+      strokeScale: 0.04, gridIntensity: 0.5,
+    });
+    storage['imgblob_blob_d'] = display;
+    storage['imgblob_blob_o'] = original;
+    rasterizeSvgToImageDataUri.mockResolvedValue('data:image/jpeg;base64,AA==');
+  });
+
+  it('a 300 px thumb of a page with a master present references the DISPLAY blob', async () => {
+    await exportCompositionImageSized('photo', 300, 0.9, undefined, { preferOriginalImages: true });
+    const svg = rasterizeSvgToImageDataUri.mock.calls[0][0] as string;
+    expect(svg).toContain(displayB64);
+    expect(svg).not.toContain(originalB64);
+  });
+
+  it('a 2160 px view of the same page references the MASTER', async () => {
+    await exportCompositionImageSized('photo', 2160, 0.9, undefined, { preferOriginalImages: true });
+    const svg = rasterizeSvgToImageDataUri.mock.calls[0][0] as string;
+    expect(svg).toContain(originalB64);
+    expect(svg).not.toContain(displayB64);
+  });
+});

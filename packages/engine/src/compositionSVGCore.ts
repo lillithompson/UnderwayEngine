@@ -304,8 +304,31 @@ export interface CompositionSVGInputs {
   /** When true, emit each image from its higher-resolution `originalImageId`
    *  blob (falling back to `imageId` when absent). Off by default so cheap
    *  consumers — thumbnails, previews — keep rasterizing the small display
-   *  blob; real file exports (SVG/PNG/zip) turn it on for full fidelity. */
+   *  blob; real file exports (SVG/PNG/zip) turn it on for full fidelity.
+   *
+   *  Pair it with {@link rasterLongEdgePx}: the flag then reads as "full
+   *  fidelity for the pixels this export actually draws" rather than
+   *  "always the master". */
   preferOriginalImages?: boolean;
+  /**
+   * The long edge, in pixels, of the raster this SVG is about to be drawn
+   * into — which turns {@link preferOriginalImages} from a boolean into a
+   * BUDGET: a node whose drawn size in that raster is no bigger than its own
+   * display copy is emitted from the display copy, master or no master.
+   *
+   * The master is the expensive half of an image by an order of magnitude
+   * (ORIGINAL_MAX_EDGE_PX 4096 vs MAX_EDGE_PX 1024 — ~3.4 MB against
+   * ~340 KB for a phone photo), and it costs three times over: the bytes are
+   * base64'd into this string at 4/3 size, the string is copied again into
+   * the rasterizer's <img>, and WebKit then decodes 4096² RGBA — ~67 MB of
+   * IOSurface — to sample it down. Doing that for a 300 px card thumbnail
+   * was the single most disproportionate call in the export path.
+   *
+   * Omit it for an export with no raster size (a real .svg file, whose
+   * consumer may draw it at any scale): every image then takes the master,
+   * exactly as before.
+   */
+  rasterLongEdgePx?: number;
   /** Resolves a figure's layer/dimension/clipBox data by `fileId`. May be
    *  async (browser path threads through IndexedDB) or effectively sync
    *  (a Node caller can pre-deserialize embedded files into memory and
@@ -315,6 +338,32 @@ export interface CompositionSVGInputs {
    *  threads through `bake.ts::loadBakedFigurePng` (a legacy-only read —
    *  see bake.ts); omitting it skips asset figures silently. */
   loadBakedFigurePng?: (fig: CompositionFigure) => Promise<string | null>;
+}
+
+/**
+ * Would sampling this node's export MASTER put more pixels on the raster than
+ * its display copy already carries?
+ *
+ * `pxPerUnit` is the output raster's pixels per SVG unit (null when the
+ * export named no raster size — then the answer is always yes, because the
+ * consumer may draw the document at any scale). `drawnUnits` is the node's
+ * longer drawn edge in SVG units.
+ *
+ * The display copy's own longer edge is the yardstick, read off the node
+ * (`pixelWidth`/`pixelHeight` record the DISPLAY bytes' dimensions — see
+ * compositionImageImport). A node whose drawn edge lands inside that is
+ * already at or above 1:1 from the small blob, and the master would only be
+ * decoded at 4096² to be thrown away.
+ */
+export function drawsAboveDisplayCopy(
+  img: Pick<ImageObject, 'pixelWidth' | 'pixelHeight'>,
+  pxPerUnit: number | null,
+  drawnUnits: number,
+): boolean {
+  if (pxPerUnit === null) return true;
+  const displayEdge = Math.max(img.pixelWidth ?? 0, img.pixelHeight ?? 0);
+  if (!(displayEdge > 0)) return true;
+  return drawnUnits * pxPerUnit > displayEdge;
 }
 
 /** Escape text content / attribute values for XML. */
@@ -1208,20 +1257,33 @@ export async function generateCompositionSVGCore(
   // preserved as the fallback when `sceneOrder` is absent.
   const elementsById = new Map<string, string>();
 
+  // Output pixels per SVG unit, for the pixel budget behind
+  // `preferOriginalImages` (see rasterLongEdgePx). The raster's LONG edge is
+  // the frame's long edge, so one ratio serves both axes. Null when the
+  // caller named no raster size — then every image is drawn "as large as it
+  // gets" and the master always wins, which is right for an .svg file.
+  const frameLongEdge = Math.max(bboxW, bboxH);
+  const pxPerUnit = input.rasterLongEdgePx && frameLongEdge > 0
+    ? input.rasterLongEdgePx / frameLongEdge
+    : null;
+
   for (const img of images) {
     if (cancelled?.()) return null;
-    // Real exports prefer the higher-res original; thumbnails/previews keep
-    // the small display blob. Fall back to the display blob whenever the
-    // original is absent (old saves, or a source that already fit the cap).
-    const bytes = (input.preferOriginalImages && img.originalImageId
-      ? imageBlobs[img.originalImageId]
-      : undefined) ?? imageBlobs[img.imageId];
-    if (!bytes) continue;
-    const dataUri = `data:${img.mimeType};base64,${toBase64(bytes)}`;
     const ix = img.cellX * U;
     const iy = img.cellY * U;
     const iw = img.cellWidth * U;
     const ih = img.cellHeight * U;
+    // Real exports prefer the higher-res original; thumbnails/previews keep
+    // the small display blob. Fall back to the display blob whenever the
+    // original is absent (old saves, or a source that already fit the cap) —
+    // and whenever the master would buy nothing, because this export draws
+    // the node no larger than its display copy already is (rasterLongEdgePx).
+    const bytes = (input.preferOriginalImages && img.originalImageId
+      && drawsAboveDisplayCopy(img, pxPerUnit, Math.max(iw, ih))
+      ? imageBlobs[img.originalImageId]
+      : undefined) ?? imageBlobs[img.imageId];
+    if (!bytes) continue;
+    const dataUri = `data:${img.mimeType};base64,${toBase64(bytes)}`;
     const cx = iw / 2;
     const cy = ih / 2;
     const parts: string[] = [`translate(${ix}, ${iy})`];

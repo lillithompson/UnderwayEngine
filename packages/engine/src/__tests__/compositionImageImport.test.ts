@@ -171,3 +171,165 @@ describe('SVG import sources', () => {
     });
   });
 });
+
+// ── The raster path: decodes it does, and decodes it doesn't ──────────
+//
+// The pipeline's cost is decodes, and it used to do four per picked photo —
+// two of them at full resolution — plus a full-size alpha scan per scale.
+// These drive it against fakes for the two environment APIs it needs
+// (`createImageBitmap`, `OffscreenCanvas`) and count the work.
+
+/** A PNG header declaring `w`×`h`: signature, IHDR length/type, then the
+ *  two big-endian u32s. Nothing past the header matters here. */
+function pngHeader(w: number, h: number): Uint8Array {
+  const bytes = new Uint8Array(33);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  new DataView(bytes.buffer).setUint32(8, 13, false);
+  bytes.set([0x49, 0x48, 0x44, 0x52], 12); // 'IHDR'
+  new DataView(bytes.buffer).setUint32(16, w, false);
+  new DataView(bytes.buffer).setUint32(20, h, false);
+  return bytes;
+}
+
+/** A JPEG header declaring `w`×`h`: SOI, an APP0 segment to step over, then
+ *  a baseline SOF0 carrying the size. */
+function jpegHeader(w: number, h: number): Uint8Array {
+  const bytes = new Uint8Array([
+    0xff, 0xd8,
+    0xff, 0xe0, 0x00, 0x04, 0x00, 0x00,             // APP0, length 4
+    0xff, 0xc0, 0x00, 0x11, 0x08, 0, 0, 0, 0,       // SOF0, length 17, 8-bit
+    0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
+  ]);
+  const view = new DataView(bytes.buffer);
+  view.setUint16(13, h, false);
+  view.setUint16(15, w, false);
+  return bytes;
+}
+
+interface FakeEnv {
+  /** Every `createImageBitmap` call: the size it was asked for, or null when
+   *  it was asked for a NATIVE (full-resolution) decode. */
+  decodes: (({ width: number; height: number } | null))[];
+  /** How many times a canvas was read for transparency. */
+  alphaScans: number;
+}
+
+/** Install fakes for the two environment APIs the raster path uses, sized so
+ *  a native decode reports `nativeW`×`nativeH`. Returns the work log. */
+function installFakeDecoder(nativeW: number, nativeH: number): FakeEnv {
+  const env: FakeEnv = { decodes: [], alphaScans: 0 };
+  const g = globalThis as Record<string, unknown>;
+  g.createImageBitmap = async (src: unknown, opts?: { resizeWidth?: number; resizeHeight?: number }) => {
+    // A re-decode of an OffscreenCanvas is the platform fallback path, not a
+    // decode of the source; it reports the canvas's own size.
+    const fromCanvas = typeof src === 'object' && src !== null && 'width' in (src as object)
+      && !(typeof Blob !== 'undefined' && src instanceof Blob);
+    if (fromCanvas) {
+      const c = src as { width: number; height: number };
+      return { width: c.width, height: c.height, close: () => {} };
+    }
+    if (opts?.resizeWidth && opts?.resizeHeight) {
+      env.decodes.push({ width: opts.resizeWidth, height: opts.resizeHeight });
+      return { width: opts.resizeWidth, height: opts.resizeHeight, close: () => {} };
+    }
+    env.decodes.push(null);
+    return { width: nativeW, height: nativeH, close: () => {} };
+  };
+  class FakeOffscreenCanvas {
+    width: number;
+    height: number;
+    constructor(width: number, height: number) { this.width = width; this.height = height; }
+    getContext(): unknown {
+      return {
+        drawImage: () => {},
+        getImageData: (_x: number, _y: number, w: number, h: number) => {
+          env.alphaScans++;
+          // Fully opaque, so the scan has to read every band to say so.
+          const data = new Uint8ClampedArray(w * h * 4).fill(255);
+          return { data };
+        },
+      };
+    }
+    convertToBlob(opts?: { type?: string }): Promise<Blob> {
+      return Promise.resolve(new Blob([new Uint8Array([1, 2, 3])], { type: opts?.type ?? 'image/png' }));
+    }
+  }
+  g.OffscreenCanvas = FakeOffscreenCanvas;
+  return env;
+}
+
+describe('the import pipeline reads the source size from its HEADER', () => {
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).createImageBitmap;
+    delete (globalThis as Record<string, unknown>).OffscreenCanvas;
+  });
+
+  it('a photo above both caps decodes ONCE PER SCALE and never at full resolution', async () => {
+    // 6000×4500: a 4096 master and a 1024 display copy, each decoded
+    // straight to the size wanted. It used to be four decodes — every scale
+    // preceded by a throwaway full-resolution one read for two numbers.
+    const env = installFakeDecoder(6000, 4500);
+    const out = await prepareImageImport(jpegHeader(6000, 4500), 'image/jpeg', 0, 0);
+    expect(env.decodes).toEqual([
+      { width: 4096, height: 3072 },
+      { width: 1024, height: 768 },
+    ]);
+    expect(env.decodes).not.toContain(null);
+    expect(out.image.pixelWidth).toBe(1024);
+    expect(out.image.pixelHeight).toBe(768);
+    expect(out.originalBytes).toBeDefined();
+  });
+
+  it('a photo inside the master cap decodes it once, and the display copy straight to size', async () => {
+    // 4000×3000 fits ORIGINAL_MAX_EDGE_PX, so the master IS the native
+    // decode — there is no smaller size to ask for. The display copy still
+    // skips the second one (two decodes, where it used to be three).
+    const env = installFakeDecoder(4000, 3000);
+    await prepareImageImport(jpegHeader(4000, 3000), 'image/jpeg', 0, 0);
+    expect(env.decodes).toEqual([null, { width: 1024, height: 768 }]);
+  });
+
+  it('a JPEG source is never scanned for alpha it cannot hold', async () => {
+    // bitmapHasAlpha draws the whole bitmap into an OffscreenCanvas and reads
+    // every pixel back — ~64 MB of RGBA for a 4096 px master, to discover
+    // what the format already guarantees.
+    const env = installFakeDecoder(4000, 3000);
+    const out = await prepareImageImport(jpegHeader(4000, 3000), 'image/jpeg', 0, 0);
+    expect(env.alphaScans).toBe(0);
+    expect(out.image.mimeType).toBe('image/jpeg');
+  });
+
+  it('a PNG source IS scanned — its alpha is a real question', async () => {
+    const env = installFakeDecoder(4000, 3000);
+    const out = await prepareImageImport(pngHeader(4000, 3000), 'image/png', 0, 0);
+    expect(env.alphaScans).toBeGreaterThan(0);
+    // Opaque throughout, per the fake, so it re-encodes as JPEG.
+    expect(out.image.mimeType).toBe('image/jpeg');
+  });
+
+  it('falls back to a native decode when the header cannot be read', async () => {
+    const env = installFakeDecoder(4000, 3000);
+    await prepareImageImport(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), 'image/jpeg', 0, 0);
+    expect(env.decodes[0]).toBeNull();
+  });
+
+  it('a source already inside the display cap keeps one copy and one decode', async () => {
+    const env = installFakeDecoder(800, 600);
+    const out = await prepareImageImport(jpegHeader(800, 600), 'image/jpeg', 0, 0);
+    expect(out.originalBytes).toBeUndefined();
+    expect(out.image.originalImageId).toBeUndefined();
+    // Under both caps, so nothing is resized: one native decode, reused.
+    expect(env.decodes).toEqual([null]);
+  });
+
+  it('the replacement pipeline reads the header too', async () => {
+    const env = installFakeDecoder(6000, 4500);
+    const out = await prepareImageReplacement(jpegHeader(6000, 4500), 'image/jpeg');
+    expect(env.decodes).toEqual([
+      { width: 4096, height: 3072 },
+      { width: 1024, height: 768 },
+    ]);
+    expect(env.alphaScans).toBe(0);
+    expect(out.pixelWidth).toBe(1024);
+  });
+});
