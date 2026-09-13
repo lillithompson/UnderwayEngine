@@ -11,7 +11,7 @@ import { deriveSceneOrderFromKindArrays, repairSceneOrder } from './compositionO
 import { normalizeStrokeScale } from './strokeScale';
 import { normalizeComposition } from './compositionNormalize';
 import { fromBase64, toBase64 } from './pngcodec';
-import { imageAssetKey, loadImageAssets, purgeImageAssets, rememberImageAsset } from './imageAssetStore';
+import { holdImageAssets, imageAssetKey, loadImageAssets, purgeImageAssets, rememberImageAsset, sweepImageAssets } from './imageAssetStore';
 
 // ── Storage Keys ────────────────────────────────────────────────────
 
@@ -303,18 +303,18 @@ interface CompMeta {
 }
 
 /** Storage key for an image's raw bytes — see imageAssetStore, which owns
- *  the key shape and the byte-budgeted cache in front of it. Keyed by
- *  `imageId` only (not by composition id) so duplicates and
- *  cross-composition uses share the same blob. NOTE: nothing deletes these —
- *  deleteCompositionData removes only comp_meta_/comp_thumb_ keys, so
- *  orphaned image blobs accumulate until a janitor pass exists. */
+ *  the key shape, the byte-budgeted cache in front of it, and the janitor
+ *  that collects it (sweepImageAssets). Keyed by `imageId` only (not by
+ *  composition id) so duplicates and cross-composition uses share the same
+ *  blob — which is also why nothing here deletes one by name. */
 const imgBlobKey = imageAssetKey;
 
 /** Storage key for a paint island's packed tile bytes. Keyed by the paint
  *  object's own id — unlike image blobs the bytes are MUTABLE (every stroke
  *  swaps the tile array), so they are never shared across objects and a
- *  duplicate must copy under a fresh id. Same janitor caveat as imgblob_:
- *  deleteCompositionData does not remove these. */
+ *  duplicate must copy under a fresh id. Collected by the same janitor as
+ *  imgblob_ (imageAssetStore's sweepImageAssets), rather than a second one
+ *  of its own. */
 function pntBlobKey(paintId: string): string {
   return `pntblob_${paintId}`;
 }
@@ -577,6 +577,21 @@ export interface CompositionIOOptions {
 }
 
 export async function saveCompositionState(
+  state: CompositionState,
+  opts?: CompositionIOOptions,
+): Promise<void> {
+  // The blobs go in before the record that references them, so for the
+  // length of this call there are bytes in the store that nothing points at.
+  // Hold the janitor off that window (imageAssetStore).
+  const release = holdImageAssets();
+  try {
+    await writeCompositionState(state, opts);
+  } finally {
+    release();
+  }
+}
+
+async function writeCompositionState(
   state: CompositionState,
   opts?: CompositionIOOptions,
 ): Promise<void> {
@@ -877,9 +892,25 @@ export async function saveCompositionThumbnail(id: string, dataUri: string): Pro
   await storage.setItem(compThumbKey(id), dataUri);
 }
 
+/**
+ * Remove a composition's record and thumbnail — and then let the janitor
+ * take its pixel bytes.
+ *
+ * The blobs are NOT deleted by name here, and deliberately: an image blob is
+ * addressed by its own bytes and shared across every node, page and
+ * composition that draws the same photo (imageAssetStore), so "this
+ * composition referenced it" is not "nobody does". Mark-and-sweep answers
+ * that; deleting by name would take the photo out from under whoever else
+ * was using it.
+ *
+ * The sweep is fired, not awaited: deleting a page must not wait on a scan
+ * of every composition, and a sweep that does not get to run today runs on
+ * the next app foreground.
+ */
 export async function deleteCompositionData(id: string): Promise<void> {
   _getCompMetaCache().delete(compMetaKey(id));
   await storage.multiRemove([compMetaKey(id), compThumbKey(id)]);
+  void sweepImageAssets().catch(() => {});
 }
 
 export async function duplicateCompositionData(

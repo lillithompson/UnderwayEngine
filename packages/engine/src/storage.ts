@@ -19,6 +19,12 @@ interface Storage {
    *  short strings instead — and, since that list is cached per session
    *  (see `keySet`), usually costs nothing at all. */
   hasBinary(key: string): Promise<boolean>;
+  /** Every key in the store, or every key starting with `prefix`. Served
+   *  from the same cached key set `hasBinary` uses, so enumerating the image
+   *  blobs costs no more than asking about one of them. For the janitor
+   *  (imageAssetStore's sweep), which has to ask what IS stored rather than
+   *  whether one named thing is. */
+  keys(prefix?: string): Promise<string[]>;
 }
 
 /**
@@ -66,6 +72,10 @@ const storage: Storage = {
   getBinary: (key: string) => get(key).then((v: unknown) => (v instanceof Uint8Array ? v : null)),
   setBinary: (key: string, value: Uint8Array) => set(key, value).then(() => { noteKeyWritten(key); }),
   hasBinary: (key: string) => loadKeySet().then((set) => set.has(key)),
+  keys: (prefix?: string) => loadKeySet().then((set) => {
+    const all = Array.from(set);
+    return prefix ? all.filter((k) => k.startsWith(prefix)) : all;
+  }),
 };
 
 /** Drop the cached key list — for tests that swap the underlying store out

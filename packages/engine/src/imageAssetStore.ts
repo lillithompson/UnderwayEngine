@@ -186,3 +186,182 @@ export function purgeImageAssets(kind?: ImageAssetKind): void {
 export function imageAssetBytes(kind?: ImageAssetKind): number {
   return kind ? caches[kind].totalBytes() : caches.display.totalBytes() + caches.original.totalBytes();
 }
+
+// ── The store proper ───────────────────────────────────────────────────
+//
+// Blob ownership moved here out of persistence.ts's ad-hoc key helpers,
+// whose comment said the quiet part: "nothing deletes these".
+
+/** Whether the store already holds this asset — from the cached key set, so
+ *  the bytes are never read to answer it (storage.hasBinary). With content
+ *  ids this is provably "do I have these exact bytes?" rather than a
+ *  convention about who mints what. */
+export function hasImageAsset(assetId: string): Promise<boolean> {
+  return storage.hasBinary(imageAssetKey(assetId));
+}
+
+/**
+ * Store these bytes and return the id they ARE. A second put of the same
+ * photo writes nothing and hands back the same id.
+ *
+ * The one way new pixel bytes enter the store, so "what is stored" and "what
+ * an id means" cannot drift apart.
+ */
+export async function putImageAsset(
+  bytes: Uint8Array,
+  kind: ImageAssetKind = 'display',
+): Promise<string> {
+  const assetId = await contentImageId(bytes);
+  if (!await hasImageAsset(assetId)) {
+    await storage.setBinary(imageAssetKey(assetId), bytes);
+  }
+  rememberImageAsset(assetId, bytes, kind);
+  return assetId;
+}
+
+/** Prefix of the keys the sweep owns: the image blobs, and the paint
+ *  islands, which carry the identical "nothing deletes these" caveat and
+ *  would otherwise need a second janitor. */
+const IMAGE_KEY_PREFIX = 'imgblob_';
+const PAINT_KEY_PREFIX = 'pntblob_';
+const COMP_META_PREFIX = 'comp_meta_';
+
+/** What a stored composition references, for the mark phase. Read off the
+ *  meta JSON rather than through `loadCompositionState`, which would hydrate
+ *  every blob to ask which blobs exist. */
+export interface AssetRefs {
+  images: Set<string>;
+  paints: Set<string>;
+}
+
+/** The asset ids one stored composition references — its images' display
+ *  copies and masters, and its paint islands' own ids. An unreadable record
+ *  yields nothing, which is why {@link sweepImageAssets} refuses to delete
+ *  when one fails to parse. */
+export async function imageAssetRefs(compId: string): Promise<AssetRefs | null> {
+  const raw = await storage.getItem(`${COMP_META_PREFIX}${compId}`);
+  if (!raw) return null;
+  let parsed: { images?: { imageId?: string; originalImageId?: string }[]; paintObjects?: { id?: string }[] };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const images = new Set<string>();
+  for (const img of parsed.images ?? []) {
+    if (typeof img?.imageId === 'string') images.add(img.imageId);
+    if (typeof img?.originalImageId === 'string') images.add(img.originalImageId);
+  }
+  const paints = new Set<string>();
+  for (const p of parsed.paintObjects ?? []) {
+    if (typeof p?.id === 'string') paints.add(p.id);
+  }
+  return { images, paints };
+}
+
+export interface AssetSweepResult {
+  /** Keys removed. */
+  deleted: number;
+  /** Bytes those keys held. */
+  bytesFreed: number;
+  /** Blob keys the store held when the sweep ran. */
+  scanned: number;
+  /** True when the sweep declined to delete anything — a guard said a
+   *  session was live, or a composition record could not be read, so an id
+   *  it references would have looked unreferenced. */
+  skipped: boolean;
+}
+
+/** A caller's veto on the sweep — see {@link setAssetSweepGuard}. */
+export type AssetSweepGuard = () => boolean;
+
+let sweepGuard: AssetSweepGuard | null = null;
+
+/** Writes in flight that have put blobs in the store but not yet the record
+ *  that references them — see {@link holdImageAssets}. */
+let writeHolds = 0;
+
+/**
+ * Hold off the sweep for the length of a write.
+ *
+ * A composition save writes its image blobs FIRST and its meta record after,
+ * so between the two there is a moment when the bytes are stored and nothing
+ * references them. A sweep landing in that window would take a photo out of
+ * the page being saved. The write paths bracket themselves with this; the
+ * host's own guard ({@link setAssetSweepGuard}) is the separate, longer-lived
+ * answer about open editor sessions.
+ */
+export function holdImageAssets(): () => void {
+  writeHolds++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    writeHolds--;
+  };
+}
+
+/**
+ * Register "is it safe to collect right now?".
+ *
+ * Mark-and-sweep marks from what is STORED, and an open editor holds things
+ * that are not: an undo stack reaching back to a photo the user has since
+ * replaced, a node deleted a moment ago that redo will bring back. Collect
+ * under that and the redo restores a node whose pixels are gone. The host
+ * answers false while any editor session is live.
+ */
+export function setAssetSweepGuard(guard: AssetSweepGuard | null): void {
+  sweepGuard = guard;
+}
+
+/**
+ * The janitor persistence.ts's key helpers said was missing: mark every
+ * asset id the stored compositions reference, then delete every `imgblob_` /
+ * `pntblob_` key outside that union.
+ *
+ * Nothing has ever deleted these. Undo after a place, Replace, and deleting
+ * an image all orphan bytes permanently — replacing one photo five times
+ * leaves ~19 MB of dead blobs for the life of the install.
+ *
+ * Two refusals, both all-or-nothing, because a wrong delete is unrecoverable
+ * and a missed sweep costs a day:
+ *
+ *  - a write is in flight ({@link holdImageAssets}) or the guard (see
+ *    {@link setAssetSweepGuard}) says a session is live;
+ *  - any `comp_meta_` record fails to parse, so its references are unknown
+ *    and every id only IT holds would read as garbage.
+ *
+ * Cost: one cached key listing, one `getItem` per composition, and — for the
+ * orphans alone — one read apiece to report the bytes recovered. Transition
+ * work, throttled by the host to about once a day.
+ */
+export async function sweepImageAssets(): Promise<AssetSweepResult> {
+  const blobKeys = (await storage.keys())
+    .filter((k) => k.startsWith(IMAGE_KEY_PREFIX) || k.startsWith(PAINT_KEY_PREFIX));
+  const empty: AssetSweepResult = { deleted: 0, bytesFreed: 0, scanned: blobKeys.length, skipped: true };
+  if (writeHolds > 0) return empty;
+  if (sweepGuard && !sweepGuard()) return empty;
+
+  const compIds = (await storage.keys(COMP_META_PREFIX))
+    .map((k) => k.slice(COMP_META_PREFIX.length));
+  const live = new Set<string>();
+  for (const compId of compIds) {
+    const refs = await imageAssetRefs(compId);
+    // A record that will not parse is a record whose references are unknown.
+    if (!refs) return empty;
+    for (const id of refs.images) live.add(imageAssetKey(id));
+    for (const id of refs.paints) live.add(`${PAINT_KEY_PREFIX}${id}`);
+  }
+
+  let deleted = 0;
+  let bytesFreed = 0;
+  for (const key of blobKeys) {
+    if (live.has(key)) continue;
+    const bytes = await storage.getBinary(key);
+    await storage.removeItem(key);
+    deleted++;
+    bytesFreed += bytes?.byteLength ?? 0;
+  }
+  if (deleted > 0) purgeImageAssets();
+  return { deleted, bytesFreed, scanned: blobKeys.length, skipped: false };
+}
