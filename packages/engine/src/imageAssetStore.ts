@@ -1,5 +1,6 @@
 import storage from './storage';
 import { createRasterLruCache } from './rasterLruCache';
+import { toBase64 } from './pngcodec';
 
 /**
  * The pixel bytes of every reference image, addressed by asset id, with a
@@ -42,11 +43,10 @@ export function imageAssetKey(assetId: string): string {
 const ASSET_ID_CHARS = 22;
 
 /** base64url (RFC 4648 §5): base64's alphabet with `-` and `_`, unpadded, so
- *  the id is safe in a storage key, a filename and a URL path alike. */
+ *  the id is safe in a storage key, a filename and a URL path alike. The
+ *  base64 itself is pngcodec's chunked encoder — the one in the engine. */
 function base64url(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 /**
