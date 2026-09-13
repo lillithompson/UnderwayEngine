@@ -10,6 +10,11 @@
  * Each entry carries an `ownerId` (scene-node id) so a node-level
  * invalidation can drop every entry the node produced without the caller
  * maintaining its own reverse index.
+ *
+ * A value that OWNS something outside the heap — an object URL, a GPU
+ * texture — passes an `onEvict`, because eviction is otherwise silent and
+ * the thing it owns is leaked. It fires for every way an entry leaves:
+ * eviction, replacement, `delete`, `invalidateOwner` and `clear`.
  */
 
 interface LruSlot<V> {
@@ -36,17 +41,25 @@ export interface RasterLruCache<V> {
   entryCount(): number;
 }
 
-export function createRasterLruCache<V>(budgetBytes: number): RasterLruCache<V> {
+export function createRasterLruCache<V>(
+  budgetBytes: number,
+  onEvict?: (key: string, value: V) => void,
+): RasterLruCache<V> {
   const map = new Map<string, LruSlot<V>>();
   let bytes = 0;
+
+  function drop(key: string, slot: LruSlot<V>): void {
+    map.delete(key);
+    bytes -= slot.bytes;
+    onEvict?.(key, slot.value);
+  }
 
   function evictToFit(protectedKey: string): void {
     if (bytes <= budgetBytes) return;
     for (const [key, slot] of map) {
       if (bytes <= budgetBytes) break;
       if (key === protectedKey) continue;
-      map.delete(key);
-      bytes -= slot.bytes;
+      drop(key, slot);
     }
   }
 
@@ -64,10 +77,7 @@ export function createRasterLruCache<V>(budgetBytes: number): RasterLruCache<V> 
     },
     set(key, ownerId, entryBytes, value) {
       const prior = map.get(key);
-      if (prior) {
-        map.delete(key);
-        bytes -= prior.bytes;
-      }
+      if (prior) drop(key, prior);
       map.set(key, { value, bytes: entryBytes, ownerId });
       bytes += entryBytes;
       evictToFit(key);
@@ -76,8 +86,7 @@ export function createRasterLruCache<V>(budgetBytes: number): RasterLruCache<V> 
       let dropped = 0;
       for (const [key, slot] of Array.from(map.entries())) {
         if (slot.ownerId !== ownerId) continue;
-        map.delete(key);
-        bytes -= slot.bytes;
+        drop(key, slot);
         dropped++;
       }
       return dropped;
@@ -85,11 +94,11 @@ export function createRasterLruCache<V>(budgetBytes: number): RasterLruCache<V> 
     delete(key) {
       const slot = map.get(key);
       if (!slot) return false;
-      map.delete(key);
-      bytes -= slot.bytes;
+      drop(key, slot);
       return true;
     },
     clear() {
+      for (const [key, slot] of Array.from(map.entries())) drop(key, slot);
       map.clear();
       bytes = 0;
     },
