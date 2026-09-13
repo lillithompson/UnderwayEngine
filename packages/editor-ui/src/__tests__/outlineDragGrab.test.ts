@@ -100,10 +100,59 @@ describe('the kind icon is the drag handle', () => {
 });
 
 // The icon used to be the only grab: a reorder meant finding an 18pt glyph.
-describe('the whole line grabs', () => {
-  it('the row carries the held responder, over its own children', () => {
-    const row = SRC.slice(SRC.indexOf('<Animated.View\n                    key={row.id}'), SRC.indexOf('styles.row,'));
-    expect(row).toContain("{...getResponder(index, 'hold').panHandlers}");
+// Then the WHOLE line grabbed, which was too much of it — a hold is easy to
+// serve by accident, and with every pixel armed there was nowhere on the list
+// a finger could count on to scroll it. The line is split instead.
+describe('the line is split: its left half reorders, its right half scrolls', () => {
+  /** Everything the held responder is wrapped around. */
+  const grab = SRC.slice(
+    SRC.indexOf('<View\n                        style={styles.rowGrab}'),
+    SRC.indexOf('THE SCROLL HALF'),
+  );
+
+  it('the grab half carries the held responder — the icon, and the name', () => {
+    expect(grab).toContain("{...getResponder(index, 'hold').panHandlers}");
+    // The indent, the chevron, the kind icon and the text are all inside it.
+    expect(grab).toContain('width: row.depth * OUTLINE_INDENT');
+    expect(grab).toContain('style={styles.chevron}');
+    expect(grab).toContain('style={styles.dragHandle}');
+    expect(grab).toContain('style={[styles.rowText, selected && styles.rowTextSelected]}');
+  });
+
+  it('the row itself no longer carries it — nor does anything past the name', () => {
+    const row = SRC.slice(
+      SRC.indexOf('<Animated.View\n                    key={row.id}'),
+      SRC.indexOf('THE GRAB HALF'),
+    );
+    expect(row).not.toContain("getResponder(index, 'hold')");
+    // The gap and the two icon buttons sit AFTER the grab half closes, so a
+    // finger put down on any of them is the ScrollView's.
+    const rest = SRC.slice(SRC.indexOf('THE SCROLL HALF'), SRC.indexOf('</Pressable>\n                  </Animated.View>'));
+    expect(rest).not.toContain('getResponder');
+    expect(rest).toContain('<View style={styles.rowGap} />');
+    expect(rest).toContain("accessibilityLabel={hidden ? 'Show' : 'Hide'}");
+    expect(rest).toContain("accessibilityLabel={locked ? 'Unlock' : 'Lock'}");
+  });
+
+  it('a long name can never close the scroll gap', () => {
+    // The grab half shrinks and the name truncates; the gap keeps its floor,
+    // so every row has somewhere to push the list by.
+    expect(SRC).toMatch(/rowGrab: \{[^}]*flexShrink: 1/);
+    expect(SRC).toMatch(/rowGrab: \{[^}]*minWidth: 0/);
+    expect(SRC).toContain('rowGap: { flex: 1, minWidth: OUTLINE_SCROLL_GAP, height: ROW_HEIGHT }');
+    // The text hugs its content instead of stretching to the icons — that
+    // stretch WAS the gap, and made it part of the grab half.
+    expect(SRC).toContain('rowText: { fontSize: 14, color: OUTLINE_TEXT, flexShrink: 1 }');
+    expect(Number(/const OUTLINE_SCROLL_GAP = (\d+);/.exec(SRC)?.[1])).toBeGreaterThanOrEqual(40);
+  });
+
+  it('a tap still selects from anywhere along the line', () => {
+    // Only the DRAG is split: the select/rename Pressable still spans the
+    // whole row, with the grab half nested inside it.
+    const content = SRC.indexOf('style={styles.rowContent}');
+    expect(content).toBeGreaterThan(-1);
+    expect(content).toBeLessThan(SRC.indexOf('THE GRAB HALF'));
+    expect(SRC).toContain('rowContent: { flex: 1, flexDirection: \'row\', alignItems: \'center\', height: ROW_HEIGHT }');
   });
 
   it('a row and its icon are separate responders, cached apart', () => {

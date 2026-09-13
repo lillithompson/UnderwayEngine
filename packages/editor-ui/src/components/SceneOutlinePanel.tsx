@@ -56,10 +56,10 @@ const icon = (glyph: string) => glyph as MCIName;
  *  moving anything. */
 const DRAG_HANDLE_HIT_SLOP = { top: 0, bottom: 0, left: 10, right: 10 } as const;
 
-// ── Grabbing a row anywhere along its line ──────────────────────────
+// ── Grabbing a row to reorder it ────────────────────────────────────
 //
-// The kind icon used to be the ONLY grab: a reorder meant finding a 18pt
-// glyph. Now the whole line grabs — but it cannot grab the way the icon
+// The kind icon used to be the ONLY grab: a reorder meant finding an 18pt
+// glyph. Then the whole line grabbed — but it cannot grab the way the icon
 // does, on touch-down, because the rows live in a ScrollView and a row that
 // took every touch on sight would leave the list with nothing to scroll by.
 //
@@ -68,12 +68,34 @@ const DRAG_HANDLE_HIT_SLOP = { top: 0, bottom: 0, left: 10, right: 10 } as const
 // `delayLongPress` still opens the rename dialog — the three gestures the
 // row already answered, each told apart by what the finger does after it
 // lands rather than by where it landed.
+//
+// That much held, but "the whole line" was too much of it: a hold is easy to
+// serve by accident, and with every pixel of every row armed there was
+// nowhere on the list a finger could reliably push it by — scrolling became
+// a race against the timer, which the timer usually won. So the line is
+// split, and where the finger lands decides again:
+//
+//   REORDER — the left of the line, through the end of the name: the indent,
+//     the chevron, the kind icon (still on touch-down), and the text itself.
+//     That is the half you point at when you mean THIS OBJECT.
+//   SCROLL — the gap past the name and the eye and lock beyond it. Nothing
+//     there arms a drag at all, so a finger put down on it always pushes the
+//     list. The gap keeps {@link OUTLINE_SCROLL_GAP} open on every row, so a
+//     long name can never close it.
+//
+// A tap still selects from anywhere along the line (the Pressable spans the
+// whole of it), and the eye and the lock still toggle: only the DRAG is split.
 /** How long a finger must rest on a row before a move reorders rather than
  *  scrolls. Under the rename's own delay, so a drag arms before a rename
  *  would, and the rename's Pressable is terminated the moment it does. */
 const DRAG_HOLD_MS = 180;
 /** …and how far it must then travel, so the hold's own tremor is not a drag. */
 const DRAG_SLOP_PX = 4;
+/** The narrowest the scroll gap between a name and the row's icons is ever
+ *  allowed to get. A thumb's width: the name truncates before this closes,
+ *  so every row — however long the object is called — keeps a patch that
+ *  scrolls the list rather than picking the row up. */
+const OUTLINE_SCROLL_GAP = 44;
 
 interface SceneOutlinePanelProps {
   model: SceneOutlineModel;
@@ -320,13 +342,6 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                 return (
                   <Animated.View
                     key={row.id}
-                    // The WHOLE line grabs: press, hold, drag (DRAG_HOLD_MS).
-                    // The children claim the touch first — a tap on the name
-                    // selects, the eye and the lock toggle — and this takes
-                    // it off them once the hold is served, which is what
-                    // leaves a flick to the ScrollView and a still hold to
-                    // the rename.
-                    {...getResponder(index, 'hold').panHandlers}
                     style={[
                       styles.row,
                       selected && styles.rowSelected,
@@ -336,37 +351,6 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                       webShift,
                     ]}
                   >
-                    {/* Indent + chevron: groups toggle collapse; leaves get a
-                        chevron-width spacer so names align. */}
-                    <View style={{ width: row.depth * OUTLINE_INDENT }} />
-                    {row.isGroup && row.hasChildren ? (
-                      <Pressable
-                        style={styles.chevron}
-                        onPress={() => toggleCollapse(row.id)}
-                        accessibilityLabel={collapsed.has(row.id) ? 'Expand' : 'Collapse'}
-                      >
-                        <MaterialCommunityIcons
-                          name={icon(collapsed.has(row.id) ? OUTLINE_CHEVRON_COLLAPSED : OUTLINE_CHEVRON_EXPANDED)}
-                          size={16}
-                          color={OUTLINE_ICON}
-                        />
-                      </Pressable>
-                    ) : (
-                      <View style={styles.chevron} />
-                    )}
-                    {/* The kind icon grabs the row AT ONCE — no hold — for
-                        a reorder aimed straight at it. Its hit area is
-                        widened past the glyph (hitSlop, no layout change) so
-                        a thumb aimed at the icon lands on it rather than on
-                        the scrolling list beside it. The rest of the line
-                        grabs too, on a hold: see the row above. */}
-                    <View
-                      style={styles.dragHandle}
-                      hitSlop={DRAG_HANDLE_HIT_SLOP}
-                      {...getResponder(index, 'touch').panHandlers}
-                    >
-                      <MaterialCommunityIcons name={icon(glyph)} size={18} color={OUTLINE_ICON} />
-                    </View>
                     {/* Long-press renames EVERY row, locked ones included: a
                         name is a label, not the artwork, and the lock holds
                         the canvas. A locked row used to get no long-press at
@@ -374,19 +358,67 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                         their layout holds — was the one row that never
                         opened the rename dialog. The host decides what a
                         locked rename commits (the shell forces it through
-                        its lock guard). */}
+                        its lock guard). Spanning the whole line, so a tap
+                        anywhere but the eye and the lock still selects,
+                        wherever the drag half of the line ends. */}
                     <Pressable
                       style={styles.rowContent}
                       onPress={handlePress}
                       onLongPress={() => setRenaming({ id: row.id, name: displayName })}
                       delayLongPress={400}
                     >
-                      <Text
-                        style={[styles.rowText, selected && styles.rowTextSelected]}
-                        numberOfLines={1}
+                      {/* THE GRAB HALF — the left of the line, through the end
+                          of the name. A hold here (DRAG_HOLD_MS) arms a
+                          reorder; the responder used to sit on the whole row,
+                          which left no part of a row that could be counted on
+                          to scroll the list instead. */}
+                      <View
+                        style={styles.rowGrab}
+                        {...getResponder(index, 'hold').panHandlers}
                       >
-                        {displayName}
-                      </Text>
+                        {/* Indent + chevron: groups toggle collapse; leaves get
+                            a chevron-width spacer so names align. */}
+                        <View style={{ width: row.depth * OUTLINE_INDENT }} />
+                        {row.isGroup && row.hasChildren ? (
+                          <Pressable
+                            style={styles.chevron}
+                            onPress={() => toggleCollapse(row.id)}
+                            accessibilityLabel={collapsed.has(row.id) ? 'Expand' : 'Collapse'}
+                          >
+                            <MaterialCommunityIcons
+                              name={icon(collapsed.has(row.id) ? OUTLINE_CHEVRON_COLLAPSED : OUTLINE_CHEVRON_EXPANDED)}
+                              size={16}
+                              color={OUTLINE_ICON}
+                            />
+                          </Pressable>
+                        ) : (
+                          <View style={styles.chevron} />
+                        )}
+                        {/* The kind icon grabs the row AT ONCE — no hold — for
+                            a reorder aimed straight at it. Its hit area is
+                            widened past the glyph (hitSlop, no layout change)
+                            so a thumb aimed at the icon lands on it rather
+                            than on the scrolling list beside it. */}
+                        <View
+                          style={styles.dragHandle}
+                          hitSlop={DRAG_HANDLE_HIT_SLOP}
+                          {...getResponder(index, 'touch').panHandlers}
+                        >
+                          <MaterialCommunityIcons name={icon(glyph)} size={18} color={OUTLINE_ICON} />
+                        </View>
+                        <Text
+                          style={[styles.rowText, selected && styles.rowTextSelected]}
+                          numberOfLines={1}
+                        >
+                          {displayName}
+                        </Text>
+                      </View>
+                      {/* THE SCROLL HALF — the gap past the name, and the two
+                          icons after it. Nothing here arms a reorder, so a
+                          drag started on it is always the list's to scroll.
+                          The gap holds a thumb's width open whatever the name
+                          is long enough to eat. */}
+                      <View style={styles.rowGap} />
                       <Pressable
                         style={styles.iconButton}
                         onPress={() => model.onToggleHidden(row.id)}
@@ -501,7 +533,21 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ touchAction: 'none' } as object) : {}),
   },
   rowContent: { flex: 1, flexDirection: 'row', alignItems: 'center', height: ROW_HEIGHT },
-  rowText: { flex: 1, fontSize: 14, color: OUTLINE_TEXT },
+  // The reorder half. It SHRINKS (minWidth 0 so the name inside it may
+  // truncate) rather than growing, which is what keeps the scroll gap beside
+  // it open on a row whose name would otherwise run the whole line.
+  rowGrab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: ROW_HEIGHT,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  // The scroll half's empty stretch: takes the slack, and never gives up its
+  // last {@link OUTLINE_SCROLL_GAP} — every row keeps somewhere to push the
+  // list by, however long its object is called.
+  rowGap: { flex: 1, minWidth: OUTLINE_SCROLL_GAP, height: ROW_HEIGHT },
+  rowText: { fontSize: 14, color: OUTLINE_TEXT, flexShrink: 1 },
   rowTextSelected: { color: OUTLINE_TEXT_SELECTED, fontWeight: '600' },
   iconButton: { width: 28, height: ROW_HEIGHT, alignItems: 'center', justifyContent: 'center' },
 });
