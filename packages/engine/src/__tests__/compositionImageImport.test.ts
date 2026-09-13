@@ -251,7 +251,13 @@ function installFakeDecoder(nativeW: number, nativeH: number): FakeEnv {
       };
     }
     convertToBlob(opts?: { type?: string }): Promise<Blob> {
-      return Promise.resolve(new Blob([new Uint8Array([1, 2, 3])], { type: opts?.type ?? 'image/png' }));
+      // Bytes that vary with the encode, so two scales of one photo are two
+      // different assets — which is what content addressing then sees.
+      const bytes = new Uint8Array(8);
+      const view = new DataView(bytes.buffer);
+      view.setUint32(0, this.width, false);
+      view.setUint32(4, this.height, false);
+      return Promise.resolve(new Blob([bytes], { type: opts?.type ?? 'image/png' }));
     }
   }
   g.OffscreenCanvas = FakeOffscreenCanvas;
@@ -331,5 +337,48 @@ describe('the import pipeline reads the source size from its HEADER', () => {
     ]);
     expect(env.alphaScans).toBe(0);
     expect(out.pixelWidth).toBe(1024);
+  });
+});
+
+describe('an image\u2019s id is a hash of its own bytes', () => {
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).createImageBitmap;
+    delete (globalThis as Record<string, unknown>).OffscreenCanvas;
+  });
+
+  it('the same photo picked twice converges on one id, display copy and master alike', async () => {
+    // Random ids meant the same photo stored its bytes twice, a duplicated
+    // page duplicated every blob, and a page imported from a friend who had
+    // the same photo stored a third copy.
+    installFakeDecoder(6000, 4500);
+    const source = jpegHeader(6000, 4500);
+    const first = await prepareImageImport(source, 'image/jpeg', 0, 0);
+    const second = await prepareImageImport(new Uint8Array(source), 'image/jpeg', 12, 12);
+    expect(second.image.imageId).toBe(first.image.imageId);
+    expect(second.image.originalImageId).toBe(first.image.originalImageId);
+    // The NODE ids are still distinct — two placements of one photo.
+    expect(second.image.id).not.toBe(first.image.id);
+    expect(first.image.imageId).toMatch(/^imgblob_[A-Za-z0-9_-]{22}$/);
+  });
+
+  it('the display copy and the master are addressed separately', async () => {
+    installFakeDecoder(6000, 4500);
+    const out = await prepareImageImport(jpegHeader(6000, 4500), 'image/jpeg', 0, 0);
+    expect(out.image.originalImageId).toBeDefined();
+    expect(out.image.originalImageId).not.toBe(out.image.imageId);
+  });
+
+  it('an SVG is addressed by its markup, and replacement agrees with import', async () => {
+    const svg = new TextEncoder().encode('<svg width="24" height="24"></svg>');
+    const imported = await prepareImageImport(svg, SVG_MIME_TYPE, 0, 0);
+    const replaced = await prepareImageReplacement(new Uint8Array(svg), SVG_MIME_TYPE);
+    expect(replaced.imageId).toBe(imported.image.imageId);
+  });
+
+  it('different bytes get different ids', async () => {
+    installFakeDecoder(6000, 4500);
+    const a = await prepareImageImport(jpegHeader(6000, 4500), 'image/jpeg', 0, 0);
+    const b = await prepareImageImport(jpegHeader(5000, 4000), 'image/jpeg', 0, 0);
+    expect(b.image.imageId).not.toBe(a.image.imageId);
   });
 });

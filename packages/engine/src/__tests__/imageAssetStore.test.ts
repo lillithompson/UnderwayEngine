@@ -1,4 +1,4 @@
-import { imageAssetBytes, imageAssetKey, loadImageAsset, loadImageAssets, peekImageAsset, purgeImageAssets, rememberImageAsset } from '../imageAssetStore';
+import { contentImageId, imageAssetBytes, imageAssetKey, loadImageAsset, loadImageAssets, peekImageAsset, purgeImageAssets, rememberImageAsset } from '../imageAssetStore';
 
 // The bytes a loaded composition no longer holds.
 //
@@ -94,5 +94,55 @@ describe('imageAssetStore', () => {
     expect(await loadImageAsset('a')).toBeNull();
     store['imgblob_a'] = new Uint8Array([9]);
     expect(await loadImageAsset('a')).toEqual(new Uint8Array([9]));
+  });
+});
+
+// An asset's id IS its bytes. The random ids this replaced meant the same
+// photo picked twice stored its bytes twice, a duplicated page duplicated
+// every blob, and "do I already have this?" could only ever be answered by
+// convention.
+describe('contentImageId', () => {
+  const photo = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+
+  it('is the same id for the same bytes, and a different one for different bytes', async () => {
+    const a = await contentImageId(photo);
+    const b = await contentImageId(new Uint8Array(photo));
+    expect(a).toBe(b);
+    expect(await contentImageId(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 9]))).not.toBe(a);
+    expect(await contentImageId(new Uint8Array(0))).not.toBe(a);
+  });
+
+  it('keeps the imgblob_ prefix, so new ids and stored ones read alike', async () => {
+    expect(await contentImageId(photo)).toMatch(/^imgblob_[A-Za-z0-9_-]{22}$/);
+  });
+
+  it('is the head of the bytes\u2019 SHA-256, in base64url', async () => {
+    const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(photo));
+    const expected = Buffer.from(new Uint8Array(digest)).toString('base64')
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '').slice(0, 22);
+    expect(await contentImageId(photo)).toBe(`imgblob_${expected}`);
+  });
+
+  it('reads the VIEW it is given, not the buffer behind it', async () => {
+    // The picker hands over subarrays; hashing the whole backing buffer
+    // would make two identical photos hash differently.
+    const backing = new Uint8Array(photo.length + 8);
+    backing.set(photo, 8);
+    expect(await contentImageId(backing.subarray(8))).toBe(await contentImageId(photo));
+  });
+
+  it('falls back to a unique id where SubtleCrypto is missing, rather than throwing', async () => {
+    const real = (globalThis as { crypto?: Crypto }).crypto;
+    Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
+    try {
+      const a = await contentImageId(photo);
+      const b = await contentImageId(photo);
+      expect(a).toMatch(/^imgblob_/);
+      // No dedup without a digest — but never a COLLIDING id, which would
+      // hand one photo's bytes to another photo's node.
+      expect(a).not.toBe(b);
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', { value: real, configurable: true });
+    }
   });
 });

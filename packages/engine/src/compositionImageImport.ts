@@ -2,6 +2,7 @@ import { ImageObject } from './types';
 import { compSnapStep } from './compositionCellMath';
 import { canvasHasTransparency } from './canvasAlpha';
 import { imageHeaderSize } from './imageHeaderSize';
+import { contentImageId } from './imageAssetStore';
 
 /**
  * Reference-image import pipeline. Decodes a picked PNG/JPG (a picked SVG
@@ -71,11 +72,10 @@ export interface ImageImportResult {
   originalBytes?: Uint8Array;
 }
 
-/** Mint a fresh imageId. Random suffix is enough — collisions across a
- *  single composition's import flow are astronomically unlikely. */
-function mintImageId(): string {
-  return 'imgblob_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
-}
+// An image's id is a hash of its own bytes — see imageAssetStore's
+// contentImageId. The same photo picked twice, a duplicated node and a page
+// imported from a friend who has the same photo all land on one blob.
+
 
 /** Mint a fresh ImageObject node id (separate namespace from the blob
  *  key so duplicating a node mints a new node id but keeps the same
@@ -353,7 +353,7 @@ export async function prepareImageReplacement(
   if (looksLikeSvg(rawBytes, sourceMimeType)) {
     const { width, height } = svgNominalPixelSize(new TextDecoder().decode(rawBytes));
     return {
-      imageId: mintImageId(),
+      imageId: await contentImageId(rawBytes),
       bytes: rawBytes,
       mimeType: SVG_MIME_TYPE,
       pixelWidth: width,
@@ -369,14 +369,14 @@ export async function prepareImageReplacement(
     ? await prepareScaledEncoding(sourceBlob, MAX_EDGE_PX, original.hasAlpha, rawBytes)
     : original;
   const result: ImageReplacementResult = {
-    imageId: mintImageId(),
+    imageId: await contentImageId(display.bytes),
     bytes: display.bytes,
     mimeType: display.mimeType,
     pixelWidth: display.width,
     pixelHeight: display.height,
   };
   if (needsSeparateOriginal) {
-    result.originalImageId = mintImageId();
+    result.originalImageId = await contentImageId(original.bytes);
     result.originalBytes = original.bytes;
   }
   return result;
@@ -412,7 +412,7 @@ export async function prepareImageImport(
     const image: ImageObject = {
       id: mintImageNodeId(),
       name,
-      imageId: mintImageId(),
+      imageId: await contentImageId(rawBytes),
       mimeType: SVG_MIME_TYPE,
       pixelWidth: width,
       pixelHeight: height,
@@ -442,7 +442,7 @@ export async function prepareImageImport(
   const image: ImageObject = {
     id: mintImageNodeId(),
     name,
-    imageId: mintImageId(),
+    imageId: await contentImageId(display.bytes),
     mimeType: display.mimeType,
     pixelWidth: display.width,
     pixelHeight: display.height,
@@ -454,7 +454,7 @@ export async function prepareImageImport(
   if (!needsSeparateOriginal) {
     return { image, bytes: display.bytes };
   }
-  image.originalImageId = mintImageId();
+  image.originalImageId = await contentImageId(original.bytes);
   return { image, bytes: display.bytes, originalBytes: original.bytes };
 }
 

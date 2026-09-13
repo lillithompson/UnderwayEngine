@@ -27,10 +27,67 @@ import { createRasterLruCache } from './rasterLruCache';
  * kilobytes, full price for the megabytes, precisely backwards.
  */
 
-/** Storage key for an image asset's raw bytes. Keyed by asset id only (not
+/** Storage key for an image asset's raw bytes. Keyed by asset id alone (not
  *  by composition) so duplicates and cross-composition uses share one blob. */
 export function imageAssetKey(assetId: string): string {
   return `imgblob_${assetId}`;
+}
+
+/**
+ * How many base64url characters of the SHA-256 the id keeps. 22 of them is
+ * 132 bits — far past any birthday bound a journal could reach — while
+ * keeping the id short enough to sit in the binary format's string table
+ * and in a URL path without comment.
+ */
+const ASSET_ID_CHARS = 22;
+
+/** base64url (RFC 4648 §5): base64's alphabet with `-` and `_`, unpadded, so
+ *  the id is safe in a storage key, a filename and a URL path alike. */
+function base64url(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * The id these bytes ARE: `imgblob_` plus the head of their SHA-256.
+ *
+ * Content addressing, which is how every photo app identifies an asset, and
+ * the point is the questions it stops having to ask. The same photo picked
+ * twice, a duplicated node, a duplicated page, and a page imported from a
+ * friend who happens to have the same photo all converge on one blob and one
+ * upload. "Do I already have this?" and "has this changed?" are one string
+ * compare. And nothing is ever invalidated, because nothing is ever mutated:
+ * new bytes are a new id by construction, which is the property the save
+ * path's presence cache and the sync manifest were already relying on by
+ * convention.
+ *
+ * The `imgblob_` prefix is kept from the random ids this replaced so the two
+ * read alike; old ids keep working untouched — this changes what new imports
+ * MINT, not what stored pages reference.
+ *
+ * Falls back to a random id where SubtleCrypto is missing (an insecure
+ * context, an old runtime). That loses the dedup for those bytes and nothing
+ * else: an id is only ever compared, never re-derived from bytes in hand.
+ */
+export async function contentImageId(bytes: Uint8Array): Promise<string> {
+  const subtle = (globalThis as { crypto?: { subtle?: SubtleCrypto } }).crypto?.subtle;
+  if (!subtle) return randomImageId();
+  try {
+    // Copy into a fresh buffer: a Uint8Array that is a VIEW into a larger
+    // ArrayBuffer would otherwise be digested whole on some runtimes.
+    const copy = new Uint8Array(bytes);
+    const digest = await subtle.digest('SHA-256', copy.buffer as ArrayBuffer);
+    return `imgblob_${base64url(new Uint8Array(digest)).slice(0, ASSET_ID_CHARS)}`;
+  } catch {
+    return randomImageId();
+  }
+}
+
+/** The pre-content-addressing id: time plus randomness. Kept as the fallback
+ *  above, and nowhere else. */
+function randomImageId(): string {
+  return 'imgblob_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
 }
 
 /**
