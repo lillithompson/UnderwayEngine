@@ -45,6 +45,14 @@ export interface PerfCounters {
    * in one pass, which never holds the full-resolution raster.
    */
   decodeScaledCount: number;
+  /** Source dimensions read from the header — the cheap path. */
+  headerHitCount: number;
+  /**
+   * Source bytes whose header could not be read, each of which costs a full
+   * decode spent learning two numbers. Non-zero for a PNG or JPEG means the
+   * bytes are not arriving as the format they should be.
+   */
+  headerMissCount: number;
 }
 
 function zero(): PerfCounters {
@@ -57,6 +65,8 @@ function zero(): PerfCounters {
     base64Bytes: 0,
     decodeFullCount: 0,
     decodeScaledCount: 0,
+    headerHitCount: 0,
+    headerMissCount: 0,
   };
 }
 
@@ -86,6 +96,12 @@ export function countBase64(bytes: number): void {
 export function countDecode(scaled: boolean): void {
   if (scaled) counters.decodeScaledCount++;
   else counters.decodeFullCount++;
+}
+
+/** One attempt to read dimensions out of a source's header. */
+export function countHeaderRead(hit: boolean): void {
+  if (hit) counters.headerHitCount++;
+  else counters.headerMissCount++;
 }
 
 /** A copy, so a caller cannot hold a live view of the counters. */
@@ -136,5 +152,6 @@ export function formatPerfCounters(c: PerfCounters): string {
     `writes ${c.storageWriteCount}/${humanBytes(c.storageWriteBytes)}`,
     `base64 ${c.base64Count}/${humanBytes(c.base64Bytes)}`,
     `decodes ${c.decodeFullCount} full, ${c.decodeScaledCount} scaled`,
+    `headers ${c.headerHitCount} read, ${c.headerMissCount} missed`,
   ].join(' · ');
 }

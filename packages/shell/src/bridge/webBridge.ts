@@ -496,6 +496,12 @@ export function applySafeAreaInsets(insets: { top: number; bottom: number; left:
  *
  * Read-only integers, so there is nothing here to gate on a build flag: the
  * handle carries no data about the user and costs an object at startup.
+ *
+ * Installed at module load rather than from initBridge, because initBridge
+ * has no caller — every web entry reaches this module for its own import
+ * (isInWebView, postAppEvent, signalReady...) and never for the init. Hanging
+ * the handle off initBridge meant it was never installed on a device, while a
+ * test that called initBridge directly passed anyway.
  */
 function installPerfCounterHandle(): void {
   void import('@/engine/debug/perfCounters')
@@ -520,6 +526,12 @@ function installPerfCounterHandle(): void {
     });
 }
 
+// Guarded, so importing this module outside the shell (plain web, a test)
+// installs nothing. __FACET_NATIVE_SHELL is set by the WebView's
+// injectedJavaScriptBeforeContentLoaded, which runs before any page script,
+// so it is already true by the time this line does.
+if (isInWebView()) installPerfCounterHandle();
+
 /**
  * Initialize the bridge: register native-message handlers, install the global
  * error/recovery handlers, and arm a fallback splash-dismiss timer. The app's
@@ -531,7 +543,6 @@ export function initBridge(): void {
   if (!isInWebView()) return;
 
   installGlobalErrorHandlers();
-  installPerfCounterHandle();
 
   onNativeMessage((msg) => {
     if (msg.type === 'SAFE_AREA_INSETS') {

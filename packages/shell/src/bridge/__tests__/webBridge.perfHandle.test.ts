@@ -1,87 +1,98 @@
-import { initBridge } from '../webBridge';
-import { countBase64, countDecode, resetPerfCounters } from '@/engine/debug/perfCounters';
+import type * as PerfModule from '@/engine/debug/perfCounters';
 
 // docs/image_refactor.md §5's budgets are per-tick quantities inside a JS
 // heap, which is exactly what an Allocations trace cannot attribute. Jest
 // asserts them directly; this is the other half — reading them off a real
 // phone, where until now there was no way in at all.
+//
+// These import the module FRESH under a fake window, because the property
+// being pinned is that merely importing webBridge installs the handle. The
+// first version hung it off initBridge() and called initBridge() from the
+// test: green here, absent on the device, because initBridge has no caller
+// anywhere in the app.
 
 interface PerfHandle {
   read(): { base64Count: number; decodeFullCount: number };
   reset(): string;
-  log(reason?: string): { base64Count: number };
+  log(reason?: string): unknown;
 }
 
-type W = {
-  window?: Record<string, unknown>;
-  setTimeout?: typeof setTimeout;
-};
+type W = { window?: Record<string, unknown> };
 
 let posted: string[];
 
-beforeEach(() => {
-  // initBridge arms a 4 s splash-dismiss fallback; without fake timers it
-  // outlives the test and jest force-exits the worker.
-  jest.useFakeTimers();
+function setWindow(inShell: boolean): void {
   posted = [];
-  resetPerfCounters();
   (globalThis as unknown as W).window = {
-    __FACET_NATIVE_SHELL: true,
+    ...(inShell ? { __FACET_NATIVE_SHELL: true } : {}),
     ReactNativeWebView: { postMessage: (s: string) => { posted.push(s); } },
     addEventListener: () => {},
     dispatchEvent: () => true,
   };
-});
-
-afterEach(() => {
-  jest.clearAllTimers();
-  jest.useRealTimers();
-  delete (globalThis as unknown as W).window;
-});
-
-/** initBridge installs the handle through a dynamic import; let it land. */
-async function bridgeUp(): Promise<PerfHandle> {
-  initBridge();
-  await Promise.resolve();
-  await Promise.resolve();
-  return (globalThis as unknown as W).window!.__perf as PerfHandle;
 }
 
-test('the counters are reachable from a Web Inspector attached to the WebView', async () => {
-  const perf = await bridgeUp();
+/**
+ * Import webBridge as a device would: window already carrying the shell flag
+ * (injectedJavaScriptBeforeContentLoaded sets it before any page script), then
+ * the module evaluated for the first time.
+ *
+ * resetModules gives the bridge a fresh perfCounters too, so the counting
+ * functions must come from the SAME fresh registry — a top-level import here
+ * would be a different module object holding different integers. In the app
+ * there is one registry and no such split.
+ */
+async function importFresh(inShell = true): Promise<{
+  perf: PerfHandle | undefined;
+  counters: typeof PerfModule;
+}> {
+  setWindow(inShell);
+  jest.resetModules();
+  await import('../webBridge');
+  const counters = await import('@/engine/debug/perfCounters');
+  counters.resetPerfCounters();
+  await Promise.resolve();
+  await Promise.resolve();
+  return {
+    perf: (globalThis as unknown as W).window!.__perf as PerfHandle | undefined,
+    counters,
+  };
+}
+
+afterEach(() => { delete (globalThis as unknown as W).window; });
+
+test('importing the bridge installs the handle — no init call required', async () => {
+  const { perf, counters } = await importFresh();
   expect(perf).toBeDefined();
 
-  countBase64(1024);
-  countDecode(false);
-  expect(perf.read().base64Count).toBe(1);
-  expect(perf.read().decodeFullCount).toBe(1);
+  counters.countBase64(1024);
+  counters.countDecode(false);
+  expect(perf!.read().base64Count).toBe(1);
+  expect(perf!.read().decodeFullCount).toBe(1);
 });
 
 test('reset zeroes them, so the next read covers one tick and not the session', async () => {
-  const perf = await bridgeUp();
-  countBase64(1024);
-  expect(perf.reset()).toBe('perf counters zeroed');
-  expect(perf.read().base64Count).toBe(0);
+  const { perf, counters } = await importFresh();
+  counters.countBase64(1024);
+  expect(perf!.reset()).toBe('perf counters zeroed');
+  expect(perf!.read().base64Count).toBe(0);
 });
 
 test('log sends one line to native, for a device with no inspector attached', async () => {
-  const perf = await bridgeUp();
-  countBase64(2048);
-  countDecode(true);
-  perf.log('tick');
+  const { perf, counters } = await importFresh();
+  counters.countBase64(2048);
+  counters.countDecode(true);
+  perf!.log('tick');
 
-  const logs = posted.map((p) => JSON.parse(p)).filter((m) => m.type === 'LOG');
-  const line = logs.find((m) => m.payload.tag === 'perf');
+  const line = posted.map((p) => JSON.parse(p))
+    .find((m) => m.type === 'LOG' && m.payload.tag === 'perf');
   expect(line).toBeDefined();
   expect(line.payload.level).toBe('log');
   expect(line.payload.text).toBe(
-    'tick — reads 0/0 B · writes 0/0 B · base64 1/2.0 KB · decodes 0 full, 1 scaled',
+    'tick — reads 0/0 B · writes 0/0 B · base64 1/2.0 KB · decodes 0 full, 1 scaled'
+    + ' · headers 0 read, 0 missed',
   );
 });
 
-test('the handle is absent outside the WebView — there is no native to log to', async () => {
-  (globalThis as unknown as W).window = { addEventListener: () => {} };
-  initBridge();
-  await Promise.resolve();
-  expect((globalThis as unknown as W).window!.__perf).toBeUndefined();
+test('installs nothing outside the shell — plain web has no native to log to', async () => {
+  expect((await importFresh(false)).perf).toBeUndefined();
 });

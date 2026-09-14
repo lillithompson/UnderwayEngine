@@ -149,7 +149,8 @@ describe('formatPerfCounters', () => {
       toBase64(new Uint8Array(2048));
     });
     expect(formatPerfCounters(counters)).toBe(
-      'reads 0/0 B · writes 0/0 B · base64 1/2.0 KB · decodes 1 full, 2 scaled',
+      'reads 0/0 B · writes 0/0 B · base64 1/2.0 KB · decodes 1 full, 2 scaled'
+      + ' · headers 0 read, 0 missed',
     );
   });
 
