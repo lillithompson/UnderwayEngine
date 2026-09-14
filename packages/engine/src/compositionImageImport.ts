@@ -3,7 +3,7 @@ import { compSnapStep } from './compositionCellMath';
 import { canvasHasTransparency } from './canvasAlpha';
 import { imageHeaderSize } from './imageHeaderSize';
 import { contentImageId } from './imageAssetStore';
-import { countDecode } from './debug/perfCounters';
+import { countDecode, countHeaderRead } from './debug/perfCounters';
 
 /**
  * Reference-image import pipeline. Decodes a picked PNG/JPG (a picked SVG
@@ -176,17 +176,25 @@ export function svgNominalPixelSize(svgText: string): { width: number; height: n
  * `resizeQuality` options are honored on every modern WebKit; we fall
  * back to a manual canvas resize when the browser ignores them.
  */
-async function decodeAndDownsample(
+export async function decodeAndDownsample(
   blob: Blob,
   maxEdge: number = MAX_EDGE_PX,
   sourceBytes?: Uint8Array,
-): Promise<{ bitmap: ImageBitmap; width: number; height: number }> {
+): Promise<{
+  bitmap: ImageBitmap; width: number; height: number;
+  /** The source's own display size, so a caller can tell a bitmap that was
+   *  downsampled from one that was already small enough. */
+  sourceWidth: number; sourceHeight: number;
+}> {
   // The intrinsic size decides the resize ratio, and the HEADER carries it
   // (imageHeaderSize) — a few dozen bytes rather than a full decode of a
   // 12 MP photo (~48 MB of RGBA) read for two numbers and dropped. Only a
   // source whose header cannot be read falls back to decoding for it, which
   // is what this used to do unconditionally.
   const declared = sourceBytes ? imageHeaderSize(sourceBytes) : null;
+  // Counted only when there were bytes to read: a caller that passes none
+  // has not missed, it has not asked.
+  if (sourceBytes) countHeaderRead(declared !== null);
   let native: ImageBitmap | null = null;
   let srcW: number;
   let srcH: number;
@@ -202,7 +210,10 @@ async function decodeAndDownsample(
   const longest = Math.max(srcW, srcH);
   if (longest <= maxEdge) {
     if (!native) { countDecode(false); native = await createImageBitmap(blob); }
-    return { bitmap: native, width: native.width, height: native.height };
+    return {
+      bitmap: native, width: native.width, height: native.height,
+      sourceWidth: srcW, sourceHeight: srcH,
+    };
   }
   const scale = maxEdge / longest;
   const targetW = Math.max(1, Math.round(srcW * scale));
@@ -221,7 +232,10 @@ async function decodeAndDownsample(
     countDecode(honored);
     if (honored) {
       native?.close?.();
-      return { bitmap: resized, width: targetW, height: targetH };
+      return {
+        bitmap: resized, width: targetW, height: targetH,
+        sourceWidth: srcW, sourceHeight: srcH,
+      };
     }
     resized.close?.();
   } catch {
@@ -236,7 +250,10 @@ async function decodeAndDownsample(
   // The canvas is already at the target size, so this holds no full raster.
   countDecode(true);
   const resized = await createImageBitmap(canvas);
-  return { bitmap: resized, width: targetW, height: targetH };
+  return {
+    bitmap: resized, width: targetW, height: targetH,
+    sourceWidth: srcW, sourceHeight: srcH,
+  };
 }
 
 /**

@@ -106,18 +106,59 @@ describe('the level cache', () => {
     expect(created).toHaveLength(1);
   });
 
-  it('costs one FULL-resolution decode per level made, and none per level served', async () => {
-    // generateLevel probes the source with a bare createImageBitmap to learn
-    // its dimensions, then resizes — so every new level materializes every
-    // pixel of the photo first. The import path stopped doing this (it reads
-    // imageHeaderSize instead); this path has not been moved over, and the
-    // number below is what that costs. Serving a made level is free, which
-    // is the half that matters for a per-tick budget.
-    const first = await perfDelta(() => ensureDecodeLevel('imgblob_a', 256, PHOTO, 'image/jpeg'));
-    expect(first.counters.decodeFullCount).toBe(1);
+  /** A JPEG declaring w x h with no Exif: a header the level maker can read. */
+  function jpegHeader(w: number, h: number): Uint8Array {
+    return new Uint8Array([
+      0xff, 0xd8,
+      0xff, 0xc0, 0x00, 0x11, 0x08,
+      (h >> 8) & 0xff, h & 0xff, (w >> 8) & 0xff, w & 0xff,
+      0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
+    ]);
+  }
 
-    const second = await perfDelta(() => ensureDecodeLevel('imgblob_a', 256, PHOTO, 'image/jpeg'));
-    expect(second.counters.decodeFullCount).toBe(0);
+  it('spends NO decode discovering that a level would buy nothing', async () => {
+    // The source is already under the level's edge, and the header says so.
+    // This used to cost a full decode of every pixel to find out.
+    const { result, counters } = await perfDelta(
+      () => ensureDecodeLevel('imgblob_small', 512, jpegHeader(400, 300), 'image/jpeg'),
+    );
+    expect(result).toBeNull();
+    expect(counters.decodeFullCount).toBe(0);
+    expect(counters.decodeScaledCount).toBe(0);
+  });
+
+  it('asks the decoder for the level\'s size, not the source\'s', async () => {
+    // A decoder that honours resizeWidth/resizeHeight, which every modern
+    // WebKit does — the fake above deliberately ignores them to exercise the
+    // fallback, so this installs its own.
+    const g = globalThis as Record<string, unknown>;
+    g.createImageBitmap = async (src: unknown, opts?: { resizeWidth?: number; resizeHeight?: number }) => {
+      if (opts?.resizeWidth && opts?.resizeHeight) {
+        return { width: opts.resizeWidth, height: opts.resizeHeight, close: () => {} };
+      }
+      const c = src as { width?: number; height?: number };
+      if (typeof c.width === 'number' && !(src instanceof Blob)) {
+        return { width: c.width, height: c.height, close: () => {} };
+      }
+      return { width: 2048, height: 1024, close: () => {} };
+    };
+
+    const { counters } = await perfDelta(
+      () => ensureDecodeLevel('imgblob_big', 256, jpegHeader(2048, 1024), 'image/jpeg'),
+    );
+    // The whole point: a zoom level no longer materializes the full raster.
+    expect(counters.decodeFullCount).toBe(0);
+    expect(counters.decodeScaledCount).toBe(1);
+    expect(counters.headerHitCount).toBeGreaterThan(0);
+  });
+
+  it('serves a made level without decoding again', async () => {
+    await ensureDecodeLevel('imgblob_a', 256, PHOTO, 'image/jpeg');
+    const { counters } = await perfDelta(
+      () => ensureDecodeLevel('imgblob_a', 256, PHOTO, 'image/jpeg'),
+    );
+    expect(counters.decodeFullCount).toBe(0);
+    expect(counters.decodeScaledCount).toBe(0);
   });
 
   it('collapses concurrent asks for one level', async () => {

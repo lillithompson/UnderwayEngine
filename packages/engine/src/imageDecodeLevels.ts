@@ -1,6 +1,6 @@
 import { createRasterLruCache } from './rasterLruCache';
-import { MAX_EDGE_PX } from './compositionImageImport';
-import { countDecode } from './debug/perfCounters';
+import { decodeAndDownsample, MAX_EDGE_PX } from './compositionImageImport';
+import { imageHeaderSize } from './imageHeaderSize';
 
 /**
  * The pyramid level the canvas actually draws: a photo re-encoded to about
@@ -138,20 +138,25 @@ async function generateLevel(
   };
   if (!g.createImageBitmap || !g.OffscreenCanvas) return null;
   const blob = new Blob([sourceBytes as unknown as BlobPart], { type: mimeType });
-  // A full decode, read for two numbers. The import path gets these from
-  // the header (imageHeaderSize) instead; this one has not been moved over.
-  countDecode(false);
-  const probe = await g.createImageBitmap(blob);
-  const longest = Math.max(probe.width, probe.height);
-  if (longest <= edge) { probe.close?.(); return null; } // already at or under the level
-  const scale = edge / longest;
-  const w = Math.max(1, Math.round(probe.width * scale));
-  const h = Math.max(1, Math.round(probe.height * scale));
+  // The header answers "is this already small enough?" for nothing. It used
+  // to cost a full decode of the source — every pixel of a 12 MP photo
+  // materialized to read two numbers, once per zoom level visited.
+  const declared = imageHeaderSize(sourceBytes);
+  if (declared && Math.max(declared.width, declared.height) <= edge) return null;
+  // Shared with the import path rather than reimplemented: it reads the same
+  // header, asks the decoder for the size it wants, and falls back to a full
+  // decode only when the header cannot be read.
+  const { bitmap, width: w, height: h, sourceWidth, sourceHeight } =
+    await decodeAndDownsample(blob, edge, sourceBytes);
+  if (Math.max(sourceWidth, sourceHeight) <= edge) {
+    bitmap.close?.(); // already at or under the level
+    return null;
+  }
   const canvas = new g.OffscreenCanvas(w, h);
   const ctx = canvas.getContext('2d') as (OffscreenCanvasRenderingContext2D | null);
-  if (!ctx) { probe.close?.(); return null; }
-  ctx.drawImage(probe, 0, 0, w, h);
-  probe.close?.();
+  if (!ctx) { bitmap.close?.(); return null; }
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close?.();
   // PNG keeps a source's alpha; a JPEG source has none and stays far
   // smaller as one. The mime is recorded so the object URL declares it.
   const outMime = mimeType === 'image/jpeg' ? 'image/jpeg' : 'image/png';

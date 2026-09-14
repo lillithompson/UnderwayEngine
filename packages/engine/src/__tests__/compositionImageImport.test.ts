@@ -355,6 +355,38 @@ describe('the import pipeline reads the source size from its HEADER', () => {
     expect(counters.decodeScaledCount).toBe(2);
   });
 
+  it('records whether the header was readable, so a miss is visible not inferred', async () => {
+    // A readable header is the difference between one full decode per import
+    // and two. When a device shows two, this says which it was.
+    installFakeDecoder(6000, 4500);
+    const ok = await perfDelta(
+      () => prepareImageImport(jpegHeader(6000, 4500), 'image/jpeg', 0, 0),
+    );
+    expect(ok.counters.headerHitCount).toBe(2);   // one per scale
+    expect(ok.counters.headerMissCount).toBe(0);
+
+    installFakeDecoder(4000, 3000);
+    const bad = await perfDelta(
+      () => prepareImageImport(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), 'image/jpeg', 0, 0),
+    );
+    expect(bad.counters.headerHitCount).toBe(0);
+    expect(bad.counters.headerMissCount).toBeGreaterThan(0);
+  });
+
+  it('a PNG source under the master cap costs ONE full decode, not two', async () => {
+    // The shape a screenshot import takes: 1206x2622, inside the 4096 master
+    // cap and outside the 1024 display cap. The master IS the native decode;
+    // the display copy is asked for at size. A second full decode here means
+    // the header was not read.
+    installFakeDecoder(1206, 2622);
+    const { counters } = await perfDelta(
+      () => prepareImageImport(pngHeader(1206, 2622), 'image/png', 0, 0),
+    );
+    expect(counters.headerMissCount).toBe(0);
+    expect(counters.decodeFullCount).toBe(1);
+    expect(counters.decodeScaledCount).toBe(1);
+  });
+
   it('counts the header fallback as the full-resolution decode it is', async () => {
     installFakeDecoder(4000, 3000);
     const { counters } = await perfDelta(
