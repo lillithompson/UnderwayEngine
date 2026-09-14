@@ -1,5 +1,7 @@
 import { get, set, del, clear, keys } from 'idb-keyval';
-import { countStorageRead, countStorageWrite } from './debug/perfCounters';
+import {
+  countStorageRead, countStorageWrite, countTextRead, countTextWrite,
+} from './debug/perfCounters';
 
 type KeyValuePairs = [string, string | null][];
 
@@ -68,8 +70,15 @@ function noteKeysRemoved(ks: string[]): void {
 }
 
 const storage: Storage = {
-  getItem: (key: string) => get(key).then((v: unknown) => (v as string) ?? null),
-  setItem: (key: string, value: string) => set(key, value).then(() => { noteKeyWritten(key); }),
+  getItem: (key: string) => get(key).then((v: unknown) => {
+    const text = (v as string) ?? null;
+    // The page's own document rides this path (persistence.ts compMetaKey),
+    // which is the read docs/image_refactor.md §5 budgets at 0 per tick.
+    if (text !== null) countTextRead(text.length);
+    return text;
+  }),
+  setItem: (key: string, value: string) =>
+    set(key, value).then(() => { noteKeyWritten(key); countTextWrite(value.length); }),
   removeItem: (key: string) => del(key).then(() => { noteKeysRemoved([key]); }),
   multiGet: (ks: string[]) =>
     Promise.all(ks.map((k) => get(k).then((v: unknown) => [k, (v as string) ?? null] as [string, string | null]))),

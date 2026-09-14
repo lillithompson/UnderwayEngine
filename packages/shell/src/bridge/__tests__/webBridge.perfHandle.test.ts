@@ -88,8 +88,8 @@ test('log sends one line to native, for a device with no inspector attached', as
   expect(line).toBeDefined();
   expect(line.payload.level).toBe('log');
   expect(line.payload.text).toBe(
-    'tick — reads 0/0 B · writes 0/0 B · base64 1/2.0 KB · decodes 0 full, 1 scaled'
-    + ' · headers 0 read, 0 missed',
+    'tick — blob r0/0 B · w0/0 B · text r0/0 B · w0/0 B'
+    + ' · base64 1/2.0 KB · decodes 0 full, 1 scaled · headers 0 read, 0 missed',
   );
 });
 

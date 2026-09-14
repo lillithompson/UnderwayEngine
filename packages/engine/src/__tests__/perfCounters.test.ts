@@ -149,15 +149,58 @@ describe('formatPerfCounters', () => {
       toBase64(new Uint8Array(2048));
     });
     expect(formatPerfCounters(counters)).toBe(
-      'reads 0/0 B · writes 0/0 B · base64 1/2.0 KB · decodes 1 full, 2 scaled'
-      + ' · headers 0 read, 0 missed',
+      'blob r0/0 B · w0/0 B · text r0/0 B · w0/0 B'
+      + ' · base64 1/2.0 KB · decodes 1 full, 2 scaled · headers 0 read, 0 missed',
     );
   });
 
   it('scales units so a megabyte does not print as seven digits', () => {
     const c = readPerfCounters();
     expect(formatPerfCounters({ ...c, storageReadCount: 1, storageReadBytes: 3_566_305 }))
-      .toContain('reads 1/3.40 MB');
+      .toContain('blob r1/3.40 MB');
     expect(formatPerfCounters({ ...c, base64Bytes: 900 })).toContain('base64 0/900 B');
+  });
+});
+
+describe('the text path, where a page\'s own document lives', () => {
+  it('counts a document read apart from a blob read', async () => {
+    // persistence.ts saves a composition with setItem, not setBinary. Until
+    // this was counted, a debounce tick that re-read the whole document
+    // measured as zero — the blob counters cannot see it, and §5's
+    // "68 MB read per tick" was mostly this.
+    await storage.setItem('comp_meta_x', 'y'.repeat(4096));
+    resetPerfCounters();
+
+    const { counters } = await perfDelta(() => storage.getItem('comp_meta_x'));
+    expect(counters.textReadCount).toBe(1);
+    expect(counters.textReadBytes).toBe(4096);
+    expect(counters.storageReadCount).toBe(0);
+    expect(counters.storageReadBytes).toBe(0);
+  });
+
+  it('counts a document write by the characters it sends', async () => {
+    const { counters } = await perfDelta(() => storage.setItem('comp_meta_y', 'z'.repeat(300)));
+    expect(counters.textWriteCount).toBe(1);
+    expect(counters.textWriteBytes).toBe(300);
+    expect(counters.storageWriteCount).toBe(0);
+  });
+
+  it('charges nothing for a text miss', async () => {
+    const { result, counters } = await perfDelta(() => storage.getItem('comp_meta_absent'));
+    expect(result).toBeNull();
+    expect(counters.textReadCount).toBe(0);
+  });
+
+  it('keeps the two paths separate, so a fat read says WHICH it was', async () => {
+    await storage.setItem('doc', 'd'.repeat(1000));
+    await storage.setBinary('blob', new Uint8Array(500));
+    resetPerfCounters();
+
+    const { counters } = await perfDelta(async () => {
+      await storage.getItem('doc');
+      await storage.getBinary('blob');
+    });
+    expect(counters.textReadBytes).toBe(1000);
+    expect(counters.storageReadBytes).toBe(500);
   });
 });

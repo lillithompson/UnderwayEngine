@@ -23,7 +23,7 @@
 
 /** The §5 budget table, one field per row that a test can observe. */
 export interface PerfCounters {
-  /** `storage.getBinary` calls that returned bytes. */
+  /** `storage.getBinary` calls that returned bytes — the blob path. */
   storageReadCount: number;
   /** Bytes those reads pulled over the structured-clone boundary. */
   storageReadBytes: number;
@@ -31,6 +31,20 @@ export interface PerfCounters {
   storageWriteCount: number;
   /** Bytes those writes sent. */
   storageWriteBytes: number;
+  /**
+   * `storage.getItem` calls that returned something — the TEXT path, which
+   * is where a page's own document lives (persistence.ts saves it with
+   * setItem, not setBinary). Counted apart from the blob path because the
+   * two answer different questions: a fat text read is the document being
+   * re-read, a fat binary one is photo bytes.
+   */
+  textReadCount: number;
+  /** Characters those reads returned. JSON and base64 are one byte each. */
+  textReadBytes: number;
+  /** `storage.setItem` calls that completed. */
+  textWriteCount: number;
+  /** Characters those writes sent. */
+  textWriteBytes: number;
   /** `toBase64` calls — the engine's single encoder. */
   base64Count: number;
   /** Input bytes encoded; the string built is 4/3 of this. */
@@ -61,6 +75,10 @@ function zero(): PerfCounters {
     storageReadBytes: 0,
     storageWriteCount: 0,
     storageWriteBytes: 0,
+    textReadCount: 0,
+    textReadBytes: 0,
+    textWriteCount: 0,
+    textWriteBytes: 0,
     base64Count: 0,
     base64Bytes: 0,
     decodeFullCount: 0,
@@ -81,6 +99,17 @@ export function countStorageRead(bytes: number): void {
 export function countStorageWrite(bytes: number): void {
   counters.storageWriteCount++;
   counters.storageWriteBytes += bytes;
+}
+
+/** A text read that returned something. A miss costs nothing. */
+export function countTextRead(chars: number): void {
+  counters.textReadCount++;
+  counters.textReadBytes += chars;
+}
+
+export function countTextWrite(chars: number): void {
+  counters.textWriteCount++;
+  counters.textWriteBytes += chars;
 }
 
 export function countBase64(bytes: number): void {
@@ -148,8 +177,10 @@ function humanBytes(n: number): string {
  */
 export function formatPerfCounters(c: PerfCounters): string {
   return [
-    `reads ${c.storageReadCount}/${humanBytes(c.storageReadBytes)}`,
-    `writes ${c.storageWriteCount}/${humanBytes(c.storageWriteBytes)}`,
+    `blob r${c.storageReadCount}/${humanBytes(c.storageReadBytes)}`,
+    `w${c.storageWriteCount}/${humanBytes(c.storageWriteBytes)}`,
+    `text r${c.textReadCount}/${humanBytes(c.textReadBytes)}`,
+    `w${c.textWriteCount}/${humanBytes(c.textWriteBytes)}`,
     `base64 ${c.base64Count}/${humanBytes(c.base64Bytes)}`,
     `decodes ${c.decodeFullCount} full, ${c.decodeScaledCount} scaled`,
     `headers ${c.headerHitCount} read, ${c.headerMissCount} missed`,
