@@ -229,13 +229,10 @@ const svgAdapter: GeometryAdapter<SVGObject> = {
     if (svg.tileMode === 'repeat') {
       // Pattern mode: the region resizes, the tile does not — the segments
       // (one pattern unit) stay put and the renderer repeats them across the
-      // new bbox. When the ORIGIN edge moves, shift the tile-grid offset the
-      // opposite way so the pattern stays fixed in world space (Facet's
-      // SCALE_FIGURE tile branch); a bottom/right-edge resize leaves it 0.
-      const dx = newBbox.cellX - svg.cellX;
-      const dy = newBbox.cellY - svg.cellY;
-      const newOx = (svg.tileOffsetXL0 ?? 0) - dx;
-      const newOy = (svg.tileOffsetYL0 ?? 0) - dy;
+      // new bbox. The tile-grid offset compensates the moving edge (and the
+      // turning of a tilted region) so the pattern stays fixed in world
+      // space (heldTileOffsets; Facet's SCALE_FIGURE tile branch).
+      const { x: newOx, y: newOy } = heldTileOffsets(svg, newBbox);
       return { ...svg, ...newBbox,
         tileOffsetXL0: newOx === 0 ? undefined : newOx,
         tileOffsetYL0: newOy === 0 ? undefined : newOy };
@@ -418,6 +415,46 @@ const paintAdapter: GeometryAdapter<PaintObject> = makeBboxAdapter<PaintObject>(
 // takes it.
 const patternBboxAdapter = makeBboxAdapter<PatternObject>('pattern');
 
+/**
+ * The tile-grid offsets that hold a repeat-mode tiling STILL on the page
+ * while its region's box moves from the node's own to `newBbox` — the rule
+ * both the svg and the pattern adapters resize a repeating region by: the
+ * box is a window onto a tiling that keeps its size, so dragging an edge
+ * reveals more or less of a picture that does not move.
+ *
+ * The lattice is anchored at `cellX/Y + tileOffset` in the node's own
+ * (unrotated) frame, so an ORIGIN-edge drag takes the opposite shift and a
+ * bottom/right-edge drag takes none. That is the whole of it for a square
+ * node — and was the whole of it, full stop, which is why a TILTED one
+ * drifted: a free rotation is drawn about the box's CENTRE, and a resize
+ * moves that centre, so holding the lattice still in the box's frame is
+ * not holding it still on the page. The anchor takes the part of the
+ * centre's travel the rotation does not carry it through — (I − R(−θ))·ΔC,
+ * with R the same y-down clockwise rotation unrotatePointForNode inverts —
+ * and the tiling stays where the eye left it at any angle.
+ */
+export function heldTileOffsets(
+  node: {
+    cellX: number; cellY: number; cellWidth: number; cellHeight: number;
+    angleDeg?: number; tileOffsetXL0?: number; tileOffsetYL0?: number;
+  },
+  newBbox: Bbox,
+): { x: number; y: number } {
+  let x = (node.tileOffsetXL0 ?? 0) - (newBbox.cellX - node.cellX);
+  let y = (node.tileOffsetYL0 ?? 0) - (newBbox.cellY - node.cellY);
+  const deg = node.angleDeg;
+  if (deg) {
+    const rad = (deg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const dcx = newBbox.cellX + newBbox.cellWidth / 2 - (node.cellX + node.cellWidth / 2);
+    const dcy = newBbox.cellY + newBbox.cellHeight / 2 - (node.cellY + node.cellHeight / 2);
+    x += dcx * (1 - cos) - dcy * sin;
+    y += dcy * (1 - cos) + dcx * sin;
+  }
+  return { x, y };
+}
+
 /** How a rescale treats what is INSIDE the box.
  *
  *  Every kind scales its content with its box as a matter of course — a
@@ -521,11 +558,9 @@ const patternAdapter: GeometryAdapter<PatternObject> = {
           tileOffsetYL0: oy === 0 ? undefined : oy };
       }
       // The pattern's own corner: the box is a window onto a tiling that
-      // keeps its size, so the tiling holds still under the moving edge.
-      const dx = newBbox.cellX - node.cellX;
-      const dy = newBbox.cellY - node.cellY;
-      const newOx = (node.tileOffsetXL0 ?? 0) - dx;
-      const newOy = (node.tileOffsetYL0 ?? 0) - dy;
+      // keeps its size, so the tiling holds still under the moving edge —
+      // and under the centre a tilted region turns about (heldTileOffsets).
+      const { x: newOx, y: newOy } = heldTileOffsets(node, newBbox);
       return { ...node, ...newBbox,
         tileOffsetXL0: newOx === 0 ? undefined : newOx,
         tileOffsetYL0: newOy === 0 ? undefined : newOy };

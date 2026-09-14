@@ -171,6 +171,54 @@ describe('resizing a repeating pattern', () => {
       { cellX: 0, cellY: 1, cellWidth: 10, cellHeight: 6 }) as PatternObject;
     expect(tileBox(bigger)).toEqual(tileBox(p));
   });
+
+  // …and holds it still for a TILTED region too, which is what it used to
+  // fail at: a free rotation is drawn about the box's centre, a resize
+  // moves that centre, and the tiling slid across the page as the region's
+  // shape changed. The tile box is stored in the node's own (unrotated)
+  // frame, so what has to hold still is where the rotation PUTS it.
+  const RAD = (deg: number) => (deg * Math.PI) / 180;
+  /** The tile box's anchor as the page sees it: turned clockwise about the
+   *  region's centre, the same transform unrotatePointForNode inverts. */
+  const drawnAnchor = (p: PatternObject) => {
+    const cx = p.cellX + p.cellWidth / 2;
+    const cy = p.cellY + p.cellHeight / 2;
+    const dx = p.cellX + (p.tileOffsetXL0 ?? 0) - cx;
+    const dy = p.cellY + (p.tileOffsetYL0 ?? 0) - cy;
+    const cos = Math.cos(RAD(p.angleDeg ?? 0));
+    const sin = Math.sin(RAD(p.angleDeg ?? 0));
+    return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+  };
+
+  it.each([30, 90, 137, -45, 180])('holds it still at %i°', (angleDeg) => {
+    const p = pat({ angleDeg });
+    const before = drawnAnchor(p);
+    const old = { cellX: 2, cellY: 3, cellWidth: 8, cellHeight: 4 };
+    for (const box of [
+      { cellX: 0, cellY: 1, cellWidth: 10, cellHeight: 6 },   // origin corner out
+      { cellX: 2, cellY: 3, cellWidth: 13, cellHeight: 9 },   // far corner out
+      { cellX: 5, cellY: 4, cellWidth: 3, cellHeight: 2 },    // origin corner in
+      { cellX: 2, cellY: 1, cellWidth: 8, cellHeight: 6 },    // one edge only
+    ]) {
+      const q = A.rescale(p, old, box) as PatternObject;
+      const after = drawnAnchor(q);
+      expect(after.x).toBeCloseTo(before.x, 9);
+      expect(after.y).toBeCloseTo(before.y, 9);
+      // The tile keeps its size — the region is a window, not a scale.
+      expect(q.tileWidthL0).toBe(p.tileWidthL0);
+      expect(q.tileHeightL0).toBe(p.tileHeightL0);
+    }
+  });
+
+  it('leaves an upright region exactly where it always put it', () => {
+    // The rotation term must vanish at 0°, or every existing repeat
+    // pattern on every page shifts by a hair on its next resize.
+    const old = { cellX: 2, cellY: 3, cellWidth: 8, cellHeight: 4 };
+    const box = { cellX: 0, cellY: 1, cellWidth: 10, cellHeight: 6 };
+    const q = A.rescale(pat(), old, box) as PatternObject;
+    expect(q.tileOffsetXL0).toBe(3);
+    expect(q.tileOffsetYL0).toBe(2.5);
+  });
 });
 
 // …and the OTHER kind of resize: the pattern as one member of a group
