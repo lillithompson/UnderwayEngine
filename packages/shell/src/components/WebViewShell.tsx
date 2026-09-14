@@ -13,8 +13,13 @@ export interface WebViewShellProps {
   /**
    * Let Safari's Web Inspector attach to the page (Develop menu → the
    * device → the page): the one way to see the WebContent process's own
-   * memory, layers and timeline from outside. Defaults to __DEV__; a
-   * profiling build passes true to inspect a Release bundle.
+   * memory, layers and timeline from outside — and, since iOS 16.4, one a
+   * WKWebView must opt into or it does not appear in the menu at all.
+   *
+   * Defaults to __DEV__ OR a profiling build (see PROFILING). The default
+   * matters more than it looks: this app's only device script builds
+   * Release (`npm run ios:device`), so __DEV__ alone meant no build that
+   * ever ran on a phone was inspectable.
    */
   debuggable?: boolean;
   /**
@@ -33,7 +38,20 @@ export interface WebViewShellProps {
 // (compositions.tsx) after its first paint with real data, not on a timer, so
 // the splash hides directly onto a frame with the final UI — no skeleton, no
 // resize flash, no intermediate handoff.
-export default function WebViewShell({ urlSuffix, debuggable = __DEV__ }: WebViewShellProps = {}) {
+/**
+ * A profiling build: Release, but inspectable. Expo inlines EXPO_PUBLIC_* at
+ * bundle time, so this is a constant in the shipped bundle rather than a
+ * runtime lookup — and a build that sets nothing (every App Store build) is
+ * not inspectable, which is the property worth keeping.
+ *
+ * Set by `npm run ios:profile`.
+ */
+const PROFILING = process.env.EXPO_PUBLIC_WEBVIEW_INSPECTABLE === '1';
+
+export default function WebViewShell({
+  urlSuffix,
+  debuggable = __DEV__ || PROFILING,
+}: WebViewShellProps = {}) {
   const { url, ready } = useLocalServer();
   const [webReady, setWebReady] = useState(false);
   const [recoveryFailed, setRecoveryFailed] = useState(false);
