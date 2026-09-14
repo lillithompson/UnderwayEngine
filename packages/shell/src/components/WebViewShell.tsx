@@ -8,6 +8,7 @@ import { NativeToWebMessage } from '../bridge/protocol';
 import { recordTermination, resetGuard } from '../bridge/webContentRecovery';
 import { shouldProbeOnResume, WATCHDOG_MS } from '../bridge/resumeLivenessWatchdog';
 import { ACCENT_SECONDARY, BG_HEADER, BG_DARK } from '@/engine/colors';
+import { DIAGNOSTICS } from '../profiling';
 
 export interface WebViewShellProps {
   /**
@@ -16,7 +17,7 @@ export interface WebViewShellProps {
    * memory, layers and timeline from outside — and, since iOS 16.4, one a
    * WKWebView must opt into or it does not appear in the menu at all.
    *
-   * Defaults to __DEV__ OR a profiling build (see PROFILING). The default
+   * Defaults to DIAGNOSTICS — a dev build or a profiling one. The default
    * matters more than it looks: this app's only device script builds
    * Release (`npm run ios:device`), so __DEV__ alone meant no build that
    * ever ran on a phone was inspectable.
@@ -38,19 +39,9 @@ export interface WebViewShellProps {
 // (compositions.tsx) after its first paint with real data, not on a timer, so
 // the splash hides directly onto a frame with the final UI — no skeleton, no
 // resize flash, no intermediate handoff.
-/**
- * A profiling build: Release, but inspectable. Expo inlines EXPO_PUBLIC_* at
- * bundle time, so this is a constant in the shipped bundle rather than a
- * runtime lookup — and a build that sets nothing (every App Store build) is
- * not inspectable, which is the property worth keeping.
- *
- * Set by `npm run ios:profile`.
- */
-const PROFILING = process.env.EXPO_PUBLIC_WEBVIEW_INSPECTABLE === '1';
-
 export default function WebViewShell({
   urlSuffix,
-  debuggable = __DEV__ || PROFILING,
+  debuggable = DIAGNOSTICS,
 }: WebViewShellProps = {}) {
   const { url, ready } = useLocalServer();
   const [webReady, setWebReady] = useState(false);
@@ -60,10 +51,6 @@ export default function WebViewShell({
 
   const sendToWeb = useCallback((message: NativeToWebMessage) => {
     const json = JSON.stringify(message);
-    // TEMP diagnostic — silent-import bug investigation. If this log
-    // appears but the corresponding receipt log on the web side
-    // doesn't, injectJavaScript dropped the payload.
-    console.log('[webViewShell] sendToWeb', message.type, 'jsonLen=', json.length, 'webViewRef=', !!webViewRef.current);
     webViewRef.current?.injectJavaScript(`window.__onNativeMessage(${json}); true;`);
   }, []);
 
@@ -192,7 +179,7 @@ export default function WebViewShell({
             style={styles.webview}
             onMessage={onMessage}
             onError={(e) => {
-              // COLD-START diag — surface the full nativeEvent so we get the
+              // Surface the full nativeEvent so we get the
               // underlying NSError code/domain when WKWebView reports a
               // navigation-level failure (e.g. -1004 socket-not-connected).
               const ne = e.nativeEvent as unknown as Record<string, unknown>;

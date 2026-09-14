@@ -8,6 +8,7 @@
  */
 
 import type { NativeToWebMessage } from './protocol';
+import { DIAGNOSTICS } from '../profiling';
 
 declare global {
   interface Window {
@@ -278,8 +279,6 @@ export function importBinaryFile(accept: string): Promise<ImportBinaryFileResult
       };
       window.__facetBridgeHandler = (msg: NativeToWebMessage) => {
         if (msg.type === 'BINARY_FILE_IMPORTED') {
-          // TEMP diagnostic — silent-import bug investigation.
-          logToNative('log', 'importBinaryFile', `received OK, base64Length=${msg.payload.data.length}, name=${msg.payload.name}`);
           const b64 = msg.payload.data;
           const binary = atob(b64);
           const bytes = new Uint8Array(binary.length);
@@ -494,8 +493,11 @@ export function applySafeAreaInsets(insets: { top: number; bottom: number; left:
  *   - `__perf.log()` for a device with no inspector attached — the line goes
  *     to native and lands in the Xcode console beside everything else.
  *
- * Read-only integers, so there is nothing here to gate on a build flag: the
- * handle carries no data about the user and costs an object at startup.
+ * Gated on DIAGNOSTICS. The counters carry no data about the user, but a
+ * shipping build has no reason to hand a page script a diagnostic surface —
+ * and the dynamic import below is one more chunk fetch at boot, in an app
+ * whose cold-start chunk fetches have failed before (the AsyncRequireError
+ * recovery path exists for exactly that).
  *
  * Installed at module load rather than from initBridge, because initBridge
  * has no caller — every web entry reaches this module for its own import
@@ -530,7 +532,7 @@ function installPerfCounterHandle(): void {
 // installs nothing. __FACET_NATIVE_SHELL is set by the WebView's
 // injectedJavaScriptBeforeContentLoaded, which runs before any page script,
 // so it is already true by the time this line does.
-if (isInWebView()) installPerfCounterHandle();
+if (isInWebView() && DIAGNOSTICS) installPerfCounterHandle();
 
 let bridgeInitialized = false;
 
@@ -571,9 +573,6 @@ export function initBridge(): void {
       // the figure editor's Canvas) can subscribe without coupling to this
       // module. Native AppState is more reliable than visibilitychange
       // inside WKWebView for the figure-editor WebGL recovery path.
-      void import('@/engine/debug/ring').then(m =>
-        m.mark('appState.transition', { to: msg.payload.state, source: 'native' })
-      );
       try {
         window.dispatchEvent(new CustomEvent('facet:appstate', { detail: msg.payload }));
       } catch {
@@ -628,8 +627,6 @@ export function __resetBridgeInitForTest(): void {
 // is exactly the lifetime we need: cap retries within a single launch, then
 // fall through to ErrorBoundary so the user can see the real error.
 //
-// The handlers themselves `import('@/engine/debug/ring')`, so a debug/ring
-// chunk-load failure would recurse here; the in-flight flag stops it.
 const RECOVERY_KEY = 'facet:asyncRequireRecovery';
 const MAX_RECOVERIES = 2;
 let recoveryInFlight = false;
@@ -677,7 +674,7 @@ async function warmChunk(chunkUrl: string): Promise<boolean> {
   return false;
 }
 
-// COLD-START diag — parallel raw-fetch probe of the failing chunk URL.
+// Parallel raw-fetch probe of the failing chunk URL.
 // We want to know which bucket the failure falls into:
 //   • TypeError / network error → loopback socket / GCDWebServer accept loop
 //     never received the request (cross-reference with native [server] log:
@@ -743,20 +740,11 @@ async function recoverFromAsyncRequireFailure(msg: string): Promise<void> {
 
   logToNative('warn', 'asyncRequireRecovery', `attempt ${count + 1}, chunk=${chunkUrl ?? '?'}`);
 
-  // COLD-START diag — probe the failing chunk independently. Do this BEFORE
+  // Probe the failing chunk independently. Do this BEFORE
   // pollServerHealthy so the very first network event after the failure is
   // captured, not whatever pollServerHealthy's `/index.html` fetch turns up.
   if (chunkUrl) {
     await probeChunk(chunkUrl);
-  }
-
-  // COLD-START diag — persist the live ring so the post-reload boot can
-  // forward the pre-failure timeline via ring.replay.
-  try {
-    const ringMod = await import('@/engine/debug/ring');
-    ringMod.flushToSession('asyncRequireRecovery');
-  } catch {
-    // ring import itself could fail under chunk-load pressure — non-fatal.
   }
 
   const serverOk = await pollServerHealthy(origin, 5000);
@@ -796,8 +784,6 @@ function installGlobalErrorHandlers(): void {
   window.addEventListener('error', (e) => {
     const err = e.error;
     const msg = err?.stack || err?.message || e.message || 'unknown error';
-    // TEMP diagnostic — flush ring buffer so the timeline reaches native.
-    void import('@/engine/debug/ring').then(m => m.flush('window.error'));
     logToNative('error', 'window.error', String(msg));
     void recoverFromAsyncRequireFailure(String(msg));
   });
@@ -807,8 +793,6 @@ function installGlobalErrorHandlers(): void {
     const msg = reason instanceof Error
       ? (reason.stack || reason.message)
       : safeStringify(reason);
-    // TEMP diagnostic — flush ring buffer so the timeline reaches native.
-    void import('@/engine/debug/ring').then(m => m.flush('unhandledrejection'));
     logToNative('error', 'unhandledrejection', String(msg));
     void recoverFromAsyncRequireFailure(String(msg));
   });

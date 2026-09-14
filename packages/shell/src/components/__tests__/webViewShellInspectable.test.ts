@@ -12,23 +12,25 @@ import { join } from 'path';
 // does for the same reason.
 
 const SRC = readFileSync(join(__dirname, '..', 'WebViewShell.tsx'), 'utf8');
+const FLAG_SRC = readFileSync(join(__dirname, '..', '..', 'profiling.ts'), 'utf8');
 
 describe('the WebView opts into Web Inspector on a profiling build', () => {
   it('defaults debuggable to a dev build OR a profiling one', () => {
-    expect(SRC).toContain('debuggable = __DEV__ || PROFILING');
+    expect(SRC).toContain('debuggable = DIAGNOSTICS');
+    expect(FLAG_SRC).toContain('__DEV__ === true) || PROFILING');
   });
 
   it('takes the profiling flag from the build, not from a runtime lookup', () => {
     // EXPO_PUBLIC_* is inlined by Expo at bundle time, so PROFILING is a
     // constant in the shipped JS rather than something a device can flip.
-    expect(SRC).toContain("const PROFILING = process.env.EXPO_PUBLIC_WEBVIEW_INSPECTABLE === '1'");
+    expect(FLAG_SRC).toContain("export const PROFILING = process.env.EXPO_PUBLIC_WEBVIEW_INSPECTABLE === '1'");
   });
 
   it('leaves a build that sets nothing uninspectable', () => {
     // The property worth keeping: App Store builds set no flag and are not
     // inspectable. Nothing may make PROFILING true by default — no `!==`,
     // no `?? true`, no bare truthiness on the env var.
-    const line = SRC.split('\n').find((l) => l.startsWith('const PROFILING'));
+    const line = FLAG_SRC.split('\n').find((l) => l.startsWith('export const PROFILING'));
     expect(line).toBeDefined();
     expect(line).toMatch(/===\s*'1'/);
     expect(line).not.toMatch(/!==|\?\?\s*true/);

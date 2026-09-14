@@ -21,6 +21,13 @@ type W = { window?: Record<string, unknown> };
 
 let posted: string[];
 
+/** A profiling build. DIAGNOSTICS reads this at module load, and Jest
+ *  defines no __DEV__, so without it the handle is (correctly) absent. */
+function setProfiling(on: boolean): void {
+  if (on) process.env.EXPO_PUBLIC_WEBVIEW_INSPECTABLE = '1';
+  else delete process.env.EXPO_PUBLIC_WEBVIEW_INSPECTABLE;
+}
+
 function setWindow(inShell: boolean): void {
   posted = [];
   (globalThis as unknown as W).window = {
@@ -41,10 +48,11 @@ function setWindow(inShell: boolean): void {
  * would be a different module object holding different integers. In the app
  * there is one registry and no such split.
  */
-async function importFresh(inShell = true): Promise<{
+async function importFresh(inShell = true, profiling = true): Promise<{
   perf: PerfHandle | undefined;
   counters: typeof PerfModule;
 }> {
+  setProfiling(profiling);
   setWindow(inShell);
   jest.resetModules();
   await import('../webBridge');
@@ -58,7 +66,14 @@ async function importFresh(inShell = true): Promise<{
   };
 }
 
-afterEach(() => { delete (globalThis as unknown as W).window; });
+beforeEach(() => { jest.useFakeTimers(); });
+
+afterEach(() => {
+  jest.clearAllTimers();
+  jest.useRealTimers();
+  setProfiling(false);
+  delete (globalThis as unknown as W).window;
+});
 
 test('importing the bridge installs the handle — no init call required', async () => {
   const { perf, counters } = await importFresh();
@@ -95,4 +110,11 @@ test('log sends one line to native, for a device with no inspector attached', as
 
 test('installs nothing outside the shell — plain web has no native to log to', async () => {
   expect((await importFresh(false)).perf).toBeUndefined();
+});
+
+test('a shipping build hands a page script no diagnostic surface', async () => {
+  // Neither a dev build nor a profiling one: the counters still count (they
+  // are integer adds on paths already doing I/O), but nothing is exposed,
+  // and the dynamic import that would fetch a chunk at boot never happens.
+  expect((await importFresh(true, false)).perf).toBeUndefined();
 });
