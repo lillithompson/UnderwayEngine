@@ -479,6 +479,48 @@ export function applySafeAreaInsets(insets: { top: number; bottom: number; left:
 }
 
 /**
+ * Put the image pipeline's cost counters (docs/image_refactor.md §5) within
+ * reach of a real device.
+ *
+ * The counters answer questions an Instruments trace cannot: it sees a JS
+ * heap as anonymous malloc blocks, so "bytes this tick re-read" and "decodes
+ * this tick" are invisible to it however long you record. In Jest they are
+ * asserted directly; on a phone there was no way to read them at all, which
+ * left the budgets pinned against fakes and never against hardware.
+ *
+ * Two ways in, because the two debugging situations differ:
+ *   - `window.__perf` for a Safari Web Inspector attached to the WebView,
+ *     where you can reset, edit the page, and read back interactively.
+ *   - `__perf.log()` for a device with no inspector attached — the line goes
+ *     to native and lands in the Xcode console beside everything else.
+ *
+ * Read-only integers, so there is nothing here to gate on a build flag: the
+ * handle carries no data about the user and costs an object at startup.
+ */
+function installPerfCounterHandle(): void {
+  void import('@/engine/debug/perfCounters')
+    .then((m) => {
+      (window as unknown as { __perf?: unknown }).__perf = {
+        read: () => m.readPerfCounters(),
+        /** Zero them, so the next read covers one tick and not the session. */
+        reset: () => { m.resetPerfCounters(); return 'perf counters zeroed'; },
+        /** What `fn` alone cost — the same delta the tests assert on. */
+        delta: m.perfDelta,
+        /** Dump to the Xcode console; returns the counters for the console too. */
+        log: (reason = 'manual') => {
+          const c = m.readPerfCounters();
+          logToNative('log', 'perf', `${reason} — ${m.formatPerfCounters(c)}`);
+          return c;
+        },
+      };
+    })
+    .catch(() => {
+      // A chunk-load failure here must not take the bridge down with it:
+      // this is a diagnostic, and the app boots fine without it.
+    });
+}
+
+/**
  * Initialize the bridge: register native-message handlers, install the global
  * error/recovery handlers, and arm a fallback splash-dismiss timer. The app's
  * first screen is expected to call signalReady() itself within
@@ -489,6 +531,7 @@ export function initBridge(): void {
   if (!isInWebView()) return;
 
   installGlobalErrorHandlers();
+  installPerfCounterHandle();
 
   onNativeMessage((msg) => {
     if (msg.type === 'SAFE_AREA_INSETS') {

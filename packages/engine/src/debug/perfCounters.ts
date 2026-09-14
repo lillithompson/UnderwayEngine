@@ -116,3 +116,25 @@ export async function perfDelta<T>(
   }
   return { result, counters: delta };
 }
+
+/** Bytes as a human reads them, for a one-line dump. */
+function humanBytes(n: number): string {
+  if (n === 0) return '0 B';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/**
+ * One line, in the order §5's table reads. Lives here rather than in the
+ * shell so that whatever prints the counters — a bridge dump to the Xcode
+ * console, a test failure message — prints them the same way.
+ */
+export function formatPerfCounters(c: PerfCounters): string {
+  return [
+    `reads ${c.storageReadCount}/${humanBytes(c.storageReadBytes)}`,
+    `writes ${c.storageWriteCount}/${humanBytes(c.storageWriteBytes)}`,
+    `base64 ${c.base64Count}/${humanBytes(c.base64Bytes)}`,
+    `decodes ${c.decodeFullCount} full, ${c.decodeScaledCount} scaled`,
+  ].join(' · ');
+}

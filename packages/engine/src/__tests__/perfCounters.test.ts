@@ -1,6 +1,6 @@
 import { toBase64 } from '../pngcodec';
 import {
-  countDecode, perfDelta, readPerfCounters, resetPerfCounters,
+  countDecode, formatPerfCounters, perfDelta, readPerfCounters, resetPerfCounters,
 } from '../debug/perfCounters';
 
 // docs/image_refactor.md §5 states the refactor's budgets per debounce tick:
@@ -137,5 +137,26 @@ describe('base64', () => {
   it('is zero for a tick that encodes nothing', async () => {
     const { counters } = await perfDelta(() => storage.getBinary('imgblob_absent'));
     expect(counters.base64Count).toBe(0);
+  });
+});
+
+describe('formatPerfCounters', () => {
+  it('reads in the order §5\'s table does, so a dump and the doc line up', async () => {
+    const { counters } = await perfDelta(() => {
+      countDecode(false);
+      countDecode(true);
+      countDecode(true);
+      toBase64(new Uint8Array(2048));
+    });
+    expect(formatPerfCounters(counters)).toBe(
+      'reads 0/0 B · writes 0/0 B · base64 1/2.0 KB · decodes 1 full, 2 scaled',
+    );
+  });
+
+  it('scales units so a megabyte does not print as seven digits', () => {
+    const c = readPerfCounters();
+    expect(formatPerfCounters({ ...c, storageReadCount: 1, storageReadBytes: 3_566_305 }))
+      .toContain('reads 1/3.40 MB');
+    expect(formatPerfCounters({ ...c, base64Bytes: 900 })).toContain('base64 0/900 B');
   });
 });
