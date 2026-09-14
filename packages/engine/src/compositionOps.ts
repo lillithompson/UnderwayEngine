@@ -165,16 +165,16 @@ export function isGroupHidden(state: CompositionState, groupId: string): boolean
 }
 
 /**
- * THE definition of "hidden" for groups: every group id that is hidden, either
- * by its own `hidden` flag or inherited from an ancestor. One O(groups) pass —
- * each chain is walked at most once, since a walk stops at the first
+ * THE inheritance walk both group flags share: every group id carrying
+ * `flag`, by its own field or from an ancestor. One O(groups) pass — each
+ * chain is walked at most once, since a walk stops at the first
  * already-classified group.
- *
- * Call this ONCE per pass (render, hit-test, export) and test membership in
- * O(1); {@link isGroupChainHidden} wraps it for one-off queries.
  */
-export function hiddenGroupIds(groups: readonly GroupNode[]): Set<string> {
-  const hidden = new Set<string>();
+function flaggedGroupIds(
+  groups: readonly GroupNode[],
+  flag: 'hidden' | 'locked',
+): Set<string> {
+  const marked = new Set<string>();
   const byId = new Map(groups.map((g) => [g.id, g]));
   for (const g of groups) {
     // Walk to the root, remembering the path so every group on it can be
@@ -184,15 +184,38 @@ export function hiddenGroupIds(groups: readonly GroupNode[]): Set<string> {
     let cur: GroupNode | undefined = g;
     let inherited = false;
     while (cur && !onPath.has(cur.id)) {
-      if (hidden.has(cur.id)) { inherited = true; break; }
+      if (marked.has(cur.id)) { inherited = true; break; }
       path.push(cur);
       onPath.add(cur.id);
-      if (cur.hidden) { inherited = true; break; }
+      if (cur[flag]) { inherited = true; break; }
       cur = cur.parentGroupId ? byId.get(cur.parentGroupId) : undefined;
     }
-    if (inherited) for (const p of path) hidden.add(p.id);
+    if (inherited) for (const p of path) marked.add(p.id);
   }
-  return hidden;
+  return marked;
+}
+
+/**
+ * THE definition of "hidden" for groups: every group id that is hidden, either
+ * by its own `hidden` flag or inherited from an ancestor.
+ *
+ * Call this ONCE per pass (render, hit-test, export) and test membership in
+ * O(1); {@link isGroupChainHidden} wraps it for one-off queries.
+ */
+export function hiddenGroupIds(groups: readonly GroupNode[]): Set<string> {
+  return flaggedGroupIds(groups, 'hidden');
+}
+
+/**
+ * THE definition of "locked" for groups: every group id that is locked, either
+ * by its own `locked` flag or inherited from an ancestor — the set form of
+ * {@link isGroupChainLocked}, for a pass that has to ask about many nodes at
+ * once (the paint brush's, which tests every object under every dab).
+ *
+ * Call this ONCE per pass and test membership in O(1).
+ */
+export function lockedGroupIds(groups: readonly GroupNode[]): Set<string> {
+  return flaggedGroupIds(groups, 'locked');
 }
 
 /** True when `groupId` OR any of its ancestor groups is hidden. Passing a

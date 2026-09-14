@@ -1,4 +1,4 @@
-import { findItem, isItemLocked, isGroupChainLocked, isItemHidden, isGroupChainHidden, hiddenGroupIds, getItemGroupId, applyCompOps, revertCompOps, clonePathSegment, assertSceneOrderInvariant } from '../compositionOps';
+import { findItem, isItemLocked, isGroupChainLocked, lockedGroupIds, isItemHidden, isGroupChainHidden, hiddenGroupIds, getItemGroupId, applyCompOps, revertCompOps, clonePathSegment, assertSceneOrderInvariant } from '../compositionOps';
 import { SVGObject, PathSegment, CompositionState, CompositionFigure, makeViewport } from '../types';
 
 function makeState(over: Partial<CompositionState> = {}): CompositionState {
@@ -106,6 +106,24 @@ describe('isGroupChainLocked', () => {
     const rootLocked = { ...chain, groups: chain.groups.map((g) => (g.id === 'root' ? { ...g, locked: true } : g)) };
     expect(isGroupChainLocked(rootLocked, 'child')).toBe(true);
     expect(isGroupChainLocked(rootLocked, 'root')).toBe(true);
+  });
+
+  // The set form, for a pass that asks about many nodes at once (the paint
+  // brush's — it tests every object under every dab). Same inheritance rule.
+  it('lockedGroupIds answers the same question for a whole chain at once', () => {
+    expect(lockedGroupIds(chain.groups).size).toBe(0);
+    const rootLocked = { ...chain, groups: chain.groups.map((g) => (g.id === 'root' ? { ...g, locked: true } : g)) };
+    expect(lockedGroupIds(rootLocked.groups)).toEqual(new Set(['root', 'child']));
+    const childLocked = { ...chain, groups: chain.groups.map((g) => (g.id === 'child' ? { ...g, locked: true } : g)) };
+    expect(lockedGroupIds(childLocked.groups)).toEqual(new Set(['child']));
+  });
+
+  it('lockedGroupIds survives a malformed parent cycle', () => {
+    const cyclic = makeState({ groups: [
+      { id: 'a', name: 'A', parentGroupId: 'b', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },
+      { id: 'b', name: 'B', parentGroupId: 'a', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false, locked: true },
+    ] } as Partial<CompositionState>);
+    expect(lockedGroupIds(cyclic.groups)).toEqual(new Set(['a', 'b']));
   });
 });
 
