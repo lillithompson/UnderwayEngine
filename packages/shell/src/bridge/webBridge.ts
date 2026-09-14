@@ -532,15 +532,34 @@ function installPerfCounterHandle(): void {
 // so it is already true by the time this line does.
 if (isInWebView()) installPerfCounterHandle();
 
+let bridgeInitialized = false;
+
 /**
  * Initialize the bridge: register native-message handlers, install the global
  * error/recovery handlers, and arm a fallback splash-dismiss timer. The app's
  * first screen is expected to call signalReady() itself within
  * a few hundred ms of mounting; the timer here is a safety net so the native
  * splash is never stuck if mounting/hydration/storage stalls.
+ *
+ * Idempotent, and self-installing (see the call below the definition).
+ * It had NO caller at all, and three things silently did not happen:
+ *
+ *  - Native pings for liveness after a long background and reloads the
+ *    WebView if no pong comes within WATCHDOG_MS. Nothing ponged, so the
+ *    app reloaded itself every time it was reopened more than five minutes
+ *    after being backgrounded — a false positive every single time, for the
+ *    one bug the probe exists to catch.
+ *  - SAFE_AREA_INSETS arrived on every READY and were never applied.
+ *  - The window error/unhandledrejection handlers were never installed, so
+ *    the AsyncRequireError recovery path could not run and no uncaught
+ *    error reached the native log.
+ *
+ * Idempotency matters because onNativeMessage CHAINS handlers: a second
+ * call would pong twice and dispatch every app-state event twice.
  */
 export function initBridge(): void {
-  if (!isInWebView()) return;
+  if (!isInWebView() || bridgeInitialized) return;
+  bridgeInitialized = true;
 
   installGlobalErrorHandlers();
 
@@ -579,6 +598,17 @@ export function initBridge(): void {
   // wins on a healthy launch, short enough that a stalled first paint is not
   // a permanent splash.
   setTimeout(signalReady, 4000);
+}
+
+// Self-installing, for the same reason the perf handle is: every web entry
+// reaches this module for its own imports and none of them called the init.
+// Leaving that to a caller is what broke it, and a second entry point added
+// later would break it again.
+if (isInWebView()) initBridge();
+
+/** For tests: forget that the bridge was initialized. */
+export function __resetBridgeInitForTest(): void {
+  bridgeInitialized = false;
 }
 
 // AsyncRequireError recovery. Metro caches the rejected promise from a failed
