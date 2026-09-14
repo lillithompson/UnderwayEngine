@@ -40,17 +40,11 @@ function getDevServerUrl(): string {
 // parallel with React Native's component tree setup, rather than waiting
 // for useEffect after mount.
 let serverPromise: Promise<string> | null = null;
-// COLD-START diag — pin the moment serverPromise resolves on the JS side.
-// Cross-reference with native NSLog "[server] listening on port …" to see
-// the kernel-bind → JS-resolve gap and the resolve → first-request gap.
-let serverStartTimeMs = 0;
-
 if (!__DEV__) {
   try {
     const { startServer, getWebBundlePath } = require('../../modules/static-server/src/StaticServerModule');
     const docRoot = getWebBundlePath();
     if (docRoot) {
-      serverStartTimeMs = Date.now();
       serverPromise = startServer(docRoot);
     }
   } catch (e) {
@@ -77,21 +71,11 @@ export function useLocalServer(): LocalServerState {
 
     let cancelled = false;
     serverPromise.then((url) => {
-      // COLD-START diag — record when the server URL became known to the JS
-      // tree. import() is dynamic to avoid pulling ring.ts into the eager
-      // module-load path of the native shell.
-      const elapsed = Date.now() - serverStartTimeMs;
-      void import('@/engine/debug/ring').then(m =>
-        m.mark('server.resolved', { url, elapsedMs: elapsed }),
-      ).catch(() => {});
       if (!cancelled) {
         setState({ url, ready: true });
       }
     }).catch((e) => {
       console.error('Failed to start local server:', e);
-      void import('@/engine/debug/ring').then(m =>
-        m.mark('server.rejected', { err: String((e as Error)?.message ?? e) }),
-      ).catch(() => {});
     });
 
     return () => {

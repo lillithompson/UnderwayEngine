@@ -3,7 +3,6 @@ import { GLView } from 'expo-gl';
 import { GridLevel, LayerGridLevel, MAX_LAYER_LEVEL, cellPx } from './types';
 import { ATLAS_ASSETS } from './atlasRegistry';
 import manifest from '../assets/images/atlases/manifest.json';
-import { mark } from './debug/ring'; // TEMP diagnostic
 
 // Sprite registry has moved to ./spriteRegistry so binaryFormat and the
 // build-time thumbnail script can use it without dragging in expo-gl.
@@ -176,9 +175,7 @@ let sharedGLRefCount = 0;
 
 async function acquireGLContext(): Promise<WebGLRenderingContext> {
   if (!sharedGLContext) {
-    mark('acquireGLContext.createStart'); // TEMP diagnostic
     sharedGLContext = await GLView.createContextAsync();
-    mark('acquireGLContext.createDone', { ok: !!sharedGLContext }); // TEMP diagnostic
     if (!sharedGLContext) throw new Error('Failed to create GL context');
   }
   sharedGLRefCount++;
@@ -217,7 +214,6 @@ function loadAtlasImage(atlasFile: string): Promise<RawAtlas> {
   const src = ATLAS_ASSETS[atlasFile];
   if (!src) return Promise.reject(new Error(`Unknown atlas: ${atlasFile}`));
 
-  mark('loadAtlasImage.start', { atlasFile }); // TEMP diagnostic
   const promise = (async (): Promise<RawAtlas> => {
     const asset = Asset.fromModule(src);
     await asset.downloadAsync();
@@ -263,9 +259,7 @@ function loadAtlasImage(atlasFile: string): Promise<RawAtlas> {
       }
 
       const pixels = new Uint8Array(width * height * 4);
-      mark('loadAtlasImage.readPixels.start', { atlasFile }); // TEMP diagnostic
       gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-      mark('loadAtlasImage.readPixels.done', { atlasFile }); // TEMP diagnostic
 
       // Validate that readPixels returned real data. A silent GL failure
       // leaves the buffer all-zero, which would cache transparent sprites
@@ -292,7 +286,6 @@ function loadAtlasImage(atlasFile: string): Promise<RawAtlas> {
         }
       }
       if (!hasContent) {
-        mark('loadAtlasImage.zeroReadback', { atlasFile }); // TEMP diagnostic
         gl.deleteFramebuffer(fb);
         gl.deleteTexture(texture);
         throw new Error(`Atlas ${atlasFile}: readPixels returned all-zero data`);

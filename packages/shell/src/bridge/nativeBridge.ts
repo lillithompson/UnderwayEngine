@@ -169,8 +169,6 @@ async function handleImportBinaryFile(
   payload: { accept: string },
   sendToWeb: SendToWeb,
 ): Promise<void> {
-  // TEMP diagnostic — silent-import bug investigation.
-  console.log('[bridge] importBinaryFile entered, accept=', payload.accept);
   try {
     const a = payload.accept.toLowerCase();
     const allowsImages =
@@ -181,8 +179,6 @@ async function handleImportBinaryFile(
 
     if (allowsImages) {
       const choice = await pickImportSource();
-      // TEMP diagnostic
-      console.log('[bridge] action sheet →', choice);
       if (choice === 'cancel') return;
       if (choice === 'photos') {
         await importFromPhotos(sendToWeb);
@@ -235,8 +231,6 @@ async function importFromPhotos(sendToWeb: SendToWeb): Promise<void> {
     return;
   }
   if (result.canceled) {
-    // TEMP diagnostic
-    console.log('[bridge] picker cancelled');
     return;
   }
 
@@ -250,15 +244,6 @@ async function importFromPhotos(sendToWeb: SendToWeb): Promise<void> {
   }
 
   const asset = result.assets[0];
-  // TEMP diagnostic — record everything the picker handed us.
-  console.log(
-    '[bridge] picker returned, uri=', asset.uri,
-    'fileName=', asset.fileName,
-    'width=', asset.width,
-    'height=', asset.height,
-    'fileSize=', asset.fileSize,
-    'mimeType=', asset.mimeType,
-  );
 
   // Dispatch sniffs by filename suffix; ensure name ends in .png/.jpg/.jpeg.
   const ext = /\.png(?:\?|$)/i.test(asset.uri) ? 'png' : 'jpg';
@@ -269,8 +254,6 @@ async function importFromPhotos(sendToWeb: SendToWeb): Promise<void> {
   const tempFile = new FSFile(Paths.cache, `import_${Date.now()}.bin`);
   try {
     new FSFile(asset.uri).copy(tempFile);
-    // TEMP diagnostic
-    console.log('[bridge] copy ok → tempFile=', tempFile.uri);
   } catch (e) {
     const error = e instanceof Error ? (e.message || e.name) : String(e);
     console.warn('[bridge] copy threw:', error);
@@ -284,8 +267,6 @@ async function importFromPhotos(sendToWeb: SendToWeb): Promise<void> {
   let data: string;
   try {
     data = await tempFile.base64();
-    // TEMP diagnostic
-    console.log('[bridge] base64 ok, length=', data.length);
   } catch (e) {
     const error = e instanceof Error ? (e.message || e.name) : String(e);
     console.warn('[bridge] base64 threw:', error);
@@ -299,8 +280,6 @@ async function importFromPhotos(sendToWeb: SendToWeb): Promise<void> {
   try { tempFile.delete(); } catch {}
 
   try {
-    // TEMP diagnostic
-    console.log('[bridge] sendToWeb BINARY_FILE_IMPORTED, base64Length=', data.length, 'name=', name);
     sendToWeb({ type: 'BINARY_FILE_IMPORTED', payload: { name, data } });
   } catch (e) {
     const error = e instanceof Error ? (e.message || e.name) : String(e);
