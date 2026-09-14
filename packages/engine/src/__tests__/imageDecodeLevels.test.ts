@@ -2,6 +2,7 @@ import {
   decodeLevelBytes, decodeLevelEdge, decodeLevelKey, dropDecodeLevels,
   ensureDecodeLevel, peekDecodeLevel, purgeDecodeLevels,
 } from '../imageDecodeLevels';
+import { perfDelta } from '../debug/perfCounters';
 
 // What the compositor allocates for a drawn photo is width × height × 4 off
 // the SOURCE's pixels, not the box it is drawn in. The display copy is
@@ -103,6 +104,20 @@ describe('the level cache', () => {
     expect(decodeLevelBytes()).toBe(256 * 256 * 4);
     await ensureDecodeLevel('imgblob_a', 256, PHOTO, 'image/jpeg');
     expect(created).toHaveLength(1);
+  });
+
+  it('costs one FULL-resolution decode per level made, and none per level served', async () => {
+    // generateLevel probes the source with a bare createImageBitmap to learn
+    // its dimensions, then resizes — so every new level materializes every
+    // pixel of the photo first. The import path stopped doing this (it reads
+    // imageHeaderSize instead); this path has not been moved over, and the
+    // number below is what that costs. Serving a made level is free, which
+    // is the half that matters for a per-tick budget.
+    const first = await perfDelta(() => ensureDecodeLevel('imgblob_a', 256, PHOTO, 'image/jpeg'));
+    expect(first.counters.decodeFullCount).toBe(1);
+
+    const second = await perfDelta(() => ensureDecodeLevel('imgblob_a', 256, PHOTO, 'image/jpeg'));
+    expect(second.counters.decodeFullCount).toBe(0);
   });
 
   it('collapses concurrent asks for one level', async () => {

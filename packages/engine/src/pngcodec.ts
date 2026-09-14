@@ -1,3 +1,4 @@
+import { countBase64 } from './debug/perfCounters';
 // ── CRC-32 for PNG ──────────────────────────────────────────────────────
 
 const crcTable = new Uint32Array(256);
@@ -46,6 +47,7 @@ for (let i = 0; i < 64; i++) B64_CODES[i] = B64.charCodeAt(i);
 
 export function toBase64(bytes: Uint8Array): string {
   const len = bytes.length;
+  countBase64(len);
   const outLen = Math.ceil(len / 3) * 4;
   const codes = new Uint8Array(outLen);
   let j = 0;

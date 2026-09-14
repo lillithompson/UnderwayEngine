@@ -1,4 +1,5 @@
 import { get, set, del, clear, keys } from 'idb-keyval';
+import { countStorageRead, countStorageWrite } from './debug/perfCounters';
 
 type KeyValuePairs = [string, string | null][];
 
@@ -74,8 +75,15 @@ const storage: Storage = {
     Promise.all(ks.map((k) => get(k).then((v: unknown) => [k, (v as string) ?? null] as [string, string | null]))),
   multiRemove: (ks: string[]) => Promise.all(ks.map((k) => del(k))).then(() => { noteKeysRemoved(ks); }),
   clear: () => clear().then(() => { keySet = Promise.resolve(new Set<string>()); }),
-  getBinary: (key: string) => get(key).then((v: unknown) => (v instanceof Uint8Array ? v : null)),
-  setBinary: (key: string, value: Uint8Array) => set(key, value).then(() => { noteKeyWritten(key); }),
+  getBinary: (key: string) => get(key).then((v: unknown) => {
+    const bytes = v instanceof Uint8Array ? v : null;
+    // Counted where the bytes actually cross the boundary, so a miss
+    // (and `hasBinary`, which reads no value at all) costs nothing here.
+    if (bytes) countStorageRead(bytes.byteLength);
+    return bytes;
+  }),
+  setBinary: (key: string, value: Uint8Array) =>
+    set(key, value).then(() => { noteKeyWritten(key); countStorageWrite(value.byteLength); }),
   hasBinary: (key: string) => loadKeySet().then((set) => set.has(key)),
   resetKeyCache: () => { keySet = null; },
   keys: (prefix?: string) => loadKeySet().then((set) => {

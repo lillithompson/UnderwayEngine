@@ -2,6 +2,7 @@ import {
   detectImageMimeType, looksLikeSvg, placementBbox, prepareImageImport,
   prepareImageReplacement, SVG_MIME_TYPE, svgIntrinsicSize, svgNominalPixelSize,
 } from '../compositionImageImport';
+import { perfDelta } from '../debug/perfCounters';
 
 describe('placementBbox', () => {
   it('sizes to 8 L0 cells at grid level 0', () => {
@@ -337,6 +338,31 @@ describe('the import pipeline reads the source size from its HEADER', () => {
     ]);
     expect(env.alphaScans).toBe(0);
     expect(out.pixelWidth).toBe(1024);
+  });
+
+  // `env.decodes` above is this file's own bookkeeping. The two below pin the
+  // SHIPPED counters (docs/image_refactor.md §5) against it, which is what
+  // lets every other test — and the running app — read a decode count
+  // without installing a fake of its own.
+  it('counts a decode straight to size as scaled, not full', async () => {
+    installFakeDecoder(6000, 4500);
+    const { counters } = await perfDelta(
+      () => prepareImageImport(jpegHeader(6000, 4500), 'image/jpeg', 0, 0),
+    );
+    // A master and a display copy, each asked for at its size. This is the
+    // budget row "full-resolution decodes per tick: 0" holding.
+    expect(counters.decodeFullCount).toBe(0);
+    expect(counters.decodeScaledCount).toBe(2);
+  });
+
+  it('counts the header fallback as the full-resolution decode it is', async () => {
+    installFakeDecoder(4000, 3000);
+    const { counters } = await perfDelta(
+      () => prepareImageImport(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), 'image/jpeg', 0, 0),
+    );
+    // A source whose header cannot be read still pays for decodes read for
+    // two numbers — the cost imageHeaderSize exists to avoid.
+    expect(counters.decodeFullCount).toBeGreaterThan(0);
   });
 });
 

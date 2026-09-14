@@ -3,6 +3,7 @@ import { compSnapStep } from './compositionCellMath';
 import { canvasHasTransparency } from './canvasAlpha';
 import { imageHeaderSize } from './imageHeaderSize';
 import { contentImageId } from './imageAssetStore';
+import { countDecode } from './debug/perfCounters';
 
 /**
  * Reference-image import pipeline. Decodes a picked PNG/JPG (a picked SVG
@@ -193,13 +194,14 @@ async function decodeAndDownsample(
     srcW = declared.width;
     srcH = declared.height;
   } else {
+    countDecode(false);
     native = await createImageBitmap(blob);
     srcW = native.width;
     srcH = native.height;
   }
   const longest = Math.max(srcW, srcH);
   if (longest <= maxEdge) {
-    native ??= await createImageBitmap(blob);
+    if (!native) { countDecode(false); native = await createImageBitmap(blob); }
     return { bitmap: native, width: native.width, height: native.height };
   }
   const scale = maxEdge / longest;
@@ -213,7 +215,11 @@ async function decodeAndDownsample(
       resizeHeight: targetH,
       resizeQuality: 'high',
     });
-    if (resized.width === targetW && resized.height === targetH) {
+    const honored = resized.width === targetW && resized.height === targetH;
+    // A WebKit that ignored the resize options has decoded every pixel of
+    // the source; that is a full-resolution decode whatever happens next.
+    countDecode(honored);
+    if (honored) {
       native?.close?.();
       return { bitmap: resized, width: targetW, height: targetH };
     }
@@ -221,12 +227,14 @@ async function decodeAndDownsample(
   } catch {
     // fall through to canvas resize
   }
-  native ??= await createImageBitmap(blob);
+  if (!native) { countDecode(false); native = await createImageBitmap(blob); }
   const canvas = new OffscreenCanvas(targetW, targetH);
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('OffscreenCanvas 2d context unavailable');
   ctx.drawImage(native, 0, 0, targetW, targetH);
   native.close?.();
+  // The canvas is already at the target size, so this holds no full raster.
+  countDecode(true);
   const resized = await createImageBitmap(canvas);
   return { bitmap: resized, width: targetW, height: targetH };
 }

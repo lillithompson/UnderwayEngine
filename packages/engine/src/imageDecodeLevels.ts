@@ -1,5 +1,6 @@
 import { createRasterLruCache } from './rasterLruCache';
 import { MAX_EDGE_PX } from './compositionImageImport';
+import { countDecode } from './debug/perfCounters';
 
 /**
  * The pyramid level the canvas actually draws: a photo re-encoded to about
@@ -137,6 +138,9 @@ async function generateLevel(
   };
   if (!g.createImageBitmap || !g.OffscreenCanvas) return null;
   const blob = new Blob([sourceBytes as unknown as BlobPart], { type: mimeType });
+  // A full decode, read for two numbers. The import path gets these from
+  // the header (imageHeaderSize) instead; this one has not been moved over.
+  countDecode(false);
   const probe = await g.createImageBitmap(blob);
   const longest = Math.max(probe.width, probe.height);
   if (longest <= edge) { probe.close?.(); return null; } // already at or under the level
