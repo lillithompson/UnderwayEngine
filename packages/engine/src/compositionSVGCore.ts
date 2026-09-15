@@ -28,7 +28,7 @@ import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, tintToF
 import { tintFillToPaint } from './imageTintFill';
 import { overlayPngDataUri, paintBlendCss, PaintInk, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { flattenPaintTiles } from './canvasPaint';
-import { textArcGeometry, textArcPaths, textBend } from './textArc';
+import { textArcPaths, textBend, textBendRise } from './textArc';
 import { charColorRuns, contentBoxCells, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
 import { STICKER_BORDER_CELLS, STICKER_SHADOW_CELLS, stickerColors } from './stickerStyle';
 import { resolveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
@@ -709,25 +709,6 @@ function textPaintOutset(text: TextObject): number {
   }
   out += textBendRise(text);
   return out;
-}
-
-/**
- * How far a bent block bows off its flat baseline, in cells — 0 for
- * unbent text. Every line rises by the widest line's amount (textArcPaths
- * draws them as concentric rings, one rise for all), and the widest a line
- * can be is the content box, so measuring the arc at the full box width
- * bounds the block, erring outward.
- *
- * The bow is GLYPHS, not decoration: it leaves the node's box, so any
- * frame measured from that box alone cuts the bent text off. Both framing
- * paths add it — the cutout through {@link textPaintOutset}, the page
- * export directly (see the bounds walk).
- */
-function textBendRise(text: TextObject): number {
-  const bend = textBend(text.style);
-  if (bend === 0) return 0;
-  const content = contentBoxCells(text);
-  return content.width > 0 ? textArcGeometry(content.width, bend).rise : 0;
 }
 
 /** Rotate (x, y) clockwise by `deg` about (cx, cy) in the y-down world frame —

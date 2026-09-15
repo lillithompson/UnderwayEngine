@@ -4,7 +4,7 @@
  * payload (the text extension byte).
  */
 
-import { textArcGeometry, textArcPaths, textBend } from '../textArc';
+import { textArcGeometry, textArcPaths, textBend, textBendRise, textBendSign } from '../textArc';
 import {
   CompositionBundle,
   deserializeComposition,
@@ -175,6 +175,62 @@ describe('textArcPaths', () => {
     expect(textArcPaths([{ x: 0, y: 0, width: 10 }, { x: 0, y: 2, width: 0 }], 0.5)[1]).toBe('');
     expect(textArcPaths([{ x: 0, y: 0, width: 0 }, { x: 0, y: 2, width: 0 }], 0.5)).toEqual(['', '']);
     expect(textArcPaths([{ x: 0, y: 0, width: 10 }], 0)).toEqual(['']);
+  });
+});
+
+describe('textBendRise — how far the ink leaves the node’s box', () => {
+  test('is the widest-line arc’s own rise, measured at the full content width', () => {
+    const node = makeText({ style: style({ bend: 1 }), cellWidth: 8, cellHeight: 3 });
+    expect(textBendRise(node)).toBeCloseTo(textArcGeometry(8, 1).rise, 12);
+    // …and the same however the block bows: the sign says which way, the
+    // rise says how far (see textBendSign).
+    expect(textBendRise({ ...node, style: style({ bend: -1 }) })).toBeCloseTo(textArcGeometry(8, 1).rise, 12);
+    expect(textBendRise(node)).toBeGreaterThan(0);
+  });
+
+  test('is zero for flat text, and for a box with no width to bend', () => {
+    expect(textBendRise(makeText())).toBe(0);
+    expect(textBendRise(makeText({ style: style({ bend: 0 }) }))).toBe(0);
+    expect(textBendRise(makeText({ style: style({ bend: 0.5 }), cellWidth: 0 }))).toBe(0);
+  });
+
+  test('measures the CONTENT box, so a quarter-turned block bends by its own width', () => {
+    // A quarter turn swaps the WORLD box; the type is still laid out in the
+    // un-turned one (contentBoxCells), and it is that width the arc spans.
+    const turned = makeText({ style: style({ bend: 1 }), cellWidth: 3, cellHeight: 8, rotation: 90 });
+    expect(textBendRise(turned)).toBeCloseTo(textArcGeometry(8, 1).rise, 12);
+  });
+
+  test('bounds the ink: no line’s apex reaches past it, whatever ring it rides', () => {
+    // Every line is a concentric ring, so each apex lands exactly `rise`
+    // off its own flat baseline — measuring at the full box width can only
+    // err outward.
+    const bend = 0.6;
+    const lines = [
+      { x: 0, y: 0, width: 8 },
+      { x: 1, y: 2, width: 6 },
+      { x: 2, y: 4, width: 4 },
+    ];
+    const rise = textArcGeometry(8, bend).rise;
+    for (const [i, d] of textArcPaths(lines, bend).entries()) {
+      // Every y the path names, against its own line's flat baseline.
+      const ys = [...d.matchAll(/-?\d+(?:\.\d+)?(?:e-?\d+)?/g)]
+        .map((m) => Number(m[0]));
+      // `M x y A r r 0 0 f x y` — the two point ys are at 1 and 7.
+      for (const y of [ys[1], ys[7]]) {
+        expect(lines[i].y - y).toBeLessThanOrEqual(rise + 1e-9);
+      }
+    }
+  });
+});
+
+describe('textBendSign — which way it bows', () => {
+  test('is up the screen for a positive bend, down for a negative, nothing for flat', () => {
+    // Screen y grows downward, so "the middle lifting" is −1.
+    expect(textBendSign(style({ bend: 0.5 }))).toBe(-1);
+    expect(textBendSign(style({ bend: -0.5 }))).toBe(1);
+    expect(textBendSign(style())).toBe(0);
+    expect(textBendSign(style({ bend: 0 }))).toBe(0);
   });
 });
 

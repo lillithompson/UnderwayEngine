@@ -1,3 +1,4 @@
+import { contentBoxCells } from './textLayout';
 import { TextStyle } from './types';
 
 // Arc-bent text (`TextStyle.bend`): the geometry both renderers place their
@@ -53,6 +54,49 @@ export function textArcGeometry(width: number, bend: number): TextArcGeometry {
   const halfChord = radius * Math.sin(sweep / 2);
   const rise = radius * (1 - Math.cos(sweep / 2));
   return { radius, sweep, halfChord, rise };
+}
+
+/**
+ * How far a bent block's ink bows off the box it is stored in, in the
+ * node's own cell units — 0 for unbent text, and never negative.
+ *
+ * Every line bows by the same amount (the paths below draw them as
+ * concentric rings, one rise for all — a line's apex lands exactly `rise`
+ * off its flat baseline whatever ring it rides), and the widest a line can
+ * be is the content box, so measuring the arc at the full box width bounds
+ * the block and errs outward.
+ *
+ * The bow is GLYPHS, not decoration: it leaves the node's box entirely, so
+ * anything measured from that box alone cuts the bent text off. Three
+ * things measure from it and all three ask here — the export's cutout and
+ * its page bounds (compositionSVGCore), and the editor's selection
+ * outline, which drew a box the bent half hung outside of.
+ *
+ * VERTICAL only, and on one side: the arc's endpoints sit on the flat
+ * baseline and its apex bows toward the sign of the bend (positive up,
+ * negative down), while horizontally every point lands nearer the block's
+ * centre line than it lay flat (|r·sin θ| ≤ |r·θ|) — so nothing ever
+ * reaches past the block's flat left or right edge. Callers that want a
+ * tight box use {@link textBendSign} to say which way; the export grows
+ * all four sides because a frame may as well err outward.
+ */
+export function textBendRise(node: {
+  cellWidth: number;
+  cellHeight: number;
+  rotation?: 0 | 90 | 180 | 270;
+  style: TextStyle;
+}): number {
+  const bend = textBend(node.style);
+  if (bend === 0) return 0;
+  const content = contentBoxCells(node);
+  return content.width > 0 ? textArcGeometry(content.width, bend).rise : 0;
+}
+
+/** Which way a bent block bows: −1 up the screen, +1 down, 0 flat. (Screen
+ *  y grows downward, so a POSITIVE bend — the middle lifting — is −1.) */
+export function textBendSign(style: TextStyle): -1 | 0 | 1 {
+  const bend = textBend(style);
+  return bend === 0 ? 0 : bend > 0 ? -1 : 1;
 }
 
 /** One flat line of a block, in the units the paths come back in. */
