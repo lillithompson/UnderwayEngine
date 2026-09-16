@@ -1,5 +1,5 @@
 import { exportCompositionPNG, exportCompositionSVG } from './compositionExport';
-import { exportCompositionBundle, loadCompositionState } from './persistence';
+import { CompositionIOOptions, exportCompositionBundle, loadCompositionState } from './persistence';
 import { buildZip, ZipEntry } from './zipWriter';
 
 export type ZipExportFormat = 'png' | 'svg' | 'tile';
@@ -12,6 +12,20 @@ export interface ZipExportItem {
 export interface ZipExportOpts {
   /** Max pixel dimension for PNG raster, applied per composition. */
   pngMaxDimension: number;
+  /**
+   * Load-side CompositionIOOptions, threaded into EVERY read this packer
+   * makes — the bundle it packs, the state it reads a strokeScale from, and
+   * the PNG/SVG render.
+   *
+   * A page-anchored consumer passes `{ normalize: false }`, as it does for
+   * every other read of a page. Without it the zip was the one export that
+   * normalized: each member came out of the canonical-box normalization
+   * power-of-2 upscaled and re-anchored, with its strokeScale multiplied to
+   * match — so a small page exported in a zip and imported again came back
+   * four times its size, off its spot and at the wrong stroke weight, while
+   * the very same page exported on its own came back exact.
+   */
+  io?: CompositionIOOptions;
 }
 
 // Default stroke scale when an entry has none stored — keep in sync with the
@@ -38,26 +52,28 @@ async function payloadFor(
   opts: ZipExportOpts,
 ): Promise<Uint8Array | null> {
   if (format === 'png') {
-    const compState = await loadCompositionState(id);
+    const compState = await loadCompositionState(id, opts.io);
     const strokeScale = compState?.strokeScale ?? DEFAULT_STROKE_SCALE;
     const dataUri = await exportCompositionPNG(id, opts.pngMaxDimension, strokeScale, {
       preferOriginalImages: true,
+      ...opts.io,
     });
     if (!dataUri) return null;
     const b64 = dataUri.replace(/^data:image\/png;base64,/, '');
     return base64ToBytes(b64);
   }
   if (format === 'svg') {
-    const compState = await loadCompositionState(id);
+    const compState = await loadCompositionState(id, opts.io);
     const strokeScale = compState?.strokeScale ?? DEFAULT_STROKE_SCALE;
     const svg = await exportCompositionSVG(id, undefined, strokeScale, {
       preferOriginalImages: true,
+      ...opts.io,
     });
     if (!svg) return null;
     return utf8.encode(svg);
   }
   // tile
-  const bundle = await exportCompositionBundle(id);
+  const bundle = await exportCompositionBundle(id, opts.io);
   return bundle ?? null;
 }
 

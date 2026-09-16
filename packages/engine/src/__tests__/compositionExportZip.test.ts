@@ -103,6 +103,31 @@ describe('exportCompositionsAsZip', () => {
     expect(Array.from(payloads.get('Beta.png')!)).toEqual([0x03, 0x04, 0x05]);
   });
 
+  test('threads the caller’s IO options into every read it makes', async () => {
+    // A page-anchored consumer passes { normalize: false } for the same
+    // reason it does everywhere else: the canonical-box normalization
+    // power-of-2 upscales a page smaller than the box and re-anchors it.
+    // The zip used to read with the defaults, so it was the one export
+    // that handed back a page four times its size.
+    const io = { normalize: false };
+    mockExportCompositionBundle.mockResolvedValue(new Uint8Array([1]));
+    mockExportCompositionPNG.mockResolvedValue('data:image/png;base64,AA==');
+    mockExportCompositionSVG.mockResolvedValue('<svg/>');
+    mockLoadCompositionState.mockResolvedValue({ strokeScale: 1 });
+
+    await exportCompositionsAsZip([{ id: 'a', name: 'A' }], 'tile', { pngMaxDimension: 8, io });
+    expect(mockExportCompositionBundle).toHaveBeenCalledWith('a', io);
+
+    await exportCompositionsAsZip([{ id: 'a', name: 'A' }], 'png', { pngMaxDimension: 8, io });
+    expect(mockLoadCompositionState).toHaveBeenCalledWith('a', io);
+    expect(mockExportCompositionPNG).toHaveBeenCalledWith(
+      'a', 8, 1, { preferOriginalImages: true, normalize: false });
+
+    await exportCompositionsAsZip([{ id: 'a', name: 'A' }], 'svg', { pngMaxDimension: 8, io });
+    expect(mockExportCompositionSVG).toHaveBeenCalledWith(
+      'a', undefined, 1, { preferOriginalImages: true, normalize: false });
+  });
+
   test('SVG: bundles UTF-8 SVG payloads with per-comp strokeScale', async () => {
     mockExportCompositionSVG.mockImplementation((id: string) =>
       Promise.resolve(`<svg id="${id}"/>`),
