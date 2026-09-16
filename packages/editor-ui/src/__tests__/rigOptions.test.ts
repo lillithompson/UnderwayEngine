@@ -34,14 +34,16 @@ describe('the rig option set', () => {
     // The part pages (Hands / Feet / Spine / Head) came off the options
     // row; their sliders live on as the floating slider modes. Both panel
     // sites — the tab row and the page list — read RIG_PART_PAGES, never
-    // the full table, and append the Opacity page an image opens.
+    // the full table.
     expect(RIG_PART_PAGES.map((o) => o.label)).toEqual(['Transform']);
     expect(RIG_PART_PAGES.map((o) => o.sub)).toEqual(['rigRoot']);
-    expect(SRC).toContain("model.showRigOptions ? [...RIG_PART_PAGES.map((o) => o.sub), 'opacity' as const]");
+    expect(SRC).toContain('model.showRigOptions ? RIG_PART_PAGES.map((o) => o.sub)');
     expect(SRC).toContain('RIG_PART_PAGES.map((opt) => ({');
-    expect(SRC).toContain("typeSpecs.push({ key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') });");
-    // …and the Opacity page stays open for a rig rather than folding away.
-    expect(SRC).toContain('model.showRigOptions || model.showInvert || model.showTextStyle;');
+    // Opacity stood beside Transform and is gone: a figure is a POSE, and
+    // fading one is not a thing anybody reached this panel to do — it
+    // left a two-tab row whose second tab was a slider nobody asked for.
+    // The plumbing stands for every other kind that offers the page.
+    expect(SRC).not.toContain("typeSpecs.push({ key: 'opacity'");
     expect(SRC).not.toContain('RIG_PART_OPTIONS');
   });
 
@@ -237,7 +239,7 @@ describe('the panel', () => {
     // A rig's figure IS an svg object; the rig branch has to win.
     expect(SRC.indexOf('model.showRigOptions ? ')).toBeLessThan(SRC.indexOf('model.showSvgOptions\n'));
     // …and the carousel's order IS the options row's, not a second copy of it.
-    expect(SRC).toContain("model.showRigOptions ? [...RIG_PART_PAGES.map((o) => o.sub), 'opacity' as const]");
+    expect(SRC).toContain('model.showRigOptions ? RIG_PART_PAGES.map((o) => o.sub)');
   });
 
   it('offers no IK switch anywhere — not on a bar, not as an option', () => {

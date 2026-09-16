@@ -419,13 +419,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       ? [...PATTERN_EDIT_OPTIONS.map((o) => patternActionSubmenu(o.action)), 'stroke' as const]
     // Vectors and patterns together: the one page they share.
     : model.showStrokeOptions ? ['stroke']
-    // A rig's pages — the whole-figure TRANSFORM page (the part pages
-    // Hands/Feet/Spine/Head came off the row, their sliders living on as
-    // the host's floating slider modes) and Opacity, the same page an
-    // image opens: a figure fades like any object. Checked before
-    // showSvgOptions: a rig's figure IS an svg object, and the other vector
-    // pages have nothing to act on for a baked silhouette.
-    : model.showRigOptions ? [...RIG_PART_PAGES.map((o) => o.sub), 'opacity' as const]
+    // A rig's pages — the whole-figure TRANSFORM page, and that alone.
+    // (The part pages Hands/Feet/Spine/Head came off the row, their
+    // sliders living on as the host's floating slider modes.) Opacity
+    // stood beside it and is gone: a figure is a POSE, and fading one is
+    // not a thing anybody reached this panel to do — it left a two-tab
+    // row where one of the tabs was a slider nobody asked for. The model
+    // and the page stand for every other kind that offers them. Checked
+    // before showSvgOptions: a rig's figure IS an svg object, and the
+    // other vector pages have nothing to act on for a baked silhouette.
+    : model.showRigOptions ? RIG_PART_PAGES.map((o) => o.sub)
     : model.showSvgOptions
       ? [
           'stroke',
@@ -1313,9 +1316,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       sub: opt.sub,
       onPress: () => openSubmenu(opt.sub),
     }));
-    // …and Opacity: the whole figure's render opacity, the page an image
-    // opens, through the host's same objectOpacity plumbing.
-    typeSpecs.push({ key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') });
+    // …and nothing else. Opacity stood beside it — the whole figure's
+    // render opacity, through the host's objectOpacity plumbing — and is
+    // gone: a figure is a POSE, and fading one is not a thing anybody
+    // reached this panel to do. It left a two-tab row whose second tab
+    // was a slider nobody asked for. The plumbing stands for every other
+    // kind that offers the page.
   } else if (model.showSvgOptions) {
     // Vector selection: the subtype's own option menu (svgEdit.ts). Every
     // subtype offers Stroke — a path IS its stroke; the closed shapes add Fill.

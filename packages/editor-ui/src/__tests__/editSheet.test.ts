@@ -252,8 +252,14 @@ describe('the pages have no chrome of their own', () => {
     // Replace is an ACTION (it is something you do, not a state the image
     // is in) and fires straight out of the press — the host opens a file
     // picker, which WebKit only shows while the gesture's activation lives.
-    expect(image).toContain('<ActionRow options={REPLACE_OPTION} onPress={onReplace} />');
-    expect(image).toContain("label: 'Replace'");
+    // Replace is the page's one ACT, so it wears the filled full-width
+    // button the effect pages use for theirs — the same control as "Add
+    // Drop Shadow", with a swap glyph instead of a plus. It was a
+    // segmented ActionRow, the shape the pages use for CHOOSING between
+    // states, which read as a setting with exactly one option.
+    expect(image).toContain('<EffectButton label="Replace" icon="image-sync-outline" onPress={onReplace} />');
+    expect(image).not.toContain('REPLACE_OPTION');
+    expect(image).toContain('label="Replace"');
     expect(image).not.toMatch(/onPress=\{\s*async/);
     // Radius rounds the PICTURE, so it came off the Border page (where
     // everything around it dressed the outline drawn on top) onto the

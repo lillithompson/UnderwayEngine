@@ -124,16 +124,40 @@ export function EmptyEffectBar({ addLabel, onAdd }: {
   addLabel: string;
   onAdd: () => void;
 }) {
+  return <EffectButton label={addLabel} onPress={onAdd} />;
+}
+
+/**
+ * The full-width filled button an effect page uses for the one thing it
+ * DOES rather than adjusts — "Add Drop Shadow" on an absent effect, and
+ * "Replace" on the Image page, which swaps the pixels behind the node.
+ *
+ * One button for both because they are one kind of thing: a page of
+ * sliders with a single act on it, and that act should look the same
+ * wherever it appears. Replace wore a segmented ActionRow — the shape the
+ * pages use for CHOOSING between states — which read as a setting with
+ * one option.
+ *
+ * It fires straight out of the press, with nothing deferred: the Image
+ * page's host opens a file picker, and WebKit only shows the dialog while
+ * the gesture's activation is live.
+ */
+export function EffectButton({ label, icon = 'plus', onPress }: {
+  label: string;
+  /** The glyph before the word. Defaults to the plus an "Add …" wears. */
+  icon?: string;
+  onPress: () => void;
+}) {
   return (
     <View style={styles.emptyControls}>
       <Pressable
-        onPress={onAdd}
+        onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={addLabel}
+        accessibilityLabel={label}
         style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
       >
-        <MaterialCommunityIcons name={'plus' as MCIName} size={16} color="#fff" />
-        <Text style={styles.addLabel}>{addLabel}</Text>
+        <MaterialCommunityIcons name={icon as MCIName} size={16} color="#fff" />
+        <Text style={styles.addLabel}>{label}</Text>
       </Pressable>
     </View>
   );

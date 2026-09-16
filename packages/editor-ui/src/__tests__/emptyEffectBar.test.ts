@@ -21,9 +21,13 @@ describe('EmptyEffectBar (effectBar.tsx)', () => {
 
   it('is ONE Add button — no swatch, no Remove, no header of its own', () => {
     expect(bar).toContain('export function EmptyEffectBar({ addLabel, onAdd }');
-    // The one control: a full-width accessible Add button.
-    expect(bar).toContain('accessibilityLabel={addLabel}');
-    expect(bar).toContain('onPress={onAdd}');
+    // The one control: a full-width accessible filled button, shared with
+    // the Image page's Replace — the same kind of thing (a page of
+    // sliders with a single ACT on it), so it looks the same in both.
+    expect(bar).toContain('return <EffectButton label={addLabel} onPress={onAdd} />;');
+    expect(bar).toContain('export function EffectButton({ label, icon = \'plus\', onPress }');
+    expect(bar).toContain('accessibilityLabel={label}');
+    expect(bar).toContain('onPress={onPress}');
     // Bare white text on the well, no filled pill: a fill read as a control
     // already set, when the page's whole point is that nothing is.
     expect(bar).toMatch(/addButton: \{[^}]*\}/s);
