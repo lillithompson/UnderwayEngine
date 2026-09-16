@@ -64,6 +64,16 @@ export interface WebViewShellProps {
    * one IS the app in trouble, and must look like it.
    */
   splash?: React.ReactNode;
+  /**
+   * Handed the WebView's own ref once it is mounted, and null when it goes
+   * away — so the host can photograph exactly what the page is showing
+   * (react-native-view-shot's captureRef takes a ref object).
+   *
+   * The ref, not a capture function: the shell owns the view and nothing
+   * else, and what a picture of it is FOR is the host's business. Pass a
+   * stable callback — it is an effect's dependency.
+   */
+  onWebViewRef?: (ref: React.RefObject<unknown> | null) => void;
 }
 
 // The native splash overlay (logo + spinner on dark) covers the WebView until
@@ -75,6 +85,7 @@ export default function WebViewShell({
   urlSuffix,
   onLoadStart,
   splash,
+  onWebViewRef,
   debuggable = DIAGNOSTICS,
 }: WebViewShellProps = {}) {
   const { url, ready } = useLocalServer();
@@ -157,6 +168,12 @@ export default function WebViewShell({
       clearWatchdog();
     };
   }, [webReady, sendToWeb, clearWatchdog]);
+
+  // The view itself, offered to the host for as long as it is mounted.
+  useEffect(() => {
+    onWebViewRef?.(webViewRef);
+    return () => onWebViewRef?.(null);
+  }, [onWebViewRef]);
 
   // A route the host worked out after the page was loaded: sent, not
   // reloaded. The page re-resolves and signals READY again — until it
