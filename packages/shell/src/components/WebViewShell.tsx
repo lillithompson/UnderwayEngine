@@ -32,6 +32,17 @@ export interface WebViewShellProps {
    * composes into a valid URL.
    */
   urlSuffix?: string;
+  /**
+   * Called when the WKWebView begins loading the page — the first thing
+   * that happens inside the WebView after the host mounts it, and the
+   * only way the native side can see where the boundary between "native
+   * pushed a screen" and "the page is loading" falls.
+   *
+   * For instrumentation (CozyJournal's open trace): the host records a
+   * mark and nothing else, so a build that measures nothing passes
+   * nothing and this stays unwired.
+   */
+  onLoadStart?: () => void;
 }
 
 // The native splash overlay (logo + spinner on dark) covers the WebView until
@@ -41,6 +52,7 @@ export interface WebViewShellProps {
 // resize flash, no intermediate handoff.
 export default function WebViewShell({
   urlSuffix,
+  onLoadStart,
   debuggable = DIAGNOSTICS,
 }: WebViewShellProps = {}) {
   const { url, ready } = useLocalServer();
@@ -178,6 +190,7 @@ export default function WebViewShell({
             source={{ uri: urlSuffix ? url + urlSuffix : url }}
             style={styles.webview}
             onMessage={onMessage}
+            onLoadStart={onLoadStart}
             onError={(e) => {
               // Surface the full nativeEvent so we get the
               // underlying NSError code/domain when WKWebView reports a
