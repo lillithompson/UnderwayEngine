@@ -32,7 +32,13 @@ import { EndpointsBar } from './EndpointsBar';
 import { TransformBar, type CopiesSection } from './TransformBar';
 import { LayoutBar } from './LayoutBar';
 import { PatternSymmetryBar, PatternTileBar, PatternTilesBar, PatternToolsBar } from './PatternBars';
-import { BarBody, ColorSliderRow, EmptyEffectBar, MultiToggleRow } from './effectBar';
+import {
+  BarBody,
+  ColorSliderRow,
+  EffectButton,
+  EmptyEffectBar,
+  MultiToggleRow,
+} from './effectBar';
 import { ShapeBar } from './ShapeBar';
 import { EditSheet, EditTabSpec } from './EditSheet';
 import { SHEET_RADIUS } from '../logic/submenuHeight';
@@ -411,7 +417,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     // pages that dress it.
     : model.showTextStyle ? ['text', 'font', 'spacing', 'align', 'shadow', 'opacity', 'transform']
     // A word sticker: its card scheme, then Opacity.
-    : model.showInvert ? [...(cardable ? (['card'] as const) : []), 'opacity']
+    // A word sticker: its card scheme, then the pages every kind shares.
+    : model.showInvert ? [...(cardable ? (['card'] as const) : []), 'shadow', 'opacity']
     : model.showPaintOptions ? ['opacity']
     // A pattern object's pages, in the order its tab row lists them, plus
     // the Stroke page its baked tile paths share with the vectors.
@@ -917,13 +924,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     );
   } else if (displaySub === 'card') {
     // A word sticker's card scheme: light card / dark ink, or the inverse.
-    // A flip, not a hue, so it is the one chip it always was.
+    // A flip, not a hue — so it is the page's one ACT, and it wears the
+    // button the effect pages give theirs (EffectButton), not a lit chip
+    // on a darkened row. The row said "this is a setting, and it is
+    // currently off" about a thing that has no off: a magnet is one
+    // scheme or the other, and either is a whole answer.
     activeBarEl = (
       <BarBody>
-        <MultiToggleRow
-          options={[{ value: 'invert' as const, label: 'Invert', active: !!model.inverted }]}
-          onToggle={() => model.onInvert?.()}
-        />
+        <EffectButton label="Invert" icon="invert-colors" onPress={() => model.onInvert?.()} />
       </BarBody>
     );
   } else if (displaySub === 'shape') {
@@ -1351,13 +1359,20 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
       typeSpecs.unshift({ key: 'svgEdit', label: 'Edit', onPress: model.onSvgEdit });
     }
   } else if (model.showInvert) {
-    // Word sticker (magnetic poetry): Card — its one colour setting, Invert
-    // (dark card ⇄ light card) — then Opacity, the whole magnet's. Content +
-    // typography are fixed, so no Type / Align.
+    // Word sticker (magnetic poetry): Word — its one colour setting,
+    // Invert (dark card ⇄ light card) — then Shadow and Opacity. Content
+    // and typography are fixed, so no Type / Align.
+    //
+    // The tab is named for the OBJECT, as every other type's first tab is
+    // (Image, Text, Stroke): "Card" named the white rectangle behind the
+    // word, which is a part of the thing rather than the thing, and read
+    // as a page about a background on a panel whose other pages are about
+    // the object.
     typeSpecs = [
       ...(cardable
-        ? [{ key: 'card', label: 'Card', sub: 'card' as const, onPress: () => openSubmenu('card') }]
+        ? [{ key: 'card', label: 'Word', sub: 'card' as const, onPress: () => openSubmenu('card') }]
         : []),
+      { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },
       { key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },
     ];
   } else if (model.showPaintOptions) {

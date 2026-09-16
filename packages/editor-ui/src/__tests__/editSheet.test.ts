@@ -554,22 +554,43 @@ describe('the panel drives the sheet', () => {
     expect(SRC('adapter.ts')).not.toContain('onEdit(): void;');
   });
 
-  it('a word sticker offers Card (its Invert chip) first, then Opacity (whole-magnet, no Soften)', () => {
-    expect(PANEL).toContain("{ key: 'card', label: 'Card', sub: 'card' as const, onPress: () => openSubmenu('card') }");
+  it('the unlabelled Position row is set off from the row above it', () => {
+    // Every row before it carries a caption, which is the space that
+    // tells one row from the next; this one has none (Inside / Center /
+    // Outside name themselves), so without the gap its cells sat flush
+    // under the colour slider and read as part of that row.
+    const border = SRC('components', 'BorderBar.tsx');
+    expect(border).toContain('<View style={labelPosition ? undefined : styles.unlabelledRow}>');
+    expect(border).toContain('unlabelledRow: { marginTop: 10 },');
+    // Both pages that draw the row label-less — a shape's Stroke and an
+    // image's Border — therefore get it.
+    expect(PANEL).toContain('labelPosition={false}');
+  });
+
+  it('a word sticker offers Word (its Invert button) first, then Shadow and Opacity', () => {
+    // The tab is named for the OBJECT, as every other type's first tab
+    // is (Image, Text, Stroke). "Card" named the white rectangle behind
+    // the word — a part of the thing rather than the thing.
+    expect(PANEL).toContain("{ key: 'card', label: 'Word', sub: 'card' as const, onPress: () => openSubmenu('card') }");
+    expect(PANEL).toContain("{ key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },");
     expect(PANEL).toContain("{ key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },");
-    expect(PANEL).toContain(": model.showInvert ? [...(cardable ? (['card'] as const) : []), 'opacity']");
+    expect(PANEL).toContain(": model.showInvert ? [...(cardable ? (['card'] as const) : []), 'shadow', 'opacity']");
     // A sticker's opacity is its ink alpha, so the page drops Soften — as
     // plain text's does, for the same reason.
     expect(PANEL).toContain('!model.showInvert && !model.showTextStyle');
-    // Its card scheme IS its colour, so Card leads its own tab row.
+    // Its card scheme IS its colour, so Word leads its own tab row, and
+    // the shared pages follow in the order every other type lists them.
     const sticker = PANEL.slice(PANEL.indexOf('} else if (model.showInvert) {'));
-    expect(sticker.indexOf("label: 'Card'"))
+    expect(sticker.indexOf("label: 'Word'"))
+      .toBeLessThan(sticker.indexOf("label: 'Shadow'"));
+    expect(sticker.indexOf("label: 'Shadow'"))
       .toBeLessThan(sticker.indexOf("label: 'Opacity'"));
-    // Invert is a chip on that page — not a tab of its own, and not a row of
-    // a shared Color page: it is a FLIP, not a hue, so it stays a toggle.
+    // Invert is the page's one ACT, in the button the effect pages give
+    // theirs — not a lit chip on a darkened row, which said "this is a
+    // setting, currently off" about a thing that has no off.
     expect(PANEL).not.toContain("label: 'Invert', toggled: model.inverted");
-    expect(PANEL).toContain("options={[{ value: 'invert' as const, label: 'Invert', active: !!model.inverted }]}");
-    expect(PANEL).toContain('onToggle={() => model.onInvert?.()}');
+    expect(PANEL).not.toContain("label: 'Invert', active: !!model.inverted");
+    expect(PANEL).toContain('<EffectButton label="Invert" icon="invert-colors" onPress={() => model.onInvert?.()} />');
     // …and its open state is the panel's own, closed as any host page opens
     // and folded when the selection stops offering it.
     expect(PANEL).toContain('setLocalSub(isLocalSubmenu(key) ? key : null);');

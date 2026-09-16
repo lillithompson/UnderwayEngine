@@ -1,4 +1,5 @@
 import React from 'react';
+import { StyleSheet, View } from 'react-native';
 import type { BorderModel, BorderPosition } from '../adapter';
 import { BarBody, SegmentedRow, SliderRow, ColorSliderRow } from './effectBar';
 import type { RGBLike } from '../adapter';
@@ -123,15 +124,30 @@ export function BorderBar({
       ) : null}
       {/* Position last: the rows above describe the line ITSELF — how thick
           it is drawn, whether it is dashed, what colour it is — and this
-          says where that line sits against the shape's edge. */}
+          says where that line sits against the shape's edge.
+
+          Set off by a gap above it. Every row before it carries a caption,
+          which is the space that tells one row from the next; this one
+          has none (Inside / Center / Outside name themselves), so without
+          the gap its cells sat flush under the colour slider and read as
+          part of that row rather than as a question of their own. */}
       {showPosition ? (
-        <SegmentedRow
-          label={labelPosition ? 'Position' : undefined}
-          options={POSITIONS}
-          value={border.position}
-          onChange={(position) => set({ position }, true)}
-        />
+        <View style={labelPosition ? undefined : styles.unlabelledRow}>
+          <SegmentedRow
+            label={labelPosition ? 'Position' : undefined}
+            options={POSITIONS}
+            value={border.position}
+            onChange={(position) => set({ position }, true)}
+          />
+        </View>
       ) : null}
     </BarBody>
   );
 }
+
+const styles = StyleSheet.create({
+  // The caption's own height, give or take: a labelled row's words are
+  // what separate it from the row above, so a row without them borrows
+  // the same distance.
+  unlabelledRow: { marginTop: 10 },
+});
