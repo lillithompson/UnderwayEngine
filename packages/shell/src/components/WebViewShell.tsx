@@ -30,6 +30,13 @@ export interface WebViewShellProps {
    * both the Metro dev-server URL and the bundled static-server URL,
    * which are each origin-only (no path/query), so a '?…' suffix always
    * composes into a valid URL.
+   *
+   * The FIRST value is what the page is loaded with. Changing it later
+   * re-points the page over the bridge (NAVIGATE_TO) rather than
+   * reloading it, so a host that learns which page to open after the
+   * WebView is up — or that keeps one WebView across several pages —
+   * pays the bundle's cost once. The ready latch drops on the change,
+   * so the splash covers the new route until the page says it is up.
    */
   urlSuffix?: string;
   /**
@@ -57,6 +64,14 @@ export default function WebViewShell({
 }: WebViewShellProps = {}) {
   const { url, ready } = useLocalServer();
   const [webReady, setWebReady] = useState(false);
+  // What the page was LOADED with. The WebView's source must not change
+  // after that: a new source is a fresh load, which is the cost this is
+  // here to avoid. Everything after the first value is a route change,
+  // sent over the bridge below.
+  const loadedSuffix = useRef(urlSuffix);
+  // …and where it has been re-pointed since, so a page that asks (having
+  // loaded before the host knew) is answered rather than left waiting.
+  const routeSuffix = useRef(urlSuffix);
   const [recoveryFailed, setRecoveryFailed] = useState(false);
   const webViewRef = useRef<WebView>(null);
   const insets = useSafeAreaInsets();
@@ -128,6 +143,16 @@ export default function WebViewShell({
     };
   }, [webReady, sendToWeb, clearWatchdog]);
 
+  // A route the host worked out after the page was loaded: sent, not
+  // reloaded. The page re-resolves and signals READY again — until it
+  // does, the splash is back over it, exactly as it is over a load.
+  useEffect(() => {
+    if (urlSuffix === undefined || urlSuffix === routeSuffix.current) return;
+    routeSuffix.current = urlSuffix;
+    setWebReady(false);
+    sendToWeb({ type: 'NAVIGATE_TO', payload: { search: urlSuffix } });
+  }, [urlSuffix, sendToWeb]);
+
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     let data: any;
     try {
@@ -148,6 +173,15 @@ export default function WebViewShell({
         type: 'SAFE_AREA_INSETS',
         payload: { top: insets.top, bottom: insets.bottom, left: insets.left, right: insets.right },
       });
+    } else if (data.type === 'ROUTE_REQUEST') {
+      // A page loaded without its query, asking what it is for. Answered
+      // only when there is something it does not already have: the send
+      // above covers the other order, where the host learned the route
+      // while the page was still parsing its bundle and the message it
+      // sent then had no handler to land on.
+      if (routeSuffix.current !== undefined && routeSuffix.current !== loadedSuffix.current) {
+        sendToWeb({ type: 'NAVIGATE_TO', payload: { search: routeSuffix.current } });
+      }
     } else if (data.type === 'RESUME_HEALTH_PONG' && data.payload?.nonce === pendingNonceRef.current) {
       console.log('[webViewShell] RESUME_HEALTH_PONG received — surface alive');
       clearWatchdog();
@@ -187,7 +221,7 @@ export default function WebViewShell({
         <View style={styles.container}>
           <WebView
             ref={webViewRef}
-            source={{ uri: urlSuffix ? url + urlSuffix : url }}
+            source={{ uri: loadedSuffix.current ? url + loadedSuffix.current : url }}
             style={styles.webview}
             onMessage={onMessage}
             onLoadStart={onLoadStart}

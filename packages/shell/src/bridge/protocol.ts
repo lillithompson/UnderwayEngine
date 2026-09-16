@@ -67,6 +67,23 @@ export interface ResumeHealthPongMessage {
 }
 
 /**
+ * "Which page am I for?" — asked by a page loaded WITHOUT its query, so
+ * that the bundle (megabytes of it) can be fetched and parsed while the
+ * host is still working out what to open.
+ *
+ * The host answers with NAVIGATE_TO, and answers only if it has a route
+ * the page does not already have. The two are a handshake rather than a
+ * push precisely because either order is possible: a NAVIGATE_TO sent
+ * before the page registered its bridge handler is dropped on the floor
+ * (injectedJavaScriptBeforeContentLoaded's __onNativeMessage no-ops until
+ * then), and a page that asks before the host knows gets its answer from
+ * the host's own route change. One of the two always lands.
+ */
+export interface RouteRequestMessage {
+  type: 'ROUTE_REQUEST';
+}
+
+/**
  * Generic app-defined event, in BOTH directions. The shell stays
  * app-agnostic: `kind`/`data` semantics belong to the consuming app. Web →
  * native, the app registers a handler via `setAppEventHandler`
@@ -93,6 +110,7 @@ export type WebToNativeMessage =
   | ReadyMessage
   | LogMessage
   | ResumeHealthPongMessage
+  | RouteRequestMessage
   | AppEventMessage;
 
 // ── Native → Web messages ────────────────────────────────────────────
@@ -161,6 +179,21 @@ export interface ResumeHealthPingMessage {
   payload: { nonce: string };
 }
 
+/**
+ * Show THIS query instead, without reloading the page — the answer to
+ * ROUTE_REQUEST, and the way a host re-points a WebView it is keeping
+ * rather than rebuilding. `search` is a URL query string, leading '?'
+ * and all, exactly as `urlSuffix` gives it.
+ *
+ * The page is expected to re-resolve and to signal READY again when the
+ * new route is on screen: the host drops its ready latch when it sends
+ * this, so the splash covers the change the way it covers a load.
+ */
+export interface NavigateToMessage {
+  type: 'NAVIGATE_TO';
+  payload: { search: string };
+}
+
 export type NativeToWebMessage =
   | FileImportedMessage
   | BinaryFileImportedMessage
@@ -170,4 +203,5 @@ export type NativeToWebMessage =
   | CameraRollResultMessage
   | ShareResultMessage
   | ResumeHealthPingMessage
+  | NavigateToMessage
   | AppEventMessage;

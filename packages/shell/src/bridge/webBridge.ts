@@ -418,6 +418,32 @@ export function signalReady(): void {
 }
 
 /**
+ * Ask the host which page this one is for (ROUTE_REQUEST). Sent by a page
+ * loaded without its query — the bundle is fetched and parsed while the
+ * host works out what to open — and answered with NAVIGATE_TO, which
+ * {@link onNavigateTo} delivers. No-op outside the WebView, where the URL
+ * is the whole answer.
+ */
+export function requestRoute(): void {
+  if (isInWebView()) {
+    postToNative({ type: 'ROUTE_REQUEST' });
+  }
+}
+
+/**
+ * Register a handler for "show this query instead" (NAVIGATE_TO) — the
+ * answer to {@link requestRoute}, and how a host re-points a WebView it is
+ * keeping rather than rebuilding. Returns the unsubscribe.
+ */
+export function onNavigateTo(handler: (search: string) => void): () => void {
+  return onNativeMessage((msg) => {
+    if (msg.type === 'NAVIGATE_TO' && typeof msg.payload?.search === 'string') {
+      handler(msg.payload.search);
+    }
+  });
+}
+
+/**
  * Post an app-defined event to the native shell (APP_EVENT). The shell is
  * app-agnostic about `kind`/`data`; the native side handles them via
  * `setAppEventHandler` (nativeBridge). No-op outside the WebView.
