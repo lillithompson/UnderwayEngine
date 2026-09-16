@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { StyleSheet, View, ActivityIndicator, Image, AppState, AppStateStatus, Text, TouchableOpacity } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -50,6 +50,20 @@ export interface WebViewShellProps {
    * nothing and this stays unwired.
    */
   onLoadStart?: () => void;
+  /**
+   * What covers the WebView until the page says READY, in place of the
+   * app's logo on black.
+   *
+   * The dark splash is right for a cold launch and wrong for a
+   * transition: mid-gesture it reads as the app restarting. A host that
+   * knows what the page will look like — its chrome, its colour — can
+   * hand a stand-in for it here and the wait reads as the page arriving.
+   *
+   * It covers the load only. A content process that dies and cannot be
+   * recovered still falls back to the logo and its failure panel: that
+   * one IS the app in trouble, and must look like it.
+   */
+  splash?: React.ReactNode;
 }
 
 // The native splash overlay (logo + spinner on dark) covers the WebView until
@@ -60,6 +74,7 @@ export interface WebViewShellProps {
 export default function WebViewShell({
   urlSuffix,
   onLoadStart,
+  splash,
   debuggable = DIAGNOSTICS,
 }: WebViewShellProps = {}) {
   const { url, ready } = useLocalServer();
@@ -270,7 +285,10 @@ export default function WebViewShell({
           />
         </View>
       )}
-      {!webReady && (
+      {!webReady && splash !== undefined && !recoveryFailed && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">{splash}</View>
+      )}
+      {!webReady && (splash === undefined || recoveryFailed) && (
         <View style={styles.splashOverlay} pointerEvents={recoveryFailed ? 'auto' : 'none'}>
           <Image
             source={require('../../assets/images/splash-icon.png')}
