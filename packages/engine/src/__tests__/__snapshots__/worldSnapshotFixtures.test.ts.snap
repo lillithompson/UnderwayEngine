@@ -339,7 +339,7 @@ svg svg_1780949469486_kkcd bbox=[12.25, 9.25, 0, 1.5] segments={L 12.25,9.25 12.
 
 exports[`world-space snapshots of the .tile fixtures JoinBug.tile renders the same world poses 1`] = `
 "figure 1779371972471_oohb bbox=[-64, 56, 16, 16]
-figure 1779371975007_55l0 bbox=[-48, 56, 16, 16] mirrorH"
+figure 1779371975007_55l0 bbox=[-48, 56, 16, 16] turn=180 flip"
 `;
 
 exports[`world-space snapshots of the .tile fixtures JoinTest.tile renders the same world poses 1`] = `
@@ -350,38 +350,38 @@ svg d bbox=[0, 0, 0, 3] segments={L 0,3 0,0}"
 `;
 
 exports[`world-space snapshots of the .tile fixtures JustFrames.tile renders the same world poses 1`] = `
-"figure 1778255512721_rvpf bbox=[112, -236, 48, 8] group=1778257327442_g mirrorH repeat 8x8 @0,0
-figure 1778255513825_lx4i bbox=[104, -236, 8, 8] group=1778257327442_g mirrorH
+"figure 1778255512721_rvpf bbox=[112, -236, 48, 8] group=1778257327442_g turn=180 flip repeat 8x8 @0,0
+figure 1778255513825_lx4i bbox=[104, -236, 8, 8] group=1778257327442_g turn=180 flip
 figure 1778255711267_52ks bbox=[216, -236, 8, 8] group=1778257327442_g
 figure 1778255725555_hr02 bbox=[168, -236, 48, 8] group=1778257327442_g repeat 8x8 @0,0
-figure 1778255757572_31mk bbox=[216, -228, 8, 32] group=1778257327442_g rot=90 mirrorH repeat 8x8 @0,0
-figure 1778255766667_jr64 bbox=[216, -188, 8, 32] group=1778257327442_g rot=90 repeat 8x8 @0,0
-figure 1778255776187_qogr bbox=[216, -156, 8, 8] group=1778257327442_g rot=90
-figure 1778255780163_0fjs bbox=[104, -156, 8, 8] group=1778257327442_g rot=180
-figure 1778255903628_0517 bbox=[168, -156, 48, 8] group=1778257327442_g rot=180 mirrorH repeat 8x8 @0,0
-figure 1778255907421_9js2 bbox=[112, -156, 48, 8] group=1778257327442_g rot=180 repeat 8x8 @0,0
-figure 1778255911100_c5xx bbox=[104, -188, 8, 32] group=1778257327442_g rot=270 mirrorH repeat 8x8 @0,0
-figure 1778255915157_htl0 bbox=[104, -228, 8, 32] group=1778257327442_g rot=270 repeat 8x8 @0,0
+figure 1778255757572_31mk bbox=[216, -228, 8, 32] group=1778257327442_g turn=270 flip repeat 8x8 @0,0
+figure 1778255766667_jr64 bbox=[216, -188, 8, 32] group=1778257327442_g turn=90 repeat 8x8 @0,0
+figure 1778255776187_qogr bbox=[216, -156, 8, 8] group=1778257327442_g turn=90
+figure 1778255780163_0fjs bbox=[104, -156, 8, 8] group=1778257327442_g turn=180
+figure 1778255903628_0517 bbox=[168, -156, 48, 8] group=1778257327442_g flip repeat 8x8 @0,0
+figure 1778255907421_9js2 bbox=[112, -156, 48, 8] group=1778257327442_g turn=180 repeat 8x8 @0,0
+figure 1778255911100_c5xx bbox=[104, -188, 8, 32] group=1778257327442_g turn=90 flip repeat 8x8 @0,0
+figure 1778255915157_htl0 bbox=[104, -228, 8, 32] group=1778257327442_g turn=270 repeat 8x8 @0,0
 figure 1778255965540_r0he bbox=[160, -236, 8, 8] group=1778257327442_g
-figure 1778256178077_wcw1 bbox=[216, -196, 8, 8] group=1778257327442_g rot=90
-figure 1778256183783_zfsq bbox=[160, -156, 8, 8] group=1778257327442_g rot=180
-figure 1778256187142_8sbx bbox=[104, -196, 8, 8] group=1778257327442_g rot=270
+figure 1778256178077_wcw1 bbox=[216, -196, 8, 8] group=1778257327442_g turn=90
+figure 1778256183783_zfsq bbox=[160, -156, 8, 8] group=1778257327442_g turn=180
+figure 1778256187142_8sbx bbox=[104, -196, 8, 8] group=1778257327442_g turn=270
 figure 1778255515337_d229 bbox=[80, -236, 8, 8] group=1778257305851_g
-figure 1778255516849_uf4w bbox=[80, -228, 8, 96] group=1778257305851_g rot=90 repeat 8x8 @0,0
-figure 1778255658195_ai71 bbox=[-56, -228, 8, 96] group=1778257305851_g rot=270 mirrorH repeat 8x8 @0,0
-figure 1778255663106_22g2 bbox=[-48, -236, 128, 8] group=1778257305851_g mirrorH repeat 8x8 @0,0
-figure 1778256207677_tbun bbox=[-56, -236, 8, 8] group=1778257305851_g mirrorH
-figure 1778256219501_trhz bbox=[-56, -132, 8, 8] group=1778257305851_g rot=180
-figure 1778256224774_icuo bbox=[80, -132, 8, 8] group=1778257305851_g rot=180 mirrorH
-figure 1778256229398_uwqe bbox=[-48, -132, 128, 8] group=1778257305851_g rot=180 repeat 8x8 @0,0
+figure 1778255516849_uf4w bbox=[80, -228, 8, 96] group=1778257305851_g turn=90 repeat 8x8 @0,0
+figure 1778255658195_ai71 bbox=[-56, -228, 8, 96] group=1778257305851_g turn=90 flip repeat 8x8 @0,0
+figure 1778255663106_22g2 bbox=[-48, -236, 128, 8] group=1778257305851_g turn=180 flip repeat 8x8 @0,0
+figure 1778256207677_tbun bbox=[-56, -236, 8, 8] group=1778257305851_g turn=180 flip
+figure 1778256219501_trhz bbox=[-56, -132, 8, 8] group=1778257305851_g turn=180
+figure 1778256224774_icuo bbox=[80, -132, 8, 8] group=1778257305851_g flip
+figure 1778256229398_uwqe bbox=[-48, -132, 128, 8] group=1778257305851_g turn=180 repeat 8x8 @0,0
 figure 1778255518249_5rtu bbox=[-184, -236, 112, 8] group=1778257302034_g repeat 8x8 @0,0
 figure 1778255519857_uzu3 bbox=[-192, -236, 8, 8] group=1778257302034_g
-figure 1778255528058_6ciy bbox=[-72, -236, 8, 8] group=1778257302034_g mirrorH
-figure 1778255568275_x8kz bbox=[-184, -84, 112, 8] group=1778257302034_g rot=180 mirrorH repeat 8x8 @0,0
-figure 1778255574139_3dip bbox=[-192, -228, 8, 144] group=1778257302034_g rot=270 mirrorH repeat 8x8 @0,0
-figure 1778255579970_e1vw bbox=[-72, -228, 8, 144] group=1778257302034_g rot=90 repeat 8x8 @0,0
-figure 1778255598810_gdqe bbox=[-72, -84, 8, 8] group=1778257302034_g rot=180
-figure 1778255603419_kol7 bbox=[-192, -84, 8, 8] group=1778257302034_g rot=180 mirrorH"
+figure 1778255528058_6ciy bbox=[-72, -236, 8, 8] group=1778257302034_g turn=180 flip
+figure 1778255568275_x8kz bbox=[-184, -84, 112, 8] group=1778257302034_g flip repeat 8x8 @0,0
+figure 1778255574139_3dip bbox=[-192, -228, 8, 144] group=1778257302034_g turn=90 flip repeat 8x8 @0,0
+figure 1778255579970_e1vw bbox=[-72, -228, 8, 144] group=1778257302034_g turn=90 repeat 8x8 @0,0
+figure 1778255598810_gdqe bbox=[-72, -84, 8, 8] group=1778257302034_g turn=180
+figure 1778255603419_kol7 bbox=[-192, -84, 8, 8] group=1778257302034_g flip"
 `;
 
 exports[`world-space snapshots of the .tile fixtures LineBug.tile renders the same world poses 1`] = `
@@ -1034,7 +1034,7 @@ svg svg_1778025429572_sexi bbox=[470, 420, 0, 12] group=1778025466222_g segments
 svg svg_1778025436418_jii2 bbox=[472, 428, 0, 16] group=1778025466222_g segments={L 472,428 472,444}"
 `;
 
-exports[`world-space snapshots of the .tile fixtures TestSVGPattern.tile renders the same world poses 1`] = `"svg svg_1779338272223_u bbox=[-20, -20, 96, 120] mirrorH repeat 32x40 @32,0 segments={A -12,0 -12,-8 -20,-8 A -20,-8 -8,-8 -8,-20 A -8,-20 -8,0 12,0 A -8,20 -8,0 12,0 A -4,-8 -12,-8 -12,0}"`;
+exports[`world-space snapshots of the .tile fixtures TestSVGPattern.tile renders the same world poses 1`] = `"svg svg_1779338272223_u bbox=[-20, -20, 96, 120] repeat 32x40 @32,0 segments={A -12,0 -12,-8 -20,-8 A -20,-8 -8,-8 -8,-20 A -8,-20 -8,0 12,0 A -8,20 -8,0 12,0 A -4,-8 -12,-8 -12,0}"`;
 
 exports[`world-space snapshots of the .tile fixtures WaveBug.tile renders the same world poses 1`] = `
 "svg svg_1778177444864_mkq bbox=[117.25, 4, 5.5, 5.25] group=1778177444864_ml2_g segments={L 122.75,9.25 117.25,4}
@@ -1193,21 +1193,21 @@ svg svg_1781011760374_9vi0 bbox=[120, 20, 16, 16] segments={A 120,20 120,36 136,
 svg svg_1781011766294_ufr5 bbox=[148, 20, 16, 16] segments={A 148,20 148,36 164,36}
 svg svg_1781011775158_od5h bbox=[136, 76, 16, 16] segments={A 152,92 152,76 136,76}
 svg svg_1781011779926_nn5y bbox=[156, 76, 16, 16] segments={A 172,92 172,76 156,76}
-svg svg_1781011820201_bghq bbox=[220, 32, 16, 16] rot=180 segments={A 236,32 236,48 220,48}
-svg svg_1781011820202_vw4m bbox=[224, 40, 16, 16] rot=180 segments={A 240,40 240,56 224,56}
-svg svg_1781011820202_nsej bbox=[184, 64, 16, 16] rot=180 segments={A 184,64 184,80 200,80}
-svg svg_1781011820202_s6z2 bbox=[188, 132, 16, 16] rot=180 segments={A 188,132 188,148 204,148}
-svg svg_1781011820202_6em7 bbox=[184, 88, 16, 16] rot=180 segments={A 200,88 184,88 184,104}
-svg svg_1781011820202_paea bbox=[188, 172, 16, 16] rot=180 segments={A 204,172 188,172 188,188}
+svg svg_1781011820201_bghq bbox=[220, 32, 16, 16] segments={A 236,32 236,48 220,48}
+svg svg_1781011820202_vw4m bbox=[224, 40, 16, 16] segments={A 240,40 240,56 224,56}
+svg svg_1781011820202_nsej bbox=[184, 64, 16, 16] segments={A 184,64 184,80 200,80}
+svg svg_1781011820202_s6z2 bbox=[188, 132, 16, 16] segments={A 188,132 188,148 204,148}
+svg svg_1781011820202_6em7 bbox=[184, 88, 16, 16] segments={A 200,88 184,88 184,104}
+svg svg_1781011820202_paea bbox=[188, 172, 16, 16] segments={A 204,172 188,172 188,188}
 svg svg_1781011820202_ddaa bbox=[220, 116, 16, 16] segments={A 236,132 236,116 220,116}
 svg svg_1781011820202_tnn1 bbox=[224, 132, 16, 16] segments={A 240,148 240,132 224,132}
 svg svg_1781011820202_gcgc bbox=[248, 12, 16, 16] segments={A 264,12 248,12 248,28}
-svg svg_1781011820202_dod3 bbox=[276, 20, 16, 16] rot=180 segments={A 292,20 276,20 276,36}
-svg svg_1781011820202_43wg bbox=[260, 76, 16, 16] rot=180 segments={A 276,76 260,76 260,92}
-svg svg_1781011820202_w53v bbox=[232, 76, 16, 16] rot=180 segments={A 248,76 232,76 232,92}
-svg svg_1781011820202_5dni bbox=[300, 20, 16, 16] rot=180 segments={A 316,36 316,20 300,20}
+svg svg_1781011820202_dod3 bbox=[276, 20, 16, 16] segments={A 292,20 276,20 276,36}
+svg svg_1781011820202_43wg bbox=[260, 76, 16, 16] segments={A 276,76 260,76 260,92}
+svg svg_1781011820202_w53v bbox=[232, 76, 16, 16] segments={A 248,76 232,76 232,92}
+svg svg_1781011820202_5dni bbox=[300, 20, 16, 16] segments={A 316,36 316,20 300,20}
 svg svg_1781011820202_hhae bbox=[344, 8, 16, 16] segments={A 360,24 360,8 344,8}
-svg svg_1781011820202_qj65 bbox=[316, 76, 16, 16] rot=180 segments={A 316,76 316,92 332,92}
+svg svg_1781011820202_qj65 bbox=[316, 76, 16, 16] segments={A 316,76 316,92 332,92}
 svg svg_1781011820202_ily3 bbox=[360, 76, 16, 16] segments={A 360,76 360,92 376,92}
 figure 1781021693830_qhd7 bbox=[20, 40, 4, 8]
 figure 1781021699398_ubka bbox=[20, 56, 4, 8]
@@ -1249,36 +1249,36 @@ figure 1781021967433_6p0c bbox=[284, 40, 4, 8]
 figure 1781021975353_77s0 bbox=[284, 60, 4, 8]
 figure 1781100211887_heq2 bbox=[28, 40, 8, 8] repeat 8x8 @0,0
 figure 1781100220751_ylip bbox=[28, 56, 8, 8] repeat 8x8 @0,0
-figure 1781100227175_qzmc bbox=[28, 72, 8, 8] rot=180 repeat 8x8 @0,0
-figure 1781100232607_ut4f bbox=[28, 88, 8, 8] rot=180 repeat 8x8 @0,0
+figure 1781100227175_qzmc bbox=[28, 72, 8, 8] turn=180 repeat 8x8 @0,0
+figure 1781100232607_ut4f bbox=[28, 88, 8, 8] turn=180 repeat 8x8 @0,0
 figure 1781100237624_g2o9 bbox=[28, 132, 8, 8] repeat 8x8 @0,0
 figure 1781100237823_07dl bbox=[28, 116, 8, 8] repeat 8x8 @0,0
-figure 1781100246007_ttam bbox=[28, 148, 8, 8] rot=180 repeat 8x8 @0,0
-figure 1781100252255_te7u bbox=[28, 164, 8, 8] rot=180 repeat 8x8 @0,0
-figure 1781100257726_m6b6 bbox=[68, 20, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781100265615_k8xe bbox=[68, 60, 8, 8] rot=90 repeat 8x8 @0,0
-figure 1781100273503_qyci bbox=[88, 40, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781100277919_9g8i bbox=[100, 72, 8, 8] rot=90 repeat 8x8 @0,0
-figure 1781100282718_xmu7 bbox=[136, 40, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781100286295_yvtz bbox=[156, 40, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781100290839_umwh bbox=[156, 60, 8, 8] rot=90 repeat 8x8 @0,0
-figure 1781100295919_bk7f bbox=[136, 60, 8, 8] rot=90 repeat 8x8 @0,0
+figure 1781100246007_ttam bbox=[28, 148, 8, 8] turn=180 repeat 8x8 @0,0
+figure 1781100252255_te7u bbox=[28, 164, 8, 8] turn=180 repeat 8x8 @0,0
+figure 1781100257726_m6b6 bbox=[68, 20, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781100265615_k8xe bbox=[68, 60, 8, 8] turn=90 repeat 8x8 @0,0
+figure 1781100273503_qyci bbox=[88, 40, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781100277919_9g8i bbox=[100, 72, 8, 8] turn=90 repeat 8x8 @0,0
+figure 1781100282718_xmu7 bbox=[136, 40, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781100286295_yvtz bbox=[156, 40, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781100290839_umwh bbox=[156, 60, 8, 8] turn=90 repeat 8x8 @0,0
+figure 1781100295919_bk7f bbox=[136, 60, 8, 8] turn=90 repeat 8x8 @0,0
 figure 1781100303030_6p5l bbox=[204, 40, 8, 8] repeat 8x8 @0,0
 figure 1781100306535_6kbh bbox=[208, 56, 8, 8] repeat 8x8 @0,0
-figure 1781100311390_j4g7 bbox=[212, 72, 8, 8] rot=180 repeat 8x8 @0,0
-figure 1781100315774_iska bbox=[212, 88, 8, 8] rot=180 repeat 8x8 @0,0
+figure 1781100311390_j4g7 bbox=[212, 72, 8, 8] turn=180 repeat 8x8 @0,0
+figure 1781100315774_iska bbox=[212, 88, 8, 8] turn=180 repeat 8x8 @0,0
 figure 1781100320198_dwap bbox=[208, 108, 8, 8] repeat 8x8 @0,0
 figure 1781100325080_wnpa bbox=[208, 132, 8, 8] repeat 8x8 @0,0
-figure 1781100329551_p1dr bbox=[208, 148, 8, 8] rot=180 repeat 8x8 @0,0
-figure 1781100333863_4nf0 bbox=[208, 164, 8, 8] rot=180 repeat 8x8 @0,0
-figure 1781100340582_50ot bbox=[248, 40, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781100345144_h14c bbox=[248, 60, 8, 8] rot=90 repeat 8x8 @0,0
-figure 1781100352095_3akl bbox=[268, 60, 8, 8] rot=90 repeat 8x8 @0,0
-figure 1781100355967_5h18 bbox=[268, 40, 8, 8] rot=90 mirrorH repeat 8x8 @0,0
-figure 1781100364446_zgxk bbox=[316, 60, 8, 8] rot=90 repeat 8x8 @0,0
-figure 1781100366758_oifc bbox=[316, 40, 8, 8] rot=90 mirrorH repeat 8x8 @0,0
-figure 1781100370343_emwp bbox=[352, 40, 8, 8] rot=90 mirrorH repeat 8x8 @0,0
-figure 1781100373847_eyv6 bbox=[352, 60, 8, 8] rot=90 repeat 8x8 @0,0"
+figure 1781100329551_p1dr bbox=[208, 148, 8, 8] turn=180 repeat 8x8 @0,0
+figure 1781100333863_4nf0 bbox=[208, 164, 8, 8] turn=180 repeat 8x8 @0,0
+figure 1781100340582_50ot bbox=[248, 40, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781100345144_h14c bbox=[248, 60, 8, 8] turn=90 repeat 8x8 @0,0
+figure 1781100352095_3akl bbox=[268, 60, 8, 8] turn=90 repeat 8x8 @0,0
+figure 1781100355967_5h18 bbox=[268, 40, 8, 8] turn=270 flip repeat 8x8 @0,0
+figure 1781100364446_zgxk bbox=[316, 60, 8, 8] turn=90 repeat 8x8 @0,0
+figure 1781100366758_oifc bbox=[316, 40, 8, 8] turn=270 flip repeat 8x8 @0,0
+figure 1781100370343_emwp bbox=[352, 40, 8, 8] turn=270 flip repeat 8x8 @0,0
+figure 1781100373847_eyv6 bbox=[352, 60, 8, 8] turn=90 repeat 8x8 @0,0"
 `;
 
 exports[`world-space snapshots of the .tile fixtures extrusion/Compound_tests.tile renders the same world poses 1`] = `
@@ -1378,22 +1378,22 @@ figure 1781024066802_7ik3 bbox=[234, 40, 4, 8]
 figure 1781024074282_qc3c bbox=[274, 36, 4, 8]
 figure 1781024083113_69a1 bbox=[234, 56, 4, 8]
 figure 1781024093530_3pap bbox=[274, 56, 4, 8]
-figure 1781099759782_9r1u bbox=[38, 28, 8, 8] rot=180 repeat 8x8 @0,0
-figure 1781099779631_78yc bbox=[38, 48, 8, 8] rot=180 repeat 8x8 @0,0
-figure 1781099787543_gq9h bbox=[38, 92, 8, 8] rot=180 repeat 8x8 @0,0
-figure 1781099797823_jxl3 bbox=[38, 112, 8, 8] rot=180 repeat 8x8 @0,0
+figure 1781099759782_9r1u bbox=[38, 28, 8, 8] turn=180 repeat 8x8 @0,0
+figure 1781099779631_78yc bbox=[38, 48, 8, 8] turn=180 repeat 8x8 @0,0
+figure 1781099787543_gq9h bbox=[38, 92, 8, 8] turn=180 repeat 8x8 @0,0
+figure 1781099797823_jxl3 bbox=[38, 112, 8, 8] turn=180 repeat 8x8 @0,0
 figure 1781099808879_wrad bbox=[78, 28, 8, 8] repeat 8x8 @0,0
 figure 1781099820728_yykr bbox=[78, 92, 8, 8] repeat 8x8 @0,0
 figure 1781099821183_8cxc bbox=[78, 56, 8, 8] repeat 8x8 @0,0
 figure 1781099843848_pui5 bbox=[78, 120, 8, 8] repeat 8x8 @0,0
-figure 1781099861638_1oog bbox=[162, 40, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781099872623_bzxs bbox=[182, 40, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781099876367_teer bbox=[182, 60, 8, 8] rot=90 repeat 8x8 @0,0
-figure 1781099881271_iwnj bbox=[162, 60, 8, 8] rot=90 repeat 8x8 @0,0
-figure 1781099888055_fpdd bbox=[242, 40, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781099894327_1vmq bbox=[262, 36, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781099898040_hrry bbox=[242, 56, 8, 8] rot=90 repeat 8x8 @0,0
-figure 1781099903719_74e4 bbox=[262, 56, 8, 8] rot=90 repeat 8x8 @0,0"
+figure 1781099861638_1oog bbox=[162, 40, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781099872623_bzxs bbox=[182, 40, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781099876367_teer bbox=[182, 60, 8, 8] turn=90 repeat 8x8 @0,0
+figure 1781099881271_iwnj bbox=[162, 60, 8, 8] turn=90 repeat 8x8 @0,0
+figure 1781099888055_fpdd bbox=[242, 40, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781099894327_1vmq bbox=[262, 36, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781099898040_hrry bbox=[242, 56, 8, 8] turn=90 repeat 8x8 @0,0
+figure 1781099903719_74e4 bbox=[262, 56, 8, 8] turn=90 repeat 8x8 @0,0"
 `;
 
 exports[`world-space snapshots of the .tile fixtures extrusion/Straight_tests.tile renders the same world poses 1`] = `
@@ -1463,37 +1463,37 @@ figure 1781106767864_x6l1 bbox=[152, 209, 5.5, 11]
 figure 1781106769336_5t3r bbox=[212, 213, 5.5, 11]
 figure 1781107043528_28lh bbox=[29.5, 86, 8, 8] repeat 8x8 @0,0
 figure 1781107052145_8w36 bbox=[29.5, 102, 8, 8] repeat 8x8 @0,0
-figure 1781107054529_usuc bbox=[29.5, 118, 8, 8] mirrorH repeat 8x8 @0,0
-figure 1781107058313_kk3i bbox=[29.5, 134, 8, 8] mirrorH repeat 8x8 @0,0
-figure 1781107061304_vunh bbox=[69.5, 86, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781107067024_i0nd bbox=[89.5, 86, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781107069896_ogfl bbox=[69.5, 106, 8, 8] rot=90 repeat 8x8 @0,0
-figure 1781107074016_0s99 bbox=[89.5, 106, 8, 8] rot=90 repeat 8x8 @0,0
+figure 1781107054529_usuc bbox=[29.5, 118, 8, 8] turn=180 flip repeat 8x8 @0,0
+figure 1781107058313_kk3i bbox=[29.5, 134, 8, 8] turn=180 flip repeat 8x8 @0,0
+figure 1781107061304_vunh bbox=[69.5, 86, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781107067024_i0nd bbox=[89.5, 86, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781107069896_ogfl bbox=[69.5, 106, 8, 8] turn=90 repeat 8x8 @0,0
+figure 1781107074016_0s99 bbox=[89.5, 106, 8, 8] turn=90 repeat 8x8 @0,0
 figure 1781107078329_4ngv bbox=[141.5, 86, 8, 8] repeat 8x8 @0,0
 figure 1781107082298_37km bbox=[141.5, 102, 8, 8] repeat 8x8 @0,0
-figure 1781107084825_nbw1 bbox=[141.5, 118, 8, 8] mirrorH repeat 8x8 @0,0
-figure 1781107088561_bzx6 bbox=[141.5, 134, 8, 8] mirrorH repeat 8x8 @0,0
-figure 1781107093000_zvag bbox=[181.5, 86, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781107097465_027a bbox=[201.5, 86, 8, 8] rot=270 repeat 8x8 @0,0
-figure 1781107103040_bvtc bbox=[181.5, 106, 8, 8] rot=270 mirrorH repeat 8x8 @0,0
-figure 1781107106640_7g0k bbox=[201.5, 106, 8, 8] rot=270 mirrorH repeat 8x8 @0,0
+figure 1781107084825_nbw1 bbox=[141.5, 118, 8, 8] turn=180 flip repeat 8x8 @0,0
+figure 1781107088561_bzx6 bbox=[141.5, 134, 8, 8] turn=180 flip repeat 8x8 @0,0
+figure 1781107093000_zvag bbox=[181.5, 86, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781107097465_027a bbox=[201.5, 86, 8, 8] turn=270 repeat 8x8 @0,0
+figure 1781107103040_bvtc bbox=[181.5, 106, 8, 8] turn=90 flip repeat 8x8 @0,0
+figure 1781107106640_7g0k bbox=[201.5, 106, 8, 8] turn=90 flip repeat 8x8 @0,0
 figure 1781107112065_ysue bbox=[141.5, 170, 8, 8] repeat 8x8 @0,0
 figure 1781107115889_edmz bbox=[185.5, 170, 8, 8] repeat 8x8 @0,0
-figure 1781107120409_o2mk bbox=[141.5, 210, 8, 8] rot=180 repeat 8x8 @0,0
-figure 1781107125208_xv3p bbox=[201.5, 214, 8, 8] rot=180 repeat 8x8 @0,0
+figure 1781107120409_o2mk bbox=[141.5, 210, 8, 8] turn=180 repeat 8x8 @0,0
+figure 1781107125208_xv3p bbox=[201.5, 214, 8, 8] turn=180 repeat 8x8 @0,0
 figure 1781110110069_kyrk bbox=[231, 71, 5, 10]
 figure 1781110116989_m3lf bbox=[263, 36, 5, 10]
 figure 1781110131573_63j9 bbox=[276, 48, 5, 10]
 figure 1781110134309_7yb0 bbox=[256, 74, 5, 10]
 figure 1781110136837_t35o bbox=[239, 0, 5, 10]
 figure 1781110138789_8aok bbox=[244, 0, 5, 10]
-figure 1781111216444_9vp2 bbox=[230, 82, 8, 8] rot=270 mirrorH repeat 8x8 @0,0
+figure 1781111216444_9vp2 bbox=[230, 82, 8, 8] turn=90 flip repeat 8x8 @0,0
 svg svg_1781111237148_b36w bbox=[218, 121, 30, 0] segments={L 218,121 248,121}
-figure 1781111401796_2ec6 bbox=[248, 36, 8, 8] mirrorH repeat 8x8 @0,0
+figure 1781111401796_2ec6 bbox=[248, 36, 8, 8] turn=180 flip repeat 8x8 @0,0
 svg svg_1781111422267_a5aa bbox=[228, 28, 0, 40] segments={L 228,28 228,68}
-figure 1781111574580_gpiz bbox=[276, 36, 8, 8] rot=90 mirrorH repeat 8x8 @0,0
+figure 1781111574580_gpiz bbox=[276, 36, 8, 8] turn=270 flip repeat 8x8 @0,0
 svg svg_1781111592348_6un8 bbox=[268, 6, 32, 0] segments={L 268,6 300,6}
-figure 1781111687828_dbcs bbox=[264, 76, 8, 8] rot=180 mirrorH repeat 8x8 @0,24
+figure 1781111687828_dbcs bbox=[264, 76, 8, 8] flip repeat 8x8 @0,24
 svg svg_1781111722096_rjjw bbox=[314, 60, 0, 36] segments={L 314,60 314,96}"
 `;
 

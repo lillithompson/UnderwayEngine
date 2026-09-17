@@ -20,7 +20,7 @@
  * ```
  */
 
-import { matrixToOrientation, orientationToMatrix } from './transform2d';
+import { decomposeMatrix, localMatrix, normalizeDeg } from './sceneTransform';
 import type { CompItemKind } from './types';
 import type {
   CompositionState, CompositionFigure, SVGObject, ImageObject,
@@ -38,12 +38,16 @@ export interface LeafWorldSnapshot {
   groupId?: string;
   /** World bbox as [x, y, width, height] in L0 cells. */
   bbox: [number, number, number, number];
-  /** Discrete quarter turn, omitted when 0. */
-  rotation?: 90 | 180 | 270;
-  mirrorH?: boolean;
-  mirrorV?: boolean;
-  /** Continuous rotation about the bbox centre, omitted when absent/0. */
-  angleDeg?: number;
+  /**
+   * The DRAWN turn, in degrees clockwise about the bbox centre: the
+   * discrete quarter turn and the free angle added together, canonicalised
+   * so that one pose has one spelling. Omitted when there is no turn.
+   */
+  turn?: number;
+  /** Whether the node is flipped (handedness reversed). Which axis is not
+   *  recorded: a flip about one axis is a flip about the other plus a
+   *  turn, and the turn is already here. */
+  flip?: boolean;
   /** World path geometry, svg kind only. */
   segments?: string;
   /** Sub-path geometry when an svg carries more than one colour. */
@@ -109,23 +113,42 @@ function basePose(kind: CompItemKind, n: WorldPosed): LeafWorldSnapshot {
     bbox: [q(n.cellX), q(n.cellY), q(n.cellWidth), q(n.cellHeight)],
   };
   if (n.groupId) snap.groupId = n.groupId;
-  // Canonical spelling, not the stored one. The 16 (rotation, mirrorH,
-  // mirrorV) triples name only 8 distinct transforms — a lone `mirrorV` and
-  // `rotation: 180` + `mirrorH` are the same flip — and the engine re-spells
-  // one as the other whenever it composes orientations through a group
-  // chain. Two spellings of one pose have to read as one pose here, or the
-  // snapshot reports moves nobody can see.
-  const ori = matrixToOrientation(orientationToMatrix({
-    rotation: n.rotation ?? 0, mirrorH: !!n.mirrorH, mirrorV: !!n.mirrorV,
-  }));
-  if (ori.rotation) snap.rotation = ori.rotation;
-  if (ori.mirrorH) snap.mirrorH = true;
-  if (ori.mirrorV) snap.mirrorV = true;
-  // A 360-multiple angle renders identically to none; normalise so the
-  // "angle became undefined" regression (§2.1 scenario B) still shows.
-  const angle = q(n.angleDeg);
-  if (angle !== 0) snap.angleDeg = angle;
+  Object.assign(snap, turnOf(n));
   return snap;
+}
+
+/**
+ * The node's orientation as one canonical turn, not as the engine
+ * happens to spell it.
+ *
+ * The legacy model carries FOUR fields for this — a quarter turn, two
+ * mirror flags and a free angle — and they name the same pose many ways
+ * over. A lone `mirrorV` is `rotation: 180` plus `mirrorH`. A quarter
+ * turn of 0 with an angle of 25 is a turn of 180 with an angle of 205.
+ * The engine re-spells one as another whenever it composes orientations
+ * through a group chain, and a snapshot of "what the user sees" that read
+ * those fields literally would report moves nobody can see — which it did,
+ * repeatedly, while this refactor was being built.
+ *
+ * So: add the two rotation channels, fold the flips in as negative scale,
+ * and decompose. That yields one turn and one flip bit per pose, by
+ * construction.
+ */
+function turnOf(n: {
+  rotation?: 0 | 90 | 180 | 270;
+  mirrorH?: boolean; mirrorV?: boolean; angleDeg?: number;
+}): { turn?: number; flip?: boolean } {
+  const total = (n.rotation ?? 0) + (n.angleDeg ?? 0);
+  const t = decomposeMatrix(localMatrix({
+    tx: 0, ty: 0, sx: 1, sy: 1, rotationDeg: normalizeDeg(total),
+    ...(n.mirrorH ? { mirrorH: true } : {}),
+    ...(n.mirrorV ? { mirrorV: true } : {}),
+  }));
+  const out: { turn?: number; flip?: boolean } = {};
+  const turn = q(normalizeDeg(t.rotationDeg));
+  if (turn !== 0) out.turn = turn;
+  if (t.sy < 0) out.flip = true;
+  return out;
 }
 
 function figureSnap(f: CompositionFigure): LeafWorldSnapshot {
@@ -151,7 +174,11 @@ function svgSnap(s: SVGObject): LeafWorldSnapshot {
     s.segments, angle,
     s.cellX + s.cellWidth / 2, s.cellY + s.cellHeight / 2,
   );
-  snap.angleDeg = undefined;
+  // The vertices already say which way the path faces — quarter turns are
+  // baked into them and the free angle is applied just above — so the
+  // orientation flags would say it a second time.
+  snap.turn = undefined;
+  snap.flip = undefined;
   snap.segments = segsText(drawn);
   if (s.subpaths && s.subpaths.length > 0) {
     snap.subpaths = s.subpaths.map((sp) => segsText(
@@ -236,10 +263,8 @@ export function worldSnapshotText(state: CompositionState): string {
       `bbox=[${s.bbox.join(', ')}]`,
     ];
     if (s.groupId) parts.push(`group=${s.groupId}`);
-    if (s.rotation) parts.push(`rot=${s.rotation}`);
-    if (s.mirrorH) parts.push('mirrorH');
-    if (s.mirrorV) parts.push('mirrorV');
-    if (s.angleDeg !== undefined) parts.push(`angle=${s.angleDeg}`);
+    if (s.turn) parts.push(`turn=${s.turn}`);
+    if (s.flip) parts.push('flip');
     if (s.tile) parts.push(s.tile);
     if (s.pattern) parts.push(s.pattern);
     if (s.segments) parts.push(`segments={${s.segments}}`);

@@ -636,69 +636,115 @@ function nearestQuarterTurn(deg: number): 0 | 90 | 180 | 270 {
  * way it was joined: the nearest quarter turn becomes `rotation` (which
  * swaps the bbox dimensions), and what is left over becomes `angleDeg`.
  */
-function toLegacyLeaf(graph: SceneGraph, node: SceneNode): LegacyLeaf {
-  const base = { ...(node.content ?? { id: node.id }) } as LegacyLeaf & LegacyPose;
-  base.id = node.id;
-  if (node.name !== undefined) base.name = node.name;
-  base.groupId = node.parentId;
+/** The legacy pose fields a matrix implies for a local box. */
+interface PoseFields {
+  cellX: number; cellY: number; cellWidth: number; cellHeight: number;
+  rotation: 0 | 90 | 180 | 270;
+  mirrorH?: boolean; mirrorV?: boolean;
+  angleDeg?: number;
+}
 
-  const m = worldMatrix(graph, node.id);
-
-  if (node.kind === 'svg') {
-    const svg = base as SVGObject;
-    svg.segments = mapSegments(node.localSegments ?? [], m);
-    if (node.localSubpaths) svg.subpaths = mapSubpaths(node.localSubpaths, m);
-    // An svg's bbox is the AABB of its path. Its quarter turns are baked
-    // into the geometry, as they always were, so the orientation flags
-    // stay whatever the content carried.
-    const bb = segmentsBbox(svg.segments);
-    svg.cellX = bb.x; svg.cellY = bb.y;
-    svg.cellWidth = bb.width; svg.cellHeight = bb.height;
-    svg.angleDeg = undefined;
-    return svg;
-  }
-
-  const local = node.localBox ?? { x: 0, y: 0, width: 0, height: 0 };
+/**
+ * Split a matrix back into the legacy pair of rotation channels.
+ *
+ * The graph holds ONE continuous rotation; legacy holds two, a quarter
+ * turn that swaps the bbox and a free angle that does not. The split is
+ * not recoverable from the total, so the discrete part comes from the
+ * leaf's own `rotation` — unless the total is itself a quarter turn, in
+ * which case it is all discrete and the bbox should swap, or the leaf
+ * never had a discrete channel, in which case it keeps none and the whole
+ * turn is free. Both spellings render the same; they differ in the
+ * selection rectangle they report, and this is what keeps a page's stored
+ * boxes unmoved across the conversion.
+ *
+ * Used for BOTH the world fields and the `local*` caches, from the world
+ * matrix and the local one respectively — one derivation, so the two
+ * cannot say different things about the same node.
+ */
+function poseFieldsFrom(
+  m: Mat2D, local: Bbox, carried: 0 | 90 | 180 | 270 | undefined,
+): PoseFields {
   const t = decomposeMatrix(m);
-  // The graph holds ONE continuous rotation; legacy holds two channels, a
-  // quarter turn that swaps the bbox and a free angle that does not. The
-  // split is not recoverable from the total, so take the discrete part
-  // from the leaf's own `rotation` — unless the total is itself a quarter
-  // turn, in which case it is all discrete and the bbox should swap.
-  //
-  // Both spellings render the same, but they report different selection
-  // rectangles, and this is what keeps a page's stored boxes unmoved
-  // across the conversion.
-  const whole = isQuarterTurn(t.rotationDeg);
-  const carried = (node.content as { rotation?: 0 | 90 | 180 | 270 } | undefined)?.rotation;
-  // A leaf with no discrete channel of its own keeps none: all of a
-  // 45-degree turn is a free angle, not a quarter turn plus 315 more.
-  // Rounding to the nearest quarter here would swap the stored bbox for
-  // a node the user only twisted.
-  const quarter = whole ? nearestQuarterTurn(t.rotationDeg) : (carried ?? 0);
+  const quarter = isQuarterTurn(t.rotationDeg)
+    ? nearestQuarterTurn(t.rotationDeg)
+    : (carried ?? 0);
   const residual = normalizeDeg(t.rotationDeg - quarter);
+
   // The content box, scaled — the box the turn is applied to.
   const cw = local.width * Math.abs(t.sx);
   const ch = local.height * Math.abs(t.sy);
   const swap = quarter === 90 || quarter === 270;
-  const bboxW = swap ? ch : cw;
-  const bboxH = swap ? cw : ch;
-  // The world position of the content box's centre.
+  const cellWidth = swap ? ch : cw;
+  const cellHeight = swap ? cw : ch;
   const [cx, cy] = matApplyPoint(m, local.x + local.width / 2, local.y + local.height / 2);
 
-  base.cellX = cx - bboxW / 2;
-  base.cellY = cy - bboxH / 2;
-  base.cellWidth = bboxW;
-  base.cellHeight = bboxH;
-  base.rotation = quarter;
-  // Read the flips off the WORLD matrix, never off `node.transform`. A
-  // flip in the local transform has already been folded into the world
-  // rotation by the time the chain is multiplied out — a node turned 270
-  // and flipped on both axes is the same pose as one turned 90 — so
-  // taking both would count it twice. `decomposeMatrix` puts the whole
-  // handedness flip in `sy`, which is why only `mirrorV` can come back.
-  base.mirrorH = t.sx < 0 || undefined;
-  base.mirrorV = t.sy < 0 || undefined;
-  base.angleDeg = residual === 0 ? undefined : residual;
+  return {
+    cellX: cx - cellWidth / 2,
+    cellY: cy - cellHeight / 2,
+    cellWidth, cellHeight,
+    rotation: quarter,
+    // Read the flips off the matrix, never off a stored flag: a flip is
+    // already folded into the rotation by the time a chain is multiplied
+    // out — a node turned 270 and flipped twice is one turned 90 — so
+    // taking both would count it twice. `decomposeMatrix` puts the whole
+    // handedness flip in `sy`, which is why only `mirrorV` comes back.
+    mirrorH: t.sx < 0 || undefined,
+    mirrorV: t.sy < 0 || undefined,
+    angleDeg: residual === 0 ? undefined : residual,
+  };
+}
+
+/**
+ * One leaf, as the legacy arrays want it: the content payload with its
+ * pose fields recomputed from the graph.
+ *
+ * The `local*` caches are deliberately CLEARED, not filled in.
+ *
+ * They were a second copy of a grouped leaf's pose, kept in step by hand,
+ * and the copy going stale is what made a member of a group jump the next
+ * time the group moved. Emitting a derived copy sounds safer and is
+ * worse: the legacy materialize pass composes a group chain by D4 rules —
+ * quarter turns and flags — which cannot express an arbitrary continuous
+ * local turn, so the copy and the world pose would disagree again, by a
+ * different route. Absent caches say the right thing instead. The
+ * materialize pass leaves a leaf with no locals alone, which for a
+ * graph-backed leaf is exactly correct: the graph is the truth, and the
+ * world fields below are already derived from it.
+ */
+function toLegacyLeaf(graph: SceneGraph, node: SceneNode): LegacyLeaf {
+  const base = { ...(node.content ?? { id: node.id }) } as LegacyLeaf & LegacyPose & Record<string, unknown>;
+  base.id = node.id;
+  if (node.name !== undefined) base.name = node.name;
+  base.groupId = node.parentId;
+
+  const world = worldMatrix(graph, node.id);
+
+  if (node.kind === 'svg') {
+    const svg = base as SVGObject;
+    svg.segments = mapSegments(node.localSegments ?? [], world);
+    if (node.localSubpaths) svg.subpaths = mapSubpaths(node.localSubpaths, world);
+    // An svg's bbox is the AABB of its path, and its turns are baked into
+    // that path as they always were.
+    const bb = segmentsBbox(svg.segments);
+    svg.cellX = bb.x; svg.cellY = bb.y;
+    svg.cellWidth = bb.width; svg.cellHeight = bb.height;
+    svg.angleDeg = undefined;
+
+    svg.localSegments = undefined;
+    svg.localSubpaths = undefined;
+    svg.localCellX = undefined; svg.localCellY = undefined;
+    svg.localCellWidth = undefined; svg.localCellHeight = undefined;
+    return svg;
+  }
+
+  const local = node.localBox ?? { x: 0, y: 0, width: 0, height: 0 };
+  const carried = (node.content as { rotation?: 0 | 90 | 180 | 270 } | undefined)?.rotation;
+  Object.assign(base, poseFieldsFrom(world, local, carried));
+
+  base.localCellX = undefined; base.localCellY = undefined;
+  base.localCellWidth = undefined; base.localCellHeight = undefined;
+  base.localRotation = undefined;
+  base.localMirrorH = undefined; base.localMirrorV = undefined;
+  base.localAngleDeg = undefined;
   return base;
 }

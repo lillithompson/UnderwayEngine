@@ -19,12 +19,16 @@ import * as path from 'path';
 import * as zlib from 'zlib';
 
 import { deserializeComposition } from '../compositionBinaryFormat';
-import { applyCompOps, materializeGroupHierarchy, revertCompOps, withSceneGraph } from '../compositionOps';
+import {
+  applyCompOps, assertGroupLocalsConsistent, materializeGroupHierarchy,
+  revertCompOps, withSceneGraph,
+} from '../compositionOps';
 import {
   EMPTY_GRAPH, SceneGraph, ancestors, descendants, flattenLeaves, fromLegacy,
   getNode, toLegacyView, worldBbox, worldMatrix, worldSegments,
 } from '../sceneGraph';
 import { LOCAL_IDENTITY, localMatrix, matIsSimilarity } from '../sceneTransform';
+import { applySceneOps, buildUngroup } from '../sceneGraphOps';
 import { diffWorldSnapshots, worldSnapshot } from '../worldSnapshot';
 import {
   CompUndoEntry, CompositionState, GroupNode, ImageObject, PathSegment,
@@ -587,5 +591,91 @@ describe('a composition that carries a graph keeps it true', () => {
     }]);
     expect(state.graph!.nodes.has('img_1')).toBe(false);
     expectAgrees(state);
+  });
+});
+
+// ── The local caches, gone ─────────────────────────────────────────────
+
+describe('a graph-backed leaf carries no local caches', () => {
+  /**
+   * The second copy of a grouped leaf's pose is not derived, not stored,
+   * and not there.
+   *
+   * That is the fix for the stale-locals bug at its root: a cache that
+   * does not exist cannot disagree with the pose. The legacy materialize
+   * pass leaves a leaf with no locals alone, which is exactly right for a
+   * leaf whose truth is the graph — so the invariant checker has nothing
+   * to complain about either.
+   */
+  function expectNoLocals(state: CompositionState): void {
+    const view = toLegacyView(fromLegacy(state));
+    const leaves = [
+      ...view.figures, ...view.svgObjects, ...view.images,
+      ...view.texts, ...view.paintObjects, ...view.patternObjects,
+    ] as unknown as Array<Record<string, unknown>>;
+    for (const leaf of leaves) {
+      for (const field of [
+        'localCellX', 'localCellY', 'localCellWidth', 'localCellHeight',
+        'localRotation', 'localMirrorH', 'localMirrorV', 'localAngleDeg',
+        'localSegments', 'localSubpaths',
+      ]) {
+        expect({ id: leaf.id, field, value: leaf[field] })
+          .toEqual({ id: leaf.id, field, value: undefined });
+      }
+    }
+    // And nothing an ancestor transform would move.
+    expect(() => assertGroupLocalsConsistent({ ...state, ...view })).not.toThrow();
+  }
+
+  test('a scaled, turned, flipped group', () => {
+    for (const rotation of [0, 90, 180, 270] as const) {
+      expectNoLocals(makeState({
+        images: [image({ id: 'img_1', groupId: 'g1', cellX: 5, cellY: 5, rotation: 90 })],
+        texts: [text({ id: 'txt_1', groupId: 'g1', cellX: 1, cellY: 1, angleDeg: 25 })],
+        groups: [group({
+          id: 'g1', translateX: 3, scaleX: 2, scaleY: 2, rotation, mirrorH: true,
+        })],
+        sceneOrder: ['img_1', 'txt_1'],
+      }));
+    }
+  });
+
+  test('svg geometry in a group', () => {
+    expectNoLocals(makeState({
+      svgObjects: [svg({
+        id: 'svg_1', groupId: 'g1',
+        segments: [line([2, 2], [6, 5])], cellX: 2, cellY: 2, cellWidth: 4, cellHeight: 3,
+      })],
+      groups: [group({ id: 'g1', translateX: 1, scaleX: 2, scaleY: 2, rotation: 90 })],
+      sceneOrder: ['svg_1'],
+    }));
+  });
+
+  test('nested groups', () => {
+    expectNoLocals(makeState({
+      images: [image({ id: 'img_1', groupId: 'inner', cellX: 6, cellY: 6 })],
+      groups: [
+        group({ id: 'outer', translateX: 2, scaleX: 3, scaleY: 3 }),
+        group({ id: 'inner', parentGroupId: 'outer', translateY: 4, rotation: 270 }),
+      ],
+      sceneOrder: ['img_1'],
+    }));
+  });
+
+  test('every .tile fixture', () => {
+    for (const rel of findTiles(TEST_DATA)) expectNoLocals(loadTile(rel));
+  });
+
+  test('ungrouping keeps the node where it was', () => {
+    const state = makeState({
+      images: [image({ id: 'img_1', groupId: 'g1', cellX: 5, cellY: 5 })],
+      groups: [group({ id: 'g1', translateX: 3 })],
+      sceneOrder: ['img_1'],
+    });
+    const g = fromLegacy(state);
+    const ungrouped = applySceneOps(g, buildUngroup(g, 'g1'));
+    const img = toLegacyView(ungrouped).images[0];
+    expect(img.groupId).toBeUndefined();
+    expect(img.cellX).toBeCloseTo(5, 9);
   });
 });
