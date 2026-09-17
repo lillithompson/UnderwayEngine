@@ -12,6 +12,8 @@
  */
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
 import { BorderEffect, GroupNode, ImageObject, PathSegment, SVGObject } from '../types';
+import { Mat2D, matApplyPoint } from '../sceneTransform';
+import { parseSvgTransform } from './exportPose.test-utils';
 
 /** SVG_UNITS_PER_L0_CELL — world cells scale into SVG units by this. */
 const U = 256;
@@ -105,6 +107,18 @@ function whiteRects(svg: string): { at: number; x: number; y: number; w: number;
   return out;
 }
 
+
+/** The matrix of the `<g transform>` the white border rect sits in. The
+ *  border is emitted in the boundary rect's OWN space now (P5 of
+ *  docs/transform-refactor.md), so its world position is that rect through
+ *  this. */
+function borderGroupMatrix(svg: string): Mat2D {
+  const at = svg.search(/stroke="#ffffff"/i);
+  const before = svg.slice(0, at);
+  const open = before.lastIndexOf('<g transform="');
+  return parseSvgTransform(before.slice(open + '<g transform="'.length, before.indexOf('"', open + 14)));
+}
+
 describe('frame border export', () => {
   it('paints the frame border OVER the frame contents, exactly once', async () => {
     const svg = (await generateCompositionSVGCore(framedPage()))!;
@@ -117,10 +131,12 @@ describe('frame border export', () => {
     // the whole width lands on the page (and inside the pinned viewBox).
     const half = (WHITE_BORDER.width * U) / 2;
     expect(borders[0].width).toBeCloseTo(WHITE_BORDER.width * U);
-    expect(borders[0].x).toBeCloseTo(half);
-    expect(borders[0].y).toBeCloseTo(half);
     expect(borders[0].w).toBeCloseTo(PAGE * U - WHITE_BORDER.width * U);
     expect(borders[0].h).toBeCloseTo(PAGE * U - WHITE_BORDER.width * U);
+    // …and its own corner lands half a stroke inside the page's.
+    const [wx, wy] = matApplyPoint(borderGroupMatrix(svg), borders[0].x, borders[0].y);
+    expect(wx).toBeCloseTo(half);
+    expect(wy).toBeCloseTo(half);
 
     // ...and after the full-bleed photo, which would otherwise bury it.
     expect(borders[0].at).toBeGreaterThan(svg.indexOf('<image'));
@@ -187,11 +203,16 @@ describe('a tilted frame (boundary rect with a free angle)', () => {
       svgObjects: [makeBoundary({ angleDeg: -23.82 })],
     })))!;
     const pivot = `${(PAGE / 2) * U} ${(PAGE / 2) * U}`;
-    // The border overlay rides a rotation group…
+    // The border overlay rides a group that turns it by the frame's angle…
     const borderAt = svg.search(/stroke="#ffffff"/i);
     expect(borderAt).toBeGreaterThan(-1);
-    const before = svg.slice(0, borderAt);
-    expect(before.lastIndexOf(`<g transform="rotate(-23.82 ${pivot})">`)).toBeGreaterThan(-1);
+    const m = borderGroupMatrix(svg);
+    expect(Math.atan2(m.b, m.a) * 180 / Math.PI).toBeCloseTo(-23.82, 3);
+    // …about the frame centre: the rect's own centre lands back on it.
+    const rect = whiteRects(svg)[0];
+    const [cx, cy] = matApplyPoint(m, rect.x + rect.w / 2, rect.y + rect.h / 2);
+    expect(cx).toBeCloseTo((PAGE / 2) * U, 3);
+    expect(cy).toBeCloseTo((PAGE / 2) * U, 3);
     // …and the frame's clip path carries the same rotation.
     const clipAt = svg.indexOf('<clipPath id="groupmask-grp_frame"');
     expect(clipAt).toBeGreaterThan(-1);

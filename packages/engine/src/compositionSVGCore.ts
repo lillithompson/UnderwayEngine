@@ -529,41 +529,19 @@ const FALLBACK_FAMILY_STACK = "system-ui, -apple-system, &apos;Segoe UI&apos;, s
  */
 function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBColor): string {
   const style = text.style;
-  const tx = text.cellX * u;
-  const ty = text.cellY * u;
-  const tw = text.cellWidth * u;
-  const th = text.cellHeight * u;
-
-  // The CONTENT box: the world box with a quarter turn's axis swap undone,
-  // because the card and the type are drawn un-turned and rotated into place
-  // (contentBoxCells). Equal to the world box unless `rotation` is 90/270, so
-  // an untilted node composes exactly the transform it always did.
+  // `text` is the node spelled in its OWN space (`sceneHitFrame.localHitObject`):
+  // its box is at the origin and it carries no pose channels at all, so the
+  // card and the type are laid out here and the caller's single `matrix()`
+  // carries them into the world. The `translate() rotate(angleDeg)
+  // rotate(rotation) translate() scale(-1)` chain this used to compose off
+  // the legacy fields is gone with them (P5 of docs/transform-refactor.md).
   //
-  // A node spelled in its OWN space (`sceneHitFrame.localHitObject`, which is
-  // what the caller hands in now) has its box AT the origin and no pose
-  // channels at all, so every part below drops out and the whole of this is
-  // the content box — the caller's `matrix()` carries the pose.
+  // `contentBoxCells` is a no-op on a local node — its quarter turn has been
+  // spent — and it stays because it is the box's NAME here: what the type
+  // lays out in.
   const content = contentBoxCells(text);
   const cw = content.width * u;
   const ch = content.height * u;
-
-  // Node transform — same pattern as image nodes: position, then rotate
-  // about the bbox center, then mirror within the bbox.
-  const parts: string[] = [];
-  if (tx !== 0 || ty !== 0) parts.push(`translate(${tx}, ${ty})`);
-  // Free rotation is layered OUTERMOST (about the bbox center), matching the
-  // editor's render order, then the discrete rotation + mirror.
-  if (text.angleDeg) parts.push(`rotate(${text.angleDeg} ${tw / 2} ${th / 2})`);
-  const rot = text.rotation ?? 0;
-  if (rot !== 0) parts.push(`rotate(${rot} ${tw / 2} ${th / 2})`);
-  // …then step into the content box, centered in the world box — the same
-  // place the DOM layer's oriented wrapper sits. A no-op without a quarter
-  // turn; with one it is what puts the turned card back over its own bbox
-  // instead of leaving it rotated out of it.
-  if (cw !== tw || ch !== th) parts.push(`translate(${(tw - cw) / 2}, ${(th - ch) / 2})`);
-  // Mirrors are within the CONTENT box, which is what they flip.
-  if (text.mirrorH) parts.push(`translate(${cw}, 0) scale(-1, 1)`);
-  if (text.mirrorV) parts.push(`translate(0, ${ch}) scale(1, -1)`);
 
   // A sticker's node bbox IS its card: the scaffold already grew the box by
   // the interior margin on every side, so the text lays out against the full
@@ -686,8 +664,7 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
     }
   }
   if (!inner) return '';
-  const poseAttr = parts.length > 0 ? ` transform="${parts.join(' ')}"` : '';
-  return `<g${poseAttr}${stickerOpacity}>${inner}</g>`;
+  return `<g${stickerOpacity}>${inner}</g>`;
 }
 
 /**
@@ -1120,11 +1097,20 @@ export async function generateCompositionSVGCore(
     // mask's effects regardless of the node's own `hidden`.)
     if (input.subset && !svgObjects.some(s => s.id === boundary.id)) continue;
     // A tilted frame's border turns with it (the clip does the same in
-    // buildMaskClipDefs, the canvas overlay in CanvasSurface).
-    const borderRect = borderRectForBox(border, boundary, SVG_UNITS_PER_L0_CELL);
-    frameBorders.set(g.id, boundary.angleDeg
-      ? `<g transform="rotate(${boundary.angleDeg} ${(boundary.cellX + boundary.cellWidth / 2) * SVG_UNITS_PER_L0_CELL} ${(boundary.cellY + boundary.cellHeight / 2) * SVG_UNITS_PER_L0_CELL})">${borderRect}</g>`
-      : borderRect);
+    // buildMaskClipDefs, the canvas overlay in CanvasSurface) — and a
+    // stretched one's does not LEAN with it: the scale is split per axis
+    // into the rect's own size, leaving a turn on the matrix, so the border
+    // stays the width it was authored at through a frame resize. The
+    // canvas's `drawnPose.drawnClip` splits it the same way, for the same
+    // reason.
+    const pose = exportPose(graph, 'svg', boundary);
+    const { sx, sy, matrix } = axisScaleSplit(pose.world);
+    const borderRect = borderRectForBox(border, {
+      cellX: pose.box.x * sx, cellY: pose.box.y * sy,
+      cellWidth: pose.box.width * sx, cellHeight: pose.box.height * sy,
+    }, SVG_UNITS_PER_L0_CELL);
+    frameBorders.set(g.id,
+      `<g transform="${matrixString(matrix, SVG_UNITS_PER_L0_CELL)}">${borderRect}</g>`);
     frameBorderBoundaryIds.add(boundary.id);
   }
 
@@ -1288,10 +1274,16 @@ export async function generateCompositionSVGCore(
     if (!g.isFrame) continue;
     const mask = maskMap.get(g.id);
     if (!mask) continue;
-    if (mask.cellX < fMinCX) fMinCX = mask.cellX;
-    if (mask.cellY < fMinCY) fMinCY = mask.cellY;
-    if (mask.cellX + mask.cellWidth > fMaxCX) fMaxCX = mask.cellX + mask.cellWidth;
-    if (mask.cellY + mask.cellHeight > fMaxCY) fMaxCY = mask.cellY + mask.cellHeight;
+    // The region the frame's rect COVERS, which for a tilted frame is the
+    // box its turned corners fit in, not the box it is stored as. The clip
+    // turns with the rect (buildMaskClipDefs), so a viewBox on the stored
+    // box cropped a tilted frame's own corners off its page.
+    const pose = exportPose(graph, 'svg', mask);
+    const b = matApplyBbox(pose.world, pose.box);
+    if (b.x < fMinCX) fMinCX = b.x;
+    if (b.y < fMinCY) fMinCY = b.y;
+    if (b.x + b.width > fMaxCX) fMaxCX = b.x + b.width;
+    if (b.y + b.height > fMaxCY) fMaxCY = b.y + b.height;
   }
   const framePinned = fMinCX !== Infinity;
   if (framePinned) {
