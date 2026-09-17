@@ -1530,24 +1530,14 @@ export async function generateCompositionSVGCore(
   for (const p of paints) {
     if (cancelled?.()) return null;
     if (p.tiles.length === 0 || !(p.contentW > 0) || !(p.contentH > 0)) continue;
-    const w = p.cellWidth * U;
-    const h = p.cellHeight * U;
-    // Inner content frame: dims swapped for 90/270, centered in the bbox —
-    // the orientedInnerStyle recipe the DOM node layer uses, so the export
-    // and the editor rotate the same pixels the same way.
-    const rot = p.rotation ?? 0;
-    const swapped = rot === 90 || rot === 270;
-    const iw = swapped ? h : w;
-    const ih = swapped ? w : h;
-    const cx = w / 2;
-    const cy = h / 2;
-    const parts: string[] = [`translate(${p.cellX * U}, ${p.cellY * U})`];
-    // Free rotation outermost (about the bbox center), then the discrete
-    // rotation + mirror — the image transform recipe.
-    if (p.angleDeg) parts.push(`rotate(${p.angleDeg} ${cx} ${cy})`);
-    if (rot !== 0) parts.push(`rotate(${rot} ${cx} ${cy})`);
-    if (p.mirrorH) parts.push(`translate(${w}, 0) scale(-1, 1)`);
-    if (p.mirrorV) parts.push(`translate(0, ${h}) scale(1, -1)`);
+    // The island's LOCAL frame, placed by one matrix. It is the frame the
+    // old `orientedInnerStyle` recipe built by hand — dims swapped on a
+    // quarter turn, centred back in the world bbox — which is exactly what
+    // the node's local box is and what its matrix does with it, so both
+    // the swap and the centring step below are gone.
+    const pose = exportPose(graph, 'paint', p);
+    const iw = pose.box.width * U;
+    const ih = pose.box.height * U;
     // ONE <image> for the whole island: its sparse tiles flattened into a
     // single bitmap over the content rect, stretched onto the inner frame.
     // Not one per tile — a rasterizer fades every image's edge texels into
@@ -1585,14 +1575,10 @@ export async function generateCompositionSVGCore(
         + `</mask></defs>`;
       softenAttr = ` mask="url(#${softenMaskId})"`;
     }
-    const maskedTiles = opacityAttr || softenAttr
+    const localContent = opacityAttr || softenAttr
       ? softenDefs + `<g${opacityAttr}${softenAttr}>${tileImages}</g>`
       : tileImages;
-    // Center the inner frame in the bbox (no-op unless dims swapped).
-    const localContent = swapped
-      ? `<g transform="translate(${(w - iw) / 2}, ${(h - ih) / 2})">${maskedTiles}</g>`
-      : maskedTiles;
-    const paintMarkup = `<g transform="${parts.join(' ')}">${localContent}</g>`;
+    const paintMarkup = `<g transform="${pose.transform}">${localContent}</g>`;
     elementsById.set(p.id, wrapWithMaskClip(paintMarkup, maskMap, groups, p));
   }
 

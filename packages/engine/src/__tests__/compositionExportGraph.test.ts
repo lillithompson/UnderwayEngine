@@ -15,8 +15,13 @@ import { applyCompOps, withSceneGraph } from '../compositionOps';
 import { fromLegacy, worldMatrix } from '../sceneGraph';
 import { matUniformScale } from '../sceneTransform';
 import { SVG_UNITS_PER_L0_CELL as U } from '../svgExport';
-import { CompositionState, ImageObject, TextObject, makeViewport } from '../types';
-import { drawnQuad, transformsIn } from './exportPose.test-utils';
+import { CompositionState, ImageObject, PaintObject, TextObject, makeViewport } from '../types';
+import {
+  commitCanvasPaint, createCanvasPaintWorking, paintTilesContentRect, stampCanvasPaint,
+} from '../canvasPaint';
+import {
+  drawnQuad, expectQuadsClose, legacyQuad, transformsIn,
+} from './exportPose.test-utils';
 
 jest.mock('@/native-shell/bridge/webBridge', () => ({
   logToNative: jest.fn(),
@@ -245,5 +250,64 @@ describe('the text kind lays out in its local box', () => {
     ))!;
     expect(transformsIn(fromArrays)[0].a).toBeCloseTo(1);
     expect(fontSize(fromArrays)).toBeCloseTo(2 * U);
+  });
+});
+
+// ── The paint kind ────────────────────────────────────────────────────
+
+/** A dab of paint, framed on its ink the way createPaintObjectFromTiles
+ *  does, posed over a box the caller names. */
+function paintIsland(pose: Partial<PaintObject>): PaintObject {
+  const working = createCanvasPaintWorking(undefined);
+  stampCanvasPaint(working, 3, 3, 2, { r: 200, g: 40, b: 40 }, 1);
+  const tiles = commitCanvasPaint(working)!;
+  const rect = paintTilesContentRect(tiles)!;
+  return {
+    id: 'pnt', tiles,
+    contentX: rect.x, contentY: rect.y, contentW: rect.w, contentH: rect.h,
+    cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 4,
+    ...pose,
+  } as PaintObject;
+}
+
+describe('the paint kind draws its island in its local frame', () => {
+  test('a quarter-turned island lands on its world box', async () => {
+    // The old emission built the inner frame by hand — dims swapped on a
+    // quarter turn, centred back in the world bbox, then turned — which is
+    // precisely what the node's local box and its matrix say between them.
+    const p = paintIsland({ cellWidth: 8, cellHeight: 4, rotation: 90 });
+    const svg = (await generateCompositionSVGCore(inputsFor(
+      makeState({ paintObjects: [p], sceneOrder: ['pnt'] }),
+    )))!;
+    const rect = imageRect(svg);
+    expect([rect.width / U, rect.height / U]).toEqual([4, 8]);
+    const quad = drawnQuad(transformsIn(svg)[0], 4, 8);
+    expectQuadsClose(quad, legacyQuad({
+      x: p.cellX, y: p.cellY, width: p.cellWidth, height: p.cellHeight, rotation: 90,
+    }));
+    const box = aabbOf(quad);
+    expect([box.x / U, box.y / U, box.width / U, box.height / U]).toEqual([0, 0, 8, 4]);
+  });
+
+  test('a stretched island leans with its group instead of squaring up', async () => {
+    // What the arrays cannot carry: a shear. `toLegacyView` can only report
+    // the nearest rectangle, so the export drew a member of a stretched
+    // bound group upright; the matrix carries the lean exactly.
+    const start = withSceneGraph(makeState({
+      paintObjects: [paintIsland({})], sceneOrder: ['pnt'],
+    }));
+    const from = start.graph!.nodes.get('pnt')!.transform;
+    const turned = applyCompOps(start, [{
+      op: 'setTransform', nodeId: 'pnt', from, to: { ...from, sx: 2, sy: 1, rotationDeg: 30 },
+    }]);
+    const svg = (await generateCompositionSVGCore(inputsFor(turned)))!;
+    const m = transformsIn(svg)[0];
+    // Two different axis factors and a turn: a pose no `rotate()` off the
+    // legacy fields could have spelled.
+    expect(Math.hypot(m.a, m.b)).toBeCloseTo(2);
+    expect(Math.hypot(m.c, m.d)).toBeCloseTo(1);
+    expect(Math.atan2(m.b, m.a) * 180 / Math.PI).toBeCloseTo(30);
+    // …and the island itself is still emitted at its own local size.
+    expect(imageRect(svg).width / U).toBeCloseTo(8);
   });
 });
