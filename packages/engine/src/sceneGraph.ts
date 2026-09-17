@@ -671,9 +671,11 @@ function toLegacyLeaf(graph: SceneGraph, node: SceneNode): LegacyLeaf {
   // across the conversion.
   const whole = isQuarterTurn(t.rotationDeg);
   const carried = (node.content as { rotation?: 0 | 90 | 180 | 270 } | undefined)?.rotation;
-  const quarter = whole
-    ? nearestQuarterTurn(t.rotationDeg)
-    : (carried ?? nearestQuarterTurn(t.rotationDeg));
+  // A leaf with no discrete channel of its own keeps none: all of a
+  // 45-degree turn is a free angle, not a quarter turn plus 315 more.
+  // Rounding to the nearest quarter here would swap the stored bbox for
+  // a node the user only twisted.
+  const quarter = whole ? nearestQuarterTurn(t.rotationDeg) : (carried ?? 0);
   const residual = normalizeDeg(t.rotationDeg - quarter);
   // The content box, scaled — the box the turn is applied to.
   const cw = local.width * Math.abs(t.sx);

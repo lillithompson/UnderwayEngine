@@ -261,15 +261,31 @@ export interface DiffOptions {
    * the path compared, which `segments` already does.
    */
   ignoreSvgBbox?: boolean;
+  /**
+   * Skip `groupId`.
+   *
+   * For asking "did anything move?" across a change that is *about*
+   * membership — grouping, ungrouping, dragging into a frame. All three
+   * are supposed to change who a node's parent is and supposed to leave
+   * it exactly where it was on screen, and only the second half is what
+   * such a caller is checking.
+   */
+  ignoreGroupId?: boolean;
 }
 
 /** The fields a diff should compare, per `opts`. */
 function comparable(snap: LeafWorldSnapshot, opts?: DiffOptions): unknown {
-  if (opts?.ignoreSvgBbox && snap.kind === 'svg') {
-    const { bbox: _bbox, ...rest } = snap;
-    return rest;
+  if (!opts) return snap;
+  let out: Partial<LeafWorldSnapshot> = snap;
+  if (opts.ignoreSvgBbox && snap.kind === 'svg') {
+    const { bbox: _bbox, ...rest } = out;
+    out = rest;
   }
-  return snap;
+  if (opts.ignoreGroupId) {
+    const { groupId: _groupId, ...rest } = out;
+    out = rest;
+  }
+  return out;
 }
 
 /**

@@ -50,15 +50,28 @@ export interface Mat2D {
 
 export const MAT_IDENTITY: Mat2D = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 
+/**
+ * Fold -0 into 0.
+ *
+ * Negative zero is arithmetically invisible and visible everywhere else:
+ * it fails a deep-equality assertion, changes a JSON snapshot, and
+ * survives into a persisted file. Composition produces it constantly —
+ * any product with a zero and a negative — so it is folded at the two
+ * places matrices are built rather than at the places they are compared.
+ */
+function z(n: number): number {
+  return n || 0;
+}
+
 /** `outer` applied after `inner` — the matrix product `outer * inner`. */
 export function matMul(outer: Mat2D, inner: Mat2D): Mat2D {
   return {
-    a: outer.a * inner.a + outer.c * inner.b,
-    b: outer.b * inner.a + outer.d * inner.b,
-    c: outer.a * inner.c + outer.c * inner.d,
-    d: outer.b * inner.c + outer.d * inner.d,
-    e: outer.a * inner.e + outer.c * inner.f + outer.e,
-    f: outer.b * inner.e + outer.d * inner.f + outer.f,
+    a: z(outer.a * inner.a + outer.c * inner.b),
+    b: z(outer.b * inner.a + outer.d * inner.b),
+    c: z(outer.a * inner.c + outer.c * inner.d),
+    d: z(outer.b * inner.c + outer.d * inner.d),
+    e: z(outer.a * inner.e + outer.c * inner.f + outer.e),
+    f: z(outer.b * inner.e + outer.d * inner.f + outer.f),
   };
 }
 
@@ -80,9 +93,9 @@ export function matInvert(m: Mat2D): Mat2D {
   }
   const ia = m.d / det, ib = -m.b / det, ic = -m.c / det, id = m.a / det;
   return {
-    a: ia, b: ib, c: ic, d: id,
-    e: -(ia * m.e + ic * m.f),
-    f: -(ib * m.e + id * m.f),
+    a: z(ia), b: z(ib), c: z(ic), d: z(id),
+    e: z(-(ia * m.e + ic * m.f)),
+    f: z(-(ib * m.e + id * m.f)),
   };
 }
 
