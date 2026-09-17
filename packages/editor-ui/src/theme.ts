@@ -33,6 +33,12 @@ export const WHITE_60 = 'rgba(255, 255, 255, 0.6)';
 // ── Object properties panel (Facet ObjectPropertiesPanel) ──
 export const PANEL_HEIGHT = 61; // Facet PANEL_HEIGHT (48 button + 4/8 padding + 1 border)
 export const PANEL_ANIM_MS = 150; // Facet ANIM_DURATION
+/** How long the Edit sheet takes to ride up over (and back down with) the
+ *  on-screen keyboard. Shorter than the sheet's own rise: the keyboard is
+ *  already moving when the lift starts, so this is catching up to it rather
+ *  than a move of its own. Matches the editor's text-edit bar, which tracks
+ *  the same keyboard. */
+export const KEYBOARD_LIFT_MS = 120;
 export const PANEL_HAIRLINE = '#6b7280'; // Facet TEXT_DIM — modal dividers / default slider track
 
 // ── Object-properties chrome (the panel and every submenu bar) ──

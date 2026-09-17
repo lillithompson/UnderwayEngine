@@ -110,14 +110,24 @@ describe('the Copies page', () => {
     expect(SRC).toContain("onPress={() => onCopies(copies)}");
     // "Create", not "Create copies": the page is Copies and the slider
     // above says how many, so the button naming them again repeated them.
-    expect(SRC).toContain("label: 'Create'");
-    expect(SRC).not.toContain("label: 'Create copies'");
+    expect(SRC).toContain('label="Create"');
+    expect(SRC).not.toContain('label="Create copies"');
+    // It is the Add pages' button — the page's one ACT, the same kind of
+    // thing "Add Fill" is, so it takes the same shape: full width, a
+    // segmented row tall, the word in ink behind a plus. A one-cell
+    // ActionRow (the shape the pages use for CHOOSING between states) read
+    // as a setting with a single option.
+    expect(SRC).toContain('<EffectButton label="Create" onPress={() => onCopies(copies)} />');
+    expect(SRC).not.toContain('<ActionRow');
+    expect(SRC).not.toContain('CREATE_OPTION');
     // The button stands without a label column: a "Copies" beside it
     // clashed with the Copies SLIDER above — which is the count this
     // button acts on. It sits BELOW the three groups, on the bare well:
     // it is the thing they describe, not one more of them.
-    expect(SRC).toContain('<ActionRow options={CREATE_OPTION} onPress={() => onCopies(copies)} />');
-    expect(SRC.indexOf('<ActionRow')).toBeGreaterThan(SRC.lastIndexOf('</RowGroup>'));
+    expect(SRC.indexOf('<EffectButton')).toBeGreaterThan(SRC.lastIndexOf('</RowGroup>'));
+    // Same height as the row it replaced, so the page's arithmetic (a
+    // ROW_SEGMENTED under the tabbed box) still measures what is drawn.
+    expect(read('effectBar.tsx')).toContain('emptyControls: { height: ROW_SEGMENTED, flexDirection: \'row\' },');
     // The group's chrome is the shared one, counted by the same metrics.
     const bar = read('effectBar.tsx');
     expect(bar).toContain('export function RowGroup(');

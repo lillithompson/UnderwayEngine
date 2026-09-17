@@ -44,7 +44,7 @@ describe.each([
 describe('the slider readout', () => {
   it('commits nothing on blur when the armed number was never changed', () => {
     const bar = read('effectBar.tsx');
-    expect(bar).toContain('onPress={() => { setDraft(text); setSeeded(text); setEditing(true); }}');
+    expect(bar).toContain('onPress={() => { setDraft(text); setSeeded(text); finished.current = false; setEditing(true); }}');
     expect(bar).toContain('if (draft === seeded) return;\n    const n = parseFloat(draft.replace(\',\', \'.\'));');
   });
 });

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { TransformCopiesSpec } from '../adapter';
-import { ActionRow, GroupedBody, RowGroup, SegmentedRow, SliderRow } from './effectBar';
+import { EffectButton, GroupedBody, RowGroup, SegmentedRow, SliderRow } from './effectBar';
 import {
   COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
 } from '../logic/transform';
@@ -43,8 +43,6 @@ const fromT = (t: number, lo: number, hi: number) => lo + t * (hi - lo);
 const degText = (deg: number) => `${Math.round(deg)}°`;
 const cellText = (cells: number) => String(Math.round(cells * 10) / 10);
 const factorText = (f: number) => `${Math.round(f * 100)}%`;
-
-const CREATE_OPTION = [{ value: 'create' as const, label: 'Create' }];
 
 /** The page's three faces: how many copies and how much each is turned,
  *  how far each sits from the one before, or how much each is scaled. One
@@ -137,12 +135,17 @@ export function TransformBar({ onCopies, onCopiesPreview, section, onSection }: 
           </>
         )}
       </RowGroup>
-      {/* No label column: a "Copies" beside it named the page over again —
-          and clashed with the Copies slider directly above, which is the
-          count this button acts on. The word is "Create" for the same
-          reason: the page is Copies and the slider says how many, so
-          naming them again on the button only repeated them. */}
-      <ActionRow options={CREATE_OPTION} onPress={() => onCopies(copies)} />
+      {/* The Add pages' button (EffectButton), not a segmented row: this is
+          the page's one ACT, the same kind of thing "Add Fill" is, so it
+          takes the same shape — full width, a row tall, the word in ink
+          behind a plus. It wore a one-cell ActionRow, which is the shape
+          the pages use for CHOOSING between states and read as a setting
+          with a single option (the Image page's Replace made the same trip).
+          No label column either: a "Copies" beside it named the page over
+          again — and clashed with the Copies slider directly above, which is
+          the count this button acts on. The word is "Create" for the same
+          reason: the page is Copies and the slider says how many. */}
+      <EffectButton label="Create" onPress={() => onCopies(copies)} />
     </GroupedBody>
   );
 }

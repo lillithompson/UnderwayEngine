@@ -43,6 +43,7 @@ import { ShapeBar } from './ShapeBar';
 import { EditSheet, EditTabSpec } from './EditSheet';
 import { SHEET_RADIUS } from '../logic/submenuHeight';
 import {
+  KEYBOARD_LIFT_MS,
   PANEL_ANIM_MS,
   PANEL_BG,
   PANEL_BORDER,
@@ -186,11 +187,18 @@ interface OptionSpec extends Omit<EditTabSpec, 'selected'> {
   sub?: SubmenuKey;
 }
 
-export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight }: {
+export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0, onOccludedHeight }: {
   model: ObjectPropertiesModel;
   /** Bottom safe-area inset (home indicator). Padded under the panel's row
    *  and the Edit sheet's last line so they clear it; 0 on non-notched / web. */
   safeBottom?: number;
+  /** Pixels the on-screen keyboard covers from the bottom edge, measured by
+   *  the host (the editor's keyboardInset). The Edit sheet rides UP by this
+   *  much so a page's value fields stay in sight while they are being typed
+   *  into — the sheet is bottom-anchored, and the keyboard rises straight
+   *  over the row being edited otherwise. 0 whenever no keyboard is up, and
+   *  on every host that never raises one. */
+  keyboardInset?: number;
   /** Reports how many px of the screen's bottom edge the panel claims — the
    *  base row when visible, or the Edit sheet while it is up (it covers the
    *  row) — so the shell can scroll the selection clear of it. Fired with the
@@ -1205,6 +1213,23 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
     return undefined;
   }, [sheetOpen, sheetH, sheetY]);
 
+  // …and the lift over the keyboard: a page's value field summons one, and
+  // a bottom-anchored sheet would sit behind it. `keyboardY` rides alongside
+  // the slide rather than replacing it, so a dismissing swipe still reads
+  // the sheet's own travel while the lift holds. It is animated (rather than
+  // set straight from the inset) because the host measures the keyboard in
+  // steps as it comes up, and stepping the sheet after it reads as a stutter.
+  const keyboardY = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.timing(keyboardY, {
+      toValue: -keyboardInset,
+      duration: KEYBOARD_LIFT_MS,
+      useNativeDriver: false,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [keyboardInset, keyboardY]);
+
   // …and, while it is up, the resize between the heights of the pages the
   // tabs switch to: a shorter page pushes the sheet's top edge down, a
   // taller one lifts it. Its own effect, so its cleanup can only ever stop
@@ -1478,7 +1503,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, onOccludedHeight 
         <Animated.View
           style={[
             styles.sheetWrap,
-            { height: sheetH, transform: [{ translateY: sheetY }] },
+            { height: sheetH, transform: [{ translateY: sheetY }, { translateY: keyboardY }] },
           ]}
           {...sheetPan.panHandlers}
         >

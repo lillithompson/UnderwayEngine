@@ -424,7 +424,27 @@ describe('the panel drives the sheet', () => {
     expect(open).toContain('Animated.timing(sheetY, { toValue: 0, duration: PANEL_ANIM_MS, useNativeDriver: false })');
     // The sheet's height is what the arithmetic says for the showing page.
     expect(PANEL).toContain('const sheetHeight = editSheetHeight(contentHeight, { removable: !!removeAction, safeBottom });');
-    expect(PANEL).toContain('{ height: sheetH, transform: [{ translateY: sheetY }] },');
+    expect(PANEL).toContain('{ height: sheetH, transform: [{ translateY: sheetY }, { translateY: keyboardY }] },');
+  });
+
+  it('rides up over the keyboard a value field summons, and back down with it', () => {
+    // The sheet is anchored to the very edge the keyboard rises from, so a
+    // page's value field would otherwise be typed into from behind it. The
+    // host measures the overlap (the editor's keyboardInset, the same one
+    // the text-edit bar tracks) and the sheet lifts by it.
+    expect(PANEL).toContain('keyboardInset = 0');
+    expect(PANEL).toContain('keyboardInset?: number;');
+    expect(PANEL).toContain('toValue: -keyboardInset,');
+    expect(PANEL).toContain('duration: KEYBOARD_LIFT_MS,');
+    // It rides ALONGSIDE the slide rather than replacing it, so a dismissing
+    // swipe still reads the sheet's own travel while the lift holds.
+    expect(PANEL).toContain('{ height: sheetH, transform: [{ translateY: sheetY }, { translateY: keyboardY }] },');
+    // Animated, not set straight from the inset: the host measures the
+    // keyboard in steps as it comes up, and stepping after it stutters.
+    const lift = PANEL.slice(PANEL.indexOf('const keyboardY = useRef('), PANEL.indexOf('// …and, while it is up, the resize'));
+    expect(lift).toContain('Animated.timing(keyboardY, {');
+    expect(lift).toContain('useNativeDriver: false,');
+    expect(lift).toContain('return () => anim.stop();');
   });
 
   it('a height change can never cancel the rise — they are separate effects', () => {

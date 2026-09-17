@@ -28,11 +28,14 @@ describe('EmptyEffectBar (effectBar.tsx)', () => {
     expect(bar).toContain('export function EffectButton({ label, icon = \'plus\', onPress }');
     expect(bar).toContain('accessibilityLabel={label}');
     expect(bar).toContain('onPress={onPress}');
-    // Bare white text on the well, no filled pill: a fill read as a control
-    // already set, when the page's whole point is that nothing is.
+    // Bare ink on the well, no filled pill: a fill read as a control
+    // already set, when the page's whole point is that nothing is. The word
+    // is full-strength ink — it kept the white of the accent pill it used to
+    // wear, which on the light sheet was a button you had to hunt for.
     expect(bar).toMatch(/addButton: \{[^}]*\}/s);
     expect(/addButton: \{[^}]*backgroundColor/s.test(bar)).toBe(false);
-    expect(bar).toMatch(/addLabel: \{ color: '#fff'/);
+    expect(bar).toMatch(/addLabel: \{ color: PANEL_INK/);
+    expect(bar).toContain('<MaterialCommunityIcons name={icon as MCIName} size={16} color={PANEL_INK} />');
     // The per-page header is gone from every page: the Edit sheet's title
     // and tabs are the chrome now.
     expect(bar).not.toContain('EffectBarHeader');

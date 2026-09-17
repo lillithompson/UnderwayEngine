@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import {
@@ -156,7 +156,7 @@ export function EffectButton({ label, icon = 'plus', onPress }: {
         accessibilityLabel={label}
         style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
       >
-        <MaterialCommunityIcons name={icon as MCIName} size={16} color="#fff" />
+        <MaterialCommunityIcons name={icon as MCIName} size={16} color={PANEL_INK} />
         <Text style={styles.addLabel}>{label}</Text>
       </Pressable>
     </View>
@@ -168,7 +168,16 @@ export function EffectButton({ label, icon = 'plus', onPress }: {
  *  with the value written in full-strength ink. Tapping arms a numeric
  *  field seeded with the current text; a draft that parses commits on blur
  *  / done, and an unfinished edit is abandoned, not guessed at (the toolbar
- *  hex field's rule). */
+ *  hex field's rule).
+ *
+ *  While the field is armed a DONE chip stands beside it. The field wants
+ *  the number pad — typing a count on a QWERTY keyboard is the wrong
+ *  trade — and iOS's number pad carries no return key, while the WebView
+ *  suppresses the system accessory bar that would otherwise hold a Done
+ *  (shell WebViewShell's hideKeyboardAccessoryView, for the text-edit bar's
+ *  sake). So the page supplies its own, the way the text bar does: one tap
+ *  takes the keyboard down and commits. Enter does the same wherever a
+ *  keyboard has one (desktop web, a hardware keyboard on iPad). */
 function SliderReadout({ text, commit }: { text: string; commit: (n: number) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
@@ -178,12 +187,17 @@ function SliderReadout({ text, commit }: { text: string; commit: (n: number) => 
   // blurs it later — committing the number it opened on, over the value
   // the slider had just set. A draft the user never changed is not an edit.
   const [seeded, setSeeded] = useState(text);
+  const inputRef = useRef<TextInput>(null);
+  // ONE finish per armed field. Done and Enter both blur the field
+  // themselves, and that blur runs `finish` in its own right — without this
+  // the number would commit twice, which is two undo steps for one edit.
+  const finished = useRef(false);
   if (!editing) {
     return (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Edit value, currently ${text}`}
-        onPress={() => { setDraft(text); setSeeded(text); setEditing(true); }}
+        onPress={() => { setDraft(text); setSeeded(text); finished.current = false; setEditing(true); }}
         hitSlop={6}
         style={styles.readout}
       >
@@ -192,26 +206,44 @@ function SliderReadout({ text, commit }: { text: string; commit: (n: number) => 
     );
   }
   const finish = () => {
+    if (finished.current) return;
+    finished.current = true;
     setEditing(false);
     if (draft === seeded) return;
     const n = parseFloat(draft.replace(',', '.'));
     if (Number.isFinite(n)) commit(n);
   };
+  // Blur FIRST, then commit: unmounting a focused field is not reliably
+  // enough to take the iOS keyboard down, and the field must be gone from
+  // the screen before the row re-renders with the new number.
+  const submit = () => { inputRef.current?.blur(); finish(); };
   return (
-    <View style={styles.readout}>
-      <TextInput
-        accessibilityLabel="Value"
-        style={styles.readoutText}
-        value={draft}
-        onChangeText={setDraft}
-        onBlur={finish}
-        onSubmitEditing={finish}
-        keyboardType="numeric"
-        autoFocus
-        selectTextOnFocus
-        returnKeyType="done"
-      />
-    </View>
+    <>
+      <View style={styles.readout}>
+        <TextInput
+          ref={inputRef}
+          accessibilityLabel="Value"
+          style={styles.readoutText}
+          value={draft}
+          onChangeText={setDraft}
+          onBlur={finish}
+          onSubmitEditing={submit}
+          keyboardType="numeric"
+          autoFocus
+          selectTextOnFocus
+          returnKeyType="done"
+        />
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Done"
+        onPress={submit}
+        hitSlop={6}
+        style={({ pressed }) => [styles.readoutDone, pressed && styles.readoutDonePressed]}
+      >
+        <Text style={styles.readoutDoneText}>Done</Text>
+      </Pressable>
+    </>
   );
 }
 
@@ -585,18 +617,33 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     padding: 0,
   },
+  // The Done chip beside an armed value box: the accent as a fill, since it
+  // is the one thing on the row that ENDS the edit rather than adjusting a
+  // value. It stands only while the field is armed, so the track it shortens
+  // is only ever shortened mid-edit.
+  readoutDone: {
+    height: SLIDER_TRACK,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  readoutDonePressed: { opacity: 0.7 },
+  readoutDoneText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   // Hint line under a slider row: flush with its track, dim.
   hint: { marginTop: 2, paddingBottom: 2, color: PANEL_INK_MUTED, fontSize: 11 },
   // The absent-effect page (EmptyEffectBar): one segmented-row-tall Add
   // button as its only control.
   emptyControls: { height: ROW_SEGMENTED, flexDirection: 'row' },
-  // The Add button is bare white text on the well — no fill: a filled pill
-  // read as a control already set, when the page's whole point is that
-  // nothing is.
+  // The Add button is bare ink on the well — no fill: a filled pill read as
+  // a control already set, when the page's whole point is that nothing is.
+  // The word is full-strength ink, not the white it wore while the pill was
+  // filled: white on a light sheet is a button you have to hunt for.
   addButton: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, borderRadius: 9,
   },
   addButtonPressed: { opacity: 0.7 },
-  addLabel: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  addLabel: { color: PANEL_INK, fontSize: 14, fontWeight: '600' },
 });
