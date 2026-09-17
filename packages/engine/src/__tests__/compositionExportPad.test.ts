@@ -210,7 +210,7 @@ describe('rotated content framing', () => {
     expect(h).toBeCloseTo(8192);
   });
 
-  it('frames a rotated image on its rotated corners', async () => {
+  it('frames a quarter-turned image on the box it occupies', async () => {
     storage['comp_meta_rotimg'] = JSON.stringify({
       name: 'RotImg',
       figures: [],
@@ -225,14 +225,22 @@ describe('rotated content framing', () => {
       strokeScale: 0.04, gridIntensity: 0.5,
     });
     const svg = await exportCompositionSVG('rotimg', undefined, undefined, { normalize: false });
-    // A 16×8 box spun 90° about its center (8,4) stands as an 8×16 box from
-    // (4,−4) — a non-square rotated node overflows its unrotated box even at
-    // the discrete steps.
+    // An image's stored box IS the rectangle it is rendered into — a quarter
+    // turn swaps the CONTENT box inside it (`contentBoxCells`), it does not
+    // move the node. So a 16×8 node at the origin occupies (0,0)–(16,8)
+    // whatever its `rotation` says, which is what the node layer draws, what
+    // the hit test tests, and now what the export frames and draws.
+    //
+    // This used to read the other way round — the world box spun about its
+    // own centre, standing the node on end at (4,−4) — and the image markup
+    // agreed with it, drawing the content into the world box and turning it
+    // off its own footprint. Both were the export alone (P5 of
+    // docs/transform-refactor.md).
     const [x, y, w, h] = parseViewBox(svg!);
-    expect(x).toBeCloseTo(4 * 256);
-    expect(y).toBeCloseTo(-4 * 256);
-    expect(w).toBeCloseTo(8 * 256);
-    expect(h).toBeCloseTo(16 * 256);
+    expect(x).toBeCloseTo(0);
+    expect(y).toBeCloseTo(0);
+    expect(w).toBeCloseTo(16 * 256);
+    expect(h).toBeCloseTo(8 * 256);
   });
 });
 

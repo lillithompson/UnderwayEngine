@@ -15,7 +15,7 @@ import { applyCompOps, withSceneGraph } from '../compositionOps';
 import { fromLegacy, worldMatrix } from '../sceneGraph';
 import { localContentBox } from '../sceneHitFrame';
 import {
-  matApplyCorners, matApplyPoint, matShear, matUniformScale,
+  matApplyBbox, matApplyCorners, matApplyPoint, matShear, matUniformScale,
 } from '../sceneTransform';
 import { SVG_UNITS_PER_L0_CELL as U } from '../svgExport';
 import {
@@ -432,5 +432,49 @@ describe('the pattern kind bakes its cells in the frame it is drawn in', () => {
     expectQuadsClose(drawnQuad(m, 4, 4), legacyQuad({
       x: 4, y: 4, width: 4, height: 4, angleDeg: 40,
     }));
+  });
+});
+
+// ── The frame ─────────────────────────────────────────────────────────
+
+function viewBoxOf(svg: string): number[] {
+  return svg.match(/viewBox="([^"]*)"/)![1].split(/\s+/).map(Number);
+}
+
+describe('the frame is the union of what is drawn', () => {
+  test("a sheared member's frame is its parallelogram, not its rectangle", async () => {
+    // The union read the legacy box and turned it about its own centre. For
+    // a member of a stretched bound group that box is the nearest UPRIGHT
+    // rectangle around a parallelogram, so the frame and the markup were
+    // measuring two different shapes.
+    const group: GroupNode = {
+      id: 'g1', name: 'G', translateX: 0, translateY: 0,
+      scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false,
+    };
+    const start = withSceneGraph(makeState({
+      groups: [group],
+      images: [{ ...image(), groupId: 'g1', cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 4, angleDeg: 30 }],
+      sceneOrder: ['img'],
+    }));
+    const from = start.graph!.nodes.get('g1')!.transform;
+    const leaned = applyCompOps(start, [{
+      op: 'setTransform', nodeId: 'g1', from, to: { ...from, sx: 2, sy: 1 },
+    }]);
+    const world = worldMatrix(leaned.graph!, 'img');
+    expect(matShear(world)).not.toBeCloseTo(0, 2);
+
+    const svg = (await generateCompositionSVGCore(inputsFor(leaned, { imageBlobs: BLOB })))!;
+    const want = matApplyBbox(world, localContentBox(leaned.graph!.nodes.get('img')!));
+    const [vx, vy, vw, vh] = viewBoxOf(svg);
+    expect(vx / U).toBeCloseTo(want.x, 3);
+    expect(vy / U).toBeCloseTo(want.y, 3);
+    expect(vw / U).toBeCloseTo(want.width, 3);
+    expect(vh / U).toBeCloseTo(want.height, 3);
+
+    // …and it really is a different frame from the one the arrays give.
+    const fromArrays = (await generateCompositionSVGCore(
+      inputsFor({ ...leaned, graph: undefined }, { imageBlobs: BLOB }),
+    ))!;
+    expect(viewBoxOf(fromArrays)).not.toEqual(viewBoxOf(svg));
   });
 });

@@ -14,7 +14,8 @@ import {
 } from './sceneGraph';
 import { localContentBox, localHitObject } from './sceneHitFrame';
 import {
-  Bbox, Mat2D, axisScaleSplit, localMatrix, matMul, matTranslate, matrixString,
+  Bbox, Mat2D, axisScaleSplit, localMatrix, matApplyBbox, matApplyPoint, matMul, matTranslate,
+  matrixString,
 } from './sceneTransform';
 import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
@@ -23,7 +24,6 @@ import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, typ
 import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, svgFillPresentation, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
 import { roundPathCorners, strokeScaleForUnits, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
-import { rotatePointAboutCW } from './compositionArcMath';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { buildActiveMaskMap, clipRectToNodeMasks } from './compositionMask';
 import { frameGroupIdForNode } from './compositionFrame';
@@ -744,38 +744,6 @@ function textPaintOutset(text: TextObject): number {
   return out;
 }
 
-/** Rotate (x, y) clockwise by `deg` about (cx, cy) in the y-down world frame,
- *  matching the `rotate()` the text markup emits. The shared primitive, so the
- *  markup here and the bake in compositionMergeObjects can't drift apart on
- *  which way a twist turns. */
-const rotateAboutCW = rotatePointAboutCW;
-
-/**
- * Axis-aligned bounds of a rect after rotating it `deg` clockwise about
- * (cx, cy) — the frame-side counterpart of the `rotate()` transform the paint
- * markup emits for images, texts, and freely-rotated SVG objects. The frame
- * must measure the corners where the viewer will actually see them: a
- * rotated node bounded by its unrotated box pokes out of the frame (up to
- * ~40% of a long shape at 45°), which for a page-pinned export merely hangs
- * off the page but for a content-framed one is clipped out of the image.
- * `deg` 0/undefined returns the rect unchanged.
- */
-function rotatedRectAabb(
-  minX: number, minY: number, maxX: number, maxY: number,
-  deg: number | undefined, cx: number, cy: number,
-): { minX: number; minY: number; maxX: number; maxY: number } {
-  if (!deg) return { minX, minY, maxX, maxY };
-  let rMinX = Infinity, rMinY = Infinity, rMaxX = -Infinity, rMaxY = -Infinity;
-  for (const [x, y] of [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]] as const) {
-    const [wx, wy] = rotateAboutCW(x, y, cx, cy, deg);
-    if (wx < rMinX) rMinX = wx;
-    if (wy < rMinY) rMinY = wy;
-    if (wx > rMaxX) rMaxX = wx;
-    if (wy > rMaxY) rMaxY = wy;
-  }
-  return { minX: rMinX, minY: rMinY, maxX: rMaxX, maxY: rMaxY };
-}
-
 /**
  * The world box a text node actually PAINTS INTO, for cutout framing.
  *
@@ -795,13 +763,12 @@ function rotatedRectAabb(
  * also skips drawing, must not pad the frame either.
  */
 function paintedTextBounds(
-  text: TextObject,
+  text: TextObject, world: Mat2D,
 ): { minX: number; minY: number; maxX: number; maxY: number } | null {
-  const tw = text.cellWidth;
-  const th = text.cellHeight;
-  // The content box the paint actually lands in — the world box unless a
-  // quarter turn swapped its axes (see buildTextSVGContent, whose transform
-  // this walks).
+  // `text` is the node spelled in its OWN space (`localHitObject`) and
+  // `world` the matrix that carries that space out, which is exactly what
+  // `buildTextSVGContent` is handed — so this measures the box the glyphs
+  // are really laid out in, and maps it the way they are really drawn.
   const content = contentBoxCells(text);
   const cw = content.width;
   const ch = content.height;
@@ -833,25 +800,9 @@ function paintedTextBounds(
     lx = minX; ly = minY; rx = maxX; by = maxY;
   }
 
-  // Through the node transform, in the order buildTextSVGContent composes it:
-  // mirrors innermost (within the CONTENT box), then the step out to the
-  // world box, then the discrete rotation, then the free rotation.
-  const cx = tw / 2;
-  const cy = th / 2;
-  const rot = text.rotation ?? 0;
-  const toWorld = (x: number, y: number): [number, number] => {
-    if (text.mirrorV) y = ch - y;
-    if (text.mirrorH) x = cw - x;
-    x += (tw - cw) / 2;
-    y += (th - ch) / 2;
-    if (rot) [x, y] = rotateAboutCW(x, y, cx, cy, rot);
-    if (text.angleDeg) [x, y] = rotateAboutCW(x, y, cx, cy, text.angleDeg);
-    return [text.cellX + x, text.cellY + y];
-  };
-
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const [px, py] of [[lx, ly], [rx, ly], [rx, by], [lx, by]] as const) {
-    const [wx, wy] = toWorld(px, py);
+    const [wx, wy] = matApplyPoint(world, px, py);
     if (wx < minX) minX = wx;
     if (wx > maxX) maxX = wx;
     if (wy < minY) minY = wy;
@@ -1235,73 +1186,85 @@ export async function generateCompositionSVGCore(
   // freeform export's viewBox — an export that instead frames on its content
   // opts in via frameInkExtents.
   const inkFramed = (!!input.subset && !frameOnScene) || !!input.frameInkExtents;
-  for (const svg of overlay.length > 0 ? [...framed.svgObjects, ...overlay] : framed.svgObjects) {
+
+  /** A rect in a node's OWN space, as the world AABB of what it draws. */
+  const drawnRect = (
+    world: Mat2D, x: number, y: number, width: number, height: number,
+  ): { minX: number; minY: number; maxX: number; maxY: number } => {
+    const b = matApplyBbox(world, { x, y, width, height });
+    return { minX: b.x, minY: b.y, maxX: b.x + b.width, maxY: b.y + b.height };
+  };
+
+  for (const entry of overlay.length > 0 ? [...framed.svgObjects, ...overlay] : framed.svgObjects) {
+    // Measured in the node's own space and carried out by its matrix, the
+    // way it is drawn. A pattern hands over the view baked in its local box;
+    // its world twin has no path of its own to measure.
+    const pattern = localPatternViews.get(entry.id);
+    const pose = pattern ? pattern.pose : exportPose(graph, 'svg', entry);
+    const geo = pattern ? null : svgLocalGeometry(pose.node, pose.world, entry);
+    const object = pattern ? pattern.object : geo!.object;
+    const matrix = pattern ? pose.world : geo!.matrix;
+    // Cutouts and ink-framed exports frame on the INKED extent: a stroke is
+    // centered on its path, so a tight geometric frame slices the outermost
+    // strokes down their length (a horizontal line along the top of the bbox
+    // loses half its width). Grow each object's rect by its own stroke
+    // half-width — 0 for a subset with no paths in it, so the text-only
+    // recipes are unaffected. A plain page export keeps the geometric bounds:
+    // its frame is already the page, and padding it would move every existing
+    // freeform export's viewBox — an export that instead frames on its content
+    // opts in via frameInkExtents.
     const pad = inkFramed
-      ? svgStrokeWidthCells(svg, svgStrokeScale, SVG_UNITS_PER_L0_CELL) / 2
+      ? svgStrokeWidthCells(object, svgStrokeScale, SVG_UNITS_PER_L0_CELL) / 2
       : 0;
-    const raw = svg.tileMode === 'repeat'
-      ? { minX: svg.cellX, minY: svg.cellY,
-          maxX: svg.cellX + svg.cellWidth, maxY: svg.cellY + svg.cellHeight }
-      : arcBoundingBox(svg.segments);
+    const raw = object.tileMode === 'repeat'
+      ? { minX: object.cellX, minY: object.cellY,
+          maxX: object.cellX + object.cellWidth, maxY: object.cellY + object.cellHeight }
+      : arcBoundingBox(object.segments);
     if (!raw) continue;
-    // Free rotation is a rotate() about the NODE-BOX center in the emitted
-    // markup (discrete rotation is baked into the segments), so the frame
-    // measures the padded geometry through that same rotation.
-    const r = rotatedRectAabb(
-      raw.minX - pad, raw.minY - pad, raw.maxX + pad, raw.maxY + pad,
-      svg.angleDeg, svg.cellX + svg.cellWidth / 2, svg.cellY + svg.cellHeight / 2,
+    const r = drawnRect(
+      matrix, raw.minX - pad, raw.minY - pad,
+      (raw.maxX - raw.minX) + 2 * pad, (raw.maxY - raw.minY) + 2 * pad,
     );
-    accept(svg, r.minX, r.minY, r.maxX, r.maxY);
+    accept(entry, r.minX, r.minY, r.maxX, r.maxY);
   }
   for (const img of framed.images) {
-    // The markup rotates an image about its box center — free rotation
-    // outermost, then the discrete step; same center, so the angles sum for
-    // the corners' world positions. Mirrors flip within the box and don't
-    // move its bounds.
-    const r = rotatedRectAabb(
-      img.cellX, img.cellY, img.cellX + img.cellWidth, img.cellY + img.cellHeight,
-      (img.angleDeg ?? 0) + (img.rotation ?? 0),
-      img.cellX + img.cellWidth / 2, img.cellY + img.cellHeight / 2,
-    );
+    // The node's own box through its matrix — the quad the markup draws.
+    // The old reading turned the WORLD box about its centre, which for a
+    // quarter-turned non-square image is not the box it occupies at all.
+    // Mirrors flip within the box and don't move its bounds.
+    const pose = exportPose(graph, 'image', img);
+    const r = drawnRect(pose.world, 0, 0, pose.box.width, pose.box.height);
     accept(img, r.minX, r.minY, r.maxX, r.maxY);
   }
   for (const txt of framed.texts) {
+    const pose = exportPose(graph, 'text', txt);
+    const local = localHitObject(pose.node) as TextObject;
     // A cutout frames on the glyphs, not on the box they were laid out in —
-    // see paintedTextBounds (which applies the node rotation itself). A page
-    // export keeps using the node bbox: its viewBox is the page, and
-    // tightening it would move every existing freeform export's frame — so
-    // does a cutout that keeps the page's frame.
+    // see paintedTextBounds. A page export keeps using the node bbox: its
+    // viewBox is the page, and tightening it would move every existing
+    // freeform export's frame — so does a cutout that keeps the page's frame.
     if (input.subset && !frameOnScene) {
-      const b = paintedTextBounds(txt);
+      const b = paintedTextBounds(local, pose.world);
       if (b) accept(txt, b.minX, b.minY, b.maxX, b.maxY);
       continue;
     }
-    // Same rotation story as images: both transforms spin about the box
-    // center in the markup (buildTextSVGContent), so the frame follows the
-    // rotated corners — grown first by a bend's bow, which is glyphs
-    // hanging outside the box (textBendRise). Without it a content-framed
-    // page export (the journal's) cut bent text off at the flat box: the
-    // rest of this branch stays the node bbox, so an unbent text's frame is
-    // exactly where it always was.
-    const bow = textBendRise(txt);
-    const r = rotatedRectAabb(
-      txt.cellX - bow, txt.cellY - bow, txt.cellX + txt.cellWidth + bow, txt.cellY + txt.cellHeight + bow,
-      (txt.angleDeg ?? 0) + (txt.rotation ?? 0),
-      txt.cellX + txt.cellWidth / 2, txt.cellY + txt.cellHeight / 2,
+    // The node box, grown first by a bend's bow — glyphs hanging outside the
+    // box (textBendRise), a length in the same local units the type is laid
+    // out in. Without it a content-framed page export (the journal's) cut
+    // bent text off at the flat box; an unbent text's frame is exactly the
+    // box, where it always was.
+    const bow = textBendRise(local);
+    const r = drawnRect(
+      pose.world, -bow, -bow, pose.box.width + 2 * bow, pose.box.height + 2 * bow,
     );
     accept(txt, r.minX, r.minY, r.maxX, r.maxY);
   }
 
   for (const p of framed.paints) {
-    // Same rotation story as images: contentRect maps onto the bbox and
-    // both transforms spin about the box center in the markup, so the frame
-    // follows the rotated corners. The bbox is the ink bounds at last
-    // stroke, so a page whose only content is brushwork frames on it.
-    const r = rotatedRectAabb(
-      p.cellX, p.cellY, p.cellX + p.cellWidth, p.cellY + p.cellHeight,
-      (p.angleDeg ?? 0) + (p.rotation ?? 0),
-      p.cellX + p.cellWidth / 2, p.cellY + p.cellHeight / 2,
-    );
+    // The island's own frame through its matrix. Its box is the ink bounds
+    // at last stroke, so a page whose only content is brushwork frames on it.
+    const pose = exportPose(graph, 'paint', p);
+    const r = drawnRect(pose.world, 0, 0, pose.box.width, pose.box.height);
     accept(p, r.minX, r.minY, r.maxX, r.maxY);
   }
 
