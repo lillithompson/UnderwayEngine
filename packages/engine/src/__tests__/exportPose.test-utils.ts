@@ -74,30 +74,51 @@ export function drawnQuad(m: Mat2D, widthCells: number, heightCells: number): [n
 }
 
 /**
- * Where a legacy pose says its content box's corners fall, in SVG units:
- * the content box centred in the world bbox and turned about that centre,
- * which is what the renderer has always drawn.
+ * Where a legacy pose says its content box's corners fall, in SVG units.
  *
- * The independent answer a drawn quad is checked against — computed from
- * the pose fields directly, so it does not go through the graph the export
- * now reads.
+ * The recipe the export composed by hand for every bbox kind: step to the
+ * world box, turn about its centre (the discrete quarter and the free angle
+ * together), step into the content box centred inside it, and flip within
+ * that box. Written out here so a test has an answer computed from the pose
+ * FIELDS, independent of the graph the export now reads.
  */
 export function legacyQuad(
-  pose: Bbox & { rotation?: 0 | 90 | 180 | 270; angleDeg?: number },
+  pose: Bbox & {
+    rotation?: 0 | 90 | 180 | 270;
+    angleDeg?: number;
+    mirrorH?: boolean;
+    mirrorV?: boolean;
+  },
 ): [number, number][] {
   const swap = pose.rotation === 90 || pose.rotation === 270;
   const cw = swap ? pose.height : pose.width;
   const ch = swap ? pose.width : pose.height;
-  const cx = pose.x + pose.width / 2;
-  const cy = pose.y + pose.height / 2;
-  const m = matMul(
-    { ...MAT_IDENTITY, e: cx, f: cy },
-    matMul(rotationMat((pose.rotation ?? 0) + (pose.angleDeg ?? 0)),
-      { ...MAT_IDENTITY, e: -cw / 2, f: -ch / 2 }),
+  let m = matMul(
+    { ...MAT_IDENTITY, e: pose.x, f: pose.y },
+    matMul(
+      matMul(
+        { ...MAT_IDENTITY, e: pose.width / 2, f: pose.height / 2 },
+        matMul(rotationMat((pose.rotation ?? 0) + (pose.angleDeg ?? 0)),
+          { ...MAT_IDENTITY, e: -pose.width / 2, f: -pose.height / 2 }),
+      ),
+      { ...MAT_IDENTITY, e: (pose.width - cw) / 2, f: (pose.height - ch) / 2 },
+    ),
   );
+  if (pose.mirrorH) m = matMul(m, { ...MAT_IDENTITY, a: -1, e: cw });
+  if (pose.mirrorV) m = matMul(m, { ...MAT_IDENTITY, d: -1, f: ch });
   return ([[0, 0], [cw, 0], [cw, ch], [0, ch]] as [number, number][])
     .map(([x, y]) => matApplyPoint(m, x, y))
     .map(([x, y]) => [x * SVG_UNITS_PER_L0_CELL, y * SVG_UNITS_PER_L0_CELL] as [number, number]);
+}
+
+/** The content box a legacy pose lays its content out in: the world box,
+ *  with a quarter turn's axis swap undone. */
+export function legacyContentBox(
+  pose: Bbox & { rotation?: 0 | 90 | 180 | 270 },
+): { width: number; height: number } {
+  return pose.rotation === 90 || pose.rotation === 270
+    ? { width: pose.height, height: pose.width }
+    : { width: pose.width, height: pose.height };
 }
 
 /** Corner-wise comparison, to a tenth of an SVG unit (a 2,560th of a cell). */

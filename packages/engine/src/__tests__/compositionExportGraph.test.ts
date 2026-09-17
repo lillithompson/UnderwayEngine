@@ -15,7 +15,7 @@ import { applyCompOps, withSceneGraph } from '../compositionOps';
 import { fromLegacy, worldMatrix } from '../sceneGraph';
 import { matUniformScale } from '../sceneTransform';
 import { SVG_UNITS_PER_L0_CELL as U } from '../svgExport';
-import { CompositionState, ImageObject, makeViewport } from '../types';
+import { CompositionState, ImageObject, TextObject, makeViewport } from '../types';
 import { drawnQuad, transformsIn } from './exportPose.test-utils';
 
 jest.mock('@/native-shell/bridge/webBridge', () => ({
@@ -197,5 +197,53 @@ describe('the image kind draws its local frame through one matrix', () => {
     ))!;
     expect(transformsIn(fromArrays)[0].a).toBeCloseTo(1);
     expect(imageRect(fromArrays).x / U).toBeCloseTo(0.5);
+  });
+});
+
+// ── The text kind ─────────────────────────────────────────────────────
+
+const text = (): TextObject => ({
+  id: 'txt', content: 'wide',
+  style: { fontId: 'CozySans', size: 2, color: { r: 0, g: 0, b: 0 } },
+  cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 4,
+} as TextObject);
+
+/** The first `<text>`'s font-size, in SVG units. */
+function fontSize(svg: string): number {
+  return Number(svg.match(/font-size="([-\d.]+)"/)![1]);
+}
+
+describe('the text kind lays out in its local box', () => {
+  test('a stretched node stretches its glyphs instead of shrinking them', async () => {
+    // The legacy view has no way to say "type stretched": it scales
+    // `style.size` by the SMALLER axis factor and reports a box grown by
+    // both, which for a node pulled off-square is type that does not fill
+    // the box it is in. The layer lays the CONTENT's own style out in the
+    // LOCAL box and lets the matrix stretch the glyphs; the export does
+    // now too.
+    const start = withSceneGraph(makeState({ texts: [text()], sceneOrder: ['txt'] }));
+    const from = start.graph!.nodes.get('txt')!.transform;
+    const stretched = applyCompOps(start, [{
+      op: 'setTransform', nodeId: 'txt', from, to: { ...from, sx: 3, sy: 1 },
+    }]);
+    // What the arrays can say: a box three times as wide, type unchanged.
+    expect(stretched.texts![0].cellWidth).toBeCloseTo(30);
+    expect(stretched.texts![0].style.size).toBeCloseTo(2);
+
+    const withGraph = (await generateCompositionSVGCore(inputsFor(stretched)))!;
+    const m = transformsIn(withGraph)[0];
+    expect(m.a).toBeCloseTo(3);
+    expect(m.d).toBeCloseTo(1);
+    // Laid out at the authored size in the 10-cell local box…
+    expect(fontSize(withGraph)).toBeCloseTo(2 * U);
+    expect(aabbOf(drawnQuad(m, 10, 4)).width / U).toBeCloseTo(30);
+
+    // …where the arrays alone give unstretched type reflowed in a 30-cell
+    // box, which is not what the screen draws.
+    const fromArrays = (await generateCompositionSVGCore(
+      inputsFor({ ...stretched, graph: undefined }),
+    ))!;
+    expect(transformsIn(fromArrays)[0].a).toBeCloseTo(1);
+    expect(fontSize(fromArrays)).toBeCloseTo(2 * U);
   });
 });

@@ -3,6 +3,9 @@ import { GEOMETRY_ADAPTERS } from '../sceneNodeGeometry';
 import { contentBoxCells, layoutText } from '../textLayout';
 import { STICKER_BORDER_CELLS } from '../stickerStyle';
 import { TextObject } from '../types';
+import {
+  drawnQuad, expectQuadsClose, legacyQuad, transformsIn,
+} from './exportPose.test-utils';
 
 // Turning a word magnet used to pull its type off its card.
 //
@@ -92,31 +95,28 @@ describe('a word magnet stood on end', () => {
     expect(svg).toContain(`width="${8 * U - bw}" height="${2 * U - bw}"`);
     // One group carries both, so they turn together — the fix's whole point.
     expect(svg!.match(/<g transform=/g)).toHaveLength(1);
-    const g = svg!.match(/<g transform="([^"]*)">/)![1];
-    // Rotated about the world bbox centre, then stepped into the content box
-    // centred inside it — so the turned card lands back over its own bbox.
-    expect(g).toContain(`rotate(90 ${(2 * U) / 2} ${(8 * U) / 2})`);
-    expect(g).toContain(`translate(${(2 * U - 8 * U) / 2}, ${(8 * U - 2 * U) / 2})`);
   });
 
   it('keeps the card inside the node’s own bbox', async () => {
-    // The card is 8×2 rotated 90° about the world box's centre, so it should
-    // cover exactly the 2×8 world box — not stick out of it.
+    // The card is 8×2 turned 90° about the world box's centre, so it covers
+    // exactly the 2×8 world box — it does not stick out of it. Asserted as
+    // the quad the markup draws, because the export has spelled this pose
+    // two ways: a translate/rotate chain off the pose fields, and (P5 of
+    // docs/transform-refactor.md) one matrix off the scene graph.
     const t = turned();
-    const svg = await generateCompositionSVGCore(inputs([t]));
-    const g = svg!.match(/<g transform="([^"]*)">/)![1];
-    const [, txs, tys] = g.match(/^translate\(([-\d.]+), ([-\d.]+)\)/)!;
-    const [, cxs, cys] = g.match(/translate\(([-\d.]+), ([-\d.]+)\)$/)!;
-    // Corner of the content box, carried through the centring step and the
-    // quarter turn about the world centre, lands on the bbox corner.
-    const originX = Number(txs) + Number(cxs);
-    const originY = Number(tys) + Number(cys);
-    const worldCx = Number(txs) + (t.cellWidth * U) / 2;
-    const worldCy = Number(tys) + (t.cellHeight * U) / 2;
-    // Rotate (originX, originY) 90° CW about the world centre.
-    const rx = worldCx - (originY - worldCy);
-    const ry = worldCy + (originX - worldCx);
-    expect(rx).toBeCloseTo((t.cellX + t.cellWidth) * U, 6);
-    expect(ry).toBeCloseTo(t.cellY * U, 6);
+    const svg = (await generateCompositionSVGCore(inputs([t])))!;
+    const box = contentBoxCells(t);
+    const quad = drawnQuad(transformsIn(svg)[0], box.width, box.height);
+    expectQuadsClose(quad, legacyQuad({
+      x: t.cellX, y: t.cellY, width: t.cellWidth, height: t.cellHeight,
+      rotation: t.rotation,
+    }));
+    // …and that quad IS the world box: its corners are the box's corners.
+    const xs = quad.map((p) => p[0]).sort((a, b) => a - b);
+    const ys = quad.map((p) => p[1]).sort((a, b) => a - b);
+    expect(xs[0]).toBeCloseTo(t.cellX * U, 3);
+    expect(xs[3]).toBeCloseTo((t.cellX + t.cellWidth) * U, 3);
+    expect(ys[0]).toBeCloseTo(t.cellY * U, 3);
+    expect(ys[3]).toBeCloseTo((t.cellY + t.cellHeight) * U, 3);
   });
 });

@@ -33,7 +33,7 @@ describe('a word sticker’s opacity', () => {
     const t = magnet();
     t.style = { ...t.style, alpha: 0.4 };
     const svg = (await generateCompositionSVGCore(inputs([t])))!;
-    expect(svg).toMatch(/<g transform="[^"]*" opacity="0.4">/);
+    expect(svg).toMatch(/<g opacity="0.4">/);
     // The card and the glyphs sit inside that group…
     const group = svg.slice(svg.indexOf('opacity="0.4">'), svg.lastIndexOf('</g>'));
     expect(group).toContain('<rect');
@@ -45,17 +45,17 @@ describe('a word sticker’s opacity', () => {
   it('an opaque magnet carries no opacity on its group or glyphs', async () => {
     // (Its card's fixed shadow filter has a flood-opacity of its own.)
     const plain = (await generateCompositionSVGCore(inputs([magnet()])))!;
-    expect(plain).not.toMatch(/<g transform="[^"]*" opacity=/);
+    expect(plain).not.toMatch(/<g[^>]* opacity=/);
     expect(plain.match(/<text [^>]*opacity=/)).toBeNull();
     const full = (await generateCompositionSVGCore(inputs([magnet({ style: { fontId: 'CozySans', size: 1, color: { r: 0, g: 0, b: 0 }, alpha: 1 } })])))!;
-    expect(full).not.toMatch(/<g transform="[^"]*" opacity=/);
+    expect(full).not.toMatch(/<g[^>]* opacity=/);
   });
 
   it('plain text still fades its glyphs, not its group', async () => {
     const t = magnet({ sticker: false });
     t.style = { ...t.style, alpha: 0.4 };
     const svg = (await generateCompositionSVGCore(inputs([t])))!;
-    expect(svg).not.toMatch(/<g transform="[^"]*" opacity=/);
+    expect(svg).not.toMatch(/<g[^>]* opacity=/);
     expect(svg).toMatch(/<text [^>]*opacity="0.4"/);
   });
 });

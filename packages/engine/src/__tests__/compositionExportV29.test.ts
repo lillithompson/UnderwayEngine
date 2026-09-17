@@ -15,7 +15,7 @@ import { DEFAULT_LINE_HEIGHT, layoutText } from '../textLayout';
 import { STICKER_BORDER_CELLS } from '../stickerStyle';
 import { SVGObject, ImageObject, TextObject, PathSegment } from '../types';
 import {
-  drawnQuad, expectQuadsClose, legacyQuad, transformsIn,
+  drawnQuad, expectQuadsClose, legacyContentBox, legacyQuad, transformsIn,
 } from './exportPose.test-utils';
 
 /** SVG_UNITS_PER_L0_CELL — world cells scale into SVG units by this. */
@@ -93,8 +93,12 @@ describe('generateCompositionSVGCore — text nodes', () => {
     // Glyphs must not inherit the root <svg>'s stroke="white" (a hairline
     // outline that would thin them against the editor's DOM text).
     expect(svg).toContain('stroke="none"');
-    // Node transform mirrors the image path: translate to the bbox origin.
-    expect(svg).toContain(`transform="translate(${2 * U}, ${3 * U})"`);
+    // Node transform mirrors the image path: the node's local box, placed
+    // at the bbox origin by one matrix.
+    expectQuadsClose(
+      drawnQuad(transformsIn(svg!)[0], 10, 4),
+      legacyQuad({ x: 2, y: 3, width: 10, height: 4 }),
+    );
   });
 
   it('a text-only composition exports (non-null) and frames the text bbox', async () => {
@@ -153,30 +157,29 @@ describe('generateCompositionSVGCore — text nodes', () => {
     expect(svg).not.toContain('font-weight');
   });
 
-  it('rotates about the bbox center, then works in the content box', async () => {
-    const svg = await generateCompositionSVGCore(makeInputs({
-      texts: [makeText({ content: 'spin', rotation: 90, mirrorH: true })],
-    }));
-    // Rotation still pivots on the WORLD bbox center (10×4 cells → 1280, 512).
-    expect(svg).toContain(`rotate(90 ${(10 * U) / 2} ${(4 * U) / 2})`);
-    // …then the content is drawn in the box a quarter turn UN-swaps back to —
-    // 4×10 here — centered in the world box, which is where the DOM layer's
-    // oriented wrapper puts it. Without that step the turned card is rotated
-    // clean out of its own bbox.
-    expect(svg).toContain(`translate(${(10 * U - 4 * U) / 2}, ${(4 * U - 10 * U) / 2})`);
-    // The mirror flips within the CONTENT box, so it uses that box's width.
-    expect(svg).toContain(`translate(${4 * U}, 0) scale(-1, 1)`);
+  it('turns about the bbox center and works in the content box', async () => {
+    const pose = { x: 0, y: 0, width: 10, height: 4, rotation: 90 as const, mirrorH: true };
+    const svg = (await generateCompositionSVGCore(makeInputs({
+      texts: [makeText({ content: 'spin', ...pose, cellX: pose.x, cellY: pose.y,
+        cellWidth: pose.width, cellHeight: pose.height })],
+    })))!;
+    // The content is drawn in the box a quarter turn UN-swaps back to — 4×10
+    // here — turned about the world box's centre and flipped within its own,
+    // which is where the DOM layer's oriented wrapper puts it. Without that
+    // the turned card is rotated clean out of its own bbox. Asserted as the
+    // QUAD: the export has spelled this two ways (a translate/rotate chain
+    // off the pose fields, then one matrix off the scene graph).
+    const box = legacyContentBox(pose);
+    expectQuadsClose(drawnQuad(transformsIn(svg)[0], box.width, box.height), legacyQuad(pose));
   });
 
-  it('leaves an unturned node’s transform exactly as it was', async () => {
-    // The content box equals the world box without a quarter turn, so the
-    // centering step is skipped entirely — every existing page composes the
-    // transform it always did.
-    const svg = await generateCompositionSVGCore(makeInputs({
-      texts: [makeText({ content: 'flat', mirrorH: true })],
-    }));
-    expect(svg).toContain(`translate(${10 * U}, 0) scale(-1, 1)`);
-    expect(svg).not.toContain('translate(0, 0)');
+  it('leaves an unturned node where it has always been drawn', async () => {
+    const pose = { x: 0, y: 0, width: 10, height: 4, mirrorH: true };
+    const svg = (await generateCompositionSVGCore(makeInputs({
+      texts: [makeText({ content: 'flat', ...pose, cellX: pose.x, cellY: pose.y,
+        cellWidth: pose.width, cellHeight: pose.height })],
+    })))!;
+    expectQuadsClose(drawnQuad(transformsIn(svg)[0], 10, 4), legacyQuad(pose));
   });
 
   it('sticker emits the card background behind the text, filling the bbox', async () => {

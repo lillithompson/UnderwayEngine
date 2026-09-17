@@ -11,7 +11,7 @@ import { patternSVGView } from './patternObjectRender';
 import {
   LegacyLeaf, SceneGraph, SceneNode, fromLegacy, graphDescribes, leafNodeFromLegacy, worldMatrix,
 } from './sceneGraph';
-import { localContentBox } from './sceneHitFrame';
+import { localContentBox, localHitObject } from './sceneHitFrame';
 import {
   Bbox, Mat2D, axisScaleSplit, localMatrix, matMul, matTranslate, matrixString,
 } from './sceneTransform';
@@ -537,13 +537,19 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
   // because the card and the type are drawn un-turned and rotated into place
   // (contentBoxCells). Equal to the world box unless `rotation` is 90/270, so
   // an untilted node composes exactly the transform it always did.
+  //
+  // A node spelled in its OWN space (`sceneHitFrame.localHitObject`, which is
+  // what the caller hands in now) has its box AT the origin and no pose
+  // channels at all, so every part below drops out and the whole of this is
+  // the content box — the caller's `matrix()` carries the pose.
   const content = contentBoxCells(text);
   const cw = content.width * u;
   const ch = content.height * u;
 
   // Node transform — same pattern as image nodes: position, then rotate
   // about the bbox center, then mirror within the bbox.
-  const parts: string[] = [`translate(${tx}, ${ty})`];
+  const parts: string[] = [];
+  if (tx !== 0 || ty !== 0) parts.push(`translate(${tx}, ${ty})`);
   // Free rotation is layered OUTERMOST (about the bbox center), matching the
   // editor's render order, then the discrete rotation + mirror.
   if (text.angleDeg) parts.push(`rotate(${text.angleDeg} ${tw / 2} ${th / 2})`);
@@ -679,7 +685,8 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
     }
   }
   if (!inner) return '';
-  return `<g transform="${parts.join(' ')}"${stickerOpacity}>${inner}</g>`;
+  const poseAttr = parts.length > 0 ? ` transform="${parts.join(' ')}"` : '';
+  return `<g${poseAttr}${stickerOpacity}>${inner}</g>`;
 }
 
 /**
@@ -1769,7 +1776,16 @@ export async function generateCompositionSVGCore(
 
   for (const txt of texts) {
     if (cancelled?.()) return null;
-    const content = buildTextSVGContent(txt, U, input.textColorOverride);
+    // Laid out in the node's LOCAL box with the CONTENT's own style, and
+    // placed by one matrix — what NodeLayer does. The legacy view scales a
+    // scaled node's `style.size` into world cells and grows its box to
+    // match; the content underneath is at scale 1 against the local box,
+    // and the matrix stretches the glyphs. Reading the view here instead
+    // would lay out type sized for the grown box inside the local one.
+    const pose = exportPose(graph, 'text', txt);
+    const content = buildTextSVGContent(
+      localHitObject(pose.node) as TextObject, U, input.textColorOverride,
+    );
     if (!content) continue;
     // The authored shadow goes with the page it was cast against — see
     // dropTextShadow. Only that one: a sticker's fixed card shadow is added
@@ -1777,8 +1793,12 @@ export async function generateCompositionSVGCore(
     const effects = input.dropTextShadow && txt.effects?.shadow
       ? { ...txt.effects, shadow: undefined }
       : txt.effects;
+    // The effects wrap the posed group, not the content inside it, which is
+    // what keeps a text shadow a WORLD size — the one kind whose shadow the
+    // screen deliberately does not scale with the node
+    // (`effectsBoxShadow.worldOffsetInNodeFrame`).
     elementsById.set(txt.id, wrapWithMaskClip(
-      applyNodeEffects(content, effects, txt.id, txt, U),
+      applyNodeEffects(`<g transform="${pose.transform}">${content}</g>`, effects, txt.id, txt, U),
       maskMap, groups, txt,
     ));
   }
