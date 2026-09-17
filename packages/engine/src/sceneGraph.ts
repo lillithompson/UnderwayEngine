@@ -1,0 +1,702 @@
+/**
+ * The scene graph: one node per thing in the outline, each holding a
+ * LOCAL transform, world derived by multiplying down the hierarchy.
+ *
+ * See docs/transform-refactor.md §3. The short version:
+ *
+ * - Every node — group or leaf — has a transform and a name. A group is a
+ *   node with a transform and no content.
+ * - Nothing stores world coordinates. A node's world matrix is the
+ *   product of its ancestors' local matrices, cached by generation.
+ * - `children` is the single ordering truth, back to front. The legacy
+ *   trio of `groupId`, `parentGroupId` and contiguity in `sceneOrder`
+ *   collapses into it.
+ *
+ * During the migration this lives alongside the legacy state and the two
+ * converters below keep them in step: {@link fromLegacy} builds a graph
+ * from legacy world fields, {@link toLegacyView} renders a graph back
+ * into the six per-kind arrays every existing reader expects. The
+ * converters are what make the change incremental — readers move to the
+ * graph one at a time, and until the last one has, both views are live.
+ */
+
+import {
+  LOCAL_IDENTITY, LocalTransform, MAT_IDENTITY, Mat2D,
+  decomposeMatrix, localMatrix, matApplyBbox, matApplyPoint, matInvert, matMul,
+  normalizeDeg,
+} from './sceneTransform';
+import type { Bbox } from './transform2d';
+import { contentBoxCells } from './textLayout';
+import type {
+  CompItemKind, CompositionFigure, CompositionState, GroupNode, ImageObject,
+  PaintObject, PathSegment, PatternObject, SVGObject, SVGSubpath, TextObject,
+} from './types';
+
+// ── Node ───────────────────────────────────────────────────────────────
+
+export type SceneNodeKind = CompItemKind | 'group';
+
+/**
+ * One node of the scene graph.
+ *
+ * `content` carries the legacy per-kind object for everything that is not
+ * pose — colour, text, framing, cells, effects. Its own pose fields
+ * (`cellX/Y/Width/Height`, `rotation`, `mirror*`, `angleDeg`, and for svg
+ * `segments`) are NOT the truth here; `transform` and `localBox` /
+ * `localSegments` are, and {@link toLegacyView} recomputes the legacy
+ * fields from them. Keeping the payload whole is what lets the content
+ * ops and the 31 engine readers keep working while they migrate.
+ */
+export interface SceneNode {
+  readonly id: string;
+  readonly kind: SceneNodeKind;
+  readonly name?: string;
+  /** Parent group, or undefined at the root. */
+  readonly parentId?: string;
+  /** Groups only: child ids, back to front. */
+  readonly children?: readonly string[];
+  /** Pose relative to the parent. */
+  readonly transform: LocalTransform;
+  readonly locked?: boolean;
+  readonly hidden?: boolean;
+  /** Groups only: this group is a Figma-style frame. */
+  readonly isFrame?: boolean;
+  /**
+   * Local content box, for every kind whose content is a rectangle
+   * (figure, image, text, paint, pattern). Always axis-aligned with its
+   * origin at (0, 0) — the turn that used to swap its width and height
+   * lives on `transform` now.
+   */
+  readonly localBox?: Bbox;
+  /** svg only: path geometry in the node's own space. */
+  readonly localSegments?: readonly PathSegment[];
+  /** svg only: per-colour sub-paths, in the node's own space. */
+  readonly localSubpaths?: readonly SVGSubpath[];
+  /** The legacy object, for everything that is not pose. */
+  readonly content?: LegacyLeaf;
+}
+
+export type LegacyLeaf =
+  | CompositionFigure | SVGObject | ImageObject
+  | TextObject | PaintObject | PatternObject;
+
+/**
+ * A whole scene. `nodes` is keyed by id; `roots` is the top level, back
+ * to front.
+ *
+ * Copy-on-write: an op returns a new graph sharing every untouched node,
+ * so a reader can compare node identity to see what changed (which is
+ * how the reducer decides what to re-render). `generation` bumps when any
+ * transform or parentage changes, which is what invalidates the world
+ * cache.
+ */
+export interface SceneGraph {
+  readonly nodes: ReadonlyMap<string, SceneNode>;
+  readonly roots: readonly string[];
+  readonly generation: number;
+}
+
+export const EMPTY_GRAPH: SceneGraph = {
+  nodes: new Map(), roots: [], generation: 0,
+};
+
+// ── Walking ────────────────────────────────────────────────────────────
+
+/** The node, or undefined. */
+export function getNode(graph: SceneGraph, id: string): SceneNode | undefined {
+  return graph.nodes.get(id);
+}
+
+/** Ancestors from the immediate parent up to the root. */
+export function ancestors(graph: SceneGraph, id: string): SceneNode[] {
+  const out: SceneNode[] = [];
+  let cur = graph.nodes.get(id)?.parentId;
+  const seen = new Set<string>([id]);
+  while (cur && !seen.has(cur)) {
+    const node = graph.nodes.get(cur);
+    if (!node) break;
+    out.push(node);
+    seen.add(cur);
+    cur = node.parentId;
+  }
+  return out;
+}
+
+/**
+ * Every node under `id` (not including it), in back-to-front order.
+ * Depth-first through `children`, which is the paint order.
+ */
+export function descendants(graph: SceneGraph, id: string): SceneNode[] {
+  const out: SceneNode[] = [];
+  const walk = (nodeId: string) => {
+    for (const childId of graph.nodes.get(nodeId)?.children ?? []) {
+      const child = graph.nodes.get(childId);
+      if (!child) continue;
+      out.push(child);
+      walk(childId);
+    }
+  };
+  walk(id);
+  return out;
+}
+
+/**
+ * Every leaf in the graph, back to front — the derived replacement for
+ * `sceneOrder`. Groups are skipped; their children appear in place, which
+ * is what made group members contiguous in the legacy array and is now
+ * simply how a tree flattens.
+ */
+export function flattenLeaves(graph: SceneGraph): SceneNode[] {
+  const out: SceneNode[] = [];
+  const walk = (ids: readonly string[]) => {
+    for (const id of ids) {
+      const node = graph.nodes.get(id);
+      if (!node) continue;
+      if (node.kind === 'group') walk(node.children ?? []);
+      else out.push(node);
+    }
+  };
+  walk(graph.roots);
+  return out;
+}
+
+// ── World transforms ───────────────────────────────────────────────────
+
+/**
+ * Lazily computed world matrices, invalidated wholesale by generation.
+ *
+ * Steady-state rendering hits the cache every time: transforms change
+ * only on a gesture commit, which bumps the generation once and lets the
+ * affected nodes recompute on next read. Strictly cheaper than the legacy
+ * eager `materializeGroupMembers` + per-member reconcile, and it is what
+ * keeps the parent-chain walk out of the render loop.
+ */
+const worldCache = new WeakMap<ReadonlyMap<string, SceneNode>, Map<string, Mat2D>>();
+
+/**
+ * The node's local-to-world matrix.
+ *
+ * Memoised per *nodes map*, which is the only correct key: a node's world
+ * matrix is a pure function of the map it lives in, and ops are
+ * copy-on-write, so a map that has not been replaced cannot have moved
+ * anything. Keying on `generation` instead would be a trap — every graph
+ * `fromLegacy` builds starts at generation 0, so one scene would be
+ * served another's matrices. A WeakMap also means nobody has to remember
+ * to invalidate, and a dropped graph's cache is collected with it.
+ */
+export function worldMatrix(graph: SceneGraph, id: string): Mat2D {
+  let cache = worldCache.get(graph.nodes);
+  if (!cache) {
+    cache = new Map();
+    worldCache.set(graph.nodes, cache);
+  }
+  return cachedWorld(graph, id, cache, new Set());
+}
+
+function cachedWorld(
+  graph: SceneGraph, id: string,
+  cache: Map<string, Mat2D>, visiting: Set<string>,
+): Mat2D {
+  const hit = cache.get(id);
+  if (hit) return hit;
+
+  const node = graph.nodes.get(id);
+  // A parent cycle in broken data would otherwise recurse until the stack
+  // gave out, on someone's page, at load time.
+  if (!node || visiting.has(id)) return MAT_IDENTITY;
+  visiting.add(id);
+  const parent = node.parentId
+    ? cachedWorld(graph, node.parentId, cache, visiting)
+    : MAT_IDENTITY;
+  visiting.delete(id);
+
+  const world = matMul(parent, localMatrix(node.transform));
+  cache.set(id, world);
+  return world;
+}
+
+/** The matrix that takes a point in `id`'s parent's space to world. */
+export function parentMatrix(graph: SceneGraph, id: string): Mat2D {
+  const parentId = graph.nodes.get(id)?.parentId;
+  return parentId ? worldMatrix(graph, parentId) : MAT_IDENTITY;
+}
+
+/**
+ * The node's world-space AABB.
+ *
+ * For a rotated or sheared node this is larger than the node — the
+ * bounding box of its four mapped corners. A caller that needs the shape
+ * rather than its extent reads `worldMatrix` and maps the corners.
+ */
+export function worldBbox(graph: SceneGraph, id: string): Bbox {
+  const node = graph.nodes.get(id);
+  if (!node) return { x: 0, y: 0, width: 0, height: 0 };
+  const m = worldMatrix(graph, id);
+  if (node.kind === 'group') {
+    return unionBbox(descendants(graph, node.id)
+      .filter((n) => n.kind !== 'group')
+      .map((n) => worldBbox(graph, n.id)));
+  }
+  if (node.localSegments) return matApplyBbox(m, segmentsBbox(node.localSegments));
+  return matApplyBbox(m, node.localBox ?? { x: 0, y: 0, width: 0, height: 0 });
+}
+
+/** The node's path geometry in world space. svg kinds only. */
+export function worldSegments(graph: SceneGraph, id: string): PathSegment[] {
+  const node = graph.nodes.get(id);
+  if (!node?.localSegments) return [];
+  return mapSegments(node.localSegments, worldMatrix(graph, id));
+}
+
+function unionBbox(boxes: readonly Bbox[]): Bbox {
+  if (boxes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const b of boxes) {
+    minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
+    maxX = Math.max(maxX, b.x + b.width); maxY = Math.max(maxY, b.y + b.height);
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+// ── Segment geometry ───────────────────────────────────────────────────
+
+/** Map every vertex of a path through a matrix. */
+export function mapSegments(
+  segments: readonly PathSegment[], m: Mat2D,
+): PathSegment[] {
+  return segments.map((seg) => seg.kind === 'arc'
+    ? {
+      kind: 'arc' as const,
+      start: matApplyPoint(m, seg.start[0], seg.start[1]),
+      end: matApplyPoint(m, seg.end[0], seg.end[1]),
+      center: matApplyPoint(m, seg.center[0], seg.center[1]),
+    }
+    : {
+      kind: 'line' as const,
+      start: matApplyPoint(m, seg.start[0], seg.start[1]),
+      end: matApplyPoint(m, seg.end[0], seg.end[1]),
+    });
+}
+
+function mapSubpaths(
+  subpaths: readonly SVGSubpath[], m: Mat2D,
+): SVGSubpath[] {
+  return subpaths.map((sp) => ({ ...sp, segments: mapSegments(sp.segments, m) }));
+}
+
+/** AABB of a path's vertices. Arc bulge is not accounted for — this is
+ *  the same approximation the legacy `computeSVGBbox` makes, kept so the
+ *  two agree during the migration. */
+export function segmentsBbox(segments: readonly PathSegment[]): Bbox {
+  if (segments.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const see = (p: readonly [number, number]) => {
+    minX = Math.min(minX, p[0]); minY = Math.min(minY, p[1]);
+    maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]);
+  };
+  for (const seg of segments) { see(seg.start); see(seg.end); }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+// ── Legacy → graph ─────────────────────────────────────────────────────
+
+/** The pose fields a legacy leaf carries, whatever its kind. */
+interface LegacyPose {
+  cellX: number; cellY: number; cellWidth: number; cellHeight: number;
+  rotation?: 0 | 90 | 180 | 270;
+  mirrorH?: boolean; mirrorV?: boolean;
+  angleDeg?: number;
+}
+
+/**
+ * The world matrix a legacy leaf's pose fields describe.
+ *
+ * Reproduces exactly what the renderer builds (`orientedInnerStyle` in
+ * NodeLayer): the content box is centred in the world bbox, then flipped,
+ * then given its quarter turn, then its free angle — every step about
+ * that centre. Hence one continuous rotation of `rotation + angleDeg`,
+ * and a translation that puts the content box's centre on the bbox's.
+ *
+ * The content box is the *un-turned* box: a 90 or 270 swaps the world
+ * bbox's width and height, so it is swapped back here. That swap
+ * disappears entirely in the new model — the box is local, and its world
+ * footprint is derived.
+ */
+function poseToTransform(p: LegacyPose): { transform: LocalTransform; localBox: Bbox } {
+  const content = contentBoxCells(p);
+  const localBox: Bbox = { x: 0, y: 0, width: content.width, height: content.height };
+  const rotationDeg = normalizeDeg((p.rotation ?? 0) + (p.angleDeg ?? 0));
+  const linear = localMatrix({
+    ...LOCAL_IDENTITY, rotationDeg,
+    ...(p.mirrorH ? { mirrorH: true } : {}),
+    ...(p.mirrorV ? { mirrorV: true } : {}),
+  });
+  // Put the content box's centre on the world bbox's centre.
+  const cx = p.cellX + p.cellWidth / 2;
+  const cy = p.cellY + p.cellHeight / 2;
+  const hw = content.width / 2, hh = content.height / 2;
+  return {
+    localBox,
+    transform: {
+      tx: cx - (linear.a * hw + linear.c * hh),
+      ty: cy - (linear.b * hw + linear.d * hh),
+      sx: 1, sy: 1, rotationDeg,
+      ...(p.mirrorH ? { mirrorH: true } : {}),
+      ...(p.mirrorV ? { mirrorV: true } : {}),
+    },
+  };
+}
+
+/** Rotation about a point, as a matrix. */
+function rotateAbout(deg: number, cx: number, cy: number): Mat2D {
+  const r = localMatrix({ ...LOCAL_IDENTITY, rotationDeg: deg });
+  return matMul(
+    { ...MAT_IDENTITY, e: cx, f: cy },
+    matMul(r, { ...MAT_IDENTITY, e: -cx, f: -cy }),
+  );
+}
+
+/**
+ * Build a graph from legacy state, reading **world fields only**.
+ *
+ * The persisted `local*` caches are deliberately ignored. World is what
+ * the user saw, and a file can carry local caches that disagree with it
+ * (the loader backfills the missing ones but never the wrong ones — see
+ * `materializeGroupHierarchy`). Deriving locals fresh is what finally
+ * makes the two agree, by having only one of them.
+ */
+export function fromLegacy(state: CompositionState): SceneGraph {
+  const nodes = new Map<string, SceneNode>();
+
+  // 1. Groups, with their own transforms. A GroupNode's legacy transform
+  //    scales after rotating; `fromTransform2D` handles the swap.
+  for (const g of state.groups ?? []) {
+    nodes.set(g.id, {
+      id: g.id, kind: 'group', name: g.name,
+      parentId: g.parentGroupId,
+      children: [],
+      transform: groupTransform(g),
+      ...(g.locked ? { locked: true } : {}),
+      ...(g.hidden ? { hidden: true } : {}),
+      ...(g.isFrame ? { isFrame: true } : {}),
+    });
+  }
+
+  // 2. A group's world matrix, so a member's local pose can be found by
+  //    dividing it out. Computed here rather than through the cache
+  //    because the graph is still being built.
+  const groupWorld = new Map<string, Mat2D>();
+  const worldOf = (id: string | undefined): Mat2D => {
+    if (!id) return MAT_IDENTITY;
+    const hit = groupWorld.get(id);
+    if (hit) return hit;
+    const node = nodes.get(id);
+    if (!node) return MAT_IDENTITY;
+    // Guard against a cycle in malformed data rather than recursing away.
+    groupWorld.set(id, MAT_IDENTITY);
+    const m = matMul(worldOf(node.parentId), localMatrix(node.transform));
+    groupWorld.set(id, m);
+    return m;
+  };
+  for (const id of nodes.keys()) worldOf(id);
+
+  // 3. Leaves. Each one's world pose is read off its world fields, then
+  //    divided by its group's world matrix to give a local transform.
+  const addLeaf = (kind: CompItemKind, leaf: LegacyLeaf) => {
+    const pose = leaf as unknown as LegacyPose;
+    const parentId = leaf.groupId;
+    const toLocal = safeInvert(worldOf(parentId));
+
+    if (kind === 'svg') {
+      const svg = leaf as SVGObject;
+      // An svg's segments are world coordinates with its quarter turns
+      // already baked in, and its free angle applied at draw time about
+      // the bbox centre. Bake that angle in too and divide out the group,
+      // giving exact local geometry under an identity transform — the
+      // convention new svgs are authored with (§3.3). No decomposition,
+      // so nothing is approximated.
+      const cx = pose.cellX + pose.cellWidth / 2;
+      const cy = pose.cellY + pose.cellHeight / 2;
+      const toNodeSpace = pose.angleDeg
+        ? matMul(toLocal, rotateAbout(pose.angleDeg, cx, cy))
+        : toLocal;
+      nodes.set(leaf.id, {
+        id: leaf.id, kind: 'svg', name: leaf.name, parentId,
+        transform: LOCAL_IDENTITY,
+        localSegments: mapSegments(svg.segments ?? [], toNodeSpace),
+        ...(svg.subpaths ? { localSubpaths: mapSubpaths(svg.subpaths, toNodeSpace) } : {}),
+        ...(leaf.locked ? { locked: true } : {}),
+        content: leaf,
+      });
+      return;
+    }
+
+    const { transform: world, localBox } = poseToTransform(pose);
+    nodes.set(leaf.id, {
+      id: leaf.id, kind, name: leaf.name, parentId,
+      transform: parentId
+        ? decomposeMatrix(matMul(toLocal, localMatrix(world)))
+        : world,
+      localBox,
+      ...(leaf.locked ? { locked: true } : {}),
+      content: leaf,
+    });
+  };
+
+  for (const f of state.figures ?? []) addLeaf('figure', f);
+  for (const s of state.svgObjects ?? []) addLeaf('svg', s);
+  for (const i of state.images ?? []) addLeaf('image', i);
+  for (const t of state.texts ?? []) addLeaf('text', t);
+  for (const p of state.paintObjects ?? []) addLeaf('paint', p);
+  for (const p of state.patternObjects ?? []) addLeaf('pattern', p);
+
+  // 4. Child order, from `sceneOrder` (back to front). A group takes the
+  //    position of its back-most member, which is what the outline
+  //    already derives and what group contiguity was enforcing.
+  linkChildren(nodes, state.sceneOrder ?? []);
+
+  return { nodes, roots: computeRoots(nodes, state.sceneOrder ?? []), generation: 0 };
+}
+
+/** A group's local transform, from its legacy fields. */
+function groupTransform(g: GroupNode): LocalTransform {
+  const swap = g.rotation === 90 || g.rotation === 270;
+  return {
+    tx: g.translateX, ty: g.translateY,
+    sx: swap ? g.scaleY : g.scaleX,
+    sy: swap ? g.scaleX : g.scaleY,
+    rotationDeg: g.rotation,
+    ...(g.mirrorH ? { mirrorH: true } : {}),
+    ...(g.mirrorV ? { mirrorV: true } : {}),
+  };
+}
+
+/** Invert, or fall back to the identity for a collapsed ancestor rather
+ *  than throwing while loading someone's page. */
+function safeInvert(m: Mat2D): Mat2D {
+  try { return matInvert(m); } catch { return MAT_IDENTITY; }
+}
+
+/**
+ * Fill in each group's `children`, ordered by `sceneOrder`.
+ *
+ * A node's position is the position of its back-most leaf, so a group
+ * sits where its members sit. Anything missing from `sceneOrder` is
+ * appended in insertion order rather than dropped — a repaired scene
+ * order is better than a lost node.
+ */
+function linkChildren(nodes: Map<string, SceneNode>, sceneOrder: readonly string[]): void {
+  const rank = new Map<string, number>();
+  sceneOrder.forEach((id, i) => rank.set(id, i));
+
+  // A group's rank is its back-most descendant leaf's. `visiting` guards
+  // a parent cycle in malformed data, which would otherwise recurse until
+  // the stack gave out while opening someone's page.
+  const visiting = new Set<string>();
+  const rankOf = (id: string): number => {
+    const direct = rank.get(id);
+    if (direct !== undefined) return direct;
+    if (visiting.has(id)) return Infinity;
+    visiting.add(id);
+    let best = Infinity;
+    for (const [childId, child] of nodes) {
+      if (child.parentId !== id) continue;
+      best = Math.min(best, rankOf(childId));
+    }
+    visiting.delete(id);
+    return best;
+  };
+
+  const byParent = new Map<string | undefined, string[]>();
+  let fallback = sceneOrder.length;
+  const order = new Map<string, number>();
+  for (const [id, node] of nodes) {
+    const r = rankOf(id);
+    order.set(id, Number.isFinite(r) ? r : fallback++);
+    const bucket = byParent.get(node.parentId) ?? [];
+    bucket.push(id);
+    byParent.set(node.parentId, bucket);
+  }
+
+  for (const [parentId, childIds] of byParent) {
+    if (parentId === undefined) continue;
+    const parent = nodes.get(parentId);
+    if (!parent) continue;
+    childIds.sort((a, b) => order.get(a)! - order.get(b)!);
+    nodes.set(parentId, { ...parent, children: childIds });
+  }
+  // Stash the root ordering for computeRoots.
+  rootOrder.set(nodes, order);
+}
+
+/** Ordering side-table, consumed immediately by `computeRoots`. */
+const rootOrder = new WeakMap<Map<string, SceneNode>, Map<string, number>>();
+
+function computeRoots(nodes: Map<string, SceneNode>, sceneOrder: readonly string[]): string[] {
+  const order = rootOrder.get(nodes) ?? new Map<string, number>();
+  const roots: string[] = [];
+  for (const [id, node] of nodes) {
+    if (!node.parentId || !nodes.has(node.parentId)) roots.push(id);
+  }
+  roots.sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+  void sceneOrder;
+  return roots;
+}
+
+// ── Graph → legacy ─────────────────────────────────────────────────────
+
+/** The six per-kind arrays plus groups and paint order — what every
+ *  reader that has not migrated still expects to find on the state. */
+export interface LegacyView {
+  figures: CompositionFigure[];
+  svgObjects: SVGObject[];
+  images: ImageObject[];
+  texts: TextObject[];
+  paintObjects: PaintObject[];
+  patternObjects: PatternObject[];
+  groups: GroupNode[];
+  sceneOrder: string[];
+}
+
+/**
+ * Render a graph back into legacy world-field objects.
+ *
+ * The adapter that keeps the migration incremental: while readers move to
+ * the graph one at a time, this is what the rest keep reading. When the
+ * last one has moved, this and the legacy fields go together.
+ *
+ * World poses come out of the world matrices, so a node that the graph
+ * places somewhere is a leaf that reports being there — the two views
+ * cannot disagree, which is the whole point of having one source of
+ * truth.
+ */
+export function toLegacyView(graph: SceneGraph): LegacyView {
+  const view: LegacyView = {
+    figures: [], svgObjects: [], images: [], texts: [],
+    paintObjects: [], patternObjects: [], groups: [], sceneOrder: [],
+  };
+
+  for (const node of graph.nodes.values()) {
+    if (node.kind !== 'group') continue;
+    view.groups.push(toGroupNode(graph, node));
+  }
+
+  for (const leaf of flattenLeaves(graph)) {
+    view.sceneOrder.push(leaf.id);
+    const out = toLegacyLeaf(graph, leaf);
+    switch (leaf.kind) {
+      case 'figure': view.figures.push(out as CompositionFigure); break;
+      case 'svg': view.svgObjects.push(out as SVGObject); break;
+      case 'image': view.images.push(out as ImageObject); break;
+      case 'text': view.texts.push(out as TextObject); break;
+      case 'paint': view.paintObjects.push(out as PaintObject); break;
+      case 'pattern': view.patternObjects.push(out as PatternObject); break;
+    }
+  }
+  return view;
+}
+
+function toGroupNode(graph: SceneGraph, node: SceneNode): GroupNode {
+  const t = node.transform;
+  const quarter = nearestQuarterTurn(t.rotationDeg);
+  const swap = quarter === 90 || quarter === 270;
+  void graph;
+  return {
+    id: node.id,
+    name: node.name ?? 'Group',
+    translateX: t.tx, translateY: t.ty,
+    scaleX: swap ? t.sy : t.sx,
+    scaleY: swap ? t.sx : t.sy,
+    rotation: quarter,
+    mirrorH: !!t.mirrorH,
+    mirrorV: !!t.mirrorV,
+    ...(node.parentId ? { parentGroupId: node.parentId } : {}),
+    ...(node.locked ? { locked: true } : {}),
+    ...(node.hidden ? { hidden: true } : {}),
+    ...(node.isFrame ? { isFrame: true } : {}),
+  };
+}
+
+/** True when the angle is a quarter turn, to within float noise. */
+function isQuarterTurn(deg: number): boolean {
+  const off = normalizeDeg(deg) % 90;
+  return off < 1e-6 || 90 - off < 1e-6;
+}
+
+function nearestQuarterTurn(deg: number): 0 | 90 | 180 | 270 {
+  const q = (Math.round(normalizeDeg(deg) / 90) * 90) % 360;
+  return (q === 90 || q === 180 || q === 270 ? q : 0) as 0 | 90 | 180 | 270;
+}
+
+/**
+ * One leaf, as the legacy arrays want it: the content payload with its
+ * world pose fields recomputed from the graph.
+ *
+ * The world pose is split back into the legacy pair of channels the same
+ * way it was joined: the nearest quarter turn becomes `rotation` (which
+ * swaps the bbox dimensions), and what is left over becomes `angleDeg`.
+ */
+function toLegacyLeaf(graph: SceneGraph, node: SceneNode): LegacyLeaf {
+  const base = { ...(node.content ?? { id: node.id }) } as LegacyLeaf & LegacyPose;
+  base.id = node.id;
+  if (node.name !== undefined) base.name = node.name;
+  base.groupId = node.parentId;
+
+  const m = worldMatrix(graph, node.id);
+
+  if (node.kind === 'svg') {
+    const svg = base as SVGObject;
+    svg.segments = mapSegments(node.localSegments ?? [], m);
+    if (node.localSubpaths) svg.subpaths = mapSubpaths(node.localSubpaths, m);
+    // An svg's bbox is the AABB of its path. Its quarter turns are baked
+    // into the geometry, as they always were, so the orientation flags
+    // stay whatever the content carried.
+    const bb = segmentsBbox(svg.segments);
+    svg.cellX = bb.x; svg.cellY = bb.y;
+    svg.cellWidth = bb.width; svg.cellHeight = bb.height;
+    svg.angleDeg = undefined;
+    return svg;
+  }
+
+  const local = node.localBox ?? { x: 0, y: 0, width: 0, height: 0 };
+  const t = decomposeMatrix(m);
+  // The graph holds ONE continuous rotation; legacy holds two channels, a
+  // quarter turn that swaps the bbox and a free angle that does not. The
+  // split is not recoverable from the total, so take the discrete part
+  // from the leaf's own `rotation` — unless the total is itself a quarter
+  // turn, in which case it is all discrete and the bbox should swap.
+  //
+  // Both spellings render the same, but they report different selection
+  // rectangles, and this is what keeps a page's stored boxes unmoved
+  // across the conversion.
+  const whole = isQuarterTurn(t.rotationDeg);
+  const carried = (node.content as { rotation?: 0 | 90 | 180 | 270 } | undefined)?.rotation;
+  const quarter = whole
+    ? nearestQuarterTurn(t.rotationDeg)
+    : (carried ?? nearestQuarterTurn(t.rotationDeg));
+  const residual = normalizeDeg(t.rotationDeg - quarter);
+  // The content box, scaled — the box the turn is applied to.
+  const cw = local.width * Math.abs(t.sx);
+  const ch = local.height * Math.abs(t.sy);
+  const swap = quarter === 90 || quarter === 270;
+  const bboxW = swap ? ch : cw;
+  const bboxH = swap ? cw : ch;
+  // The world position of the content box's centre.
+  const [cx, cy] = matApplyPoint(m, local.x + local.width / 2, local.y + local.height / 2);
+
+  base.cellX = cx - bboxW / 2;
+  base.cellY = cy - bboxH / 2;
+  base.cellWidth = bboxW;
+  base.cellHeight = bboxH;
+  base.rotation = quarter;
+  // Read the flips off the WORLD matrix, never off `node.transform`. A
+  // flip in the local transform has already been folded into the world
+  // rotation by the time the chain is multiplied out — a node turned 270
+  // and flipped on both axes is the same pose as one turned 90 — so
+  // taking both would count it twice. `decomposeMatrix` puts the whole
+  // handedness flip in `sy`, which is why only `mirrorV` can come back.
+  base.mirrorH = t.sx < 0 || undefined;
+  base.mirrorV = t.sy < 0 || undefined;
+  base.angleDeg = residual === 0 ? undefined : residual;
+  return base;
+}

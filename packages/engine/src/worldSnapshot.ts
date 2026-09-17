@@ -137,13 +137,49 @@ function figureSnap(f: CompositionFigure): LeafWorldSnapshot {
 
 function svgSnap(s: SVGObject): LeafWorldSnapshot {
   const snap = basePose('svg', s);
-  snap.segments = segsText(s.segments);
+  // The DRAWN path, with any free angle already applied.
+  //
+  // An svg's free rotation is layered on at render time, about the bbox
+  // centre, leaving the stored vertices un-turned — one of two equivalent
+  // ways to say where the path is, the other being to turn the vertices
+  // and carry no angle. Both draw the same line, so a snapshot that
+  // reports "what the user sees" has to treat them as the same. Applying
+  // the angle here is what makes that true, and what lets the scene graph
+  // hold one rotation where the legacy model held two channels.
+  const angle = q(s.angleDeg);
+  const drawn = angle === 0 ? s.segments : rotateSegments(
+    s.segments, angle,
+    s.cellX + s.cellWidth / 2, s.cellY + s.cellHeight / 2,
+  );
+  snap.angleDeg = undefined;
+  snap.segments = segsText(drawn);
   if (s.subpaths && s.subpaths.length > 0) {
-    snap.subpaths = s.subpaths.map((sp) => segsText(sp.segments));
+    snap.subpaths = s.subpaths.map((sp) => segsText(
+      angle === 0 ? sp.segments : rotateSegments(
+        sp.segments, angle,
+        s.cellX + s.cellWidth / 2, s.cellY + s.cellHeight / 2,
+      ),
+    ));
   }
   const tile = tileText(s);
   if (tile) snap.tile = tile;
   return snap;
+}
+
+/** Turn every vertex of a path `deg` clockwise about `(cx, cy)`. */
+function rotateSegments(
+  segments: ReadonlyArray<PathSegment> | undefined,
+  deg: number, cx: number, cy: number,
+): PathSegment[] {
+  const rad = deg * Math.PI / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  const turn = (p: readonly [number, number]): [number, number] => {
+    const dx = p[0] - cx, dy = p[1] - cy;
+    return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+  };
+  return (segments ?? []).map((seg) => seg.kind === 'arc'
+    ? { kind: 'arc' as const, start: turn(seg.start), end: turn(seg.end), center: turn(seg.center) }
+    : { kind: 'line' as const, start: turn(seg.start), end: turn(seg.end) });
 }
 
 function patternSnap(p: PatternObject): LeafWorldSnapshot {

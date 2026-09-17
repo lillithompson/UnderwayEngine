@@ -11,6 +11,7 @@ import { arcAllPoints } from './compositionArcMath';
 import { colorsEqual } from './colorBlend';
 import { SegmentOverrides, remapOverrides } from './tileSegmentOverrides';
 import { worldSnapshot, diffWorldSnapshots } from './worldSnapshot';
+import { fromLegacy } from './sceneGraph';
 import { Orientation, orientationToMatrix, matrixToOrientation, composeOrientation } from './transform2d';
 
 /**
@@ -5834,7 +5835,39 @@ const ASSERT_GROUP_LOCALS =
 
 function checked(before: CompositionState, after: CompositionState): CompositionState {
   if (ASSERT_GROUP_LOCALS) assertNoNewStaleLocals(before, after);
-  return after;
+  return withRefreshedGraph(before, after);
+}
+
+/**
+ * Give a composition a scene graph, and keep it from then on.
+ *
+ * Opt-in: a state without one pays nothing, which is what lets the graph
+ * land before any reader depends on it. Once present, `applyCompOps` and
+ * `revertCompOps` rebuild it after every entry, so it always describes
+ * the same scene the per-kind arrays do.
+ */
+export function withSceneGraph(state: CompositionState): CompositionState {
+  return { ...state, graph: fromLegacy(state) };
+}
+
+/**
+ * Rebuild the graph after an entry, if the state carries one.
+ *
+ * Rebuilt rather than edited, because the ops still write the per-kind
+ * arrays — the arrays are the storage and the graph is derived from them.
+ * The refactor turns that around: the ops move to the graph and the
+ * arrays become `toLegacyView` output. Until then this is what proves the
+ * conversion holds, because every engine and host test now drives it.
+ *
+ * Once per entry, not once per op: a drag commits one `moveNode` per
+ * selected member, and rebuilding for each would make a group drag
+ * quadratic in its size.
+ */
+function withRefreshedGraph(
+  before: CompositionState, after: CompositionState,
+): CompositionState {
+  if (!before.graph || before === after) return after;
+  return { ...after, graph: fromLegacy(after) };
 }
 
 export function applyCompOps(state: CompositionState, entry: CompUndoEntry): CompositionState {

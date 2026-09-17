@@ -1,4 +1,5 @@
 import type { ImageFraming } from './imageFraming';
+import type { SceneGraph } from './sceneGraph';
 export type { ImageFraming, ImageFramingMode, ImageCropRatio } from './imageFraming';
 
 /** Pixel resolution of every layer texture */
@@ -1646,6 +1647,17 @@ export interface CompositionState {
   compTool: CompToolType;
   createRegion: CreateRegion | null;
   renderGeneration: number;
+  /**
+   * The scene graph (transform refactor, docs/transform-refactor.md).
+   *
+   * Opt-in while the migration runs: absent unless `withSceneGraph` put it
+   * there, and kept in step with the arrays above by `applyCompOps` /
+   * `revertCompOps`. A reader that has moved to the graph reads its poses
+   * from there; the rest keep reading the per-kind arrays, which stay the
+   * storage until the ops themselves move and the arrays become the
+   * derived view.
+   */
+  graph?: SceneGraph;
 }
 
 // ── Composition Undo Types ───────────────────────────────────────────
