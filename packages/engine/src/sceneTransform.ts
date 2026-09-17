@@ -212,6 +212,48 @@ export function matUniformScale(m: Mat2D): number {
   return Math.sqrt(Math.abs(matDet(m)));
 }
 
+/**
+ * A matrix split into a per-axis scale and what is left of it.
+ *
+ * Any such split draws the SAME quad — the scale is folded into the box
+ * an element (or an emitted `<rect>`) is given instead of its matrix, and
+ * box times matrix is the pose either way. What it decides is how the
+ * things drawn in the element's OWN units — a border stroke, a drop
+ * shadow — are stretched. Taking the scale off both axes leaves a turn
+ * (with a reflection in it, for a mirrored pose) and nothing else, so
+ * those stay the width they were authored at through a resize. A SHEARED
+ * matrix has no such factorisation — its axes are not perpendicular,
+ * whatever scale is taken out — and the lean stays on the matrix.
+ *
+ * The per-axis twin of {@link matUniformScale}, which is the factor to
+ * take out of a length that must stay a world quantity whichever axis it
+ * lies along.
+ */
+export function axisScaleSplit(m: Mat2D): { sx: number; sy: number; matrix: Mat2D } {
+  const sx = Math.hypot(m.a, m.b) || 1;
+  const sy = Math.hypot(m.c, m.d) || 1;
+  return { sx, sy, matrix: { a: m.a / sx, b: m.b / sx, c: m.c / sy, d: m.d / sy, e: m.e, f: m.f } };
+}
+
+/**
+ * `matrix(...)` for a map whose translation is in CELLS, written in a
+ * space of `unitsPerCell` units per cell.
+ *
+ * One spelling serves a CSS `transform` and an SVG `transform` attribute
+ * alike, so the screen and the export cannot write the same pose
+ * differently. All six entries are bare numbers: CSS `matrix()` takes
+ * `<number>`s only, and a unit on the translation (`0px`) makes the whole
+ * declaration invalid — the browser drops the transform without a word,
+ * and the element sits untransformed at its layout position. Six
+ * decimals: an exact zero arrives as 1e-17 out of trig, and a stable
+ * string is what lets React (and a no-op check) skip the write.
+ */
+export function matrixString(m: Mat2D, unitsPerCell: number): string {
+  const n = (v: number) => String(Number(v.toFixed(6)) || 0);
+  return `matrix(${n(m.a)}, ${n(m.b)}, ${n(m.c)}, ${n(m.d)}, `
+    + `${n(m.e * unitsPerCell)}, ${n(m.f * unitsPerCell)})`;
+}
+
 // ── LocalTransform ─────────────────────────────────────────────────────
 
 /**

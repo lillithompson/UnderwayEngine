@@ -6,8 +6,9 @@
  * with pre-deserialized embedded files.
  */
 
-import { CompositionFigure, FileConfig, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
+import { CompositionFigure, CompositionState, FileConfig, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
 import { patternSVGView } from './patternObjectRender';
+import { SceneGraph, fromLegacy, graphDescribes } from './sceneGraph';
 import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
@@ -120,6 +121,24 @@ export interface CompositionSVGInputs {
   /** Back→front paint order; drives first-wins active-mask resolution.
    *  Optional: falls back to `svgObjects` order when absent. */
   sceneOrder?: string[];
+  /**
+   * The live scene graph, when the caller has one.
+   *
+   * Poses are read from the graph (`exportGraph` below), so a caller that
+   * holds a state the editor has been transforming should pass its
+   * `state.graph` rather than let the export rebuild one: the arrays are
+   * the graph's legacy VIEW of itself, and a view cannot spell a world
+   * scale or a shear. Rebuilding from them throws away the very thing the
+   * export would otherwise be missing.
+   *
+   * Ignored (and rebuilt) when it does not describe the arrays passed
+   * beside it — a preview path that spreads new arrays over an old state
+   * keeps a graph that is a gesture behind the picture. Absent is the
+   * ordinary case: every storage-backed export loads a `.tile` and hands
+   * over its arrays, and a graph built from those says exactly what they
+   * already say.
+   */
+  graph?: SceneGraph;
   /** Raw composition-level stroke scale (0–1). Normalized internally. */
   strokeScale?: number;
   /**
@@ -887,6 +906,38 @@ function framedImageSVG(
   if (round) return clipDef + `<g${clipAttr}>${inner}</g>`;
   // Square frame: a nested <svg> viewport clips the overflow to the frame rect.
   return `<svg x="0" y="0" width="${iw}" height="${ih}" overflow="hidden" viewBox="0 0 ${iw} ${ih}">${inner}</svg>`;
+}
+
+/**
+ * The graph this export reads poses off.
+ *
+ * The caller's own graph when it describes the arrays that came with it
+ * (see {@link CompositionSVGInputs.graph}), else one built from those
+ * arrays — one O(n) pass, before any filtering, so every node the export
+ * might draw is in it and can be found by id.
+ *
+ * By id, deliberately, and not by the `content === leaf` identity check
+ * the host's `drawnPose.drawnLeafFor` makes: this generator hands its own
+ * per-kind loops objects it has REPLACED — an svg recoloured by
+ * `strokeColorOverride`, a pattern's derived `patternSVGView` — and those
+ * carry the node's id and none of its pose. The graph is still the right
+ * answer for them; an identity check would quietly send them back to the
+ * legacy fields, which is where a member of a stretched bound group loses
+ * its group.
+ */
+export function exportGraph(input: CompositionSVGInputs): SceneGraph {
+  const arrays: Partial<CompositionState> = {
+    figures: input.figures,
+    svgObjects: input.svgObjects,
+    images: input.images,
+    texts: input.texts,
+    paintObjects: input.paintObjects,
+    patternObjects: input.patternObjects,
+    groups: input.groups,
+    sceneOrder: input.sceneOrder,
+  };
+  if (input.graph && graphDescribes(input.graph, arrays)) return input.graph;
+  return fromLegacy(arrays as CompositionState);
 }
 
 export async function generateCompositionSVGCore(

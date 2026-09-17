@@ -613,6 +613,12 @@ export async function exportCompositionSVGFromState(
     frameInkExtents: options?.frameInkExtents,
     groups: partial.groups ?? [],
     sceneOrder: partial.sceneOrder,
+    // The state's own graph, when it has one and still describes these
+    // arrays — a page the editor is holding says more about its poses
+    // than its legacy arrays can. `exportGraph` rebuilds when it doesn't,
+    // which covers a stored record (no graph) and a host transform that
+    // rewrote the arrays (`setExportSceneTransform`) alike.
+    graph: partial.graph,
     strokeScale: strokeScale ?? partial.strokeScale,
     loadFigure: storageFigureLoader,
     loadBakedFigurePng: loadFigurePngDataUri,
