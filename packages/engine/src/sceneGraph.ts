@@ -443,7 +443,50 @@ export function fromLegacy(state: CompositionState): SceneGraph {
   //    already derives and what group contiguity was enforcing.
   linkChildren(nodes, state.sceneOrder ?? []);
 
-  return { nodes, roots: computeRoots(nodes, state.sceneOrder ?? []), generation: 0 };
+  const graph: SceneGraph = { nodes, roots: computeRoots(nodes, state.sceneOrder ?? []), generation: 0 };
+  rememberArrays(graph, state);
+  return graph;
+}
+
+// ── Which arrays a graph describes ─────────────────────────────────────
+
+/** The per-kind arrays a graph is built from or renders out. */
+type SceneArrays = Pick<CompositionState,
+  'figures' | 'svgObjects' | 'images' | 'texts' | 'paintObjects' | 'patternObjects' | 'groups' | 'sceneOrder'>;
+
+const SCENE_ARRAY_KEYS = [
+  'figures', 'svgObjects', 'images', 'texts', 'paintObjects', 'patternObjects', 'groups', 'sceneOrder',
+] as const;
+
+/** For each graph, the array sets it stands for: the arrays it was built
+ *  from (`fromLegacy`) and the ones it rendered (`toLegacyView`). */
+const describedArrays = new WeakMap<SceneGraph, SceneArrays[]>();
+
+function rememberArrays(graph: SceneGraph, arrays: Partial<SceneArrays>): void {
+  const entry: SceneArrays = {} as SceneArrays;
+  for (const k of SCENE_ARRAY_KEYS) (entry as Record<string, unknown>)[k] = arrays[k];
+  const list = describedArrays.get(graph);
+  if (list) list.push(entry); else describedArrays.set(graph, [entry]);
+}
+
+/**
+ * True when `graph` describes the per-kind arrays `state` carries: they
+ * are the very arrays it was built from, or the very arrays it rendered.
+ *
+ * The question a host has to answer before trusting a state's graph. A
+ * preview path that spreads new arrays over an old state keeps the old
+ * graph beside them, and that graph is a gesture behind the picture; but
+ * a state the reducer made, or a snapshot taken from one, carries a
+ * graph that says MORE than its arrays can — a group's free turn has no
+ * legacy spelling — and rebuilding it from the arrays would lose that,
+ * and then apply the next transform on top of the respelled members.
+ * Identity, not content: the arrays are copy-on-write, so the objects
+ * say whether anything wrote them.
+ */
+export function graphDescribes(graph: SceneGraph, state: Partial<SceneArrays>): boolean {
+  const list = describedArrays.get(graph);
+  if (!list) return false;
+  return list.some((entry) => SCENE_ARRAY_KEYS.every((k) => entry[k] === state[k]));
 }
 
 /**
@@ -643,6 +686,7 @@ export function toLegacyView(graph: SceneGraph): LegacyView {
     figures: [], svgObjects: [], images: [], texts: [],
     paintObjects: [], patternObjects: [], groups: [], sceneOrder: [],
   };
+  rememberArrays(graph, view);
 
   for (const node of graph.nodes.values()) {
     if (node.kind !== 'group') continue;
