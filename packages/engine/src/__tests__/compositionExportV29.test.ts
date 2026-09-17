@@ -14,6 +14,9 @@ import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compos
 import { DEFAULT_LINE_HEIGHT, layoutText } from '../textLayout';
 import { STICKER_BORDER_CELLS } from '../stickerStyle';
 import { SVGObject, ImageObject, TextObject, PathSegment } from '../types';
+import {
+  drawnQuad, expectQuadsClose, legacyQuad, transformsIn,
+} from './exportPose.test-utils';
 
 /** SVG_UNITS_PER_L0_CELL — world cells scale into SVG units by this. */
 const U = 256;
@@ -391,8 +394,13 @@ describe('generateCompositionSVGCore — image effects rotate with the bitmap', 
       })],
       imageBlobs,
     })))!;
-    // Translate to origin, then rotate about the bbox center (4 cells × 256).
-    expect(svg).toContain(`transform="translate(${2 * U}, ${2 * U}) rotate(30 ${4 * U} ${4 * U})"`);
+    // The group puts the image's 8-cell box where the pose says, turned
+    // about its own centre — asserted as the quad, because the export has
+    // spelled that pose two ways (a translate + rotate chain, then one
+    // matrix off the scene graph) and both draw it.
+    const [m] = transformsIn(svg);
+    expectQuadsClose(drawnQuad(m, 8, 8),
+      legacyQuad({ x: 2, y: 2, width: 8, height: 8, angleDeg: 30 }));
     // The border rect is emitted in the LOCAL frame (x/y = 0) so the enclosing
     // transform group rotates it. Before the fix it sat at the world bbox
     // (x = 2 × 256 = 512), unrotated.
@@ -408,12 +416,14 @@ describe('generateCompositionSVGCore — image effects rotate with the bitmap', 
       })],
       imageBlobs,
     })))!;
-    const rotIdx = svg.indexOf('rotate(30');
+    // The posing group, whatever it is spelled with, and then the filter
+    // reference inside it: the shadow offset is cast in the image's own
+    // turned user space rather than in world space.
+    const poseIdx = svg.indexOf('<g transform="');
     const filterRefIdx = svg.indexOf('filter="url(#fx_img_a)"');
-    expect(rotIdx).toBeGreaterThanOrEqual(0);
-    // The filtered group is nested within the rotation transform, so the
-    // shadow offset is cast in the rotated user space rather than world space.
-    expect(filterRefIdx).toBeGreaterThan(rotIdx);
+    expect(poseIdx).toBeGreaterThanOrEqual(0);
+    expect(transformsIn(svg)[0].b).toBeCloseTo(Math.sin(30 * Math.PI / 180));
+    expect(filterRefIdx).toBeGreaterThan(poseIdx);
   });
 });
 

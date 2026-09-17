@@ -6,9 +6,15 @@
  * with pre-deserialized embedded files.
  */
 
-import { CompositionFigure, CompositionState, FileConfig, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
+import { CompItemKind, CompositionFigure, CompositionState, FileConfig, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
 import { patternSVGView } from './patternObjectRender';
-import { SceneGraph, fromLegacy, graphDescribes } from './sceneGraph';
+import {
+  LegacyLeaf, SceneGraph, SceneNode, fromLegacy, graphDescribes, leafNodeFromLegacy, worldMatrix,
+} from './sceneGraph';
+import { localContentBox } from './sceneHitFrame';
+import {
+  Bbox, Mat2D, axisScaleSplit, localMatrix, matMul, matTranslate, matrixString,
+} from './sceneTransform';
 import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
@@ -940,11 +946,59 @@ export function exportGraph(input: CompositionSVGInputs): SceneGraph {
   return fromLegacy(arrays as CompositionState);
 }
 
+/**
+ * A leaf as the export draws it: the node, whose content is spelled in its
+ * OWN space, and the matrix that puts that space in the world.
+ *
+ * The same pair the screen draws through (`drawnPose.DrawnLeaf`), read by
+ * id — see {@link exportGraph}. The fallback is for a node the graph never
+ * saw: the OVERLAY objects are framed and drawn with the scene but are not
+ * in its arrays, so they have no node to find, and `leafNodeFromLegacy` is
+ * the very conversion `fromLegacy` would have made of them.
+ */
+export interface ExportPose {
+  readonly node: SceneNode;
+  readonly world: Mat2D;
+  /** The node's content box in its own space. */
+  readonly box: Bbox;
+  /** `transform` for a `<g>` holding that box's content at the origin, in
+   *  SVG units. */
+  readonly transform: string;
+  /** The box's drawn size in SVG units — its local size through the
+   *  matrix's per-axis scale. What the matrix makes of the box, which is
+   *  not the box, once a node carries a scale of its own. */
+  readonly drawnWidth: number;
+  readonly drawnHeight: number;
+}
+
+export function exportPose(graph: SceneGraph, kind: CompItemKind, leaf: LegacyLeaf): ExportPose {
+  const found = graph.nodes.get(leaf.id);
+  const node = found && found.kind !== 'group' ? found : leafNodeFromLegacy(kind, leaf);
+  const world = found && found.kind !== 'group'
+    ? worldMatrix(graph, leaf.id)
+    : localMatrix(node.transform);
+  const box = localContentBox(node);
+  const { sx, sy } = axisScaleSplit(world);
+  return {
+    node, world, box,
+    // The box's own origin is folded into the matrix, so the content is
+    // emitted at [0, 0, w, h] whatever the kind's box is centred on.
+    transform: matrixString(matMul(world, matTranslate(box.x, box.y)), SVG_UNITS_PER_L0_CELL),
+    drawnWidth: box.width * sx * SVG_UNITS_PER_L0_CELL,
+    drawnHeight: box.height * sy * SVG_UNITS_PER_L0_CELL,
+  };
+}
+
 export async function generateCompositionSVGCore(
   input: CompositionSVGInputs,
   cancelled?: () => boolean,
 ): Promise<string | null> {
   const { imageBlobs } = input;
+  // Where every pose in this document is read from. Built (or adopted)
+  // before any filtering, so a node the export might draw is in it — the
+  // per-kind loops look up by id and the subset/hidden filters never
+  // narrow the ids they can find.
+  const graph = exportGraph(input);
   // A node is dropped from the drawn set when its OWN `hidden` flag is set or
   // when it sits inside a hidden group (an inherited hide — the group carries
   // the flag, its members keep their individual settings).
@@ -1301,31 +1355,30 @@ export async function generateCompositionSVGCore(
 
   for (const img of images) {
     if (cancelled?.()) return null;
-    const ix = img.cellX * U;
-    const iy = img.cellY * U;
-    const iw = img.cellWidth * U;
-    const ih = img.cellHeight * U;
+    // The image's LOCAL frame, placed by one matrix (P5 of
+    // docs/transform-refactor.md). The content below was already drawn
+    // into a local [0, 0, iw, ih] — its framing, border, rounded-corner
+    // clip, tint and soften mask all measure from that origin — so the
+    // whole of it now scales with the node the way NodeLayer's element
+    // does, and the ImageFraming lengths (the Fit letterbox `margin`, the
+    // Tile `tileGap`, the offsets) come along for free instead of staying
+    // at their authored size inside a grown box.
+    const pose = exportPose(graph, 'image', img);
+    const iw = pose.box.width * U;
+    const ih = pose.box.height * U;
     // Real exports prefer the higher-res original; thumbnails/previews keep
     // the small display blob. Fall back to the display blob whenever the
     // original is absent (old saves, or a source that already fit the cap) —
     // and whenever the master would buy nothing, because this export draws
     // the node no larger than its display copy already is (rasterLongEdgePx).
+    // The DRAWN edge, not the local one: a node inside a stretched group
+    // puts more pixels on the raster than its own box asks for.
     const bytes = (input.preferOriginalImages && img.originalImageId
-      && drawsAboveDisplayCopy(img, pxPerUnit, Math.max(iw, ih))
+      && drawsAboveDisplayCopy(img, pxPerUnit, Math.max(pose.drawnWidth, pose.drawnHeight))
       ? imageBlobs[img.originalImageId]
       : undefined) ?? imageBlobs[img.imageId];
     if (!bytes) continue;
     const dataUri = `data:${img.mimeType};base64,${toBase64(bytes)}`;
-    const cx = iw / 2;
-    const cy = ih / 2;
-    const parts: string[] = [`translate(${ix}, ${iy})`];
-    // Free rotation is layered OUTERMOST (about the bbox center), matching
-    // the editor's render order, then the discrete rotation + mirror.
-    if (img.angleDeg) parts.push(`rotate(${img.angleDeg} ${cx} ${cy})`);
-    const rot = img.rotation ?? 0;
-    if (rot !== 0) parts.push(`rotate(${rot} ${cx} ${cy})`);
-    if (img.mirrorH) parts.push(`translate(${iw}, 0) scale(-1, 1)`);
-    if (img.mirrorV) parts.push(`translate(0, ${ih}) scale(1, -1)`);
     const opacityAttr = img.opacity != null && img.opacity < 1
       ? ` opacity="${img.opacity}"`
       : '';
@@ -1460,10 +1513,10 @@ export async function generateCompositionSVGCore(
       : tintedContent;
     const effected = applyNodeEffects(
       localContent, img.effects, img.id,
-      { cellX: 0, cellY: 0, cellWidth: img.cellWidth, cellHeight: img.cellHeight, cornerRadius: img.cornerRadius },
+      { cellX: 0, cellY: 0, cellWidth: pose.box.width, cellHeight: pose.box.height, cornerRadius: img.cornerRadius },
       U,
     );
-    const imgMarkup = tintDefs + `<g transform="${parts.join(' ')}">${effected}</g>`;
+    const imgMarkup = tintDefs + `<g transform="${pose.transform}">${effected}</g>`;
     elementsById.set(img.id, wrapWithMaskClip(imgMarkup, maskMap, groups, img));
   }
 

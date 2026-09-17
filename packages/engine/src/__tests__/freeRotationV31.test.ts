@@ -154,6 +154,10 @@ describe('compositionBinaryFormat v31 — free rotation', () => {
   });
 });
 
+import {
+  drawnQuad, expectQuadsClose, legacyQuad, transformsIn,
+} from './exportPose.test-utils';
+
 // ── Export ────────────────────────────────────────────────────────────
 
 function makeInputs(partial: Partial<CompositionSVGInputs>): CompositionSVGInputs {
@@ -165,13 +169,18 @@ function makeInputs(partial: Partial<CompositionSVGInputs>): CompositionSVGInput
 }
 
 describe('generateCompositionSVGCore — free rotation', () => {
-  test('emits a rotate(angle …) transform for a rotated image', async () => {
+  test('draws a rotated image at its angle, about its box centre', async () => {
     const img = makeImage('img_1', { cellWidth: 8, cellHeight: 8, angleDeg: 30 });
     const out = await generateCompositionSVGCore(makeInputs({
       images: [img], imageBlobs: { img_1: new Uint8Array([1, 2, 3, 4]) },
       sceneOrder: ['img_1'],
     }));
-    expect(out).toContain('rotate(30 ');
+    // The quad, not the spelling: the image's group carries one matrix off
+    // the scene graph now and used to carry `translate() rotate(30 cx cy)`.
+    const [m] = transformsIn(out!);
+    expectQuadsClose(drawnQuad(m, 8, 8), legacyQuad({
+      x: img.cellX, y: img.cellY, width: 8, height: 8, angleDeg: 30,
+    }));
   });
 
   test('wraps a rotated svg object in a rotate group; omits it when upright', async () => {
