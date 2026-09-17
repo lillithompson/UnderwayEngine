@@ -179,9 +179,10 @@ function GridButton({ label, icon, iconColor, onPress, compact }: {
 /** One type-specific option, described rather than rendered — it becomes a
  *  tab of the Edit sheet (EditTabSpec), lit while its page is showing. */
 /** The pages whose open state the panel keeps itself (see `localSub`). */
-type LocalSubmenu = 'background' | 'card' | 'shape' | 'image';
+type LocalSubmenu = 'background' | 'card' | 'shape' | 'image' | 'rigColor';
 const isLocalSubmenu = (key: SubmenuKey): key is LocalSubmenu =>
-  key === 'background' || key === 'card' || key === 'shape' || key === 'image';
+  key === 'background' || key === 'card' || key === 'shape' || key === 'image'
+  || key === 'rigColor';
 
 interface OptionSpec extends Omit<EditTabSpec, 'selected'> {
   /** The page this option opens. Options carrying one light up as tabs while
@@ -372,14 +373,17 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // points own it: the Type tab opens on 'font', Spacing on 'spacing', Align
   // on 'align' (all via openSubmenu).
   const [textPage, setTextPage] = useState<TextPage>('text');
-  // The Color, Shape and Image pages are the panel's own: they hold nothing
-  // the host has to know is open (a swatch opens the host's picker, a toggle
-  // fires its action, the Radius slider writes through onStrokeRadius as it
-  // always did, Replace is one press and the resolution is just read), so
-  // unlike the effect pages their open state lives here rather than on the
-  // model. A page NOT on this list and not wired to a host flag can never
-  // open at all — which is what left the Image tab dead, and an image's
-  // sheet landing on it empty.
+  // The Color, Shape, Image and rig-Color pages are the panel's own: they
+  // hold nothing the host has to know is open (a swatch opens the host's
+  // picker, a toggle fires its action, the Radius slider writes through
+  // onStrokeRadius as it always did, Replace is one press and the
+  // resolution is just read), so unlike the effect pages their open state
+  // lives here rather than on the model. A page NOT on this list and not
+  // wired to a host flag can never open at all — which is what left the
+  // Image tab dead, and an image's sheet landing on it empty, and what
+  // left the rig's Color tab pressable but inert: openSubmenu ran off the
+  // end of its chain (rigColor names no rig PART, so the rig branch skips
+  // it too) and set nothing, so the page could never become the open one.
   const [localSub, setLocalSub] = useState<LocalSubmenu | null>(null);
   // ── The pages (Crop / Shadow / Border / Text …) ──────────────────────
   // The open page is what the Edit sheet's well holds, and its tab is the lit
@@ -694,10 +698,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       || (localSub === 'background' && !backgroundable)
       || (localSub === 'card' && !cardable)
       || (localSub === 'shape' && !svgShapeable)
-      || (localSub === 'image' && !imageable)) {
+      || (localSub === 'image' && !imageable)
+      || (localSub === 'rigColor' && !model.showRigOptions)) {
       setLocalSub(null);
     }
-  }, [model.visible, backgroundable, cardable, svgShapeable, imageable, localSub]);
+  }, [model.visible, backgroundable, cardable, svgShapeable, imageable, model.showRigOptions, localSub]);
 
   // Seed the shadow / border drafts from the current effect each time the
   // controls open.

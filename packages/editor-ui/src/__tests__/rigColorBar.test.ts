@@ -80,6 +80,28 @@ describe('the panel wires it to the host', () => {
     expect(ADAPTER).toContain('rigOutlinesColor?: RGBLike;');
   });
 
+  it('OPENS when its tab is pressed — a panel-kept page, like Shape', () => {
+    // The tab was drawn and pressable and did nothing at all. openSubmenu
+    // walks a chain: a panel-kept page, then each host flag, then the rig
+    // PART pages — and rigColor names no part of the figure, so it fell
+    // off the end and set nothing. The page could never become the open
+    // one, so the well never held it and the tab never lit.
+    //
+    // It belongs on the panel's own list, the way Shape and Image do:
+    // nothing about the page is the host's to know is open. Its two rows
+    // write through the host as any hue row does, and its circles open
+    // the host's picker, neither of which asks whether the page is up.
+    expect(PANEL).toContain(
+      "type LocalSubmenu = 'background' | 'card' | 'shape' | 'image' | 'rigColor';",
+    );
+    expect(PANEL).toContain("|| key === 'rigColor';");
+    // …and folds away with the selection that offered it, like every
+    // other panel-kept page: a rig's page must not linger over the next
+    // object's actions.
+    expect(PANEL).toContain("|| (localSub === 'rigColor' && !model.showRigOptions)) {");
+    expect(PANEL).toContain('model.showRigOptions, localSub]);');
+  });
+
   it('gives the page no Remove line, like the pose pages', () => {
     const branch = PANEL.slice(
       PANEL.indexOf("} else if (displaySub === 'rigColor') {"),
