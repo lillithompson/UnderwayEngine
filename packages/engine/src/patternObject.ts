@@ -574,9 +574,10 @@ export function patternClearEdits(p: PatternObject): PatternCellEdit[] {
 // ── World point → pattern cell ──────────────────────────────────────
 
 /**
- * Map a world point (already un-rotated by any free `angleDeg` — the
- * caller applies `unrotatePointForNode` first, same as hit testing) to the
- * pattern grid cell under it, or null when the point misses the grid.
+ * Map a point in the pattern's OWN frame — the caller carries a world
+ * point in through `sceneHitFrame.leafHitFrame` first, same as hit testing
+ * — to the pattern grid cell under it, or null when the point misses the
+ * grid.
  *
  * Handles the two bake-time transforms in inverse:
  *  - repeat mode: the point is taken modulo the tile grid (anchored at

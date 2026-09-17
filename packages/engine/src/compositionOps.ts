@@ -2355,40 +2355,6 @@ export function findTextAtCell(
  *  Figures use AABB or quad-list testing (matches the legacy figure
  *  hit-test in handleTap). Images use bbox-only. Returns the kind so
  *  callers can run kind-specific post-processing (e.g. group expansion). */
-/**
- * Rotate a world query point back into a node's UNROTATED local frame by
- * `-node.angleDeg` about the node's bbox center. The forward render applies
- * a clockwise `rotate(angleDeg)` (CSS/SVG, y-down) about that center, so the
- * inverse un-rotates before the axis-aligned adapter tests. Returns the
- * point unchanged when the node has no free rotation.
- *
- * LEGACY, and on its way out (P5). It undoes one channel of a pose and
- * nothing else — not a scale of the node's own, not a group's transform —
- * which is only the whole truth while the legacy fields are. The scene
- * graph's answer is `sceneHitFrame.leafHitFrame`, the inverse of the
- * node's world matrix, exact for every affine; `findSceneObjectAtCell`
- * reads that now. What is left here are the host callers that still hand
- * in a bare object of their own (canvasTap, pushBrush, tileTool,
- * sceneOcclusion, CanvasSurface's live gestures); this goes with the last
- * of them.
- */
-export function unrotatePointForNode(
-  node: { cellX: number; cellY: number; cellWidth: number; cellHeight: number; angleDeg?: number },
-  x: number, y: number,
-): [number, number] {
-  const deg = node.angleDeg;
-  if (!deg) return [x, y];
-  const cx = node.cellX + node.cellWidth / 2;
-  const cy = node.cellY + node.cellHeight / 2;
-  const rad = (deg * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const dx = x - cx;
-  const dy = y - cy;
-  // Inverse of the y-down clockwise rotation matrix R(deg).
-  return [cx + dx * cos + dy * sin, cy - dx * sin + dy * cos];
-}
-
 export function findSceneObjectAtCell(
   state: CompositionState, cellX: number, cellY: number,
   options?: { ignoreLock?: boolean },

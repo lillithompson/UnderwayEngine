@@ -179,7 +179,7 @@ describe('resizing a repeating pattern', () => {
   // frame, so what has to hold still is where the rotation PUTS it.
   const RAD = (deg: number) => (deg * Math.PI) / 180;
   /** The tile box's anchor as the page sees it: turned clockwise about the
-   *  region's centre, the same transform unrotatePointForNode inverts. */
+   *  region's centre, the transform the render draws the node through. */
   const drawnAnchor = (p: PatternObject) => {
     const cx = p.cellX + p.cellWidth / 2;
     const cy = p.cellY + p.cellHeight / 2;

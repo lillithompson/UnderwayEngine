@@ -711,10 +711,10 @@ function textPaintOutset(text: TextObject): number {
   return out;
 }
 
-/** Rotate (x, y) clockwise by `deg` about (cx, cy) in the y-down world frame —
- *  the forward of {@link unrotatePointForNode}, matching the `rotate()` the
- *  text markup emits. The shared primitive, so the markup here and the bake in
- *  compositionMergeObjects can't drift apart on which way a twist turns. */
+/** Rotate (x, y) clockwise by `deg` about (cx, cy) in the y-down world frame,
+ *  matching the `rotate()` the text markup emits. The shared primitive, so the
+ *  markup here and the bake in compositionMergeObjects can't drift apart on
+ *  which way a twist turns. */
 const rotateAboutCW = rotatePointAboutCW;
 
 /**

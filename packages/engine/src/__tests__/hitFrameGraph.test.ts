@@ -18,7 +18,7 @@
 
 import { applySceneOps, buildSetTransform } from '../sceneGraphOps';
 import {
-  computeSVGBbox, findSceneObjectAtCell, unrotatePointForNode, withSceneGraph,
+  computeSVGBbox, findSceneObjectAtCell, withSceneGraph,
 } from '../compositionOps';
 import { computeHitToleranceCells, svgPathHitsPoint } from '../compositionPathHitTest';
 import { fromLegacy, toLegacyView, worldMatrix } from '../sceneGraph';
@@ -101,11 +101,21 @@ describe('a member sheared by its bound group answers for what it draws', () => 
     return state;
   }
 
-  /** The OLD reading, verbatim: the query point un-spun by the leaf's own
-   *  `angleDeg` about its legacy bbox centre, tested against that box. */
+  /** The OLD reading, spelled out: the query point un-spun by the leaf's
+   *  own `angleDeg` about its legacy bbox centre — the inverse of the
+   *  y-down clockwise turn the render applied there — and tested against
+   *  that box. Written out rather than called, because the engine function
+   *  that used to say this (`unrotatePointForNode`) went with its last
+   *  caller; what it said is still what this file is contrasting. */
   function legacySays(state: CompositionState, x: number, y: number): boolean {
     const n = state.images![0];
-    const [hx, hy] = unrotatePointForNode(n, x, y);
+    const cx = n.cellX + n.cellWidth / 2;
+    const cy = n.cellY + n.cellHeight / 2;
+    const rad = ((n.angleDeg ?? 0) * Math.PI) / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    const dx = x - cx, dy = y - cy;
+    const hx = cx + dx * cos + dy * sin;
+    const hy = cy - dx * sin + dy * cos;
     return hx >= n.cellX && hx < n.cellX + n.cellWidth
       && hy >= n.cellY && hy < n.cellY + n.cellHeight;
   }

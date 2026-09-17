@@ -430,7 +430,7 @@ const patternBboxAdapter = makeBboxAdapter<PatternObject>('pattern');
  * moves that centre, so holding the lattice still in the box's frame is
  * not holding it still on the page. The anchor takes the part of the
  * centre's travel the rotation does not carry it through — (I − R(−θ))·ΔC,
- * with R the same y-down clockwise rotation unrotatePointForNode inverts —
+ * with R the y-down clockwise rotation the render draws the node through —
  * and the tiling stays where the eye left it at any angle.
  */
 export function heldTileOffsets(

@@ -5,7 +5,6 @@ import {
   findSceneObjectAtCell,
   revertCompOps,
   setNodeAngleDeg,
-  unrotatePointForNode,
 } from '../compositionOps';
 import {
   serializeComposition,
@@ -68,32 +67,6 @@ function makeState(parts: Partial<CompositionState> = {}): CompositionState {
     ...parts,
   };
 }
-
-// ── unrotatePointForNode ──────────────────────────────────────────────
-
-describe('unrotatePointForNode', () => {
-  const node = { cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4 };
-
-  test('is a no-op without a free angle', () => {
-    expect(unrotatePointForNode(node, 1.3, 2.7)).toEqual([1.3, 2.7]);
-    expect(unrotatePointForNode({ ...node, angleDeg: 0 }, 1.3, 2.7)).toEqual([1.3, 2.7]);
-  });
-
-  test('inverts the forward clockwise rotation about the bbox center', () => {
-    const deg = 37;
-    const cx = 2, cy = 2;
-    const rad = (deg * Math.PI) / 180;
-    // Forward render maps a local point to screen via the y-down CW matrix.
-    const local = { x: 3.1, y: 1.2 };
-    const forward = {
-      x: cx + (local.x - cx) * Math.cos(rad) - (local.y - cy) * Math.sin(rad),
-      y: cy + (local.x - cx) * Math.sin(rad) + (local.y - cy) * Math.cos(rad),
-    };
-    const [ux, uy] = unrotatePointForNode({ ...node, angleDeg: deg }, forward.x, forward.y);
-    expect(ux).toBeCloseTo(local.x, 9);
-    expect(uy).toBeCloseTo(local.y, 9);
-  });
-});
 
 // ── Rotated hit-testing ───────────────────────────────────────────────
 
