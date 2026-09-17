@@ -11,7 +11,8 @@ import { arcAllPoints } from './compositionArcMath';
 import { colorsEqual } from './colorBlend';
 import { SegmentOverrides, remapOverrides } from './tileSegmentOverrides';
 import { worldSnapshot, diffWorldSnapshots } from './worldSnapshot';
-import { fromLegacy, toLegacyView } from './sceneGraph';
+import { fromLegacy, toLegacyView, worldMatrix } from './sceneGraph';
+import { NodeHitFrame, graphOf, leafHitFrame } from './sceneHitFrame';
 import {
   applyLegacyEntryToGraph, invertOnGraph, isPoseOp, legacyOpToSceneOps,
 } from './legacyOpBridge';
@@ -2354,11 +2355,23 @@ export function findTextAtCell(
  *  Figures use AABB or quad-list testing (matches the legacy figure
  *  hit-test in handleTap). Images use bbox-only. Returns the kind so
  *  callers can run kind-specific post-processing (e.g. group expansion). */
-/** Rotate a world query point back into a node's UNROTATED local frame by
- *  `-node.angleDeg` about the node's bbox center. The forward render applies
- *  a clockwise `rotate(angleDeg)` (CSS/SVG, y-down) about that center, so the
- *  inverse un-rotates before the axis-aligned adapter tests. Returns the
- *  point unchanged when the node has no free rotation. */
+/**
+ * Rotate a world query point back into a node's UNROTATED local frame by
+ * `-node.angleDeg` about the node's bbox center. The forward render applies
+ * a clockwise `rotate(angleDeg)` (CSS/SVG, y-down) about that center, so the
+ * inverse un-rotates before the axis-aligned adapter tests. Returns the
+ * point unchanged when the node has no free rotation.
+ *
+ * LEGACY, and on its way out (P5). It undoes one channel of a pose and
+ * nothing else — not a scale of the node's own, not a group's transform —
+ * which is only the whole truth while the legacy fields are. The scene
+ * graph's answer is `sceneHitFrame.leafHitFrame`, the inverse of the
+ * node's world matrix, exact for every affine; `findSceneObjectAtCell`
+ * reads that now. What is left here are the host callers that still hand
+ * in a bare object of their own (canvasTap, pushBrush, tileTool,
+ * sceneOcclusion, CanvasSurface's live gestures); this goes with the last
+ * of them.
+ */
 export function unrotatePointForNode(
   node: { cellX: number; cellY: number; cellWidth: number; cellHeight: number; angleDeg?: number },
   x: number, y: number,
@@ -2380,18 +2393,18 @@ export function findSceneObjectAtCell(
   state: CompositionState, cellX: number, cellY: number,
   options?: { ignoreLock?: boolean },
 ): { kind: CompItemKind; id: string } | null {
-  // Build idâ†’node+kind lookup for efficient sceneOrder walk.
-  const lookup = new Map<string, { kind: CompItemKind; node: any }>();
-  for (const f of state.figures) lookup.set(f.id, { kind: 'figure', node: f });
-  for (const s of state.svgObjects) lookup.set(s.id, { kind: 'svg', node: s });
-  for (const i of state.images ?? []) lookup.set(i.id, { kind: 'image', node: i });
-  for (const t of state.texts ?? []) lookup.set(t.id, { kind: 'text', node: t });
-  for (const p of state.paintObjects ?? []) lookup.set(p.id, { kind: 'paint', node: p });
-  for (const p of state.patternObjects ?? []) lookup.set(p.id, { kind: 'pattern', node: p });
+  // The SCENE GRAPH is what this walk reads. Every leaf is tested in its
+  // OWN frame — the query point carried through the inverse of the leaf's
+  // world matrix, against the leaf's local content (sceneHitFrame) — so a
+  // member of a stretched bound group answers for the parallelogram it is
+  // drawn as, not for the nearest rectangle its legacy box can name, and a
+  // node carrying a scale of its own answers at the size it is drawn.
+  const graph = graphOf(state);
 
-  // Zoom-dependent tolerance for SVG path hit testing (squared).
+  // Zoom-dependent tolerance for SVG path hit testing, in WORLD cells. It
+  // comes off the camera, so it is a world length: each node carries it
+  // into its own frame by that frame's `lengthScale`.
   const toleranceCells = computeHitToleranceCells(state.viewport, state.camera);
-  const toleranceSq = toleranceCells * toleranceCells;
 
   const maskMap = buildActiveMaskMap(state);
 
@@ -2400,44 +2413,44 @@ export function findSceneObjectAtCell(
   // membership below) instead of re-walking each node's ancestor chain.
   const hiddenGroups = hiddenGroupIds(state.groups);
 
-  // Track the first SVG whose bbox passes but whose path misses â€”
+  // Track the first SVG whose bbox passes but whose path misses —
   // returned as a fallback when nothing else is behind it.
   let svgBboxFallback: { kind: CompItemKind; id: string } | null = null;
 
   // Per-node gate shared by the selected-preference pre-pass and the main
   // front-to-back walk, so the two can never disagree about a node's
-  // eligibility. Returns the query point rotated into the node's UNROTATED
-  // local frame when the node passes every guard and its bbox contains the
-  // point, else null.
-  const nodeHitAt = (
-    id: string, kind: CompItemKind, node: any,
-  ): [number, number] | null => {
+  // eligibility. Returns the node's frame and the query point IN it when
+  // the node passes every guard and its content accepts the point.
+  const nodeHitAt = (id: string): {
+    kind: CompItemKind; frame: NodeHitFrame; hx: number; hy: number;
+  } | null => {
+    const node = graph.nodes.get(id);
+    if (!node || node.kind === 'group') return null;
+    const kind = node.kind;
     // Inherited lock: a member of a locked group (frame) acts as locked even
     // though its own `locked` flag is untouched. The per-node hitTest below
     // only checks the node's OWN flag, so skip ancestor-group-locked members
     // here. `ignoreLock` (eyedropper) bypasses this like the per-node check.
-    if (!options?.ignoreLock && isGroupChainLocked(state, node.groupId)) return null;
+    if (!options?.ignoreLock && isGroupChainLocked(state, node.parentId)) return null;
     // Inherited hide (mirror of the lock skip above): the per-node hitTest
     // only checks the node's OWN `hidden` flag. Unlike lock, `ignoreLock`
     // does not bypass this — an invisible pixel has no color to sample.
-    if (node.groupId && hiddenGroups.has(node.groupId)) return null;
-    // Free (continuous) rotation is layered on top of the axis-aligned bbox:
-    // the geometry adapters test the UNROTATED shape, so rotate the query
-    // point back into the node's local frame (by -angleDeg about the bbox
-    // center) before every per-node test below. No-op when angleDeg is 0.
-    const [hx, hy] = unrotatePointForNode(node, cellX, cellY);
-    if (!GEOMETRY_ADAPTERS[kind].hitTest(node, hx, hy, options?.ignoreLock)) return null;
+    if (node.parentId && hiddenGroups.has(node.parentId)) return null;
+    const frame = leafHitFrame(node, worldMatrix(graph, id));
+    const [hx, hy] = frame.toLocal(cellX, cellY);
+    if (!GEOMETRY_ADAPTERS[kind].hitTest(frame.object as never, hx, hy, options?.ignoreLock)) return null;
     // Mask gate: a member of a masked group is hit-testable only inside
     // its mask chain (the mask itself is exempt from its own clip). Sits
     // before every kind-specific accept so figures/images/tiled/selected
     // SVGs are all covered AND the svgBboxFallback stays mask-clean.
     // Returning null (not a hit) lets the caller fall through to visible
-    // objects behind the clipped-away area.
+    // objects behind the clipped-away area. The masks are world geometry,
+    // so this one takes the WORLD point.
     if (maskMap.size > 0
-      && !pointPassesMasks(getAncestorMasks(maskMap, state.groups, node.groupId), id, cellX, cellY)) {
+      && !pointPassesMasks(getAncestorMasks(maskMap, state.groups, node.parentId), id, cellX, cellY)) {
       return null;
     }
-    return [hx, hy];
+    return { kind, frame, hx, hy };
   };
 
   // Sticky selection: once an object is selected, a tap or drag anywhere
@@ -2452,21 +2465,17 @@ export function findSceneObjectAtCell(
     for (let i = state.sceneOrder.length - 1; i >= 0; i--) {
       const id = state.sceneOrder[i];
       if (!state.selectedFigureIds.has(id)) continue;
-      const entry = lookup.get(id);
-      if (!entry) continue;
-      if (nodeHitAt(id, entry.kind, entry.node)) return { kind: entry.kind, id };
+      const hit = nodeHitAt(id);
+      if (hit) return { kind: hit.kind, id };
     }
   }
 
   // Walk sceneOrder front-to-back (last index = front).
   for (let i = state.sceneOrder.length - 1; i >= 0; i--) {
     const id = state.sceneOrder[i];
-    const entry = lookup.get(id);
-    if (!entry) continue;
-    const { kind, node } = entry;
-    const hit = nodeHitAt(id, kind, node);
+    const hit = nodeHitAt(id);
     if (!hit) continue;
-    const [hx, hy] = hit;
+    const { kind, frame, hx, hy } = hit;
 
     // Bbox hit confirmed.
     if (kind === 'paint') {
@@ -2476,13 +2485,16 @@ export function findSceneObjectAtCell(
       // take the hit, so the blank space of a sparse island falls through
       // to whatever sits behind it.
       if (state.selectedFigureIds.has(id)) return { kind, id };
-      if (paintObjectAlphaHitTest(node, hx, hy, toleranceCells)) return { kind, id };
+      if (paintObjectAlphaHitTest(
+        frame.object as PaintObject, hx, hy, toleranceCells * frame.lengthScale,
+      )) return { kind, id };
       continue;
     }
     if (kind !== 'svg') return { kind, id };  // figure/image/text/pattern: bbox is definitive
 
+    const svg = frame.object as SVGObject;
     // SVG: tiled objects fill their region, so bbox is definitive.
-    if (node.tileMode === 'repeat') return { kind, id };
+    if (svg.tileMode === 'repeat') return { kind, id };
 
     // Selected SVGs are bbox-definitive: the user has expressed intent
     // to interact with this object, so its bbox claims hits even where
@@ -2492,10 +2504,13 @@ export function findSceneObjectAtCell(
     // the pre-pass is skipped but a selected SVG should still win its bbox.
     if (state.selectedFigureIds.has(id)) return { kind, id };
 
-    // SVG: precise path-distance test (in the node's unrotated frame).
-    if (svgPathHitsPoint(node, hx, hy, toleranceSq)) return { kind, id };
+    // SVG: precise path-distance test, in the node's own frame — so the
+    // tolerance comes in through `lengthScale` and a path drawn half size
+    // is as easy to grab as it looks.
+    const tol = toleranceCells * frame.lengthScale;
+    if (svgPathHitsPoint(svg, hx, hy, tol * tol)) return { kind, id };
 
-    // Bbox hit but path miss â€” record as fallback (first/topmost only).
+    // Bbox hit but path miss — record as fallback (first/topmost only).
     if (!svgBboxFallback) svgBboxFallback = { kind, id };
   }
 
