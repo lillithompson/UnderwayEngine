@@ -161,11 +161,16 @@ export function localUnder(
   graph: SceneGraph, nodeId: string, parentId: string | undefined,
 ): LocalTransform {
   const world = worldMatrix(graph, nodeId);
-  if (!parentId) return decomposeMatrix(world);
+  // Spelled with the flips the node already names, so grouping a mirrored
+  // node does not turn its horizontal flip into "upside down and half
+  // round" in the view — the same picture, but not what the user said.
+  const own = graph.nodes.get(nodeId)?.transform ?? LOCAL_IDENTITY;
+  const spelled = (t: LocalTransform) => respellMirror(t, own);
+  if (!parentId) return spelled(decomposeMatrix(world));
   const parent = graph.nodes.get(parentId);
-  if (!parent) return decomposeMatrix(world);
+  if (!parent) return spelled(decomposeMatrix(world));
   try {
-    return decomposeMatrix(matMul(matInvert(worldMatrix(graph, parentId)), world));
+    return spelled(decomposeMatrix(matMul(matInvert(worldMatrix(graph, parentId)), world)));
   } catch {
     // A collapsed ancestor has no inverse. Keeping the node's own
     // transform leaves it somewhere recoverable instead of at the origin.

@@ -27,8 +27,10 @@ import {
   EMPTY_GRAPH, SceneGraph, ancestors, descendants, flattenLeaves, fromLegacy,
   getNode, toLegacyView, worldBbox, worldMatrix, worldSegments,
 } from '../sceneGraph';
-import { LOCAL_IDENTITY, localMatrix, matIsSimilarity } from '../sceneTransform';
-import { applySceneOps, buildSetTransform, buildUngroup } from '../sceneGraphOps';
+import {
+  LOCAL_IDENTITY, LocalTransform, localMatrix, matApplyPoint, matIsSimilarity, transformAboutPivot,
+} from '../sceneTransform';
+import { applySceneOps, buildGroup, buildSetTransform, buildUngroup } from '../sceneGraphOps';
 import { diffWorldSnapshots, worldSnapshot } from '../worldSnapshot';
 import {
   CompUndoEntry, CompositionState, GroupNode, ImageObject, PathSegment,
@@ -761,5 +763,170 @@ describe('the view scales what a leaf draws inside its box', () => {
     expect(diffWorldSnapshots(
       worldSnapshot({ ...state, ...once }), worldSnapshot({ ...state, ...twice }),
     )).toBeNull();
+  });
+});
+
+describe('the view draws a turned member of a stretched group where the graph puts it', () => {
+  test('a quarter-turned path in a group pulled off-square stretches along the page', () => {
+    // A 2x4 rectangle turned a quarter (so 4 across, 2 down), in a group
+    // then pulled three times wider: on the page it must read 12 across
+    // and 2 down. The view keeps the path un-turned by the node's own
+    // spin, so that un-turn has to come off the OUTSIDE of the world
+    // matrix; off the inside it is only right for a uniform scale.
+    const rect = (x: number, y: number, w: number, h: number) => [
+      line([x, y], [x + w, y]), line([x + w, y], [x + w, y + h]),
+      line([x + w, y + h], [x, y + h]), line([x, y + h], [x, y]),
+    ];
+    const state = makeState({
+      svgObjects: [svg({ id: 'svg_1', groupId: 'g1', segments: rect(3, 3, 2, 4),
+        cellX: 3, cellY: 3, cellWidth: 2, cellHeight: 4 })],
+      groups: [group({ id: 'g1' })],
+      sceneOrder: ['svg_1'],
+    });
+    let g = fromLegacy(state);
+    const node = getNode(g, 'svg_1')!;
+    g = applySceneOps(g, [buildSetTransform(g, 'svg_1', { ...node.transform, rotationDeg: 90 })!]);
+    g = applySceneOps(g, [buildSetTransform(g, 'g1', { ...LOCAL_IDENTITY, sx: 3, sy: 1 })!]);
+    const drawn = worldSnapshot({ ...state, ...toLegacyView(g) })[0].segments!;
+    const nums = drawn.match(/-?[\d.]+/g)!.map(Number);
+    const xs = nums.filter((_, i) => i % 2 === 0), ys = nums.filter((_, i) => i % 2 === 1);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(12, 6);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(2, 6);
+    // And exactly the graph's own world path, vertex for vertex.
+    const q = (n: number) => Math.round(n * 1e6) / 1e6 || 0;
+    const want = worldSegments(g, 'svg_1')
+      .map((seg) => `L ${q(seg.start[0])},${q(seg.start[1])} ${q(seg.end[0])},${q(seg.end[1])}`)
+      .join(' ');
+    expect(drawn).toBe(want);
+  });
+
+  test('grouping a mirrored leaf keeps it reading as mirrored', () => {
+    const state = makeState({
+      images: [image({ id: 'img_1', mirrorH: true, cellX: 2, cellY: 2 })],
+      sceneOrder: ['img_1'],
+    });
+    const g = fromLegacy(state);
+    const grouped = applySceneOps(g, buildGroup(g, ['img_1'], 'g1', 'G'));
+    expect(getNode(grouped, 'img_1')!.transform.mirrorH).toBe(true);
+    expect(toLegacyView(grouped).images[0]).toMatchObject({ mirrorH: true, cellX: 2, cellY: 2 });
+    expect(toLegacyView(grouped).images[0].mirrorV).toBeUndefined();
+  });
+});
+
+describe('the view keeps an untouched leaf as the same object', () => {
+  test('a pose op on one leaf hands every other leaf back by identity', () => {
+    const state = withSceneGraph(makeState({
+      images: [image({ id: 'img_1' }), image({ id: 'img_2', cellX: 10 })],
+      texts: [text({ id: 'txt_1', cellY: 8 })],
+      sceneOrder: ['img_1', 'img_2', 'txt_1'],
+    }));
+    const moved = applyCompOps(state, [{ op: 'moveNode', nodeId: 'img_1', dx: 1, dy: 0 }]);
+    expect(moved.images![0]).not.toBe(state.images![0]);
+    expect(moved.images![1]).toBe(state.images![1]);
+    expect(moved.texts![0]).toBe(state.texts![0]);
+    // And a composition without a graph gets the same courtesy: a leaf the
+    // op did not touch is the object it was.
+    const plain = makeState({
+      images: [image({ id: 'img_1' }), image({ id: 'img_2', cellX: 10 })],
+      sceneOrder: ['img_1', 'img_2'],
+    });
+    const g = fromLegacy(plain);
+    const after = applyCompOps(plain, [{
+      op: 'setTransform', nodeId: 'img_1',
+      from: getNode(g, 'img_1')!.transform, to: { ...getNode(g, 'img_1')!.transform, tx: 5 },
+    }]);
+    expect(after.images![1]).toBe(plain.images![1]);
+    expect(after.images![0]).not.toBe(plain.images![0]);
+    // A path too: its vertex arrays are reused when nothing moved them.
+    const paths = makeState({
+      svgObjects: [svg({ id: 'svg_1' }), svg({ id: 'svg_2', segments: [line([9, 9], [12, 11])],
+        cellX: 9, cellY: 9, cellWidth: 3, cellHeight: 2 })],
+      sceneOrder: ['svg_1', 'svg_2'],
+    });
+    const pg = fromLegacy(paths);
+    const t = getNode(pg, 'svg_1')!.transform;
+    const moved2 = applyCompOps(paths, [{ op: 'setTransform', nodeId: 'svg_1', from: t, to: { ...t, tx: t.tx + 2 } }]);
+    expect(moved2.svgObjects[1]).toBe(paths.svgObjects[1]);
+    expect(moved2.svgObjects[0]).not.toBe(paths.svgObjects[0]);
+  });
+
+  test('a leaf with no discrete channel spells its whole turn as the free angle', () => {
+    // An image born un-turned and turned a quarter by the graph reports
+    // its un-turned box and `angleDeg: 90` — never `rotation: 90` with the
+    // box swapped: its content was authored against the un-turned box and
+    // the renderer turns it at draw time either way. One that came in
+    // with a quarter turn keeps that channel.
+    const state = makeState({
+      images: [
+        image({ id: 'img_free', cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 3 }),
+        image({ id: 'img_quarter', cellX: 10, cellY: 0, cellWidth: 3, cellHeight: 4, rotation: 90 }),
+      ],
+      sceneOrder: ['img_free', 'img_quarter'],
+    });
+    let g = fromLegacy(state);
+    for (const id of ['img_free', 'img_quarter']) {
+      const t = getNode(g, id)!.transform;
+      g = applySceneOps(g, [buildSetTransform(g, id, transformAboutPivotOf(g, id, 90))!]);
+      void t;
+    }
+    const view = toLegacyView(g);
+    expect(view.images[0]).toMatchObject({ cellWidth: 4, cellHeight: 3, angleDeg: 90 });
+    expect(view.images[0].rotation).toBeUndefined();
+    expect(view.images[1]).toMatchObject({ cellWidth: 4, cellHeight: 3, rotation: 180 });
+    expect(view.images[1].angleDeg).toBeUndefined();
+    expect(diffWorldSnapshots(
+      worldSnapshot({ ...state, ...view }),
+      worldSnapshot({ ...state, ...toLegacyView(fromLegacy({ ...state, ...view })) }),
+    )).toBeNull();
+  });
+
+  test('a creation-tool line\'s straddle box rides the transform with its path', () => {
+    const state = makeState({
+      svgObjects: [svg({ id: 'svg_1', segments: [line([2, 4], [10, 4])],
+        cellX: 2, cellY: 4, cellWidth: 8, cellHeight: 0,
+        lineDirection: 'horizontal', creationBox: { minX: 2, minY: 3.5, width: 8, height: 1 } })],
+      sceneOrder: ['svg_1'],
+    });
+    let g = fromLegacy(state);
+    expect(toLegacyView(g).svgObjects[0].creationBox).toEqual({ minX: 2, minY: 3.5, width: 8, height: 1 });
+    const t = getNode(g, 'svg_1')!.transform;
+    g = applySceneOps(g, [buildSetTransform(g, 'svg_1', { ...t, tx: t.tx + 1, ty: t.ty + 3 })!]);
+    expect(toLegacyView(g).svgObjects[0].creationBox).toEqual({ minX: 3, minY: 6.5, width: 8, height: 1 });
+  });
+});
+
+/** The node's transform turned `deg` about its own content centre. */
+function transformAboutPivotOf(g: SceneGraph, id: string, deg: number): LocalTransform {
+  const node = getNode(g, id)!;
+  const b = node.localBox!;
+  const pivot = matApplyPoint(localMatrix(node.transform), b.x + b.width / 2, b.y + b.height / 2);
+  return transformAboutPivot(node.transform, pivot, { rotateDeg: deg });
+}
+
+describe('a repeat-mode path keeps its region through the graph', () => {
+  test('the region rides the transform and a quarter turn spins it about its centre', () => {
+    // The tile is a small shape; the REGION it repeats over is the stored
+    // box, far larger, and nothing about the path can say where it is.
+    const state = makeState({
+      svgObjects: [svg({ id: 'svg_1', segments: [line([4, 6], [10, 10])], tileMode: 'repeat',
+        tileWidthL0: 6, tileHeightL0: 4,
+        cellX: 4, cellY: 6, cellWidth: 18, cellHeight: 8 })],
+      sceneOrder: ['svg_1'],
+    });
+    let g = fromLegacy(state);
+    expect(toLegacyView(g).svgObjects[0]).toMatchObject({ cellX: 4, cellY: 6, cellWidth: 18, cellHeight: 8 });
+    expect(worldBbox(g, 'svg_1')).toEqual({ x: 4, y: 6, width: 18, height: 8 });
+    // Turned a quarter about the region's centre (13, 10): the view keeps
+    // the region as its own un-turned box and says the turn.
+    const t = getNode(g, 'svg_1')!.transform;
+    g = applySceneOps(g, [buildSetTransform(g, 'svg_1', transformAboutPivot(t, [13, 10], { rotateDeg: 90 }))!]);
+    const view = toLegacyView(g).svgObjects[0];
+    expect(view).toMatchObject({ cellX: 4, cellY: 6, cellWidth: 18, cellHeight: 8, angleDeg: 90 });
+    // ...and the drawn footprint is the region a quarter round.
+    const b = worldBbox(g, 'svg_1');
+    expect(b.x).toBeCloseTo(9, 9);
+    expect(b.y).toBeCloseTo(1, 9);
+    expect(b.width).toBeCloseTo(8, 9);
+    expect(b.height).toBeCloseTo(18, 9);
   });
 });

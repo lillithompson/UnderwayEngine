@@ -546,11 +546,12 @@ describe('setTransform travels as a legacy op', () => {
     const after = applyCompOps(before, [setGroup]);
     // The member rode the group's new transform: its 4x3 box sits at
     // (-2,-2) in group space, which turned 90 about the group origin and
-    // carried to (7,-1) spans x in [6, 9] and y in [-3, 1].
-    const img = after.images!.find((i) => i.id === 'img_1')!;
-    expect(img.cellX).toBeCloseTo(6, 9);
-    expect(img.cellY).toBeCloseTo(-3, 9);
-    expect(img.rotation).toBe(90);
+    // carried to (7,-1) is drawn a quarter round, centred on (7.5, -1).
+    const img = worldSnapshot(after).find((s) => s.id === 'img_1')!;
+    expect(img.at[0]).toBeCloseTo(7.5, 9);
+    expect(img.at[1]).toBeCloseTo(-1, 9);
+    expect(img.box).toEqual([4, 3]);
+    expect(img.turn).toBe(90);
     expect(after.groups.find((g) => g.id === 'g1')!.rotation).toBe(90);
     // The other leaf is untouched.
     expect(after.images!.find((i) => i.id === 'img_2')).toMatchObject({ cellX: 10, cellY: 5 });

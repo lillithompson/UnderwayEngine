@@ -22,8 +22,8 @@
 
 import {
   LOCAL_IDENTITY, LocalTransform, MAT_IDENTITY, Mat2D,
-  decomposeMatrix, localMatrix, matApplyBbox, matApplyPoint, matInvert, matMul,
-  normalizeDeg,
+  decomposeMatrix, localMatrix, matAbout, matApplyBbox, matApplyPoint, matInvert, matMul,
+  normalizeDeg, respellMirror,
 } from './sceneTransform';
 import type { Bbox } from './transform2d';
 import { contentBoxCells } from './textLayout';
@@ -66,12 +66,21 @@ export interface SceneNode {
    * (figure, image, text, paint, pattern). Always axis-aligned with its
    * origin at (0, 0) — the turn that used to swap its width and height
    * lives on `transform` now.
+   *
+   * An svg carries one too, centred on its origin: the legacy leaf's
+   * stored box, which is the path's own bounds for a drawn shape but the
+   * REGION a repeat-mode path tiles — content in its own right, not
+   * something the path can say.
    */
   readonly localBox?: Bbox;
   /** svg only: path geometry in the node's own space. */
   readonly localSegments?: readonly PathSegment[];
   /** svg only: per-colour sub-paths, in the node's own space. */
   readonly localSubpaths?: readonly SVGSubpath[];
+  /** svg only: a creation-tool H/V line's straddle box (`creationBox`),
+   *  in the node's own space — it is world geometry the legacy leaf
+   *  carries beside its path, so it rides the transform the same way. */
+  readonly localCreationBox?: Bbox;
   /** The legacy object, for everything that is not pose. */
   readonly content?: LegacyLeaf;
 }
@@ -241,8 +250,9 @@ export function worldBbox(graph: SceneGraph, id: string): Bbox {
       .filter((n) => n.kind !== 'group')
       .map((n) => worldBbox(graph, n.id)));
   }
+  if (node.localBox) return matApplyBbox(m, node.localBox);
   if (node.localSegments) return matApplyBbox(m, segmentsBbox(node.localSegments));
-  return matApplyBbox(m, node.localBox ?? { x: 0, y: 0, width: 0, height: 0 });
+  return matApplyBbox(m, { x: 0, y: 0, width: 0, height: 0 });
 }
 
 /** The node's path geometry in world space. svg kinds only. */
@@ -280,6 +290,20 @@ export function mapSegments(
       start: matApplyPoint(m, seg.start[0], seg.start[1]),
       end: matApplyPoint(m, seg.end[0], seg.end[1]),
     });
+}
+
+/** `next`, or `prev` itself when every vertex is exactly the same. */
+function sameGeometry(next: PathSegment[], prev: readonly PathSegment[] | undefined): PathSegment[] {
+  if (!prev || prev.length !== next.length) return next;
+  for (let i = 0; i < next.length; i++) {
+    const a = next[i], b = prev[i];
+    if (a.kind !== b.kind) return next;
+    if (a.start[0] !== b.start[0] || a.start[1] !== b.start[1]) return next;
+    if (a.end[0] !== b.end[0] || a.end[1] !== b.end[1]) return next;
+    if (a.kind === 'arc' && b.kind === 'arc'
+      && (a.center[0] !== b.center[0] || a.center[1] !== b.center[1])) return next;
+  }
+  return prev as PathSegment[];
 }
 
 function mapSubpaths(
@@ -424,7 +448,12 @@ export function fromLegacy(state: CompositionState): SceneGraph {
       // reports it per member. A model with the angle folded into
       // vertices has nowhere to answer those from.
       const segments = svg.segments ?? [];
-      const c = centreOf(segments);
+      // The node's origin is the centre of the STORED box, which is what
+      // the renderer turns the path about. For a drawn shape that is the
+      // path's own centre; for a repeat-mode path it is the region's.
+      const c: [number, number] = svg.cellWidth !== undefined && svg.cellHeight !== undefined
+        ? [svg.cellX + svg.cellWidth / 2, svg.cellY + svg.cellHeight / 2]
+        : centreOf(segments);
       const spun = matMul(
         { ...MAT_IDENTITY, e: c[0], f: c[1] },
         localMatrix({ ...LOCAL_IDENTITY, rotationDeg: pose.angleDeg ?? 0 }),
@@ -433,8 +462,20 @@ export function fromLegacy(state: CompositionState): SceneGraph {
         id: leaf.id, kind: 'svg', name: leaf.name, parentId,
         transform: decomposeMatrix(matMul(toLocal, spun)),
         localSegments: mapSegments(segments, { ...MAT_IDENTITY, e: -c[0], f: -c[1] }),
+        ...(svg.cellWidth !== undefined && svg.cellHeight !== undefined ? {
+          localBox: {
+            x: svg.cellX - c[0], y: svg.cellY - c[1],
+            width: svg.cellWidth, height: svg.cellHeight,
+          },
+        } : {}),
         ...(svg.subpaths ? {
           localSubpaths: mapSubpaths(svg.subpaths, { ...MAT_IDENTITY, e: -c[0], f: -c[1] }),
+        } : {}),
+        ...(svg.creationBox ? {
+          localCreationBox: {
+            x: svg.creationBox.minX - c[0], y: svg.creationBox.minY - c[1],
+            width: svg.creationBox.width, height: svg.creationBox.height,
+          },
         } : {}),
         ...(leaf.locked ? { locked: true } : {}),
         content: leaf,
@@ -445,8 +486,11 @@ export function fromLegacy(state: CompositionState): SceneGraph {
     const { transform: world, localBox } = poseToTransform(pose);
     nodes.set(leaf.id, {
       id: leaf.id, kind, name: leaf.name, parentId,
+      // A grouped leaf's local pose is its world pose with the group
+      // divided out; spelled with the leaf's own flips where that fits, so
+      // the view keeps reading a mirrored member as mirrored.
       transform: parentId
-        ? decomposeMatrix(matMul(toLocal, localMatrix(world)))
+        ? respellMirror(decomposeMatrix(matMul(toLocal, localMatrix(world))), world)
         : world,
       localBox,
       ...(leaf.locked ? { locked: true } : {}),
@@ -668,12 +712,15 @@ interface PoseFields {
  * The graph holds ONE continuous rotation; legacy holds two, a quarter
  * turn that swaps the bbox and a free angle that does not. The split is
  * not recoverable from the total, so the discrete part comes from the
- * leaf's own `rotation` — unless the total is itself a quarter turn, in
- * which case it is all discrete and the bbox should swap, or the leaf
- * never had a discrete channel, in which case it keeps none and the whole
- * turn is free. Both spellings render the same; they differ in the
- * selection rectangle they report, and this is what keeps a page's stored
- * boxes unmoved across the conversion.
+ * leaf's own `rotation`: a leaf that never had a discrete channel keeps
+ * none and the whole turn is free, whatever its size; a leaf that had one
+ * keeps it, unless the total is itself a quarter turn, in which case it
+ * is all discrete and the bbox swaps. Both spellings render the same;
+ * they differ in the box they report and in the box the leaf's other
+ * fields are read against — a tile offset, a paint island's content rect
+ * — and a leaf whose content was authored against its un-turned box must
+ * keep reporting that box. This is also what keeps a page's stored boxes
+ * unmoved across the conversion.
  *
  * Used for BOTH the world fields and the `local*` caches, from the world
  * matrix and the local one respectively — one derivation, so the two
@@ -693,9 +740,9 @@ function poseFieldsFrom(
   const preferH = flipped && !!carried.mirrorH;
   const turn = normalizeDeg(preferH ? t.rotationDeg - 180 : t.rotationDeg);
 
-  const quarter = isQuarterTurn(turn)
-    ? nearestQuarterTurn(turn)
-    : (carried.rotation ?? 0);
+  const quarter = carried.rotation === undefined
+    ? 0
+    : isQuarterTurn(turn) ? nearestQuarterTurn(turn) : carried.rotation;
   const residual = normalizeDeg(turn - quarter);
 
   // The content box, scaled — the box the turn is applied to.
@@ -743,12 +790,66 @@ function poseFieldsFrom(
  * world fields below are already derived from it.
  */
 function toLegacyLeaf(graph: SceneGraph, node: SceneNode): LegacyLeaf {
+  const world = worldMatrix(graph, node.id);
+  const key = node.content ?? node;
+  const hit = viewCache.get(key);
+  if (hit && sameView(hit, node, world)) return hit.out;
+  const rendered = renderLegacyLeaf(graph, node, world);
+  // A leaf the graph has not moved since its content was read renders to
+  // exactly the fields it already carries: hand back the content object
+  // itself, so a composition that never asked for a graph — the legacy
+  // reducer path — keeps the copy-on-write identity its readers rely on.
+  const out = node.content && sameFields(rendered, node.content) ? node.content : rendered;
+  const entry: ViewEntry = { world, parentId: node.parentId, name: node.name, out };
+  viewCache.set(key, entry);
+  // The rendered leaf is its own content at this pose: a later graph built
+  // from these arrays carries it as `content`, and must hand it straight
+  // back rather than a fresh copy of it.
+  viewCache.set(out, entry);
+  return out;
+}
+
+/**
+ * One rendered leaf per (content, world pose), kept by identity.
+ *
+ * The legacy reducer is copy-on-write — an untouched leaf comes out of an
+ * op as the SAME object — and readers lean on that: the node layer's
+ * per-node memo, the symmetry mirror's "what did this entry touch" diff,
+ * the engine's own rewritten-leaf scan. A view that rendered every leaf
+ * afresh on every pose op would re-render the whole page for one drag and
+ * tell the mirror that everything moved. So a leaf whose content object,
+ * world matrix, parent and name are what they were last time is handed
+ * back as the very object it was last time.
+ */
+interface ViewEntry {
+  world: Mat2D;
+  parentId?: string;
+  name?: string;
+  out: LegacyLeaf;
+}
+const viewCache = new WeakMap<object, ViewEntry>();
+
+/** Shallow field equality, an absent key and an `undefined` one alike. */
+function sameFields(a: object, b: object): boolean {
+  const ra = a as Record<string, unknown>, rb = b as Record<string, unknown>;
+  for (const k of new Set([...Object.keys(ra), ...Object.keys(rb)])) {
+    if (ra[k] !== rb[k]) return false;
+  }
+  return true;
+}
+
+function sameView(e: ViewEntry, node: SceneNode, world: Mat2D): boolean {
+  const w = e.world;
+  return e.parentId === node.parentId && e.name === node.name
+    && w.a === world.a && w.b === world.b && w.c === world.c
+    && w.d === world.d && w.e === world.e && w.f === world.f;
+}
+
+function renderLegacyLeaf(graph: SceneGraph, node: SceneNode, world: Mat2D): LegacyLeaf {
   const base = { ...(node.content ?? { id: node.id }) } as LegacyLeaf & LegacyPose & Record<string, unknown>;
   base.id = node.id;
   if (node.name !== undefined) base.name = node.name;
   base.groupId = node.parentId;
-
-  const world = worldMatrix(graph, node.id);
 
   if (node.kind === 'svg') {
     const svg = base as SVGObject;
@@ -760,12 +861,44 @@ function toLegacyLeaf(graph: SceneGraph, node: SceneNode): LegacyLeaf {
       decomposeMatrix(world).rotationDeg
       - decomposeMatrix(parentWorldOf(graph, node)).rotationDeg,
     );
+    // The renderer turns the stored path by `spin` about its bbox centre,
+    // so the stored path is the DRAWN path turned back by `spin` about
+    // that same centre — the world matrix with the spin taken off its
+    // OUTSIDE. Taking it off the inside (`world . R(-spin)`) is only the
+    // same thing when the world scale is uniform: under a group pulled
+    // off-square the two differ by exactly the shear, and a quarter-turned
+    // member came out stretched along the wrong axis.
+    const localCentre: [number, number] = node.localBox
+      ? [node.localBox.x + node.localBox.width / 2, node.localBox.y + node.localBox.height / 2]
+      : centreOf(node.localSegments ?? []);
+    const drawnCentre = matApplyPoint(world, localCentre[0], localCentre[1]);
     const unturned = matMul(
-      world, localMatrix({ ...LOCAL_IDENTITY, rotationDeg: -spin }),
+      matAbout(drawnCentre, localMatrix({ ...LOCAL_IDENTITY, rotationDeg: -spin })),
+      world,
     );
-    svg.segments = mapSegments(node.localSegments ?? [], unturned);
-    if (node.localSubpaths) svg.subpaths = mapSubpaths(node.localSubpaths, unturned);
-    const bb = segmentsBbox(svg.segments);
+    // The geometry arrays are reused from the content where the render
+    // lands exactly on them, so a path the graph has not moved keeps its
+    // identity (see the view cache) instead of an equal copy.
+    const was = node.content as SVGObject | undefined;
+    svg.segments = sameGeometry(mapSegments(node.localSegments ?? [], unturned), was?.segments);
+    if (node.localSubpaths) {
+      const subpaths = mapSubpaths(node.localSubpaths, unturned);
+      svg.subpaths = was?.subpaths && subpaths.length === was.subpaths.length
+        && subpaths.every((sp, i) => sameGeometry(sp.segments, was.subpaths![i].segments) === was.subpaths![i].segments)
+        ? was.subpaths : subpaths;
+    }
+    if (node.localCreationBox) {
+      // The straddle box rides the same matrix as the path; its image is
+      // taken as a box again, exact for every turn the box can survive.
+      const b = matApplyBbox(unturned, node.localCreationBox);
+      const box = { minX: b.x, minY: b.y, width: b.width, height: b.height };
+      const old = was?.creationBox;
+      svg.creationBox = old && old.minX === box.minX && old.minY === box.minY
+        && old.width === box.width && old.height === box.height ? old : box;
+    }
+    // The stored box: the carried one where there is one (a repeat-mode
+    // path's region; a drawn shape's own bounds), else the path's bounds.
+    const bb = node.localBox ? matApplyBbox(unturned, node.localBox) : segmentsBbox(svg.segments);
     svg.cellX = bb.x; svg.cellY = bb.y;
     svg.cellWidth = bb.width; svg.cellHeight = bb.height;
     svg.angleDeg = spin === 0 ? undefined : spin;
@@ -780,7 +913,11 @@ function toLegacyLeaf(graph: SceneGraph, node: SceneNode): LegacyLeaf {
   const local = node.localBox ?? { x: 0, y: 0, width: 0, height: 0 };
   const was = node.content as CarriedSpelling | undefined;
   Object.assign(base, poseFieldsFrom(world, local, {
-    rotation: was?.rotation, mirrorH: was?.mirrorH,
+    rotation: was?.rotation,
+    // A flip the node's own transform names horizontally reads back that
+    // way — the flag a gesture respelled onto it, or the one the leaf came
+    // in with, either says the user thinks of this as a horizontal flip.
+    mirrorH: was?.mirrorH || node.transform.mirrorH,
   }));
   scaleContentLengths(base, world);
 
