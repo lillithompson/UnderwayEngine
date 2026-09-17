@@ -566,9 +566,10 @@ export interface CompositionBundle {
    *  arrays in the legacy fixed paint order. */
   sceneOrder?: string[];
   /** Per-node Transform2D data (v14+). Maps node ID â†’ Transform2D.
-   *  When present, consumers can build a nodeMap directly instead of
-   *  deriving transforms from the legacy fields. When absent (â‰¤v13),
-   *  use syncNodeMap() to derive from legacy arrays. */
+   *  Read and written faithfully so files round-trip, but nothing in
+   *  the save path populates it today: a leaf's pose lives in its
+   *  world fields and a group's in its GroupNode. The transform
+   *  refactor is what gives this section a producer. */
   nodeTransforms?: Map<string, { transform: Transform2D; parentId?: string }>;
   /** Persisted user palette colors for this composition (v17+). Populated
    *  as the user picks non-default colors via the composer's color tool.

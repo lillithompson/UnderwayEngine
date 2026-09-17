@@ -10,6 +10,8 @@ import { buildActiveMaskMap, getAncestorMasks, getGroupMaskChain, pointPassesMas
 import { arcAllPoints } from './compositionArcMath';
 import { colorsEqual } from './colorBlend';
 import { SegmentOverrides, remapOverrides } from './tileSegmentOverrides';
+import { worldSnapshot, diffWorldSnapshots } from './worldSnapshot';
+import { Orientation, orientationToMatrix, matrixToOrientation, composeOrientation } from './transform2d';
 
 /**
  * Apply a list of paint-tile-segment changes to a sparse override map,
@@ -1373,6 +1375,46 @@ export function assertSceneOrderInvariant(state: CompositionState): void {
       }
       prevGroup = gid;
     }
+  }
+}
+
+/**
+ * Dev-only invariant: every grouped leaf's `local*` caches agree with its
+ * world fields.
+ *
+ * The engine stores a grouped leaf's pose twice — world (`cellX/Y/…`,
+ * `rotation`, `angleDeg`, `segments`) and local (`localCell*`,
+ * `localRotation`, `localSegments`, …) — and keeps them in sync by hand.
+ * When an op updates world and forgets local, nothing breaks until the
+ * next time an ancestor is transformed: `materializeGroupMembers` then
+ * rewrites world *from* the stale local and the member visibly snaps back.
+ *
+ * This asserts the two agree, by doing exactly what that next ancestor
+ * transform would do — materialize every root group — and checking the
+ * world poses did not move. Re-materializing consistent locals is a no-op,
+ * so a difference is precisely a leaf whose locals were left behind.
+ *
+ * Throws naming the offending leaf. Test-only: O(leaves) state copies.
+ */
+export function assertGroupLocalsConsistent(state: CompositionState): void {
+  const hasGrouped = [
+    ...state.figures, ...state.svgObjects, ...(state.images ?? []),
+    ...(state.texts ?? []), ...(state.paintObjects ?? []), ...(state.patternObjects ?? []),
+  ].some((n) => n.groupId);
+  if (!hasGrouped) return;
+
+  const before = worldSnapshot(state);
+  // Materialize from the roots down; `materializeGroupMembers` recurses
+  // into child groups, so root groups cover every grouped leaf.
+  let next = state;
+  for (const g of state.groups ?? []) {
+    if (!g.parentGroupId) next = materializeGroupMembers(next, g.id);
+  }
+  const diff = diffWorldSnapshots(before, worldSnapshot(next));
+  if (diff) {
+    throw new Error(
+      'group local caches are stale — materializing an ancestor would move a member:\n' + diff,
+    );
   }
 }
 
@@ -3922,60 +3964,20 @@ export function mirrorFigureIndividual(fig: CompositionFigure, axis: 'h' | 'v'):
 
 // â”€â”€ Orientation composition (figure rotation/mirror inside a group) â”€
 
-type Orientation = { rotation: 0 | 90 | 180 | 270; mirrorH: boolean; mirrorV: boolean };
-
-/** Convert an `(rotation, mirrorH, mirrorV)` triple to its 2x2 matrix.
- *  Convention: apply mirror flips first (about the local origin), then
- *  rotation, then translate (translate is handled separately by
- *  applyGroupTransform). 90Â° CW in screen y-down coords is `(x, y) â†’
- *  (-y, x)`; this corresponds to `[[cos, -sin], [sin, cos]]` evaluated
- *  with `(cos, sin) = (0, 1)`. */
-function orientationToMatrix(o: Orientation): [number, number, number, number] {
-  const mh = o.mirrorH ? -1 : 1;
-  const mv = o.mirrorV ? -1 : 1;
-  const cos = o.rotation === 0 ? 1 : o.rotation === 180 ? -1 : 0;
-  const sin = o.rotation === 90 ? 1 : o.rotation === 270 ? -1 : 0;
-  // R * Diag(mh, mv) â€” mirror then rotate, applied to a column vector.
-  return [cos * mh, -sin * mv, sin * mh, cos * mv];
-}
-
-/** Decompose a 2x2 dihedral-group matrix back into `(rotation, mirrorH,
- *  mirrorV)`. The 16 input triples produce only 8 distinct matrices
- *  (e.g. `mirrorH && mirrorV && rotation=0` and `rotation=180` both give
- *  the negation matrix). The lookup order â€” fewer mirrors first, then
- *  smaller rotation â€” picks the most compact canonical form: a 180Â°
- *  flip decomposes as `(rotation: 180)` rather than the equivalent
- *  `(mirrorH: true, mirrorV: true)`, and a single horizontal flip stays
- *  `(rotation: 0, mirrorH: true)` rather than `(rotation: 180,
- *  mirrorV: true)`. Compact forms keep successive composes from drifting
- *  between equivalent representations. */
-function matrixToOrientation(m: readonly [number, number, number, number]): Orientation {
-  for (const [mh, mv] of [[false, false], [true, false], [false, true], [true, true]] as const) {
-    for (const r of [0, 90, 180, 270] as const) {
-      const c = orientationToMatrix({ rotation: r, mirrorH: mh, mirrorV: mv });
-      if (c[0] === m[0] && c[1] === m[1] && c[2] === m[2] && c[3] === m[3]) {
-        return { rotation: r, mirrorH: mh, mirrorV: mv };
-      }
-    }
-  }
-  // Unreachable for any valid dihedral matrix; shape it like rotation 0
-  // to keep callers honest if a degenerate matrix ever leaks through.
-  return { rotation: 0, mirrorH: false, mirrorV: false };
-}
-
-/** Compose the `outer` orientation onto an `inner` orientation, returning
- *  the world equivalent: `world = outer âˆ˜ inner` (apply inner first, then
- *  outer). Used to derive a grouped figure's world rotation/mirror from
- *  its `localRotation`/`localMirror*` composed with the group's own
- *  `rotation`/`mirror*`. */
+/**
+ * Compose the `outer` orientation onto an `inner` one: `world = outer . inner`
+ * (inner applied first). Used to derive a grouped figure's world
+ * rotation/mirror from its `localRotation`/`localMirror*` composed with the
+ * group's own `rotation`/`mirror*`.
+ *
+ * The D4 math itself lives in `transform2d`, which is the one place that
+ * fixes the conventions (mirror first, then rotation; 90 CW in screen
+ * y-down is `(x, y) -> (-y, x)`) and the canonical decomposition (fewer
+ * mirrors first, then smaller rotation, so successive composes do not
+ * drift between equivalent representations).
+ */
 export function composeOrientations(outer: Orientation, inner: Orientation): Orientation {
-  const O = orientationToMatrix(outer);
-  const I = orientationToMatrix(inner);
-  const M: [number, number, number, number] = [
-    O[0] * I[0] + O[1] * I[2], O[0] * I[1] + O[1] * I[3],
-    O[2] * I[0] + O[3] * I[2], O[2] * I[1] + O[3] * I[3],
-  ];
-  return matrixToOrientation(M);
+  return composeOrientation(outer, inner);
 }
 
 /** Apply the group's mirror + rotation to a figure's `localQuads`,
