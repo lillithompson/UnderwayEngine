@@ -195,6 +195,23 @@ export function matShear(m: Mat2D): number {
   return (m.a * m.c + m.b * m.d) / (l0 * l1);
 }
 
+/** Entry-wise equality, exact. */
+export function matEquals(a: Mat2D, b: Mat2D): boolean {
+  return a.a === b.a && a.b === b.b && a.c === b.c
+    && a.d === b.d && a.e === b.e && a.f === b.f;
+}
+
+/**
+ * The one uniform scale factor nearest a matrix's linear part: the
+ * square root of its area factor. Exact for a similarity; for a matrix
+ * pulled off-square it is the geometric mean of the two axis factors —
+ * the factor to take out of a length that must stay a WORLD quantity (a
+ * stroke width) when the geometry it dresses is drawn through the matrix.
+ */
+export function matUniformScale(m: Mat2D): number {
+  return Math.sqrt(Math.abs(matDet(m)));
+}
+
 // ── LocalTransform ─────────────────────────────────────────────────────
 
 /**

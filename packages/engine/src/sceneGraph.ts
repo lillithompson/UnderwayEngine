@@ -428,74 +428,7 @@ export function fromLegacy(state: CompositionState): SceneGraph {
   // 3. Leaves. Each one's world pose is read off its world fields, then
   //    divided by its group's world matrix to give a local transform.
   const addLeaf = (kind: CompItemKind, leaf: LegacyLeaf) => {
-    const pose = leaf as unknown as LegacyPose;
-    const parentId = leaf.groupId;
-    const toLocal = safeInvert(worldOf(parentId));
-
-    if (kind === 'svg') {
-      const svg = leaf as SVGObject;
-      // An svg's segments are world coordinates with its quarter turns
-      // already baked in — as they always have been — and its free angle
-      // applied at draw time, about the bbox centre. So: centre the
-      // geometry on the node's own origin, and put the free angle on the
-      // TRANSFORM, where every other kind keeps its turn. Rotating about
-      // the origin is then rotating the shape about its centre, which is
-      // what the angle always meant.
-      //
-      // Baking the angle into the vertices instead renders identically
-      // and loses something the editor needs: the rotate slider seats on
-      // that angle, a flip leans it the other way, a multi-selection
-      // reports it per member. A model with the angle folded into
-      // vertices has nowhere to answer those from.
-      const segments = svg.segments ?? [];
-      // The node's origin is the centre of the STORED box, which is what
-      // the renderer turns the path about. For a drawn shape that is the
-      // path's own centre; for a repeat-mode path it is the region's.
-      const c: [number, number] = svg.cellWidth !== undefined && svg.cellHeight !== undefined
-        ? [svg.cellX + svg.cellWidth / 2, svg.cellY + svg.cellHeight / 2]
-        : centreOf(segments);
-      const spun = matMul(
-        { ...MAT_IDENTITY, e: c[0], f: c[1] },
-        localMatrix({ ...LOCAL_IDENTITY, rotationDeg: pose.angleDeg ?? 0 }),
-      );
-      nodes.set(leaf.id, {
-        id: leaf.id, kind: 'svg', name: leaf.name, parentId,
-        transform: decomposeMatrix(matMul(toLocal, spun)),
-        localSegments: mapSegments(segments, { ...MAT_IDENTITY, e: -c[0], f: -c[1] }),
-        ...(svg.cellWidth !== undefined && svg.cellHeight !== undefined ? {
-          localBox: {
-            x: svg.cellX - c[0], y: svg.cellY - c[1],
-            width: svg.cellWidth, height: svg.cellHeight,
-          },
-        } : {}),
-        ...(svg.subpaths ? {
-          localSubpaths: mapSubpaths(svg.subpaths, { ...MAT_IDENTITY, e: -c[0], f: -c[1] }),
-        } : {}),
-        ...(svg.creationBox ? {
-          localCreationBox: {
-            x: svg.creationBox.minX - c[0], y: svg.creationBox.minY - c[1],
-            width: svg.creationBox.width, height: svg.creationBox.height,
-          },
-        } : {}),
-        ...(leaf.locked ? { locked: true } : {}),
-        content: leaf,
-      });
-      return;
-    }
-
-    const { transform: world, localBox } = poseToTransform(pose);
-    nodes.set(leaf.id, {
-      id: leaf.id, kind, name: leaf.name, parentId,
-      // A grouped leaf's local pose is its world pose with the group
-      // divided out; spelled with the leaf's own flips where that fits, so
-      // the view keeps reading a mirrored member as mirrored.
-      transform: parentId
-        ? respellMirror(decomposeMatrix(matMul(toLocal, localMatrix(world))), world)
-        : world,
-      localBox,
-      ...(leaf.locked ? { locked: true } : {}),
-      content: leaf,
-    });
+    nodes.set(leaf.id, leafNodeFromLegacy(kind, leaf, safeInvert(worldOf(leaf.groupId))));
   };
 
   for (const f of state.figures ?? []) addLeaf('figure', f);
@@ -511,6 +444,86 @@ export function fromLegacy(state: CompositionState): SceneGraph {
   linkChildren(nodes, state.sceneOrder ?? []);
 
   return { nodes, roots: computeRoots(nodes, state.sceneOrder ?? []), generation: 0 };
+}
+
+/**
+ * One legacy leaf as a graph node, its pose read off its world fields.
+ *
+ * `toLocal` is the inverse of the parent group's world matrix — the
+ * identity for a leaf at the root, or for a caller that wants the world
+ * pose itself: a renderer drawing an object that is not in any graph (a
+ * ghost, a live-resize preview) gets the very node `fromLegacy` would
+ * build for it, so the two cannot draw the same fields differently.
+ */
+export function leafNodeFromLegacy(
+  kind: CompItemKind, leaf: LegacyLeaf, toLocal: Mat2D = MAT_IDENTITY,
+): SceneNode {
+  const pose = leaf as unknown as LegacyPose;
+  const parentId = leaf.groupId;
+
+  if (kind === 'svg') {
+    const svg = leaf as SVGObject;
+    // An svg's segments are world coordinates with its quarter turns
+    // already baked in — as they always have been — and its free angle
+    // applied at draw time, about the bbox centre. So: centre the
+    // geometry on the node's own origin, and put the free angle on the
+    // TRANSFORM, where every other kind keeps its turn. Rotating about
+    // the origin is then rotating the shape about its centre, which is
+    // what the angle always meant.
+    //
+    // Baking the angle into the vertices instead renders identically
+    // and loses something the editor needs: the rotate slider seats on
+    // that angle, a flip leans it the other way, a multi-selection
+    // reports it per member. A model with the angle folded into
+    // vertices has nowhere to answer those from.
+    const segments = svg.segments ?? [];
+    // The node's origin is the centre of the STORED box, which is what
+    // the renderer turns the path about. For a drawn shape that is the
+    // path's own centre; for a repeat-mode path it is the region's.
+    const c: [number, number] = svg.cellWidth !== undefined && svg.cellHeight !== undefined
+      ? [svg.cellX + svg.cellWidth / 2, svg.cellY + svg.cellHeight / 2]
+      : centreOf(segments);
+    const spun = matMul(
+      { ...MAT_IDENTITY, e: c[0], f: c[1] },
+      localMatrix({ ...LOCAL_IDENTITY, rotationDeg: pose.angleDeg ?? 0 }),
+    );
+    return {
+      id: leaf.id, kind: 'svg', name: leaf.name, parentId,
+      transform: decomposeMatrix(matMul(toLocal, spun)),
+      localSegments: mapSegments(segments, { ...MAT_IDENTITY, e: -c[0], f: -c[1] }),
+      ...(svg.cellWidth !== undefined && svg.cellHeight !== undefined ? {
+        localBox: {
+          x: svg.cellX - c[0], y: svg.cellY - c[1],
+          width: svg.cellWidth, height: svg.cellHeight,
+        },
+      } : {}),
+      ...(svg.subpaths ? {
+        localSubpaths: mapSubpaths(svg.subpaths, { ...MAT_IDENTITY, e: -c[0], f: -c[1] }),
+      } : {}),
+      ...(svg.creationBox ? {
+        localCreationBox: {
+          x: svg.creationBox.minX - c[0], y: svg.creationBox.minY - c[1],
+          width: svg.creationBox.width, height: svg.creationBox.height,
+        },
+      } : {}),
+      ...(leaf.locked ? { locked: true } : {}),
+      content: leaf,
+    };
+  }
+
+  const { transform: world, localBox } = poseToTransform(pose);
+  return {
+    id: leaf.id, kind, name: leaf.name, parentId,
+    // A grouped leaf's local pose is its world pose with the group
+    // divided out; spelled with the leaf's own flips where that fits, so
+    // the view keeps reading a mirrored member as mirrored.
+    transform: parentId
+      ? respellMirror(decomposeMatrix(matMul(toLocal, localMatrix(world))), world)
+      : world,
+    localBox,
+    ...(leaf.locked ? { locked: true } : {}),
+    content: leaf,
+  };
 }
 
 /** A group's local transform, from its legacy fields. */
