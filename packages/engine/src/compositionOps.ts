@@ -1396,26 +1396,63 @@ export function assertSceneOrderInvariant(state: CompositionState): void {
  *
  * Throws naming the offending leaf. Test-only: O(leaves) state copies.
  */
-export function assertGroupLocalsConsistent(state: CompositionState): void {
+export function staleGroupedLeaves(state: CompositionState): Map<string, string> {
+  const out = new Map<string, string>();
   const hasGrouped = [
     ...state.figures, ...state.svgObjects, ...(state.images ?? []),
     ...(state.texts ?? []), ...(state.paintObjects ?? []), ...(state.patternObjects ?? []),
   ].some((n) => n.groupId);
-  if (!hasGrouped) return;
+  if (!hasGrouped) return out;
 
-  const before = worldSnapshot(state);
   // Materialize from the roots down; `materializeGroupMembers` recurses
-  // into child groups, so root groups cover every grouped leaf.
+  // into child groups, so the root groups cover every grouped leaf.
   let next = state;
   for (const g of state.groups ?? []) {
     if (!g.parentGroupId) next = materializeGroupMembers(next, g.id);
   }
-  const diff = diffWorldSnapshots(before, worldSnapshot(next));
-  if (diff) {
-    throw new Error(
-      'group local caches are stale — materializing an ancestor would move a member:\n' + diff,
-    );
+  if (next === state) return out;
+
+  const before = worldSnapshot(state);
+  const after = worldSnapshot(next);
+  for (let i = 0; i < before.length && i < after.length; i++) {
+    const diff = diffWorldSnapshots([before[i]], [after[i]], { ignoreSvgBbox: true });
+    if (diff) out.set(before[i].id, diff);
   }
+  return out;
+}
+
+/** Throws if any grouped leaf's local caches are stale. */
+export function assertGroupLocalsConsistent(state: CompositionState): void {
+  const stale = staleGroupedLeaves(state);
+  if (stale.size === 0) return;
+  throw new Error(
+    'group local caches are stale — materializing an ancestor would move a member:\n'
+    + [...stale.values()].join('\n'),
+  );
+}
+
+/**
+ * Throws if `after` has a stale grouped leaf that `before` did not.
+ *
+ * The narrower question, and the one the op layer can actually answer. A
+ * composition can arrive already inconsistent — a `.tile` saved before
+ * this guarantee existed carries whatever local caches it was written
+ * with, and the loader only backfills the ones that are *missing*, not
+ * the ones that are wrong (see `materializeGroupHierarchy`; the ≤v60
+ * loader in the transform refactor is what finally settles it). Blaming
+ * the next op to touch such a page would report the wrong culprit, so
+ * this asks only whether an op made things worse.
+ */
+function assertNoNewStaleLocals(before: CompositionState, after: CompositionState): void {
+  const now = staleGroupedLeaves(after);
+  if (now.size === 0) return;
+  const was = staleGroupedLeaves(before);
+  const fresh = [...now].filter(([id]) => !was.has(id));
+  if (fresh.length === 0) return;
+  throw new Error(
+    'this op left a grouped member\'s local caches stale — materializing an '
+    + 'ancestor would move it:\n' + fresh.map(([, diff]) => diff).join('\n'),
+  );
 }
 
 /** Parent group of an OUTLINE node: a group's own `parentGroupId`, or a
@@ -4334,7 +4371,7 @@ export function cycleTransformForFigure(fig: CompositionFigure, targetStep: numb
   };
 }
 
-function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
+function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState {
   switch (op.op) {
     case 'placeFigure': {
       return appendToSceneOrder({ ...state, figures: [...state.figures, op.figure] }, op.figure.id);
@@ -4883,7 +4920,14 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
             identityCellX: undefined, identityCellY: undefined };
       const svgObjects = state.svgObjects.map((s) => s.id === op.svgId
         ? { ...s, segments: op.newSegments, ...bbox, ...orient,
-            ...(op.newLocalSegments !== undefined
+            // Local-space mirror. For a GROUPED svg the caller's value is
+            // ignored: `reconcileAfterOp` derives the locals from the new
+            // world segments the moment this op returns, and a caller that
+            // passed nothing (as the host's orientation builder does) used
+            // to leave the old local geometry in place — the stale-locals
+            // bug. Off-group the field is still honoured, since nothing
+            // derives it there and `null` is how a caller clears it.
+            ...(s.groupId === undefined && op.newLocalSegments !== undefined
               ? (op.newLocalSegments === null
                 ? { localSegments: undefined, localCellX: undefined, localCellY: undefined, localCellWidth: undefined, localCellHeight: undefined }
                 : { localSegments: op.newLocalSegments, ...localBboxFromSegments(op.newLocalSegments) })
@@ -4967,10 +5011,18 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
         identityCellY: op.newIdentityCellY,
         identityCellWidth: op.newIdentityCellWidth,
         identityCellHeight: op.newIdentityCellHeight,
-        localCellX: op.newLocalCellX,
-        localCellY: op.newLocalCellY,
-        localCellWidth: op.newLocalCellWidth,
-        localCellHeight: op.newLocalCellHeight,
+        // Local-space bbox. For a GROUPED image the caller's value is
+        // ignored: `reconcileAfterOp` derives it from the new world bbox
+        // the moment this op returns. The host's transform builder carries
+        // these across unchanged from the previous state, which is how a
+        // resized image inside a group used to snap back to its old size
+        // the next time an ancestor moved.
+        ...(i.groupId === undefined ? {
+          localCellX: op.newLocalCellX,
+          localCellY: op.newLocalCellY,
+          localCellWidth: op.newLocalCellWidth,
+          localCellHeight: op.newLocalCellHeight,
+        } : null),
       } : i);
       return { ...state, images };
     }
@@ -5125,7 +5177,7 @@ function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
   }
 }
 
-function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
+function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionState {
   switch (op.op) {
     case 'placeFigure':
       return applyOp(state, { op: 'removeObject', kind: 'figure', item: op.figure });
@@ -5672,13 +5724,125 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
   }
 }
 
+// ── Unconditional local-cache reconciliation ────────────────────────
+
+/**
+ * Ops that establish a member's local cache as their own semantics, and so
+ * must not have it recomputed from world underneath them.
+ *
+ * `transformGroup` computes world *from* local. Reconciling afterwards
+ * would write back whatever the materialize pass rounded (figure cell
+ * origins are rounded — docs/transform-refactor.md §2.3) and repeated
+ * group transforms would walk the member off its siblings.
+ *
+ * `groupFigures` mints its group at identity and seeds local := world,
+ * which is exact. Reconciling afterwards computes the same transform but
+ * re-spells its orientation in `matrixToOrientation`'s canonical form — a
+ * lone `mirrorV` becomes the equivalent `rotation: 180` + `mirrorH`.
+ * Same pose, so nothing renders differently, but there is no reason to
+ * rewrite a correct seed.
+ */
+const LOCALS_ALREADY_ESTABLISHED: ReadonlySet<string> = new Set([
+  'transformGroup', 'groupFigures',
+]);
+
+/**
+ * Which groups contain a leaf this op rewrote.
+ *
+ * Derived from object identity rather than a hand-written op → ids table.
+ * The reducer is copy-on-write, so an untouched leaf comes out of an op as
+ * the *same object*; a leaf that is a different object is one the op
+ * rewrote. That matters more than the small cost: a table has to be
+ * updated for every new op, and an op missing from it fails silently and
+ * invisibly — which is exactly how the stale-locals bug class arose.
+ */
+function groupsWithRewrittenLeaves(
+  before: CompositionState, after: CompositionState,
+): Set<string> | null {
+  let out: Set<string> | null = null;
+
+  const scan = (
+    prev: ReadonlyArray<{ id: string; groupId?: string }> | undefined,
+    next: ReadonlyArray<{ id: string; groupId?: string }> | undefined,
+  ) => {
+    if (prev === next || !next) return;
+    let seen: Set<unknown> | undefined;
+    for (const node of next) {
+      if (!node.groupId) continue;
+      if (!seen) seen = new Set(prev ?? []);
+      if (seen.has(node)) continue;
+      (out ??= new Set()).add(node.groupId);
+    }
+  };
+
+  scan(before.figures, after.figures);
+  scan(before.svgObjects, after.svgObjects);
+  scan(before.images, after.images);
+  scan(before.texts, after.texts);
+  scan(before.paintObjects, after.paintObjects);
+  scan(before.patternObjects, after.patternObjects);
+  return out;
+}
+
+/**
+ * Keep every grouped leaf's `local*` caches in step with its world pose,
+ * after every op that rewrote one.
+ *
+ * A grouped leaf stores its pose twice — world fields and local caches —
+ * and before this, synchronisation was opt-in: `moveNode`, `reparentNode`,
+ * `ungroupFigures`, `joinObjects` and `unionObjects` reconciled, and every
+ * other world-mutating op (`rotateFigure`, `mirrorFigure`, `scaleFigure`,
+ * `setNodeRotation`, `editSVGSegments`, `editImage`, and the
+ * `replaceScene` text/paint/pattern edits) did not. The damage stayed
+ * invisible until an ancestor was next transformed, at which point
+ * `materializeGroupMembers` rewrote world *from* the stale local and the
+ * member visibly snapped back to its pre-edit pose — "objects inside a
+ * group move relative to each other".
+ *
+ * Reconciling is idempotent (local := inverse(ancestor chain) . world), so
+ * doing it after an op that already reconciled, or after one that changed
+ * only a colour, costs a pass and changes nothing.
+ */
+function reconcileAfterOp(
+  before: CompositionState, after: CompositionState, op: CompUndoOp,
+): CompositionState {
+  if (before === after) return after;
+  if (LOCALS_ALREADY_ESTABLISHED.has(op.op)) return after;
+  const groups = groupsWithRewrittenLeaves(before, after);
+  return groups ? reconcileGroupLocalsForGroups(after, groups) : after;
+}
+
+function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
+  return reconcileAfterOp(state, applyOpInner(state, op), op);
+}
+
+function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
+  return reconcileAfterOp(state, revertOpInner(state, op), op);
+}
+
 /** Apply a composition undo entry forward (for redo) */
+/**
+ * When set, every committed entry is checked for the stale-locals bug
+ * before it is returned. Off in the app (it copies state per grouped
+ * leaf); on for the whole engine test suite, so an op added later that
+ * forgets to keep a member's local caches in step fails immediately and
+ * names the member, rather than surfacing as "objects inside a group move
+ * relative to each other" a release later.
+ */
+const ASSERT_GROUP_LOCALS =
+  typeof process !== 'undefined' && process.env?.ASSERT_GROUP_LOCALS === '1';
+
+function checked(before: CompositionState, after: CompositionState): CompositionState {
+  if (ASSERT_GROUP_LOCALS) assertNoNewStaleLocals(before, after);
+  return after;
+}
+
 export function applyCompOps(state: CompositionState, entry: CompUndoEntry): CompositionState {
   let result = state;
   for (const op of entry) {
     result = applyOp(result, op);
   }
-  return result;
+  return checked(state, result);
 }
 
 /** Revert a composition undo entry (for undo) */
@@ -5688,5 +5852,5 @@ export function revertCompOps(state: CompositionState, entry: CompUndoEntry): Co
   for (let i = entry.length - 1; i >= 0; i--) {
     result = revertOp(result, entry[i]);
   }
-  return result;
+  return checked(state, result);
 }

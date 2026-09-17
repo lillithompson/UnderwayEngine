@@ -122,7 +122,7 @@ describe('a per-member edit survives the next ancestor transform', () => {
   // they fail. The containment fix (P1) flips them to plain `test`.
 
   // ── Scenario A: bbox edit (editImage) ────────────────────────────────
-  test.failing('a resized image inside a group keeps its new size when the group moves', () => {
+  test('a resized image inside a group keeps its new size when the group moves', () => {
     const img = makeImage({ id: 'img_1' });
     let state = makeState({ images: [img], sceneOrder: ['img_1'] });
     state = group(state, ['img_1']);
@@ -145,7 +145,7 @@ describe('a per-member edit survives the next ancestor transform', () => {
   });
 
   // ── Scenario B: free rotation (setNodeRotation) ──────────────────────
-  test.failing('a twisted text inside a group keeps its angle when the group moves', () => {
+  test('a twisted text inside a group keeps its angle when the group moves', () => {
     const txt = makeText({ id: 'txt_1' });
     let state = makeState({ texts: [txt], sceneOrder: ['txt_1'] });
     state = group(state, ['txt_1']);
@@ -162,7 +162,7 @@ describe('a per-member edit survives the next ancestor transform', () => {
   });
 
   // ── Scenario C: geometry rewrite (editSVGSegments) ───────────────────
-  test.failing('a quarter-turned line inside a group keeps its turn when the group moves', () => {
+  test('a quarter-turned line inside a group keeps its turn when the group moves', () => {
     const svg = makeSVG({ id: 'svg_1' });
     let state = makeState({ svgObjects: [svg], sceneOrder: ['svg_1'] });
     state = group(state, ['svg_1']);

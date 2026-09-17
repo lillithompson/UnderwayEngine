@@ -20,6 +20,7 @@
  * ```
  */
 
+import { matrixToOrientation, orientationToMatrix } from './transform2d';
 import type { CompItemKind } from './types';
 import type {
   CompositionState, CompositionFigure, SVGObject, ImageObject,
@@ -108,9 +109,18 @@ function basePose(kind: CompItemKind, n: WorldPosed): LeafWorldSnapshot {
     bbox: [q(n.cellX), q(n.cellY), q(n.cellWidth), q(n.cellHeight)],
   };
   if (n.groupId) snap.groupId = n.groupId;
-  if (n.rotation) snap.rotation = n.rotation;
-  if (n.mirrorH) snap.mirrorH = true;
-  if (n.mirrorV) snap.mirrorV = true;
+  // Canonical spelling, not the stored one. The 16 (rotation, mirrorH,
+  // mirrorV) triples name only 8 distinct transforms — a lone `mirrorV` and
+  // `rotation: 180` + `mirrorH` are the same flip — and the engine re-spells
+  // one as the other whenever it composes orientations through a group
+  // chain. Two spellings of one pose have to read as one pose here, or the
+  // snapshot reports moves nobody can see.
+  const ori = matrixToOrientation(orientationToMatrix({
+    rotation: n.rotation ?? 0, mirrorH: !!n.mirrorH, mirrorV: !!n.mirrorV,
+  }));
+  if (ori.rotation) snap.rotation = ori.rotation;
+  if (ori.mirrorH) snap.mirrorH = true;
+  if (ori.mirrorV) snap.mirrorV = true;
   // A 360-multiple angle renders identically to none; normalise so the
   // "angle became undefined" regression (§2.1 scenario B) still shows.
   const angle = q(n.angleDeg);
@@ -202,6 +212,30 @@ export function worldSnapshotText(state: CompositionState): string {
   }).join('\n');
 }
 
+export interface DiffOptions {
+  /**
+   * Skip an svg's `bbox`.
+   *
+   * An svg's stored bbox is a selection rect, not its drawn extent, and
+   * for an H/V line it is deliberately inflated so a zero-height path
+   * stays grabbable (`creationBox`; `reconcileGroupLocalsForGroups` avoids
+   * reconciling unrelated items for exactly this reason).
+   * `materializeSVGMember` recomputes it as the segment AABB and so
+   * collapses that inflation. A caller asking "did this node move?" wants
+   * the path compared, which `segments` already does.
+   */
+  ignoreSvgBbox?: boolean;
+}
+
+/** The fields a diff should compare, per `opts`. */
+function comparable(snap: LeafWorldSnapshot, opts?: DiffOptions): unknown {
+  if (opts?.ignoreSvgBbox && snap.kind === 'svg') {
+    const { bbox: _bbox, ...rest } = snap;
+    return rest;
+  }
+  return snap;
+}
+
 /**
  * Describe the first difference between two snapshots, or `null` when
  * they match. Used by the refactor's round-trip tests, which want the
@@ -210,13 +244,14 @@ export function worldSnapshotText(state: CompositionState): string {
 export function diffWorldSnapshots(
   before: readonly LeafWorldSnapshot[],
   after: readonly LeafWorldSnapshot[],
+  opts?: DiffOptions,
 ): string | null {
   if (before.length !== after.length) {
     return `leaf count ${before.length} → ${after.length}`;
   }
   for (let i = 0; i < before.length; i++) {
-    const a = JSON.stringify(before[i]);
-    const b = JSON.stringify(after[i]);
+    const a = JSON.stringify(comparable(before[i], opts));
+    const b = JSON.stringify(comparable(after[i], opts));
     if (a !== b) return `leaf #${i} (${before[i].id}):\n  before ${a}\n  after  ${b}`;
   }
   return null;

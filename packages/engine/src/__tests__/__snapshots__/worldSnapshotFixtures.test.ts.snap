@@ -1034,7 +1034,7 @@ svg svg_1778025429572_sexi bbox=[470, 420, 0, 12] group=1778025466222_g segments
 svg svg_1778025436418_jii2 bbox=[472, 428, 0, 16] group=1778025466222_g segments={L 472,428 472,444}"
 `;
 
-exports[`world-space snapshots of the .tile fixtures TestSVGPattern.tile renders the same world poses 1`] = `"svg svg_1779338272223_u bbox=[-20, -20, 96, 120] rot=180 mirrorV repeat 32x40 @32,0 segments={A -12,0 -12,-8 -20,-8 A -20,-8 -8,-8 -8,-20 A -8,-20 -8,0 12,0 A -8,20 -8,0 12,0 A -4,-8 -12,-8 -12,0}"`;
+exports[`world-space snapshots of the .tile fixtures TestSVGPattern.tile renders the same world poses 1`] = `"svg svg_1779338272223_u bbox=[-20, -20, 96, 120] mirrorH repeat 32x40 @32,0 segments={A -12,0 -12,-8 -20,-8 A -20,-8 -8,-8 -8,-20 A -8,-20 -8,0 12,0 A -8,20 -8,0 12,0 A -4,-8 -12,-8 -12,0}"`;
 
 exports[`world-space snapshots of the .tile fixtures WaveBug.tile renders the same world poses 1`] = `
 "svg svg_1778177444864_mkq bbox=[117.25, 4, 5.5, 5.25] group=1778177444864_ml2_g segments={L 122.75,9.25 117.25,4}
