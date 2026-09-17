@@ -325,13 +325,39 @@ describe('a scene survives the round trip', () => {
     }));
   });
 
+  test('a freely-turned svg under a NON-uniform group scale is the one case that differs', () => {
+    // Decided, not accidental (plan Q2: render the shear).
+    //
+    // The legacy model turns an svg by rotating its already-scaled path
+    // about the path's centre. The graph turns the node and then lets the
+    // group scale what comes out — so a 33-degree line inside a group
+    // squashed 2x by 0.5x comes out sheared, the way it would in any
+    // editor that composes transforms. The two agree whenever the group's
+    // scale is uniform, which is every other case in this file.
+    const state = makeState({
+      svgObjects: [svg({
+        id: 'svg_1', groupId: 'g1', segments: [line([2, 2], [5, 9])],
+        cellX: 2, cellY: 2, cellWidth: 3, cellHeight: 7, angleDeg: 33,
+      })],
+      groups: [group({ id: 'g1', scaleX: 2, scaleY: 0.5 })],
+      sceneOrder: ['svg_1'],
+    });
+    expect(roundTripDiff(state)).not.toBeNull();
+
+    // Uniformly scaled, the same scene round-trips exactly.
+    expectRoundTrips({
+      ...state,
+      groups: [group({ id: 'g1', scaleX: 2, scaleY: 2 })],
+    });
+  });
+
   test('svg geometry, grouped and turned', () => {
     expectRoundTrips(makeState({
       svgObjects: [
         svg({ id: 'svg_1', segments: [line([0, 0], [4, 0]), { kind: 'arc', start: [4, 0], end: [6, 2], center: [4, 2] }] }),
         svg({ id: 'svg_2', groupId: 'g1', segments: [line([2, 2], [5, 9])], cellX: 2, cellY: 2, cellWidth: 3, cellHeight: 7, angleDeg: 33 }),
       ],
-      groups: [group({ id: 'g1', translateX: 1, scaleX: 2, scaleY: 0.5, rotation: 90 })],
+      groups: [group({ id: 'g1', translateX: 1, scaleX: 2, scaleY: 2, rotation: 90 })],
       sceneOrder: ['svg_1', 'svg_2'],
     }));
   });

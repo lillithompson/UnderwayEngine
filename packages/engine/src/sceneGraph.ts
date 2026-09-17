@@ -221,6 +221,10 @@ export function parentMatrix(graph: SceneGraph, id: string): Mat2D {
   return parentId ? worldMatrix(graph, parentId) : MAT_IDENTITY;
 }
 
+function parentWorldOf(graph: SceneGraph, node: SceneNode): Mat2D {
+  return node.parentId ? worldMatrix(graph, node.parentId) : MAT_IDENTITY;
+}
+
 /**
  * The node's world-space AABB.
  *
@@ -347,13 +351,10 @@ function poseToTransform(p: LegacyPose): { transform: LocalTransform; localBox: 
   };
 }
 
-/** Rotation about a point, as a matrix. */
-function rotateAbout(deg: number, cx: number, cy: number): Mat2D {
-  const r = localMatrix({ ...LOCAL_IDENTITY, rotationDeg: deg });
-  return matMul(
-    { ...MAT_IDENTITY, e: cx, f: cy },
-    matMul(r, { ...MAT_IDENTITY, e: -cx, f: -cy }),
-  );
+/** The centre of a path's bounding box. */
+function centreOf(segments: readonly PathSegment[]): [number, number] {
+  const b = segmentsBbox(segments);
+  return [b.x + b.width / 2, b.y + b.height / 2];
 }
 
 /**
@@ -410,21 +411,31 @@ export function fromLegacy(state: CompositionState): SceneGraph {
     if (kind === 'svg') {
       const svg = leaf as SVGObject;
       // An svg's segments are world coordinates with its quarter turns
-      // already baked in, and its free angle applied at draw time about
-      // the bbox centre. Bake that angle in too and divide out the group,
-      // giving exact local geometry under an identity transform — the
-      // convention new svgs are authored with (§3.3). No decomposition,
-      // so nothing is approximated.
-      const cx = pose.cellX + pose.cellWidth / 2;
-      const cy = pose.cellY + pose.cellHeight / 2;
-      const toNodeSpace = pose.angleDeg
-        ? matMul(toLocal, rotateAbout(pose.angleDeg, cx, cy))
-        : toLocal;
+      // already baked in — as they always have been — and its free angle
+      // applied at draw time, about the bbox centre. So: centre the
+      // geometry on the node's own origin, and put the free angle on the
+      // TRANSFORM, where every other kind keeps its turn. Rotating about
+      // the origin is then rotating the shape about its centre, which is
+      // what the angle always meant.
+      //
+      // Baking the angle into the vertices instead renders identically
+      // and loses something the editor needs: the rotate slider seats on
+      // that angle, a flip leans it the other way, a multi-selection
+      // reports it per member. A model with the angle folded into
+      // vertices has nowhere to answer those from.
+      const segments = svg.segments ?? [];
+      const c = centreOf(segments);
+      const spun = matMul(
+        { ...MAT_IDENTITY, e: c[0], f: c[1] },
+        localMatrix({ ...LOCAL_IDENTITY, rotationDeg: pose.angleDeg ?? 0 }),
+      );
       nodes.set(leaf.id, {
         id: leaf.id, kind: 'svg', name: leaf.name, parentId,
-        transform: LOCAL_IDENTITY,
-        localSegments: mapSegments(svg.segments ?? [], toNodeSpace),
-        ...(svg.subpaths ? { localSubpaths: mapSubpaths(svg.subpaths, toNodeSpace) } : {}),
+        transform: decomposeMatrix(matMul(toLocal, spun)),
+        localSegments: mapSegments(segments, { ...MAT_IDENTITY, e: -c[0], f: -c[1] }),
+        ...(svg.subpaths ? {
+          localSubpaths: mapSubpaths(svg.subpaths, { ...MAT_IDENTITY, e: -c[0], f: -c[1] }),
+        } : {}),
         ...(leaf.locked ? { locked: true } : {}),
         content: leaf,
       });
@@ -636,10 +647,17 @@ function nearestQuarterTurn(deg: number): 0 | 90 | 180 | 270 {
  * way it was joined: the nearest quarter turn becomes `rotation` (which
  * swaps the bbox dimensions), and what is left over becomes `angleDeg`.
  */
+/** How the leaf spelled its orientation before, so the view can keep
+ *  saying it the same way where more than one spelling fits. */
+interface CarriedSpelling {
+  rotation?: 0 | 90 | 180 | 270;
+  mirrorH?: boolean;
+}
+
 /** The legacy pose fields a matrix implies for a local box. */
 interface PoseFields {
   cellX: number; cellY: number; cellWidth: number; cellHeight: number;
-  rotation: 0 | 90 | 180 | 270;
+  rotation?: 0 | 90 | 180 | 270;
   mirrorH?: boolean; mirrorV?: boolean;
   angleDeg?: number;
 }
@@ -662,13 +680,23 @@ interface PoseFields {
  * cannot say different things about the same node.
  */
 function poseFieldsFrom(
-  m: Mat2D, local: Bbox, carried: 0 | 90 | 180 | 270 | undefined,
+  m: Mat2D, local: Bbox, carried: CarriedSpelling,
 ): PoseFields {
   const t = decomposeMatrix(m);
-  const quarter = isQuarterTurn(t.rotationDeg)
-    ? nearestQuarterTurn(t.rotationDeg)
-    : (carried ?? 0);
-  const residual = normalizeDeg(t.rotationDeg - quarter);
+  // `decomposeMatrix` puts every flip in `sy`, so a mirrored node always
+  // comes back as a vertical flip. A flip about one axis is a flip about
+  // the other plus a half turn — `(theta, V)` and `(theta - 180, H)` are
+  // the same matrix — so when the leaf came in mirrored horizontally, say
+  // it that way. Nothing renders differently; it keeps the field the
+  // editor wrote reading back as the editor wrote it.
+  const flipped = t.sy < 0;
+  const preferH = flipped && !!carried.mirrorH;
+  const turn = normalizeDeg(preferH ? t.rotationDeg - 180 : t.rotationDeg);
+
+  const quarter = isQuarterTurn(turn)
+    ? nearestQuarterTurn(turn)
+    : (carried.rotation ?? 0);
+  const residual = normalizeDeg(turn - quarter);
 
   // The content box, scaled — the box the turn is applied to.
   const cw = local.width * Math.abs(t.sx);
@@ -682,14 +710,17 @@ function poseFieldsFrom(
     cellX: cx - cellWidth / 2,
     cellY: cy - cellHeight / 2,
     cellWidth, cellHeight,
-    rotation: quarter,
+    // Omitted rather than zero, as the legacy arrays have always had it:
+    // an un-turned leaf carries no rotation field at all, and a view that
+    // added one would not compare equal to the thing it stands in for.
+    rotation: quarter || undefined,
     // Read the flips off the matrix, never off a stored flag: a flip is
     // already folded into the rotation by the time a chain is multiplied
     // out — a node turned 270 and flipped twice is one turned 90 — so
     // taking both would count it twice. `decomposeMatrix` puts the whole
     // handedness flip in `sy`, which is why only `mirrorV` comes back.
-    mirrorH: t.sx < 0 || undefined,
-    mirrorV: t.sy < 0 || undefined,
+    mirrorH: preferH || undefined,
+    mirrorV: (flipped && !preferH) || undefined,
     angleDeg: residual === 0 ? undefined : residual,
   };
 }
@@ -721,15 +752,23 @@ function toLegacyLeaf(graph: SceneGraph, node: SceneNode): LegacyLeaf {
 
   if (node.kind === 'svg') {
     const svg = base as SVGObject;
-    svg.segments = mapSegments(node.localSegments ?? [], world);
-    if (node.localSubpaths) svg.subpaths = mapSubpaths(node.localSubpaths, world);
-    // An svg's bbox is the AABB of its path, and its turns are baked into
-    // that path as they always were.
+    // The node's own free angle comes off the transform; everything the
+    // ancestors contribute stays baked into the vertices, which is where
+    // the legacy materialize pass always put it. Un-turning by exactly
+    // that angle recovers the segments the legacy model stores.
+    const spin = normalizeDeg(
+      decomposeMatrix(world).rotationDeg
+      - decomposeMatrix(parentWorldOf(graph, node)).rotationDeg,
+    );
+    const unturned = matMul(
+      world, localMatrix({ ...LOCAL_IDENTITY, rotationDeg: -spin }),
+    );
+    svg.segments = mapSegments(node.localSegments ?? [], unturned);
+    if (node.localSubpaths) svg.subpaths = mapSubpaths(node.localSubpaths, unturned);
     const bb = segmentsBbox(svg.segments);
     svg.cellX = bb.x; svg.cellY = bb.y;
     svg.cellWidth = bb.width; svg.cellHeight = bb.height;
-    svg.angleDeg = undefined;
-
+    svg.angleDeg = spin === 0 ? undefined : spin;
     svg.localSegments = undefined;
     svg.localSubpaths = undefined;
     svg.localCellX = undefined; svg.localCellY = undefined;
@@ -738,8 +777,10 @@ function toLegacyLeaf(graph: SceneGraph, node: SceneNode): LegacyLeaf {
   }
 
   const local = node.localBox ?? { x: 0, y: 0, width: 0, height: 0 };
-  const carried = (node.content as { rotation?: 0 | 90 | 180 | 270 } | undefined)?.rotation;
-  Object.assign(base, poseFieldsFrom(world, local, carried));
+  const was = node.content as CarriedSpelling | undefined;
+  Object.assign(base, poseFieldsFrom(world, local, {
+    rotation: was?.rotation, mirrorH: was?.mirrorH,
+  }));
 
   base.localCellX = undefined; base.localCellY = undefined;
   base.localCellWidth = undefined; base.localCellHeight = undefined;
