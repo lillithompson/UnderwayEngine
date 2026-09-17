@@ -36,8 +36,22 @@ export interface LeafWorldSnapshot {
   /** Owning group id, or undefined at top level. Structure, not pose —
    *  included because a leaf changing groups is not a no-op refactor. */
   groupId?: string;
-  /** World bbox as [x, y, width, height] in L0 cells. */
-  bbox: [number, number, number, number];
+  /**
+   * The DRAWN box: the content's own (un-turned) size in L0 cells,
+   * `[width, height]`.
+   *
+   * Not the stored bbox. The legacy model swaps a stored bbox's width and
+   * height on a quarter turn, so the same drawing has two stored boxes
+   * depending on how its turn is spelled between the discrete channel and
+   * the free one — and both render identically, because the renderer
+   * centres this content box in that bbox and turns it. Recording the
+   * content box and the centre says where the drawing is without saying
+   * which spelling put it there, and still catches every resize (the size
+   * changes) and every move (the centre does).
+   */
+  box: [number, number];
+  /** Where the content box's centre sits in the world. */
+  at: [number, number];
   /**
    * The DRAWN turn, in degrees clockwise about the bbox centre: the
    * discrete quarter turn and the free angle added together, canonicalised
@@ -107,10 +121,14 @@ interface WorldPosed {
 }
 
 function basePose(kind: CompItemKind, n: WorldPosed): LeafWorldSnapshot {
+  // The un-turned content box: a quarter turn swaps the stored bbox, so
+  // swap it back to recover the box the content is actually drawn in.
+  const swap = n.rotation === 90 || n.rotation === 270;
   const snap: LeafWorldSnapshot = {
     id: n.id,
     kind,
-    bbox: [q(n.cellX), q(n.cellY), q(n.cellWidth), q(n.cellHeight)],
+    box: [q(swap ? n.cellHeight : n.cellWidth), q(swap ? n.cellWidth : n.cellHeight)],
+    at: [q(n.cellX + n.cellWidth / 2), q(n.cellY + n.cellHeight / 2)],
   };
   if (n.groupId) snap.groupId = n.groupId;
   Object.assign(snap, turnOf(n));
@@ -260,7 +278,7 @@ export function worldSnapshotText(state: CompositionState): string {
   return worldSnapshot(state).map((s) => {
     const parts = [
       `${s.kind} ${s.id}`,
-      `bbox=[${s.bbox.join(', ')}]`,
+      `box=${s.box.join('x')} at=[${s.at.join(', ')}]`,
     ];
     if (s.groupId) parts.push(`group=${s.groupId}`);
     if (s.turn) parts.push(`turn=${s.turn}`);
@@ -275,7 +293,7 @@ export function worldSnapshotText(state: CompositionState): string {
 
 export interface DiffOptions {
   /**
-   * Skip an svg's `bbox`.
+   * Skip an svg's `box` and `at`.
    *
    * An svg's stored bbox is a selection rect, not its drawn extent, and
    * for an H/V line it is deliberately inflated so a zero-height path
@@ -303,7 +321,7 @@ function comparable(snap: LeafWorldSnapshot, opts?: DiffOptions): unknown {
   if (!opts) return snap;
   let out: Partial<LeafWorldSnapshot> = snap;
   if (opts.ignoreSvgBbox && snap.kind === 'svg') {
-    const { bbox: _bbox, ...rest } = out;
+    const { box: _box, at: _at, ...rest } = out;
     out = rest;
   }
   if (opts.ignoreGroupId) {

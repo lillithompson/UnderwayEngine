@@ -11,7 +11,8 @@ import { arcAllPoints } from './compositionArcMath';
 import { colorsEqual } from './colorBlend';
 import { SegmentOverrides, remapOverrides } from './tileSegmentOverrides';
 import { worldSnapshot, diffWorldSnapshots } from './worldSnapshot';
-import { fromLegacy } from './sceneGraph';
+import { fromLegacy, toLegacyView } from './sceneGraph';
+import { applyLegacyEntryToGraph, isPoseOp } from './legacyOpBridge';
 import { Orientation, orientationToMatrix, matrixToOrientation, composeOrientation } from './transform2d';
 
 /**
@@ -5833,9 +5834,62 @@ function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
 const ASSERT_GROUP_LOCALS =
   typeof process !== 'undefined' && process.env?.ASSERT_GROUP_LOCALS === '1';
 
-function checked(before: CompositionState, after: CompositionState): CompositionState {
-  if (ASSERT_GROUP_LOCALS) assertNoNewStaleLocals(before, after);
+function checked(
+  before: CompositionState, after: CompositionState,
+  entry: CompUndoEntry, forward: boolean,
+): CompositionState {
+  if (ASSERT_GROUP_LOCALS) {
+    assertNoNewStaleLocals(before, after);
+    // Apply only. The bridge translates an op's FORWARD effect; an undo
+    // would need the inverse legacy op, which for grouping and reparenting
+    // is carried as whole-array snapshots rather than as a transform.
+    if (forward) assertGraphAgrees(before, after, entry);
+  }
   return withRefreshedGraph(before, after);
+}
+
+/**
+ * The scene graph would have put everything where the legacy ops did.
+ *
+ * Armed for the whole engine suite alongside the stale-locals check, so
+ * every group and transform test in the repo doubles as a differential
+ * test for the bridge — which is a far broader proof than the couple of
+ * dozen scenes `legacyOpBridge.test.ts` can name by hand, and the thing
+ * the phases that move readers onto the graph get to lean on.
+ *
+ * Only entries made ENTIRELY of pose ops the bridge claims are checked. A
+ * mixed entry would need the content ops applied to the graph too, and
+ * comparing half a result proves nothing.
+ */
+function assertGraphAgrees(
+  before: CompositionState, after: CompositionState, entry: CompUndoEntry,
+): void {
+  if (entry.length === 0 || !entry.every(isPoseOp)) return;
+  // A composition whose two copies of a pose already disagree cannot be
+  // used to judge the graph. `fromLegacy` reads the world fields, which
+  // are what the user saw; the legacy transform path reads the local
+  // caches. Where those differ the two models are answering different
+  // questions and the legacy answer is not the authority — that
+  // disagreement is the bug this whole refactor is about.
+  if (staleGroupedLeaves(before).size > 0) return;
+
+  const viaGraph = toLegacyView(applyLegacyEntryToGraph(fromLegacy(before), entry));
+  const byId = (s: CompositionState) =>
+    worldSnapshot(s).sort((a, b) => a.id.localeCompare(b.id));
+
+  const diff = diffWorldSnapshots(
+    byId(after), byId({ ...after, ...viaGraph }),
+    // An svg's stored bbox is a selection rect the graph recomputes from
+    // the path; `groupId` is what a grouping op is FOR.
+    { ignoreSvgBbox: true, ignoreGroupId: true },
+  );
+  if (diff) {
+    throw new Error(
+      'the scene graph disagrees with the legacy ops about '
+      + `${entry.map((o) => o.op).join(', ')}:
+${diff}`,
+    );
+  }
 }
 
 /**
@@ -5875,7 +5929,7 @@ export function applyCompOps(state: CompositionState, entry: CompUndoEntry): Com
   for (const op of entry) {
     result = applyOp(result, op);
   }
-  return checked(state, result);
+  return checked(state, result, entry, true);
 }
 
 /** Revert a composition undo entry (for undo) */
@@ -5885,5 +5939,5 @@ export function revertCompOps(state: CompositionState, entry: CompUndoEntry): Co
   for (let i = entry.length - 1; i >= 0; i--) {
     result = revertOp(result, entry[i]);
   }
-  return checked(state, result);
+  return checked(state, result, entry, false);
 }
