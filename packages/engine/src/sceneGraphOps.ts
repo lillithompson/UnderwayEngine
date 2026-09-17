@@ -19,7 +19,8 @@
  */
 
 import {
-  LOCAL_IDENTITY, LocalTransform, decomposeMatrix, localMatrix, matInvert, matMul,
+  LOCAL_IDENTITY, LocalTransform, Mat2D, decomposeMatrix, localMatrix, matInvert, matMul,
+  respellMirror,
 } from './sceneTransform';
 import {
   SceneGraph, SceneNode, ancestors, descendants, worldMatrix,
@@ -391,18 +392,18 @@ function withParent(
   }
 
   const nodes = new Map(graph.nodes);
-  let roots = graph.roots;
-
-  // Out of the old place.
-  if (node.parentId) {
-    const old = nodes.get(node.parentId);
-    if (old) {
-      nodes.set(old.id, {
-        ...old, children: (old.children ?? []).filter((id) => id !== nodeId),
-      });
-    }
-  } else {
-    roots = roots.filter((id) => id !== nodeId);
+  // Out of the old place. The roots are filtered whatever the node's
+  // `parentId` says: a leaf can arrive pointing at a group that does not
+  // exist yet — a duplicate is placed carrying its copy-group's id one op
+  // before that group is made — and `fromLegacy` files such a leaf under
+  // the roots. Trusting the phantom parent here left the node in the
+  // roots AND in its new parent's children, so it rendered twice.
+  let roots = graph.roots.filter((id) => id !== nodeId);
+  const old = node.parentId ? nodes.get(node.parentId) : undefined;
+  if (old) {
+    nodes.set(old.id, {
+      ...old, children: (old.children ?? []).filter((id) => id !== nodeId),
+    });
   }
 
   nodes.set(nodeId, { ...node, parentId, transform });
@@ -481,6 +482,57 @@ export function gestureRoots(
     out.push(id);
   }
   return out;
+}
+
+/**
+ * The local transform `nodeId` needs so that its WORLD matrix becomes
+ * `gesture . world` — a world-space affine applied on top of where the
+ * node already is.
+ *
+ * This is what every host gesture reduces to. A drag is a translation, a
+ * twist is a rotation about the selection centre, a corner resize is a
+ * scale about the pinned corner, a flip is a reflection about a frame's
+ * middle: each one a matrix in the space the user works in, and each one
+ * lands on the node through the same inverse-parent conjugation,
+ * `inverse(P) . gesture . P . local`. A node at the root, a leaf three
+ * groups deep and the group itself all take it identically, which is why
+ * a group gesture is one op on one node.
+ *
+ * The result is decomposed to the nearest `LocalTransform`, exact
+ * whenever the product carries no shear (every gesture the editor makes
+ * on a node whose ancestors are similarities). The mirror flags are
+ * respelled to `flags` when given, else kept as the node had them, so a
+ * flip the user named reads back the way they named it.
+ */
+export function worldGestureToLocal(
+  graph: SceneGraph, nodeId: string, gesture: Mat2D,
+  flags?: { mirrorH?: boolean; mirrorV?: boolean },
+): LocalTransform | null {
+  const node = graph.nodes.get(nodeId);
+  if (!node) return null;
+  const parent = node.parentId ? worldMatrix(graph, node.parentId) : undefined;
+  let inv: Mat2D | undefined;
+  if (parent) {
+    try { inv = matInvert(parent); } catch { return null; }
+  }
+  const local = localMatrix(node.transform);
+  const next = parent && inv
+    ? matMul(inv, matMul(gesture, matMul(parent, local)))
+    : matMul(gesture, local);
+  return respellMirror(decomposeMatrix(next), flags ?? {
+    mirrorH: node.transform.mirrorH, mirrorV: node.transform.mirrorV,
+  });
+}
+
+/** `setTransform` for {@link worldGestureToLocal}, or null when the node
+ *  is missing, its parent chain has collapsed, or nothing would change. */
+export function buildWorldGesture(
+  graph: SceneGraph, nodeId: string, gesture: Mat2D,
+  flags?: { mirrorH?: boolean; mirrorV?: boolean },
+): SceneOp | null {
+  const to = worldGestureToLocal(graph, nodeId, gesture, flags);
+  if (!to) return null;
+  return buildSetTransform(graph, nodeId, to);
 }
 
 /** The world matrix a node would have under a proposed local transform —

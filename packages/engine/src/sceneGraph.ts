@@ -773,6 +773,7 @@ function toLegacyLeaf(graph: SceneGraph, node: SceneNode): LegacyLeaf {
     svg.localSubpaths = undefined;
     svg.localCellX = undefined; svg.localCellY = undefined;
     svg.localCellWidth = undefined; svg.localCellHeight = undefined;
+    scaleContentLengths(svg as unknown as Record<string, unknown>, world);
     return svg;
   }
 
@@ -781,6 +782,7 @@ function toLegacyLeaf(graph: SceneGraph, node: SceneNode): LegacyLeaf {
   Object.assign(base, poseFieldsFrom(world, local, {
     rotation: was?.rotation, mirrorH: was?.mirrorH,
   }));
+  scaleContentLengths(base, world);
 
   base.localCellX = undefined; base.localCellY = undefined;
   base.localCellWidth = undefined; base.localCellHeight = undefined;
@@ -788,4 +790,58 @@ function toLegacyLeaf(graph: SceneGraph, node: SceneNode): LegacyLeaf {
   base.localMirrorH = undefined; base.localMirrorV = undefined;
   base.localAngleDeg = undefined;
   return base;
+}
+
+/**
+ * Scale the lengths a leaf's CONTENT carries in world units by the
+ * node's world scale, so the legacy view says what a scaled node renders
+ * as.
+ *
+ * The legacy leaf has no scale channel: its box is its size, and the
+ * things drawn inside it that have a size of their own — a text's type,
+ * a repeat-mode tile pitch and offset — are stored in world cells too. A
+ * node the graph has scaled (a pinch, a group resize) therefore needs
+ * those lengths scaled along with its box, or the view would report a
+ * bigger box with the same type reflowed inside it and the same tile
+ * repeated more times — precisely what the live preview does not draw.
+ *
+ * `content` holds those lengths as they stood when the graph was last
+ * built from the arrays, at which point every leaf's own scale was 1
+ * (`fromLegacy` reads sizes into the local box, never into `sx`/`sy`).
+ * So the factor is the node's world scale outright, and a content op —
+ * which rebuilds the graph from this view — folds it back into the
+ * content, where it stays at scale 1 again. Nothing is counted twice.
+ *
+ * Type takes the SMALLER axis factor: it cannot be stretched by the
+ * legacy renderer, and the smaller factor is the one that keeps it inside
+ * a box pulled off-square. A uniform scale, which is what a pinch and a
+ * diagonal corner drag produce, is exact. Rendering the glyphs through
+ * the matrix — stretched and all — is what the render phase of the
+ * refactor brings; this is the view saying the same thing as nearly as
+ * it can until then.
+ */
+function scaleContentLengths(leaf: Record<string, unknown>, world: Mat2D): void {
+  const t = decomposeMatrix(world);
+  const kx = Math.abs(t.sx), ky = Math.abs(t.sy);
+  const near1 = (k: number) => Math.abs(k - 1) < 1e-9;
+  if (near1(kx) && near1(ky)) return;
+
+  if (leaf.tileMode === 'repeat') {
+    if (typeof leaf.tileWidthL0 === 'number') leaf.tileWidthL0 *= kx;
+    if (typeof leaf.tileHeightL0 === 'number') leaf.tileHeightL0 *= ky;
+    if (typeof leaf.tileOffsetXL0 === 'number') leaf.tileOffsetXL0 *= kx;
+    if (typeof leaf.tileOffsetYL0 === 'number') leaf.tileOffsetYL0 *= ky;
+  }
+
+  const style = leaf.style as TextObject['style'] | undefined;
+  if (style && typeof style.size === 'number') {
+    const k = Math.min(kx, ky);
+    if (!near1(k)) {
+      leaf.style = {
+        ...style,
+        size: style.size * k,
+        ...(style.stroke ? { stroke: { ...style.stroke, width: style.stroke.width * k } } : {}),
+      };
+    }
+  }
 }

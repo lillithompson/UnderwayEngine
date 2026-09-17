@@ -172,6 +172,13 @@ export function legacyOpToSceneOps(
   graph: SceneGraph, op: CompUndoOp,
 ): SceneEntry | null {
   switch (op.op) {
+    case 'setTransform':
+      // Already a graph op, carried in the legacy vocabulary so the undo
+      // stack can hold it. Passed through with both sides intact.
+      return graph.nodes.has(op.nodeId)
+        ? [{ op: 'setTransform', nodeId: op.nodeId, from: op.from, to: op.to }]
+        : [];
+
     case 'moveNode': {
       const move = buildMoveBy(graph, op.nodeId, op.dx, op.dy);
       return move ? [move] : [];
@@ -258,6 +265,7 @@ export function isPoseOp(op: CompUndoOp): boolean {
 }
 
 const POSE_OPS: ReadonlySet<string> = new Set([
+  'setTransform',
   'moveNode', 'transformGroup', 'setNodeRotation', 'editImage',
   'groupFigures', 'ungroupFigures', 'reparentNode',
 ]);
@@ -315,6 +323,9 @@ function groupNodeOf(node: SceneNode): GroupNode {
  */
 export function invertLegacyOp(op: CompUndoOp): CompUndoOp | null {
   switch (op.op) {
+    case 'setTransform':
+      return { ...op, from: op.to, to: op.from };
+
     case 'moveNode':
       return { ...op, dx: -op.dx, dy: -op.dy };
 

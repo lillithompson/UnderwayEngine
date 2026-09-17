@@ -12,8 +12,8 @@ import {
   LOCAL_IDENTITY, LocalTransform, MAT_IDENTITY, Mat2D,
   composeLocal, decomposeMatrix, fromTransform2D, localEquals, localMatrix,
   localTranslate, matApplyBbox, matApplyCorners, matApplyDelta, matApplyPoint,
-  matDet, matInvert, matIsSimilarity, matMul, matShear, normalizeDeg,
-  transformAboutPivot,
+  matAbout, matDet, matInvert, matIsSimilarity, matMul, matShear, normalizeDeg,
+  respellMirror, transformAboutPivot,
 } from '../sceneTransform';
 import { applyToBbox, Transform2D } from '../transform2d';
 
@@ -348,5 +348,73 @@ describe('localMatrix cleans float noise', () => {
     expect(m.d).toBe(0);
     expect(m.b).toBe(1);
     expect(m.c).toBe(-1);
+  });
+});
+
+describe('matAbout', () => {
+  test('the pivot is the fixed point of the re-centred map', () => {
+    const turn = localMatrix({ ...LOCAL_IDENTITY, rotationDeg: 37 });
+    const m = matAbout([5, -2], turn);
+    expect(matApplyPoint(m, 5, -2)[0]).toBeCloseTo(5, 12);
+    expect(matApplyPoint(m, 5, -2)[1]).toBeCloseTo(-2, 12);
+    // ...and the linear part is untouched.
+    expect([m.a, m.b, m.c, m.d]).toEqual([turn.a, turn.b, turn.c, turn.d]);
+  });
+
+  test('a scale about a corner pins that corner', () => {
+    const m = matAbout([10, 10], { ...MAT_IDENTITY, a: 2, d: 3 });
+    expect(matApplyPoint(m, 10, 10)).toEqual([10, 10]);
+    expect(matApplyPoint(m, 11, 11)).toEqual([12, 13]);
+  });
+
+  test('the translation of the linear part is ignored', () => {
+    const with_ = matAbout([1, 1], { ...MAT_IDENTITY, a: 2, d: 2, e: 99, f: 99 });
+    const without = matAbout([1, 1], { ...MAT_IDENTITY, a: 2, d: 2 });
+    expect(with_).toEqual(without);
+  });
+});
+
+describe('respellMirror', () => {
+  const flipped: LocalTransform = { tx: 1, ty: 2, sx: 3, sy: -2, rotationDeg: 30 };
+
+  test('a canonical flip reads as a vertical mirror when asked', () => {
+    const v = respellMirror(flipped, { mirrorV: true });
+    expect(v).toEqual({ tx: 1, ty: 2, sx: 3, sy: 2, rotationDeg: 30, mirrorV: true });
+    expect(localEquals(v, flipped)).toBe(true);
+  });
+
+  test('or as a horizontal mirror plus a half turn, which is the same picture', () => {
+    const h = respellMirror(flipped, { mirrorH: true });
+    expect(h).toEqual({ tx: 1, ty: 2, sx: 3, sy: 2, rotationDeg: 210, mirrorH: true });
+    expect(localEquals(h, flipped)).toBe(true);
+  });
+
+  test('both flags on an unflipped pose is a half turn', () => {
+    const t: LocalTransform = { tx: 0, ty: 0, sx: 1, sy: 1, rotationDeg: 10 };
+    const hv = respellMirror(t, { mirrorH: true, mirrorV: true });
+    expect(hv.mirrorH).toBe(true);
+    expect(hv.mirrorV).toBe(true);
+    expect(hv.rotationDeg).toBe(190);
+    expect(localEquals(hv, t)).toBe(true);
+  });
+
+  test('flags of the wrong handedness leave the canonical form alone', () => {
+    // A flip cannot be spelled without a flip, and an unflipped pose
+    // cannot be spelled with one.
+    expect(respellMirror(flipped, {})).toEqual(flipped);
+    const plain: LocalTransform = { tx: 0, ty: 0, sx: 1, sy: 1, rotationDeg: 0 };
+    expect(respellMirror(plain, { mirrorH: true })).toEqual(plain);
+  });
+
+  test('a gesture on a mirrored node keeps its spelling', () => {
+    // Turn a horizontally mirrored node: the flag survives rather than
+    // drifting into a negative scale and a half turn.
+    const t: LocalTransform = { tx: 4, ty: 4, sx: 1, sy: 1, rotationDeg: 0, mirrorH: true };
+    const turned = transformAboutPivot(t, [4, 4], { rotateDeg: 45 });
+    expect(turned.mirrorH).toBe(true);
+    expect(turned.mirrorV).toBeUndefined();
+    expect(turned.sx).toBeGreaterThan(0);
+    expect(turned.sy).toBeGreaterThan(0);
+    expect(turned.rotationDeg).toBeCloseTo(45, 9);
   });
 });

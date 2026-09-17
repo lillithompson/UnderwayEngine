@@ -113,6 +113,30 @@ export function matApplyDelta(m: Mat2D, dx: number, dy: number): [number, number
   return [m.a * dx + m.c * dy, m.b * dx + m.d * dy];
 }
 
+/** A pure translation. */
+export function matTranslate(dx: number, dy: number): Mat2D {
+  return { ...MAT_IDENTITY, e: dx, f: dy };
+}
+
+/**
+ * `linear` re-centred so that `pivot` is its fixed point: the matrix that
+ * scales, turns or flips everything about that one point.
+ *
+ * Every pivoted gesture is this — a corner resize about the opposite
+ * corner, a twist about the selection centre, a flip about a frame's
+ * middle — expressed in whichever space `pivot` and `linear` are given in.
+ * The translation part of `linear` is ignored: a gesture about a point has
+ * no translation of its own.
+ */
+export function matAbout(pivot: readonly [number, number], linear: Mat2D): Mat2D {
+  const [px, py] = pivot;
+  return {
+    a: linear.a, b: linear.b, c: linear.c, d: linear.d,
+    e: z(px - (linear.a * px + linear.c * py)),
+    f: z(py - (linear.b * px + linear.d * py)),
+  };
+}
+
 /** The four corners of a rectangle mapped through the matrix, in the
  *  order top-left, top-right, bottom-right, bottom-left. */
 export function matApplyCorners(m: Mat2D, b: Bbox): [number, number][] {
@@ -275,23 +299,40 @@ export function decomposeMatrix(m: Mat2D): LocalTransform {
 }
 
 /**
- * Re-express a decomposed transform with `like`'s mirror flags where
- * those describe the same pose.
+ * The same pose, spelled with the given mirror flags where that is
+ * possible.
  *
- * Purely cosmetic — the matrix is unchanged — but it keeps a node that
- * the user mirrored reading as mirrored, instead of drifting into a
- * negative scale after a few gestures.
+ * `decomposeMatrix` is canonical — every flip lands in a negative `sy` —
+ * and the matrix is unchanged by any respelling, so this is purely about
+ * what a reader sees: a node the user flipped horizontally should keep
+ * reading as flipped horizontally instead of drifting into "upside down
+ * and turned half round" after a gesture, which is the same picture. The
+ * respelling uses the one identity there is: negating both axes is a half
+ * turn, so `R(θ)·S(sx, sy) = R(θ+180)·S(−sx, −sy)`. When the requested
+ * flags name the other handedness, no spelling fits and the canonical
+ * form comes back unchanged.
  */
-function reMirror(t: LocalTransform, like: LocalTransform): LocalTransform {
-  if (!like.mirrorH && !like.mirrorV) return t;
-  const out: LocalTransform = {
-    ...t,
-    sx: like.mirrorH && t.sx < 0 ? -t.sx : t.sx,
-    sy: like.mirrorV && t.sy < 0 ? -t.sy : t.sy,
-    ...(like.mirrorH ? { mirrorH: true } : {}),
-    ...(like.mirrorV ? { mirrorV: true } : {}),
+export function respellMirror(
+  t: LocalTransform, flags: { mirrorH?: boolean; mirrorV?: boolean },
+): LocalTransform {
+  const h = !!flags.mirrorH, v = !!flags.mirrorV;
+  // Signs the requested spelling would put on each axis...
+  const wantX = h ? -1 : 1, wantY = v ? -1 : 1;
+  // ...and the signs the canonical form carries (sx is never negative).
+  const haveX = t.sx < 0 ? -1 : 1, haveY = t.sy < 0 ? -1 : 1;
+  const base = { ...t, sx: Math.abs(t.sx), sy: Math.abs(t.sy) };
+  delete (base as { mirrorH?: boolean }).mirrorH;
+  delete (base as { mirrorV?: boolean }).mirrorV;
+  const flagged = {
+    ...base,
+    ...(h ? { mirrorH: true } : {}),
+    ...(v ? { mirrorV: true } : {}),
   };
-  return localEquals(out, t) ? out : t;
+  if (wantX === haveX && wantY === haveY) return flagged;
+  if (wantX === -haveX && wantY === -haveY) {
+    return { ...flagged, rotationDeg: normalizeDeg(t.rotationDeg + 180) };
+  }
+  return t;
 }
 
 /**
@@ -327,20 +368,17 @@ export function transformAboutPivot(
   const scaleX = delta.scaleX ?? 1;
   const scaleY = delta.scaleY ?? 1;
   const cos = clean(Math.cos(rad)), sin = clean(Math.sin(rad));
-  // The gesture as a linear map in parent space...
-  const g: Mat2D = {
+  // The gesture as a linear map in parent space, re-centred so `pivot` is
+  // its fixed point.
+  const about = matAbout(pivot, {
     a: cos * scaleX, b: sin * scaleX,
     c: -sin * scaleY, d: cos * scaleY,
     e: 0, f: 0,
-  };
-  // ...re-centred so `pivot` is its fixed point.
-  const [px, py] = pivot;
-  const about: Mat2D = {
-    ...g,
-    e: px - (g.a * px + g.c * py),
-    f: py - (g.b * px + g.d * py),
-  };
-  return reMirror(decomposeMatrix(matMul(about, localMatrix(t))), t);
+  });
+  return respellMirror(
+    decomposeMatrix(matMul(about, localMatrix(t))),
+    { mirrorH: t.mirrorH, mirrorV: t.mirrorV },
+  );
 }
 
 /**

@@ -28,7 +28,7 @@ import {
   getNode, toLegacyView, worldBbox, worldMatrix, worldSegments,
 } from '../sceneGraph';
 import { LOCAL_IDENTITY, localMatrix, matIsSimilarity } from '../sceneTransform';
-import { applySceneOps, buildUngroup } from '../sceneGraphOps';
+import { applySceneOps, buildSetTransform, buildUngroup } from '../sceneGraphOps';
 import { diffWorldSnapshots, worldSnapshot } from '../worldSnapshot';
 import {
   CompUndoEntry, CompositionState, GroupNode, ImageObject, PathSegment,
@@ -703,5 +703,63 @@ describe('a graph-backed leaf carries no local caches', () => {
     const img = toLegacyView(ungrouped).images[0];
     expect(img.groupId).toBeUndefined();
     expect(img.cellX).toBeCloseTo(5, 9);
+  });
+});
+
+describe('the view scales what a leaf draws inside its box', () => {
+  test('a scaled text node reads as bigger type in a bigger box', () => {
+    const state = makeState({
+      texts: [text({ id: 'txt_1', cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 2,
+        style: { fontId: 'CozySans', size: 1.5, color: { r: 0, g: 0, b: 0 },
+          stroke: { width: 0.2, color: { r: 9, g: 9, b: 9 } } } })],
+      sceneOrder: ['txt_1'],
+    });
+    const g = fromLegacy(state);
+    const scaled = applySceneOps(g, [buildSetTransform(g, 'txt_1', { ...LOCAL_IDENTITY, sx: 2, sy: 2 })!]);
+    const view = toLegacyView(scaled).texts[0];
+    expect(view.cellWidth).toBeCloseTo(8, 9);
+    expect(view.cellHeight).toBeCloseTo(4, 9);
+    expect(view.style.size).toBeCloseTo(3, 9);
+    expect(view.style.stroke!.width).toBeCloseTo(0.4, 9);
+    // Pulled off-square the type takes the smaller factor, so it still fits.
+    const wide = applySceneOps(g, [buildSetTransform(g, 'txt_1', { ...LOCAL_IDENTITY, sx: 3, sy: 1 })!]);
+    expect(toLegacyView(wide).texts[0].style.size).toBeCloseTo(1.5, 9);
+    // Unscaled, the style object is the content's own: nothing is copied.
+    expect(toLegacyView(g).texts[0].style).toBe(state.texts![0].style);
+  });
+
+  test('a scaled repeat-mode path keeps its repeat count', () => {
+    const g = fromLegacy(makeState({
+      svgObjects: [svg({ id: 'svg_1', tileMode: 'repeat',
+        tileWidthL0: 2, tileHeightL0: 1, tileOffsetXL0: 0.5, tileOffsetYL0: 0.25 })],
+      sceneOrder: ['svg_1'],
+    }));
+    const scaled = applySceneOps(g, [buildSetTransform(g, 'svg_1', { ...LOCAL_IDENTITY, sx: 2, sy: 3 })!]);
+    const view = toLegacyView(scaled).svgObjects[0];
+    expect(view.tileWidthL0).toBeCloseTo(4, 9);
+    expect(view.tileHeightL0).toBeCloseTo(3, 9);
+    expect(view.tileOffsetXL0).toBeCloseTo(1, 9);
+    expect(view.tileOffsetYL0).toBeCloseTo(0.75, 9);
+  });
+
+  test('a rebuild folds the scale into the content and the picture holds', () => {
+    // A content op rebuilds the graph from the view. The scale the view
+    // baked in becomes the leaf's own size, its transform goes back to
+    // scale 1, and the view says exactly what it said before.
+    const state = makeState({
+      texts: [text({ id: 'txt_1', cellWidth: 4, cellHeight: 2 })],
+      sceneOrder: ['txt_1'],
+    });
+    const g = fromLegacy(state);
+    const scaled = applySceneOps(g, [buildSetTransform(g, 'txt_1', { ...LOCAL_IDENTITY, sx: 2, sy: 2 })!]);
+    const once = toLegacyView(scaled);
+    const rebuilt = fromLegacy({ ...state, ...once });
+    expect(getNode(rebuilt, 'txt_1')!.transform.sx).toBe(1);
+    const twice = toLegacyView(rebuilt);
+    expect(twice.texts[0].style.size).toBeCloseTo(once.texts[0].style.size, 9);
+    expect(twice.texts[0].cellWidth).toBeCloseTo(once.texts[0].cellWidth, 9);
+    expect(diffWorldSnapshots(
+      worldSnapshot({ ...state, ...once }), worldSnapshot({ ...state, ...twice }),
+    )).toBeNull();
   });
 });

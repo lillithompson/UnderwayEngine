@@ -1,5 +1,6 @@
 import type { ImageFraming } from './imageFraming';
 import type { SceneGraph } from './sceneGraph';
+import type { LocalTransform } from './sceneTransform';
 export type { ImageFraming, ImageFramingMode, ImageCropRatio } from './imageFraming';
 
 /** Pixel resolution of every layer texture */
@@ -1793,6 +1794,16 @@ export type CompUndoOp =
    * Member `localCell*` are unchanged — the whole point of the hierarchy
    * is that locals are stable across group transforms.
    */
+  /**
+   * Re-pose any node — leaf or group — by its scene-graph transform
+   * (docs/transform-refactor.md §3.4). The one op every host gesture
+   * commits: a move, a turn, a flip, a scale and a twist are all a new
+   * `LocalTransform` on the selection's root nodes, and a group gesture is
+   * one of these on the group. Carries both sides, so revert is apply with
+   * them swapped. A composition without a graph applies it by building
+   * one from its arrays, running the op, and rendering the arrays back.
+   */
+  | { op: 'setTransform'; nodeId: string; from: LocalTransform; to: LocalTransform }
   | { op: 'transformGroup'; groupId: string;
       oldTranslateX: number; oldTranslateY: number;
       oldScaleX: number; oldScaleY: number;

@@ -11,15 +11,18 @@
  */
 
 import {
-  SceneGraph, fromLegacy, getNode, toLegacyView, worldBbox, worldMatrix,
+  SceneGraph, flattenLeaves, fromLegacy, getNode, toLegacyView, worldBbox, worldMatrix,
 } from '../sceneGraph';
 import {
   SceneEntry, applySceneOp, applySceneOps, buildGroup, buildMoveBy,
-  buildSetParent, buildSetTransform, buildUngroup, gestureRoots,
+  buildSetParent, buildSetTransform, buildUngroup, buildWorldGesture, gestureRoots,
   indexOfChild, localUnder, previewWorldMatrix, revertSceneOp, revertSceneOps,
-  worldDeltaToParent,
+  worldDeltaToParent, worldGestureToLocal,
 } from '../sceneGraphOps';
-import { LOCAL_IDENTITY, localEquals, localMatrix } from '../sceneTransform';
+import {
+  LOCAL_IDENTITY, MAT_IDENTITY, Mat2D, localEquals, localMatrix, matAbout, matApplyPoint,
+  matMul, matTranslate,
+} from '../sceneTransform';
 import { diffWorldSnapshots, worldSnapshot } from '../worldSnapshot';
 import {
   CompositionState, GroupNode, ImageObject, TextObject, makeViewport,
@@ -406,5 +409,119 @@ describe('gesture helpers', () => {
     const committed = applySceneOp(g, buildSetTransform(g, 'g1', proposed)!);
     expect(previewWorldMatrix(g, 'g1', proposed)).toEqual(worldMatrix(committed, 'g1'));
     expect(localMatrix(getNode(committed, 'g1')!.transform)).toEqual(localMatrix(proposed));
+  });
+});
+
+describe('a world gesture lands on any node the same way', () => {
+  /** A group turned 90 and doubled, holding an image and a nested group
+   *  with an image of its own: three depths to land a gesture on. */
+  function nested(): SceneGraph {
+    return fromLegacy(makeState({
+      images: [
+        image({ id: 'img_1', groupId: 'g1', cellX: 0, cellY: 0 }),
+        image({ id: 'img_2', groupId: 'g2', cellX: 10, cellY: 5 }),
+        image({ id: 'img_3', cellX: -8, cellY: 3 }),
+      ],
+      groups: [
+        group({ id: 'g1', translateX: 3, translateY: 1, scaleX: 2, scaleY: 2, rotation: 90 }),
+        group({ id: 'g2', parentGroupId: 'g1', translateX: 1, translateY: 1 }),
+      ],
+      sceneOrder: ['img_1', 'img_2', 'img_3'],
+    }));
+  }
+
+  /** A leaf's four world corners under a matrix, for a shape-level compare. */
+  const cornersUnder = (g: SceneGraph, id: string, m: Mat2D): number[] => {
+    const b = getNode(g, id)!.localBox ?? { x: 0, y: 0, width: 0, height: 0 };
+    return [
+      ...matApplyPoint(m, b.x, b.y), ...matApplyPoint(m, b.x + b.width, b.y),
+      ...matApplyPoint(m, b.x + b.width, b.y + b.height), ...matApplyPoint(m, b.x, b.y + b.height),
+    ];
+  };
+  const corners = (g: SceneGraph, id: string) => cornersUnder(g, id, worldMatrix(g, id));
+
+  function ancestorIds(g: SceneGraph, id: string): string[] {
+    const out: string[] = [];
+    let cur = getNode(g, id)?.parentId;
+    while (cur) { out.push(cur); cur = getNode(g, cur)?.parentId; }
+    return out;
+  }
+
+  const gestures: [string, Mat2D][] = [
+    ['a drag', matTranslate(5, -2)],
+    ['a twist about a point', matAbout([4, 4], localMatrix({ ...LOCAL_IDENTITY, rotationDeg: 33 }))],
+    ['a scale about a corner', matAbout([0, 0], { ...MAT_IDENTITY, a: 3, d: 0.5 })],
+    ['a flip about a line', matAbout([2, 0], { ...MAT_IDENTITY, a: -1 })],
+  ];
+
+  for (const [name, gesture] of gestures) {
+    for (const id of ['img_3', 'img_1', 'img_2', 'g1', 'g2']) {
+      test(`${name} on ${id} puts it where the gesture says`, () => {
+        const g = nested();
+        const op = buildWorldGesture(g, id, gesture)!;
+        expect(op).not.toBeNull();
+        const after = applySceneOp(g, op);
+        // Every leaf under the node moved by exactly the gesture. A
+        // group's members ride along without being touched themselves.
+        const under = flattenLeaves(g)
+          .filter((n) => n.id === id || ancestorIds(g, n.id).includes(id))
+          .map((n) => n.id);
+        expect(under.length).toBeGreaterThan(0);
+        for (const leaf of under) {
+          const want = cornersUnder(g, leaf, matMul(gesture, worldMatrix(g, leaf)));
+          const got = corners(after, leaf);
+          for (let i = 0; i < 8; i++) expect(got[i]).toBeCloseTo(want[i], 9);
+          if (leaf !== id) {
+            // Untouched: the same transform object, not merely an equal one.
+            expect(getNode(after, leaf)!.transform).toBe(getNode(g, leaf)!.transform);
+          }
+        }
+        // ...and nothing outside it moved.
+        for (const n of flattenLeaves(g)) {
+          if (under.includes(n.id)) continue;
+          expect(corners(after, n.id)).toEqual(corners(g, n.id));
+        }
+      });
+    }
+  }
+
+  test('a flip the caller names is spelled the way it was named', () => {
+    const g = nested();
+    const flipH = matAbout([0, 0], { ...MAT_IDENTITY, a: -1 });
+    const named = worldGestureToLocal(g, 'img_3', flipH, { mirrorH: true })!;
+    expect(named.mirrorH).toBe(true);
+    expect(named.mirrorV).toBeUndefined();
+    // Unnamed, the node keeps whatever spelling it had (none), and the
+    // canonical form carries the flip as a negative scale.
+    const unnamed = worldGestureToLocal(g, 'img_3', flipH)!;
+    expect(unnamed.mirrorH).toBeUndefined();
+    expect(unnamed.sy).toBeLessThan(0);
+    expect(localEquals(named, unnamed)).toBe(true);
+  });
+
+  test('a missing node, and a collapsed parent, give nothing', () => {
+    const g = nested();
+    expect(buildWorldGesture(g, 'nope', matTranslate(1, 1))).toBeNull();
+    const collapsed = applySceneOp(g, buildSetTransform(g, 'g1', { ...LOCAL_IDENTITY, sx: 0 })!);
+    expect(buildWorldGesture(collapsed, 'img_1', matTranslate(1, 1))).toBeNull();
+  });
+});
+
+describe('a leaf whose parent does not exist yet', () => {
+  test('is filed under the roots, and moves into its group exactly once', () => {
+    // The duplicate path places a copy already carrying the id of the group
+    // that the NEXT op creates. Until then the leaf's parent is a phantom;
+    // the graph must not lose it, and grouping it must not leave it in two
+    // places.
+    const g = fromLegacy(makeState({
+      images: [image({ id: 'img_1', groupId: 'g_later' })],
+      sceneOrder: ['img_1'],
+    }));
+    expect(g.roots).toEqual(['img_1']);
+    const grouped = applySceneOps(g, buildGroup(g, ['img_1'], 'g_later', 'Later'));
+    expect(grouped.roots).toEqual(['g_later']);
+    expect(getNode(grouped, 'g_later')!.children).toEqual(['img_1']);
+    expect(flattenLeaves(grouped).map((n) => n.id)).toEqual(['img_1']);
+    expect(toLegacyView(grouped).sceneOrder).toEqual(['img_1']);
   });
 });

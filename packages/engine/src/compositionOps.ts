@@ -15,7 +15,7 @@ import { fromLegacy, toLegacyView } from './sceneGraph';
 import {
   applyLegacyEntryToGraph, invertOnGraph, isPoseOp, legacyOpToSceneOps,
 } from './legacyOpBridge';
-import { applySceneOps } from './sceneGraphOps';
+import { applySceneOps, revertSceneOps } from './sceneGraphOps';
 import { Orientation, orientationToMatrix, matrixToOrientation, composeOrientation } from './transform2d';
 
 /**
@@ -4885,6 +4885,18 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
     case 'removeGroup': {
       return { ...state, groups: state.groups.filter((g) => g.id !== op.group.id) };
     }
+    case 'setTransform':
+      // A graph op on a composition that has no graph: build one from the
+      // arrays, run it, render the arrays back. The whole scene is
+      // re-rendered, which is what makes this the fallback and not the
+      // path — a composition that edits this way asks for a graph
+      // (`withSceneGraph`) and keeps it.
+      return {
+        ...state,
+        ...toLegacyView(applySceneOps(fromLegacy(state), [
+          { op: 'setTransform', nodeId: op.nodeId, from: op.from, to: op.to },
+        ])),
+      };
     case 'transformGroup': {
       // Set the GroupNode's transform to the new* values, then materialize
       // every member's world coords from the updated transform composed
@@ -5533,6 +5545,13 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
       if (state.groups.some((g) => g.id === op.group.id)) return state;
       return { ...state, groups: [...state.groups, op.group] };
     }
+    case 'setTransform':
+      return {
+        ...state,
+        ...toLegacyView(revertSceneOps(fromLegacy(state), [
+          { op: 'setTransform', nodeId: op.nodeId, from: op.from, to: op.to },
+        ])),
+      };
     case 'transformGroup': {
       const seeded = seedBboxSnapshots(state, op.groupId);
       const groups = seeded.groups.map((g) =>

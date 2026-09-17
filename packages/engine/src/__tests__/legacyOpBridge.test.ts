@@ -11,14 +11,14 @@
  * things — they emphatically do not, and that is the change.
  */
 
-import { applyCompOps } from '../compositionOps';
+import { applyCompOps, revertCompOps, withSceneGraph } from '../compositionOps';
 import {
   applyLegacyEntryToGraph, groupFieldsToTransform, isPoseOp,
   legacyOpToSceneOps, poseToWorldTransform,
 } from '../legacyOpBridge';
 import { fromLegacy, getNode, toLegacyView } from '../sceneGraph';
 import { applySceneOps, revertSceneOps } from '../sceneGraphOps';
-import { localEquals } from '../sceneTransform';
+import { LOCAL_IDENTITY, localEquals } from '../sceneTransform';
 import { diffWorldSnapshots, worldSnapshot } from '../worldSnapshot';
 import {
   CompUndoOp, CompositionState, GroupNode, ImageObject, PathSegment,
@@ -513,5 +513,56 @@ describe('field conversions', () => {
     expect(getNode(fromLegacy(s), 'g1')).toMatchObject({
       name: 'Frame', isFrame: true, locked: true,
     });
+  });
+});
+
+describe('setTransform travels as a legacy op', () => {
+  function two(): CompositionState {
+    return makeState({
+      images: [
+        image({ id: 'img_1', groupId: 'g1', cellX: 0, cellY: 0 }),
+        image({ id: 'img_2', cellX: 10, cellY: 5 }),
+      ],
+      groups: [group({ id: 'g1', translateX: 2, translateY: 2 })],
+      sceneOrder: ['img_1', 'img_2'],
+    });
+  }
+
+  const setGroup: CompUndoOp = {
+    op: 'setTransform', nodeId: 'g1',
+    from: { ...LOCAL_IDENTITY, tx: 2, ty: 2 },
+    to: { ...LOCAL_IDENTITY, tx: 7, ty: -1, rotationDeg: 90 },
+  };
+
+  test('is a pose op the bridge passes straight through', () => {
+    expect(isPoseOp(setGroup)).toBe(true);
+    const graph = fromLegacy(two());
+    expect(legacyOpToSceneOps(graph, setGroup)).toEqual([setGroup]);
+    expect(legacyOpToSceneOps(graph, { ...setGroup, nodeId: 'nope' })).toEqual([]);
+  });
+
+  test('a composition without a graph applies and reverts it through one', () => {
+    const before = two();
+    const after = applyCompOps(before, [setGroup]);
+    // The member rode the group's new transform: its 4x3 box sits at
+    // (-2,-2) in group space, which turned 90 about the group origin and
+    // carried to (7,-1) spans x in [6, 9] and y in [-3, 1].
+    const img = after.images!.find((i) => i.id === 'img_1')!;
+    expect(img.cellX).toBeCloseTo(6, 9);
+    expect(img.cellY).toBeCloseTo(-3, 9);
+    expect(img.rotation).toBe(90);
+    expect(after.groups.find((g) => g.id === 'g1')!.rotation).toBe(90);
+    // The other leaf is untouched.
+    expect(after.images!.find((i) => i.id === 'img_2')).toMatchObject({ cellX: 10, cellY: 5 });
+    // And revert lands exactly back.
+    const back = revertCompOps(after, [setGroup]);
+    expect(diffWorldSnapshots(worldSnapshot(before), worldSnapshot(back))).toBeNull();
+  });
+
+  test('a composition with a graph lands in the same place', () => {
+    const plain = applyCompOps(two(), [setGroup]);
+    const graphed = applyCompOps(withSceneGraph(two()), [setGroup]);
+    expect(diffWorldSnapshots(worldSnapshot(plain), worldSnapshot(graphed))).toBeNull();
+    expect(getNode(graphed.graph!, 'g1')!.transform).toEqual(setGroup.to);
   });
 });
