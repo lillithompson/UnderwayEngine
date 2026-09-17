@@ -183,17 +183,22 @@ describe('generateCompositionSVGCore — free rotation', () => {
     }));
   });
 
-  test('wraps a rotated svg object in a rotate group; omits it when upright', async () => {
+  test('carries a rotated svg object at its angle; upright, it only moves', async () => {
     const rotated = sb({ id: 'svg_1', segments: closedSquare, color: { r: 9, g: 9, b: 9 }, angleDeg: 22 });
-    const withRot = await generateCompositionSVGCore(makeInputs({
+    const withRot = (await generateCompositionSVGCore(makeInputs({
       svgObjects: [rotated], sceneOrder: ['svg_1'],
-    }));
-    expect(withRot).toContain('rotate(22 ');
+    })))!;
+    // The path is drawn about the node's own origin now and the group's
+    // matrix spins it, where it used to be drawn in world coordinates under
+    // a `rotate(22 cx cy)` wrapper. Same picture, one spelling.
+    const m = transformsIn(withRot)[0];
+    expect(Math.atan2(m.b, m.a) * 180 / Math.PI).toBeCloseTo(22);
 
     const upright = sb({ id: 'svg_1', segments: closedSquare, color: { r: 9, g: 9, b: 9 } });
-    const noRot = await generateCompositionSVGCore(makeInputs({
+    const noRot = (await generateCompositionSVGCore(makeInputs({
       svgObjects: [upright], sceneOrder: ['svg_1'],
-    }));
-    expect(noRot).not.toContain('rotate(');
+    })))!;
+    const u = transformsIn(noRot)[0];
+    expect([u.a, u.b, u.c, u.d]).toEqual([1, 0, 0, 1]);
   });
 });

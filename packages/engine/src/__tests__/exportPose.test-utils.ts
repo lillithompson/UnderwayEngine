@@ -129,3 +129,32 @@ export function expectQuadsClose(got: [number, number][], want: [number, number]
     expect(y).toBeCloseTo(want[i][1], 1);
   });
 }
+
+/**
+ * A point emitted inside the export's first posed `<g>`, carried out to
+ * WORLD SVG units.
+ *
+ * Every kind now emits its content in the node's OWN space, so a test that
+ * wants to name a world coordinate — where a line's corner is, where an
+ * arrowhead's tip is — has to carry the markup's number back out through
+ * the group's matrix. That is the whole difference between the old
+ * emission and this one, and it is the only difference.
+ */
+export function worldPointIn(svg: string, x: number, y: number): [number, number] {
+  return matApplyPoint(transformsIn(svg)[0], x, y);
+}
+
+/**
+ * The `d` of the export's first `<path>`, rewritten in world SVG units.
+ * Handles the `M`/`L` commands the path builder emits for straight
+ * segments; anything else is left to a test that wants to read it itself.
+ */
+export function worldPathD(svg: string): string {
+  const d = svg.match(/<path d="([^"]*)"/)![1];
+  const m = transformsIn(svg)[0];
+  const round = (v: number) => Math.round(v * 1e3) / 1e3;
+  return d.replace(/([-\d.eE+]+),([-\d.eE+]+)/g, (_, xs: string, ys: string) => {
+    const [wx, wy] = matApplyPoint(m, Number(xs), Number(ys));
+    return `${round(wx)},${round(wy)}`;
+  });
+}

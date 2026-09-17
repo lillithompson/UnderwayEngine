@@ -13,9 +13,15 @@ import { exportGraph, generateCompositionSVGCore } from '../compositionSVGCore';
 import type { CompositionSVGInputs } from '../compositionSVGCore';
 import { applyCompOps, withSceneGraph } from '../compositionOps';
 import { fromLegacy, worldMatrix } from '../sceneGraph';
-import { matUniformScale } from '../sceneTransform';
+import { localContentBox } from '../sceneHitFrame';
+import {
+  matApplyCorners, matApplyPoint, matShear, matUniformScale,
+} from '../sceneTransform';
 import { SVG_UNITS_PER_L0_CELL as U } from '../svgExport';
-import { CompositionState, ImageObject, PaintObject, TextObject, makeViewport } from '../types';
+import {
+  CellState, CompositionState, DEFAULT_TRANSFORM, ImageObject, PaintObject, PatternObject,
+  GroupNode, SVGObject, TextObject, makeViewport,
+} from '../types';
 import {
   commitCanvasPaint, createCanvasPaintWorking, paintTilesContentRect, stampCanvasPaint,
 } from '../canvasPaint';
@@ -309,5 +315,122 @@ describe('the paint kind draws its island in its local frame', () => {
     expect(Math.atan2(m.b, m.a) * 180 / Math.PI).toBeCloseTo(30);
     // …and the island itself is still emitted at its own local size.
     expect(imageRect(svg).width / U).toBeCloseTo(8);
+  });
+});
+
+// ── The svg and pattern kinds ─────────────────────────────────────────
+
+const svgObject = (over: Partial<SVGObject> = {}): SVGObject => ({
+  id: 'svg', color: { r: 0, g: 0, b: 0 },
+  segments: [
+    { kind: 'line', start: [0, 0], end: [8, 0] },
+    { kind: 'line', start: [8, 0], end: [8, 4] },
+  ],
+  cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 4,
+  ...over,
+} as SVGObject);
+
+const patternObject = (over: Partial<PatternObject> = {}): PatternObject => {
+  const cell = (): CellState => ({
+    type: 'color', r: 200, g: 30, b: 30, transform: { ...DEFAULT_TRANSFORM },
+  });
+  return {
+    id: 'pat', cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
+    cols: 2, rows: 2, cells: [cell(), cell(), cell(), cell()],
+    ...over,
+  } as PatternObject;
+};
+
+describe('the svg kind draws its path in its own space', () => {
+  test("a sheared member's chrome leans with it, instead of squaring up", async () => {
+    // The path itself was always exact — `toLegacyView` maps the vertices
+    // through the world matrix, shear and all, and the export turned them
+    // back with a `rotate(angleDeg)` wrapper. What was NOT exact is
+    // everything an svg draws in its BOX rather than along its path: the
+    // border rect, the drop shadow's filter region, the opacity and soften
+    // masks. Those read `cellX…cellHeight`, which for a sheared member is
+    // the nearest UPRIGHT rectangle around it.
+    //
+    // A shear needs a turned member inside a group stretched off its axes:
+    // no `LocalTransform` can store one, but a composition of two can.
+    const group: GroupNode = {
+      id: 'g1', name: 'G', translateX: 0, translateY: 0,
+      scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false,
+    };
+    const start = withSceneGraph(makeState({
+      groups: [group],
+      svgObjects: [svgObject({
+        groupId: 'g1', angleDeg: 30,
+        effects: { border: { width: 0.5, color: { r: 0, g: 255, b: 0 } } },
+      })],
+      sceneOrder: ['svg'],
+    }));
+    const from = start.graph!.nodes.get('g1')!.transform;
+    const leaned = applyCompOps(start, [{
+      op: 'setTransform', nodeId: 'g1', from, to: { ...from, sx: 2, sy: 1 },
+    }]);
+    const world = worldMatrix(leaned.graph!, 'svg');
+    expect(matShear(world)).not.toBeCloseTo(0, 2);
+
+    // The quad a document's green border rect covers, in world SVG units.
+    const borderQuad = (doc: string): [number, number][] => {
+      const [, rx, ry, rw, rh] = doc.match(
+        /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"[^>]*#00FF00/,
+      )!;
+      const m = transformsIn(doc)[0];
+      return ([[0, 0], [1, 0], [1, 1], [0, 1]] as const)
+        .map(([fx, fy]) => matApplyPoint(m, Number(rx) + fx * Number(rw), Number(ry) + fy * Number(rh)));
+    };
+
+    const svg = (await generateCompositionSVGCore(inputsFor(leaned)))!;
+    // The border covers the very parallelogram the world matrix makes of
+    // the node's own box — the exact drawn shape, lean and all. (An svg's
+    // local box is centred on its own origin, not at (0, 0).)
+    const want = matApplyCorners(world, localContentBox(leaned.graph!.nodes.get('svg')!))
+      .map(([x, y]) => [x * U, y * U] as [number, number]);
+    expectQuadsClose(borderQuad(svg), want);
+    // Its emitted size is the box grown by the matrix's uniform scale,
+    // which `svgLocalGeometry` folds into the geometry so that a stroke
+    // width stays a world quantity through a pinch.
+    const s = matUniformScale(world);
+    const [, bw, bh] = svg.match(/width="([-\d.]+)" height="([-\d.]+)"[^>]*#00FF00/)!;
+    expect(Number(bw) / U).toBeCloseTo(8 * s, 3);
+    expect(Number(bh) / U).toBeCloseTo(4 * s, 3);
+
+    // From the arrays alone the box is the upright rectangle the member's
+    // corners fit in, turned by its own angle — and it is NOT that quad.
+    const fromArrays = (await generateCompositionSVGCore(
+      inputsFor({ ...leaned, graph: undefined }),
+    ))!;
+    expect(() => expectQuadsClose(borderQuad(fromArrays), want)).toThrow();
+  });
+});
+
+describe('the pattern kind bakes its cells in the frame it is drawn in', () => {
+  test('a turned pattern bakes upright and the matrix turns it', async () => {
+    // `patternSVGView` bakes a pattern's cells into the box it is given, so
+    // the view the export emits has to be baked in the LOCAL box its matrix
+    // carries. Baking the world view instead puts the cells at the world
+    // box — the nearest rectangle around a turned pattern — and then draws
+    // them there.
+    const p = patternObject({ cellX: 4, cellY: 4, angleDeg: 40 });
+    const svg = (await generateCompositionSVGCore(inputsFor(
+      makeState({ patternObjects: [p], sceneOrder: ['pat'] }),
+    )))!;
+    const m = transformsIn(svg)[0];
+    expect(Math.atan2(m.b, m.a) * 180 / Math.PI).toBeCloseTo(40);
+    // The cells are baked at the origin: the whole picture lies inside the
+    // local 4×4 box, which is only true in the node's own space.
+    const coords = [...svg.matchAll(/([-\d.]+),([-\d.]+)/g)]
+      .map(([, x, y]) => [Number(x), Number(y)] as const);
+    expect(coords.length).toBeGreaterThan(0);
+    for (const [x, y] of coords) {
+      expect(Math.abs(x)).toBeLessThanOrEqual(4 * U + 1);
+      expect(Math.abs(y)).toBeLessThanOrEqual(4 * U + 1);
+    }
+    // …and it is drawn where the legacy pose always put it.
+    expectQuadsClose(drawnQuad(m, 4, 4), legacyQuad({
+      x: 4, y: 4, width: 4, height: 4, angleDeg: 40,
+    }));
   });
 });

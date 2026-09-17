@@ -15,7 +15,7 @@ import { DEFAULT_LINE_HEIGHT, layoutText } from '../textLayout';
 import { STICKER_BORDER_CELLS } from '../stickerStyle';
 import { SVGObject, ImageObject, TextObject, PathSegment } from '../types';
 import {
-  drawnQuad, expectQuadsClose, legacyContentBox, legacyQuad, transformsIn,
+  drawnQuad, expectQuadsClose, legacyContentBox, legacyQuad, transformsIn, worldPointIn,
 } from './exportPose.test-utils';
 
 /** SVG_UNITS_PER_L0_CELL — world cells scale into SVG units by this. */
@@ -365,11 +365,18 @@ describe('generateCompositionSVGCore — node effects', () => {
         effects: { border: { width: 0.5, color: { r: 0, g: 255, b: 0 }, radius: 1 } },
       })],
     }));
-    // 32-cell bbox × 256, stroke width 0.5 × 256, radius 1 × 256.
-    expect(svg).toContain(
-      `<rect x="0" y="0" width="${32 * U}" height="${32 * U}" rx="${U}" ry="${U}" ` +
-      `fill="none" stroke="#00FF00" stroke-width="${0.5 * U}"/>`,
-    );
+    // 32-cell bbox × 256, stroke width 0.5 × 256, radius 1 × 256. The rect
+    // is emitted in the node's OWN frame — its corner at the box's corner,
+    // which the group's matrix carries to the world origin.
+    const tail = ` width="${32 * U}" height="${32 * U}" rx="${U}" ry="${U}"`
+      + ` fill="none" stroke="#00FF00" stroke-width="${0.5 * U}"/>`;
+    expect(svg).toContain(tail);
+    const head = svg!.slice(0, svg!.indexOf(tail));
+    const [, rx, ry] = head.slice(head.lastIndexOf('<rect'))
+      .match(/<rect x="([-\d.]+)" y="([-\d.]+)"/)!;
+    const [wx, wy] = worldPointIn(svg!, Number(rx), Number(ry));
+    expect(wx).toBeCloseTo(0, 3);
+    expect(wy).toBeCloseTo(0, 3);
     // Border alone needs no filter.
     expect(svg).not.toContain('<filter');
   });

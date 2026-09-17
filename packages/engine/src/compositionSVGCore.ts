@@ -8,6 +8,7 @@
 
 import { CompItemKind, CompositionFigure, CompositionState, FileConfig, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
 import { patternSVGView } from './patternObjectRender';
+import { patternLocalObject, svgLocalGeometry } from './sceneDrawnContent';
 import {
   LegacyLeaf, SceneGraph, SceneNode, fromLegacy, graphDescribes, leafNodeFromLegacy, worldMatrix,
 } from './sceneGraph';
@@ -1023,12 +1024,20 @@ export async function generateCompositionSVGCore(
   // exactly what the canvas renders). Empty patterns bake to null and
   // export as nothing.
   const patternViewIds = new Set<string>();
+  // …and a SECOND view of each, baked in the node's own space. A pattern's
+  // cells are baked into the frame they are drawn in, so the one the svg
+  // loop emits has to be baked in the LOCAL box that its matrix carries;
+  // the world view above stays, because the masks, the frame union and
+  // `sceneOrder` all still read the scene in world coordinates.
+  const localPatternViews = new Map<string, { object: SVGObject; pose: ExportPose }>();
   for (const p of (input.patternObjects ?? []).filter(shown)) {
     const view = patternSVGView(p);
-    if (view) {
-      svgObjects.push(view);
-      patternViewIds.add(view.id);
-    }
+    if (!view) continue;
+    svgObjects.push(view);
+    patternViewIds.add(view.id);
+    const pose = exportPose(graph, 'pattern', p);
+    const local = patternSVGView(patternLocalObject(pose.node));
+    if (local) localPatternViews.set(view.id, { object: local, pose });
   }
 
   // The overlay (`overlaySvgObjects`) is framed on with the scene — drawn or
@@ -1076,6 +1085,7 @@ export async function generateCompositionSVGCore(
   // keeps the tiled, subpath and endpoint markup from each needing its own
   // notion of the override.
   const strokeInk = input.strokeColorOverride;
+  let inkOverride: (s: SVGObject) => SVGObject = (s) => s;
   if (strokeInk) {
     // …and the objects that are nothing BUT fills take it on those too, or
     // they'd sit out the override entirely (see `silhouette`).
@@ -1110,13 +1120,18 @@ export async function generateCompositionSVGCore(
       paints: input.paintObjects ?? [],
       groups,
     });
-    svgObjects = svgObjects.map((s) => {
+    // One decision, applied twice: to the WORLD objects here (what the
+    // masks, the frame union and `patternFillBackground` go on reading) and
+    // again to the LOCAL twin each is drawn from below. A pure function of
+    // the object, so asking it twice cannot give two answers.
+    inkOverride = (s: SVGObject): SVGObject => {
       if (only && !only.has(s.id)) return s;
       return withSVGObjectStrokeColor(
         s, strokeInk,
         flooded?.has(s.id) || patternViewIds.has(s.id) ? { floodFills: true } : undefined,
       );
-    });
+    };
+    svgObjects = svgObjects.map(inkOverride);
   }
 
   const maskMap = buildActiveMaskMap({
@@ -1647,17 +1662,55 @@ export async function generateCompositionSVGCore(
   // `sceneOrder`, so the emission below appends it after every ordered node,
   // and with no order it follows insertion order, which is this loop's. The
   // plain twin of an overlaid export frames on it (above) but skips it here.
-  for (const svg of drawnOverlay.length > 0 ? [...svgObjects, ...drawnOverlay] : svgObjects) {
+  /**
+   * What an svg-loop entry actually draws: its content in the NODE's own
+   * space, and the `transform` that carries that space to the world.
+   *
+   * A pattern hands over the view baked in its local box. Everything else
+   * goes through `svgLocalGeometry`, the reader the node layer draws from
+   * — which grows the path by the matrix's uniform scale and divides that
+   * scale back out of the matrix, so a stroke width (a WORLD quantity the
+   * markup draws in user space) stays the authored width through a pinch.
+   * `entry` carries the non-geometry fields, which is how an object the
+   * generator has REPLACED — one recoloured by `strokeColorOverride` —
+   * keeps its new colours while taking the node's exact geometry.
+   */
+  const svgDrawnContent = (entry: SVGObject): { object: SVGObject; transform: string } => {
+    const pattern = localPatternViews.get(entry.id);
+    if (pattern) return { object: inkOverride(pattern.object), transform: pattern.pose.transform };
+    const pose = exportPose(graph, 'svg', entry);
+    const geo = svgLocalGeometry(pose.node, pose.world, entry);
+    return { object: geo.object, transform: matrixString(geo.matrix, U) };
+  };
+
+  /**
+   * The node's markup, posed and then clipped — in that order, so an
+   * ancestor group's "Use as mask" clips in WORLD space. The old emission
+   * wrapped the rotation OUTSIDE the clip, which clipped a turned node
+   * against a turned copy of the mask; the image path has always nested
+   * them this way round.
+   */
+  const posedAndClipped = (
+    id: string, node: { id: string; groupId?: string }, transform: string, markup: string,
+  ): void => {
+    elementsById.set(id, wrapWithMaskClip(
+      `<g transform="${transform}">${markup}</g>`, maskMap, groups, node,
+    ));
+  };
+
+  for (const entry of drawnOverlay.length > 0 ? [...svgObjects, ...drawnOverlay] : svgObjects) {
     if (cancelled?.()) return null;
-    if (svg.segments.length === 0) continue;
+    if (entry.segments.length === 0) continue;
+    const drawn = svgDrawnContent(entry);
+    const svg = drawn.object;
     if (svg.tileMode === 'repeat') {
       // Pattern mode: the shared region builder (also the live DOM layer's
       // path via buildSVGObjectContent) emits the repeating markup — the
       // sparse-override <g>-per-copy expansion or the <pattern> + rect.
-      elementsById.set(svg.id, wrapWithMaskClip(applyNodeEffects(
+      posedAndClipped(entry.id, entry, drawn.transform, applyNodeEffects(
         buildTiledSVGObjectRegionMarkup(svg, svgStrokeScale),
-        svg.effects, svg.id, svg, U,
-      ), maskMap, groups, svg));
+        svg.effects, entry.id, svg, U,
+      ));
       continue;
     }
     // Per-object stroke (width / radius / position / dash) comes from the same
@@ -1693,7 +1746,7 @@ export async function generateCompositionSVGCore(
     // export can't drift from the canvas.
     if (svg.paintOverlay && closedD) {
       const overlay = shapePaintOverlaySVG(
-        svg.paintOverlay, svg.id, closedD,
+        svg.paintOverlay, entry.id, closedD,
         svg.cellX * U, svg.cellY * U, svg.cellWidth * U, svg.cellHeight * U,
       );
       fillElement = `<g style="isolation:isolate">${fillElement}${overlay}</g>`;
@@ -1739,24 +1792,11 @@ export async function generateCompositionSVGCore(
       // A frame boundary's border is emitted as an overlay over the frame's
       // whole run instead (see frameBorders) — its shadow/glow still belong
       // to the node, behind the frame's contents.
-      const effects = frameBorderBoundaryIds.has(svg.id)
+      const effects = frameBorderBoundaryIds.has(entry.id)
         ? { ...svg.effects, border: undefined }
         : svg.effects;
-      elementsById.set(svg.id, wrapWithMaskClip(
-        applyNodeEffects(paths, effects, svg.id, svg, U),
-        maskMap, groups, svg,
-      ));
-    }
-
-    // Free rotation (v30+): wrap whatever this svg emitted in a group that
-    // rotates it about its bbox center, matching the editor render. SVG's
-    // discrete rotation is baked into the segments, so this is the only
-    // rotation transform an svg node carries.
-    const svgEl = elementsById.get(svg.id);
-    if (svgEl && svg.angleDeg) {
-      const scx = (svg.cellX + svg.cellWidth / 2) * U;
-      const scy = (svg.cellY + svg.cellHeight / 2) * U;
-      elementsById.set(svg.id, `<g transform="rotate(${svg.angleDeg} ${scx} ${scy})">${svgEl}</g>`);
+      posedAndClipped(entry.id, entry, drawn.transform,
+        applyNodeEffects(paths, effects, entry.id, svg, U));
     }
   }
 

@@ -1,6 +1,7 @@
 import {
   exportCompositionSVG, getExportSceneTransform, setExportSceneTransform,
 } from '../compositionExport';
+import { worldPathD, worldPointIn } from './exportPose.test-utils';
 
 const storage: Record<string, string | Uint8Array> = {};
 
@@ -76,8 +77,11 @@ describe('exportCompositionSVG — lines', () => {
 
     const svg = await exportCompositionSVG('lines1');
     expect(svg).not.toBeNull();
-    // SVG_UNITS_PER_L0_CELL = 256, so segment endpoints map to 0,0 / 8192,0 / 8192,8192
-    expect(svg).toContain('<path d="M 0,0 L 8192,0 L 8192,8192"');
+    // SVG_UNITS_PER_L0_CELL = 256, so segment endpoints map to 0,0 / 8192,0
+    // / 8192,8192. The path is emitted in the node's OWN space now and
+    // carried out by the group's matrix, so the world reading is the `d`
+    // through that matrix (P5 of docs/transform-refactor.md).
+    expect(worldPathD(svg!)).toBe('M 0,0 L 8192,0 L 8192,8192');
     expect(svg).toContain('stroke="rgb(200,100,50)"');
     // strokeScale (0.04) × STROKE_SCALE_CELLS (5/16) = 0.0125 cells, which at
     // SVG_UNITS_PER_L0_CELL (256) is 3.2 SVG units — the same world width the
@@ -315,12 +319,14 @@ describe('exportCompositionSVG — lines', () => {
     expect(svg).not.toBeNull();
     // A clipPath def for the masked group, in user space.
     expect(svg).toContain('<clipPath id="groupmask-g1" clipPathUnits="userSpaceOnUse">');
-    // The member's stroke is wrapped in the clip group.
-    expect(svg).toMatch(/<g clip-path="url\(#groupmask-g1\)"><path d="[^"]*" fill="none"[^>]*stroke="rgb\(200,100,50\)"/);
+    // The member's stroke is wrapped in the clip group — OUTSIDE the group
+    // that poses the node, so the clip is applied in world space whatever
+    // the node's own pose is (P5 of docs/transform-refactor.md).
+    expect(svg).toMatch(/<g clip-path="url\(#groupmask-g1\)"><g transform="[^"]*"><path d="[^"]*" fill="none"[^>]*stroke="rgb\(200,100,50\)"/);
     // The mask object renders its own stroke but is NOT wrapped by its
     // own group's clip.
     expect(svg).toContain('stroke="rgb(10,20,30)"');
-    expect(svg).not.toMatch(/<g clip-path="url\(#groupmask-g1\)"><path d="[^"]*" fill="none"[^>]*stroke="rgb\(10,20,30\)"/);
+    expect(svg).not.toMatch(/<g clip-path="url\(#groupmask-g1\)"><g transform="[^"]*"><path d="[^"]*" fill="none"[^>]*stroke="rgb\(10,20,30\)"/);
   });
 
   it('paints a pattern-fill background rect under the pattern, clipped to the mask, outline-only mask', async () => {
@@ -450,8 +456,13 @@ describe('exportCompositionSVG — path endpoints', () => {
 
   it('exports the circle marker at the path\'s first point', async () => {
     const svg = (await withEndpoints('ends_circle', { startMarker: 'circle' }))!;
-    // A 0.25-cell stroke → r = 0.25 × 1.75 × 256 = 112, centred on (0,0).
-    expect(svg).toContain('<circle cx="0" cy="0" r="112"');
+    // A 0.25-cell stroke → r = 0.25 × 1.75 × 256 = 112, centred on the
+    // path's first point, which is the world origin.
+    const [, cxs, cys, rs] = svg.match(/<circle cx="([-\d.]+)" cy="([-\d.]+)" r="([-\d.]+)"/)!;
+    expect(Number(rs)).toBeCloseTo(112, 3);
+    const [wx, wy] = worldPointIn(svg, Number(cxs), Number(cys));
+    expect(wx).toBeCloseTo(0, 3);
+    expect(wy).toBeCloseTo(0, 3);
     expect(svg).toContain('fill="rgb(0,0,0)"');
   });
 
@@ -459,7 +470,11 @@ describe('exportCompositionSVG — path endpoints', () => {
     const svg = (await withEndpoints('ends_arrow', { endMarker: 'arrow' }))!;
     // The tip is one stroke-length past (32,32) along the 45° tangent.
     const tip = 32 * 256 + (0.25 * 4 * 256) / Math.SQRT2;
-    expect(svg).toContain(`L ${Math.round(tip * 1e3) / 1e3},${Math.round(tip * 1e3) / 1e3} `);
+    // The arrowhead is drawn in the node's own space; its world tip is that
+    // point through the node's matrix.
+    const tips = [...svg.matchAll(/L ([-\d.]+),([-\d.]+) /g)]
+      .map(([, x, y]) => worldPointIn(svg, Number(x), Number(y)));
+    expect(tips.some(([x, y]) => Math.abs(x - tip) < 1e-3 && Math.abs(y - tip) < 1e-3)).toBe(true);
   });
 
   it('exports a square cap without touching stroke-linecap', async () => {

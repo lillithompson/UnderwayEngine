@@ -1044,7 +1044,11 @@ describe('overlaySvgObjects', () => {
     const unordered = await generateCompositionSVGCore(makeInputs({
       svgObjects: scene, overlaySvgObjects: [overlay],
     }));
-    expect(unordered!.lastIndexOf('<path')).toBe(unordered!.indexOf('<path d="M 15360,15360'));
+    // The overlay's own ink, on the LAST path emitted. (Its `d` is in the
+    // overlay node's own space now, so the world coordinates it used to be
+    // named by are no longer in the markup.)
+    const lastPath = unordered!.slice(unordered!.lastIndexOf('<path'));
+    expect(lastPath).toContain('stroke="rgb(220,38,38)"');
   });
 
   it('is untouched by the stroke override, which sees only the scene', async () => {
