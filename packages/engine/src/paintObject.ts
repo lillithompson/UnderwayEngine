@@ -69,19 +69,46 @@ export function paintLocalFrame(p: PaintObject): PaintLocalFrame {
   const sin = Math.sin(theta);
   const mx = p.mirrorH ? -1 : 1;
   const my = p.mirrorV ? -1 : 1;
-  const sx = iw > 0 ? p.contentW / iw : 1;
-  const sy = ih > 0 ? p.contentH / ih : 1;
+  const inner = paintTileFrame(p, iw, ih);
   const toTile = (px: number, py: number): [number, number] => {
     const dx = px - cx;
     const dy = py - cy;
     const rx = dx * cos - dy * sin;
     const ry = dx * sin + dy * cos;
-    return [
-      p.contentX + (iw / 2 + rx * mx) * sx,
-      p.contentY + (ih / 2 + ry * my) * sy,
-    ];
+    return inner.toTile(iw / 2 + rx * mx, ih / 2 + ry * my);
   };
-  return { toTile, radiusScale: (sx + sy) / 2, cullRadius: Math.hypot(w, h) / 2 };
+  return { toTile, radiusScale: inner.radiusScale, cullRadius: Math.hypot(w, h) / 2 };
+}
+
+/**
+ * The LAST step of an island's frame, on its own: the node's local content
+ * box → tile space, which is one stretch onto `contentRect`.
+ *
+ * Everything before it — the free angle, the quarter turn, the mirror, the
+ * translation — is exactly what a node's world matrix already carries, so a
+ * caller that has mapped a world point through `sceneHitFrame.leafHitFrame`
+ * has nothing left to undo but this. {@link paintLocalFrame} is that same
+ * pair with the pose half spelled out of the legacy fields, and it composes
+ * this one rather than repeating it.
+ *
+ * `width` / `height` are the local box's — the island's UN-TURNED content
+ * box, the frame `contentRect` was laid down against.
+ */
+export interface PaintTileFrame {
+  /** A point in the local content box (origin at its corner) → tile space. */
+  toTile(localX: number, localY: number): [number, number];
+  /** Mean local→tile stretch, for carrying a brush radius over. */
+  radiusScale: number;
+}
+
+export function paintTileFrame(p: PaintObject, width: number, height: number): PaintTileFrame {
+  const sx = width > 0 ? p.contentW / width : 1;
+  const sy = height > 0 ? p.contentH / height : 1;
+  return {
+    toTile: (localX: number, localY: number): [number, number] =>
+      [p.contentX + localX * sx, p.contentY + localY * sy],
+    radiusScale: (sx + sy) / 2,
+  };
 }
 
 /**
