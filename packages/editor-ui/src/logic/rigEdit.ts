@@ -1,3 +1,4 @@
+import type { RGBLike } from '../adapter';
 import type { SubmenuKey } from './submenuHeight';
 
 // The poseable rig's type-specific options: the PARTS of the figure a
@@ -35,6 +36,39 @@ export const RIG_PART_OPTIONS: readonly RigPartOption[] = [
  *  pairing, not the page list. */
 export const RIG_PART_PAGES: readonly RigPartOption[] =
   RIG_PART_OPTIONS.filter((o) => o.part === 'rig');
+
+/** One tab of a rig's option row. Most of them open a page of POSTURE
+ *  sliders and name a part of the figure ({@link RIG_PART_PAGES}); Color
+ *  names no part at all, which is why the row is its own list rather than
+ *  the part table filtered again. */
+export interface RigPageOption {
+  /** Identity for the tab (a part name, or 'color'). */
+  key: string;
+  label: string;
+  sub: SubmenuKey;
+}
+
+/** The tabs a rig selection OFFERS, in the order the row lists them: the
+ *  whole figure's Transform page, then Color — the two colours the sketch
+ *  is drawn in, which is the one thing about a rig that is not a pose.
+ *  Both the tab row and the panel's page list read this, so a tab can
+ *  never be offered with no page behind it. */
+export const RIG_PAGES: readonly RigPageOption[] = [
+  ...RIG_PART_PAGES.map((o) => ({ key: o.part, label: o.label, sub: o.sub })),
+  { key: 'color', label: 'Color', sub: 'rigColor' as SubmenuKey },
+];
+
+/** What the Color page shows for a figure whose host wired no colours: the
+ *  two the sketch shader draws in by default — bare page under the masses,
+ *  a soft charcoal nib over them.
+ *
+ *  These MUST equal the host's own defaults (the app's poserRig PAPER_PAGE
+ *  and INK_DARK, which are Figgie's DEFAULT_COLORS in 0..255), or an
+ *  untouched page would show a colour the figure is not drawn in; the app's
+ *  rigColor test pins the two pairs together, the same way rigParts pins
+ *  the hand slider's rest position to Figgie's HAND_STRAIGHT_AT. */
+export const RIG_VOLUMES_DEFAULT: RGBLike = { r: 243, g: 237, b: 228 };
+export const RIG_OUTLINES_DEFAULT: RGBLike = { r: 41, g: 38, b: 36 };
 
 /** The bar a part opens, and the part a bar belongs to — the SAME pairing,
  *  read both ways off the one table above. The panel needs both directions

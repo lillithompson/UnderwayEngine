@@ -140,6 +140,9 @@ export type SubmenuKey =
   // spread per side), four for the feet, three for the spine, two for the
   // head.
   | 'rigRoot' | 'rigHands' | 'rigFeet' | 'rigSpine' | 'rigHead'
+  // …and the one page of a rig that is not a posture: the two colours the
+  // sketch is drawn in — its opaque volumes and the outlines over them.
+  | 'rigColor'
   // A pattern object's pages: the Tile page (its Repeat toggle), the tile
   // menu, the grid tools, and the painting-symmetry grid.
   | 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry';
@@ -332,6 +335,9 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'rigHead':
       // Nod / Shake / Tilt.
       return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
+    case 'rigColor':
+      // Volumes and Outlines: two hue rows, on the slider's own proportions.
+      return contentArea([ROW_SLIDER, ROW_SLIDER]);
     case 'endpoints':
       // A marker row per end. (The Caps row went — see EndpointsBar.)
       return contentArea([ROW_SEGMENTED, ROW_SEGMENTED]);

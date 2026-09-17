@@ -499,6 +499,20 @@ export interface ObjectPropertiesModel {
    *  means what it says, and it is one undo step away. Only rendered when the
    *  host sets it; ignored unless `showRigOptions`. */
   onResetRig?(): void;
+  /** The rig's Color page: the two colours its sketch is drawn in — the
+   *  opaque volumes (chest, pelvis, palms, feet, head, joint circles) and
+   *  the outlines laid over them. Absent leaves the page showing the
+   *  defaults, and its rows dead: the page renders only when the host
+   *  wires `onRigColor`, exactly as the effect pages' hue rows do. */
+  rigVolumesColor?: RGBLike;
+  rigOutlinesColor?: RGBLike;
+  /** A Color row moved: live while the handle drags (`committed=false`),
+   *  once on release (`committed=true`, one undo step) — the same
+   *  coalescing every other hue row in the panel uses. */
+  onRigColor?(which: 'volumes' | 'outlines', color: RGBLike, committed: boolean): void;
+  /** A Color row's trailing circle: open the full picker on that colour,
+   *  where saturation and brightness live. */
+  onPickRigColor?(which: 'volumes' | 'outlines'): void;
   /** Selection is a vector (SVG) object: the panel's second row shows that
    *  subtype's option menu — see `svgSubtype` for which one, and
    *  `SVG_EDIT_OPTIONS` for the options each subtype offers. Mutually

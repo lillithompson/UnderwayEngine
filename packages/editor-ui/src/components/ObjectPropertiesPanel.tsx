@@ -21,8 +21,10 @@ import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
 import { OpacityBar } from './OpacityBar';
 import { RigPoseBar } from './RigPoseBar';
+import { RigColorBar } from './RigColorBar';
 import {
-  RIG_PART_PAGES, restRigSliders, rigPartOfSubmenu, rigPartSubmenu,
+  RIG_OUTLINES_DEFAULT, RIG_PAGES, RIG_VOLUMES_DEFAULT, restRigSliders, rigPartOfSubmenu,
+  rigPartSubmenu,
 } from '../logic/rigEdit';
 import { CropBar } from './CropBar';
 import { ImageBar } from './ImageBar';
@@ -443,7 +445,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // and the page stand for every other kind that offers them. Checked
     // before showSvgOptions: a rig's figure IS an svg object, and the
     // other vector pages have nothing to act on for a baked silhouette.
-    : model.showRigOptions ? RIG_PART_PAGES.map((o) => o.sub)
+    : model.showRigOptions ? RIG_PAGES.map((o) => o.sub)
     : model.showSvgOptions
       ? [
           'stroke',
@@ -1091,6 +1093,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         onReset={model.onResetRig}
       />
     );
+  } else if (displaySub === 'rigColor') {
+    // The one rig page that is not a posture: the sketch's two colours.
+    // Like every hue row in the panel it writes through the host, which
+    // owns both the live preview and the single undo step on release.
+    activeBarEl = (
+      <RigColorBar
+        volumes={model.rigVolumesColor ?? RIG_VOLUMES_DEFAULT}
+        outlines={model.rigOutlinesColor ?? RIG_OUTLINES_DEFAULT}
+        onColor={(which, color, committed) => model.onRigColor?.(which, color, committed)}
+        onOpenPicker={(which) => model.onPickRigColor?.(which)}
+      />
+    );
   } else if (displaySub === 'opacity') {
     activeBarEl = (
       <OpacityBar
@@ -1343,8 +1357,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // to the whole rig, so it rides at the foot of the RIG page (RigPoseBar),
     // the page that is already about the figure as a whole — rather than
     // taking a slot in a row of pages you can open.
-    typeSpecs = RIG_PART_PAGES.map((opt) => ({
-      key: opt.part,
+    typeSpecs = RIG_PAGES.map((opt) => ({
+      key: opt.key,
       label: opt.label,
       sub: opt.sub,
       onPress: () => openSubmenu(opt.sub),

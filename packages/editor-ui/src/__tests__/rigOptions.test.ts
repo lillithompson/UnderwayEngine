@@ -6,8 +6,8 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  RIG_PART_OPTIONS, RIG_PART_PAGES, RIG_SLIDER_REST, restRigSliders, rigPartOfSubmenu,
-  rigPartSliders, rigPartSubmenu, rigSliderPart,
+  RIG_PAGES, RIG_PART_OPTIONS, RIG_PART_PAGES, RIG_SLIDER_REST, restRigSliders,
+  rigPartOfSubmenu, rigPartSliders, rigPartSubmenu, rigSliderPart,
 } from '../logic/rigEdit';
 import { ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, submenuHeight } from '../logic/submenuHeight';
 import type { SubmenuKey } from '../logic/submenuHeight';
@@ -30,15 +30,21 @@ describe('the rig option set', () => {
       .toEqual(['rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead']);
   });
 
-  it('the panel offers the whole-figure page, then Opacity', () => {
+  it('the panel offers the whole-figure page and Color, then Opacity', () => {
     // The part pages (Hands / Feet / Spine / Head) came off the options
-    // row; their sliders live on as the floating slider modes. Both panel
-    // sites — the tab row and the page list — read RIG_PART_PAGES, never
-    // the full table.
+    // row; their sliders live on as the floating slider modes. What is
+    // left of the parts is the whole figure's own page…
     expect(RIG_PART_PAGES.map((o) => o.label)).toEqual(['Transform']);
     expect(RIG_PART_PAGES.map((o) => o.sub)).toEqual(['rigRoot']);
-    expect(SRC).toContain('model.showRigOptions ? RIG_PART_PAGES.map((o) => o.sub)');
-    expect(SRC).toContain('RIG_PART_PAGES.map((opt) => ({');
+    // …and the row adds the one page that is not a posture at all: the two
+    // colours the sketch is drawn in. Both panel sites — the tab row and
+    // the page list — read RIG_PAGES, never the part table, so a tab can
+    // never be offered with no page behind it.
+    expect(RIG_PAGES.map((o) => o.label)).toEqual(['Transform', 'Color']);
+    expect(RIG_PAGES.map((o) => o.sub)).toEqual(['rigRoot', 'rigColor']);
+    expect(RIG_PAGES.map((o) => o.key)).toEqual(['rig', 'color']);
+    expect(SRC).toContain('model.showRigOptions ? RIG_PAGES.map((o) => o.sub)');
+    expect(SRC).toContain('RIG_PAGES.map((opt) => ({');
     // Opacity stood beside Transform and is gone: a figure is a POSE, and
     // fading one is not a thing anybody reached this panel to do — it
     // left a two-tab row whose second tab was a slider nobody asked for.
@@ -125,7 +131,7 @@ describe('the rig option set', () => {
     expect(BAR).not.toContain('removeLabel');
     // The panel gives the rig pages no Remove line — only the effect pages
     // set one.
-    const rigBranch = SRC.slice(SRC.indexOf('<RigPoseBar'), SRC.indexOf("} else if (displaySub === 'opacity') {"));
+    const rigBranch = SRC.slice(SRC.indexOf('<RigPoseBar'), SRC.indexOf("} else if (displaySub === 'rigColor') {"));
     expect(rigBranch).not.toContain('removeAction =');
     // …and the panel hands the page nothing to reset with.
     expect(SRC).not.toContain('onResetRigPart');
@@ -138,7 +144,7 @@ describe('the rig option set', () => {
     // carousel's position. Reset opened nothing and lit nothing, so it sat in
     // that row as a button that behaved like no other; it lives at the foot of
     // the RIG bar now, the page already about the whole figure.
-    expect(SRC).toContain('typeSpecs = RIG_PART_PAGES.map');
+    expect(SRC).toContain('typeSpecs = RIG_PAGES.map');
     expect(SRC).not.toContain("key: 'resetRig'");
     expect(RIG_PART_OPTIONS.some((o) => o.sub === ('resetRig' as SubmenuKey))).toBe(false);
     // The bar takes it instead, and only when the host wires it — a locked
@@ -239,7 +245,7 @@ describe('the panel', () => {
     // A rig's figure IS an svg object; the rig branch has to win.
     expect(SRC.indexOf('model.showRigOptions ? ')).toBeLessThan(SRC.indexOf('model.showSvgOptions\n'));
     // …and the carousel's order IS the options row's, not a second copy of it.
-    expect(SRC).toContain('model.showRigOptions ? RIG_PART_PAGES.map((o) => o.sub)');
+    expect(SRC).toContain('model.showRigOptions ? RIG_PAGES.map((o) => o.sub)');
   });
 
   it('offers no IK switch anywhere — not on a bar, not as an option', () => {
