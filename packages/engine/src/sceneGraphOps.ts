@@ -191,7 +191,7 @@ export function indexOfChild(
  */
 export function buildGroup(
   graph: SceneGraph, nodeIds: readonly string[], groupId: string, groupName: string,
-  opts?: { isFrame?: boolean },
+  opts?: { isFrame?: boolean; transform?: LocalTransform },
 ): SceneEntry {
   const members = nodeIds.filter((id) => graph.nodes.get(id));
   if (members.length === 0) return [];
@@ -205,9 +205,14 @@ export function buildGroup(
     (id) => indexOfChild(graph, parentId, outermostUnder(graph, id, parentId)),
   ));
 
+  // The group is born with its transform ALREADY on it, so each member's
+  // local pose is computed against the group as it will actually be.
+  // Creating it at the identity and transforming it afterwards would move
+  // every member by that transform — which is what undoing the ungroup of
+  // a transformed group needs to not do.
   const group: SceneNode = {
     id: groupId, kind: 'group', name: groupName,
-    parentId, children: [], transform: LOCAL_IDENTITY,
+    parentId, children: [], transform: opts?.transform ?? LOCAL_IDENTITY,
     ...(opts?.isFrame ? { isFrame: true } : {}),
   };
 

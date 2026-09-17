@@ -298,3 +298,141 @@ function groupNodeOf(node: SceneNode): GroupNode {
     ...(node.isFrame ? { isFrame: true } : {}),
   };
 }
+
+// ── Undo ───────────────────────────────────────────────────────────────
+
+/**
+ * The legacy op that undoes `op`, or `null` when this bridge cannot
+ * express it.
+ *
+ * The graph's own ops carry both sides and revert themselves, but an undo
+ * stack holds LEGACY entries, and by the time one is reverted the state
+ * that produced the translation is gone. So the inverse is built from
+ * what the legacy op itself carries — which is enough for all seven pose
+ * ops, because each already records what it needs to undo: a delta to
+ * negate, an old-and-new pair to swap, or, for the structural ones, the
+ * group's saved transform and the snapshot of who used to parent what.
+ */
+export function invertLegacyOp(op: CompUndoOp): CompUndoOp | null {
+  switch (op.op) {
+    case 'moveNode':
+      return { ...op, dx: -op.dx, dy: -op.dy };
+
+    case 'transformGroup':
+      return {
+        ...op,
+        oldTranslateX: op.newTranslateX, oldTranslateY: op.newTranslateY,
+        oldScaleX: op.newScaleX, oldScaleY: op.newScaleY,
+        oldRotation: op.newRotation,
+        oldMirrorH: op.newMirrorH, oldMirrorV: op.newMirrorV,
+        newTranslateX: op.oldTranslateX, newTranslateY: op.oldTranslateY,
+        newScaleX: op.oldScaleX, newScaleY: op.oldScaleY,
+        newRotation: op.oldRotation,
+        newMirrorH: op.oldMirrorH, newMirrorV: op.oldMirrorV,
+      };
+
+    case 'setNodeRotation':
+      return { ...op, oldAngleDeg: op.newAngleDeg, newAngleDeg: op.oldAngleDeg };
+
+    case 'editImage':
+      return {
+        ...op,
+        oldCellX: op.newCellX, oldCellY: op.newCellY,
+        oldCellWidth: op.newCellWidth, oldCellHeight: op.newCellHeight,
+        oldRotation: op.newRotation, oldMirrorH: op.newMirrorH,
+        oldMirrorV: op.newMirrorV, oldAngleDeg: op.newAngleDeg,
+        newCellX: op.oldCellX, newCellY: op.oldCellY,
+        newCellWidth: op.oldCellWidth, newCellHeight: op.oldCellHeight,
+        newRotation: op.oldRotation, newMirrorH: op.oldMirrorH,
+        newMirrorV: op.oldMirrorV, newAngleDeg: op.oldAngleDeg,
+      };
+
+    case 'groupFigures':
+      // Undoing a group is dissolving it. The members go back where they
+      // were because the group was born at the identity.
+      return {
+        op: 'ungroupFigures',
+        groupId: op.groupId, groupName: op.groupName,
+        figureIds: op.figureIds, childGroupIds: op.childGroupIds,
+      };
+
+    case 'ungroupFigures':
+      // Rebuilding the group is a `groupFigures`, but it has to come back
+      // at its saved transform, which a `groupFigures` cannot say —
+      // `invertOnGraph` handles it directly.
+      return {
+        op: 'groupFigures',
+        figureIds: op.figureIds, childGroupIds: op.childGroupIds,
+        groupId: op.groupId, groupName: op.groupName,
+        isFrame: op.savedIsFrame,
+      };
+
+    case 'reparentNode': {
+      // The op keeps a snapshot of every array as it stood before, so the
+      // node's old parent is simply read back off it.
+      const previous = [
+        ...(op.prevFigures ?? []), ...(op.prevSVGs ?? []), ...(op.prevImages ?? []),
+        ...(op.prevTexts ?? []), ...(op.prevPaints ?? []), ...(op.prevPatterns ?? []),
+      ].find((n) => n.id === op.nodeId);
+      if (!previous) return null;
+      return {
+        ...op,
+        newParentGroupId: previous.groupId,
+        newSceneOrder: op.oldSceneOrder, oldSceneOrder: op.newSceneOrder,
+      };
+    }
+
+    default:
+      return null;
+  }
+}
+
+/**
+ * The scene ops that undo a legacy op.
+ *
+ * Mostly the translation of its inverse. Undoing an ungroup is the one
+ * that needs more: the group comes back at the identity, and the
+ * transform it had when it was dissolved has to be put back on it — which
+ * is exactly what the op's `saved*` fields are for, and why they exist
+ * rather than letting undo recreate the group at the identity and move
+ * every member instead.
+ */
+export function invertOnGraph(
+  graph: SceneGraph, op: CompUndoOp,
+): SceneEntry | null {
+  if (op.op === 'ungroupFigures') {
+    // The group comes back with its saved transform already on it, so its
+    // members keep the world poses the ungroup left them at. Building it
+    // at the identity and transforming it afterwards would carry every
+    // member along with the transform.
+    return buildGroup(
+      graph, [...op.figureIds, ...(op.childGroupIds ?? [])],
+      op.groupId, op.groupName,
+      {
+        ...(op.savedIsFrame ? { isFrame: true } : {}),
+        transform: groupFieldsToTransform({
+          translateX: op.savedTranslateX ?? 0, translateY: op.savedTranslateY ?? 0,
+          scaleX: op.savedScaleX ?? 1, scaleY: op.savedScaleY ?? 1,
+          rotation: op.savedRotation ?? 0,
+          mirrorH: op.savedMirrorH ?? false, mirrorV: op.savedMirrorV ?? false,
+        }),
+      },
+    );
+  }
+
+  const inverse = invertLegacyOp(op);
+  if (!inverse) return null;
+  return legacyOpToSceneOps(graph, inverse);
+}
+
+/** Revert a legacy entry through the graph, newest op first. */
+export function revertLegacyEntryOnGraph(
+  graph: SceneGraph, entry: readonly CompUndoOp[],
+): SceneGraph {
+  let out = graph;
+  for (let i = entry.length - 1; i >= 0; i--) {
+    const ops = invertOnGraph(out, entry[i]);
+    if (ops) out = applySceneOps(out, ops);
+  }
+  return out;
+}

@@ -12,7 +12,10 @@ import { colorsEqual } from './colorBlend';
 import { SegmentOverrides, remapOverrides } from './tileSegmentOverrides';
 import { worldSnapshot, diffWorldSnapshots } from './worldSnapshot';
 import { fromLegacy, toLegacyView } from './sceneGraph';
-import { applyLegacyEntryToGraph, isPoseOp } from './legacyOpBridge';
+import {
+  applyLegacyEntryToGraph, invertOnGraph, isPoseOp, legacyOpToSceneOps,
+} from './legacyOpBridge';
+import { applySceneOps } from './sceneGraphOps';
 import { Orientation, orientationToMatrix, matrixToOrientation, composeOrientation } from './transform2d';
 
 /**
@@ -5925,6 +5928,7 @@ function withRefreshedGraph(
 }
 
 export function applyCompOps(state: CompositionState, entry: CompUndoEntry): CompositionState {
+  if (state.graph) return runOnGraph(state, entry, true);
   let result = state;
   for (const op of entry) {
     result = applyOp(result, op);
@@ -5934,10 +5938,62 @@ export function applyCompOps(state: CompositionState, entry: CompUndoEntry): Com
 
 /** Revert a composition undo entry (for undo) */
 export function revertCompOps(state: CompositionState, entry: CompUndoEntry): CompositionState {
+  if (state.graph) return runOnGraph(state, entry, false);
   let result = state;
   // Revert in reverse order
   for (let i = entry.length - 1; i >= 0; i--) {
     result = revertOp(result, entry[i]);
   }
   return checked(state, result, entry, false);
+}
+
+/**
+ * Run an entry with the SCENE GRAPH as the source of truth.
+ *
+ * The per-kind arrays become what `toLegacyView` renders out of the
+ * graph, rather than the place a pose lives. This is the turn the whole
+ * refactor is for: a group drag is one transform on one node instead of
+ * one op per member plus a reconcile pass, and a grouped leaf has one
+ * copy of its pose instead of two that have to be talked into agreeing.
+ *
+ * Only a composition that asked for a graph takes this path
+ * (`withSceneGraph`), so the change lands one caller at a time rather
+ * than all at once.
+ *
+ * Ops the bridge does not translate are content — colour, text, cells,
+ * placement — and still run the legacy way over the arrays, after which
+ * the graph is rebuilt from them. The view is materialised lazily so a
+ * run of pose ops (a drag commits one per selected node) costs one
+ * render of the arrays rather than one each.
+ */
+function runOnGraph(
+  state: CompositionState, entry: CompUndoEntry, forward: boolean,
+): CompositionState {
+  let graph = state.graph!;
+  let result = state;
+  let viewStale = false;
+
+  const materialize = () => {
+    if (!viewStale) return;
+    result = { ...result, ...toLegacyView(graph) };
+    viewStale = false;
+  };
+
+  const order = forward ? entry : [...entry].reverse();
+  for (const op of order) {
+    const ops = forward
+      ? legacyOpToSceneOps(graph, op)
+      : invertOnGraph(graph, op);
+    if (ops) {
+      graph = applySceneOps(graph, ops);
+      viewStale = true;
+      continue;
+    }
+    // A content op reads the arrays, so they have to be current first.
+    materialize();
+    result = forward ? applyOpInner(result, op) : revertOpInner(result, op);
+    graph = fromLegacy(result);
+  }
+  materialize();
+  return { ...result, graph };
 }
