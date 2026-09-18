@@ -97,31 +97,3 @@ export class CompositionRenderer {
   }
 }
 
-/** Inverse of (rotate * mirrorH * mirrorV) around the origin, returned as a
- *  column-major mat2: [c0.x, c0.y, c1.x, c1.y]. The forward transform
- *  matches the translate-rotate-mirror-translate blocks in
- *  engine/svgFigureBuilders.ts (buildFigureSVGContent / buildBlockSVGContent). Mirrors are involutions; rotation
- *  inverse is rotation by -angle. y-axis points down so positive rotation
- *  is clockwise — matches SVG semantics. */
-export function computeInverseRotMirror(
-  rotation: number,
-  mirrorH: boolean,
-  mirrorV: boolean,
-): [number, number, number, number] {
-  // R(-angle): inverse rotation matrix. For 0/90/180/270, integer entries.
-  let r00: number, r01: number, r10: number, r11: number;
-  switch (rotation) {
-    case 90:  r00 = 0;  r01 = 1;  r10 = -1; r11 = 0;  break; // R(-90)
-    case 180: r00 = -1; r01 = 0;  r10 = 0;  r11 = -1; break;
-    case 270: r00 = 0;  r01 = -1; r10 = 1;  r11 = 0;  break; // R(-270)=R(90)
-    default:  r00 = 1;  r01 = 0;  r10 = 0;  r11 = 1;  break;
-  }
-  // Premultiply by mirror (mirror is its own inverse). M = diag(sx, sy)
-  // with sx = mirrorH ? -1 : 1, sy = mirrorV ? -1 : 1. M*R: scale rows.
-  const sx = mirrorH ? -1 : 1;
-  const sy = mirrorV ? -1 : 1;
-  const m00 = sx * r00, m01 = sx * r01;
-  const m10 = sy * r10, m11 = sy * r11;
-  // Column-major: [c0.x=m00, c0.y=m10, c1.x=m01, c1.y=m11].
-  return [m00, m10, m01, m11];
-}

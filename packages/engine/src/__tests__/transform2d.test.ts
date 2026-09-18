@@ -3,7 +3,7 @@ import {
   applyToBbox, applyToPoint, invertBbox, invertPoint,
   orientationToMatrix, matrixToOrientation, composeOrientation,
   compose, composeChain,
-  translate, fromGroupNode, bboxFromCells, bboxToCells,
+  translate, bboxFromCells, bboxToCells,
 } from '../transform2d';
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -301,77 +301,9 @@ describe('specific transform cases', () => {
 
 // ── Legacy interop ─────────────────────────────────────────────────────
 
-describe('fromGroupNode', () => {
-  test('converts GroupNode fields to Transform2D', () => {
-    const g = { translateX: 10, translateY: 20, scaleX: 2, scaleY: 3, rotation: 90 as const, mirrorH: true, mirrorV: false };
-    const xf = fromGroupNode(g);
-    expect(xf).toEqual({ tx: 10, ty: 20, sx: 2, sy: 3, rotation: 90, mirrorH: true, mirrorV: false });
-  });
-});
-
 describe('bboxFromCells / bboxToCells round-trip', () => {
   test('round-trips correctly', () => {
     const cells = { cellX: 3, cellY: 5, cellWidth: 4, cellHeight: 7 };
     expect(bboxToCells(bboxFromCells(cells))).toEqual(cells);
   });
-});
-
-// ── Matches legacy applyGroupTransform behavior ────────────────────────
-
-describe('matches legacy applyGroupTransform', () => {
-  // Replicate the exact behavior of the existing compositionOps function
-  function legacyApplyGroupTransform(
-    group: { translateX: number; translateY: number; scaleX: number; scaleY: number; rotation: 0 | 90 | 180 | 270; mirrorH: boolean; mirrorV: boolean },
-    local: { cellX: number; cellY: number; cellWidth: number; cellHeight: number },
-  ): { cellX: number; cellY: number; cellWidth: number; cellHeight: number } {
-    let { cellX: x, cellY: y, cellWidth: w, cellHeight: h } = local;
-    if (group.mirrorH) x = -(x + w);
-    if (group.mirrorV) y = -(y + h);
-    if (group.rotation === 90) {
-      const nx = -(y + h), ny = x, nw = h, nh = w;
-      x = nx; y = ny; w = nw; h = nh;
-    } else if (group.rotation === 180) {
-      const nx = -(x + w), ny = -(y + h);
-      x = nx; y = ny;
-    } else if (group.rotation === 270) {
-      const nx = y, ny = -(x + w), nw = h, nh = w;
-      x = nx; y = ny; w = nw; h = nh;
-    }
-    return {
-      cellX: group.translateX + x * group.scaleX,
-      cellY: group.translateY + y * group.scaleY,
-      cellWidth: w * group.scaleX,
-      cellHeight: h * group.scaleY,
-    };
-  }
-
-  const groups = [
-    { translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0 as const, mirrorH: false, mirrorV: false },
-    { translateX: 10, translateY: -5, scaleX: 2, scaleY: 3, rotation: 90 as const, mirrorH: false, mirrorV: false },
-    { translateX: 5, translateY: 5, scaleX: 1, scaleY: 1, rotation: 180 as const, mirrorH: true, mirrorV: false },
-    { translateX: -3, translateY: 7, scaleX: 0.5, scaleY: 2, rotation: 270 as const, mirrorH: false, mirrorV: true },
-    { translateX: 1, translateY: 1, scaleX: 1, scaleY: 1, rotation: 0 as const, mirrorH: true, mirrorV: true },
-  ];
-
-  const locals = [
-    { cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1 },
-    { cellX: 3, cellY: 5, cellWidth: 4, cellHeight: 7 },
-    { cellX: -2, cellY: 1, cellWidth: 6, cellHeight: 3 },
-  ];
-
-  for (const group of groups) {
-    for (const local of locals) {
-      const label = `group=(t=${group.translateX},${group.translateY} s=${group.scaleX},${group.scaleY} r=${group.rotation} mH=${group.mirrorH} mV=${group.mirrorV}) local=(${local.cellX},${local.cellY},${local.cellWidth},${local.cellHeight})`;
-      test(label, () => {
-        const legacy = legacyApplyGroupTransform(group, local);
-        const xf = fromGroupNode(group);
-        const bbox = bboxFromCells(local);
-        const result = bboxToCells(applyToBbox(xf, bbox));
-        expect(closeTo(result.cellX, legacy.cellX)).toBe(true);
-        expect(closeTo(result.cellY, legacy.cellY)).toBe(true);
-        expect(closeTo(result.cellWidth, legacy.cellWidth)).toBe(true);
-        expect(closeTo(result.cellHeight, legacy.cellHeight)).toBe(true);
-      });
-    }
-  }
 });

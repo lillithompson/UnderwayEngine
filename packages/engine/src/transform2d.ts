@@ -237,24 +237,12 @@ export function translate(tx: number, ty: number): Transform2D {
 }
 
 // ── Interop with legacy GroupNode fields ───────────────────────────────
-
-/**
- * Convert legacy GroupNode fields to a Transform2D. Direct field mapping
- * since GroupNode uses the same decomposed representation.
- */
-export function fromGroupNode(g: {
-  translateX: number; translateY: number;
-  scaleX: number; scaleY: number;
-  rotation: 0 | 90 | 180 | 270;
-  mirrorH: boolean; mirrorV: boolean;
-}): Transform2D {
-  return {
-    tx: g.translateX, ty: g.translateY,
-    sx: g.scaleX, sy: g.scaleY,
-    rotation: g.rotation,
-    mirrorH: g.mirrorH, mirrorV: g.mirrorV,
-  };
-}
+//
+// A group's own transform is NOT read here. `sceneGraph.groupFieldsToTransform`
+// is the one reader: it swaps the scale axes under a quarter turn and adds
+// `angleDeg`, the residual a group twisted off the quarters carries since v61.
+// The direct field-for-field mapping this file used to offer did neither, so
+// it flattened a twisted group and mis-signed a quarter-turned one's axes.
 
 /**
  * Convert legacy cell-based bbox fields to a Bbox.

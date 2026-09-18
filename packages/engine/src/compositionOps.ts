@@ -5857,7 +5857,10 @@ function checked(
     // is carried as whole-array snapshots rather than as a transform.
     if (forward) assertGraphAgrees(before, after, entry);
   }
-  return withRefreshedGraph(before, after);
+  // No graph to refresh: `applyCompOps` / `revertCompOps` send every
+  // graph-bearing state to `runOnGraph` before they reach here, so a state
+  // that gets this far carries none.
+  return after;
 }
 
 /**
@@ -5914,26 +5917,6 @@ ${diff}`,
  */
 export function withSceneGraph(state: CompositionState): CompositionState {
   return { ...state, graph: fromLegacy(state) };
-}
-
-/**
- * Rebuild the graph after an entry, if the state carries one.
- *
- * Rebuilt rather than edited, because the ops still write the per-kind
- * arrays — the arrays are the storage and the graph is derived from them.
- * The refactor turns that around: the ops move to the graph and the
- * arrays become `toLegacyView` output. Until then this is what proves the
- * conversion holds, because every engine and host test now drives it.
- *
- * Once per entry, not once per op: a drag commits one `moveNode` per
- * selected member, and rebuilding for each would make a group drag
- * quadratic in its size.
- */
-function withRefreshedGraph(
-  before: CompositionState, after: CompositionState,
-): CompositionState {
-  if (!before.graph || before === after) return after;
-  return { ...after, graph: fromLegacy(after) };
 }
 
 export function applyCompOps(state: CompositionState, entry: CompUndoEntry): CompositionState {

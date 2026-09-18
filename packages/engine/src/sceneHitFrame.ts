@@ -36,8 +36,8 @@ import type { CompositionFigure, CompositionState, SVGObject } from './types';
 /**
  * A composition's graph: the one it carries, else built on the spot.
  *
- * A state that carries a graph has it rebuilt after every entry
- * (`withRefreshedGraph`), so the one it carries is always current; a state
+ * A state that carries a graph edits it in place on every entry
+ * (`runOnGraph`), so the one it carries is always current; a state
  * that carries none — a test fixture, an import, a page the editor never
  * opened — pays one O(n) conversion to be asked a question about what it
  * draws.
