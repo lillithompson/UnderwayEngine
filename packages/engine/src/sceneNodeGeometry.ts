@@ -580,15 +580,9 @@ export const GEOMETRY_ADAPTERS: Record<CompItemKind, GeometryAdapter<any>> = {
   pattern: patternAdapter,
 };
 
-/** Resolve the geometry adapter for a given node id. */
-export function adapterForId(id: string): GeometryAdapter<any> {
-  if (id.startsWith('svg_')) return GEOMETRY_ADAPTERS.svg;
-  if (id.startsWith('img_')) return GEOMETRY_ADAPTERS.image;
-  if (id.startsWith('txt_')) return GEOMETRY_ADAPTERS.text;
-  if (id.startsWith('pnt_')) return GEOMETRY_ADAPTERS.paint;
-  if (id.startsWith('pat_')) return GEOMETRY_ADAPTERS.pattern;
-  return GEOMETRY_ADAPTERS.figure;
-}
-
-// Generic operations (translateNodeByDelta, findSceneObjectAtCell) live
-// in compositionOps.ts and use adapterForId() to dispatch per-kind.
+// Index this by a kind the caller already holds — `findItem(state, id).kind`
+// for a legacy state, `node.kind` for a graph node. There is deliberately no
+// `adapterForId`: resolving the kind from the id's namespace guessed, and
+// guessed FIGURE for anything unrecognised, so an svg whose id was not minted
+// `svg_` (a fixture, an import) would have been measured off its stale cell
+// fields instead of its segments.

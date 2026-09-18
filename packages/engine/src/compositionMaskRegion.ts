@@ -1,4 +1,4 @@
-import { CompositionState, PathSegment } from './types';
+import { CompItemKind, CompositionState, PathSegment, SVGObject } from './types';
 import {
   getFlattenedClosedPath,
   pointInClosedPath,
@@ -6,8 +6,8 @@ import {
   segmentsIntersect,
 } from './compositionPathHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
-import { isItemLocked, getItemGroupId, findRootGroupId } from './compositionOps';
-import { adapterForId, Bbox } from './sceneNodeGeometry';
+import { isItemLocked, getItemGroupId, findRootGroupId, SceneObjectBase } from './compositionOps';
+import { Bbox, GEOMETRY_ADAPTERS } from './sceneNodeGeometry';
 import { svgIsFilled } from './svgPathBuilder';
 
 /**
@@ -137,12 +137,17 @@ export function computeMaskMembership(
   const figureIds: string[] = [];
   const childGroupIds = new Set<string>();
 
-  const consider = (id: string) => {
+  // The kind comes from the array the object was walked out of, never from
+  // its id: the geometry adapters are keyed by kind, and an svg is the one
+  // kind here whose bbox is its SEGMENTS rather than its cell fields, so a
+  // wrong guess measures a path off whatever its legacy box happens to say.
+  // It also keeps this an O(n) sweep — the id lookups it replaces made the
+  // whole pass quadratic in the page's object count.
+  const consider = (obj: SceneObjectBase, kind: CompItemKind) => {
+    const id = obj.id;
     if (id === maskId) return;
     if (isItemLocked(state, id)) return;
-    const obj = findObject(state, id);
-    if (!obj) return;
-    const svg = state.svgObjects.find((s) => s.id === id);
+    const svg = kind === 'svg' ? (obj as SVGObject) : undefined;
     // Unfilled, non-tiled stroke shapes: include only if a stroke actually
     // enters the mask region. Filled SVGs, tiled SVGs, figures, and images
     // show area/raster content, so the bbox-interior rule still applies.
@@ -154,7 +159,7 @@ export function computeMaskMembership(
         : svg.segments;
       if (!strokeIntersectsMaskRegion(mask.segments, allSegments)) return;
     } else {
-      const bbox = adapterForId(id).computeBbox(obj);
+      const bbox = GEOMETRY_ADAPTERS[kind].computeBbox(obj);
       if (!bboxOverlapsMask(mask.segments, bbox)) return;
     }
     const gid = getItemGroupId(state, id);
@@ -166,17 +171,9 @@ export function computeMaskMembership(
     }
   };
 
-  for (const f of state.figures) consider(f.id);
-  for (const s of state.svgObjects) consider(s.id);
-  for (const i of state.images ?? []) consider(i.id);
+  for (const f of state.figures) consider(f, 'figure');
+  for (const s of state.svgObjects) consider(s, 'svg');
+  for (const i of state.images ?? []) consider(i, 'image');
 
   return { figureIds, childGroupIds: [...childGroupIds] };
-}
-
-function findObject(state: CompositionState, id: string) {
-  return (
-    state.figures.find((f) => f.id === id) ??
-    state.svgObjects.find((s) => s.id === id) ??
-    (state.images ?? []).find((i) => i.id === id)
-  );
 }

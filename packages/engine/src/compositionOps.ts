@@ -502,8 +502,10 @@ export function duplicateName(item: { name?: string }): string | undefined {
 }
 
 export interface SceneObjectAdapter<T extends SceneObjectBase = SceneObjectBase> {
+  /** The one key every caller routes on. An id's namespace does NOT name
+   *  a kind: ask `findItem` (or the graph's `node.kind`) which array the
+   *  id is in and pick the adapter by that. */
   kind: CompItemKind;
-  matchesId(id: string): boolean;
   getArray(state: CompositionState): readonly T[];
   setArray(state: CompositionState, items: T[]): CompositionState;
   /** Deep-clone the item enough that callers can keep a snapshot in
@@ -531,8 +533,6 @@ export function offsetPathSegment(seg: PathSegment, dx: number, dy: number): Pat
 export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
   {
     kind: 'figure',
-    matchesId: (id) =>
-      !id.startsWith('svg_') && !id.startsWith('img_') && !id.startsWith('txt_') && !id.startsWith('pnt_') && !id.startsWith('pat_'),
     getArray: (s) => s.figures,
     setArray: (s, arr) => ({ ...s, figures: arr as CompositionFigure[] }),
     cloneItem: (item) => {
@@ -556,7 +556,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
   },
   {
     kind: 'svg',
-    matchesId: (id) => id.startsWith('svg_'),
     getArray: (s) => s.svgObjects,
     setArray: (s, arr) => ({ ...s, svgObjects: arr as SVGObject[] }),
     cloneItem: (item) => {
@@ -616,7 +615,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
   },
   {
     kind: 'image',
-    matchesId: (id) => id.startsWith('img_'),
     getArray: (s) => s.images ?? [],
     setArray: (s, arr) => ({ ...s, images: arr as ImageObject[] }),
     cloneItem: (item) => ({ ...(item as ImageObject) } as SceneObjectBase),
@@ -640,7 +638,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
   },
   {
     kind: 'text',
-    matchesId: (id) => id.startsWith('txt_'),
     getArray: (s) => s.texts ?? [],
     setArray: (s, arr) => ({ ...s, texts: arr as TextObject[] }),
     cloneItem: (item) => {
@@ -673,7 +670,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
   },
   {
     kind: 'paint',
-    matchesId: (id) => id.startsWith('pnt_'),
     getArray: (s) => s.paintObjects ?? [],
     setArray: (s, arr) => ({ ...s, paintObjects: arr as PaintObject[] }),
     // Tiles are immutable-by-convention (strokes clone-on-touch, commits
@@ -707,7 +703,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
   },
   {
     kind: 'pattern',
-    matchesId: (id) => id.startsWith('pat_'),
     getArray: (s) => s.patternObjects ?? [],
     setArray: (s, arr) => ({ ...s, patternObjects: arr as PatternObject[] }),
     // Cells are immutable-by-convention (every edit swaps the array), so a

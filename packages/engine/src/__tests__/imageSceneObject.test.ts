@@ -81,12 +81,11 @@ function makeState(parts: Partial<CompositionState> = {}): CompositionState {
 }
 
 describe('image scene-object adapter', () => {
-  test('SCENE_ADAPTERS includes image adapter with img_ namespace', () => {
+  test('SCENE_ADAPTERS includes an image adapter, minting into img_', () => {
     const adapter = SCENE_ADAPTERS.find((a) => a.kind === 'image')!;
     expect(adapter).toBeDefined();
-    expect(adapter.matchesId('img_xyz')).toBe(true);
-    expect(adapter.matchesId('1234')).toBe(false);
-    expect(adapter.matchesId('svg_xyz')).toBe(false);
+    // Minting still owns the namespace; nothing reads it back to route.
+    expect(adapter.mintId().startsWith('img_')).toBe(true);
   });
 
   test('findItem resolves an image id to its kind', () => {

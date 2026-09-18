@@ -56,9 +56,10 @@ export const PATTERN_GRID_LEVEL: GridLevel = 1;
 export const PATTERN_CELL_L0 = 2;
 
 // ── Id minting ──────────────────────────────────────────────────────
-// The 'pat_' namespace is load-bearing: SCENE_ADAPTERS, adapterForId and
-// persistence resolve node kind by id prefix (the mintPaintObjectId
-// pattern).
+// The 'pat_' namespace is load-bearing in ONE place: `sanitizePatternObjects`
+// skips a revived record whose id is not in it, so a pattern that does not
+// carry the prefix will not survive a reload. Nothing routes a KIND off it
+// any more (the mintPaintObjectId pattern).
 
 let mintCounter = 0;
 

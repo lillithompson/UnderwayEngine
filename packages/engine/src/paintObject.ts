@@ -18,9 +18,12 @@ import {
 } from './canvasPaint';
 
 // ── Id minting ──────────────────────────────────────────────────────
-// The 'pnt_' namespace is load-bearing: SCENE_ADAPTERS and persistence
-// resolve node kind by id prefix. Counter + timestamp keeps ids unique
-// within and across sessions (the mintNodeId pattern).
+// The 'pnt_' namespace is load-bearing in ONE place: `migratePaintObjectMeta`
+// drops a revived record whose id is not in it, so a paint object that does
+// not carry the prefix will not survive a reload. Nothing routes a KIND off
+// it — that comes from the array the object is in (`findItem`) or from the
+// graph node. Counter + timestamp keeps ids unique within and across
+// sessions (the mintNodeId pattern).
 
 let mintCounter = 0;
 

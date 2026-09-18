@@ -320,3 +320,43 @@ describe('edit-mask confirm op sequence (full re-pick: ungroup + move + regroup)
     expect(reverted.figures.find(f => f.id === 'figC')!.groupId).toBeUndefined();
   });
 });
+
+describe('computeMaskMembership resolves a kind, never an id prefix', () => {
+  // An svg is the one kind here whose bbox is its SEGMENTS; a figure's and an
+  // image's are their cell fields. So a node measured at the wrong kind is
+  // measured off the wrong geometry — and this file's own fixtures are full
+  // of svgs whose cell fields are a stale 4x4 at the origin, which is exactly
+  // the drift that makes the difference visible.
+  test('a FILLED svg whose id is outside the svg_ namespace is measured by its segments', () => {
+    // Segments squarely inside the mask; cell fields far outside it. Read as
+    // a figure (the old id-prefix fallback for an unrecognised namespace)
+    // this shape misses the mask entirely.
+    const shape = makeSvg('drawnShape', {
+      segments: squareSegments(2, 2, 3),
+      fillColor: { r: 255, g: 0, b: 0 },
+
+      cellX: 500, cellY: 500, cellWidth: 4, cellHeight: 4,
+    });
+    const state = makeState({ svgObjects: [makeSvg('svg_mask', { segments: MASK, isMask: true }), shape] });
+    expect(computeMaskMembership(state, 'svg_mask').figureIds).toEqual(['drawnShape']);
+  });
+
+  test('and the converse: segments outside the mask keep it out, whatever the cell fields say', () => {
+    const shape = makeSvg('drawnShape', {
+      segments: squareSegments(40, 40, 3),
+      fillColor: { r: 255, g: 0, b: 0 },
+
+      cellX: 1, cellY: 1, cellWidth: 2, cellHeight: 2,
+    });
+    const state = makeState({ svgObjects: [makeSvg('svg_mask', { segments: MASK, isMask: true }), shape] });
+    expect(computeMaskMembership(state, 'svg_mask').figureIds).toEqual([]);
+  });
+
+  test('a figure is still measured by its cell fields', () => {
+    const state = makeState({
+      svgObjects: [makeSvg('svg_mask', { segments: MASK, isMask: true })],
+      figures: [makeFigure('figIn', 2, 2, 2, 2), makeFigure('figOut', 40, 40, 2, 2)],
+    });
+    expect(computeMaskMembership(state, 'svg_mask').figureIds).toEqual(['figIn']);
+  });
+});

@@ -5,6 +5,7 @@
   applySceneOrder,
   computeSVGBbox,
   deriveSceneOrderFromKindArrays,
+  findItem,
 } from '../compositionOps';
 import {
   CompositionState,
@@ -75,27 +76,19 @@ describe('SCENE_ADAPTERS', () => {
     expect(kinds).toEqual(['figure', 'image', 'paint', 'pattern', 'svg', 'text']);
   });
 
-  test('matchesId routes ids by namespace', () => {
-    const figureA = SCENE_ADAPTERS.find((a) => a.kind === 'figure')!;
+  // No adapter answers "is this id mine?" any more. An id's namespace is
+  // minted for legibility and read back only by persistence's record
+  // validation; the kind comes from the array the object is IN, which is
+  // what `findItem` reports. A test that an adapter recognises its own
+  // prefix would be pinning a routing rule nothing follows.
+  test('routing is by kind, never by the id namespace', () => {
     const svgA = SCENE_ADAPTERS.find((a) => a.kind === 'svg')!;
-    const imgA = SCENE_ADAPTERS.find((a) => a.kind === 'image')!;
-    const paintA = SCENE_ADAPTERS.find((a) => a.kind === 'paint')!;
-    expect(figureA.matchesId('1234')).toBe(true);
-    expect(figureA.matchesId('svg_1')).toBe(false);
-    expect(figureA.matchesId('img_1')).toBe(false);
-    // The figure adapter is the prefix-less fallback, so every new id
-    // namespace must be excluded from it explicitly — a paint id landing in
-    // the figure adapter would route paint ops at the wrong kind array.
-    expect(figureA.matchesId('pnt_1')).toBe(false);
-    expect(figureA.matchesId('pat_1')).toBe(false);
-    expect(svgA.matchesId('svg_1')).toBe(true);
-    expect(svgA.matchesId('img_1')).toBe(false);
-    expect(imgA.matchesId('img_1')).toBe(true);
-    expect(imgA.matchesId('1234')).toBe(false);
-    expect(imgA.matchesId('svg_1')).toBe(false);
-    expect(paintA.matchesId('pnt_1')).toBe(true);
-    expect(paintA.matchesId('svg_1')).toBe(false);
-    expect(paintA.matchesId('1234')).toBe(false);
+    // An svg minted outside the namespace (a fixture, an import) still
+    // routes to the svg adapter, because the state says where it lives.
+    const state = makeState({ svgObjects: [{ id: 'not_an_svg_prefix' } as never] });
+    const ref = findItem(state, 'not_an_svg_prefix');
+    expect(ref!.kind).toBe('svg');
+    expect(SCENE_ADAPTERS.find((a) => a.kind === ref!.kind)).toBe(svgA);
   });
 });
 
