@@ -10,7 +10,8 @@ import {
   revertCompOps,
   buildDuplicateOps as engineBuildDuplicateOps,
   computeSVGBbox,
-  groupLocalCenter,
+  groupBounds,
+  inverseChainedGroupTransformPoint,
   applyGroupTransformPoint,
   computeDuplicateOffset,
   duplicateName,
@@ -501,7 +502,23 @@ describe('handlePropsDuplicate ops produce a usable duplicated group', () => {
 
     // Step 2: Mirror the duplicate group
     const g2 = state.groups.find(g => g.id === newGid)!;
-    const [lcx, lcy] = groupLocalCenter(state, newGid);
+    // The pivot in the group's own space: the drawn box's centre, pulled
+    // back through the group. A group transform carries an AABB's centre
+    // to the transformed AABB's centre, so this is the same point the
+    // members' `local*` caches used to be summed for.
+    //
+    // It is here to make the mirror a REALISTIC one — the flip about the
+    // visible centre the host used to commit — not because anything below
+    // measures it: what this test asserts is that the whole sequence undoes
+    // back to the original, which holds for any pivot. (Mutating the pivot
+    // leaves all 19 green; the pivot that IS pinned by an assertion is
+    // groupArcMoveMirrorMove's.)
+    const b2 = groupBounds(
+      state.figures, newGid, state.svgObjects, undefined, state.images, state.groups,
+    );
+    const [lcx, lcy] = inverseChainedGroupTransformPoint(
+      [g2], (b2.minX + b2.maxX) / 2, (b2.minY + b2.maxY) / 2,
+    );
     const oldWC = applyGroupTransformPoint(g2, lcx, lcy);
     const newG2 = { ...g2, mirrorH: true };
     const newWC = applyGroupTransformPoint(newG2, lcx, lcy);

@@ -20,7 +20,7 @@ import {
   bucketMovedIds,
   computeSVGBbox,
   groupBounds,
-  groupLocalCenter,
+  inverseChainedGroupTransformPoint,
   materializeGroupMembers,
 } from '../compositionOps';
 import {
@@ -105,12 +105,29 @@ function applyMoveDelta(state: CompositionState, ids: string[], dx: number, dy: 
   return next;
 }
 
-/** Mimic handlePropsRotate's group path: pivot 90° CW around the
- *  group's visual center by adjusting translate so the world center
- *  stays pinned. */
+/** The group's visual centre expressed in its OWN local space — the pivot
+ *  the translate adjustments below have to turn about for the world centre
+ *  to stay pinned.
+ *
+ *  Measured off the drawn box and pulled back through the group, rather
+ *  than summed out of the members' `local*` caches: a group transform is a
+ *  D4 orientation with per-axis scale and a translate, which carries an
+ *  AABB to an AABB and its centre to the centre, so the two agree — and
+ *  the caches are what this refactor is removing. The live editor pivots
+ *  in world space (`multiSelectionPivot`); these tests keep the local
+ *  spelling because the legacy `transformGroup` op they drive is written
+ *  in the group's own space. */
+function groupPivotLocal(state: CompositionState, groupId: string): [number, number] {
+  const group = state.groups.find(g => g.id === groupId)!;
+  const [wx, wy] = bboxCenter(state, groupId);
+  return inverseChainedGroupTransformPoint([group], wx, wy);
+}
+
+/** Pivot 90° CW around the group's visual center by adjusting translate so
+ *  the world center stays pinned. */
 function applyGroupRotate90(state: CompositionState, groupId: string): CompositionState {
   const groupNode = state.groups.find(g => g.id === groupId)!;
-  const [lcx, lcy] = groupLocalCenter(state, groupId);
+  const [lcx, lcy] = groupPivotLocal(state, groupId);
   const oldWorldCenter = applyGroupTransformPoint(groupNode, lcx, lcy);
   const newRot = ((groupNode.rotation + 90) % 360) as 0 | 90 | 180 | 270;
   const newGroupForCompute = { ...groupNode, rotation: newRot };
@@ -122,11 +139,10 @@ function applyGroupRotate90(state: CompositionState, groupId: string): Compositi
   return materializeGroupMembers({ ...state, groups }, groupId);
 }
 
-/** Mimic handlePropsMirror's group path: toggle mirrorH or mirrorV
- *  with the matching translate adjustment. */
+/** Toggle mirrorH or mirrorV with the matching translate adjustment. */
 function applyGroupMirror(state: CompositionState, groupId: string, axis: 'h' | 'v'): CompositionState {
   const groupNode = state.groups.find(g => g.id === groupId)!;
-  const [lcx, lcy] = groupLocalCenter(state, groupId);
+  const [lcx, lcy] = groupPivotLocal(state, groupId);
   const oldWorldCenter = applyGroupTransformPoint(groupNode, lcx, lcy);
   const newMirrorH = axis === 'h' ? !groupNode.mirrorH : groupNode.mirrorH;
   const newMirrorV = axis === 'v' ? !groupNode.mirrorV : groupNode.mirrorV;

@@ -1,4 +1,4 @@
-import { groupBounds, groupLocalUnionBounds, groupSelectionBounds } from '../compositionOps';
+import { groupBounds, groupSelectionBounds } from '../compositionOps';
 import { buildActiveMaskMap } from '../compositionMask';
 import { CompositionFigure, GroupNode, PathSegment, SVGObject } from '../types';
 
@@ -140,39 +140,5 @@ describe('groupSelectionBounds — mask-mode object hugs its mask', () => {
     // No mask on this group → union of members (here just the sibling).
     const b = groupSelectionBounds(figures, 'gMask', [], [], groups, undefined);
     expect(b).toEqual({ minX: 9, minY: 9, maxX: 13, maxY: 13 });
-  });
-});
-
-describe('groupLocalUnionBounds — nested-mask clipping (identity transforms)', () => {
-  const gOuter = makeGroup('gOuter');
-  const gInner = makeGroup('gInner', 'gOuter');
-  const groups = [gOuter, gInner];
-  const mask = makeMask('mask', 'gInner', 0, 0, 4);
-  const figInside = makeFig('figInside', 'gInner', 1, 1, 2, 2);
-  const figOutside = makeFig('figOutside', 'gInner', 10, 10, 4, 4);
-  const figOuter = makeFig('figOuter', 'gOuter', 5, 0, 2, 2);
-  const state = { figures: [figInside, figOutside, figOuter], svgObjects: [mask], images: [], groups };
-
-  test('no maskMap → plain local union matches plain world union', () => {
-    const lub = groupLocalUnionBounds(state, 'gOuter');
-    expect(lub.hasMembers).toBe(true);
-    expect(lub.minX).toBe(0);
-    expect(lub.minY).toBe(0);
-    expect(lub.maxX).toBe(14);
-    expect(lub.maxY).toBe(14);
-  });
-
-  test('with maskMap → nested-masked-out member is clipped, matching world bounds', () => {
-    const maskMap = maskMapFor(state.svgObjects, groups, state.figures.map(f => f.id));
-    const lub = groupLocalUnionBounds(state, 'gOuter', maskMap);
-    const world = groupBounds(state.figures, 'gOuter', state.svgObjects, state.svgObjects, undefined, groups, maskMap);
-    // Identity transforms ⇒ local union equals world union exactly. This is the
-    // invariant that keeps sX/sY uniform during a group scale.
-    expect(lub.minX).toBe(world.minX);
-    expect(lub.minY).toBe(world.minY);
-    expect(lub.maxX).toBe(world.maxX);
-    expect(lub.maxY).toBe(world.maxY);
-    expect(lub.maxX).toBe(7);
-    expect(lub.maxY).toBe(4);
   });
 });
