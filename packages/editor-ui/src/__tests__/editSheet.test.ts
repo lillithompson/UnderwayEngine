@@ -551,6 +551,21 @@ describe('the panel drives the sheet', () => {
     expect(PANEL.indexOf("key: 'text', label: 'Text'")).toBeLessThan(PANEL.indexOf("key: 'font', label: 'Font'"));
   });
 
+  it('the Size slider reaches three times as far as it used to', () => {
+    // 96pt was not big enough for a word meant to carry a page: the knob hit
+    // the end and the only way on was to drag the box. The floor is
+    // unchanged — small text was never the problem — so the whole widening
+    // is at the top, and the host's own clamp (100 cells) still sits far
+    // above it.
+    const text = SRC('components', 'TextBar.tsx');
+    expect(text).toContain('const SIZE_MIN = 0.5; // 8pt ÷ 16');
+    expect(text).toContain('const SIZE_MAX = 18; // 288pt ÷ 16');
+    // Both ends run through the same two constants, so widening the range is
+    // this one edit and the knob and the value can't disagree about it.
+    expect(text).toContain('value={(style.size - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)}');
+    expect(text).toContain('apply={(t, c) => set({ size: SIZE_MIN + t * (SIZE_MAX - SIZE_MIN) }, c)}');
+  });
+
   it('the Spacing page is Char, Line and Bend on separate lines; Align is the two unlabelled alignment rows', () => {
     const text = SRC('components', 'TextBar.tsx');
     const spacing = text.slice(text.indexOf("page === 'spacing' ? ("), text.indexOf(') : (', text.indexOf("page === 'spacing' ? (")));

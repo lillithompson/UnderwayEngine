@@ -30,7 +30,12 @@ type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 // ── Ranges (world-cell units where the design's pt/percent map onto these) ─
 const SIZE_MIN = 0.5; // 8pt ÷ 16
-const SIZE_MAX = 6; // 96pt ÷ 16
+// The top of the Size slider's reach. Three times the 96pt it used to stop
+// at: a word meant to be the loudest thing on a page ran out of slider well
+// before it ran out of page, and the only way past was to resize the box by
+// hand. The host clamps text size to 100 cells, so this stays well inside
+// what a composition will hold — the slider just reaches more of it.
+const SIZE_MAX = 18; // 288pt ÷ 16
 const LS_MIN = -0.05; // letter spacing (em), design −0.5pt-ish
 const LS_MAX = 0.5; // em, design 2.0pt-ish
 const LH_MIN = 0.8; // line height 80%
