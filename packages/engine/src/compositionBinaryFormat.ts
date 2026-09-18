@@ -102,7 +102,8 @@ import { compSnapStep } from './compositionCellMath';
 //                     0x10 hasSegmentOverrides (v28+),
 //                     0x20 hasFillPaint (v29+), 0x40 hasEffects (v29+)
 //     flags4:       u8         (v38+)
-//                     0x01 hasPatternFileId (v38+)
+//                     0x01 hasPatternFileId (v38+),
+//                     0x80 hasShear (v63+; one f32 LAST in the record)
 //     rotBits:      u8         (low 2 bits â†’ 0/90/180/270, bit 0x04 tileRepeat)
 //     color:        u8 r, u8 g, u8 b
 //     conditional u16 string refs (in flag order): nameIdx, groupIdIdx,
@@ -168,7 +169,9 @@ import { compSnapStep } from './compositionCellMath';
 // IMAGES SECTION (v10+) â€” written after embedded files; see writeImage.
 //   The image rotation byte carries: 0x03 rotation, 0x04 hidden (v14+),
 //   0x08 hasTint (v29+), 0x10 hasEffects (v29+), 0x20 hasAngle (v31+),
-//   0x40 hasFraming (v33+), 0x80 hasCornerRadius (v33+). The main image
+//   0x40 hasFraming (v33+), 0x80 hasCornerRadius (v33+). The image `flags2`
+//   byte (v34+) carries 0x20 hasShear (v63+), one f32 LAST in the image
+//   section. The main image
 //   flags byte is fully consumed, so the presence bits live in the spare
 //   high bits of the rotation byte (older readers mask & 0x03 / & 0x04).
 //   Tint payload (after the identity-bbox block, before effects):
@@ -215,7 +218,9 @@ import { compSnapStep } from './compositionCellMath';
 //     if hasWeight:        weight u8 (0 light, 1 regular, 2 semibold, 3 bold)
 //     if hasEffects (flags2): shared EFFECTS payload above
 //     if hasVAlign (flags2 0x40, v53+): vAlign u8 (0 top, 1 middle,
-//       2 bottom) — LAST in the record, after the char-colour block
+//       2 bottom) — after the char-colour block
+//     v57+ extension byte, then its payloads in bit order: 0x01 bend f32,
+//       0x02 fade, 0x04 shear f32 (v63+) — LAST in the record
 //
 // BACKGROUND SECTION (v29+) â€” written after the custom colors section
 //   (the final section of the file).
@@ -418,6 +423,7 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      4×f32; contentRect 4×f32 (tile space); conditional opacity f32 +
 //      edgeSoften f32 + angleDeg f32; u16 tileCount, then per tile
 //      f32 x + f32 y + f32 widthCells + the v48 paint-overlay payload.
+//      v63 adds flags2 0x40 hasShear, one f32 after the tiles.
 // v53: text records persist `style.vAlign` (flags2 0x40 + a trailing enum
 //      byte). It had never been written at all, so every text that went
 //      through a save/load — a .tile export, a page template — came back
@@ -445,7 +451,8 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      then per filled cell: index u16; cellFlags u8 (rotation 2 bits at
 //      0x03, 0x04 mirrorH, 0x08 mirrorV, 0x10 isColor, 0x20 hasTint);
 //      sprite cells: spriteIdIdx u16 (+ r,g,b u8×3 when hasTint);
-//      color cells: r,g,b u8×3. Older readers never see the section
+//      color cells: r,g,b u8×3. v63 adds flags3 0x20 hasShear, one f32
+//      after the filled cells. Older readers never see the section
 //      (version-gated); older files simply have no patterns.
 // v55: COLOR OPACITY for two targets that had none. (a) Border effect:
 //      `border.alpha` rides the v44 border-extension block behind a new
@@ -500,7 +507,26 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      lost. Older files set no bit and read back with no angle, which is
 //      exactly what they have always meant. See GroupNode.angleDeg and
 //      docs/transform-refactor.md §3.7.
-const FORMAT_VERSION = 62;
+// v63: A LEAF CAN BE A PARALLELOGRAM. The `shear` a leaf record carries —
+//      the x each unit of its box's height is displaced by — on all five
+//      box kinds: svg (flags4 0x80), image (flags2 0x20), text (the v57
+//      extension byte, 0x04), pattern (v54 flags3 0x20) and paint (flags2
+//      0x40). One f32 each, LAST in the record, written only when there IS
+//      a lean.
+//
+//      A box plus an angle describes a turned RECTANGLE. A member of a
+//      group pulled off its axes is a PARALLELOGRAM, and until the field
+//      existed there was nowhere to say so: a page SAVE kept it (the JSON
+//      comp_meta carries a new field for free) but a `.tile` EXPORT and
+//      re-import flattened every sheared leaf back to the nearest turned
+//      rectangle — an image or a text inside a stretched group visibly
+//      changed shape on the way back in. See docs/transform-refactor.md
+//      §6.2 and {@link LocalTransform.shear}.
+//
+//      Every one of those bits was always written 0 before, and an upright
+//      leaf sets none of them, so a v62 file — which is every page anyone
+//      has ever made — reads back byte for byte.
+const FORMAT_VERSION = 63;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 const HEADER_SIZE = 8;
@@ -938,6 +964,9 @@ const FLAG4_SVG_IS_POLYGON = 0x10;
 const FLAG4_SVG_HAS_PAINT_OVERLAY = 0x20;
 // v62+: the Fade row — amount u8 + target r,g,b. Last in the record.
 const FLAG4_SVG_HAS_FADE = 0x40;
+// v63+: the shear — one f32, last in the record, after the fade. flags4's
+// last free bit; flags2 and flags3 are both fully spent.
+const FLAG4_SVG_HAS_SHEAR = 0x80;
 
 // v29+ image rotation-byte bits. The image `flags` byte is fully
 // consumed (0x01..0x80), so tint/effects presence rides the spare high
@@ -1043,6 +1072,10 @@ const IMG_FLAGS2_HAS_EDGE_SOFTEN = 0x04;
 const IMG_FLAGS2_HAS_PAINT_OVERLAY = 0x08;
 // v62+: the Fade row â€” amount u8 + target r,g,b, last in the image section.
 const IMG_FLAGS2_HAS_FADE = 0x10;
+// v63+: the shear â€” one f32, last in the image section, after the fade. The
+// image's ROTATION byte is fully consumed (v33 took its last two bits), so
+// this rides flags2, which still has 0x40 and 0x80 free after it.
+const IMG_FLAGS2_HAS_SHEAR = 0x20;
 
 // v48 paint-overlay blend byte ⇄ BlendMode. Table order is frozen — append
 // only. The unary modes never reach an overlay but map anyway so an
@@ -1143,6 +1176,9 @@ const TFLAG2_HAS_ALPHA = 0x80;
 const TEXT_EXT_HAS_BEND = 0x01;
 // v62+: the Fade row â€” amount u8 + target r,g,b, after the bend payload.
 const TEXT_EXT_HAS_FADE = 0x02;
+// v63+: the shear â€” one f32, after the fade. It rides the TEXT record, not
+// the style beside it: it is a pose field, like the angle, not ink.
+const TEXT_EXT_HAS_SHEAR = 0x04;
 
 const TSTYLE_BOLD = 0x01;
 const TSTYLE_ITALIC = 0x02;
@@ -1245,6 +1281,69 @@ function readFade(data: Uint8Array, pos: number, spec: FadeSpec): number {
     if (r !== d.r || g !== d.g || b !== d.b) spec.fadeColor = { r, g, b };
   }
   return pos;
+}
+
+// ── The shear term (v63+) ──────────────────────────────────────────────
+//
+// One f32: the lean a group scaled off its axes puts on a turned member —
+// the x each unit of the leaf's own box height displaces it by. A box plus
+// an angle describes a turned RECTANGLE, and a member of a group pulled
+// off square is a PARALLELOGRAM; until v63 the file had nowhere to say so,
+// so a `.tile` export and re-import flattened every sheared leaf to the
+// nearest turned rectangle (plan §6.2).
+//
+// Written only when there IS a lean, so a leaf that has never been inside
+// an off-square group is byte-identical to what it was before the block
+// existed — the same absent-at-default rule the stroke, endpoints, opacity
+// and fade blocks keep. One writer and one reader for all five kinds that
+// carry it, because five copies of four bytes is how a format drifts.
+//
+// THIS IS NOT THE TRANSFORM'S SHEAR. `LocalTransform.shear` measures the
+// lean against its own `sx`, where the box is a unit square and the size
+// is in the matrix. A pose field puts the SIZE in the box and runs the
+// transform at unit scale, so the same lean is `shear * |sx| / |sy|` there
+// — `sceneGraph.poseFieldsFrom` does that conversion, on its way to the
+// fields this file reads. Stored verbatim here; converted nowhere.
+
+/** The block's size, for the size pass. */
+const SHEAR_BYTES = 4;
+
+// The presence bit, per kind. The svg / image / text bits are named with
+// their own kind's flag constants above (FLAG4_SVG_HAS_SHEAR,
+// IMG_FLAGS2_HAS_SHEAR, TEXT_EXT_HAS_SHEAR); the pattern and paint records
+// spell their flags as bare literals inline and have no such block, so
+// theirs are here.
+/** v54 pattern `flags3`, whose last used bit is `hasStroke` 0x10. */
+const PATTERN_FLAGS3_HAS_SHEAR = 0x20;
+/** v52 paint `flags2`. 0x01 and 0x08 are the retired local-bbox and edge-
+ *  soften blocks an older file may still carry, and 0x30 is the rotation
+ *  pair, so the first genuinely free bit is 0x40. */
+const PAINT_FLAGS2_HAS_SHEAR = 0x40;
+
+/** What a leaf carries as a lean, wherever it carries one. Every box kind
+ *  has the field — svg, image, text, pattern and paint. */
+interface ShearSpec { shear?: number }
+
+/** Is there a lean to persist? Absent is what every upright leaf carries
+ *  and zero says the same thing, so neither costs a bit or a byte. */
+function hasShear(o: ShearSpec): boolean {
+  return o.shear !== undefined && Number.isFinite(o.shear) && o.shear !== 0;
+}
+
+/** The lean of `o`, if it has one. Appends nothing otherwise. */
+function writeShear(view: DataView, pos: number, o: ShearSpec): number {
+  if (!hasShear(o)) return pos;
+  view.setFloat32(pos, o.shear!, true);
+  return pos + SHEAR_BYTES;
+}
+
+/** â€¦and back onto `o`. A zero reads as NO lean rather than a zero one, so
+ *  a round trip of an upright leaf is toEqual-identical to what was
+ *  written â€” the same rule readFade keeps for a zero amount. */
+function readShear(view: DataView, pos: number, o: ShearSpec): number {
+  const shear = view.getFloat32(pos, true);
+  if (shear !== 0) o.shear = shear;
+  return pos + SHEAR_BYTES;
 }
 
 function paintBinarySize(paint: Paint): number {
@@ -1646,6 +1745,7 @@ function svgBinarySize(svg: SVGObject): number {
   if (hasSVGOpacity(svg)) size += 1; // v42+ opacity
   if (svg.paintOverlay) size += paintOverlayBinarySize(svg.paintOverlay); // v49+
   if (hasFade(svg)) size += FADE_BYTES; // v62+
+  if (hasShear(svg)) size += SHEAR_BYTES; // v63+
   return size;
 }
 
@@ -1682,6 +1782,7 @@ function imageBinarySize(img: ImageObject): number {
   if (img.tintFill) size += tintFillBinarySize(img.tintFill); // v36+
   if (img.paintOverlay) size += paintOverlayBinarySize(img.paintOverlay); // v48+
   if (hasFade(img)) size += FADE_BYTES; // v62+
+  if (hasShear(img)) size += SHEAR_BYTES; // v63+
   return size;
 }
 
@@ -1844,6 +1945,7 @@ function writeSVG(
   if (svg.shapeKind === 'polygon') flags4 |= FLAG4_SVG_IS_POLYGON;
   if (svg.paintOverlay) flags4 |= FLAG4_SVG_HAS_PAINT_OVERLAY;
   if (hasFade(svg)) flags4 |= FLAG4_SVG_HAS_FADE;
+  if (hasShear(svg)) flags4 |= FLAG4_SVG_HAS_SHEAR;
   out[pos++] = flags4;
 
   let rotBits = ROTATION_TO_BITS[svg.rotation ?? 0] & 0x03;
@@ -1947,8 +2049,9 @@ function writeSVG(
   if (svg.paintOverlay) {
     pos = writePaintOverlay(view, out, pos, svg.paintOverlay);
   }
-  // v62+ the Fade row, last in the record.
+  // v62+ the Fade row, then v63+ the shear, last in the record.
   pos = writeFade(out, pos, svg);
+  pos = writeShear(view, pos, svg);
   return pos;
 }
 
@@ -2163,6 +2266,11 @@ function readSVG(
   // before v62.
   if (version >= 62 && (flags4 & FLAG4_SVG_HAS_FADE)) {
     pos = readFade(data, pos, svg);
+  }
+  // v63+ the shear, last in the record, after the fade. Bit 0x80 was
+  // always written 0 before v63.
+  if (version >= 63 && (flags4 & FLAG4_SVG_HAS_SHEAR)) {
+    pos = readShear(view, pos, svg);
   }
 
   // v25+ "Use as mask" flag (presence-only, no payload)
@@ -2485,7 +2593,8 @@ function writeImage(
     const flags2 = (img.originalImageId != null ? IMG_FLAGS2_HAS_ORIGINAL : 0)
       | (img.tintFill ? IMG_FLAGS2_HAS_TINT_FILL : 0)
       | (img.paintOverlay ? IMG_FLAGS2_HAS_PAINT_OVERLAY : 0)
-      | (hasFade(img) ? IMG_FLAGS2_HAS_FADE : 0);
+      | (hasFade(img) ? IMG_FLAGS2_HAS_FADE : 0)
+      | (hasShear(img) ? IMG_FLAGS2_HAS_SHEAR : 0);
     out[pos++] = flags2;
     if (img.originalImageId != null) {
       view.setUint16(pos, indexOf.get(img.originalImageId) ?? 0, true); pos += 2;
@@ -2498,8 +2607,9 @@ function writeImage(
     if (img.paintOverlay) {
       pos = writePaintOverlay(view, out, pos, img.paintOverlay);
     }
-    // v62+ the Fade row, last in the image section.
+    // v62+ the Fade row, then v63+ the shear, last in the image section.
     pos = writeFade(out, pos, img);
+    pos = writeShear(view, pos, img);
   }
 
   return pos;
@@ -2628,6 +2738,11 @@ function readImage(
     if (version >= 62 && (flags2 & IMG_FLAGS2_HAS_FADE)) {
       pos = readFade(data, pos, img);
     }
+    // v63+ the shear, last in the image section, after the fade. Bit 0x20
+    // was always written 0 before v63.
+    if (version >= 63 && (flags2 & IMG_FLAGS2_HAS_SHEAR)) {
+      pos = readShear(view, pos, img);
+    }
   }
 
   return { img, pos };
@@ -2705,6 +2820,7 @@ function textBinarySize(text: TextObject): number {
   size += 1; // v57+ extension byte, always written
   if (text.style.bend != null) size += 4; // v57+ arc bend f32
   if (hasFade(text.style)) size += FADE_BYTES; // v62+
+  if (hasShear(text)) size += SHEAR_BYTES; // v63+
   return size;
 }
 
@@ -2826,12 +2942,16 @@ function writeText(
   let ext = 0;
   if (text.style.bend != null) ext |= TEXT_EXT_HAS_BEND;
   if (hasFade(text.style)) ext |= TEXT_EXT_HAS_FADE;
+  if (hasShear(text)) ext |= TEXT_EXT_HAS_SHEAR;
   out[pos++] = ext;
   if (text.style.bend != null) {
     view.setFloat32(pos, text.style.bend, true); pos += 4;
   }
   // v62+ the Fade row, after the bend.
   pos = writeFade(out, pos, text.style);
+  // v63+ the shear, after the fade. On the TEXT, not the style beside it:
+  // it is a pose field like the angle, not ink.
+  pos = writeShear(view, pos, text);
 
   return pos;
 }
@@ -2975,6 +3095,12 @@ function readText(
     // before v62.
     if (ext & TEXT_EXT_HAS_FADE) {
       pos = readFade(data, pos, style);
+    }
+    // v63+ the shear, after the fade. Bit 0x04 was always written 0 before
+    // v63, so the bit alone would gate it; version-gated like its
+    // neighbours to keep the rule uniform.
+    if (version >= 63 && (ext & TEXT_EXT_HAS_SHEAR)) {
+      pos = readShear(view, pos, text);
     }
   }
 
@@ -3412,6 +3538,7 @@ function serializeCompositionAt(
     let flags2 = 0;
     if (p.identityCellX != null) flags2 |= 0x02;
     if (p.angleDeg) flags2 |= 0x04;
+    if (hasShear(p)) flags2 |= PAINT_FLAGS2_HAS_SHEAR;
     flags2 |= (ROTATION_TO_BITS[p.rotation ?? 0] & 0x03) << 4;
     out[pos++] = flags2;
     if (p.name != null) { view.setUint16(pos, indexOf.get(p.name) ?? 0, true); pos += 2; }
@@ -3440,6 +3567,8 @@ function serializeCompositionAt(
       view.setFloat32(pos, tile.widthCells, true); pos += 4;
       pos = writePaintOverlay(view, out, pos, tile.overlay);
     }
+    // v63+ the shear, last in the record, after the tiles.
+    pos = writeShear(view, pos, p);
   }
 
   // Pattern objects (v54+)
@@ -3468,6 +3597,7 @@ function serializeCompositionAt(
     if (p.tileOffsetYL0 != null) flags3 |= 0x04;
     if (p.allowBorderConnections === false) flags3 |= 0x08;
     if (hasSVGStroke(p.stroke)) flags3 |= 0x10;
+    if (hasShear(p)) flags3 |= PATTERN_FLAGS3_HAS_SHEAR;
     out[pos++] = flags3;
     if (p.name != null) { view.setUint16(pos, indexOf.get(p.name) ?? 0, true); pos += 2; }
     if (p.groupId != null) { view.setUint16(pos, indexOf.get(p.groupId) ?? 0, true); pos += 2; }
@@ -3524,6 +3654,8 @@ function serializeCompositionAt(
         out[pos++] = cell.b;
       }
     }
+    // v63+ the shear, last in the record, after the filled cells.
+    pos = writeShear(view, pos, p);
   }
 
   return out;
@@ -3574,6 +3706,7 @@ function patternObjectBinarySize(p: PatternObject): number {
   if (p.tileOffsetXL0 != null) size += 4;
   if (p.tileOffsetYL0 != null) size += 4;
   if (hasSVGStroke(p.stroke)) size += strokeBinarySize(p.stroke!);
+  if (hasShear(p)) size += SHEAR_BYTES; // v63+
   if (p.symmetry != null) size += 2;
   size += 2; // filledCount
   for (const cell of p.cells) {
@@ -3596,6 +3729,7 @@ function paintObjectBinarySize(p: PaintObject): number {
   if (p.identityCellX != null) size += 16;
   if (p.opacity != null) size += 4;
   if (p.angleDeg) size += 4;
+  if (hasShear(p)) size += SHEAR_BYTES; // v63+
   size += 2; // tileCount
   for (const tile of p.tiles) size += 12 + paintOverlayBinarySize(tile.overlay);
   return size;
@@ -4102,6 +4236,11 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
         pos = po.pos;
         tiles.push({ x, y, widthCells, overlay: po.overlay });
       }
+      // v63+ the shear, last in the record, after the tiles. Bit 0x40 was
+      // always written 0 before v63.
+      if (version >= 63 && (flags2 & PAINT_FLAGS2_HAS_SHEAR)) {
+        pos = readShear(view, pos, p);
+      }
       p.tiles = normalizeCanvasPaintIslands(tiles) ?? [];
       if (p.tiles.length > 0) paintObjects.push(p);
     }
@@ -4187,6 +4326,11 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
           }
         }
         if (index < p.cells.length) p.cells[index] = cell;
+      }
+      // v63+ the shear, last in the record, after the filled cells. Bit
+      // 0x20 was always written 0 before v63.
+      if (version >= 63 && (flags3 & PATTERN_FLAGS3_HAS_SHEAR)) {
+        pos = readShear(view, pos, p);
       }
       patternObjects.push(p);
     }
