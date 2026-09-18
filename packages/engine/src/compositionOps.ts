@@ -11,13 +11,13 @@ import { arcAllPoints } from './compositionArcMath';
 import { colorsEqual } from './colorBlend';
 import { SegmentOverrides, remapOverrides } from './tileSegmentOverrides';
 import { worldSnapshot, diffWorldSnapshots } from './worldSnapshot';
-import { fromLegacy, toLegacyView, worldMatrix } from './sceneGraph';
+import { fromLegacy, pathBbox, regraphChangedLeaves, toLegacyView, worldMatrix } from './sceneGraph';
 import { NodeHitFrame, graphOf, leafHitFrame } from './sceneHitFrame';
 import {
   applyLegacyEntryToGraph, invertOnGraph, isPoseOp, legacyOpToSceneOps,
 } from './legacyOpBridge';
 import { applySceneOps, revertSceneOps } from './sceneGraphOps';
-import { Orientation, orientationToMatrix, matrixToOrientation, composeOrientation } from './transform2d';
+import { Orientation, bboxToCells, orientationToMatrix, matrixToOrientation, composeOrientation } from './transform2d';
 
 /**
  * Apply a list of paint-tile-segment changes to a sparse override map,
@@ -1658,9 +1658,11 @@ export function applySceneOrder(state: CompositionState, order: string[]): Compo
 export function computeSVGBbox(
   segments: ReadonlyArray<PathSegment>,
 ): { cellX: number; cellY: number; cellWidth: number; cellHeight: number } {
-  const bb = arcBoundingBox(segments);
-  if (!bb) return { cellX: 0, cellY: 0, cellWidth: 0, cellHeight: 0 };
-  return { cellX: bb.minX, cellY: bb.minY, cellWidth: bb.maxX - bb.minX, cellHeight: bb.maxY - bb.minY };
+  // The graph's `pathBbox` under the cell names, not a second reading of
+  // the same arcs: the node's local box and the leaf's stored box have to
+  // be the same measure or a round trip through the arrays resizes the
+  // path it is spelling.
+  return bboxToCells(pathBbox(segments));
 }
 
 /** Rescale segments to fit within newBbox. Each segment point is mapped
@@ -5990,9 +5992,13 @@ function runOnGraph(
       continue;
     }
     // A content op reads the arrays, so they have to be current first.
+    // Reading the result back in is a re-read of the leaves it wrote, not
+    // a rebuild: the arrays cannot spell a group's free turn, so rebuilding
+    // from them would flatten every twisted group in the scene for an op
+    // that touched one leaf.
     materialize();
     result = forward ? applyOpInner(result, op) : revertOpInner(result, op);
-    graph = fromLegacy(result);
+    graph = regraphChangedLeaves(graph, result);
   }
   materialize();
   return { ...result, graph };

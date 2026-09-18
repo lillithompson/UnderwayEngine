@@ -12,13 +12,14 @@
  */
 
 import {
-  applyCompOps, revertCompOps, withSceneGraph,
+  applyCompOps, computeSVGBbox, revertCompOps, withSceneGraph,
 } from '../compositionOps';
-import { getNode } from '../sceneGraph';
+import { fromLegacy, getNode, worldMatrix } from '../sceneGraph';
+import { decomposeMatrix } from '../sceneTransform';
 import { diffWorldSnapshots, worldSnapshot } from '../worldSnapshot';
 import {
-  CompUndoEntry, CompositionState, GroupNode, ImageObject, TextObject,
-  makeViewport,
+  CompUndoEntry, CompositionState, GroupNode, ImageObject, PathSegment,
+  SVGObject, TextObject, makeViewport,
 } from '../types';
 
 jest.mock('@/native-shell/bridge/webBridge', () => ({
@@ -296,5 +297,100 @@ describe('ops that are not about pose still travel the old way', () => {
     s = applyCompOps(s, [{ op: 'removeObject', kind: 'image', item: fresh }]);
     expect(s.graph!.nodes.has('img_9')).toBe(false);
     expect(s.images!.some((i) => i.id === 'img_9')).toBe(false);
+  });
+});
+
+// ── A content op is local to the graph too ─────────────────────────────
+
+/**
+ * A group turned off the quarters is a pose the legacy arrays CANNOT
+ * spell: `GroupNode.rotation` is one of four, so the view rounds the turn
+ * to none and the members carry the whole of it in their own world fields
+ * (an svg's in its vertices). The picture is right either way — what is
+ * lost is the group's word about its own frame, and with it every
+ * member's: a path comes back measured by the upright rectangle around a
+ * tilted shape, at no local turn.
+ *
+ * So a content op must not rebuild the graph from the arrays. It re-reads
+ * what it wrote and keeps the rest, which is what these pin.
+ */
+describe('a content op does not flatten the graph', () => {
+  const svg = (id: string, x: number, y: number, w: number, h: number): SVGObject => {
+    const pts: Array<[number, number]> = [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
+    const segments: PathSegment[] = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      segments.push({ kind: 'line', start: pts[i], end: pts[i + 1] });
+    }
+    return { id, segments, color: { r: 0, g: 0, b: 0 }, ...computeSVGBbox(segments) };
+  };
+
+  /** Two members in a group twisted 37 degrees — an angle no `GroupNode`
+   *  can hold. */
+  function twistedGroup(): CompositionState {
+    const s = withSceneGraph(makeState({
+      svgObjects: [svg('svg_1', 10, 10, 4, 2)],
+      images: [image({ id: 'img_1', cellX: 20, cellY: 10 })],
+      sceneOrder: ['svg_1', 'img_1'],
+    }));
+    const grouped = applyCompOps(s, groupOp(['svg_1', 'img_1']));
+    return applyCompOps(grouped, [{
+      op: 'setTransform',
+      nodeId: 'g1',
+      from: { tx: 0, ty: 0, sx: 1, sy: 1, rotationDeg: 0 },
+      to: { tx: 0, ty: 0, sx: 1, sy: 1, rotationDeg: 37 },
+    }]);
+  }
+
+  const recolour: CompUndoEntry = [{
+    op: 'recolorSVG', svgId: 'svg_1',
+    oldColor: { r: 0, g: 0, b: 0 }, newColor: { r: 200, g: 0, b: 0 },
+  }];
+
+  test('the group keeps the turn the arrays cannot hold', () => {
+    const before = twistedGroup();
+    expect(getNode(before.graph!, 'g1')!.transform.rotationDeg).toBeCloseTo(37, 9);
+    // The arrays have already rounded it away — that is the loss this is
+    // about, not a thing the content op does.
+    expect(before.groups!.find((g) => g.id === 'g1')!.rotation).toBe(0);
+
+    const after = applyCompOps(before, recolour);
+    expect(after.svgObjects![0].color).toEqual({ r: 200, g: 0, b: 0 });
+    expect(getNode(after.graph!, 'g1')!.transform.rotationDeg).toBeCloseTo(37, 9);
+    expectSamePage(before, after);
+  });
+
+  test("the member's own frame survives it: a tight box at the turn it is drawn at", () => {
+    const after = applyCompOps(twistedGroup(), recolour);
+    const node = getNode(after.graph!, 'svg_1')!;
+    // The 4 x 2 the path was authored as, not the 4.4 x 2.9 upright
+    // rectangle that fits it once it is tilted 37 degrees.
+    expect(node.localBox!.width).toBeCloseTo(4, 9);
+    expect(node.localBox!.height).toBeCloseTo(2, 9);
+    expect(decomposeMatrix(worldMatrix(after.graph!, 'svg_1')).rotationDeg).toBeCloseTo(37, 6);
+  });
+
+  test('but a REBUILD from those arrays still flattens — what a reload does', () => {
+    // The foil, and the part P6 owes: nothing in the file can say a group
+    // is turned 37 degrees, so a page saved here and opened again comes
+    // back with the turn in its members' vertices and the loose box round
+    // each of them. Fixing that is the v61 loader's, not this path's.
+    const after = applyCompOps(twistedGroup(), recolour);
+    const reloaded = fromLegacy(after);
+    expect(getNode(reloaded, 'g1')!.transform.rotationDeg).toBe(0);
+    // The upright rectangle around a 4 x 2 path tilted 37 degrees.
+    const th = (37 * Math.PI) / 180;
+    expect(getNode(reloaded, 'svg_1')!.localBox!.width)
+      .toBeCloseTo(4 * Math.cos(th) + 2 * Math.sin(th), 9);
+  });
+
+  test('an op that changes the scene SHAPE goes the long way round', () => {
+    // Nothing to keep when the tree is what moved: adding a node has to
+    // rebuild, and the rebuild has to be right.
+    const before = twistedGroup();
+    const fresh = image({ id: 'img_9', cellX: 30, cellY: 30 });
+    const after = applyCompOps(before, [{ op: 'placeObject', kind: 'image', item: fresh }]);
+    expect(after.graph!.nodes.has('img_9')).toBe(true);
+    expect(getNode(after.graph!, 'img_9')!.parentId).toBeUndefined();
+    expectSamePage(before, { ...after, images: after.images!.filter((i) => i.id !== 'img_9') });
   });
 });

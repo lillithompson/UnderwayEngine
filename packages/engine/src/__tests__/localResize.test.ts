@@ -14,16 +14,17 @@
  *
  * Everything here is asserted on the DRAWN geometry — the world vertices,
  * measured in the shape's own frame — never on a stored box. A grouped
- * path's stored box is the upright rectangle around it, so a content op
- * round-tripping through the arrays re-reads that box as the node's local
- * one; the SHAPE is exact either way, and which box spells it is what P6
- * settles.
+ * path's stored box is the upright rectangle around it, and what a reader
+ * makes of that is the second thing this file pins: a content op now
+ * re-reads the leaf in its parent's frame and the ring comes back tight,
+ * while a RELOAD, which has only the arrays, still cannot — the group's
+ * turn is not in them to divide out. That last one is P6's.
  */
 
 import { applySceneOps, buildSetTransform } from '../sceneGraphOps';
 import { computeSVGBbox, withSceneGraph } from '../compositionOps';
 import {
-  SceneGraph, fromLegacy, toLegacyView, worldMatrix, worldSegments,
+  SceneGraph, fromLegacy, regraphChangedLeaves, toLegacyView, worldMatrix, worldSegments,
 } from '../sceneGraph';
 import { localContentBox } from '../sceneHitFrame';
 import { GEOMETRY_ADAPTERS } from '../sceneNodeGeometry';
@@ -112,15 +113,31 @@ function cornersOf(b: CellBbox, angleDeg: number): Array<[number, number]> {
   ] as [number, number]);
 }
 
-/** The state the arrays describe after `leaf` replaces the one it is —
- *  what a content op leaves behind, graph rebuilt from world fields. */
+/**
+ * The state a content op leaves behind: `leaf` in place of the one it is,
+ * and the graph read back the way `runOnGraph` reads it — the leaves the
+ * op wrote re-read, everything else kept.
+ *
+ * NOT `withSceneGraph` on the arrays alone. That is what a RELOAD does,
+ * and it is lossy in a way that has nothing to do with the resize: a
+ * group's turn is a quarter turn in the arrays, so rebuilding from them
+ * flattens a group twisted off the quarters and hands every member back in
+ * world axes. `reloaded` below is that reading, kept as the foil.
+ */
 function commit(
   state: CompositionState, kind: 'svgObjects' | 'images', leaf: unknown,
 ): CompositionState {
   const arr = (state[kind] as Array<{ id: string }>).map(
     (n) => (n.id === (leaf as { id: string }).id ? leaf as never : n),
   );
-  return withSceneGraph({ ...state, [kind]: arr, graph: undefined });
+  const after = { ...state, [kind]: arr };
+  return { ...after, graph: regraphChangedLeaves(state.graph!, after) };
+}
+
+/** The same state as a page saved and opened again — the graph built from
+ *  the arrays and nothing else. */
+function reloaded(state: CompositionState): CompositionState {
+  return withSceneGraph({ ...state, graph: undefined });
 }
 
 /** The drag, end to end: the drawn rectangle the outline showed, stretched
@@ -214,6 +231,31 @@ describe('a resize lands where the drag put it, whatever the node is under', () 
         < Math.hypot(best[0] - anchor[0], best[1] - anchor[1]) ? p : best));
     near(pinned[0], anchor[0]);
     near(pinned[1], anchor[1]);
+  });
+
+  it('leaves the ring where it was: tight, and at the turn it is drawn at', () => {
+    // The gap this file used to pin. The commit round-trips the leaf
+    // through the arrays, and a graph REBUILT from those has no group turn
+    // to divide out — so the member came back at no local turn, measured
+    // by the upright rectangle around a tilted shape, and the ring visibly
+    // respelled the moment the drag landed. A second drag on that node was
+    // a world-axis one again.
+    const state = tiltedGroupPath();
+    const drawn = drawnRect(state.graph!, 'svg_1');
+    const { leaf } = resizeTo(state, 'svg_1', doubledWidth(drawn.box, drawn.angleDeg));
+    const after = commit(state, 'svgObjects', leaf);
+
+    const box = localContentBox(after.graph!.nodes.get('svg_1')!);
+    near(box.width, 8);
+    near(box.height, 2);
+    near(drawnRect(after.graph!, 'svg_1').angleDeg, 30);
+
+    // And the foil, which is what P6 still owes: nothing in the ARRAYS can
+    // say the group is turned 30 degrees, so a page saved here and opened
+    // again is back to the loose upright box.
+    const loose = localContentBox(reloaded(after).graph!.nodes.get('svg_1')!);
+    near(loose.width, 8 * Math.cos(Math.PI / 6) + 2 * Math.sin(Math.PI / 6));
+    near(drawnRect(reloaded(after).graph!, 'svg_1').angleDeg, 0);
   });
 
   it('disagrees with stretching the LEGACY box, which shears the shape', () => {

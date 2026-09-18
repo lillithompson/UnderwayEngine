@@ -23,8 +23,9 @@
 import {
   LOCAL_IDENTITY, LocalTransform, MAT_IDENTITY, Mat2D,
   decomposeMatrix, localMatrix, matAbout, matApplyBbox, matApplyPoint, matInvert, matMul,
-  normalizeDeg, respellMirror,
+  matTranslate, normalizeDeg, respellMirror,
 } from './sceneTransform';
+import { arcBoundingBox } from './compositionArcHitTest';
 import type { Bbox } from './transform2d';
 import { contentBoxCells } from './textLayout';
 import type {
@@ -312,9 +313,24 @@ function mapSubpaths(
   return subpaths.map((sp) => ({ ...sp, segments: mapSegments(sp.segments, m) }));
 }
 
-/** AABB of a path's vertices. Arc bulge is not accounted for — this is
- *  the same approximation the legacy `computeSVGBbox` makes, kept so the
- *  two agree during the migration. */
+/**
+ * A path's own bounds, arc bulge included — the measure the legacy model
+ * keeps an svg's stored box at (`computeSVGBbox`), as a {@link Bbox}.
+ *
+ * The one to use wherever the answer has to agree with a stored
+ * `cellWidth`/`cellHeight`. {@link segmentsBbox} is the cheaper vertex-only
+ * reading, which differs exactly when an arc's sweep crosses a cardinal
+ * with no vertex there.
+ */
+export function pathBbox(segments: readonly PathSegment[]): Bbox {
+  const bb = arcBoundingBox(segments);
+  if (!bb) return { x: 0, y: 0, width: 0, height: 0 };
+  return { x: bb.minX, y: bb.minY, width: bb.maxX - bb.minX, height: bb.maxY - bb.minY };
+}
+
+/** AABB of a path's vertices — arc bulge is NOT accounted for. Cheaper
+ *  than {@link pathBbox} and used where the answer only has to bound the
+ *  path, not match the box the legacy arrays store. */
 export function segmentsBbox(segments: readonly PathSegment[]): Bbox {
   if (segments.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -381,6 +397,20 @@ function centreOf(segments: readonly PathSegment[]): [number, number] {
   return [b.x + b.width / 2, b.y + b.height / 2];
 }
 
+/** The per-kind arrays with the kind each one holds — the one place the
+ *  pairing is written down, so a reader and a builder cannot disagree
+ *  about which array a kind lives in. */
+function leafArrays(state: CompositionState): Array<[CompItemKind, readonly LegacyLeaf[]]> {
+  return [
+    ['figure', state.figures ?? []],
+    ['svg', state.svgObjects ?? []],
+    ['image', state.images ?? []],
+    ['text', state.texts ?? []],
+    ['paint', state.paintObjects ?? []],
+    ['pattern', state.patternObjects ?? []],
+  ];
+}
+
 /**
  * Build a graph from legacy state, reading **world fields only**.
  *
@@ -431,12 +461,9 @@ export function fromLegacy(state: CompositionState): SceneGraph {
     nodes.set(leaf.id, leafNodeFromLegacy(kind, leaf, safeInvert(worldOf(leaf.groupId))));
   };
 
-  for (const f of state.figures ?? []) addLeaf('figure', f);
-  for (const s of state.svgObjects ?? []) addLeaf('svg', s);
-  for (const i of state.images ?? []) addLeaf('image', i);
-  for (const t of state.texts ?? []) addLeaf('text', t);
-  for (const p of state.paintObjects ?? []) addLeaf('paint', p);
-  for (const p of state.patternObjects ?? []) addLeaf('pattern', p);
+  for (const [kind, arr] of leafArrays(state)) {
+    for (const leaf of arr) addLeaf(kind, leaf);
+  }
 
   // 4. Child order, from `sceneOrder` (back to front). A group takes the
   //    position of its back-most member, which is what the outline
@@ -446,6 +473,88 @@ export function fromLegacy(state: CompositionState): SceneGraph {
   const graph: SceneGraph = { nodes, roots: computeRoots(nodes, state.sceneOrder ?? []), generation: 0 };
   rememberArrays(graph, state);
   return graph;
+}
+
+/**
+ * The graph after an op wrote the ARRAYS directly: the same scene, with
+ * only the leaves the op rewrote read back in.
+ *
+ * `fromLegacy` is the long way round, and it is lossy in the one
+ * direction the arrays cannot help. A legacy group's turn is a QUARTER
+ * turn plus flags, so a group the user twisted off the quarters renders
+ * out as an untwisted group whose members carry the twist in their own
+ * world fields (`toGroupNode` rounds, and the members' world fields are
+ * absolute, so the picture is right and the group's word about its own
+ * frame is gone). Rebuilding from those arrays flattens the group: every
+ * member comes back at no local turn, in world axes, measured by the
+ * upright rectangle around a tilted shape — the whole of §5 item 5 of
+ * docs/transform-refactor-next.md, paid for an op that changed one
+ * leaf's colour.
+ *
+ * So keep the structure, keep every node the op did not write — the
+ * arrays are copy-on-write, so object identity says which — and re-read
+ * the rest through their parents' unchanged world matrices. A content op
+ * is then exactly as local to the graph as it is to the arrays.
+ *
+ * Falls back to {@link fromLegacy} whenever the scene's SHAPE moved: a
+ * node added, deleted, reparented or reordered, or a group added or
+ * removed. That is when the structure this preserves is the very thing
+ * that changed, and there is nothing to preserve it from.
+ */
+export function regraphChangedLeaves(graph: SceneGraph, state: CompositionState): SceneGraph {
+  if (!sameSceneShape(graph, state)) return fromLegacy(state);
+
+  let nodes: Map<string, SceneNode> | null = null;
+  for (const [kind, arr] of leafArrays(state)) {
+    for (const leaf of arr) {
+      const node = graph.nodes.get(leaf.id);
+      if (!node || node.content === leaf) continue;
+      // A new nodes map, not a mutation: the world-matrix cache is keyed
+      // on the map, so re-reading a leaf into the old one would hand back
+      // the matrix it had before the op.
+      if (!nodes) nodes = new Map(graph.nodes);
+      nodes.set(leaf.id, leafNodeFromLegacy(kind, leaf, safeInvert(parentMatrix(graph, leaf.id))));
+    }
+  }
+
+  // A fresh graph object either way, never the one that came in: what a
+  // graph DESCRIBES is remembered against the object, and appending to
+  // the same one on every op would grow that list for as long as the
+  // page is open.
+  const next: SceneGraph = nodes
+    ? { nodes, roots: graph.roots, generation: graph.generation + 1 }
+    : { ...graph };
+  rememberArrays(next, state);
+  return next;
+}
+
+/**
+ * Whether `state`'s arrays describe the same TREE the graph holds — the
+ * same ids, of the same kinds, under the same parents, in the same paint
+ * order. Says nothing about where anything is, which is the point: a
+ * pose the two disagree about is what the re-read is for.
+ */
+function sameSceneShape(graph: SceneGraph, state: CompositionState): boolean {
+  let groups = 0;
+  for (const node of graph.nodes.values()) if (node.kind === 'group') groups++;
+  if ((state.groups ?? []).length !== groups) return false;
+  for (const g of state.groups ?? []) {
+    const node = graph.nodes.get(g.id);
+    if (!node || node.kind !== 'group' || node.parentId !== g.parentGroupId) return false;
+  }
+
+  for (const [kind, arr] of leafArrays(state)) {
+    for (const leaf of arr) {
+      const node = graph.nodes.get(leaf.id);
+      if (!node || node.kind !== kind || node.parentId !== leaf.groupId) return false;
+    }
+  }
+
+  const order = state.sceneOrder ?? [];
+  const leaves = flattenLeaves(graph);
+  if (order.length !== leaves.length) return false;
+  for (let i = 0; i < leaves.length; i++) if (leaves[i].id !== order[i]) return false;
+  return true;
 }
 
 // ── Which arrays a graph describes ─────────────────────────────────────
@@ -526,28 +635,62 @@ export function leafNodeFromLegacy(
     const c: [number, number] = svg.cellWidth !== undefined && svg.cellHeight !== undefined
       ? [svg.cellX + svg.cellWidth / 2, svg.cellY + svg.cellHeight / 2]
       : centreOf(segments);
+    // The ANCESTORS' turn comes off the inside as well.
+    //
+    // The legacy model bakes a group's turn into its members' vertices
+    // and then measures the member with an UPRIGHT rectangle, so a path
+    // inside a group turned off the quarters stores the loose box around
+    // a tilted shape and nothing recovers the tight one. Taking the
+    // parent's turn off the geometry hands the node the frame the shape
+    // was authored in — own axes, tight box — and putting the same turn
+    // back on the transform leaves the drawn pose exactly what it was,
+    // whatever `baked` is: the two cancel. So its precision is a question
+    // of how tight the box comes out, never of where the path lands.
+    //
+    // A repeat-mode path is the exception. Its stored box is a REGION,
+    // an upright world rectangle that is not the path's own bounds and
+    // has no un-turned spelling to recover, so its frame stays the
+    // world's — as it was before any of this.
+    const baked = svg.tileMode === 'repeat'
+      ? 0
+      : normalizeDeg(-decomposeMatrix(toLocal).rotationDeg);
+    const toOwn = matMul(
+      localMatrix({ ...LOCAL_IDENTITY, rotationDeg: -baked }),
+      matTranslate(-c[0], -c[1]),
+    );
+    /** A stored world box in the node's own frame. Un-turning a rectangle
+     *  by anything but a quarter gives a tilted one, so this is its AABB —
+     *  the exact translate at no turn, which is every path the un-turn
+     *  leaves alone. */
+    const unturnBox = (b: Bbox): Bbox => (baked === 0
+      ? { x: b.x - c[0], y: b.y - c[1], width: b.width, height: b.height }
+      : matApplyBbox(toOwn, b));
+    const localSegments = mapSegments(segments, toOwn);
     const spun = matMul(
-      { ...MAT_IDENTITY, e: c[0], f: c[1] },
-      localMatrix({ ...LOCAL_IDENTITY, rotationDeg: pose.angleDeg ?? 0 }),
+      matMul(
+        { ...MAT_IDENTITY, e: c[0], f: c[1] },
+        localMatrix({ ...LOCAL_IDENTITY, rotationDeg: pose.angleDeg ?? 0 }),
+      ),
+      localMatrix({ ...LOCAL_IDENTITY, rotationDeg: baked }),
     );
     return {
       id: leaf.id, kind: 'svg', name: leaf.name, parentId,
       transform: decomposeMatrix(matMul(toLocal, spun)),
-      localSegments: mapSegments(segments, { ...MAT_IDENTITY, e: -c[0], f: -c[1] }),
+      localSegments,
       ...(svg.cellWidth !== undefined && svg.cellHeight !== undefined ? {
-        localBox: {
-          x: svg.cellX - c[0], y: svg.cellY - c[1],
-          width: svg.cellWidth, height: svg.cellHeight,
-        },
+        // Un-turned, the stored rectangle is no longer the tight one and
+        // the path's own bounds are: read the box off the geometry that
+        // is now in its own frame.
+        localBox: baked === 0
+          ? unturnBox({ x: svg.cellX, y: svg.cellY, width: svg.cellWidth, height: svg.cellHeight })
+          : pathBbox(localSegments),
       } : {}),
-      ...(svg.subpaths ? {
-        localSubpaths: mapSubpaths(svg.subpaths, { ...MAT_IDENTITY, e: -c[0], f: -c[1] }),
-      } : {}),
+      ...(svg.subpaths ? { localSubpaths: mapSubpaths(svg.subpaths, toOwn) } : {}),
       ...(svg.creationBox ? {
-        localCreationBox: {
-          x: svg.creationBox.minX - c[0], y: svg.creationBox.minY - c[1],
+        localCreationBox: unturnBox({
+          x: svg.creationBox.minX, y: svg.creationBox.minY,
           width: svg.creationBox.width, height: svg.creationBox.height,
-        },
+        }),
       } : {}),
       ...(leaf.locked ? { locked: true } : {}),
       content: leaf,
@@ -931,10 +1074,8 @@ function renderLegacyLeaf(graph: SceneGraph, node: SceneNode, world: Mat2D): Leg
     // ancestors contribute stays baked into the vertices, which is where
     // the legacy materialize pass always put it. Un-turning by exactly
     // that angle recovers the segments the legacy model stores.
-    const spin = normalizeDeg(
-      decomposeMatrix(world).rotationDeg
-      - decomposeMatrix(parentWorldOf(graph, node)).rotationDeg,
-    );
+    const parentTurn = decomposeMatrix(parentWorldOf(graph, node)).rotationDeg;
+    const spin = normalizeDeg(decomposeMatrix(world).rotationDeg - parentTurn);
     // The renderer turns the stored path by `spin` about its bbox centre,
     // so the stored path is the DRAWN path turned back by `spin` about
     // that same centre — the world matrix with the spin taken off its
@@ -942,19 +1083,46 @@ function renderLegacyLeaf(graph: SceneGraph, node: SceneNode, world: Mat2D): Leg
     // same thing when the world scale is uniform: under a group pulled
     // off-square the two differ by exactly the shear, and a quarter-turned
     // member came out stretched along the wrong axis.
-    const localCentre: [number, number] = node.localBox
-      ? [node.localBox.x + node.localBox.width / 2, node.localBox.y + node.localBox.height / 2]
-      : centreOf(node.localSegments ?? []);
-    const drawnCentre = matApplyPoint(world, localCentre[0], localCentre[1]);
-    const unturned = matMul(
-      matAbout(drawnCentre, localMatrix({ ...LOCAL_IDENTITY, rotationDeg: -spin })),
-      world,
-    );
+    //
+    // Which centre, though, is the question `leafNodeFromLegacy`'s un-turn
+    // reopens. The legacy pivot is the STORED box's centre, and the stored
+    // box is the upright rectangle around the stored POINTS. While a
+    // grouped path's local frame was the world's, mapping its local box
+    // out gave exactly that rectangle and its centre was the pivot; once
+    // the frame is the shape's own, the ancestors' turn sits between the
+    // two and the rectangle around the turned box is bigger than the one
+    // around the turned points. So where the spelling carries a turn, the
+    // box is measured off the geometry and the pivot solved for: `m` is
+    // the one point that the emitted rectangle comes back centred on.
+    //
+    // A repeat-mode path keeps the old reading whatever its parent does:
+    // its stored box is a region the path does not fill, so the geometry
+    // cannot say where it goes.
+    const region = (node.content as SVGObject | undefined)?.tileMode === 'repeat';
+    const unspin = localMatrix({ ...LOCAL_IDENTITY, rotationDeg: -spin });
+    const local = node.localSegments ?? [];
+    let unturned: Mat2D;
+    let storedBox: Bbox | null = null;
+    if (!region && normalizeDeg(parentTurn) !== 0) {
+      const stamp = matMul(unspin, world);
+      const box0 = pathBbox(mapSegments(local, stamp));
+      const g: [number, number] = [box0.x + box0.width / 2, box0.y + box0.height / 2];
+      const m = matApplyPoint(localMatrix({ ...LOCAL_IDENTITY, rotationDeg: spin }), g[0], g[1]);
+      const off: [number, number] = [m[0] - g[0], m[1] - g[1]];
+      unturned = matMul(matTranslate(off[0], off[1]), stamp);
+      storedBox = { ...box0, x: box0.x + off[0], y: box0.y + off[1] };
+    } else {
+      const localCentre: [number, number] = node.localBox
+        ? [node.localBox.x + node.localBox.width / 2, node.localBox.y + node.localBox.height / 2]
+        : centreOf(local);
+      const drawnCentre = matApplyPoint(world, localCentre[0], localCentre[1]);
+      unturned = matMul(matAbout(drawnCentre, unspin), world);
+    }
     // The geometry arrays are reused from the content where the render
     // lands exactly on them, so a path the graph has not moved keeps its
     // identity (see the view cache) instead of an equal copy.
     const was = node.content as SVGObject | undefined;
-    svg.segments = sameGeometry(mapSegments(node.localSegments ?? [], unturned), was?.segments);
+    svg.segments = sameGeometry(mapSegments(local, unturned), was?.segments);
     if (node.localSubpaths) {
       const subpaths = mapSubpaths(node.localSubpaths, unturned);
       svg.subpaths = was?.subpaths && subpaths.length === was.subpaths.length
@@ -970,9 +1138,12 @@ function renderLegacyLeaf(graph: SceneGraph, node: SceneNode, world: Mat2D): Leg
       svg.creationBox = old && old.minX === box.minX && old.minY === box.minY
         && old.width === box.width && old.height === box.height ? old : box;
     }
-    // The stored box: the carried one where there is one (a repeat-mode
-    // path's region; a drawn shape's own bounds), else the path's bounds.
-    const bb = node.localBox ? matApplyBbox(unturned, node.localBox) : segmentsBbox(svg.segments);
+    // The stored box: the one the pivot was solved against where the
+    // spelling carries a turn, else the carried box mapped out (a
+    // repeat-mode path's region; a drawn shape's own bounds), else the
+    // path's bounds.
+    const bb = storedBox
+      ?? (node.localBox ? matApplyBbox(unturned, node.localBox) : segmentsBbox(svg.segments));
     svg.cellX = bb.x; svg.cellY = bb.y;
     svg.cellWidth = bb.width; svg.cellHeight = bb.height;
     svg.angleDeg = spin === 0 ? undefined : spin;
