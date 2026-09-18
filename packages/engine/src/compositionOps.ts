@@ -4893,6 +4893,11 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
           translateX: op.newTranslateX, translateY: op.newTranslateY,
           scaleX: op.newScaleX, scaleY: op.newScaleY,
           rotation: op.newRotation,
+          // The op names the group's whole turn in its quarter channel, so
+          // a residual left from an earlier twist would be added on top of
+          // it. This op has always set the transform outright; `angleDeg`
+          // is part of it now.
+          angleDeg: undefined,
           mirrorH: op.newMirrorH, mirrorV: op.newMirrorV,
         } : g
       );
@@ -5463,6 +5468,7 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
           scaleX: op.savedScaleX!,
           scaleY: op.savedScaleY!,
           rotation: op.savedRotation!,
+          ...(op.savedAngleDeg ? { angleDeg: op.savedAngleDeg } : null),
           mirrorH: op.savedMirrorH!,
           mirrorV: op.savedMirrorV!,
           parentGroupId: op.savedParentGroupId,
@@ -5543,6 +5549,7 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
           translateX: op.oldTranslateX, translateY: op.oldTranslateY,
           scaleX: op.oldScaleX, scaleY: op.oldScaleY,
           rotation: op.oldRotation,
+          angleDeg: undefined,
           mirrorH: op.oldMirrorH, mirrorV: op.oldMirrorV,
         } : g
       );

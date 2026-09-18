@@ -430,7 +430,7 @@ export function fromLegacy(state: CompositionState): SceneGraph {
       id: g.id, kind: 'group', name: g.name,
       parentId: g.parentGroupId,
       children: [],
-      transform: groupTransform(g),
+      transform: groupFieldsToTransform(g),
       ...(g.locked ? { locked: true } : {}),
       ...(g.hidden ? { hidden: true } : {}),
       ...(g.isFrame ? { isFrame: true } : {}),
@@ -712,14 +712,34 @@ export function leafNodeFromLegacy(
   };
 }
 
-/** A group's local transform, from its legacy fields. */
-function groupTransform(g: GroupNode): LocalTransform {
+/**
+ * A group's local transform, from its legacy fields.
+ *
+ * The legacy order scales AFTER rotating, so a quarter turn swaps the
+ * axes. The two rotation channels add, exactly as a leaf's do:
+ * `rotation` is the quarter turn that swaps the scale axes, `angleDeg`
+ * the residual that does not. The swap keys off the quarter alone, so
+ * the pair is the exact inverse of {@link toGroupNode}'s split whatever
+ * the residual is.
+ *
+ * Structural in its argument, not `GroupNode`, because the ops carry a
+ * group's transform fields loose — an ungroup's `saved*` set, a
+ * `transformGroup`'s `new*` set — and all three used to derive it
+ * separately.
+ */
+export function groupFieldsToTransform(g: {
+  translateX: number; translateY: number;
+  scaleX: number; scaleY: number;
+  rotation: 0 | 90 | 180 | 270;
+  angleDeg?: number;
+  mirrorH: boolean; mirrorV: boolean;
+}): LocalTransform {
   const swap = g.rotation === 90 || g.rotation === 270;
   return {
     tx: g.translateX, ty: g.translateY,
     sx: swap ? g.scaleY : g.scaleX,
     sy: swap ? g.scaleX : g.scaleY,
-    rotationDeg: g.rotation,
+    rotationDeg: normalizeDeg(g.rotation + (g.angleDeg ?? 0)),
     ...(g.mirrorH ? { mirrorH: true } : {}),
     ...(g.mirrorV ? { mirrorV: true } : {}),
   };
@@ -833,7 +853,7 @@ export function toLegacyView(graph: SceneGraph): LegacyView {
 
   for (const node of graph.nodes.values()) {
     if (node.kind !== 'group') continue;
-    view.groups.push(toGroupNode(graph, node));
+    view.groups.push(toGroupNode(node));
   }
 
   for (const leaf of flattenLeaves(graph)) {
@@ -851,11 +871,19 @@ export function toLegacyView(graph: SceneGraph): LegacyView {
   return view;
 }
 
-function toGroupNode(graph: SceneGraph, node: SceneNode): GroupNode {
+/**
+ * One group node, as the legacy arrays want it.
+ *
+ * The turn splits across the same two channels a leaf's does: the
+ * nearest quarter (which swaps the scale axes) and the residual, which
+ * goes in `angleDeg`. Rounding the residual away is what used to cost a
+ * twisted group its own frame and every member's with it — see
+ * `GroupNode.angleDeg`.
+ */
+export function toGroupNode(node: SceneNode): GroupNode {
   const t = node.transform;
   const quarter = nearestQuarterTurn(t.rotationDeg);
   const swap = quarter === 90 || quarter === 270;
-  void graph;
   return {
     id: node.id,
     name: node.name ?? 'Group',
@@ -863,6 +891,9 @@ function toGroupNode(graph: SceneGraph, node: SceneNode): GroupNode {
     scaleX: swap ? t.sy : t.sx,
     scaleY: swap ? t.sx : t.sy,
     rotation: quarter,
+    ...(residualTurn(t.rotationDeg, quarter) !== 0
+      ? { angleDeg: residualTurn(t.rotationDeg, quarter) }
+      : {}),
     mirrorH: !!t.mirrorH,
     mirrorV: !!t.mirrorV,
     ...(node.parentId ? { parentGroupId: node.parentId } : {}),
@@ -870,6 +901,15 @@ function toGroupNode(graph: SceneGraph, node: SceneNode): GroupNode {
     ...(node.hidden ? { hidden: true } : {}),
     ...(node.isFrame ? { isFrame: true } : {}),
   };
+}
+
+/** What `deg` has left over after `quarter`, signed and in (−45, 45].
+ *  Zero for any quarter turn, to within the float noise a decomposed
+ *  matrix carries, so an upright group writes no angle at all. */
+function residualTurn(deg: number, quarter: 0 | 90 | 180 | 270): number {
+  const r = normalizeDeg(deg - quarter);
+  const signed = r > 180 ? r - 360 : r;
+  return Math.abs(signed) < 1e-6 ? 0 : signed;
 }
 
 /** True when the angle is a quarter turn, to within float noise. */

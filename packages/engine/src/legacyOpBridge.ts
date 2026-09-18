@@ -19,7 +19,8 @@
  */
 
 import {
-  SceneGraph, SceneNode, fromLegacy, getNode, segmentsBbox, worldMatrix,
+  SceneGraph, fromLegacy, getNode, groupFieldsToTransform, segmentsBbox, toGroupNode,
+  worldMatrix,
 } from './sceneGraph';
 import {
   SceneEntry, SceneOp, applySceneOps, buildGroup, buildMoveBy, buildSetParent,
@@ -33,24 +34,10 @@ import type { CompUndoOp, CompositionState, GroupNode } from './types';
 
 // ── Group transform ────────────────────────────────────────────────────
 
-/** A legacy `GroupNode`'s transform fields, as a `LocalTransform`. The
- *  legacy order scales after rotating, so a quarter turn swaps the axes. */
-export function groupFieldsToTransform(g: {
-  translateX: number; translateY: number;
-  scaleX: number; scaleY: number;
-  rotation: 0 | 90 | 180 | 270;
-  mirrorH: boolean; mirrorV: boolean;
-}): LocalTransform {
-  const swap = g.rotation === 90 || g.rotation === 270;
-  return {
-    tx: g.translateX, ty: g.translateY,
-    sx: swap ? g.scaleY : g.scaleX,
-    sy: swap ? g.scaleX : g.scaleY,
-    rotationDeg: g.rotation,
-    ...(g.mirrorH ? { mirrorH: true } : {}),
-    ...(g.mirrorV ? { mirrorV: true } : {}),
-  };
-}
+/** A legacy group's transform fields, as a `LocalTransform` — defined
+ *  beside the graph that reads them, re-exported here because the ops
+ *  that carry those fields loose are translated in this file. */
+export { groupFieldsToTransform } from './sceneGraph';
 
 // ── Leaf pose ──────────────────────────────────────────────────────────
 
@@ -284,27 +271,9 @@ export function graphGroups(graph: SceneGraph): GroupNode[] {
   const out: GroupNode[] = [];
   for (const node of graph.nodes.values()) {
     if (node.kind !== 'group') continue;
-    out.push(groupNodeOf(node));
+    out.push(toGroupNode(node));
   }
   return out;
-}
-
-function groupNodeOf(node: SceneNode): GroupNode {
-  const t = node.transform;
-  const quarter = (Math.round(normalizeDeg(t.rotationDeg) / 90) * 90) % 360 as 0 | 90 | 180 | 270;
-  const swap = quarter === 90 || quarter === 270;
-  return {
-    id: node.id, name: node.name ?? 'Group',
-    translateX: t.tx, translateY: t.ty,
-    scaleX: swap ? t.sy : t.sx,
-    scaleY: swap ? t.sx : t.sy,
-    rotation: quarter,
-    mirrorH: !!t.mirrorH, mirrorV: !!t.mirrorV,
-    ...(node.parentId ? { parentGroupId: node.parentId } : {}),
-    ...(node.locked ? { locked: true } : {}),
-    ...(node.hidden ? { hidden: true } : {}),
-    ...(node.isFrame ? { isFrame: true } : {}),
-  };
 }
 
 // ── Undo ───────────────────────────────────────────────────────────────
@@ -425,6 +394,7 @@ export function invertOnGraph(
           translateX: op.savedTranslateX ?? 0, translateY: op.savedTranslateY ?? 0,
           scaleX: op.savedScaleX ?? 1, scaleY: op.savedScaleY ?? 1,
           rotation: op.savedRotation ?? 0,
+          angleDeg: op.savedAngleDeg,
           mirrorH: op.savedMirrorH ?? false, mirrorV: op.savedMirrorV ?? false,
         }),
       },

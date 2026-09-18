@@ -490,6 +490,19 @@ export interface GroupNode {
   scaleX: number;
   scaleY: number;
   rotation: 0 | 90 | 180 | 270;
+  /** The group's turn OFF the quarters, in degrees, added to `rotation`
+   *  (which keeps meaning the quarter turn that swaps the axes). Stored
+   *  in (−45, 45]; omitted rather than zero, as the leaves' `angleDeg`
+   *  has always been.
+   *
+   *  A group had only the four quarters until v61, so a group the user
+   *  twisted to 37° was written out as no turn at all and its members
+   *  carried the twist in their own world fields. That drew correctly and
+   *  cost the group its word about its own frame: on the next load every
+   *  member came back measured by the upright rectangle around a tilted
+   *  shape, and the group's own outline stood square to the page. This
+   *  field is where the residual lives so the reload recovers both. */
+  angleDeg?: number;
   mirrorH: boolean;
   mirrorV: boolean;
   /** When true, this group is a Figma-style frame: its back-most rect
@@ -1763,6 +1776,10 @@ export type CompUndoOp =
       savedTranslateX?: number; savedTranslateY?: number;
       savedScaleX?: number; savedScaleY?: number;
       savedRotation?: 0 | 90 | 180 | 270;
+      /** The group's turn off the quarters (v61 `GroupNode.angleDeg`).
+       *  Without it, undoing the ungroup of a twisted group would stand it
+       *  back up square and flatten every member's frame. */
+      savedAngleDeg?: number;
       savedMirrorH?: boolean; savedMirrorV?: boolean;
       savedParentGroupId?: string;
       /** Direct svg members that were masks before ungroup, so undo restores isMask. */

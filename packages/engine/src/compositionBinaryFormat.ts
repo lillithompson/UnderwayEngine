@@ -487,15 +487,35 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      from the asset store. The section's shape is otherwise unchanged, so
 //      only the payload write and the payload read are gated.
 //      Every v60 file carries the byte, bit clear for an ordinary bundle.
-const FORMAT_VERSION = 60;
+// v61: A GROUP CAN BE TURNED OFF THE QUARTERS. `GroupNode.angleDeg` — the
+//      residual beyond the quarter turn `rotation` already carries — rides
+//      group-flags2 bit 0x02, payload one f32 LAST in the group record,
+//      after the optional parent/preGroupName indices. A group had only the
+//      four quarters until now, so a page saved with a group twisted to 37°
+//      reopened with the twist in its MEMBERS' world fields and the group
+//      standing square: every member came back measured by the upright
+//      rectangle around a tilted shape, and the group's own outline was
+//      lost. Older files set no bit and read back with no angle, which is
+//      exactly what they have always meant. See GroupNode.angleDeg and
+//      docs/transform-refactor-next.md §5 item 5.
+const FORMAT_VERSION = 61;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
 // + 4Ã—float32 = 22
-// Optionally followed by parentGroupIdIdx(u16) and preGroupNameIdx(u16)
+// Optionally followed by parentGroupIdIdx(u16), preGroupNameIdx(u16) and,
+// v61+, angleDeg(float32)
 const GROUP_RECORD_BASE_SIZE = 2 + 2 + 1 + 1 + 4 + 4 + 4 + 4; // 22 bytes
+/** A group's free turn as the writer persists it, or undefined when there
+ *  is none to persist. The SIZE pass and the WRITE pass both go through
+ *  this, so the bytes counted and the bytes emitted cannot disagree. */
+function groupAngleOf(g: GroupNode): number | undefined {
+  const a = g.angleDeg;
+  return a === undefined || !Number.isFinite(a) || a === 0 ? undefined : a;
+}
+
 // v59: GROUP MEMBERS KEEP THEIR NAMES. No layout change. Grouping no longer
 //      clears a member's `name` into `preGroupName` (nor writes the group's
 //      name onto the first member); a v59+ file never carries the stash.
@@ -3007,6 +3027,7 @@ function serializeCompositionAt(
     totalSize += GROUP_RECORD_BASE_SIZE;
     if (g.parentGroupId != null) totalSize += 2;
     if (g.preGroupName != null) totalSize += 2;
+    if (groupAngleOf(g) !== undefined) totalSize += 4;
   }
 
   // Embedded files
@@ -3240,13 +3261,15 @@ function serializeCompositionAt(
     if (g.locked) gflags |= 0x80;
     out[pos++] = gflags;
     // Second group-flags byte (v39+): gflags is fully spent.
-    out[pos++] = g.hidden ? 0x01 : 0x00;
+    const angle = groupAngleOf(g);
+    out[pos++] = (g.hidden ? 0x01 : 0x00) | (angle !== undefined ? 0x02 : 0x00);
     view.setFloat32(pos, g.translateX, true); pos += 4;
     view.setFloat32(pos, g.translateY, true); pos += 4;
     view.setFloat32(pos, g.scaleX, true); pos += 4;
     view.setFloat32(pos, g.scaleY, true); pos += 4;
     if (g.parentGroupId != null) { view.setUint16(pos, indexOf.get(g.parentGroupId) ?? 0, true); pos += 2; }
     if (g.preGroupName != null) { view.setUint16(pos, indexOf.get(g.preGroupName) ?? 0, true); pos += 2; }
+    if (angle !== undefined) { view.setFloat32(pos, angle, true); pos += 4; }
   }
 
   // SVG objects (v12+)
@@ -3799,6 +3822,10 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       if (hasParent) pos += 2;
       const preGroupName = hasPreGroupName ? strings[view.getUint16(pos, true)] : undefined;
       if (hasPreGroupName) pos += 2;
+      // v61: the group's turn off the quarters, last in the record.
+      const hasAngle = version >= 61 && (gflags2 & 0x02) !== 0;
+      const angleDeg = hasAngle ? view.getFloat32(pos, true) : undefined;
+      if (hasAngle) pos += 4;
       groups.push({
         id: strings[idIdx],
         name: strings[nameIdx],
@@ -3809,6 +3836,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
         scaleX,
         scaleY,
         rotation: BITS_TO_ROTATION[(gflags >> 2) & 0x03],
+        ...(angleDeg !== undefined && angleDeg !== 0 ? { angleDeg } : null),
         mirrorH: (gflags & 0x01) !== 0,
         mirrorV: (gflags & 0x02) !== 0,
         ...(version >= 30 && (gflags & 0x40) !== 0 ? { isFrame: true as const } : null),

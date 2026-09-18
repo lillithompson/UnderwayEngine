@@ -349,9 +349,11 @@ describe('a content op does not flatten the graph', () => {
   test('the group keeps the turn the arrays cannot hold', () => {
     const before = twistedGroup();
     expect(getNode(before.graph!, 'g1')!.transform.rotationDeg).toBeCloseTo(37, 9);
-    // The arrays have already rounded it away — that is the loss this is
-    // about, not a thing the content op does.
-    expect(before.groups!.find((g) => g.id === 'g1')!.rotation).toBe(0);
+    // The arrays spell it in two channels: no quarter turn, and the whole
+    // 37 as the residual (v61 `GroupNode.angleDeg`).
+    const g1 = before.groups!.find((g) => g.id === 'g1')!;
+    expect(g1.rotation).toBe(0);
+    expect(g1.angleDeg).toBeCloseTo(37, 9);
 
     const after = applyCompOps(before, recolour);
     expect(after.svgObjects![0].color).toEqual({ r: 200, g: 0, b: 0 });
@@ -369,18 +371,20 @@ describe('a content op does not flatten the graph', () => {
     expect(decomposeMatrix(worldMatrix(after.graph!, 'svg_1')).rotationDeg).toBeCloseTo(37, 6);
   });
 
-  test('but a REBUILD from those arrays still flattens — what a reload does', () => {
-    // The foil, and the part P6 owes: nothing in the file can say a group
-    // is turned 37 degrees, so a page saved here and opened again comes
-    // back with the turn in its members' vertices and the loose box round
-    // each of them. Fixing that is the v61 loader's, not this path's.
+  test('and a REBUILD from those arrays keeps it too — what a reload does', () => {
+    // This used to be the foil: the re-read above saved the frame across a
+    // content op, but nothing in the arrays could say a group was turned
+    // 37 degrees, so a page saved and opened again came back with the turn
+    // in its members' vertices and the loose upright box round each of
+    // them (4·cos37 + 2·sin37 across). v61 gives a group the residual, so
+    // the long way round recovers exactly what the short way preserved.
     const after = applyCompOps(twistedGroup(), recolour);
     const reloaded = fromLegacy(after);
-    expect(getNode(reloaded, 'g1')!.transform.rotationDeg).toBe(0);
-    // The upright rectangle around a 4 x 2 path tilted 37 degrees.
-    const th = (37 * Math.PI) / 180;
-    expect(getNode(reloaded, 'svg_1')!.localBox!.width)
-      .toBeCloseTo(4 * Math.cos(th) + 2 * Math.sin(th), 9);
+    expect(getNode(reloaded, 'g1')!.transform.rotationDeg).toBeCloseTo(37, 9);
+    expect(getNode(reloaded, 'svg_1')!.localBox!.width).toBeCloseTo(4, 9);
+    expect(getNode(reloaded, 'svg_1')!.localBox!.height).toBeCloseTo(2, 9);
+    expect(decomposeMatrix(worldMatrix(reloaded, 'svg_1')).rotationDeg)
+      .toBeCloseTo(37, 6);
   });
 
   test('an op that changes the scene SHAPE goes the long way round', () => {

@@ -28,7 +28,8 @@ import {
   getNode, toLegacyView, worldBbox, worldMatrix, worldSegments,
 } from '../sceneGraph';
 import {
-  LOCAL_IDENTITY, LocalTransform, localMatrix, matApplyPoint, matIsSimilarity, transformAboutPivot,
+  LOCAL_IDENTITY, LocalTransform, decomposeMatrix, localMatrix, matApplyPoint, matIsSimilarity,
+  normalizeDeg, transformAboutPivot,
 } from '../sceneTransform';
 import { applySceneOps, buildGroup, buildSetTransform, buildUngroup } from '../sceneGraphOps';
 import { diffWorldSnapshots, worldSnapshot } from '../worldSnapshot';
@@ -418,8 +419,8 @@ describe('a scene survives the round trip', () => {
 
 describe('what the graph can say that the legacy model could not', () => {
   test('a group can hold a free rotation', () => {
-    // GroupNode has no angleDeg at all, so a group twist had to be fanned
-    // out into a per-member orbit plus a per-member angle.
+    // Before v61 a group had only the four quarters, so a group twist had
+    // to be fanned out into a per-member orbit plus a per-member angle.
     const g = fromLegacy(makeState({
       images: [image({ id: 'img_1', groupId: 'g1' })],
       groups: [group({ id: 'g1' })],
@@ -459,6 +460,114 @@ describe('what the graph can say that the legacy model could not', () => {
     // The legacy model had nowhere to put this and approximated it with
     // "the nearest rotated rectangle"; here it is just a matrix.
     expect(matIsSimilarity(worldMatrix(squashed, 'img_1'))).toBe(false);
+  });
+});
+
+// ── A twisted group survives being written out and read back ───────────
+
+/**
+ * The RELOAD half of §5 item 5 of docs/transform-refactor-next.md.
+ *
+ * A content op stopped flattening a twisted group when
+ * `regraphChangedLeaves` landed; reopening the page still did, because
+ * `GroupNode` had only the four quarters and the residual had nowhere to
+ * live. v61 gives it `angleDeg`, and these are the two things that were
+ * lost without it: the group's own turn, and every member's own frame.
+ *
+ * The picture was never wrong — the members' world fields are absolute,
+ * so the page always DREW right. What the flattening cost was the frames
+ * the selection rings and the corner drags are measured in, which is why
+ * the assertions below are about the group's world turn and the members'
+ * local boxes rather than about where anything lands.
+ */
+describe('a group twisted off the quarters survives the arrays', () => {
+  /** A scene with `g1` twisted to `deg`, and that scene re-read from the
+   *  legacy arrays it renders out to — a save and a reopen. */
+  function twistedAndReloaded(deg: number, state: CompositionState) {
+    const g = fromLegacy(state);
+    const set = buildSetTransform(g, 'g1', {
+      ...getNode(g, 'g1')!.transform, rotationDeg: deg,
+    })!;
+    const twisted = applySceneOps(g, [set]);
+    const view = toLegacyView(twisted);
+    const asState: CompositionState = { ...state, ...view };
+    return { twisted, view, asState, reloaded: fromLegacy(asState) };
+  }
+
+  const scene = () => makeState({
+    svgObjects: [svg({ id: 'svg_1', groupId: 'g1' })],
+    images: [image({ id: 'img_1', groupId: 'g1', cellX: 6, cellY: 0 })],
+    groups: [group({ id: 'g1' })],
+    sceneOrder: ['svg_1', 'img_1'],
+  });
+
+  test('the arrays carry the residual the quarter channel cannot', () => {
+    const { view } = twistedAndReloaded(37, scene());
+    const g1 = view.groups.find((g) => g.id === 'g1')!;
+    expect(g1.rotation).toBe(0);
+    expect(g1.angleDeg).toBeCloseTo(37, 6);
+  });
+
+  test('a quarter turn stays in the quarter channel, with no angle', () => {
+    const { view } = twistedAndReloaded(90, scene());
+    const g1 = view.groups.find((g) => g.id === 'g1')!;
+    expect(g1.rotation).toBe(90);
+    expect(g1.angleDeg).toBeUndefined();
+  });
+
+  test('a turn just past a quarter splits into the quarter and the rest', () => {
+    const { view } = twistedAndReloaded(183, scene());
+    const g1 = view.groups.find((g) => g.id === 'g1')!;
+    expect(g1.rotation).toBe(180);
+    expect(g1.angleDeg).toBeCloseTo(3, 6);
+  });
+
+  test('the group comes back turned, not standing upright', () => {
+    const { reloaded } = twistedAndReloaded(37, scene());
+    expect(
+      normalizeDeg(decomposeMatrix(worldMatrix(reloaded, 'g1')).rotationDeg),
+    ).toBeCloseTo(37, 5);
+  });
+
+  test('each member keeps its own frame across the reload', () => {
+    const { twisted, reloaded } = twistedAndReloaded(37, scene());
+    for (const id of ['svg_1', 'img_1']) {
+      expect(getNode(reloaded, id)!.localBox!.width)
+        .toBeCloseTo(getNode(twisted, id)!.localBox!.width, 5);
+      expect(getNode(reloaded, id)!.localBox!.height)
+        .toBeCloseTo(getNode(twisted, id)!.localBox!.height, 5);
+      // And the member is square to its group, as it was authored — not
+      // carrying the group's twist in its own transform.
+      expect(normalizeDeg(getNode(reloaded, id)!.transform.rotationDeg))
+        .toBeCloseTo(normalizeDeg(getNode(twisted, id)!.transform.rotationDeg), 5);
+    }
+  });
+
+  test('nothing the user can see moves', () => {
+    const { asState, reloaded } = twistedAndReloaded(37, scene());
+    const again: CompositionState = { ...asState, ...toLegacyView(reloaded) };
+    const diff = diffWorldSnapshots(
+      worldSnapshot(asState), worldSnapshot(again), { ignoreSvgBbox: true },
+    );
+    if (diff) throw new Error('the reload moved something:\n' + diff);
+  });
+
+  test('a nested group multiplies both residuals', () => {
+    const state = makeState({
+      images: [image({ id: 'img_1', groupId: 'g2' })],
+      groups: [group({ id: 'g1' }), group({ id: 'g2', parentGroupId: 'g1' })],
+      sceneOrder: ['img_1'],
+    });
+    const g = fromLegacy(state);
+    const twisted = applySceneOps(g, [
+      buildSetTransform(g, 'g1', { ...getNode(g, 'g1')!.transform, rotationDeg: 20 })!,
+    ]);
+    const inner = applySceneOps(twisted, [
+      buildSetTransform(twisted, 'g2', { ...getNode(twisted, 'g2')!.transform, rotationDeg: 11 })!,
+    ]);
+    const reloaded = fromLegacy({ ...state, ...toLegacyView(inner) });
+    expect(normalizeDeg(decomposeMatrix(worldMatrix(reloaded, 'g2')).rotationDeg))
+      .toBeCloseTo(31, 5);
   });
 });
 

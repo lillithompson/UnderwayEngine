@@ -250,12 +250,17 @@ describe('a resize lands where the drag put it, whatever the node is under', () 
     near(box.height, 2);
     near(drawnRect(after.graph!, 'svg_1').angleDeg, 30);
 
-    // And the foil, which is what P6 still owes: nothing in the ARRAYS can
-    // say the group is turned 30 degrees, so a page saved here and opened
-    // again is back to the loose upright box.
-    const loose = localContentBox(reloaded(after).graph!.nodes.get('svg_1')!);
-    near(loose.width, 8 * Math.cos(Math.PI / 6) + 2 * Math.sin(Math.PI / 6));
-    near(drawnRect(reloaded(after).graph!, 'svg_1').angleDeg, 0);
+    // And through a RELOAD, which is the half P6 closed: the arrays can
+    // say the group is turned 30 degrees now (v61 `GroupNode.angleDeg`),
+    // so a page saved here and opened again still has the tight box and
+    // still draws the shape at its own angle. Before that field, this came
+    // back as the upright rectangle around a tilted shape —
+    // 8·cos30 + 2·sin30 across, at no turn at all.
+    const again = reloaded(after);
+    const box2 = localContentBox(again.graph!.nodes.get('svg_1')!);
+    near(box2.width, 8);
+    near(box2.height, 2);
+    near(drawnRect(again.graph!, 'svg_1').angleDeg, 30);
   });
 
   it('disagrees with stretching the LEGACY box, which shears the shape', () => {
