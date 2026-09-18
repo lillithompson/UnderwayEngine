@@ -491,10 +491,31 @@ export function fromLegacy(state: CompositionState): SceneGraph {
  * docs/transform-refactor-next.md, paid for an op that changed one
  * leaf's colour.
  *
- * So keep the structure, keep every node the op did not write — the
- * arrays are copy-on-write, so object identity says which — and re-read
- * the rest through their parents' unchanged world matrices. A content op
- * is then exactly as local to the graph as it is to the arrays.
+ * So keep the structure, keep every node the op did not write, and
+ * re-read the rest through their parents' unchanged world matrices. A
+ * content op is then exactly as local to the graph as it is to the
+ * arrays.
+ *
+ * Which leaves the op wrote is asked TWICE, because the arrays reaching
+ * here have two provenances. A state the legacy reducer edited is
+ * copy-on-write, so object identity names them. A state the graph
+ * RENDERED (`toLegacyView`, which every pose op materialises through)
+ * carries a fresh object for every leaf the pose op moved, and those
+ * nodes' `content` still points at the leaf they were read from — so
+ * identity alone calls the whole page changed, and the next colour edit
+ * re-reads every leaf in the scene. That is silently lossy: a member of a
+ * group pulled off-square carries a SHEAR, the legacy fields are an
+ * upright box and an angle, and the round trip snaps the shear away and
+ * moves the member. So a leaf the node already renders as — the view
+ * cache hands back the very object — is not a change at all.
+ *
+ * A leaf that IS different is still not necessarily a pose change: a
+ * stroke width, a colour, a name. Those are kept by writing the changed
+ * fields onto the node's own content and asking the renderer whether the
+ * node then renders the incoming leaf back exactly. When it does, the
+ * pose the graph holds is still the right one and only the content moved;
+ * when it does not — a real move, or a field the render derives from the
+ * pose — the leaf is read in again from scratch.
  *
  * Falls back to {@link fromLegacy} whenever the scene's SHAPE moved: a
  * node added, deleted, reparented or reordered, or a group added or
@@ -508,12 +529,14 @@ export function regraphChangedLeaves(graph: SceneGraph, state: CompositionState)
   for (const [kind, arr] of leafArrays(state)) {
     for (const leaf of arr) {
       const node = graph.nodes.get(leaf.id);
-      if (!node || node.content === leaf) continue;
+      // Read from this very object, or rendered back out as it.
+      if (!node || node.content === leaf || toLegacyLeaf(graph, node) === leaf) continue;
       // A new nodes map, not a mutation: the world-matrix cache is keyed
       // on the map, so re-reading a leaf into the old one would hand back
       // the matrix it had before the op.
       if (!nodes) nodes = new Map(graph.nodes);
-      nodes.set(leaf.id, leafNodeFromLegacy(kind, leaf, safeInvert(parentMatrix(graph, leaf.id))));
+      nodes.set(leaf.id, contentOnlyNode(graph, node, leaf)
+        ?? leafNodeFromLegacy(kind, leaf, safeInvert(parentMatrix(graph, leaf.id))));
     }
   }
 
@@ -526,6 +549,91 @@ export function regraphChangedLeaves(graph: SceneGraph, state: CompositionState)
     : { ...graph };
   rememberArrays(next, state);
   return next;
+}
+
+/**
+ * `node` carrying `leaf` as its content and nothing else changed, or
+ * null when `leaf` says the node MOVED and has to be read in again.
+ *
+ * The test is the renderer's own: put the incoming leaf's fields on the
+ * node as content, and ask what that node then renders as. A stroke
+ * width, a colour, a name is carried through untouched, so the render
+ * comes back as `leaf` field for field and the pose the graph holds
+ * stands. Everything the render DERIVES from the pose — the box, the
+ * angle, the segments — is rewritten from the node, so a leaf that
+ * really moved cannot match. Asking the renderer rather than listing the
+ * pose fields here is the point: the list is `renderLegacyLeaf`'s, it is
+ * per kind, and a second copy would be one more thing to keep in step.
+ *
+ * Two spellings of that content are tried, because two of the renderer's
+ * own habits pull in opposite directions and each spelling defeats one.
+ * It reuses the content's geometry ARRAYS wherever the render lands on
+ * them, so an unmoved path keeps its identity — that wants the content
+ * the view last rendered. And a scaled node's content holds its
+ * world-unit lengths (a text's type size, a tile's pitch) at scale 1 and
+ * `scaleContentLengths` writes them out scaled — that wants the content
+ * the graph was built from, or the scale is counted twice. Neither
+ * spelling can be wrong when it passes: the render is compared against
+ * the leaf itself, so a content that would have double-counted simply
+ * fails and the other is tried.
+ */
+function contentOnlyNode(
+  graph: SceneGraph, node: SceneNode, leaf: LegacyLeaf,
+): SceneNode | null {
+  const view = toLegacyLeaf(graph, node) as unknown as Record<string, unknown>;
+  const incoming = leaf as unknown as Record<string, unknown>;
+  const world = worldMatrix(graph, node.id);
+
+  for (const base of [view, node.content as unknown as Record<string, unknown> | undefined]) {
+    if (!base) continue;
+    const content: Record<string, unknown> = { ...base };
+    for (const k of new Set([...Object.keys(view), ...Object.keys(incoming)])) {
+      if (view[k] !== incoming[k]) content[k] = incoming[k];
+    }
+    // `name` and `locked` are the two node fields `leafNodeFromLegacy`
+    // lifts off the leaf, so they follow the content. Set before the
+    // render, which reads the name back off the node.
+    const { name: _name, locked: _locked, ...rest } = node;
+    const next: SceneNode = {
+      ...rest,
+      content: content as unknown as LegacyLeaf,
+      ...(content.name !== undefined ? { name: content.name as string } : {}),
+      ...(content.locked ? { locked: true } : {}),
+    };
+    if (sameRender(renderLegacyLeaf(graph, next, world), leaf)) return next;
+  }
+  return null;
+}
+
+/**
+ * `sameFields`, but a value-equal object or array counts as the same
+ * field.
+ *
+ * Only the probe above wants this. The renderer hands the content's own
+ * geometry array or style object back wherever the render lands on it,
+ * so that an untouched leaf keeps its identity — and the content the
+ * probe hands it is deliberately NOT the object the view rendered from,
+ * so an unmoved field comes back as an equal copy rather than the same
+ * one. Identity there answers "did the renderer have this object", which
+ * is not the question; whether the leaf MOVED is.
+ */
+function sameRender(a: object, b: object): boolean {
+  const ra = a as Record<string, unknown>, rb = b as Record<string, unknown>;
+  for (const k of new Set([...Object.keys(ra), ...Object.keys(rb)])) {
+    if (!sameValue(ra[k], rb[k])) return false;
+  }
+  return true;
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a), kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => sameValue(
+    (a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k],
+  ));
 }
 
 /**

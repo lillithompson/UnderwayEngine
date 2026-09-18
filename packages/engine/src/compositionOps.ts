@@ -4609,18 +4609,37 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
   }
 }
 
+/**
+ * Undo one op, without the local-cache reconcile.
+ *
+ * Most reverts are "apply the inverse", and they say so by calling
+ * `applyOpInner` — the INNER one, never `applyOp`. Two reasons. On the
+ * legacy path `revertOp` already wraps this in `reconcileAfterOp`, so a
+ * reconcile in here is a second pass over the same leaves. And the graph
+ * path (`runOnGraph`) calls this directly, precisely so that a content op
+ * does not stamp local caches onto grouped leaves: the graph holds the
+ * pose, the caches are the legacy spelling of it, and a leaf that comes
+ * back carrying `local*` fields the view does not write is a leaf
+ * `regraphChangedLeaves` must read in again — which loses the shear a
+ * member of a group pulled off-square carries. That is how undoing a
+ * stroke width moved a whole group.
+ *
+ * `ungroupFigures` is the exception and keeps its own reconcile: it
+ * restores a group at a saved transform and has to settle the members
+ * under it before it returns.
+ */
 function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionState {
   switch (op.op) {
     case 'placeFigure':
-      return applyOp(state, { op: 'removeObject', kind: 'figure', item: op.figure });
+      return applyOpInner(state, { op: 'removeObject', kind: 'figure', item: op.figure });
     case 'placeObject':
-      return applyOp(state, { op: 'removeObject', kind: op.kind, item: op.item });
+      return applyOpInner(state, { op: 'removeObject', kind: op.kind, item: op.item });
     case 'removeObject':
       // Re-insert the deleted item at the end of its kind's array (array
       // order is not user-visible â€” only sceneOrder is), and splice the id
       // back into sceneOrder at its captured pre-delete index so the scene
       // outline / z-position is restored.
-      return applyOp(state, {
+      return applyOpInner(state, {
         op: 'placeObject', kind: op.kind, item: op.item,
         sceneOrderIndex: op.sceneOrderIndex,
       });
@@ -4645,22 +4664,22 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
       return { ...state, figures };
     }
     case 'mirrorFigure':
-      return applyOp(state, { op: 'mirrorFigure', figureId: op.figureId, axis: op.axis,
+      return applyOpInner(state, { op: 'mirrorFigure', figureId: op.figureId, axis: op.axis,
         oldValue: op.newValue, newValue: op.oldValue, oldQuads: op.newQuads, newQuads: op.oldQuads });
     case 'lockObject':
-      return applyOp(state, { op: 'lockObject', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
+      return applyOpInner(state, { op: 'lockObject', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
     case 'lockGroup':
-      return applyOp(state, { op: 'lockGroup', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
+      return applyOpInner(state, { op: 'lockGroup', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
     case 'setObjectHidden':
-      return applyOp(state, { op: 'setObjectHidden', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
+      return applyOpInner(state, { op: 'setObjectHidden', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
     case 'hideGroup':
-      return applyOp(state, { op: 'hideGroup', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
+      return applyOpInner(state, { op: 'hideGroup', id: op.id, oldValue: op.newValue, newValue: op.oldValue });
     case 'setNodeRotation':
       return setNodeAngleDeg(state, op.id, op.oldAngleDeg);
     case 'reorderObjects':
       return applySceneOrder(state, op.oldOrder);
     case 'renameFigure':
-      return applyOp(state, {
+      return applyOpInner(state, {
         op: 'renameFigure',
         figureId: op.figureId,
         oldName: op.newName,
@@ -4709,7 +4728,7 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
       return state;
     }
     case 'syncDimensions':
-      return applyOp(state, {
+      return applyOpInner(state, {
         op: 'syncDimensions', figureId: op.figureId,
         oldResolutionX: op.newResolutionX, oldResolutionY: op.newResolutionY,
         newResolutionX: op.oldResolutionX, newResolutionY: op.oldResolutionY,
@@ -4717,7 +4736,7 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
         newCellWidth: op.oldCellWidth, newCellHeight: op.oldCellHeight,
       });
     case 'toggleRepeat':
-      return applyOp(state, {
+      return applyOpInner(state, {
         op: 'toggleRepeat',
         figureId: op.figureId,
         oldTileMode: op.newTileMode,
@@ -4737,7 +4756,7 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
       return { ...state, patternObjects };
     }
     case 'setPatternSettings':
-      return applyOp(state, {
+      return applyOpInner(state, {
         op: 'setPatternSettings', patternId: op.patternId,
         oldSymmetry: op.newSymmetry, newSymmetry: op.oldSymmetry,
         oldAllowBorderConnections: op.newAllowBorderConnections,
@@ -4954,7 +4973,7 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
       };
     }
     case 'renameGroup':
-      return applyOp(state, { op: 'renameGroup', groupId: op.groupId, oldName: op.newName, newName: op.oldName });
+      return applyOpInner(state, { op: 'renameGroup', groupId: op.groupId, oldName: op.newName, newName: op.oldName });
     case 'removeGroup': {
       // Skip if a re-add already happened (e.g., a regroup op earlier in
       // the entry restored the same id) to avoid duplicate GroupNodes.
@@ -4983,9 +5002,9 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
       return materializeGroupMembers({ ...seeded, groups }, op.groupId);
     }
     case 'createSVG':
-      return applyOp(state, { op: 'removeObject', kind: 'svg', item: op.svg });
+      return applyOpInner(state, { op: 'removeObject', kind: 'svg', item: op.svg });
     case 'editSVGSegments':
-      return applyOp(state, { op: 'editSVGSegments', svgId: op.svgId,
+      return applyOpInner(state, { op: 'editSVGSegments', svgId: op.svgId,
         oldSegments: op.newSegments, newSegments: op.oldSegments,
         oldLocalSegments: op.newLocalSegments, newLocalSegments: op.oldLocalSegments,
         oldSubpaths: op.newSubpaths, newSubpaths: op.oldSubpaths,
@@ -5008,7 +5027,7 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
         oldTileOffsetYL0: op.newTileOffsetYL0, newTileOffsetYL0: op.oldTileOffsetYL0,
         oldAngleDeg: op.newAngleDeg, newAngleDeg: op.oldAngleDeg });
     case 'renameSVG':
-      return applyOp(state, { op: 'renameSVG', svgId: op.svgId, oldName: op.newName, newName: op.oldName });
+      return applyOpInner(state, { op: 'renameSVG', svgId: op.svgId, oldName: op.newName, newName: op.oldName });
     case 'recolorSVG': {
       const svgObjects = state.svgObjects.map((s) => {
         if (s.id !== op.svgId) return s;
@@ -5028,11 +5047,11 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
       return { ...state, svgObjects };
     }
     case 'setFillColor':
-      return applyOp(state, { op: 'setFillColor', svgId: op.svgId,
+      return applyOpInner(state, { op: 'setFillColor', svgId: op.svgId,
         oldFillColor: op.newFillColor, newFillColor: op.oldFillColor,
         oldFillOpacity: op.newFillOpacity, newFillOpacity: op.oldFillOpacity });
     case 'setMaskMode':
-      return applyOp(state, { op: 'setMaskMode', svgId: op.svgId,
+      return applyOpInner(state, { op: 'setMaskMode', svgId: op.svgId,
         oldValue: op.newValue, newValue: op.oldValue });
     case 'recolorFigure': {
       const figures = state.figures.map((f) => f.id === op.figureId ? { ...f, colorOverride: op.oldColor, colorOverrideBlendMode: op.oldBlendMode } : f);
@@ -5046,7 +5065,7 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
     }
     // â”€â”€ Image revert ops â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     case 'editImage':
-      return applyOp(state, { op: 'editImage', imageId: op.imageId,
+      return applyOpInner(state, { op: 'editImage', imageId: op.imageId,
         oldCellX: op.newCellX, oldCellY: op.newCellY, oldCellWidth: op.newCellWidth, oldCellHeight: op.newCellHeight,
         newCellX: op.oldCellX, newCellY: op.oldCellY, newCellWidth: op.oldCellWidth, newCellHeight: op.oldCellHeight,
         oldAngleDeg: op.newAngleDeg, newAngleDeg: op.oldAngleDeg,
@@ -5127,7 +5146,7 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
       };
     }
     case 'replaceScene':
-      return applyOp(state, { op: 'replaceScene',
+      return applyOpInner(state, { op: 'replaceScene',
         oldFigures: op.newFigures, newFigures: op.oldFigures,
         oldSVGObjects: op.newSVGObjects, newSVGObjects: op.oldSVGObjects,
         oldImages: op.newImages, newImages: op.oldImages,
@@ -5137,27 +5156,27 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
         oldPaints: op.newPaints, newPaints: op.oldPaints,
         oldPatterns: op.newPatterns, newPatterns: op.oldPatterns });
     case 'setText':
-      return applyOp(state, { ...op,
+      return applyOpInner(state, { ...op,
         oldContent: op.newContent, newContent: op.oldContent,
         oldCellWidth: op.newCellWidth, newCellWidth: op.oldCellWidth,
         oldCellHeight: op.newCellHeight, newCellHeight: op.oldCellHeight,
         oldCellX: op.newCellX, newCellX: op.oldCellX,
         oldCellY: op.newCellY, newCellY: op.oldCellY });
     case 'setTextStyle':
-      return applyOp(state, { ...op,
+      return applyOpInner(state, { ...op,
         oldStyle: op.newStyle, newStyle: op.oldStyle,
         oldCellWidth: op.newCellWidth, newCellWidth: op.oldCellWidth,
         oldCellHeight: op.newCellHeight, newCellHeight: op.oldCellHeight,
         oldCellX: op.newCellX, newCellX: op.oldCellX,
         oldCellY: op.newCellY, newCellY: op.oldCellY });
     case 'setNodeEffects':
-      return applyOp(state, { ...op, oldEffects: op.newEffects, newEffects: op.oldEffects });
+      return applyOpInner(state, { ...op, oldEffects: op.newEffects, newEffects: op.oldEffects });
     case 'setFillPaint':
-      return applyOp(state, { ...op, oldPaint: op.newPaint, newPaint: op.oldPaint });
+      return applyOpInner(state, { ...op, oldPaint: op.newPaint, newPaint: op.oldPaint });
     case 'setImageTint':
-      return applyOp(state, { ...op, oldTint: op.newTint, newTint: op.oldTint });
+      return applyOpInner(state, { ...op, oldTint: op.newTint, newTint: op.oldTint });
     case 'setBackground':
-      return applyOp(state, { ...op, oldPaint: op.newPaint, newPaint: op.oldPaint });
+      return applyOpInner(state, { ...op, oldPaint: op.newPaint, newPaint: op.oldPaint });
     case 'cleanupLibrary':
       return state;
     default:
