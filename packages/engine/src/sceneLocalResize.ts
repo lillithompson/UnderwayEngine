@@ -109,7 +109,24 @@ export function rescaleLeafLocal(
   const scaled = GEOMETRY_ADAPTERS[node.kind as CompItemKind].rescale(
     source as never, oldBox, newBox,
   ) as LegacyLeaf;
-  return legacyLeafOf(graph, nodeWithLocalContent(node, scaled), worldMatrix(graph, id));
+  return localLeafToWorld(graph, id, scaled);
+}
+
+/**
+ * A leaf spelled in `id`'s OWN space, as the legacy world leaf the arrays
+ * store — {@link rescaleLeafLocal}'s last step, for the caller that builds
+ * its new local content itself rather than rescaling the old.
+ *
+ * The H/V line resize is that caller: it does not stretch the stroke it
+ * has, it draws a new one across the box the drag asked for, which is a
+ * thing to say in the node's own frame and nowhere else.
+ */
+export function localLeafToWorld(
+  graph: SceneGraph, id: string, local: LegacyLeaf,
+): LegacyLeaf | null {
+  const node = getNode(graph, id);
+  if (!node || node.kind === 'group') return null;
+  return legacyLeafOf(graph, nodeWithLocalContent(node, local), worldMatrix(graph, id));
 }
 
 /**
