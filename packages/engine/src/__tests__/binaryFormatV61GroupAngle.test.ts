@@ -19,6 +19,7 @@ import {
   deserializeComposition,
   CompositionBundle,
 } from '../compositionBinaryFormat';
+import { normalizeComposition } from '../compositionNormalize';
 import { GroupNode, ImageObject } from '../types';
 import { patchFormatVersion } from './test-utils';
 
@@ -111,6 +112,22 @@ describe("a group's free turn survives the file", () => {
     expect(by.get('g2')!.angleDeg).toBeUndefined();
     expect(by.get('g3')!.angleDeg).toBeCloseTo(-8, 4);
     expect(by.get('g3')!.rotation).toBe(180);
+  });
+
+  it('survives the normalize pass the save path runs first', () => {
+    // `persistence` normalizes before it serializes: the scene is
+    // re-anchored and rescaled by a power of two. That map is a uniform
+    // scale and a translate, so a turn is invariant under it — but a
+    // group rebuilt field by field would drop the angle here rather than
+    // in the writer, and the file would be none the wiser.
+    const groups = [group({ id: 'g1', angleDeg: 37, translateX: 9, translateY: 5 })];
+    const out = normalizeComposition({
+      figures: [], svgObjects: [],
+      images: [member('img_0', 'g1')],
+      groups,
+      gridLevel: 1, strokeScale: 1,
+    });
+    expect(out.groups[0].angleDeg).toBeCloseTo(37, 6);
   });
 
   it('a pre-v61 file reads back with no angle, as it always meant', () => {
