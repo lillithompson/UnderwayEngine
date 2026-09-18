@@ -238,10 +238,12 @@ describe('v44 text bbox precision', () => {
       identityCellWidth: 9.8765, identityCellHeight: 3.4321,
     });
     const { texts } = roundTrip([], [], [text]);
-    expect(texts[0].localCellX).toBeCloseTo(-1.3125, 4);
-    expect(texts[0].localCellY).toBeCloseTo(0.1875, 4);
-    expect(texts[0].localCellWidth).toBeCloseTo(7.6543, 4);
-    expect(texts[0].localCellHeight).toBeCloseTo(2.8125, 4);
+    // Dropped on load (plan §3.7); `identity*` is kept — it is the
+    // transform cycle's authored pose, not a group-local cache.
+    expect(texts[0].localCellX).toBeUndefined();
+    expect(texts[0].localCellY).toBeUndefined();
+    expect(texts[0].localCellWidth).toBeUndefined();
+    expect(texts[0].localCellHeight).toBeUndefined();
     expect(texts[0].identityCellX).toBeCloseTo(0.6789, 4);
     expect(texts[0].identityCellY).toBeCloseTo(1.2345, 4);
     expect(texts[0].identityCellWidth).toBeCloseTo(9.8765, 4);

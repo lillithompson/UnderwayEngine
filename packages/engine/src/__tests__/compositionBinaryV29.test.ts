@@ -202,10 +202,12 @@ describe('compositionBinaryFormat v29', () => {
     expect(rt.cellY).toBe(-3.5);
     expect(rt.cellWidth).toBe(6.75);
     expect(rt.cellHeight).toBe(2.5);
-    expect(rt.localCellX).toBe(1);
-    expect(rt.localCellY).toBe(2);
-    expect(rt.localCellWidth).toBe(3);
-    expect(rt.localCellHeight).toBe(4);
+    // Dropped on load; the identity bbox below is NOT — it is the
+    // transform cycle's memory of the authored pose, not a group cache.
+    expect(rt.localCellX).toBeUndefined();
+    expect(rt.localCellY).toBeUndefined();
+    expect(rt.localCellWidth).toBeUndefined();
+    expect(rt.localCellHeight).toBeUndefined();
     expect(rt.identityCellX).toBe(0.25);
     expect(rt.identityCellY).toBe(0.5);
     expect(rt.identityCellWidth).toBe(6.75);

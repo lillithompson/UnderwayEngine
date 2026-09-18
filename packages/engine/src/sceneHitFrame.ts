@@ -32,6 +32,7 @@ import {
   LegacyLeaf, SceneGraph, SceneNode, fromLegacy, getNode, segmentsBbox, worldMatrix,
 } from './sceneGraph';
 import type { CompositionFigure, CompositionState, SVGObject } from './types';
+import { dropLocalCaches } from './legacyLocalCaches';
 
 /**
  * A composition's graph: the one it carries, else built on the spot.
@@ -228,10 +229,6 @@ export function localHitObject(node: SceneNode, box: Bbox = localContentBox(node
   // The local caches are a second copy of a grouped leaf's pose and say
   // nothing about content; a tester that found one would read a pose the
   // frame has already spent.
-  out.localCellX = undefined; out.localCellY = undefined;
-  out.localCellWidth = undefined; out.localCellHeight = undefined;
-  out.localRotation = undefined; out.localAngleDeg = undefined;
-  out.localMirrorH = undefined; out.localMirrorV = undefined;
-  out.localSegments = undefined; out.localSubpaths = undefined;
+  dropLocalCaches(out);
   return out;
 }

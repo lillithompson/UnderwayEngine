@@ -188,19 +188,15 @@ describe('reconcileGroupLocals', () => {
       sceneOrder: m.sceneOrder ?? [],
     });
 
-    // Before reconcile: locals are stale (materialization would produce
-    // different world coords than what's stored).
-    let mismatchBefore = 0;
+    // This file is why the loader drops the persisted caches: as saved,
+    // 98 of its 99 grouped paths carry locals that re-derive somewhere
+    // other than where the file says they were drawn, one of them 65
+    // cells out. The loader now drops them, so there is no stale local
+    // to find and nothing for a later materialize to move.
     for (const s of state.svgObjects) {
-      if (!s.groupId || s.localCellX == null) continue;
-      const chain = groupAncestorChain(state.groups, s.groupId);
-      const expected = applyChainedGroupTransform(chain, {
-        cellX: s.localCellX!, cellY: s.localCellY!,
-        cellWidth: s.localCellWidth!, cellHeight: s.localCellHeight!,
-      });
-      if (Math.abs(expected.cellX - s.cellX) > 0.01) mismatchBefore++;
+      expect(s.localCellX).toBeUndefined();
+      expect(s.localSegments).toBeUndefined();
     }
-    expect(mismatchBefore).toBeGreaterThan(0);
 
     // Reconcile: recompute locals from world coords
     const fixed = reconcileGroupLocals(state);

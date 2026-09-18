@@ -166,10 +166,12 @@ describe('v52 paint object round-trip', () => {
     expect(outMax.cellY).toBe(2.25);
     expect(outMax.cellWidth).toBe(40.5);
     expect(outMax.cellHeight).toBe(12.75);
-    expect(outMax.localCellX).toBe(1.5);
-    expect(outMax.localCellY).toBe(2.5);
-    expect(outMax.localCellWidth).toBe(3.25);
-    expect(outMax.localCellHeight).toBe(4.75);
+    // Dropped on load (plan §3.7); `identity*` is kept — it is the
+    // transform cycle's authored pose, not a group-local cache.
+    expect(outMax.localCellX).toBeUndefined();
+    expect(outMax.localCellY).toBeUndefined();
+    expect(outMax.localCellWidth).toBeUndefined();
+    expect(outMax.localCellHeight).toBeUndefined();
     expect(outMax.identityCellX).toBe(-0.5);
     expect(outMax.identityCellY).toBe(-1.25);
     expect(outMax.identityCellWidth).toBe(33);

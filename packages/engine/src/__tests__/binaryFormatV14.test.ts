@@ -241,8 +241,10 @@ describe('backward compatibility', () => {
 
     const rf = result.meta.figures[0];
     expect(rf.groupId).toBe('g1');
-    expect(rf.localCellX).toBe(5);
-    expect(rf.localCellY).toBe(5);
+    // The local bbox is still written and still parsed — the cursor has to
+    // walk past it — but the loader drops it: world is the truth.
+    expect(rf.localCellX).toBeUndefined();
+    expect(rf.localCellY).toBeUndefined();
 
     const rg = result.meta.groups![0];
     expect(rg.translateX).toBe(50);

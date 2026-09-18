@@ -5,6 +5,7 @@ import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
 import { backfillPatternTileLocals, computeAliveGroupIds } from './compositionOps';
 import { foldLegacyGroupNames } from './legacyGroupNames';
+import { dropLocalCaches } from './legacyLocalCaches';
 import { compSnapStep } from './compositionCellMath';
 
 // â”€â”€ FCOMP Binary Format v29 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -4179,6 +4180,19 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
   // cleared `name`; fold it back so every reader asks `name` alone. The
   // layout is unchanged — v59 marks only that its writer never stashes.
   foldLegacyGroupNames(version, [figures, svgObjects, images, texts, paintObjects, patternObjects], groups);
+
+  // The persisted `local*` caches are dropped here (plan §3.7). They are
+  // a second copy of a grouped leaf's pose, and nothing ever kept them
+  // honest with the world fields beside them: `Castle.tile` disagrees on
+  // all 318 of its grouped leaves, and one path in `WaveBug.tile` is 65
+  // cells out. World is what was drawn, so world is what survives —
+  // `fromLegacy` already derives a node's local transform from it alone,
+  // and the legacy materialize passes re-derive the caches on demand.
+  // The records are still PARSED (the byte cursor has to advance); it is
+  // only the assignment onto the leaf that is undone.
+  for (const arr of [figures, svgObjects, images, texts, paintObjects, patternObjects]) {
+    for (const leaf of arr) dropLocalCaches(leaf);
+  }
 
   // Drop GroupNodes whose subtree carries no surviving leaf members.
   // Older save paths could leave orphans behind when the last member of a

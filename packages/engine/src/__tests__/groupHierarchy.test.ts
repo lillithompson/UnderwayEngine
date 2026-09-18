@@ -222,10 +222,12 @@ describe('binary format v6 round-trip with groups + locals', () => {
     expect(result.meta.groups![0].translateY).toBeCloseTo(-2);
     expect(result.meta.groups![0].scaleX).toBeCloseTo(1.25);
     expect(result.meta.groups![0].scaleY).toBeCloseTo(0.75);
-    expect(result.meta.figures[0].localCellX).toBe(4);
-    expect(result.meta.figures[0].localCellY).toBe(6);
-    expect(result.meta.figures[1].localCellX).toBe(7);
-    expect(result.meta.figures[1].localCellY).toBe(6);
+    // The group survives whole; the members' local caches are dropped on
+    // load (plan §3.7) and re-derived from world where a pass wants them.
+    expect(result.meta.figures[0].localCellX).toBeUndefined();
+    expect(result.meta.figures[0].localCellY).toBeUndefined();
+    expect(result.meta.figures[1].localCellX).toBeUndefined();
+    expect(result.meta.figures[1].localCellY).toBeUndefined();
   });
 
   test('round-trip with empty groups array', () => {

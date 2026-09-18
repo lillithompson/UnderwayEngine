@@ -548,7 +548,9 @@ describe('compositionBinaryFormat', () => {
     expect(rs.id).toBe('svg-full');
     expect(rs.name).toBe('My Path');
     expect(rs.segments).toEqual([{ kind: 'line', start: [1.25, -2.5], end: [3.75, 4.5] }]);
-    expect(rs.localSegments).toEqual([{ kind: 'line', start: [0, 0], end: [2.5, 7] }]);
+    // Dropped on load (plan §3.7); `identity*` is kept — it is the
+    // transform cycle's authored pose, not a group-local cache.
+    expect(rs.localSegments).toBeUndefined();
     expect(rs.identitySegments).toEqual([{ kind: 'line', start: [-1, -1], end: [1, 1] }]);
     expect(rs.groupId).toBe('group-A');
     expect(rs.preGroupName).toBe('Old Name');
@@ -675,7 +677,9 @@ describe('compositionBinaryFormat', () => {
     expect(rs.id).toBe('svg-full-arc');
     expect(rs.name).toBe('My Arc Path');
     expect(rs.segments).toEqual([{ kind: 'arc', start: [0.25, 0.5], end: [4.75, 4.25], center: [4.5, 0.25] }]);
-    expect(rs.localSegments).toEqual([{ kind: 'line', start: [0, 0], end: [1, 1] }]);
+    // Dropped on load (plan §3.7); `identity*` is kept — it is the
+    // transform cycle's authored pose, not a group-local cache.
+    expect(rs.localSegments).toBeUndefined();
     expect(rs.identitySegments).toEqual([{ kind: 'arc', start: [-1, -1], end: [1, 1], center: [1, -1] }]);
     expect(rs.color).toEqual({ r: 99, g: 88, b: 77 });
     expect(rs.groupId).toBe('svg-group');
@@ -1121,8 +1125,10 @@ describe('compositionBinaryFormat', () => {
     expect(r.mirrorH).toBe(true);
     expect(r.groupId).toBe('g1');
     expect(r.preGroupName).toBe('orig');
-    expect(r.localCellX).toBe(2);
-    expect(r.localCellWidth).toBe(4);
+    // Dropped on load (plan §3.7); `identity*` is kept — it is the
+    // transform cycle's authored pose, not a group-local cache.
+    expect(r.localCellX).toBeUndefined();
+    expect(r.localCellWidth).toBeUndefined();
     expect(r.identityCellX).toBe(0);
     expect(r.identityCellWidth).toBe(8);
   });

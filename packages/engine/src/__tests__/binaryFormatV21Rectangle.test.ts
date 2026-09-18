@@ -87,7 +87,7 @@ describe('v21 shapeKind persistence', () => {
     expect(loaded).toBeDefined();
     expect(loaded!.shapeKind).toBe('rectangle');
     expect(loaded!.groupId).toBe('g1');
-    expect(loaded!.localSegments).toBeDefined();
+    expect(loaded!.localSegments).toBeUndefined();
     expect(loaded!.creationBox).toEqual({ minX: 0, minY: 0, width: 4, height: 3 });
   });
 

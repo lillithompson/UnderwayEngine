@@ -110,14 +110,14 @@ describe('v20 subpaths persistence', () => {
     const loaded = result.meta.svgObjects?.[0];
 
     expect(loaded).toBeDefined();
-    expect(loaded!.localSegments).toHaveLength(2);
+    // The local snapshot is written and parsed, then dropped on load
+    // (plan §3.7) — so what has to survive is the WORLD subpaths, colours
+    // and all. A reader that wants local space derives it from these.
+    expect(loaded!.localSegments).toBeUndefined();
+    expect(loaded!.localSubpaths).toBeUndefined();
     expect(loaded!.subpaths).toHaveLength(2);
-    expect(loaded!.localSubpaths).toBeDefined();
-    expect(loaded!.localSubpaths).toHaveLength(2);
-    expect(loaded!.localSubpaths![0].color).toEqual(red);
-    expect(loaded!.localSubpaths![1].color).toEqual(green);
-    // Local-space coords stay distinct from world-space coords.
-    expect(loaded!.localSubpaths![0].segments[0].start).toEqual([0, 0]);
+    expect(loaded!.subpaths![0].color).toEqual(red);
+    expect(loaded!.subpaths![1].color).toEqual(green);
     expect(loaded!.subpaths![0].segments[0].start).toEqual([10, 10]);
   });
 

@@ -99,7 +99,9 @@ describe('v54 pattern object persistence', () => {
     expect(out.name).toBe('My Pattern');
     expect(out.groupId).toBe('grp_1');
     expect(out.preGroupName).toBe('Old name');
-    expect(out.localCellX).toBe(1);
+    // Dropped on load (plan §3.7); `identity*` is kept — it is the
+    // transform cycle's authored pose, not a group-local cache.
+    expect(out.localCellX).toBeUndefined();
     expect(out.identityCellWidth).toBe(12);
   });
 

@@ -80,6 +80,8 @@ describe('v37 subpath fill persistence', () => {
     const result = deserializeComposition(serializeComposition(bundle, []));
     const out = result.meta.svgObjects![0];
     expect(out.subpaths![0].fill).toBe(true);
-    expect(out.localSubpaths![0].fill).toBe(true);
+    // The local snapshot is parsed and dropped on load (plan §3.7); the
+    // fill flag has to survive on the world subpaths, which is what draws.
+    expect(out.localSubpaths).toBeUndefined();
   });
 });
