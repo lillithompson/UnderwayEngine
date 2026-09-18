@@ -488,8 +488,8 @@ export function fromLegacy(state: CompositionState): SceneGraph {
  * absolute, so the picture is right and the group's word about its own
  * frame is gone). Rebuilding from those arrays flattens the group: every
  * member comes back at no local turn, in world axes, measured by the
- * upright rectangle around a tilted shape — the whole of §5 item 5 of
- * docs/transform-refactor-next.md, paid for an op that changed one
+ * upright rectangle around a tilted shape — the whole of the twisted-group
+ * fault (docs/transform-refactor.md §9.2), paid for an op that changed one
  * leaf's colour.
  *
  * So keep the structure, keep every node the op did not write, and

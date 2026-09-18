@@ -466,7 +466,7 @@ describe('what the graph can say that the legacy model could not', () => {
 // ── A twisted group survives being written out and read back ───────────
 
 /**
- * The RELOAD half of §5 item 5 of docs/transform-refactor-next.md.
+ * The RELOAD half of the twisted-group fault (docs/transform-refactor.md §3.7).
  *
  * A content op stopped flattening a twisted group when
  * `regraphChangedLeaves` landed; reopening the page still did, because

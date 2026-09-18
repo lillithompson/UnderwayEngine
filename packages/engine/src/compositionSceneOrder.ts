@@ -1,7 +1,7 @@
 /**
  * `state.sceneOrder` — the one back→front paint order.
  *
- * Split out of `compositionOps.ts` in P7 (docs/transform-refactor-next.md
+ * Split out of `compositionOps.ts` in P7 (docs/transform-refactor.md
  * §4). A move only: `compositionOps` re-exports all of it, so no caller
  * changed.
  *

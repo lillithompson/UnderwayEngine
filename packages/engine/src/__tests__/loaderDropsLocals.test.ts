@@ -18,7 +18,7 @@
  * the transform cycle's memory of the authored pose (`transformCycleStep`),
  * and a figure needs it to come back round to where it started.
  *
- * Settles §5 items 1 and 2 of docs/transform-refactor-next.md.
+ * Settles the stale-cache findings in docs/transform-refactor.md §3.7.
  */
 
 import * as fs from 'fs';

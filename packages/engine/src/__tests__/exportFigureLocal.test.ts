@@ -1,6 +1,6 @@
 /**
- * The export draws a FIGURE through its matrix (§5 item 6 of
- * docs/transform-refactor-next.md — the last leaf in `compositionSVGCore`
+ * The export draws a FIGURE through its matrix (docs/transform-refactor.md
+ * §9.4 — the last leaf in `compositionSVGCore`
  * that was still posed off its legacy fields, markup and frame both).
  *
  * Two things have to hold at once and they pull against each other:

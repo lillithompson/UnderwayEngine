@@ -1,6 +1,6 @@
 /**
- * The one copy of a figure's art layout (§5 item 7 of
- * docs/transform-refactor-next.md).
+ * The one copy of a figure's art layout (the duplicate-code sweep,
+ * docs/transform-refactor.md §4, P7).
  *
  * The un-swap, the uniform scale, the centre and the mirrors-then-rotate
  * order used to be written out three times — once in the exporter's markup,

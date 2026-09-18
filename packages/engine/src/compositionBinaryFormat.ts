@@ -498,7 +498,7 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      rectangle around a tilted shape, and the group's own outline was
 //      lost. Older files set no bit and read back with no angle, which is
 //      exactly what they have always meant. See GroupNode.angleDeg and
-//      docs/transform-refactor-next.md §5 item 5.
+//      docs/transform-refactor.md §3.7.
 const FORMAT_VERSION = 61;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
