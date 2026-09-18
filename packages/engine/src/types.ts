@@ -1769,7 +1769,28 @@ export type CompUndoOp =
       newResolutionX: number; newResolutionY: number;
       oldCellWidth?: number; oldCellHeight?: number;
       newCellWidth?: number; newCellHeight?: number }
-  | { op: 'groupFigures'; figureIds: string[]; groupId: string; groupName: string; childGroupIds?: string[]; isFrame?: boolean }
+  /** Bind `figureIds` (+ `childGroupIds`) into the group `groupId`.
+   *
+   *  The group is normally born at the IDENTITY, which is what plain
+   *  grouping wants: the members keep the world poses they already had.
+   *  The `saved*` fields override that and mint it AT a pose, for the two
+   *  callers that are reproducing a group rather than making a new one —
+   *  undoing an ungroup, and DUPLICATING a group. Both clone members at
+   *  their world poses, so a copy whose group came back square would
+   *  reinterpret every one of them in the wrong frame.
+   *
+   *  `savedAngleDeg` is not optional decoration: since v61 a group's turn
+   *  lives in TWO channels — `savedRotation`, the quarter that swaps the
+   *  scale axes, and this residual, which does not. Carrying one and not
+   *  the other is the same bug wearing a different angle. The names match
+   *  `ungroupFigures`' so the pair reads as one. */
+  | { op: 'groupFigures'; figureIds: string[]; groupId: string; groupName: string;
+      childGroupIds?: string[]; isFrame?: boolean;
+      savedTranslateX?: number; savedTranslateY?: number;
+      savedScaleX?: number; savedScaleY?: number;
+      savedRotation?: 0 | 90 | 180 | 270;
+      savedAngleDeg?: number;
+      savedMirrorH?: boolean; savedMirrorV?: boolean }
   | { op: 'ungroupFigures'; figureIds: string[]; groupId: string; groupName: string; childGroupIds?: string[];
       /** Saved transform so undo can restore the group at its pre-ungroup state
        *  instead of recreating it at identity. */

@@ -593,7 +593,16 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
       // it so that selectedNodeBBox falls back to the segment AABB, which
       // is always correct.  Keep it only when staying in the same group
       // (same coordinate space).
-      const keepCreationBox = newGroupId === svg.groupId;
+      // The creation box is in the object's own group's LOCAL space, so
+      // it cannot be carried into a group with a different frame — the
+      // selection box would come out turned or mirrored against the
+      // segments. It CAN be carried when the space is unchanged: the same
+      // group, or a zero offset into a pose-identical copy of it (group
+      // duplication puts the offset on the group, not on each member).
+      // Dropping it otherwise falls back to the segment AABB, which for a
+      // turned path is bigger than the path — that fallback is the whole
+      // reason a duplicated member must not be re-spelled at all.
+      const keepCreationBox = newGroupId === svg.groupId || (dx === 0 && dy === 0);
       return {
         ...svg,
         id: newId,
@@ -762,12 +771,41 @@ export interface BuildDuplicateOpsResult {
  * only sub-groups â€” without it, child duplicates lose their parent and
  * end up as root nodes.
  */
+/** A source group's pose as the `saved*` fields a `groupFigures` op
+ *  carries, or `{}` for a group standing at the identity (nothing to say,
+ *  and the op stays as small as it was). Reproducing a group means
+ *  reproducing every channel — see the op's own doc comment. */
+function groupPoseFields(g: GroupNode | undefined): {
+  savedTranslateX?: number; savedTranslateY?: number;
+  savedScaleX?: number; savedScaleY?: number;
+  savedRotation?: 0 | 90 | 180 | 270; savedAngleDeg?: number;
+  savedMirrorH?: boolean; savedMirrorV?: boolean;
+} {
+  if (!g) return {};
+  // Always stated, the identity included. Saying the pose is also what
+  // marks the op as REPRODUCING a group rather than making one, and that
+  // is what gets the group built before its members arrive — so the
+  // fields are not an optimisation to skip when they happen to be blank.
+  return {
+    savedTranslateX: g.translateX ?? 0, savedTranslateY: g.translateY ?? 0,
+    savedScaleX: g.scaleX ?? 1, savedScaleY: g.scaleY ?? 1,
+    savedRotation: g.rotation ?? 0,
+    ...(g.angleDeg !== undefined ? { savedAngleDeg: g.angleDeg } : null),
+    savedMirrorH: !!g.mirrorH, savedMirrorV: !!g.mirrorV,
+  };
+}
+
 export function buildDuplicateOps(
   state: CompositionState,
   selectedIds: Iterable<string>,
   options?: BuildDuplicateOpsOptions,
 ): BuildDuplicateOpsResult {
+  // Group ops are emitted BEFORE member ops (see the return): a member
+  // whose group already exists is read into the graph in that group's
+  // frame; one that lands at the root first is re-spelled there, and a
+  // turned path re-spelled at the root becomes its own bounding box.
   const ops: CompUndoEntry = [];
+  const memberOps: CompUndoEntry = [];
   const newIds: string[] = [];
   // original groupId â†’ new groupId. Multiple selected members of the
   // same source group land in one new group rather than each spawning
@@ -807,7 +845,7 @@ export function buildDuplicateOps(
       ? options.mintItemId(ref.kind, ref.item.id)
       : adapter.mintId();
     const dup = adapter.cloneWithOffset(ref.item, dupOffset, dupOffset, newItemId, newGroupId);
-    ops.push({
+    memberOps.push({
       op: 'placeObject',
       kind: ref.kind,
       item: adapter.cloneItem(dup) as CompositionFigure | SVGObject | ImageObject | TextObject,
@@ -869,6 +907,16 @@ export function buildDuplicateOps(
         // Preserve Figma-style frame-ness so a duplicated frame stays a frame
         // (clips + fixed export region), not a plain group.
         ...(origGroup?.isFrame ? { isFrame: true as const } : null),
+        // …and the group's own POSE. The members above were cloned at
+        // their WORLD poses, which are only what they are because of this
+        // transform; a copy whose group came back at the identity reads
+        // every one of them in a frame that never existed, and draws them
+        // turned and resized against the original it was copied from.
+        // All SEVEN channels or none: a group's turn lives in `rotation`
+        // (the quarter, which swaps the scale axes) AND `angleDeg` (the
+        // residual, which does not) since v61, and dropping either one is
+        // the same bug at a different angle.
+        ...groupPoseFields(origGroup),
       });
       emitted.add(newGroupId);
       progress = true;
@@ -876,7 +924,7 @@ export function buildDuplicateOps(
     if (!progress) break; // cycle guard
   }
 
-  return { ops, newIds, groupIdMap };
+  return { ops: [...ops, ...memberOps], newIds, groupIdMap };
 }
 
 /** Build a `removeObject` undo op for the item at `id`. Returns null
@@ -3807,7 +3855,19 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
       if (!existing) {
         groups = [
           ...groups,
-          { id: op.groupId, name: op.groupName, translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false, ...(op.isFrame ? { isFrame: true as const } : null) },
+          // A group being REPRODUCED (an ungroup undone, a group
+          // duplicated) is born at its saved pose; a group newly made is
+          // born at the identity, which is what the member snapshots
+          // above assume when they take world for local.
+          {
+            id: op.groupId, name: op.groupName,
+            translateX: op.savedTranslateX ?? 0, translateY: op.savedTranslateY ?? 0,
+            scaleX: op.savedScaleX ?? 1, scaleY: op.savedScaleY ?? 1,
+            rotation: op.savedRotation ?? 0,
+            ...(op.savedAngleDeg !== undefined ? { angleDeg: op.savedAngleDeg } : null),
+            mirrorH: op.savedMirrorH ?? false, mirrorV: op.savedMirrorV ?? false,
+            ...(op.isFrame ? { isFrame: true as const } : null),
+          },
         ];
       }
       // Re-cluster members in sceneOrder so the new group is contiguous.

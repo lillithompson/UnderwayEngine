@@ -200,7 +200,25 @@ export function buildGroup(
   opts?: { isFrame?: boolean; transform?: LocalTransform },
 ): SceneEntry {
   const members = nodeIds.filter((id) => graph.nodes.get(id));
-  if (members.length === 0) return [];
+  // An EMPTY group is normally nothing to make. The exception is a group
+  // being reproduced ahead of its members — what duplicating a group does,
+  // so that each member is read into the graph in its group's frame rather
+  // than at the root and re-spelled on the way in. It is identified by
+  // having a transform to be born at; plain grouping never asks for one.
+  if (members.length === 0) {
+    return opts?.transform
+      ? [{
+          op: 'addNode',
+          node: {
+            id: groupId, kind: 'group', name: groupName,
+            parentId: undefined, children: [], transform: opts.transform,
+            ...(opts.isFrame ? { isFrame: true } : {}),
+          },
+          parentId: undefined,
+          index: graph.roots.length,
+        }]
+      : [];
+  }
 
   // The group lands under the members' deepest common ancestor, and where
   // the back-most of them sat, so paint order holds. Taking the first

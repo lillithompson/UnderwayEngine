@@ -146,6 +146,46 @@ function rotateAboutOwnCentre(
   );
 }
 
+/**
+ * The pose a `groupFigures` / `ungroupFigures` op asks its group to be
+ * born at, as `buildGroup` options — or `{}` when it says nothing, which
+ * leaves the group at the identity.
+ *
+ * Both ops spell the pose the same way, in the legacy group's own six
+ * fields plus the v61 residual `angleDeg`. Reading them in one place is
+ * deliberate: the bug this exists to prevent is carrying SOME of the
+ * channels, and a second copy of this list is how one gets dropped.
+ *
+ * `strict` is for the ungroup's undo, which must rebuild the group even
+ * when every saved field happens to be the identity's value; a
+ * `groupFigures` with no saved fields at all is ordinary grouping and
+ * must stay at the identity.
+ */
+function savedGroupTransform(
+  op: {
+    savedTranslateX?: number; savedTranslateY?: number;
+    savedScaleX?: number; savedScaleY?: number;
+    savedRotation?: 0 | 90 | 180 | 270; savedAngleDeg?: number;
+    savedMirrorH?: boolean; savedMirrorV?: boolean;
+  },
+  strict = false,
+): { transform?: LocalTransform } {
+  const said = strict || op.savedTranslateX !== undefined || op.savedTranslateY !== undefined
+    || op.savedScaleX !== undefined || op.savedScaleY !== undefined
+    || op.savedRotation !== undefined || op.savedAngleDeg !== undefined
+    || op.savedMirrorH !== undefined || op.savedMirrorV !== undefined;
+  if (!said) return {};
+  return {
+    transform: groupFieldsToTransform({
+      translateX: op.savedTranslateX ?? 0, translateY: op.savedTranslateY ?? 0,
+      scaleX: op.savedScaleX ?? 1, scaleY: op.savedScaleY ?? 1,
+      rotation: op.savedRotation ?? 0,
+      angleDeg: op.savedAngleDeg,
+      mirrorH: op.savedMirrorH ?? false, mirrorV: op.savedMirrorV ?? false,
+    }),
+  };
+}
+
 // ── Translation ────────────────────────────────────────────────────────
 
 /**
@@ -209,7 +249,16 @@ export function legacyOpToSceneOps(
         graph,
         [...op.figureIds, ...(op.childGroupIds ?? [])],
         op.groupId, op.groupName,
-        op.isFrame ? { isFrame: true } : undefined,
+        {
+          ...(op.isFrame ? { isFrame: true } : {}),
+          // A group REPRODUCED rather than newly made comes back at its
+          // pose, so its members keep the world poses they were cloned
+          // (or ungrouped) at — `buildGroup` computes their locals against
+          // the group as it will actually be. Born square instead, it
+          // would read every one of them in the wrong frame. Plain
+          // grouping sends no `saved*` and still lands at the identity.
+          ...(savedGroupTransform(op)),
+        },
       );
 
     case 'ungroupFigures':
@@ -390,13 +439,7 @@ export function invertOnGraph(
       op.groupId, op.groupName,
       {
         ...(op.savedIsFrame ? { isFrame: true } : {}),
-        transform: groupFieldsToTransform({
-          translateX: op.savedTranslateX ?? 0, translateY: op.savedTranslateY ?? 0,
-          scaleX: op.savedScaleX ?? 1, scaleY: op.savedScaleY ?? 1,
-          rotation: op.savedRotation ?? 0,
-          angleDeg: op.savedAngleDeg,
-          mirrorH: op.savedMirrorH ?? false, mirrorV: op.savedMirrorV ?? false,
-        }),
+        ...savedGroupTransform(op, true),
       },
     );
   }
