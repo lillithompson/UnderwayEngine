@@ -13,6 +13,7 @@
 import { BlendMode, CompositionFigure, RGBColor } from './types';
 import { SVG_UNITS_PER_L0_CELL, SVG_STROKE_WIDTH, multiplyStrokeWidths, maxStrokeWidth } from './svgExport';
 import { blendColor, recolorPixel } from './colorBlend';
+import { figureArtLayout, unswapQuarter, uniformArtScale } from './figureArtLayout';
 
 export interface CachedFigureSVG {
   /** Raw SVG element strings (no document wrapper) */
@@ -33,11 +34,6 @@ export function buildFigureSVGContent(fig: CompositionFigure, cached: CachedFigu
   const mirrorH = fig.mirrorH ?? false;
   const mirrorV = fig.mirrorV ?? false;
 
-  // When rotation is 90° or 270°, the reducer swaps cellWidth/cellHeight
-  // for bounding-box positioning. The cached SVG content is always in its
-  // original (unrotated) orientation, so we un-swap to get the content size.
-  const rotSwapped = rotation === 90 || rotation === 270;
-
   const quadList = fig.quads
     ? fig.quads.map(q => ({
         cellX: fig.cellX + q.offsetX,
@@ -51,30 +47,11 @@ export function buildFigureSVGContent(fig: CompositionFigure, cached: CachedFigu
 
   for (let qi = 0; qi < quadList.length; qi++) {
     const quad = quadList[qi];
-    // Center of the quad's bounding box (in rotated cell space)
-    const qCx = (quad.cellX + quad.cellWidth / 2) * U;
-    const qCy = (quad.cellY + quad.cellHeight / 2) * U;
-
-    // Content dimensions: un-swap for 90°/270° to get original orientation
-    const contentW = (rotSwapped ? quad.cellHeight : quad.cellWidth) * U;
-    const contentH = (rotSwapped ? quad.cellWidth : quad.cellHeight) * U;
-
-    // Scale from cached SVG source to content size.
-    // Use uniform scaling to prevent skewing when the figure's aspect
-    // ratio doesn't match the cell bounds (e.g. a 5×3 figure in a 2×1 cell).
-    const rawScaleX = contentW / cached.svgWidth;
-    const rawScaleY = contentH / cached.svgHeight;
-
-    const EPSILON = 1e-9;
-    const uniformNeeded = Math.abs(rawScaleX - rawScaleY) > EPSILON;
-    const scaleVal = uniformNeeded ? Math.min(rawScaleX, rawScaleY) : rawScaleX;
-
-    const scaledW = cached.svgWidth * scaleVal;
-    const scaledH = cached.svgHeight * scaleVal;
-
-    // Center content within the content frame.
-    const posX = qCx - scaledW / 2;
-    const posY = qCy - scaledH / 2;
+    // Un-swap the quarter, scale the art in uniformly, centre it: the shared
+    // four-step layout, minus the turn, which the transform list below spells
+    // in SVG rather than applying to points.
+    const { scale: scaleVal, posX, posY, cx: qCx, cy: qCy } =
+      figureArtLayout(quad, rotation, cached, U);
 
     const scaleAttr = scaleVal === 1 ? '' : ` scale(${scaleVal})`;
     const posTransform = `translate(${posX},${posY})${scaleAttr}`;
@@ -282,21 +259,17 @@ export function buildBlockSVGContent(
   const mirrorH = fig.mirrorH ?? false;
   const mirrorV = fig.mirrorV ?? false;
 
-  // When rotation is 90°/270°, the reducer swaps cellWidth/cellHeight for bounding-box
-  // positioning. Un-swap to get the original content dimensions before applying SVG rotation.
-  const rotSwapped = rotation === 90 || rotation === 270;
-
   const tileW = (fig.tileWidthL0 ?? fig.cellWidth) * U;
   const tileH = (fig.tileHeightL0 ?? fig.cellHeight) * U;
-  const regionW = (rotSwapped ? fig.cellHeight : fig.cellWidth) * U;
-  const regionH = (rotSwapped ? fig.cellWidth : fig.cellHeight) * U;
+  // The same un-swap every figure takes — the region the tiles fill is the
+  // stored box read back in the art's own orientation.
+  const [unswappedW, unswappedH] = unswapQuarter(fig.cellWidth, fig.cellHeight, rotation);
+  const regionW = unswappedW * U;
+  const regionH = unswappedH * U;
 
-  // Scale from cached SVG source to tile size
-  const scaleX = tileW / cached.svgWidth;
-  const scaleY = tileH / cached.svgHeight;
-  const EPSILON = 1e-9;
-  const uniformNeeded = Math.abs(scaleX - scaleY) > EPSILON;
-  const scaleVal = uniformNeeded ? Math.min(scaleX, scaleY) : scaleX;
+  // Same uniform rule as a plain figure, but fitted to ONE TILE rather than
+  // to the whole region — that is the only thing a block lays out differently.
+  const scaleVal = uniformArtScale(tileW, tileH, cached.svgWidth, cached.svgHeight);
 
   // Stroke compensation (same logic as buildFigureSVGContent)
   const strokeFactor = (scaleVal !== 1 && scaleVal > 0)

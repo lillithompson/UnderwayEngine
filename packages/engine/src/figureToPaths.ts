@@ -10,6 +10,7 @@
 import { CompositionFigure, PathSegment, RGBColor, SVGObject } from './types';
 import { getFigureSVGSync, CachedFigureSVG } from './svgFigureCache';
 import { blendColor, recolorPixel } from './colorBlend';
+import { figureArtLayout, figureArtPoint, rotateMirrorAround } from './figureArtLayout';
 
 export interface ColoredSegments {
   color: RGBColor;
@@ -109,10 +110,9 @@ export function bakeFigureToColoredSegments(fig: CompositionFigure): ColoredSegm
 }
 
 /**
- * Rotate (CW) and mirror a single PathSegment around (cx, cy). Mirrors are
- * applied before rotation, matching the SVG transform order used by
- * buildFigureSVGContent and buildBlockSVGContent (rightmost-first applied
- * to the point).
+ * Rotate (CW) and mirror a single PathSegment around (cx, cy), in the one
+ * mirrors-then-rotate order every reader of a figure's art shares
+ * ({@link rotateMirrorAround}).
  */
 export function transformSegmentAroundCenter(
   seg: PathSegment,
@@ -121,16 +121,8 @@ export function transformSegmentAroundCenter(
   mirrorH: boolean,
   mirrorV: boolean,
 ): PathSegment {
-  const t = (p: readonly [number, number]): [number, number] => {
-    let x = p[0] - cx;
-    let y = p[1] - cy;
-    if (mirrorV) y = -y;
-    if (mirrorH) x = -x;
-    if (rotation === 90)       { const k = x; x = -y; y = k; }
-    else if (rotation === 180) { x = -x; y = -y; }
-    else if (rotation === 270) { const k = x; x = y; y = -k; }
-    return [x + cx, y + cy];
-  };
+  const t = (p: readonly [number, number]): [number, number] =>
+    rotateMirrorAround(p[0], p[1], cx, cy, rotation, mirrorH, mirrorV);
   if (seg.kind === 'arc') {
     return { kind: 'arc', start: t(seg.start), end: t(seg.end), center: t(seg.center) };
   }
@@ -142,46 +134,18 @@ export function convertCachedSVGToColoredSegments(
   fig: CompositionFigure,
 ): ColoredSegments[] {
   const byColor = new Map<string, ColoredSegments>();
-  const svgW = cached.svgWidth;
-  const svgH = cached.svgHeight;
   const rotation = fig.rotation ?? 0;
   const mirrorH = fig.mirrorH ?? false;
   const mirrorV = fig.mirrorV ?? false;
 
-  // Match buildFigureSVGContent: cellWidth/cellHeight reflect the
-  // post-rotation bounding box for 90°/270°, so un-swap to get the
-  // original content size, then rotate around the bbox center to land
-  // in the swapped bbox.
-  const rotSwapped = rotation === 90 || rotation === 270;
-  const contentW = rotSwapped ? fig.cellHeight : fig.cellWidth;
-  const contentH = rotSwapped ? fig.cellWidth : fig.cellHeight;
+  // The same layout the exporter's markup takes, emitted in L0 cells rather
+  // than SVG units — hence `unitsPerCell` 1. Unlike the exporter this bakes
+  // the figure's whole box, never its `quads`.
+  const layout = figureArtLayout(fig, rotation, cached, 1);
 
-  // Uniform aspect-preserving scale (matches rendering — prevents skew
-  // when the figure's source aspect doesn't match its placement bounds).
-  const rawSx = contentW / svgW;
-  const rawSy = contentH / svgH;
-  const scale = Math.abs(rawSx - rawSy) > 1e-9 ? Math.min(rawSx, rawSy) : rawSx;
-
-  const qCx = fig.cellX + fig.cellWidth / 2;
-  const qCy = fig.cellY + fig.cellHeight / 2;
-  const scaledW = svgW * scale;
-  const scaledH = svgH * scale;
-  const posX = qCx - scaledW / 2;
-  const posY = qCy - scaledH / 2;
-
-  // SVG units → L0-cell space, then apply mirrors and rotation around
-  // (qCx, qCy). SVG transform order is t1 t2 ... tN with rightmost
-  // applied first to the point: mirrorV → mirrorH → rotate → translate.
-  const toL0 = (sx: number, sy: number): [number, number] => {
-    let x = sx * scale + posX - qCx;
-    let y = sy * scale + posY - qCy;
-    if (mirrorV) y = -y;
-    if (mirrorH) x = -x;
-    if (rotation === 90)       { const t = x; x = -y; y = t; }
-    else if (rotation === 180) { x = -x; y = -y; }
-    else if (rotation === 270) { const t = x; x = y; y = -t; }
-    return [x + qCx, y + qCy];
-  };
+  /** SVG units → L0-cell space. */
+  const toL0 = (sx: number, sy: number): [number, number] =>
+    figureArtPoint(layout, sx, sy, rotation, mirrorH, mirrorV);
 
   function getColorGroup(el: string): ColoredSegments {
     const { color, isFill } = parseElementPaint(el);
