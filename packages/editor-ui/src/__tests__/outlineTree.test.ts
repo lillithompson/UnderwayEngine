@@ -1,4 +1,5 @@
 import {
+  collapsedGroups,
   computeOutlineTree,
   flattenTree,
   treeToSceneOrder,
@@ -60,6 +61,44 @@ describe('flattenTree', () => {
     const rows = flattenTree(tree, new Set(['G']));
     expect(rows.map((r) => r.id)).toEqual(['G']);
     expect(rows[0].hasChildren).toBe(true); // chevron still shown
+  });
+});
+
+// A GROUP STARTS CLOSED. The panel holds the set of groups the reader has
+// OPENED, and this reads it back as the set that is closed — so a group
+// just made is closed by simply not being in the set, with no frame in
+// which it is drawn open and nothing to notice it is new.
+describe('collapsedGroups', () => {
+  //        G
+  //        ├─ a
+  //        └─ H
+  //           └─ c
+  const objects = mapOf(
+    group('G'), leaf('a', 'G'), group('H', 'G'), leaf('c', 'H'), leaf('top'),
+  );
+  const tree = computeOutlineTree(objects, ['a', 'c', 'top']);
+
+  it('closes every group when nothing has been opened — a new group included', () => {
+    expect(collapsedGroups(tree, new Set())).toEqual(new Set(['G', 'H']));
+    // …and the flatten that reads it shows the closed group and no more.
+    expect(flattenTree(tree, collapsedGroups(tree, new Set())).map((r) => r.id))
+      .toEqual(['top', 'G']);
+  });
+
+  it('leaves a group the reader opened open, and closes it again when they close it', () => {
+    expect(collapsedGroups(tree, new Set(['G']))).toEqual(new Set(['H']));
+    expect(flattenTree(tree, collapsedGroups(tree, new Set(['G']))).map((r) => r.id))
+      .toEqual(['top', 'G', 'H', 'a']);
+    // Nested: opening both walks the whole way down.
+    expect(collapsedGroups(tree, new Set(['G', 'H']))).toEqual(new Set());
+    expect(flattenTree(tree, collapsedGroups(tree, new Set(['G', 'H']))).map((r) => r.id))
+      .toEqual(['top', 'G', 'H', 'c', 'a']);
+    // Closing G again puts it back, and H's own state is untouched.
+    expect(collapsedGroups(tree, new Set(['H']))).toEqual(new Set(['G']));
+  });
+
+  it('never names a leaf, whatever the opened set says', () => {
+    expect(collapsedGroups(tree, new Set(['a', 'top']))).toEqual(new Set(['G', 'H']));
   });
 });
 

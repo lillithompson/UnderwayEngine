@@ -118,6 +118,37 @@ export function flattenTree(
 }
 
 /**
+ * Which groups are CLOSED, given the set the reader has opened.
+ *
+ * A group starts closed. A group is made to put things away, and one that
+ * springs open with its contents spread down the outline undoes the
+ * tidying in the same breath as it is done — so the panel remembers what
+ * has been OPENED rather than what has been closed, and a group nobody has
+ * opened yet (a group just made, above all) is simply not in that set.
+ *
+ * That way there is no moment at which a new group is drawn open: the
+ * default falls out of the state's shape rather than being corrected after
+ * the fact. A group the reader opens stays open for as long as the outline
+ * lives, and one they close goes back to closed — the remembering is the
+ * `expanded` set, and this is only the reading of it {@link flattenTree}
+ * wants.
+ *
+ * Leaves are never in the result: only a group can be closed.
+ */
+export function collapsedGroups(
+  roots: readonly OutlineTreeNode[],
+  expanded: ReadonlySet<string>,
+): Set<string> {
+  const closed = new Set<string>();
+  const walk = (node: OutlineTreeNode) => {
+    if (node.isGroup && !expanded.has(node.id)) closed.add(node.id);
+    for (const child of node.children) walk(child);
+  };
+  for (const root of roots) walk(root);
+  return closed;
+}
+
+/**
  * Serialize the (full, collapse-independent) tree back to a back→front
  * `sceneOrder` of leaf ids. Groups are not emitted (they aren't in sceneOrder).
  * Contiguous by construction: each group's leaves form one run.

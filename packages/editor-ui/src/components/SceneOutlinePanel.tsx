@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { SceneOutlineModel } from '../adapter';
-import { computeOutlineTree, flattenTree, reparentToSceneOrder, FlatOutlineRow } from '../logic/outlineTree';
+import { collapsedGroups, computeOutlineTree, flattenTree, reparentToSceneOrder, FlatOutlineRow } from '../logic/outlineTree';
 import { computeDropTarget } from '../logic/dragReorder';
 import {
   DOUBLE_TAP_MS,
@@ -126,12 +126,19 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
 
   const iconFor = model.iconForKind ?? defaultIconForKind;
 
-  // Expand/collapse: the set of COLLAPSED group ids. Default empty ⇒ everything
-  // expanded (the point is to reveal contents). Panel-local, id-keyed like
-  // `renaming`, so it survives the shell rebuilding the model each render.
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  // Expand/collapse: the set of OPENED group ids, and every other group is
+  // closed. Held this way round so a group STARTS closed — a group is made
+  // to put things away, and a new one springing open with its contents
+  // spread down the outline undoes the tidying as it is done. Nothing has
+  // to notice a group is new and correct it afterwards: it is simply not in
+  // the set yet, so there is no frame in which it is drawn open.
+  //
+  // Panel-local and id-keyed like `renaming`, so it survives the shell
+  // rebuilding the model each render: a group the reader opens stays open,
+  // and one they close stays closed.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const toggleCollapse = useCallback((id: string) => {
-    setCollapsed((prev) => {
+    setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
@@ -142,6 +149,9 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
     () => computeOutlineTree(model.objects, model.sceneOrder),
     [model.objects, model.sceneOrder],
   );
+  // …read back as the set of CLOSED groups, which is what the flatten and
+  // the chevrons want (outlineTree.collapsedGroups).
+  const collapsed = useMemo(() => collapsedGroups(tree, expanded), [tree, expanded]);
   const rows = useMemo(() => flattenTree(tree, collapsed), [tree, collapsed]);
 
   // ── Drag-to-reparent ───────────────────────────────────────────────
