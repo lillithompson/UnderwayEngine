@@ -40,7 +40,12 @@ describe('the slider value box', () => {
     // doing), so the row supplies one: without it a typed value could only
     // be finished by tapping away. The field keeps the number pad — typing
     // a count on a QWERTY keyboard is the wrong trade.
-    expect(bar).toContain('keyboardType="numeric"');
+    // The DECIMAL pad, not the plain number pad: every value behind this
+    // box is a real number and the field already parses one, but the plain
+    // pad has no separator on it — so 9.5 could not be typed at all. The
+    // decimal pad is that pad with the separator added.
+    expect(bar).toContain('keyboardType="decimal-pad"');
+    expect(bar).not.toContain('keyboardType="numeric"');
     expect(bar).toContain('accessibilityLabel="Done"');
     expect(bar).toContain('onPress={submit}');
     // Enter, where a keyboard has one, is the same act.

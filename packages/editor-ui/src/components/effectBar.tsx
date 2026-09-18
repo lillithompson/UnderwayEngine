@@ -170,6 +170,15 @@ export function EffectButton({ label, icon = 'plus', onPress }: {
  *  / done, and an unfinished edit is abandoned, not guessed at (the toolbar
  *  hex field's rule).
  *
+ *  The pad is the DECIMAL one. Every value behind this box is a real
+ *  number — a width in points, a scale factor, an offset in cells — and the
+ *  plain number pad has no decimal separator on it, so a field that parses
+ *  9.5 perfectly well could not be told 9.5: the only way to a fraction was
+ *  the slider, at whatever step it happened to land on. Nothing is lost by
+ *  asking for the decimal pad, which is the number pad with the separator
+ *  on it (neither carries a minus sign, so a negative offset is typed the
+ *  way it always was, on a hardware keyboard).
+ *
  *  While the field is armed a DONE chip stands beside it. The field wants
  *  the number pad — typing a count on a QWERTY keyboard is the wrong
  *  trade — and iOS's number pad carries no return key, while the WebView
@@ -228,7 +237,7 @@ function SliderReadout({ text, commit }: { text: string; commit: (n: number) => 
           onChangeText={setDraft}
           onBlur={finish}
           onSubmitEditing={submit}
-          keyboardType="numeric"
+          keyboardType="decimal-pad"
           autoFocus
           selectTextOnFocus
           returnKeyType="done"
