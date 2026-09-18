@@ -328,15 +328,11 @@ describe('a scene survives the round trip', () => {
     }));
   });
 
-  test('a freely-turned svg under a NON-uniform group scale is the one case that differs', () => {
-    // Decided, not accidental (plan Q2: render the shear).
-    //
-    // The legacy model turns an svg by rotating its already-scaled path
-    // about the path's centre. The graph turns the node and then lets the
-    // group scale what comes out — so a 33-degree line inside a group
-    // squashed 2x by 0.5x comes out sheared, the way it would in any
-    // editor that composes transforms. The two agree whenever the group's
-    // scale is uniform, which is every other case in this file.
+  test('a freely-turned svg under a NON-uniform group scale round-trips too', () => {
+    // The one case that used to differ. A group scaled off its axes
+    // shears anything turned inside it, and no `LocalTransform` has a
+    // term for a shear — so the member's local pose could not say it and
+    // reading the arrays back dropped it.
     const state = makeState({
       svgObjects: [svg({
         id: 'svg_1', groupId: 'g1', segments: [line([2, 2], [5, 9])],
@@ -345,9 +341,16 @@ describe('a scene survives the round trip', () => {
       groups: [group({ id: 'g1', scaleX: 2, scaleY: 0.5 })],
       sceneOrder: ['svg_1'],
     });
-    expect(roundTripDiff(state)).not.toBeNull();
+    // It used to differ, and that was the bug: the graph re-sheared what
+    // the arrays already held, so reopening a page moved its members.
+    // Q2 is about what the composition RENDERS — a group pulled off
+    // square still shears what is turned inside it, live, and
+    // compositionExportGraph pins that. Reading a page back in is a
+    // different question, and its answer has to be "what it said".
+    expectRoundTrips(state);
 
-    // Uniformly scaled, the same scene round-trips exactly.
+    // Uniformly scaled, the same scene round-trips exactly — as it always
+    // did, there being no shear to lose.
     expectRoundTrips({
       ...state,
       groups: [group({ id: 'g1', scaleX: 2, scaleY: 2 })],

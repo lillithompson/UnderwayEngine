@@ -397,12 +397,17 @@ describe('the svg kind draws its path in its own space', () => {
     expect(Number(bw) / U).toBeCloseTo(8 * s, 3);
     expect(Number(bh) / U).toBeCloseTo(4 * s, 3);
 
-    // From the arrays alone the box is the upright rectangle the member's
-    // corners fit in, turned by its own angle — and it is NOT that quad.
+    // …and the arrays alone now answer the same quad, which is what
+    // opening the saved page has to do. The lean cannot live in the
+    // member's `LocalTransform` — no such term — so reading the arrays
+    // back used to drop it and hand back the upright rectangle turned by
+    // the member's own angle, a member that visibly moved on reopen.
+    // `leafNodeFromLegacy` folds the part the transform cannot say into
+    // the PATH, where points carry it exactly.
     const fromArrays = (await generateCompositionSVGCore(
       inputsFor({ ...leaned, graph: undefined }),
     ))!;
-    expect(() => expectQuadsClose(borderQuad(fromArrays), want)).toThrow();
+    expectQuadsClose(borderQuad(fromArrays), want);
   });
 });
 

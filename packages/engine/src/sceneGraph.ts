@@ -774,7 +774,6 @@ export function leafNodeFromLegacy(
     const unturnBox = (b: Bbox): Bbox => (baked === 0
       ? { x: b.x - c[0], y: b.y - c[1], width: b.width, height: b.height }
       : matApplyBbox(toOwn, b));
-    const localSegments = mapSegments(segments, toOwn);
     const spun = matMul(
       matMul(
         { ...MAT_IDENTITY, e: c[0], f: c[1] },
@@ -782,21 +781,40 @@ export function leafNodeFromLegacy(
       ),
       localMatrix({ ...LOCAL_IDENTITY, rotationDeg: baked }),
     );
+    // The local pose we WANT, and the one a `LocalTransform` can say.
+    //
+    // They differ by a SHEAR, and only ever by a shear: a group scaled
+    // off-square pulls anything turned inside it out of square, and
+    // translate/rotate/scale/mirror has no term for that. Decomposing
+    // drops it — which is a member that visibly moves the moment the
+    // graph is read back in from the arrays (opening a saved file).
+    //
+    // A path can carry what the transform cannot, because it is POINTS.
+    // So the dropped part is folded into the geometry, where it is
+    // exact, and the transform keeps the angle the editor seats its
+    // controls on. Identity whenever there is no shear, which is every
+    // case but this one — so nothing else moves by a hair.
+    const wanted = matMul(toLocal, spun);
+    const said = decomposeMatrix(wanted);
+    const residual = matMul(safeInvert(localMatrix(said)), wanted);
+    const sheared = !isIdentityish(residual);
+    const toOwnExact = sheared ? matMul(residual, toOwn) : toOwn;
+    const localSegments = mapSegments(segments, toOwnExact);
     return {
       id: leaf.id, kind: 'svg', name: leaf.name, parentId,
-      transform: decomposeMatrix(matMul(toLocal, spun)),
+      transform: said,
       localSegments,
       ...(svg.cellWidth !== undefined && svg.cellHeight !== undefined ? {
         // Un-turned, the stored rectangle is no longer the tight one and
         // the path's own bounds are: read the box off the geometry that
         // is now in its own frame.
-        localBox: baked === 0
+        localBox: baked === 0 && !sheared
           ? unturnBox({ x: svg.cellX, y: svg.cellY, width: svg.cellWidth, height: svg.cellHeight })
           : pathBbox(localSegments),
       } : {}),
-      ...(svg.subpaths ? { localSubpaths: mapSubpaths(svg.subpaths, toOwn) } : {}),
+      ...(svg.subpaths ? { localSubpaths: mapSubpaths(svg.subpaths, toOwnExact) } : {}),
       ...(svg.creationBox ? {
-        localCreationBox: unturnBox({
+        localCreationBox: (sheared ? (b: Bbox) => matApplyBbox(toOwnExact, b) : unturnBox)({
           x: svg.creationBox.minX, y: svg.creationBox.minY,
           width: svg.creationBox.width, height: svg.creationBox.height,
         }),
@@ -858,6 +876,17 @@ export function groupFieldsToTransform(g: {
  *  than throwing while loading someone's page. */
 function safeInvert(m: Mat2D): Mat2D {
   try { return matInvert(m); } catch { return MAT_IDENTITY; }
+}
+
+/** Is this matrix the identity to within float noise? The tolerance is
+ *  loose on purpose: it decides whether a leaf is SHEARED, and a residual
+ *  that is only rounding must read as "no shear" so the ordinary path is
+ *  bit-for-bit what it was. */
+function isIdentityish(m: Mat2D): boolean {
+  const EPS = 1e-9;
+  return Math.abs(m.a - 1) < EPS && Math.abs(m.b) < EPS
+    && Math.abs(m.c) < EPS && Math.abs(m.d - 1) < EPS
+    && Math.abs(m.e) < EPS && Math.abs(m.f) < EPS;
 }
 
 /**
