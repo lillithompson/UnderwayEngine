@@ -255,6 +255,12 @@ const styles = StyleSheet.create({
   bare: { marginTop: SHEET_CONTENT_TOP },
   // The Remove line: right-aligned under the well, dim — a way out of the
   // effect, not one of its controls.
-  removeRow: { height: SHEET_REMOVE, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'flex-end', paddingHorizontal: 4 },
+  // Centred under the well, not tucked into its right corner. Remove is the
+  // one thing a page offers that is not one of its controls — it takes the
+  // page away — and a word alone in a corner read as a caption on whatever
+  // row happened to end above it. On the page's own centre line it reads as
+  // the page's own act, and it sits in the same place on every page that has
+  // one, whatever that page's last row looks like.
+  removeRow: { height: SHEET_REMOVE, flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', paddingHorizontal: 4 },
   removeLabel: { fontSize: 16, color: PANEL_INK_MUTED },
 });

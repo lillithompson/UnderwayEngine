@@ -85,10 +85,13 @@ describe('the sheet: a tab row over the well', () => {
     expect(SHEET).toContain('tab.toggled ? { backgroundColor: tab.tint ?? STATE_ACTIVE } : null,');
   });
 
-  it('puts Remove under the well, lower right, in place of the old trash', () => {
+  it('puts Remove under the well, on the page’s centre line, in place of the old trash', () => {
     expect(SHEET).toContain('<Text style={styles.removeLabel}>Remove</Text>');
     expect(SHEET).toContain('accessibilityLabel={remove.label}');
-    expect(SHEET).toMatch(/removeRow: \{[^}]*justifyContent: 'flex-end'/s);
+    // Centred, not tucked into the right corner: it sits in the same place
+    // on every page that has one, whatever that page's last row looks like.
+    expect(SHEET).toMatch(/removeRow: \{[^}]*justifyContent: 'center'/s);
+    expect(SHEET).not.toMatch(/removeRow: \{[^}]*justifyContent: 'flex-end'/s);
     // Only under a page — never under a bare tab row.
     expect(SHEET).toContain('{content != null && remove ? (');
     // …and the panel names it per page: the pages that can be removed or
