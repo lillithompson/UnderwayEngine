@@ -245,19 +245,35 @@ export function translate(tx: number, ty: number): Transform2D {
 // it flattened a twisted group and mis-signed a quarter-turned one's axes.
 
 /**
+ * The same rectangle as {@link Bbox}, in the cell spelling the legacy arrays,
+ * the geometry adapters and the gesture layer all take. It is declared HERE,
+ * in the module with no imports, because every layer that names it would
+ * otherwise declare its own — which is what happened: five copies, and
+ * `Bbox` ended up naming this shape in `sceneNodeGeometry` and the x/y/w/h
+ * one here, so a signature carrying both read as if it carried one type
+ * twice. `bboxToCells` / `bboxFromCells` below are the crossing.
+ *
+ * The host has its own declaration (`web/editor/resizeMath.CellBbox`) rather
+ * than importing this one, so that its pure resize leaf keeps zero imports;
+ * structural typing makes the two interchangeable at every call site.
+ */
+export interface CellBbox {
+  cellX: number;
+  cellY: number;
+  cellWidth: number;
+  cellHeight: number;
+}
+
+/**
  * Convert legacy cell-based bbox fields to a Bbox.
  */
-export function bboxFromCells(c: {
-  cellX: number; cellY: number; cellWidth: number; cellHeight: number;
-}): Bbox {
+export function bboxFromCells(c: CellBbox): Bbox {
   return { x: c.cellX, y: c.cellY, width: c.cellWidth, height: c.cellHeight };
 }
 
 /**
  * Convert a Bbox to legacy cell-based fields.
  */
-export function bboxToCells(b: Bbox): {
-  cellX: number; cellY: number; cellWidth: number; cellHeight: number;
-} {
+export function bboxToCells(b: Bbox): CellBbox {
   return { cellX: b.x, cellY: b.y, cellWidth: b.width, cellHeight: b.height };
 }

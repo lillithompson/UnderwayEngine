@@ -16,6 +16,7 @@ import { bakePatternPose } from './patternObject';
 import { lineHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { flattenArcSegment } from './compositionArcMath';
+import type { CellBbox } from './transform2d';
 
 // Lazy-loaded to break circular dependency with compositionOps.ts
 function getCompositionOps() {
@@ -52,7 +53,7 @@ const UNIFORM_SCALE_EPS = 1e-9;
  */
 export function rescaleSegs(
   segments: ReadonlyArray<PathSegment>,
-  oldBbox: Bbox, newBbox: Bbox,
+  oldBbox: CellBbox, newBbox: CellBbox,
 ): PathSegment[] {
   const sx = oldBbox.cellWidth > 0 ? newBbox.cellWidth / oldBbox.cellWidth : 1;
   const sy = oldBbox.cellHeight > 0 ? newBbox.cellHeight / oldBbox.cellHeight : 1;
@@ -80,9 +81,11 @@ export function rescaleSegs(
 
 // ── Shared types ────────────────────────────────────────────────────
 
-export interface Bbox {
-  cellX: number; cellY: number; cellWidth: number; cellHeight: number;
-}
+// The cell rectangle is declared once, in `transform2d` — the module with no
+// imports. It used to be declared here too, under the name `Bbox`, which the
+// x/y/w/h rectangle in `transform2d` also answers to; `sceneLocalResize` takes
+// both in one signature, where the two spellings read as one repeated type.
+export type { CellBbox };
 
 export interface SceneNodeBase {
   id: string;
@@ -110,7 +113,7 @@ export interface GeometryAdapter<T extends SceneNodeBase = SceneNodeBase> {
   kind: CompItemKind;
 
   /** Compute world bbox from the node's current geometry. */
-  computeBbox(node: T): Bbox;
+  computeBbox(node: T): CellBbox;
 
   /** Translate all geometry by (dx, dy) — a RIGID move that preserves the
    *  rendered orientation. Bbox kinds keep their rotation/mirror flags and
@@ -126,7 +129,7 @@ export interface GeometryAdapter<T extends SceneNodeBase = SceneNodeBase> {
   mirror(node: T, screenAxis: 'h' | 'v'): T;
 
   /** Rescale geometry to fit within newBbox. */
-  rescale(node: T, oldBbox: Bbox, newBbox: Bbox, opts?: RescaleOptions): T;
+  rescale(node: T, oldBbox: CellBbox, newBbox: CellBbox, opts?: RescaleOptions): T;
 
   /** Hit-test: does this node accept a click at (cellX, cellY)?
    *  When `ignoreLock` is true, locked nodes are still hit-testable. */
@@ -438,7 +441,7 @@ export function heldTileOffsets(
     cellX: number; cellY: number; cellWidth: number; cellHeight: number;
     angleDeg?: number; tileOffsetXL0?: number; tileOffsetYL0?: number;
   },
-  newBbox: Bbox,
+  newBbox: CellBbox,
 ): { x: number; y: number } {
   let x = (node.tileOffsetXL0 ?? 0) - (newBbox.cellX - node.cellX);
   let y = (node.tileOffsetYL0 ?? 0) - (newBbox.cellY - node.cellY);

@@ -7,7 +7,8 @@ import {
 } from './compositionPathHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { isItemLocked, getItemGroupId, findRootGroupId, SceneObjectBase } from './compositionOps';
-import { Bbox, GEOMETRY_ADAPTERS } from './sceneNodeGeometry';
+import { GEOMETRY_ADAPTERS } from './sceneNodeGeometry';
+import type { CellBbox } from './transform2d';
 import { svgIsFilled } from './svgPathBuilder';
 
 /**
@@ -35,7 +36,7 @@ export interface MaskMembership {
  */
 export function bboxOverlapsMask(
   maskSegments: readonly PathSegment[],
-  bbox: Bbox,
+  bbox: CellBbox,
 ): boolean {
   const x0 = bbox.cellX;
   const y0 = bbox.cellY;

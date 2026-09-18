@@ -16,7 +16,7 @@
 import { PathSegment, RGBColor, Paint, SVGObject } from './types';
 import { computeRectSegments } from './compositionLineBboxMath';
 import { computeOvalSegments } from './compositionArcMath';
-import type { Bbox } from './sceneNodeGeometry';
+import type { CellBbox } from './transform2d';
 
 export type ShapePresetKind =
   | 'rect'
@@ -105,7 +105,7 @@ function roundedRectSegments(
   return segs;
 }
 
-function starSegments(bbox: Bbox, points: number, innerRatio: number): PathSegment[] {
+function starSegments(bbox: CellBbox, points: number, innerRatio: number): PathSegment[] {
   const n = Math.max(3, Math.round(points));
   const ratio = Math.min(Math.max(innerRatio, 0.05), 0.95);
   // Unit star (radius 1, top point up), then affinely map its AABB onto
@@ -133,7 +133,7 @@ function starSegments(bbox: Bbox, points: number, innerRatio: number): PathSegme
   return loopToSegments(mapped);
 }
 
-function bannerSegments(bbox: Bbox, notchDepth: number): PathSegment[] {
+function bannerSegments(bbox: CellBbox, notchDepth: number): PathSegment[] {
   const x0 = bbox.cellX, y0 = bbox.cellY;
   const x1 = x0 + bbox.cellWidth, y1 = y0 + bbox.cellHeight;
   const cy = y0 + bbox.cellHeight / 2;
@@ -146,7 +146,7 @@ function bannerSegments(bbox: Bbox, notchDepth: number): PathSegment[] {
   ]);
 }
 
-function speechBubbleSegments(bbox: Bbox, radius: number | undefined, tailCorner: 'bottomLeft' | 'bottomRight'): PathSegment[] {
+function speechBubbleSegments(bbox: CellBbox, radius: number | undefined, tailCorner: 'bottomLeft' | 'bottomRight'): PathSegment[] {
   const x0 = bbox.cellX, y0 = bbox.cellY;
   const w = bbox.cellWidth, h = bbox.cellHeight;
   const x1 = x0 + w;
@@ -170,7 +170,7 @@ function speechBubbleSegments(bbox: Bbox, radius: number | undefined, tailCorner
  */
 export function buildShapePreset(
   kind: ShapePresetKind,
-  bbox: Bbox,
+  bbox: CellBbox,
   options?: ShapePresetOptions,
 ): { segments: PathSegment[]; closed: true } {
   const x0 = bbox.cellX, y0 = bbox.cellY;
@@ -216,7 +216,7 @@ export function buildShapePreset(
 export function buildShapeSVGObject(
   id: string,
   kind: ShapePresetKind,
-  bbox: Bbox,
+  bbox: CellBbox,
   color: RGBColor,
   options?: ShapePresetOptions & { fillColor?: RGBColor; fillPaint?: Paint },
 ): SVGObject {

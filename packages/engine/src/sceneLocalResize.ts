@@ -28,7 +28,7 @@
 import {
   Bbox, Mat2D, matApplyPoint, matInvert,
 } from './sceneTransform';
-import { bboxFromCells, bboxToCells } from './transform2d';
+import { type CellBbox, bboxFromCells, bboxToCells } from './transform2d';
 import {
   LegacyLeaf, SceneGraph, SceneNode, getNode, legacyLeafOf, worldMatrix,
 } from './sceneGraph';
@@ -36,10 +36,12 @@ import { localContentBox, localHitObject } from './sceneHitFrame';
 import { GEOMETRY_ADAPTERS } from './sceneNodeGeometry';
 import type { CompItemKind, SVGObject } from './types';
 
-/** A box in the cell spelling the geometry adapters and the gesture layer
- *  both take — the graph's own {@link Bbox} under longer names.
- *  `bboxToCells` / `bboxFromCells` are the crossing. */
-export type CellBbox = ReturnType<typeof bboxToCells>;
+/** Re-exported so this module's callers — which name the drawn box far more
+ *  often than they name the crossing — need not reach past it. The one
+ *  declaration is in `transform2d`; `bboxToCells` / `bboxFromCells` cross
+ *  between it and the graph's own x/y/w/h {@link Bbox}, which appears in the
+ *  same signatures below. */
+export type { CellBbox };
 
 /**
  * The local box a corner drag lands on.

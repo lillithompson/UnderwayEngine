@@ -9,7 +9,7 @@
 import { Paint, GradientStop, NodeEffects, BorderEffect, BorderPosition, ImageTint, RGBColor } from './types';
 import { rgbToHex } from './colorConvert';
 import { blendColor } from './colorBlend';
-import type { Bbox } from './sceneNodeGeometry';
+import type { CellBbox } from './transform2d';
 
 const hex = (c: RGBColor): string => rgbToHex(c.r, c.g, c.b);
 
@@ -263,7 +263,7 @@ export function borderRectGeometry(
   width: number,
   position: BorderPosition | undefined,
   radius: number,
-  bbox: Bbox,
+  bbox: CellBbox,
 ): { x: number; y: number; w: number; h: number; rx: number } {
   const half = width / 2;
   const inset = position === 'inside' ? half : position === 'outside' ? -half : 0;
@@ -280,7 +280,7 @@ export function borderRectGeometry(
  *  effect around a bbox. `border.width`, `border.radius` and `bbox` are in SVG
  *  units; `u` (SVG units per world cell) scales only the unitless dash index
  *  into matching lengths. Matches the compositor's border pass. */
-export function borderToSvgRect(border: BorderEffect, bbox: Bbox, u = 1): string {
+export function borderToSvgRect(border: BorderEffect, bbox: CellBbox, u = 1): string {
   const geo = borderRectGeometry(border.width, border.position, border.radius ?? 0, bbox);
   const rx = geo.rx > 0 ? ` rx="${fmt(geo.rx)}" ry="${fmt(geo.rx)}"` : '';
   const pattern = borderDashPattern(border.dash);

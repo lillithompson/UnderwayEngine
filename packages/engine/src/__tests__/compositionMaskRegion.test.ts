@@ -1,6 +1,6 @@
 import { bboxOverlapsMask, computeMaskMembership, strokeIntersectsMaskRegion } from '../compositionMaskRegion';
 import { CompositionState, GroupNode, PathSegment, SVGObject, CompositionFigure, CompUndoEntry, makeViewport } from '../types';
-import { Bbox } from '../sceneNodeGeometry';
+import { CellBbox } from '../transform2d';
 import { applyCompOps, revertCompOps } from '../compositionOps';
 import { buildActiveMaskMap } from '../compositionMask';
 
@@ -15,7 +15,7 @@ function squareSegments(x: number, y: number, size: number): PathSegment[] {
 
 const MASK = squareSegments(0, 0, 10);
 
-function bbox(cellX: number, cellY: number, cellWidth: number, cellHeight: number): Bbox {
+function bbox(cellX: number, cellY: number, cellWidth: number, cellHeight: number): CellBbox {
   return { cellX, cellY, cellWidth, cellHeight };
 }
 
