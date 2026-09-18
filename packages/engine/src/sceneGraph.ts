@@ -902,6 +902,23 @@ function sameView(e: ViewEntry, node: SceneNode, world: Mat2D): boolean {
     && w.d === world.d && w.e === world.e && w.f === world.f;
 }
 
+/**
+ * The legacy world leaf ONE node renders as — the per-node half of
+ * {@link toLegacyView}, uncached.
+ *
+ * For a builder that has changed a node's LOCAL content and needs the
+ * world fields the arrays store (`sceneLocalResize`): the pose comes out
+ * of `world` exactly as it does for every other leaf, so a node the
+ * builder hands back cannot be spelled differently from one the view
+ * rendered. Callers pass a node that may not be in `graph` — only its
+ * `parentId` is looked up there.
+ */
+export function legacyLeafOf(
+  graph: SceneGraph, node: SceneNode, world: Mat2D = worldMatrix(graph, node.id),
+): LegacyLeaf {
+  return renderLegacyLeaf(graph, node, world);
+}
+
 function renderLegacyLeaf(graph: SceneGraph, node: SceneNode, world: Mat2D): LegacyLeaf {
   const base = { ...(node.content ?? { id: node.id }) } as LegacyLeaf & LegacyPose & Record<string, unknown>;
   base.id = node.id;
