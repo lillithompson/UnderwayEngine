@@ -33,18 +33,33 @@ describe('the unified takeover chrome (AppModal)', () => {
     }
   });
 
-  it('the Tiles sheet keeps the chrome’s default header, like the color picker', () => {
-    // Seated on the toolbar's bottom edge like the other takeovers, the
-    // band stood a title band's height too tall over the grid. It takes no
-    // safeTop at all, so no host can hand it the taller header.
+  it('the Tiles sheet wears NO header band at all, and floats its X', () => {
+    // Its content is the whole page, so a fixed band spent a title's height
+    // of a phone screen saying one word. floatingClose drops the band; the
+    // sheet draws its own title at the head of its scroll. It still takes
+    // no safeTop, so no host can hand it a taller chrome either way.
     const tiles = read('PatternTileModal.tsx');
     expect(tiles).not.toContain('safeTop');
-    expect(tiles).toContain('<AppModal visible={visible} title="Tiles" onClose={onClose}>');
+    expect(tiles).toContain('<AppModal visible={visible} title="Tiles" onClose={onClose} floatingClose>');
     const bars = read('PatternBars.tsx');
     const at = bars.indexOf('<PatternTileModal');
     expect(bars.slice(at, bars.indexOf('/>', at))).not.toContain('safeTop');
-    // The Sets takeover still seats on the toolbar.
+    // The Sets takeover still seats on the toolbar, band and all.
     expect(bars.match(/safeTop=\{model\.safeTop\}/g)?.length).toBe(1);
+    expect(read('PatternSetsModal.tsx')).not.toContain('floatingClose');
+  });
+
+  it('the headerless variant floats the X over the body and keeps the title for a11y', () => {
+    // No band means no bottom hairline to rule the title off from the
+    // content, and no <Text> carrying the title — so the screen takes it as
+    // its accessibility label instead.
+    expect(shell).toContain('floatingClose = false,');
+    expect(shell).toContain('accessibilityLabel={floatingClose ? title : undefined}');
+    expect(shell).toContain('<View style={[styles.body, floatingClose ? { paddingTop: safeTop } : null]}>');
+    expect(shell).toMatch(/floatingClose:\s*\{\s*position:\s*'absolute',/);
+    // The chip is filled with the sheet's own surface so the X stays
+    // legible over whatever scrolls beneath it.
+    expect(shell).toContain('backgroundColor: PANEL_BG,');
   });
 
   it('carries the standard Done button, in the Set Color layout', () => {
@@ -56,6 +71,10 @@ describe('the unified takeover chrome (AppModal)', () => {
     expect(shell).toMatch(/done:\s*\{\s*marginTop:\s*20,\s*height:\s*44,\s*borderRadius:\s*10,/);
     expect(shell).toContain('backgroundColor: STATE_ACTIVE,');
     expect(shell).toContain("doneLabel: { fontSize: 15, fontWeight: '700', color: '#fff' }");
+    // …and in its FLOATING form — riding over a scrolling body rather than
+    // sitting in the flow under it — the same button becomes a capsule
+    // (height 44 → radius 22) and drops the top margin the flow needed.
+    expect(shell).toContain("doneFloating: { marginTop: 0, borderRadius: 22 }");
   });
 
   it('the pick-grid takeovers keep their sheet up and close through Done', () => {

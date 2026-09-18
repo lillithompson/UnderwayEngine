@@ -12,8 +12,8 @@ import {
   type PatternTileRow,
   type PatternTileTransform,
 } from '../logic/patternEdit';
-import { PANEL_BORDER, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
-import { AppModal } from './AppModal';
+import { PANEL_BORDER, PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
+import { AppModal, AppModalDoneButton } from './AppModal';
 import { PatternTileTransformModal } from './PatternTileTransformModal';
 
 // The Tiles bar's takeover: every tile the menu offers, laid out as a grid
@@ -22,10 +22,17 @@ import { PatternTileTransformModal } from './PatternTileTransformModal';
 // re-picked freely, and a tile keeps the same pose gestures as the bar's
 // recent grid (a second tap inside the double-tap window turns it a quarter
 // clockwise; a long press opens the transform modal over this one — the
-// hint under the header says so). The way out is the floating Done square
-// riding over the scroll's foot — the selection blue, wearing the armed
-// tile itself so it names what closing keeps — or the header's X. There is
-// still no confirm — the arming already happened on the first tap.
+// hint under the title says so). The way out is the floating Done capsule
+// riding over the scroll's foot — the selection blue, the standard
+// AppModalDoneButton in its floating form — or the X floating at the top
+// right. There is still no confirm — the arming already happened on the
+// first tap.
+//
+// The sheet is ALL grid: the title and the hint are the first thing in the
+// scroll rather than a fixed band above it (AppModal's floatingClose), so
+// they scroll away with the tiles and a phone screen spends none of its
+// height holding one word still. Nothing rules them off from the grid
+// either — the break in the content says where the reading stops.
 //
 // This sheet wears the unified takeover chrome (AppModal — the PANEL
 // scheme, not the dark MODAL one the floating rename card uses), and that
@@ -42,9 +49,13 @@ import { PatternTileTransformModal } from './PatternTileTransformModal';
 
 export { PATTERN_MODAL_TILE } from '../logic/patternEdit';
 
-/** How far the floating Done square stands off the sheet's bottom edge —
+/** How far the floating Done capsule stands off the sheet's bottom edge —
  *  clear of a phone screen's bottom curve and home indicator. */
 const DONE_BOTTOM = 32;
+
+/** The capsule's own height — AppModalDoneButton's 44pt, named here so the
+ *  scroll's foot can pad past it. */
+const DONE_HEIGHT = 44;
 
 export function PatternTileModal({ visible, tiles, activeId, transforms, onPick, onSetTransform, onClose }: {
   visible: boolean;
@@ -75,23 +86,32 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
     : null;
 
   const tile = patternModalTileSize(sheetWidth);
-  const doneSize = Math.round(tile * 1.5);
-  const activeRow = activeId ? tiles.find((t) => t.id === activeId) ?? null : null;
+  // The capsule spans the grid it closes — the same width the rows have, so
+  // it reads as the foot of this content rather than a pill dropped on it.
+  const doneWidth = sheetWidth > 0
+    ? Math.max(tile, sheetWidth - PATTERN_MODAL_PAD * 2) : undefined;
 
   return (
-    // The chrome's DEFAULT header — the same clearance the color picker
-    // keeps, and no clearance prop to be handed anything taller: seated on
-    // the toolbar's bottom edge like the other takeovers, the band stood a
-    // title band's height too tall over the grid, blank space where the
-    // color picker shows its swatch and this sheet shows nothing.
-    <AppModal visible={visible} title="Tiles" onClose={onClose}>
+    // No header band at all (floatingClose): the title rides in the scroll
+    // below and the X floats over the grid. The band it replaces was the
+    // chrome's DEFAULT header — never seated on the toolbar — and this
+    // sheet still takes no clearance prop, so no host can hand it a taller
+    // one.
+    <AppModal visible={visible} title="Tiles" onClose={onClose} floatingClose>
       <View style={styles.sheet} onLayout={(e) => setSheetWidth(e.nativeEvent.layout.width)}>
-        <Text style={styles.hint}>double tap to rotate, long press to mirror</Text>
         <ScrollView
-          // The foot pads past the floating Done square, so the last row
+          // The foot pads past the floating Done capsule, so the last row
           // can always scroll up from under it.
-          contentContainerStyle={[styles.body, { paddingBottom: doneSize + DONE_BOTTOM + 24 }]}
+          contentContainerStyle={[styles.body, { paddingBottom: DONE_HEIGHT + DONE_BOTTOM + 24 }]}
         >
+          {/* The sheet's own title and hint — inside the scroll, so they go
+              up with the tiles. The title is bigger than a header band's
+              because it is a page heading now, not chrome, and it has the
+              room. The close X floats clear of it, on the right. */}
+          <View style={styles.head}>
+            <Text style={styles.title}>Tiles</Text>
+            <Text style={styles.hint}>double tap to rotate, long press to mirror</Text>
+          </View>
           {groups.map((g, i) => (
             <View key={g.connections} style={styles.section}>
               {/* A light rule where one connection-count family ends and
@@ -144,30 +164,17 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
             </View>
           ))}
         </ScrollView>
-        {/* Done: picks don't dismiss (see the header note), so the sheet
-            still needs a way out — a floating square over the scroll, 1.5
-            tiles big, wearing the armed tile over its label so it shows
-            what closing keeps. No footer strip behind it: the grid scrolls
-            underneath, and it stands DONE_BOTTOM clear of the screen's
-            bottom curve. */}
+        {/* Done: picks don't dismiss (see the note up top), so the sheet
+            still needs a way out — the STANDARD takeover Done button in its
+            floating form (a wide capsule), riding over the scroll. It
+            carries the word alone now: the armed tile it used to wear named
+            what closing keeps, but the grid says the same thing right there
+            in the selected cell, and a picture inside a button reads as a
+            second thing to press. No footer strip behind it: the grid
+            scrolls underneath, and it stands DONE_BOTTOM clear of the
+            screen's bottom curve. */}
         <View style={styles.doneWrap} pointerEvents="box-none">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Done"
-            onPress={onClose}
-            style={[styles.done, { width: doneSize, height: doneSize }]}
-          >
-            {activeRow ? (
-              <Image
-                source={{ uri: activeRow.activeUri ?? activeRow.uri }}
-                style={[
-                  { width: Math.round(doneSize * 0.55), height: Math.round(doneSize * 0.55) },
-                  { transform: patternTileThumbTransforms(poseOf(activeRow.id)) },
-                ]}
-              />
-            ) : null}
-            <Text style={styles.doneLabel}>Done</Text>
-          </Pressable>
+          <AppModalDoneButton floating width={doneWidth} onPress={onClose} />
         </View>
       </View>
       <PatternTileTransformModal
@@ -185,13 +192,15 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
 
 const styles = StyleSheet.create({
   sheet: { flex: 1 },
+  // Title + hint as one block at the head of the scroll. The gap between
+  // them is the pair's own; the body's gap holds it off the first section.
+  head: { gap: 6 },
+  title: { fontSize: 30, fontWeight: '700', color: PANEL_INK },
   hint: {
     fontStyle: 'italic',
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 15,
+    lineHeight: 20,
     color: PANEL_INK_DIM,
-    paddingHorizontal: PATTERN_MODAL_PAD,
-    paddingTop: 10,
   },
   body: { padding: PATTERN_MODAL_PAD, gap: 18 },
   section: { gap: 18 },
@@ -213,12 +222,4 @@ const styles = StyleSheet.create({
     bottom: DONE_BOTTOM,
     alignItems: 'center',
   },
-  done: {
-    borderRadius: 14,
-    backgroundColor: STATE_ACTIVE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  doneLabel: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

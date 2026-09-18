@@ -21,6 +21,11 @@ import { HEADER_HEIGHT, PANEL_BG, PANEL_BORDER, PANEL_INK, STATE_ACTIVE } from '
 // (checkerboard + color wash) painted behind the title row, with the ink
 // flipped black/white by luma — the same override hooks Facet's AppModal
 // grew for the same customer.
+//
+// `floatingClose` drops the band entirely and floats the X over the body,
+// for a takeover whose content is the whole page: the Tiles grid draws its
+// own title at the head of its scroll, so the title scrolls away with the
+// tiles instead of holding a fixed strip of a phone screen to say one word.
 
 /** The status-bar clearance a takeover header wears when the host names
  *  none: Facet's webview constant, kept as the fallback so a modal outside
@@ -38,6 +43,7 @@ export function AppModal({
   headerForeground = PANEL_INK,
   headerBackground,
   background,
+  floatingClose = false,
   children,
 }: {
   visible: boolean;
@@ -61,38 +67,73 @@ export function AppModal({
    *  color picker passes the dark modal grey (its swatches and wheel read
    *  against dark, like Facet's original picker sheet). */
   background?: string;
+  /** NO header band: the close X floats over the body's top-right corner
+   *  and the takeover draws its own title, usually inside its scroll so
+   *  the title scrolls away with the content instead of standing over it
+   *  in a band. The band's hairline goes with it — there is nothing left
+   *  to rule off. The body still clears the status bar by `safeTop`; the
+   *  `title` is kept as the screen's accessibility label, since there is
+   *  no longer a <Text> carrying it. For a takeover whose content IS the
+   *  page (the Tiles grid), where a fixed band spent a title's height of
+   *  a phone screen saying one word. */
+  floatingClose?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={[styles.screen, background ? { backgroundColor: background } : null]}>
-        <View
-          style={[
-            styles.header,
-            // Sized, not padded, to the editor's own chrome: clearance
-            // above, one HEADER_HEIGHT row of content below (see the
-            // safeTop prop).
-            { paddingTop: safeTop, height: safeTop + HEADER_HEIGHT },
-            headerStyle,
-          ]}
-        >
-          {headerBackground}
-          <Text style={[styles.title, { color: headerForeground }]} numberOfLines={1}>
-            {title}
-          </Text>
-          <View style={styles.headerActions}>
-            {headerRight}
-            <Pressable
-              style={styles.closeIcon}
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-            >
-              <MaterialCommunityIcons name="close" size={26} color={headerForeground} />
-            </Pressable>
+      <View
+        style={[styles.screen, background ? { backgroundColor: background } : null]}
+        // Headerless, there is no <Text> carrying the title — the screen
+        // takes it, so the takeover still announces itself.
+        accessibilityLabel={floatingClose ? title : undefined}
+      >
+        {floatingClose ? null : (
+          <View
+            style={[
+              styles.header,
+              // Sized, not padded, to the editor's own chrome: clearance
+              // above, one HEADER_HEIGHT row of content below (see the
+              // safeTop prop).
+              { paddingTop: safeTop, height: safeTop + HEADER_HEIGHT },
+              headerStyle,
+            ]}
+          >
+            {headerBackground}
+            <Text style={[styles.title, { color: headerForeground }]} numberOfLines={1}>
+              {title}
+            </Text>
+            <View style={styles.headerActions}>
+              {headerRight}
+              <Pressable
+                style={styles.closeIcon}
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <MaterialCommunityIcons name="close" size={26} color={headerForeground} />
+              </Pressable>
+            </View>
           </View>
+        )}
+        {/* With no band above it the body takes the status-bar clearance
+            itself, so the takeover's own first line starts where the
+            header's title would have. */}
+        <View style={[styles.body, floatingClose ? { paddingTop: safeTop } : null]}>
+          {children}
         </View>
-        <View style={styles.body}>{children}</View>
+        {/* …and the X rides OVER that body rather than in a band above it:
+            a panel-colored chip, so it stays legible over whatever scrolls
+            beneath it. */}
+        {floatingClose ? (
+          <Pressable
+            style={[styles.floatingClose, { top: safeTop + 4 }]}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+          >
+            <MaterialCommunityIcons name="close" size={26} color={PANEL_INK} />
+          </Pressable>
+        ) : null}
       </View>
     </Modal>
   );
@@ -104,16 +145,24 @@ export function AppModal({
  *  full content width, 44pt, bold 15 label — with the selection blue for a
  *  face where Set Color wears the chosen color itself. Pass `width` to match
  *  the content block it closes (a grid's row width); omitted, it stretches. */
-export function AppModalDoneButton({ onPress, width }: {
+export function AppModalDoneButton({ onPress, width, floating = false }: {
   onPress: () => void;
   width?: number;
+  /** Riding OVER a scrolling body rather than sitting in the flow beneath
+   *  it (the Tiles sheet, whose grid runs on under it): a full CAPSULE, and
+   *  no top margin — the scroll's own foot pads the last row clear of it. */
+  floating?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Done"
       onPress={onPress}
-      style={[styles.done, width != null ? { width } : styles.doneStretch]}
+      style={[
+        styles.done,
+        floating ? styles.doneFloating : null,
+        width != null ? { width } : styles.doneStretch,
+      ]}
     >
       <Text style={styles.doneLabel}>Done</Text>
     </Pressable>
@@ -138,6 +187,20 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700', flex: 1, paddingLeft: 4 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   closeIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  // The headerless variant's X: the same 40pt target, rounded and filled
+  // with the sheet's own surface so it reads over a scrolling grid.
+  floatingClose: {
+    position: 'absolute',
+    right: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: PANEL_BG,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: PANEL_BORDER,
+  },
   body: { flex: 1 },
   // The Set Color button's metrics (ColorPickerModal.confirmButton).
   done: {
@@ -150,5 +213,7 @@ const styles = StyleSheet.create({
     backgroundColor: STATE_ACTIVE,
   },
   doneStretch: { alignSelf: 'stretch' },
+  // Height 44 → radius 22: a capsule, not a rounded rectangle.
+  doneFloating: { marginTop: 0, borderRadius: 22 },
   doneLabel: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

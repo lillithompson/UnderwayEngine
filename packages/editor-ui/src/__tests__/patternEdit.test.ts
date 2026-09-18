@@ -463,20 +463,33 @@ describe('the tile pose gestures (double-tap turn, long-press transform)', () =>
     expect(MODAL).not.toContain("'1 connection'");
     expect(MODAL).not.toContain('connections`');
     expect(MODAL).toContain('backgroundColor: PANEL_BORDER');
-    // …the hint sits italic under the header…
+    // …the title and the hint are the head of the SCROLL, not a band over
+    // it: they go up with the tiles, with no rule between them and the
+    // grid. The title is a page heading's size, well past the 18 a header
+    // band wears; the hint is readable rather than fine print.
+    expect(MODAL).toContain('<View style={styles.head}>');
+    expect(MODAL).toContain('<Text style={styles.title}>Tiles</Text>');
     expect(MODAL).toContain('double tap to rotate, long press to mirror');
-    expect(MODAL).toContain("fontStyle: 'italic'");
-    // …and Done floats over the scroll: a rounded square 1.5 tiles big,
-    // no footer strip behind it, standing clear of the screen's bottom
-    // curve, wearing the armed tile's white bake over its label.
-    expect(MODAL).toContain('const doneSize = Math.round(tile * 1.5);');
+    expect(MODAL).toContain("title: { fontSize: 30, fontWeight: '700', color: PANEL_INK }");
+    expect(MODAL).toMatch(/hint:\s*\{\s*fontStyle:\s*'italic',\s*fontSize:\s*15,\s*lineHeight:\s*20,/);
+    // …the head block sits INSIDE the ScrollView's content, ahead of the
+    // sections, so nothing about it is pinned to the screen.
+    expect(MODAL.indexOf('<ScrollView')).toBeLessThan(MODAL.indexOf('<View style={styles.head}>'));
+    expect(MODAL.indexOf('<View style={styles.head}>')).toBeLessThan(MODAL.indexOf('{groups.map('));
+    // …and Done floats over the scroll as a WIDE CAPSULE — the shared
+    // AppModalDoneButton in its floating form, spanning the grid it
+    // closes, no footer strip behind it, standing clear of the screen's
+    // bottom curve, and carrying the word alone (the armed tile it used to
+    // wear is gone; the selected cell already says which tile is armed).
+    expect(MODAL).toContain('<AppModalDoneButton floating width={doneWidth} onPress={onClose} />');
     expect(MODAL).toContain('const DONE_BOTTOM = 32;');
     expect(MODAL).toContain("position: 'absolute'");
     expect(MODAL).not.toContain('styles.footer');
-    expect(MODAL).toContain('activeRow.activeUri ?? activeRow.uri');
-    // The scroll's foot pads past the square so the last row can always
+    expect(MODAL).not.toContain('activeRow');
+    expect(MODAL).not.toContain('doneSize');
+    // The scroll's foot pads past the capsule so the last row can always
     // escape from under it.
-    expect(MODAL).toContain('paddingBottom: doneSize + DONE_BOTTOM + 24');
+    expect(MODAL).toContain('paddingBottom: DONE_HEIGHT + DONE_BOTTOM + 24');
   });
 
   it('the transform modal offers rotate and the two flips, previewed in the pose', () => {
