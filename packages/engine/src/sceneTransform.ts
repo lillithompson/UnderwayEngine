@@ -315,6 +315,23 @@ export interface LocalTransform {
   readonly rotationDeg: number;
   readonly mirrorH?: boolean;
   readonly mirrorV?: boolean;
+  /**
+   * The lean a non-uniform parent scale puts on a turned child, as a
+   * multiple of `sx`: the x each unit of y is displaced by, applied
+   * between the rotation and the scale. 0 / omitted for every pose the
+   * editor authors directly, which is why it is optional and why every
+   * file written before it reads back identically.
+   *
+   * With this term a `LocalTransform` can spell ANY affine map, so
+   * {@link decomposeMatrix} is exact rather than nearest-fit. Three of
+   * this branch's eleven device bugs were something in the chain with no
+   * room for what the scene actually was, and this is that room: before
+   * it, a group pulled off its axes sheared its turned members and only
+   * an svg could keep the result, by folding it into its points. A box
+   * kind had nowhere to put it and changed shape on ungroup and on
+   * reopen (plan §6.2).
+   */
+  readonly shear?: number;
 }
 
 export const LOCAL_IDENTITY: LocalTransform = {
@@ -342,15 +359,24 @@ export function normalizeDeg(deg: number): number {
   return d < 0 ? d + 360 : d;
 }
 
-/** The node's local-to-parent matrix: `T . R . S . F`. */
+/**
+ * The node's local-to-parent matrix: `T . R . K . S . F`, where `K` is
+ * the shear ({@link LocalTransform.shear}). With `shear` 0 or absent —
+ * every pose the editor authors directly — this is exactly the old
+ * `T . R . S . F`, term for term.
+ */
 export function localMatrix(t: LocalTransform): Mat2D {
   const sx = t.mirrorH ? -t.sx : t.sx;
   const sy = t.mirrorV ? -t.sy : t.sy;
   const rad = t.rotationDeg * DEG;
   const cos = clean(Math.cos(rad)), sin = clean(Math.sin(rad));
+  // The sheared second column: R . (shear * sx, sy). The first column is
+  // untouched by a shear in x, which is what makes `sx` and the rotation
+  // still readable straight off it.
+  const kx = (t.shear ?? 0) * sx;
   return {
     a: clean(cos * sx), b: clean(sin * sx),
-    c: clean(-sin * sy), d: clean(cos * sy),
+    c: clean(cos * kx - sin * sy), d: clean(sin * kx + cos * sy),
     e: t.tx, f: t.ty,
   };
 }
@@ -358,6 +384,26 @@ export function localMatrix(t: LocalTransform): Mat2D {
 /** Shorthand for a translate-only local transform. */
 export function localTranslate(tx: number, ty: number): LocalTransform {
   return { ...LOCAL_IDENTITY, tx, ty };
+}
+
+/**
+ * The same pose with its lean dropped — the nearest shear-free
+ * `LocalTransform`, which is exactly what {@link decomposeMatrix}
+ * returned before the shear term existed (`sx`, `sy` and the rotation are
+ * computed the same way either side of it).
+ *
+ * For a node whose CONTENT can hold the lean exactly, that content is the
+ * better home for it. An svg's content is POINTS: they carry any affine
+ * map, they already persist, and keeping the lean there leaves the
+ * transform the plain angle the editor seats its controls on. So the svg
+ * reader asks for this and folds the difference into the geometry
+ * (`leafThroughMatrix`), while a box kind — which has nowhere to fold —
+ * keeps the shear on the transform and persists it (plan §6.2).
+ */
+export function withoutShear(t: LocalTransform): LocalTransform {
+  if (t.shear === undefined) return t;
+  const { shear: _shear, ...rest } = t;
+  return rest;
 }
 
 /** True when two transforms describe the same pose, to within `eps`. */
@@ -385,12 +431,19 @@ export function localEquals(a: LocalTransform, b: LocalTransform, eps = 1e-9): b
 export function decomposeMatrix(m: Mat2D): LocalTransform {
   const sx = Math.hypot(m.a, m.b);
   const det = matDet(m);
+  // The lean between the axes, in units of `sx`. Exact: feeding this back
+  // through `localMatrix` reproduces `m` entry for entry, because the
+  // four unknowns (sx, rotation, shear, sy) are exactly the four numbers
+  // a 2x2 carries. Omitted when zero, so an unsheared pose serializes and
+  // compares exactly as it did before the term existed.
+  const shear = sx === 0 ? 0 : clean((m.a * m.c + m.b * m.d) / (sx * sx));
   return {
     tx: m.e, ty: m.f,
     sx: clean(sx),
     // Signed, so a handedness flip lands in sy rather than being lost.
     sy: clean(sx === 0 ? Math.hypot(m.c, m.d) : det / sx),
     rotationDeg: sx === 0 ? 0 : clean(normalizeDeg(clean(Math.atan2(m.b, m.a) / DEG))),
+    ...(shear === 0 ? null : { shear }),
   };
 }
 

@@ -161,30 +161,59 @@ describe('decomposeMatrix', () => {
     expect(back.sy).toBeLessThan(0);
   });
 
-  test('a sheared matrix has no exact form, and says so', () => {
+  test('a sheared matrix round-trips EXACTLY, shear and all', () => {
     // A non-uniform scale over a rotated child: the case the plan says
     // the legacy model could not store and approximated by "the nearest
-    // rotated rectangle".
+    // rotated rectangle". `LocalTransform.shear` is the room for it, so
+    // the decomposition is no longer an approximation (plan §6.2).
     const child = localMatrix({ ...LOCAL_IDENTITY, rotationDeg: 45 });
     const parent = localMatrix({ ...LOCAL_IDENTITY, sx: 3, sy: 1 });
     const world = matMul(parent, child);
 
     expect(matShear(world)).not.toBeCloseTo(0, 6);
     expect(matIsSimilarity(world)).toBe(false);
-    // The decomposition is a genuine approximation here — it does not
-    // reproduce the matrix — which is exactly why readers that must keep
-    // the shear carry the matrix instead.
-    expect(localEquals(decomposeMatrix(world), decomposeMatrix(world))).toBe(true);
-    const round = localMatrix(decomposeMatrix(world));
-    expect(Math.abs(round.c - world.c) + Math.abs(round.d - world.d)).toBeGreaterThan(1e-6);
-    // Area is preserved even so, which is what keeps a sheared node the
-    // right size rather than merely the right shape.
+
+    const back = decomposeMatrix(world);
+    expect(back.shear).toBeDefined();
+    const round = localMatrix(back);
+    for (const k of ['a', 'b', 'c', 'd', 'e', 'f'] as const) closeTo(round[k], world[k]);
     closeTo(matDet(round), matDet(world));
   });
 
-  test('shear is zero for anything built from a LocalTransform', () => {
+  test('every sheared parent/child pairing round-trips exactly', () => {
+    // The shear a node actually meets is a parent scale over a turn, so
+    // sweep that product rather than hand-built matrices.
+    for (const rotationDeg of [7, 23, 45, 90, 137.5, 200, 315]) {
+      for (const [sx, sy] of [[3, 1], [1, 4], [0.25, 2], [2, 0.5]]) {
+        for (const mirror of [{}, { mirrorH: true }, { mirrorV: true }]) {
+          const world = matMul(
+            localMatrix({ ...LOCAL_IDENTITY, sx, sy }),
+            localMatrix({ ...LOCAL_IDENTITY, rotationDeg, ...mirror }),
+          );
+          const round = localMatrix(decomposeMatrix(world));
+          for (const k of ['a', 'b', 'c', 'd', 'e', 'f'] as const) closeTo(round[k], world[k]);
+        }
+      }
+    }
+  });
+
+  test('a shear survives being composed with another transform', () => {
+    const sheared = decomposeMatrix(matMul(
+      localMatrix({ ...LOCAL_IDENTITY, sx: 3, sy: 1 }),
+      localMatrix({ ...LOCAL_IDENTITY, rotationDeg: 33 }),
+    ));
+    const outer = { ...LOCAL_IDENTITY, tx: 4, ty: -2, rotationDeg: 10, sx: 1.5, sy: 1.5 };
+    const composed = localMatrix(composeLocal(outer, sheared));
+    const direct = matMul(localMatrix(outer), localMatrix(sheared));
+    for (const k of ['a', 'b', 'c', 'd', 'e', 'f'] as const) closeTo(composed[k], direct[k]);
+  });
+
+  test('shear is zero, and omitted, for anything the editor authors', () => {
     for (const t of sampleTransforms()) {
       expect(Math.abs(matShear(localMatrix(t)))).toBeLessThan(1e-9);
+      // Omitted rather than 0, so an unsheared pose serializes and
+      // deep-compares exactly as it did before the term existed.
+      expect(decomposeMatrix(localMatrix(t)).shear).toBeUndefined();
     }
   });
 

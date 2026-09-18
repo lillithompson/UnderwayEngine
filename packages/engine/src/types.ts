@@ -716,6 +716,19 @@ export interface SVGObject {
    *  `rotation` the bbox is NOT swapped — the AABB stays axis-aligned and the
    *  angle is layered at render/export/hit-test time. */
   angleDeg?: number;
+  /** The lean a group scaled off its axes puts on this leaf when it is
+   *  turned — the x each unit of y is displaced by, as a multiple of the
+   *  leaf's own width scale, applied between the turn and the box. v63.
+   *
+   *  A box plus an angle describes a turned RECTANGLE, and a member of a
+   *  group pulled off square is a PARALLELOGRAM. Until this field there
+   *  was nowhere to say so: an svg could fold the lean into its points,
+   *  and every other kind changed shape the moment the group was
+   *  dissolved or the page reopened (plan §6.2). Absent on every file
+   *  written before v63 and on every pose the editor authors directly,
+   *  so an unsheared leaf reads and compares exactly as it always did.
+   *  See {@link LocalTransform.shear}. */
+  shear?: number;
   mirrorH?: boolean;
   mirrorV?: boolean;
   /** When 'repeat', this path tiles within its bounding region. */
@@ -963,6 +976,19 @@ export interface ImageObject {
    *  the two-finger twist gesture; undefined/0 = none. See
    *  {@link SVGObject.angleDeg}. */
   angleDeg?: number;
+  /** The lean a group scaled off its axes puts on this leaf when it is
+   *  turned — the x each unit of y is displaced by, as a multiple of the
+   *  leaf's own width scale, applied between the turn and the box. v63.
+   *
+   *  A box plus an angle describes a turned RECTANGLE, and a member of a
+   *  group pulled off square is a PARALLELOGRAM. Until this field there
+   *  was nowhere to say so: an svg could fold the lean into its points,
+   *  and every other kind changed shape the moment the group was
+   *  dissolved or the page reopened (plan §6.2). Absent on every file
+   *  written before v63 and on every pose the editor authors directly,
+   *  so an unsheared leaf reads and compares exactly as it always did.
+   *  See {@link LocalTransform.shear}. */
+  shear?: number;
   mirrorH?: boolean;
   mirrorV?: boolean;
   /** Render opacity in [0, 1]. Reference images often want to fade for
@@ -1076,6 +1102,19 @@ export interface PaintObject {
   /** Free rotation, degrees clockwise about the bbox center, layered on the
    *  discrete `rotation`/`mirror`. See {@link SVGObject.angleDeg}. */
   angleDeg?: number;
+  /** The lean a group scaled off its axes puts on this leaf when it is
+   *  turned — the x each unit of y is displaced by, as a multiple of the
+   *  leaf's own width scale, applied between the turn and the box. v63.
+   *
+   *  A box plus an angle describes a turned RECTANGLE, and a member of a
+   *  group pulled off square is a PARALLELOGRAM. Until this field there
+   *  was nowhere to say so: an svg could fold the lean into its points,
+   *  and every other kind changed shape the moment the group was
+   *  dissolved or the page reopened (plan §6.2). Absent on every file
+   *  written before v63 and on every pose the editor authors directly,
+   *  so an unsheared leaf reads and compares exactly as it always did.
+   *  See {@link LocalTransform.shear}. */
+  shear?: number;
   mirrorH?: boolean;
   mirrorV?: boolean;
   /** Render opacity in [0, 1]; undefined = opaque. The island's ONLY
@@ -1175,6 +1214,19 @@ export interface PatternObject {
   rotation?: 0 | 90 | 180 | 270;
   /** Free rotation, degrees CW about the bbox center. See SVGObject.angleDeg. */
   angleDeg?: number;
+  /** The lean a group scaled off its axes puts on this leaf when it is
+   *  turned — the x each unit of y is displaced by, as a multiple of the
+   *  leaf's own width scale, applied between the turn and the box. v63.
+   *
+   *  A box plus an angle describes a turned RECTANGLE, and a member of a
+   *  group pulled off square is a PARALLELOGRAM. Until this field there
+   *  was nowhere to say so: an svg could fold the lean into its points,
+   *  and every other kind changed shape the moment the group was
+   *  dissolved or the page reopened (plan §6.2). Absent on every file
+   *  written before v63 and on every pose the editor authors directly,
+   *  so an unsheared leaf reads and compares exactly as it always did.
+   *  See {@link LocalTransform.shear}. */
+  shear?: number;
   mirrorH?: boolean;
   mirrorV?: boolean;
   /** Whole-object render opacity in [0, 1]; undefined = opaque. */
@@ -1460,6 +1512,19 @@ export interface TextObject {
    *  the two-finger twist gesture; undefined/0 = none. See
    *  {@link SVGObject.angleDeg}. */
   angleDeg?: number;
+  /** The lean a group scaled off its axes puts on this leaf when it is
+   *  turned — the x each unit of y is displaced by, as a multiple of the
+   *  leaf's own width scale, applied between the turn and the box. v63.
+   *
+   *  A box plus an angle describes a turned RECTANGLE, and a member of a
+   *  group pulled off square is a PARALLELOGRAM. Until this field there
+   *  was nowhere to say so: an svg could fold the lean into its points,
+   *  and every other kind changed shape the moment the group was
+   *  dissolved or the page reopened (plan §6.2). Absent on every file
+   *  written before v63 and on every pose the editor authors directly,
+   *  so an unsheared leaf reads and compares exactly as it always did.
+   *  See {@link LocalTransform.shear}. */
+  shear?: number;
   mirrorH?: boolean;
   mirrorV?: boolean;
   locked?: boolean;

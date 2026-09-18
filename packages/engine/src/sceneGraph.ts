@@ -23,7 +23,7 @@
 import {
   LOCAL_IDENTITY, LocalTransform, MAT_IDENTITY, Mat2D,
   decomposeMatrix, localMatrix, localResidual, matAbout, matApplyBbox, matApplyPoint, matInvert,
-  matMul, matTranslate, normalizeDeg, respellMirror,
+  matMul, matTranslate, normalizeDeg, respellMirror, withoutShear,
 } from './sceneTransform';
 import { arcBoundingBox } from './compositionArcHitTest';
 import type { Bbox } from './transform2d';
@@ -401,6 +401,10 @@ interface LegacyPose {
   rotation?: 0 | 90 | 180 | 270;
   mirrorH?: boolean; mirrorV?: boolean;
   angleDeg?: number;
+  /** The lean a group scaled off its axes puts on a turned member — the
+   *  one thing box+angle could never say. See {@link LocalTransform.shear};
+   *  absent on every file written before v63 and on every upright pose. */
+  shear?: number;
 }
 
 /**
@@ -423,6 +427,7 @@ function poseToTransform(p: LegacyPose): { transform: LocalTransform; localBox: 
   const rotationDeg = normalizeDeg((p.rotation ?? 0) + (p.angleDeg ?? 0));
   const linear = localMatrix({
     ...LOCAL_IDENTITY, rotationDeg,
+    ...(p.shear ? { shear: p.shear } : {}),
     ...(p.mirrorH ? { mirrorH: true } : {}),
     ...(p.mirrorV ? { mirrorV: true } : {}),
   });
@@ -436,6 +441,7 @@ function poseToTransform(p: LegacyPose): { transform: LocalTransform; localBox: 
       tx: cx - (linear.a * hw + linear.c * hh),
       ty: cy - (linear.b * hw + linear.d * hh),
       sx: 1, sy: 1, rotationDeg,
+      ...(p.shear ? { shear: p.shear } : {}),
       ...(p.mirrorH ? { mirrorH: true } : {}),
       ...(p.mirrorV ? { mirrorV: true } : {}),
     },
@@ -828,7 +834,10 @@ export function leafNodeFromLegacy(
     const spun = matMul(
       matMul(
         { ...MAT_IDENTITY, e: c[0], f: c[1] },
-        localMatrix({ ...LOCAL_IDENTITY, rotationDeg: pose.angleDeg ?? 0 }),
+        localMatrix({
+          ...LOCAL_IDENTITY, rotationDeg: pose.angleDeg ?? 0,
+          ...(pose.shear ? { shear: pose.shear } : {}),
+        }),
       ),
       localMatrix({ ...LOCAL_IDENTITY, rotationDeg: baked }),
     );
@@ -846,7 +855,12 @@ export function leafNodeFromLegacy(
     // controls on. Identity whenever there is no shear, which is every
     // case but this one — so nothing else moves by a hair.
     const wanted = matMul(toLocal, spun);
-    const said = decomposeMatrix(wanted);
+    // Shear-free on purpose: an svg's points hold the lean exactly and
+    // already persist, so it is folded into the geometry below rather
+    // than kept on the transform (`withoutShear`). Asking for the exact
+    // decomposition here would put the lean in BOTH places and draw it
+    // twice.
+    const said = withoutShear(decomposeMatrix(wanted));
     const residual = localResidual(said, wanted);
     const sheared = residual !== null;
     const toOwnExact = residual ? matMul(residual, toOwn) : toOwn;
@@ -1129,6 +1143,7 @@ interface PoseFields {
   rotation?: 0 | 90 | 180 | 270;
   mirrorH?: boolean; mirrorV?: boolean;
   angleDeg?: number;
+  shear?: number;
 }
 
 /**
@@ -1194,6 +1209,24 @@ function poseFieldsFrom(
     mirrorH: preferH || undefined,
     mirrorV: (flipped && !preferH) || undefined,
     angleDeg: residual === 0 ? undefined : residual,
+    // The lean, restated in the units the pose fields use.
+    //
+    // `decomposeMatrix` measures shear against the transform's own `sx`,
+    // where the box is a unit square and the scale is in the matrix. A
+    // pose field's box carries the SIZE instead (`poseToTransform` rebuilds
+    // with sx = sy = 1), so the same lean is a different number there:
+    // displacing x by `shear * sx` per unit of y becomes displacing it by
+    // `shear * |sx| / |sy|` per unit of the box's own height. Getting this
+    // wrong moves two corners of four and leaves the other two right,
+    // which is exactly how it announced itself.
+    //
+    // Omitted when there is no lean — every pose the editor authors
+    // directly — so an unsheared leaf renders to the same fields it always
+    // did and a view of it still compares equal to the object it stands
+    // in for.
+    shear: t.shear === undefined || ch === 0 || cw === 0
+      ? undefined
+      : t.shear * Math.abs(t.sx) / Math.abs(t.sy),
   };
 }
 
