@@ -20,7 +20,7 @@ import * as zlib from 'zlib';
 
 import { deserializeComposition } from '../compositionBinaryFormat';
 import {
-  applyCompOps, assertGroupLocalsConsistent, materializeGroupHierarchy,
+  applyCompOps, assertGroupLocalsConsistent,
   revertCompOps, withSceneGraph,
 } from '../compositionOps';
 import {
@@ -588,7 +588,7 @@ function findTiles(dir: string, prefix = ''): string[] {
 function loadTile(rel: string): CompositionState {
   const data = new Uint8Array(fs.readFileSync(path.join(TEST_DATA, rel)));
   const { meta } = deserializeComposition(zlib.inflateSync(data));
-  return materializeGroupHierarchy(makeState({
+  return (makeState({
     id: rel, name: rel,
     figures: meta.figures ?? [],
     svgObjects: meta.svgObjects ?? [],

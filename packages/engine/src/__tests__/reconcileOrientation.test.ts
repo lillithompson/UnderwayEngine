@@ -2,7 +2,7 @@ import {
   reconcileGroupLocals,
   materializeGroupMembers,
   applyCompOps,
-  materializeGroupHierarchy,
+  backfillMissingLocals,
 } from '../compositionOps';
 import { CompositionFigure, CompositionState, CompUndoEntry, GroupNode, makeViewport } from '../types';
 
@@ -168,8 +168,7 @@ describe('reconcileGroupLocals — orientation correction', () => {
     });
     const state = makeState({ figures: [fig], groups: [group], sceneOrder: ['a'] });
 
-    // materializeGroupHierarchy calls backfillMissingLocals.
-    const afterHierarchy = materializeGroupHierarchy(state);
+    const afterHierarchy = backfillMissingLocals(state);
     // backfill seeds localRotation=90 (world value — wrong).
     expect(afterHierarchy.figures[0].localRotation).toBe(90);
 

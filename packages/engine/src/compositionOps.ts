@@ -1107,13 +1107,12 @@ export function assertGroupLocalsConsistent(state: CompositionState): void {
  * Throws if `after` has a stale grouped leaf that `before` did not.
  *
  * The narrower question, and the one the op layer can actually answer. A
- * composition can arrive already inconsistent — a `.tile` saved before
- * this guarantee existed carries whatever local caches it was written
- * with, and the loader only backfills the ones that are *missing*, not
- * the ones that are wrong (see `materializeGroupHierarchy`; the ≤v60
- * loader in the transform refactor is what finally settles it). Blaming
- * the next op to touch such a page would report the wrong culprit, so
- * this asks only whether an op made things worse.
+ * composition can arrive already inconsistent — though far less often
+ * than it used to: the loader now DROPS a file's persisted local caches
+ * rather than trusting the ones that are not missing, so a page opened
+ * from disk no longer starts out disagreeing with itself. Blaming the
+ * next op to touch such a page would report the wrong culprit, so this
+ * asks only whether an op made things worse.
  */
 function assertNoNewStaleLocals(before: CompositionState, after: CompositionState): void {
   const now = staleGroupedLeaves(after);
@@ -3118,8 +3117,10 @@ function materializePatternMember(
 
 /**
  * Populate missing `local*` fields on grouped figures and SVGs from their
- * world values.  Called during initial load (via `materializeGroupHierarchy`)
- * and during .tile merge so that both paths produce identical local state.
+ * world values.
+ *
+ * Only `.tile` merge calls this now — the loader drops a file's caches
+ * instead of completing them, so there is nothing to backfill on open.
  */
 export function backfillMissingLocals<S extends {
   figures: CompositionFigure[];
@@ -3216,61 +3217,6 @@ export function backfillMissingLocals<S extends {
   };
 }
 
-/**
- * One-time migration: for every figure whose `groupId` references a group
- * that doesn't exist in `state.groups` yet, create an identity-transform
- * `GroupNode` and seed each member's `localCell*` with its current world
- * coords. Idempotent â€” figures that already have `localCell*` and groups
- * that already exist are left alone.
- *
- * Run on composition load (from binary format) so older saves get the
- * hierarchy without changing visible state.
- */
-export function materializeGroupHierarchy(state: CompositionState): CompositionState {
-  const existingGroupIds = new Set(state.groups.map(g => g.id));
-  const referencedGroupIds = new Set<string>();
-  for (const f of state.figures) {
-    if (f.groupId) referencedGroupIds.add(f.groupId);
-  }
-  for (const s of state.svgObjects) {
-    if (s.groupId) referencedGroupIds.add(s.groupId);
-  }
-  const missingGroupIds: string[] = [];
-  for (const gid of referencedGroupIds) {
-    if (!existingGroupIds.has(gid)) missingGroupIds.push(gid);
-  }
-  const figuresNeedLocal = state.figures.some(f => f.groupId && (f.localCellX === undefined || f.localCellY === undefined || f.localCellWidth === undefined || f.localCellHeight === undefined));
-  const svgsNeedLocal = state.svgObjects.some(s => s.groupId && !s.localSegments);
-  const figuresNeedLocalOrient = state.figures.some(f => f.groupId && f.localRotation === undefined);
-  const svgsNeedBbox = state.svgObjects.some(s => (s as Partial<SVGObject>).cellX === undefined
-    || (s.groupId && (s.localCellX === undefined || s.localCellY === undefined || s.localCellWidth === undefined || s.localCellHeight === undefined)));
-  if (missingGroupIds.length === 0 && !figuresNeedLocal && !figuresNeedLocalOrient && !svgsNeedLocal && !svgsNeedBbox) {
-    return state.sceneOrder ? reflowSceneOrderForGroups(state) : state;
-  }
-
-  // Find a name for each missing group: use the first member's `name` if
-  // present, otherwise a generic label. (For the legacy data model the
-  // first member of a group typically holds the group's display name.)
-  const newGroups: GroupNode[] = [...state.groups];
-  for (const gid of missingGroupIds) {
-    const namedFigure = state.figures.find(f => f.groupId === gid && f.name);
-    const namedSVG = !namedFigure ? state.svgObjects.find(s => s.groupId === gid && s.name) : undefined;
-    newGroups.push({
-      id: gid,
-      name: namedFigure?.name ?? namedSVG?.name ?? 'Group',
-      translateX: 0,
-      translateY: 0,
-      scaleX: 1,
-      scaleY: 1,
-      rotation: 0,
-      mirrorH: false,
-      mirrorV: false,
-    });
-  }
-
-  const migrated = { ...backfillMissingLocals(state), groups: newGroups };
-  return migrated.sceneOrder ? reflowSceneOrderForGroups(migrated) : migrated;
-}
 
 // â”€â”€ Transform Cycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

@@ -415,10 +415,11 @@ function leafArrays(state: CompositionState): Array<[CompItemKind, readonly Lega
  * Build a graph from legacy state, reading **world fields only**.
  *
  * The persisted `local*` caches are deliberately ignored. World is what
- * the user saw, and a file can carry local caches that disagree with it
- * (the loader backfills the missing ones but never the wrong ones — see
- * `materializeGroupHierarchy`). Deriving locals fresh is what finally
- * makes the two agree, by having only one of them.
+ * the user saw, and a file could carry local caches that disagree with
+ * it — five of the twenty-one fixtures do. The loader drops them now
+ * (`legacyLocalCaches`), so there is usually nothing here to ignore;
+ * deriving locals fresh is what makes the two agree, by having only one
+ * of them.
  */
 export function fromLegacy(state: CompositionState): SceneGraph {
   const nodes = new Map<string, SceneNode>();

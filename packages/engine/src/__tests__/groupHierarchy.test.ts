@@ -3,7 +3,7 @@ import {
   deserializeComposition,
   CompositionBundle,
 } from '../compositionBinaryFormat';
-import { applyGroupTransform, materializeGroupHierarchy, applyCompOps, revertCompOps } from '../compositionOps';
+import { applyGroupTransform, applyCompOps, revertCompOps } from '../compositionOps';
 import { CompositionFigure, CompositionState, CompUndoEntry, GroupNode, makeViewport } from '../types';
 
 function makeFigure(overrides: Partial<CompositionFigure> & { id: string }): CompositionFigure {
@@ -84,55 +84,6 @@ describe('applyGroupTransform', () => {
   });
 });
 
-describe('materializeGroupHierarchy', () => {
-  test('does nothing when state is already current', () => {
-    const g: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
-    // All local fields populated: bbox + orientation. The migration
-    // backfills any missing locals, so an "already current" fixture
-    // has to seed every one of them.
-    const fig = makeFigure({ id: 'a', cellX: 3, cellY: 4, groupId: 'g1',
-      localCellX: 3, localCellY: 4, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false });
-    const state = makeState([fig], [g]);
-    expect(materializeGroupHierarchy(state)).toBe(state);
-  });
-
-  test('creates GroupNode and seeds locals for legacy figures with groupId', () => {
-    const fig = makeFigure({ id: 'a', cellX: 3, cellY: 4, groupId: 'g1', name: 'My Group' });
-    const state = makeState([fig]);
-    const out = materializeGroupHierarchy(state);
-    expect(out.groups).toHaveLength(1);
-    expect(out.groups[0]).toMatchObject({ id: 'g1', name: 'My Group', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false });
-    expect(out.figures[0]).toMatchObject({ localCellX: 3, localCellY: 4, localCellWidth: 2, localCellHeight: 2 });
-  });
-
-  test('is idempotent', () => {
-    const fig = makeFigure({ id: 'a', cellX: 3, cellY: 4, groupId: 'g1', name: 'My Group' });
-    const state = makeState([fig]);
-    const once = materializeGroupHierarchy(state);
-    const twice = materializeGroupHierarchy(once);
-    expect(twice).toBe(once);
-  });
-
-  test('leaves ungrouped figures alone', () => {
-    const fig = makeFigure({ id: 'a', cellX: 1, cellY: 2 });
-    const state = makeState([fig]);
-    const out = materializeGroupHierarchy(state);
-    expect(out.groups).toHaveLength(0);
-    expect(out.figures[0].localCellX).toBeUndefined();
-  });
-
-  test('handles multiple groups with multiple members each', () => {
-    const figs = [
-      makeFigure({ id: 'a', cellX: 0, cellY: 0, groupId: 'g1', name: 'Group A' }),
-      makeFigure({ id: 'b', cellX: 4, cellY: 0, groupId: 'g1' }),
-      makeFigure({ id: 'c', cellX: 0, cellY: 4, groupId: 'g2', name: 'Group B' }),
-    ];
-    const out = materializeGroupHierarchy(makeState(figs));
-    expect(out.groups.map(g => g.id).sort()).toEqual(['g1', 'g2']);
-    expect(out.figures.every(f => f.groupId == null || f.localCellX !== undefined)).toBe(true);
-  });
-});
 
 describe('groupFigures op creates a GroupNode and seeds locals', () => {
   test('apply', () => {

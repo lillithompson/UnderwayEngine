@@ -134,12 +134,12 @@ const loose = () => makeState({
  * not by declaring `groupId` and a `GroupNode` side by side.
  *
  * It matters. Hand-built grouped state has no `local*` caches, and
- * `materializeGroupHierarchy` only backfills them when a FIGURE or an SVG
- * is missing them — a group of images is never checked. Such a group then
- * does not move when it is transformed, because the materialize pass has
- * no locals to materialize from. Grouping through the op seeds them, so
- * these fixtures compare the graph against what the product actually
- * does rather than against that gap.
+ * nothing puts them there — the loader drops a file's rather than
+ * completing them. Such a group does not move when the LEGACY path
+ * transforms it, because the materialize pass has no locals to
+ * materialize from. Grouping through the op seeds them, so these
+ * fixtures compare the graph against what the product actually does
+ * rather than against that gap.
  */
 const grouped = () => applyCompOps(makeState({
   images: [

@@ -18,7 +18,7 @@ import {
   bucketMovedIds,
   computeSVGBbox,
   groupBounds,
-  materializeGroupHierarchy,
+  backfillMissingLocals,
   materializeGroupMembers,
 } from '../compositionOps';
 import { computeMoveSnapDelta } from '../compositionCellMath';
@@ -101,8 +101,9 @@ function buildExampleComposition(): CompositionState {
     createRegion: null,
     renderGeneration: 0,
   };
-  // Seed local segments from current world segments
-  state = materializeGroupHierarchy(state);
+  // Seed local segments from current world segments. (The loader drops a
+  // file's own caches now, so seeding is explicit here.)
+  state = backfillMissingLocals(state);
   // Apply group transforms to produce world coordinates
   state = materializeGroupMembers(state, groupId);
   return state;

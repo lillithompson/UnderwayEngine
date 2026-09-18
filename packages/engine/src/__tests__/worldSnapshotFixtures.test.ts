@@ -21,7 +21,6 @@ import * as path from 'path';
 import * as zlib from 'zlib';
 
 import { deserializeComposition } from '../compositionBinaryFormat';
-import { materializeGroupHierarchy } from '../compositionOps';
 import { worldSnapshotText } from '../worldSnapshot';
 import { CompositionState, makeViewport } from '../types';
 
@@ -70,9 +69,12 @@ function loadTile(rel: string): CompositionState {
     createRegion: null,
     renderGeneration: 0,
   };
-  // The real open path runs this; a fixture snapshotted without it would
-  // not describe what the editor actually shows.
-  return materializeGroupHierarchy(state);
+  // Exactly what the open path produces: `deserializeComposition` and
+  // nothing else. This used to run `materializeGroupHierarchy` on the
+  // claim that the open path did too — it does not, and has no
+  // production caller at all; backfilling the local caches here made the
+  // guardrail describe a state the editor never sees.
+  return state;
 }
 
 const TILES = findTiles(TEST_DATA);
