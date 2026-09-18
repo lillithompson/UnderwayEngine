@@ -581,10 +581,24 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         const lb = computeSVGBbox(localSegs);
         return { localCellX: lb.cellX, localCellY: lb.cellY, localCellWidth: lb.cellWidth, localCellHeight: lb.cellHeight };
       })() : {};
-      // Tiled SVGs: preserve the region bbox (offset by dx/dy).
-      const bbox = svg.tileMode === 'repeat'
-        ? { cellX: svg.cellX + dx, cellY: svg.cellY + dy, cellWidth: svg.cellWidth, cellHeight: svg.cellHeight }
-        : computeSVGBbox(segs);
+      // A duplicate is a pure TRANSLATION, so the stored box RIDES along;
+      // it is never re-measured off the copy. The two are not the same
+      // thing, and every other adapter here already knows it — a figure,
+      // an image, a text, a paint, a pattern all move `cellX`/`cellY` and
+      // leave the size alone. For an svg the box is the pose the renderer
+      // turns the path about (`leafNodeFromLegacy` takes its centre as the
+      // pivot and applies `angleDeg` there), and a member of a group
+      // pulled OFF SQUARE is drawn inside a box its own path need not
+      // fill: measuring the copy shrank the box, the pivot moved by half
+      // the difference, and the copy came back spun about the wrong point
+      // — in the wrong place, by an amount that grew with the member's own
+      // angle (§9.11). A tiled path could never be measured either, its
+      // box being the REGION it repeats across, and that exception is now
+      // simply the rule.
+      const bbox = {
+        cellX: svg.cellX + dx, cellY: svg.cellY + dy,
+        cellWidth: svg.cellWidth, cellHeight: svg.cellHeight,
+      };
       // When duplicating into a different group the original creationBox
       // is in the source group's local space and cannot be offset into the
       // new group's space with a simple translate â€” attempting to do so

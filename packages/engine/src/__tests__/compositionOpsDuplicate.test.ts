@@ -10,6 +10,7 @@ import {
   revertCompOps,
   buildDuplicateOps as engineBuildDuplicateOps,
   computeSVGBbox,
+  SCENE_ADAPTERS,
   groupBounds,
   inverseChainedGroupTransformPoint,
   applyGroupTransformPoint,
@@ -749,6 +750,64 @@ describe('a duplicate is named from the node’s own name; a tag is kept as it i
       ['slot:squiggle', undefined],
       ['arc copy', undefined],
     ]);
+  });
+});
+
+// A duplicate MOVES a thing; it does not re-measure it. Five of the six
+// adapters have always said so by simply adding dx/dy to `cellX`/`cellY`.
+// The svg one measured the copy's path instead, and for the one leaf
+// whose box is not its path's own bounds — a member of a group pulled off
+// square, whose box is the frame it is drawn in — that came back smaller,
+// which moved the pivot `leafNodeFromLegacy` turns the path about.
+// Reported from the device with `bug.tile`: group, scale off square,
+// duplicate, and the copy's members sit in different places from the
+// original's (docs/transform-refactor.md §9.11).
+describe('a duplicate carries the stored box rather than measuring the copy', () => {
+  const svgAdapter = SCENE_ADAPTERS.find((a) => a.kind === 'svg')!;
+
+  /** A path that does NOT fill its own stored box, which is the whole
+   *  case: a triangle inside a 10x10 frame reaches only 6 wide. */
+  const loose = makeSVGLine('svg_loose', {
+    segments: [
+      { kind: 'line', start: [2, 0], end: [8, 10] },
+      { kind: 'line', start: [8, 10], end: [2, 10] },
+      { kind: 'line', start: [2, 10], end: [2, 0] },
+    ],
+    cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 10,
+    angleDeg: 30,
+  });
+
+  test('the box translates and keeps its size', () => {
+    const dup = svgAdapter.cloneWithOffset(loose, 3, 4, 'svg_copy', undefined) as SVGObject;
+    expect([dup.cellX, dup.cellY]).toEqual([3, 4]);
+    expect([dup.cellWidth, dup.cellHeight]).toEqual([10, 10]);
+    // Not the path's own bounds, which is what re-measuring would give.
+    expect(computeSVGBbox(dup.segments).cellWidth).toBeCloseTo(6, 9);
+  });
+
+  test('…which is what keeps the angle turning about the same point', () => {
+    // `angleDeg` is applied about the stored box's CENTRE, so a box that
+    // shrank by 4 on one axis swings the drawn path about a pivot 2 cells
+    // over — the copy is rotated away from where the original stands.
+    const dup = svgAdapter.cloneWithOffset(loose, 0, 0, 'svg_copy', undefined) as SVGObject;
+    expect(dup.cellX + dup.cellWidth / 2).toBeCloseTo(loose.cellX + loose.cellWidth / 2, 9);
+    expect(dup.cellY + dup.cellHeight / 2).toBeCloseTo(loose.cellY + loose.cellHeight / 2, 9);
+  });
+
+  test('every other adapter already agreed, and still does', () => {
+    // The svg one was the odd adapter out; this is the invariant stated
+    // once for all six so a new kind cannot quietly re-measure either.
+    const items: Record<string, { cellX: number; cellY: number; cellWidth: number; cellHeight: number }> = {
+      figure: makeFigure('fig_x', { cellX: 1, cellY: 2, cellWidth: 5, cellHeight: 7 }),
+      svg: loose,
+      image: makeImage('img_x', { cellX: 1, cellY: 2, cellWidth: 5, cellHeight: 7 }),
+    };
+    for (const [kind, item] of Object.entries(items)) {
+      const adapter = SCENE_ADAPTERS.find((a) => a.kind === kind)!;
+      const dup = adapter.cloneWithOffset(item as never, 3, 4, 'x', undefined) as unknown as typeof item;
+      expect([kind, dup.cellX - item.cellX, dup.cellY - item.cellY]).toEqual([kind, 3, 4]);
+      expect([kind, dup.cellWidth, dup.cellHeight]).toEqual([kind, item.cellWidth, item.cellHeight]);
+    }
   });
 });
 
