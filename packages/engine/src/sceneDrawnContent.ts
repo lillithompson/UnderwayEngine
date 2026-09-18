@@ -19,7 +19,10 @@
  */
 
 import { SceneNode, mapSegments } from './sceneGraph';
-import { Bbox, Mat2D, matEquals, matUniformScale } from './sceneTransform';
+import {
+  Bbox, Mat2D, matApplyBbox, matEquals, matInvert, matIsSimilarity, matMul,
+  matTurnFrame, matUniformScale,
+} from './sceneTransform';
 import { localContentBox } from './sceneHitFrame';
 import { fadedSVGObject } from './fade';
 import type { PatternObject, SVGObject } from './types';
@@ -30,10 +33,13 @@ export interface SvgLocalGeometry {
   object: SVGObject;
   /** That object's box: the element's size and the `<svg>` viewBox. */
   box: Bbox;
-  /** The world matrix with the uniform scale taken out: what the element
-   *  (or the export's `<g>`) wears. */
+  /** What the element (or the export's `<g>`) wears: the world matrix's
+   *  TURN, with everything the vertices now carry taken out of it. A
+   *  similarity leaves the familiar matrix-over-its-uniform-scale. */
   matrix: Mat2D;
-  /** The uniform scale taken out of the matrix. */
+  /** The uniform scale taken out of the matrix — the single factor world
+   *  lengths grew by, which for an off-square matrix is the geometric
+   *  mean of its two axis factors. */
   scale: number;
 }
 
@@ -47,15 +53,25 @@ const svgGeometry = new WeakMap<SceneNode, { world: Mat2D; content: unknown; out
  * A stroke width is a WORLD quantity — 0.3125 cells at the default, an
  * authored width verbatim — and the markup builder draws it in user
  * space, so a path drawn through a scaled matrix would come out with a
- * scaled stroke. The matrix's uniform scale is therefore folded into the
- * VERTICES instead (the path is drawn `scale` times bigger) and divided
- * out of the matrix the element wears, which leaves a similarity's stroke
- * exactly the authored width. Under a matrix pulled off-square — a member
- * of a stretched bound group — what remains is the anisotropy, and the
- * stroke leans with it; the geometry is exact either way.
+ * scaled stroke. The matrix's scale is therefore folded into the VERTICES
+ * instead (the path is drawn `scale` times bigger) and divided out of the
+ * matrix the element wears, which leaves the stroke exactly the authored
+ * width.
+ *
+ * Under a matrix pulled OFF-SQUARE — a member of a stretched bound group
+ * — one uniform factor is not enough: what is left over still stretches
+ * one axis against the other, and the stroke came out fat one way and
+ * thin the other, which is a line changing WEIGHT because its group was
+ * resized. So what the element wears is the matrix's turn alone
+ * ({@link matTurnFrame}) and the vertices carry the whole of the
+ * rest, lean included. A path is points and carries it exactly, so the
+ * shape is the same shape either way — only the stroke dressing it stops
+ * being stretched. For a similarity the two are the same split, computed
+ * the same way, so nothing ordinary moves by a hair.
  *
  * A repeat-mode path's tile pitch and offset are lengths of the same kind
- * as its vertices, so they scale with them.
+ * as its vertices, so they scale with them — each along its own axis, so
+ * an off-square stretch tiles wider without tiling taller.
  *
  * `content` names the object whose NON-geometry fields to keep, for a
  * caller holding a variant of the node's own payload — the export's
@@ -70,9 +86,19 @@ export function svgLocalGeometry(
   if (hit && matEquals(hit.world, world) && hit.content === source) return hit.out;
 
   const s = matUniformScale(world) || 1;
-  const grow: Mat2D = { a: s, b: 0, c: 0, d: s, e: 0, f: 0 };
+  // A similarity keeps the exact arithmetic it always had — one factor
+  // out of the matrix and into the path — so its box and its element
+  // matrix come out bit for bit what they were. Anything else hands the
+  // path everything but the turn.
+  const square = matIsSimilarity(world);
+  const turn = matTurnFrame(world);
+  const grow: Mat2D = square
+    ? { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }
+    : matMul(matInvert(turn), { ...world, e: 0, f: 0 });
   const lb = localContentBox(node);
-  const box: Bbox = { x: lb.x * s, y: lb.y * s, width: lb.width * s, height: lb.height * s };
+  const box: Bbox = square
+    ? { x: lb.x * s, y: lb.y * s, width: lb.width * s, height: lb.height * s }
+    : matApplyBbox(grow, lb);
   const object: SVGObject = {
     ...source,
     id: node.id,
@@ -95,10 +121,14 @@ export function svgLocalGeometry(
     delete object.subpaths;
   }
   if (object.tileMode === 'repeat') {
-    if (object.tileWidthL0 != null) object.tileWidthL0 *= s;
-    if (object.tileHeightL0 != null) object.tileHeightL0 *= s;
-    if (object.tileOffsetXL0 != null) object.tileOffsetXL0 *= s;
-    if (object.tileOffsetYL0 != null) object.tileOffsetYL0 *= s;
+    // How far the grow stretched each of the path's own axes: `s` on both
+    // for a similarity, and exactly so — Math.hypot(s, 0) is s.
+    const gx = Math.hypot(grow.a, grow.b);
+    const gy = Math.hypot(grow.c, grow.d);
+    if (object.tileWidthL0 != null) object.tileWidthL0 *= gx;
+    if (object.tileHeightL0 != null) object.tileHeightL0 *= gy;
+    if (object.tileOffsetXL0 != null) object.tileOffsetXL0 *= gx;
+    if (object.tileOffsetYL0 != null) object.tileOffsetYL0 *= gy;
   }
   const out: SvgLocalGeometry = {
     // …and finally the FADE, applied once, here, where both renderers read
@@ -109,7 +139,7 @@ export function svgLocalGeometry(
     // disagree about it. Returns the same object untouched when there is no
     // fade, so the cache below keeps its identity on the common path.
     object: fadedSVGObject(object), box, scale: s,
-    matrix: { a: world.a / s, b: world.b / s, c: world.c / s, d: world.d / s, e: world.e, f: world.f },
+    matrix: { ...turn, e: world.e, f: world.f },
   };
   svgGeometry.set(node, { world, content: source, out });
   return out;

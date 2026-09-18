@@ -236,6 +236,43 @@ export function axisScaleSplit(m: Mat2D): { sx: number; sy: number; matrix: Mat2
 }
 
 /**
+ * The orthogonal frame a matrix turns its own x-axis into: the turn it
+ * carries (with a reflection in it, for a mirrored pose) and nothing
+ * else — no scale, no anisotropy, no shear.
+ *
+ * What it is FOR is a length that must come out the same in every
+ * direction. {@link matUniformScale} takes the size out of a matrix, but
+ * what is left of an off-square or sheared one still stretches one axis
+ * against the other, and anything drawn in that frame at a single
+ * authored width — a stroke — comes out fat one way and thin the other.
+ * Divide this out instead and the frame that remains is a rigid turn, so
+ * the width is the width; the part taken out goes into the geometry,
+ * which carries it exactly.
+ *
+ * The x-axis is what picks the angle, and deliberately, over the nearest
+ * turn in the least-squares sense. A sheared node has MANY spellings as
+ * a box and a matrix — the live page's and the one a reload reconstructs
+ * are two of them — and while they disagree about nearly everything they
+ * all take the box's own x-axis to the same direction. An angle read off
+ * that is therefore the same angle for all of them, which is what keeps
+ * anything drawn SQUARE to this frame (a border rect, a filter region)
+ * from moving when the page is saved and opened again.
+ *
+ * A similarity is already a scale times one of these, and for one this
+ * returns exactly its linear part over {@link matUniformScale} — the same
+ * arithmetic that has always been done, reflection included — so the
+ * ordinary page is bit-for-bit unchanged.
+ */
+export function matTurnFrame(m: Mat2D): Mat2D {
+  const s = matUniformScale(m) || 1;
+  if (matIsSimilarity(m)) {
+    return { a: m.a / s, b: m.b / s, c: m.c / s, d: m.d / s, e: 0, f: 0 };
+  }
+  const t = Math.atan2(m.b, m.a);
+  return { a: Math.cos(t), b: Math.sin(t), c: -Math.sin(t), d: Math.cos(t), e: 0, f: 0 };
+}
+
+/**
  * `matrix(...)` for a map whose translation is in CELLS, written in a
  * space of `unitsPerCell` units per cell.
  *
@@ -403,6 +440,34 @@ export function respellMirror(
  * must stay exact multiplies matrices and decomposes once at the end,
  * which is what the world-transform cache does.
  */
+/**
+ * What a `LocalTransform` could not say about the pose it was asked for:
+ * the matrix that, applied to the node's own geometry FIRST, puts the
+ * difference back — or null when it said the whole of it.
+ *
+ * `LocalTransform` is translate/rotate/scale/mirror and has no shear
+ * term, so a node turned inside a group pulled off its axes has a local
+ * pose no such transform can spell: {@link decomposeMatrix} hands back
+ * the nearest one and the lean is simply gone, which is a member that
+ * visibly changes shape. Geometry made of POINTS can carry the lean
+ * exactly, so the two together are always the exact pose.
+ *
+ * Null is the answer for every ordinary node, which is what keeps the
+ * fold inert: the tolerance is loose on purpose, so a residual that is
+ * only float noise reads as nothing left over and the geometry is left
+ * alone.
+ */
+export function localResidual(said: LocalTransform, wanted: Mat2D): Mat2D | null {
+  let inverse: Mat2D;
+  try { inverse = matInvert(localMatrix(said)); } catch { return null; }
+  const m = matMul(inverse, wanted);
+  const EPS = 1e-9;
+  const identityish = Math.abs(m.a - 1) < EPS && Math.abs(m.b) < EPS
+    && Math.abs(m.c) < EPS && Math.abs(m.d - 1) < EPS
+    && Math.abs(m.e) < EPS && Math.abs(m.f) < EPS;
+  return identityish ? null : m;
+}
+
 export function composeLocal(outer: LocalTransform, inner: LocalTransform): LocalTransform {
   return decomposeMatrix(matMul(localMatrix(outer), localMatrix(inner)));
 }

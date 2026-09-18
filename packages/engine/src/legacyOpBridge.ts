@@ -23,7 +23,7 @@ import {
   worldMatrix,
 } from './sceneGraph';
 import {
-  SceneEntry, SceneOp, applySceneOps, buildGroup, buildMoveBy, buildSetParent,
+  SceneEntry, SceneOp, applySceneOps, buildGroup, buildMoveBy, buildMoveUnder,
   buildSetTransform, buildUngroup, indexOfChild,
 } from './sceneGraphOps';
 import {
@@ -264,13 +264,11 @@ export function legacyOpToSceneOps(
     case 'ungroupFigures':
       return buildUngroup(graph, op.groupId);
 
-    case 'reparentNode': {
-      const set = buildSetParent(
+    case 'reparentNode':
+      return buildMoveUnder(
         graph, op.nodeId, op.newParentGroupId,
         indexOfChild(graph, op.newParentGroupId, op.nodeId),
       );
-      return set ? [set] : [];
-    }
 
     default:
       return null;

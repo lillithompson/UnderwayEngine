@@ -1613,9 +1613,10 @@ export async function generateCompositionSVGCore(
    *
    * A pattern hands over the view baked in its local box. Everything else
    * goes through `svgLocalGeometry`, the reader the node layer draws from
-   * — which grows the path by the matrix's uniform scale and divides that
-   * scale back out of the matrix, so a stroke width (a WORLD quantity the
-   * markup draws in user space) stays the authored width through a pinch.
+   * — which grows the path by everything but the matrix's turn and
+   * divides that back out of the matrix, so a stroke width (a WORLD
+   * quantity the markup draws in user space) stays the authored width
+   * through a pinch and through an off-square group resize alike.
    * `entry` carries the non-geometry fields, which is how an object the
    * generator has REPLACED — one recoloured by `strokeColorOverride` —
    * keeps its new colours while taking the node's exact geometry.

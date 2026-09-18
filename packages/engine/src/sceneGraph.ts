@@ -22,8 +22,8 @@
 
 import {
   LOCAL_IDENTITY, LocalTransform, MAT_IDENTITY, Mat2D,
-  decomposeMatrix, localMatrix, matAbout, matApplyBbox, matApplyPoint, matInvert, matMul,
-  matTranslate, normalizeDeg, respellMirror,
+  decomposeMatrix, localMatrix, localResidual, matAbout, matApplyBbox, matApplyPoint, matInvert,
+  matMul, matTranslate, normalizeDeg, respellMirror,
 } from './sceneTransform';
 import { arcBoundingBox } from './compositionArcHitTest';
 import type { Bbox } from './transform2d';
@@ -291,6 +291,42 @@ export function mapSegments(
       start: matApplyPoint(m, seg.start[0], seg.start[1]),
       end: matApplyPoint(m, seg.end[0], seg.end[1]),
     });
+}
+
+/**
+ * A leaf carrying its own geometry through `m`, so that a frame moving
+ * out from under it leaves the node drawn exactly where it was.
+ *
+ * Only an svg has geometry of this kind. Its content is POINTS, which
+ * hold any affine map exactly — including the shear a `LocalTransform`
+ * has no term for ({@link localResidual}), which is the whole reason
+ * this exists: ungrouping a group that was stretched off its axes hands
+ * every turned member a local pose that cannot be spelled, and the
+ * member changes shape. Folding the un-sayable part into the path is
+ * what makes ungrouping shape-preserving.
+ *
+ * Every other kind's content is a BOX and there is nowhere to put a
+ * lean, so they get null and keep the nearest pose — the gap §6.2
+ * records, which wants a place in the FILE for a shear before it can
+ * close.
+ */
+export function leafThroughMatrix(node: SceneNode, m: Mat2D): SceneNode | null {
+  if (node.kind !== 'svg' || !node.localSegments) return null;
+  const localSegments = mapSegments(node.localSegments, m);
+  // A tiled path's box is the REGION it repeats across, not its own
+  // bounds, so it is carried as a box; every other svg's box is read back
+  // off the geometry, which is where `leafNodeFromLegacy` reads a sheared
+  // one from too.
+  const region = (node.content as SVGObject | undefined)?.tileMode === 'repeat';
+  return {
+    ...node,
+    localSegments,
+    ...(node.localBox
+      ? { localBox: region ? matApplyBbox(m, node.localBox) : pathBbox(localSegments) }
+      : {}),
+    ...(node.localSubpaths ? { localSubpaths: mapSubpaths(node.localSubpaths, m) } : {}),
+    ...(node.localCreationBox ? { localCreationBox: matApplyBbox(m, node.localCreationBox) } : {}),
+  };
 }
 
 /** `next`, or `prev` itself when every vertex is exactly the same. */
@@ -796,9 +832,9 @@ export function leafNodeFromLegacy(
     // case but this one — so nothing else moves by a hair.
     const wanted = matMul(toLocal, spun);
     const said = decomposeMatrix(wanted);
-    const residual = matMul(safeInvert(localMatrix(said)), wanted);
-    const sheared = !isIdentityish(residual);
-    const toOwnExact = sheared ? matMul(residual, toOwn) : toOwn;
+    const residual = localResidual(said, wanted);
+    const sheared = residual !== null;
+    const toOwnExact = residual ? matMul(residual, toOwn) : toOwn;
     const localSegments = mapSegments(segments, toOwnExact);
     return {
       id: leaf.id, kind: 'svg', name: leaf.name, parentId,
@@ -807,10 +843,17 @@ export function leafNodeFromLegacy(
       ...(svg.cellWidth !== undefined && svg.cellHeight !== undefined ? {
         // Un-turned, the stored rectangle is no longer the tight one and
         // the path's own bounds are: read the box off the geometry that
-        // is now in its own frame.
+        // is now in its own frame. A TILED path is the exception both
+        // ways — its box is the REGION it repeats across, not its own
+        // bounds — so that one is carried as a box however it got here;
+        // read off the geometry it would come back as a single tile.
         localBox: baked === 0 && !sheared
           ? unturnBox({ x: svg.cellX, y: svg.cellY, width: svg.cellWidth, height: svg.cellHeight })
-          : pathBbox(localSegments),
+          : (svg.tileMode === 'repeat'
+            ? matApplyBbox(toOwnExact, {
+              x: svg.cellX, y: svg.cellY, width: svg.cellWidth, height: svg.cellHeight,
+            })
+            : pathBbox(localSegments)),
       } : {}),
       ...(svg.subpaths ? { localSubpaths: mapSubpaths(svg.subpaths, toOwnExact) } : {}),
       ...(svg.creationBox ? {
@@ -876,17 +919,6 @@ export function groupFieldsToTransform(g: {
  *  than throwing while loading someone's page. */
 function safeInvert(m: Mat2D): Mat2D {
   try { return matInvert(m); } catch { return MAT_IDENTITY; }
-}
-
-/** Is this matrix the identity to within float noise? The tolerance is
- *  loose on purpose: it decides whether a leaf is SHEARED, and a residual
- *  that is only rounding must read as "no shear" so the ordinary path is
- *  bit-for-bit what it was. */
-function isIdentityish(m: Mat2D): boolean {
-  const EPS = 1e-9;
-  return Math.abs(m.a - 1) < EPS && Math.abs(m.b) < EPS
-    && Math.abs(m.c) < EPS && Math.abs(m.d - 1) < EPS
-    && Math.abs(m.e) < EPS && Math.abs(m.f) < EPS;
 }
 
 /**

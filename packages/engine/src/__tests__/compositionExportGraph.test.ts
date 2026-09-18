@@ -12,10 +12,12 @@
 import { exportGraph, generateCompositionSVGCore } from '../compositionSVGCore';
 import type { CompositionSVGInputs } from '../compositionSVGCore';
 import { applyCompOps, withSceneGraph } from '../compositionOps';
-import { fromLegacy, worldMatrix } from '../sceneGraph';
+import { fromLegacy, worldMatrix, worldSegments } from '../sceneGraph';
+import { svgLocalGeometry } from '../sceneDrawnContent';
 import { localContentBox } from '../sceneHitFrame';
 import {
-  matApplyBbox, matApplyCorners, matApplyPoint, matShear, matUniformScale,
+  matApplyBbox, matApplyCorners, matApplyPoint, matInvert, matIsSimilarity, matShear,
+  matUniformScale,
 } from '../sceneTransform';
 import { SVG_UNITS_PER_L0_CELL as U } from '../svgExport';
 import {
@@ -342,14 +344,26 @@ const patternObject = (over: Partial<PatternObject> = {}): PatternObject => {
 };
 
 describe('the svg kind draws its path in its own space', () => {
-  test("a sheared member's chrome leans with it, instead of squaring up", async () => {
+  test("a sheared member's chrome is even, and bounds what is drawn", async () => {
     // The path itself was always exact — `toLegacyView` maps the vertices
     // through the world matrix, shear and all, and the export turned them
     // back with a `rotate(angleDeg)` wrapper. What was NOT exact is
     // everything an svg draws in its BOX rather than along its path: the
     // border rect, the drop shadow's filter region, the opacity and soften
     // masks. Those read `cellX…cellHeight`, which for a sheared member is
-    // the nearest UPRIGHT rectangle around it.
+    // the nearest UPRIGHT rectangle around it — so this used to check that
+    // the chrome LEANED, drawn in the very frame the path was.
+    //
+    // It no longer leans, and that is the fix for §9.10: a frame with a
+    // lean in it stretches a stroke, so a line inside a group pulled
+    // off-square changed WEIGHT. The frame an svg is drawn in is a
+    // similarity now and the lean lives in the path's points, which means
+    // the chrome — the border rect among it — is drawn square to that
+    // frame and bounds the drawn parallelogram instead of tracing it.
+    // Evener than the canvas, which rings an svg's border on its world
+    // AABB; the parallelogram-tracing border is not recoverable without
+    // giving up the even stroke, and the even stroke is what was asked
+    // for.
     //
     // A shear needs a turned member inside a group stretched off its axes:
     // no `LocalTransform` can store one, but a composition of two can.
@@ -383,19 +397,47 @@ describe('the svg kind draws its path in its own space', () => {
     };
 
     const svg = (await generateCompositionSVGCore(inputsFor(leaned)))!;
-    // The border covers the very parallelogram the world matrix makes of
-    // the node's own box — the exact drawn shape, lean and all. (An svg's
-    // local box is centred on its own origin, not at (0, 0).)
-    const want = matApplyCorners(world, localContentBox(leaned.graph!.nodes.get('svg')!))
+    const geo = svgLocalGeometry(leaned.graph!.nodes.get('svg')!, world);
+    // The frame every part of the node is drawn in is a SIMILARITY — the
+    // one thing that makes a stroke come out the width it was authored at
+    // whichever way it runs.
+    expect(matIsSimilarity(geo.matrix)).toBe(true);
+    // The border sits on that frame's box…
+    const want = matApplyCorners(geo.matrix, geo.box)
       .map(([x, y]) => [x * U, y * U] as [number, number]);
     expectQuadsClose(borderQuad(svg), want);
-    // Its emitted size is the box grown by the matrix's uniform scale,
-    // which `svgLocalGeometry` folds into the geometry so that a stroke
-    // width stays a world quantity through a pinch.
+    // …which is the TIGHT bound of the drawn parallelogram in it: the
+    // chrome is square to the frame, and no larger than what it holds.
+    const toFrame = matInvert(geo.matrix);
+    const inFrame = (pts: readonly (readonly [number, number])[]) => {
+      const m = pts.map(([x, y]) => matApplyPoint(toFrame, x, y));
+      return {
+        x0: Math.min(...m.map((p) => p[0])), y0: Math.min(...m.map((p) => p[1])),
+        x1: Math.max(...m.map((p) => p[0])), y1: Math.max(...m.map((p) => p[1])),
+      };
+    };
+    // …which is the TIGHT bound, in that frame, of the very parallelogram
+    // the world matrix makes of the node's own box. The chrome is square
+    // to the frame instead of leaning, and no bigger than what it holds.
+    const quad = inFrame(matApplyCorners(world, localContentBox(leaned.graph!.nodes.get('svg')!)));
+    expect(quad.x0).toBeCloseTo(geo.box.x, 6);
+    expect(quad.y0).toBeCloseTo(geo.box.y, 6);
+    expect(quad.x1).toBeCloseTo(geo.box.x + geo.box.width, 6);
+    expect(quad.y1).toBeCloseTo(geo.box.y + geo.box.height, 6);
+    // The drawn path is inside it, as a node's own box has to be.
+    const path = inFrame(worldSegments(leaned.graph!, 'svg').flatMap((seg) => [seg.start, seg.end]));
+    expect(path.x0).toBeGreaterThanOrEqual(geo.box.x - 1e-9);
+    expect(path.y0).toBeGreaterThanOrEqual(geo.box.y - 1e-9);
+    expect(path.x1).toBeLessThanOrEqual(geo.box.x + geo.box.width + 1e-9);
+    expect(path.y1).toBeLessThanOrEqual(geo.box.y + geo.box.height + 1e-9);
+    // The emitted rect is that box: the lean WIDENS it (a lean along x is
+    // what this group's stretch makes) and leaves its height the
+    // parallelogram's own, where the uniform scale would have grown both.
     const s = matUniformScale(world);
     const [, bw, bh] = svg.match(/width="([-\d.]+)" height="([-\d.]+)"[^>]*#00FF00/)!;
-    expect(Number(bw) / U).toBeCloseTo(8 * s, 3);
-    expect(Number(bh) / U).toBeCloseTo(4 * s, 3);
+    expect(Number(bw) / U).toBeCloseTo(geo.box.width, 3);
+    expect(Number(bh) / U).toBeCloseTo(geo.box.height, 3);
+    expect(geo.box.width).toBeGreaterThan(8 * s);
 
     // …and the arrays alone now answer the same quad, which is what
     // opening the saved page has to do. The lean cannot live in the

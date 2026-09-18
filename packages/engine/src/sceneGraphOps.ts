@@ -9,7 +9,10 @@
  * - `setParent` — group, ungroup, reparent-by-drag. The child's new local
  *   transform is `inverse(newParentWorld) . oldWorld`, which is exact:
  *   the node does not move, and there is no reconcile pass afterwards
- *   because there is nothing to reconcile.
+ *   because there is nothing to reconcile. Where that product is a map a
+ *   `LocalTransform` cannot spell — a member of a group pulled off its
+ *   axes — `buildMoveUnder` sends the difference along in front of it as
+ *   a `setContent`, so the node keeps its SHAPE and not only its pose.
  * - `reorder`, `addNode`, `removeNode` — structure.
  *
  * Every op carries both sides of the change, so `revertSceneOp` is
@@ -19,11 +22,11 @@
  */
 
 import {
-  LOCAL_IDENTITY, LocalTransform, Mat2D, decomposeMatrix, localMatrix, matInvert, matMul,
-  respellMirror,
+  LOCAL_IDENTITY, LocalTransform, Mat2D, decomposeMatrix, localMatrix, localResidual, matInvert,
+  matMul, respellMirror,
 } from './sceneTransform';
 import {
-  SceneGraph, SceneNode, ancestors, descendants, worldMatrix,
+  SceneGraph, SceneNode, ancestors, descendants, leafThroughMatrix, worldMatrix,
 } from './sceneGraph';
 
 // ── Ops ────────────────────────────────────────────────────────────────
@@ -132,6 +135,10 @@ export function buildSetTransform(
  * are all this, which is why none of them needs a reconcile pass and why
  * none of them can leave a member behind.
  *
+ * Keeping the POSE is not always keeping the SHAPE — see
+ * {@link buildMoveUnder}, which is what group, ungroup and reparent-by-
+ * drag actually call and which wraps this.
+ *
  * Refuses to put a node inside its own descendant, which would detach
  * that subtree from the scene.
  */
@@ -154,6 +161,48 @@ export function buildSetParent(
     toIndex,
     toTransform: localUnder(graph, nodeId, toParentId),
   };
+}
+
+/**
+ * Move a node under a new parent AND keep the shape it is drawn as.
+ *
+ * The one to reach for; {@link buildSetParent} is its pose-only half.
+ * Keeping the pose is the whole story for every ordinary node. It is not
+ * the whole story for a node inside a
+ * group pulled off its axes: such a node is drawn as a parallelogram,
+ * its local pose under the new parent is a map no `LocalTransform` can
+ * spell, and the nearest one that can is a turned rectangle. That is
+ * ungrouping changing the shape of the scene, which it must never do.
+ *
+ * So what the transform cannot say ({@link localResidual}) is folded
+ * into the node's own geometry, where points carry it exactly — the same
+ * answer `leafNodeFromLegacy` gives when it reads a sheared member back
+ * off a saved page. The fold travels as a `setContent` in FRONT of the
+ * reparent, so undo puts the original node back whole.
+ *
+ * Returns the ops as a list, empty when the move is refused.
+ */
+export function buildMoveUnder(
+  graph: SceneGraph, nodeId: string,
+  toParentId: string | undefined, toIndex: number,
+): SceneOp[] {
+  const set = buildSetParent(graph, nodeId, toParentId, toIndex);
+  if (!set || set.op !== 'setParent') return set ? [set] : [];
+  const node = graph.nodes.get(nodeId);
+  if (!node) return [set];
+
+  let wanted: Mat2D;
+  try {
+    const world = worldMatrix(graph, nodeId);
+    wanted = toParentId ? matMul(matInvert(worldMatrix(graph, toParentId)), world) : world;
+  } catch {
+    // A collapsed new parent has no inverse; `buildSetParent` has its own
+    // fallback for that and there is nothing here to improve on it.
+    return [set];
+  }
+  const residual = localResidual(set.toTransform, wanted);
+  const carried = residual && leafThroughMatrix(node, residual);
+  return carried ? [{ op: 'setContent', nodeId, from: node, to: carried }, set] : [set];
 }
 
 /** The local transform `nodeId` needs under `parentId` to stay put. */
@@ -244,10 +293,9 @@ export function buildGroup(
 
   let next = applySceneOp(graph, entry[0]);
   members.forEach((id, i) => {
-    const op = buildSetParent(next, id, groupId, i);
-    if (!op) return;
-    entry.push(op);
-    next = applySceneOp(next, op);
+    const ops = buildMoveUnder(next, id, groupId, i);
+    entry.push(...ops);
+    next = applySceneOps(next, ops);
   });
   return entry;
 }
@@ -299,10 +347,9 @@ export function buildUngroup(graph: SceneGraph, groupId: string): SceneEntry {
   let next = graph;
 
   (group.children ?? []).forEach((childId, i) => {
-    const op = buildSetParent(next, childId, parentId, at + i);
-    if (!op) return;
-    entry.push(op);
-    next = applySceneOp(next, op);
+    const ops = buildMoveUnder(next, childId, parentId, at + i);
+    entry.push(...ops);
+    next = applySceneOps(next, ops);
   });
 
   const emptied = next.nodes.get(groupId);
