@@ -141,7 +141,6 @@ describe('duplicate then ungroup preserves H/V line creationBox', () => {
       localSegments: [{ kind: 'line', start: [0, 4], end: [10, 4] }],
       color: { r: 0, g: 0, b: 0 },
       cellX: 0, cellY: 4, cellWidth: 10, cellHeight: 0,
-      localCellX: 0, localCellY: 4, localCellWidth: 10, localCellHeight: 0,
       creationBox: { minX: 0, minY: 3.5, width: 10, height: 1 },
       lineDirection: 'horizontal',
     };

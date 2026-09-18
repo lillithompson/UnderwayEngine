@@ -18,8 +18,6 @@ import {
   bucketMovedIds,
   computeSVGBbox,
   groupBounds,
-  backfillMissingLocals,
-  materializeGroupMembers,
 } from '../compositionOps';
 import { computeMoveSnapDelta } from '../compositionCellMath';
 import { findStrokeAtCell, findFigureAtCell, groupMemberIds, getItemGroupId } from '../compositionOps';
@@ -32,6 +30,7 @@ import {
   SVGObject,
   makeViewport,
 } from '../types';
+import { moveGroupBy } from './groupTransform.test-utils';
 
 /**
  * Build a state matching the original Example.tile fixture:
@@ -81,8 +80,8 @@ function buildExampleComposition(): CompositionState {
     groups: [{
       id: groupId,
       name: 'Group',
-      translateX: 1,
-      translateY: -3,
+      translateX: 0,
+      translateY: 0,
       scaleX: 1,
       scaleY: 1,
       rotation: 0,
@@ -101,12 +100,10 @@ function buildExampleComposition(): CompositionState {
     createRegion: null,
     renderGeneration: 0,
   };
-  // Seed local segments from current world segments. (The loader drops a
-  // file's own caches now, so seeding is explicit here.)
-  state = backfillMissingLocals(state);
-  // Apply group transforms to produce world coordinates
-  state = materializeGroupMembers(state, groupId);
-  return state;
+  // The members are authored where they sit under an untransformed group;
+  // the group is then moved to where the fixture has it, which is a real
+  // group transform rather than a re-derivation from seeded caches.
+  return moveGroupBy(state, groupId, 1, -3);
 }
 
 /** Mirror MOVE_FIGURES_DELTA's bucketed reducer: route grouped ids
@@ -114,12 +111,8 @@ function buildExampleComposition(): CompositionState {
 function applyMoveDelta(state: CompositionState, ids: string[], dx: number, dy: number): CompositionState {
   const { groupIds, ungrouped } = bucketMovedIds(state, ids);
   const ungroupedSet = new Set(ungrouped);
-  const groups = state.groups.map(g => groupIds.has(g.id)
-    ? { ...g, translateX: g.translateX + dx, translateY: g.translateY + dy }
-    : g);
   let next: CompositionState = {
     ...state,
-    groups,
     figures: state.figures.map(f => ungroupedSet.has(f.id)
       ? { ...f, cellX: f.cellX + dx, cellY: f.cellY + dy }
       : f),
@@ -131,7 +124,7 @@ function applyMoveDelta(state: CompositionState, ids: string[], dx: number, dy: 
       return { ...s, segments: newSegs, ...computeSVGBbox(newSegs) };
     }),
   };
-  for (const gid of groupIds) next = materializeGroupMembers(next, gid);
+  for (const gid of groupIds) next = moveGroupBy(next, gid, dx, dy);
   return next;
 }
 

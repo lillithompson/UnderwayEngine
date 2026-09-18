@@ -3,20 +3,17 @@ import { mintPaintObjectId, paintObjectAlphaHitTest } from './paintObject';
 import { mintPatternObjectId, applyPatternCellEdits } from './patternObject';
 import { lineHitsCell as svgHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
-import { GEOMETRY_ADAPTERS, mirroredAngleDeg, normalizeAngleDeg, rescaleSegs } from './sceneNodeGeometry';
+import { GEOMETRY_ADAPTERS, mirroredAngleDeg, rescaleSegs } from './sceneNodeGeometry';
 import { nextGroupName } from './sceneOutlineHelpers';
 import { svgPathHitsPoint, computeHitToleranceCells } from './compositionPathHitTest';
 import { buildActiveMaskMap, getAncestorMasks, getGroupMaskChain, pointPassesMasks, clipRectToNodeMasks } from './compositionMask';
 import { colorsEqual } from './colorBlend';
 import { SegmentOverrides, remapOverrides } from './tileSegmentOverrides';
-import { worldSnapshot, diffWorldSnapshots } from './worldSnapshot';
-import { fromLegacy, pathBbox, regraphChangedLeaves, toLegacyView, worldMatrix } from './sceneGraph';
+import { SceneGraph, fromLegacy, pathBbox, regraphChangedLeaves, toLegacyView, worldMatrix } from './sceneGraph';
 import { NodeHitFrame, graphOf, leafHitFrame } from './sceneHitFrame';
-import {
-  applyLegacyEntryToGraph, invertOnGraph, isPoseOp, legacyOpToSceneOps,
-} from './legacyOpBridge';
-import { applySceneOps, revertSceneOps } from './sceneGraphOps';
-import { Orientation, bboxToCells, orientationToMatrix, matrixToOrientation, composeOrientation } from './transform2d';
+import { invertOnGraph, legacyOpToSceneOps } from './legacyOpBridge';
+import { SceneEntry, applySceneOps, revertSceneOps } from './sceneGraphOps';
+import { Orientation, bboxToCells, composeOrientation } from './transform2d';
 import {
   CompItemRef, GroupHiddenToggle, allDescendantMemberIds, computeGroupHiddenToggle,
   descendantGroupIds, findItem, findRootGroupId, getItemGroupId, groupAncestorChain,
@@ -648,8 +645,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         id: newId,
         cellX: img.cellX + dx,
         cellY: img.cellY + dy,
-        localCellX: img.localCellX !== undefined ? img.localCellX + dx : undefined,
-        localCellY: img.localCellY !== undefined ? img.localCellY + dy : undefined,
         identityCellX: img.identityCellX !== undefined ? img.identityCellX + dx : undefined,
         identityCellY: img.identityCellY !== undefined ? img.identityCellY + dy : undefined,
         name: duplicateName(img),
@@ -680,8 +675,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         style: { ...txt.style, ...(txt.style.stroke ? { stroke: { ...txt.style.stroke } } : null) },
         cellX: txt.cellX + dx,
         cellY: txt.cellY + dy,
-        localCellX: txt.localCellX !== undefined ? txt.localCellX + dx : undefined,
-        localCellY: txt.localCellY !== undefined ? txt.localCellY + dy : undefined,
         identityCellX: txt.identityCellX !== undefined ? txt.identityCellX + dx : undefined,
         identityCellY: txt.identityCellY !== undefined ? txt.identityCellY + dy : undefined,
         name: duplicateName(txt),
@@ -713,8 +706,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         tiles: [...p.tiles],
         cellX: p.cellX + dx,
         cellY: p.cellY + dy,
-        localCellX: p.localCellX !== undefined ? p.localCellX + dx : undefined,
-        localCellY: p.localCellY !== undefined ? p.localCellY + dy : undefined,
         identityCellX: p.identityCellX !== undefined ? p.identityCellX + dx : undefined,
         identityCellY: p.identityCellY !== undefined ? p.identityCellY + dy : undefined,
         name: duplicateName(p),
@@ -743,8 +734,6 @@ export const SCENE_ADAPTERS: SceneObjectAdapter[] = [
         ...(p.symmetry ? { symmetry: { ...p.symmetry } } : null),
         cellX: p.cellX + dx,
         cellY: p.cellY + dy,
-        localCellX: p.localCellX !== undefined ? p.localCellX + dx : undefined,
-        localCellY: p.localCellY !== undefined ? p.localCellY + dy : undefined,
         identityCellX: p.identityCellX !== undefined ? p.identityCellX + dx : undefined,
         identityCellY: p.identityCellY !== undefined ? p.identityCellY + dy : undefined,
         name: duplicateName(p),
@@ -1067,23 +1056,19 @@ export function buildRemoveObjectOps(
   return withGroupPruning(state, entry);
 }
 
-/** Clear group-local coordinate fields from a scene object in-place.
- *  Mirrors the per-kind field clearing in the `ungroupFigures` apply path.
- *  Does NOT clear `creationBox` for SVGs â€” callers that need the
+/** Take a scene object out of its group, in place.
+ *
+ *  Clears `groupId`, the transform cycle's identity stash and the world
+ *  orientation flags, mirroring the per-kind clearing in `ungroupFigures`'
+ *  apply path. Was `detachFromGroup`, and used to clear the `local*`
+ *  caches too; P6-B retired those, and what is left is the membership and
+ *  the stash, so the name now says that.
+ *
+ *  Does NOT clear `creationBox` for SVGs - callers that need the
  *  `ungroupCreationBox` snap should handle that separately. */
-export function clearGroupLocals(item: any, kind: CompItemKind): void {
+export function detachFromGroup(item: any, kind: CompItemKind): void {
   item.groupId = undefined;
-  item.localCellX = undefined;
-  item.localCellY = undefined;
-  item.localCellWidth = undefined;
-  item.localCellHeight = undefined;
   if (kind === 'figure') {
-    item.localTileWidthL0 = undefined;
-    item.localTileHeightL0 = undefined;
-    item.localRotation = undefined;
-    item.localMirrorH = undefined;
-    item.localMirrorV = undefined;
-    item.localQuads = undefined;
     item.identityCellX = undefined;
     item.identityCellY = undefined;
     item.transformCycleStep = undefined;
@@ -1103,85 +1088,6 @@ export function clearGroupLocals(item: any, kind: CompItemKind): void {
     item.mirrorV = undefined;
   }
 }
-
-// Scene order lives in ./compositionSceneOrder, re-exported below.
-
-/**
- * Dev-only invariant: every grouped leaf's `local*` caches agree with its
- * world fields.
- *
- * The engine stores a grouped leaf's pose twice — world (`cellX/Y/…`,
- * `rotation`, `angleDeg`, `segments`) and local (`localCell*`,
- * `localRotation`, `localSegments`, …) — and keeps them in sync by hand.
- * When an op updates world and forgets local, nothing breaks until the
- * next time an ancestor is transformed: `materializeGroupMembers` then
- * rewrites world *from* the stale local and the member visibly snaps back.
- *
- * This asserts the two agree, by doing exactly what that next ancestor
- * transform would do — materialize every root group — and checking the
- * world poses did not move. Re-materializing consistent locals is a no-op,
- * so a difference is precisely a leaf whose locals were left behind.
- *
- * Throws naming the offending leaf. Test-only: O(leaves) state copies.
- */
-export function staleGroupedLeaves(state: CompositionState): Map<string, string> {
-  const out = new Map<string, string>();
-  const hasGrouped = [
-    ...state.figures, ...state.svgObjects, ...(state.images ?? []),
-    ...(state.texts ?? []), ...(state.paintObjects ?? []), ...(state.patternObjects ?? []),
-  ].some((n) => n.groupId);
-  if (!hasGrouped) return out;
-
-  // Materialize from the roots down; `materializeGroupMembers` recurses
-  // into child groups, so the root groups cover every grouped leaf.
-  let next = state;
-  for (const g of state.groups ?? []) {
-    if (!g.parentGroupId) next = materializeGroupMembers(next, g.id);
-  }
-  if (next === state) return out;
-
-  const before = worldSnapshot(state);
-  const after = worldSnapshot(next);
-  for (let i = 0; i < before.length && i < after.length; i++) {
-    const diff = diffWorldSnapshots([before[i]], [after[i]], { ignoreSvgBbox: true });
-    if (diff) out.set(before[i].id, diff);
-  }
-  return out;
-}
-
-/** Throws if any grouped leaf's local caches are stale. */
-export function assertGroupLocalsConsistent(state: CompositionState): void {
-  const stale = staleGroupedLeaves(state);
-  if (stale.size === 0) return;
-  throw new Error(
-    'group local caches are stale — materializing an ancestor would move a member:\n'
-    + [...stale.values()].join('\n'),
-  );
-}
-
-/**
- * Throws if `after` has a stale grouped leaf that `before` did not.
- *
- * The narrower question, and the one the op layer can actually answer. A
- * composition can arrive already inconsistent — though far less often
- * than it used to: the loader now DROPS a file's persisted local caches
- * rather than trusting the ones that are not missing, so a page opened
- * from disk no longer starts out disagreeing with itself. Blaming the
- * next op to touch such a page would report the wrong culprit, so this
- * asks only whether an op made things worse.
- */
-function assertNoNewStaleLocals(before: CompositionState, after: CompositionState): void {
-  const now = staleGroupedLeaves(after);
-  if (now.size === 0) return;
-  const was = staleGroupedLeaves(before);
-  const fresh = [...now].filter(([id]) => !was.has(id));
-  if (fresh.length === 0) return;
-  throw new Error(
-    'this op left a grouped member\'s local caches stale — materializing an '
-    + 'ancestor would move it:\n' + fresh.map(([, diff]) => diff).join('\n'),
-  );
-}
-
 
 /** World bbox of an SVGObject, derived from its segments. Computes the
  *  AABB of all segment endpoints (and arc centers). */
@@ -1205,16 +1111,6 @@ export function computeSVGBbox(
  *  left the other deforming arcs. */
 export const rescaleSVGToBbox = rescaleSegs;
 
-/** Local-bbox accessor variant â€” returns the same data under the
- *  `localCell*` key names so it can be spread into a reducer update
- *  alongside `localSegments`. */
-function localBboxFromSegments(
-  segments: ReadonlyArray<PathSegment>,
-): { localCellX: number; localCellY: number; localCellWidth: number; localCellHeight: number } {
-  const bb = computeSVGBbox(segments);
-  return { localCellX: bb.cellX, localCellY: bb.cellY, localCellWidth: bb.cellWidth, localCellHeight: bb.cellHeight };
-}
-
 /** Shift one node by `(dx, dy)` — rigid: the rendered orientation is
  *  preserved (bbox kinds keep rotation/mirror; figures/svgs clear only
  *  their transform-cycle stash). Used by the unified `moveNode`
@@ -1230,14 +1126,7 @@ export function translateNodeByDelta(
     if (!item) continue;
     const geoAdapter = GEOMETRY_ADAPTERS[sceneAdapter.kind];
     const updated = arr.map((x: any) => x.id === nodeId ? geoAdapter.translate(x, dx, dy) : x);
-    const next = sceneAdapter.setArray(state, updated);
-    // A member of a transformed group: the adapter shifted its locals by
-    // the WORLD delta, which is only right under an identity chain — in a
-    // rotated, flipped or scaled frame the local delta is the world one
-    // inverted through the chain, and locals left on the world delta
-    // jumped the node on the frame's next transform. Re-derive the group's
-    // locals from world (the reconcile), which is exact for every kind.
-    return item.groupId ? reconcileGroupLocalsForGroups(next, new Set([item.groupId])) : next;
+    return sceneAdapter.setArray(state, updated);
   }
   return state;
 }
@@ -2001,27 +1890,6 @@ export function inverseChainedGroupTransformDelta(
   return [x, y];
 }
 
-/** Apply a chain of group transforms (innermost first, root last) to quads. */
-function transformQuadsByGroupChain(
-  localQuads: ReadonlyArray<FigureQuad>,
-  localBbox: { cellWidth: number; cellHeight: number },
-  chain: readonly GroupNode[],
-): FigureQuad[] {
-  let quads: FigureQuad[] = localQuads.map(q => ({ ...q }));
-  let w = localBbox.cellWidth;
-  let h = localBbox.cellHeight;
-  for (const group of chain) {
-    quads = transformQuadsByGroup(quads, { cellWidth: w, cellHeight: h }, group);
-    // After this group's transform, compute the new bbox dimensions
-    const swapped = group.rotation === 90 || group.rotation === 270;
-    const nw = (swapped ? h : w) * group.scaleX;
-    const nh = (swapped ? w : h) * group.scaleY;
-    w = nw;
-    h = nh;
-  }
-  return quads;
-}
-
 // â”€â”€ Scene-graph transform helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
@@ -2129,105 +1997,6 @@ export function recalcLineDirection(
 }
 
 /**
- * Recompute world cell coords for every member of `groupId` from the
- * current GroupNode transform composed with each member's `localCell*`.
- * No rounding â€” float `cellX/Y/Width/Height` propagate to read sites,
- * which already operate in float (renderer uses zoom multiplier; SVG
- * accepts float; bbox uses Math.min/max). Returns a new state with the
- * affected figures updated in place; other state is untouched.
- *
- * If a member is missing local coords (legacy data not yet materialized),
- * its current world coords are kept as-is.
- */
-export function materializeGroupMembers(state: CompositionState, groupId: string): CompositionState {
-  const group = state.groups.find(g => g.id === groupId);
-  if (!group) return state;
-  // Compute the ancestor chain [self, parent, ..., root] for transform composition.
-  const chain = groupAncestorChain(state.groups, groupId);
-  // Short passes â€” one per node array â€” calling the per-type materialize
-  // helper. The helper returns `null` when the member is unchanged.
-  let changed = false;
-  const figures = state.figures.map((f) => {
-    const next = materializeFigureMember(f, chain, groupId);
-    if (next === null) return f;
-    changed = true;
-    return next;
-  });
-  const svgObjects = state.svgObjects.map((s) => {
-    const next = materializeSVGMember(s, chain, groupId);
-    if (next === null) return s;
-    changed = true;
-    return next;
-  });
-  const stateImages: ImageObject[] = state.images ?? [];
-  const images = stateImages.map((i) => {
-    const next = materializeBboxMember(i, chain, groupId);
-    if (next === null) return i;
-    changed = true;
-    return next;
-  });
-  const stateTexts: TextObject[] = state.texts ?? [];
-  const texts = stateTexts.map((t) => {
-    const next = materializeBboxMember(t, chain, groupId);
-    if (next === null) return t;
-    changed = true;
-    return next;
-  });
-  const statePaints: PaintObject[] = state.paintObjects ?? [];
-  const paints = statePaints.map((p) => {
-    const next = materializeBboxMember(p, chain, groupId);
-    if (next === null) return p;
-    changed = true;
-    return next;
-  });
-  const statePatterns: PatternObject[] = state.patternObjects ?? [];
-  const patterns = statePatterns.map((p) => {
-    const next = materializePatternMember(p, chain, groupId);
-    if (next === null) return p;
-    changed = true;
-    return next;
-  });
-  let next = changed ? { ...state, figures, svgObjects, images, texts, paintObjects: paints, patternObjects: patterns } : state;
-  // Recurse into child groups so their members' world coords also reflect
-  // any ancestor transform change.
-  for (const child of next.groups) {
-    if (child.parentGroupId === groupId) {
-      next = materializeGroupMembers(next, child.id);
-    }
-  }
-  return next;
-}
-
-/**
- * Invert a single group transform on a bounding rect.
- * Undoes translate â†’ scale â†’ rotation â†’ mirror (reverse of forward order).
- */
-function inverseGroupTransform(
-  group: { translateX: number; translateY: number; scaleX: number; scaleY: number; rotation: 0 | 90 | 180 | 270; mirrorH: boolean; mirrorV: boolean },
-  world: { cellX: number; cellY: number; cellWidth: number; cellHeight: number },
-): { cellX: number; cellY: number; cellWidth: number; cellHeight: number } {
-  // 1. Inverse translate + scale
-  let x = (world.cellX - group.translateX) / group.scaleX;
-  let y = (world.cellY - group.translateY) / group.scaleY;
-  let w = world.cellWidth / group.scaleX;
-  let h = world.cellHeight / group.scaleY;
-  // 2. Inverse rotation (90â†’270, 180â†’180, 270â†’90)
-  if (group.rotation === 90) {
-    const nx = y, ny = -(x + w), nw = h, nh = w;
-    x = nx; y = ny; w = nw; h = nh;
-  } else if (group.rotation === 180) {
-    x = -(x + w); y = -(y + h);
-  } else if (group.rotation === 270) {
-    const nx = -(y + h), ny = x, nw = h, nh = w;
-    x = nx; y = ny; w = nw; h = nh;
-  }
-  // 3. Inverse mirror (mirror is self-inverse)
-  if (group.mirrorV) y = -(y + h);
-  if (group.mirrorH) x = -(x + w);
-  return { cellX: x, cellY: y, cellWidth: w, cellHeight: h };
-}
-
-/**
  * Invert a single group transform on a 2D point.
  */
 function inverseGroupTransformPoint(
@@ -2244,22 +2013,6 @@ function inverseGroupTransformPoint(
   return [x, y];
 }
 
-/**
- * Invert a chained group transform. The forward chain applies transforms
- * innermost-first (chain[0], chain[1], ...). The inverse applies inverse
- * transforms outermost-first (reverse order).
- */
-function inverseChainedGroupTransform(
-  chain: readonly GroupNode[],
-  world: { cellX: number; cellY: number; cellWidth: number; cellHeight: number },
-): { cellX: number; cellY: number; cellWidth: number; cellHeight: number } {
-  let result = world;
-  for (let i = chain.length - 1; i >= 0; i--) {
-    result = inverseGroupTransform(chain[i], result);
-  }
-  return result;
-}
-
 export function inverseChainedGroupTransformPoint(
   chain: readonly GroupNode[],
   worldX: number, worldY: number,
@@ -2269,85 +2022,6 @@ export function inverseChainedGroupTransformPoint(
     [x, y] = inverseGroupTransformPoint(chain[i], x, y);
   }
   return [x, y];
-}
-
-/**
- * Inverse of `composeChainedOrientations`: given a world orientation and
- * an ancestor chain, compute the local orientation such that
- * `composeChainedOrientations(chain, local) === world`.
- *
- * The chain's cumulative orientation matrix is orthogonal (D4 group), so
- * its inverse equals its transpose.
- */
-function inverseChainedOrientation(
-  chain: readonly GroupNode[],
-  world: Orientation,
-): Orientation {
-  const chainOrient = composeChainedOrientations(
-    chain, { rotation: 0, mirrorH: false, mirrorV: false },
-  );
-  const cm = orientationToMatrix(chainOrient);
-  // Transpose of an orthogonal matrix is its inverse.
-  const inv: [number, number, number, number] = [cm[0], cm[2], cm[1], cm[3]];
-  const inverseChain = matrixToOrientation(inv);
-  return composeOrientations(inverseChain, world);
-}
-
-/**
- * Inverse of `transformQuadsByGroupChain`: given world quads in a world
- * bbox, inverse-transform through the chain to produce local quads.
- * Walks the chain from root to innermost (reverse of forward), undoing
- * scale â†’ rotation â†’ mirror at each step.
- */
-function inverseTransformQuadsByGroupChain(
-  worldQuads: ReadonlyArray<FigureQuad>,
-  worldBbox: { cellWidth: number; cellHeight: number },
-  chain: readonly GroupNode[],
-): FigureQuad[] {
-  let quads: FigureQuad[] = worldQuads.map(q => ({ ...q }));
-  let w = worldBbox.cellWidth;
-  let h = worldBbox.cellHeight;
-  for (let i = chain.length - 1; i >= 0; i--) {
-    const group = chain[i];
-    // Undo scale on bbox dimensions (quads are unscaled offsets within bbox).
-    w /= group.scaleX;
-    h /= group.scaleY;
-    // Undo rotation: forward did N steps CW, inverse does (4-N)%4 steps CW.
-    const inverseSteps = ((4 - group.rotation / 90) % 4);
-    for (let j = 0; j < inverseSteps; j++) {
-      quads = quads.map(q => rotateQuad90CW(q, h));
-      const swap = w; w = h; h = swap;
-    }
-    // Undo mirrors (mirror is self-inverse).
-    if (group.mirrorV) quads = quads.map(q => mirrorQuadV(q, h));
-    if (group.mirrorH) quads = quads.map(q => mirrorQuadH(q, w));
-  }
-  return quads;
-}
-
-/** Compare two quad arrays for structural equality. */
-function sameQuads(a: FigureQuad[] | undefined, b: FigureQuad[] | undefined): boolean {
-  if (a === b) return true;
-  if (!a || !b || a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i].offsetX !== b[i].offsetX || a[i].offsetY !== b[i].offsetY
-      || a[i].cellWidth !== b[i].cellWidth || a[i].cellHeight !== b[i].cellHeight) return false;
-  }
-  return true;
-}
-
-/**
- * Reconcile group member local coordinates from their world coordinates.
- * Preserves visual positions (world coords unchanged) while ensuring
- * `localCell*` are consistent with the current group transform chain.
- *
- * Use after loading/merging data where locals may be stale relative to
- * the current group transforms. This is the inverse of
- * `materializeGroupMembers` â€” instead of deriving world from local, it
- * derives local from world.
- */
-export function reconcileGroupLocals(state: CompositionState): CompositionState {
-  return reconcileGroupLocalsForGroups(state, null);
 }
 
 /**
@@ -2363,23 +2037,14 @@ function setLeafGroupId(
   groupId: string | undefined,
 ): CompositionState {
   const clearFig = {
-    groupId: undefined, localCellX: undefined, localCellY: undefined,
-    localCellWidth: undefined, localCellHeight: undefined,
-    localTileWidthL0: undefined, localTileHeightL0: undefined,
-    localTileOffsetXL0: undefined, localTileOffsetYL0: undefined,
-    localRotation: undefined, localMirrorH: undefined, localMirrorV: undefined,
-    localQuads: undefined,
+    groupId: undefined, 
   } as const;
   const clearBbox = {
-    groupId: undefined, localCellX: undefined, localCellY: undefined,
-    localCellWidth: undefined, localCellHeight: undefined,
-    localRotation: undefined, localMirrorH: undefined, localMirrorV: undefined, localAngleDeg: undefined,
+    groupId: undefined, 
   } as const;
   const clearSvg = { ...clearBbox, localSegments: undefined, localSubpaths: undefined } as const;
   const clearPattern = {
     ...clearBbox,
-    localTileWidthL0: undefined, localTileHeightL0: undefined,
-    localTileOffsetXL0: undefined, localTileOffsetYL0: undefined,
   } as const;
   const toTop = groupId === undefined;
   return {
@@ -2393,639 +2058,7 @@ function setLeafGroupId(
   };
 }
 
-/**
- * Like `reconcileGroupLocals`, but only recomputes locals for items whose
- * `groupId` is in `targetGroupIds`.  Pass `null` to reconcile all groups.
- * Used after detaching child groups during ungroup to avoid perturbing
- * unrelated items (whose bounding boxes may intentionally differ from the
- * segment AABB, e.g. inflated creationBox-based selection rects for lines).
- */
-function reconcileGroupLocalsForGroups(
-  state: CompositionState, targetGroupIds: ReadonlySet<string> | null,
-  removedAncestor?: GroupNode,
-): CompositionState {
-  let changed = false;
-  const figures = state.figures.map((f) => {
-    if (!f.groupId) return f;
-    if (targetGroupIds && !targetGroupIds.has(f.groupId)) return f;
-    const chain = groupAncestorChain(state.groups, f.groupId);
-    if (chain.length === 0) return f;
-
-    // Inverse bbox.
-    const local = inverseChainedGroupTransform(chain, {
-      cellX: f.cellX, cellY: f.cellY, cellWidth: f.cellWidth, cellHeight: f.cellHeight,
-    });
-
-    // Inverse orientation.
-    const worldOrient: Orientation = {
-      rotation: f.rotation ?? 0, mirrorH: f.mirrorH ?? false, mirrorV: f.mirrorV ?? false,
-    };
-    const localOrient = inverseChainedOrientation(chain, worldOrient);
-
-    // Inverse tile dimensions (inverseTileLocals — the rule repeat
-    // PATTERN members share).
-    const {
-      localTileWidthL0: localTileW, localTileHeightL0: localTileH,
-      localTileOffsetXL0: localTileOffX, localTileOffsetYL0: localTileOffY,
-    } = inverseTileLocals(chain, f);
-
-    // Inverse quads.
-    const localQuads = f.quads
-      ? inverseTransformQuadsByGroupChain(
-          f.quads, { cellWidth: f.cellWidth, cellHeight: f.cellHeight }, chain)
-      : undefined;
-
-    // Short-circuit if nothing changed.
-    if (f.localCellX === local.cellX && f.localCellY === local.cellY &&
-        f.localCellWidth === local.cellWidth && f.localCellHeight === local.cellHeight &&
-        (f.localRotation ?? 0) === localOrient.rotation &&
-        (f.localMirrorH ?? false) === localOrient.mirrorH &&
-        (f.localMirrorV ?? false) === localOrient.mirrorV &&
-        f.localTileWidthL0 === localTileW && f.localTileHeightL0 === localTileH &&
-        f.localTileOffsetXL0 === localTileOffX && f.localTileOffsetYL0 === localTileOffY &&
-        sameQuads(f.localQuads, localQuads)) return f;
-
-    changed = true;
-    return { ...f,
-      localCellX: local.cellX, localCellY: local.cellY,
-      localCellWidth: local.cellWidth, localCellHeight: local.cellHeight,
-      localRotation: localOrient.rotation,
-      localMirrorH: localOrient.mirrorH,
-      localMirrorV: localOrient.mirrorV,
-      localTileWidthL0: localTileW,
-      localTileHeightL0: localTileH,
-      localTileOffsetXL0: localTileOffX,
-      localTileOffsetYL0: localTileOffY,
-      localQuads,
-    };
-  });
-  const svgObjects = state.svgObjects.map((s) => {
-    if (!s.groupId) return s;
-    if (targetGroupIds && !targetGroupIds.has(s.groupId)) return s;
-    const chain = groupAncestorChain(state.groups, s.groupId);
-    if (chain.length === 0) return s;
-    const local = inverseChainedGroupTransform(chain, {
-      cellX: s.cellX, cellY: s.cellY, cellWidth: s.cellWidth, cellHeight: s.cellHeight,
-    });
-    const inverseSeg = (seg: PathSegment): PathSegment => seg.kind === 'arc' ? {
-      kind: 'arc' as const,
-      start: inverseChainedGroupTransformPoint(chain, seg.start[0], seg.start[1]),
-      end: inverseChainedGroupTransformPoint(chain, seg.end[0], seg.end[1]),
-      center: inverseChainedGroupTransformPoint(chain, seg.center[0], seg.center[1]),
-    } : {
-      kind: 'line' as const,
-      start: inverseChainedGroupTransformPoint(chain, seg.start[0], seg.start[1]),
-      end: inverseChainedGroupTransformPoint(chain, seg.end[0], seg.end[1]),
-    };
-    const localSegments = s.segments.map(inverseSeg);
-    // Mirror the inverse-transform for subpaths so a painted SVG that gets
-    // (re-)reconciled into a group keeps its per-color geometry survivable
-    // through subsequent materializeSVGMember passes.
-    const localSubpaths = safeMapSubpaths(s.subpaths, inverseSeg);
-    // Reconcile creationBox: the stored value is in the old local space
-    // (relative to the chain that included the removed ancestor). Transform
-    // it to world via the old chain, then inverse through the new chain.
-    let newCreationBox = s.creationBox;
-    if (s.creationBox && removedAncestor) {
-      const cbRect = {
-        cellX: s.creationBox.minX, cellY: s.creationBox.minY,
-        cellWidth: s.creationBox.width, cellHeight: s.creationBox.height,
-      };
-      const throughNewChain = applyChainedGroupTransform(chain, cbRect);
-      const worldCB = applyGroupTransform(removedAncestor, throughNewChain);
-      const newLocal = inverseChainedGroupTransform(chain, worldCB);
-      newCreationBox = {
-        minX: newLocal.cellX, minY: newLocal.cellY,
-        width: newLocal.cellWidth, height: newLocal.cellHeight,
-      };
-    }
-    changed = true;
-    return { ...s,
-      localCellX: local.cellX, localCellY: local.cellY,
-      localCellWidth: local.cellWidth, localCellHeight: local.cellHeight,
-      localSegments,
-      localSubpaths,
-      creationBox: newCreationBox,
-    };
-  });
-  // Bbox-only kinds (images, texts, paint islands) reconcile identically:
-  // inverse the bbox through the chain into `localCell*`, nothing else.
-  const reconcileBboxLocals = <T extends BboxMemberLocals>(items: readonly T[]): T[] => items.map((i) => {
-    if (!i.groupId) return i;
-    if (targetGroupIds && !targetGroupIds.has(i.groupId)) return i;
-    const chain = groupAncestorChain(state.groups, i.groupId);
-    if (chain.length === 0) return i;
-    const local = inverseChainedGroupTransform(chain, {
-      cellX: i.cellX, cellY: i.cellY, cellWidth: i.cellWidth, cellHeight: i.cellHeight,
-    });
-    // Inverse orientation + free rotation, the figure's way: the world
-    // orientation is the truth (a reparent keeps the node looking as it
-    // did), and the snapshot is what re-materializes to it.
-    const orient = inverseChainedOrientation(chain, {
-      rotation: i.rotation ?? 0, mirrorH: i.mirrorH ?? false, mirrorV: i.mirrorV ?? false,
-    });
-    const angle = worldAngleDeg(chain, i.angleDeg);
-    if (i.localCellX === local.cellX && i.localCellY === local.cellY &&
-        i.localCellWidth === local.cellWidth && i.localCellHeight === local.cellHeight &&
-        (i.localRotation ?? 0) === orient.rotation &&
-        (i.localMirrorH ?? false) === orient.mirrorH &&
-        (i.localMirrorV ?? false) === orient.mirrorV &&
-        (i.localAngleDeg ?? undefined) === angle) return i;
-    changed = true;
-    return { ...i,
-      localCellX: local.cellX, localCellY: local.cellY,
-      localCellWidth: local.cellWidth, localCellHeight: local.cellHeight,
-      localRotation: orient.rotation, localMirrorH: orient.mirrorH, localMirrorV: orient.mirrorV,
-      localAngleDeg: angle,
-    };
-  });
-  const images = reconcileBboxLocals(state.images ?? []);
-  const texts = reconcileBboxLocals(state.texts ?? []);
-  const paints = reconcileBboxLocals(state.paintObjects ?? []);
-  // Patterns reconcile like the bbox kinds PLUS, in repeat mode, the tile
-  // pitch and tile-grid offset (inverseTileLocals — the tiled figure's own
-  // rule), so a repeat pattern's tiling scales WITH its group.
-  const patterns = (state.patternObjects ?? []).map((p) => {
-    if (!p.groupId) return p;
-    if (targetGroupIds && !targetGroupIds.has(p.groupId)) return p;
-    const chain = groupAncestorChain(state.groups, p.groupId);
-    if (chain.length === 0) return p;
-    const local = inverseChainedGroupTransform(chain, {
-      cellX: p.cellX, cellY: p.cellY, cellWidth: p.cellWidth, cellHeight: p.cellHeight,
-    });
-    const tl = inverseTileLocals(chain, p);
-    if (p.localCellX === local.cellX && p.localCellY === local.cellY &&
-        p.localCellWidth === local.cellWidth && p.localCellHeight === local.cellHeight &&
-        p.localTileWidthL0 === tl.localTileWidthL0 &&
-        p.localTileHeightL0 === tl.localTileHeightL0 &&
-        p.localTileOffsetXL0 === tl.localTileOffsetXL0 &&
-        p.localTileOffsetYL0 === tl.localTileOffsetYL0) return p;
-    changed = true;
-    return { ...p,
-      localCellX: local.cellX, localCellY: local.cellY,
-      localCellWidth: local.cellWidth, localCellHeight: local.cellHeight,
-      ...tl,
-    };
-  });
-  return changed ? { ...state, figures, svgObjects, images, texts, paintObjects: paints, patternObjects: patterns } : state;
-}
-
-/** The repeat-mode tile fields a grouped member draws with, re-derived
- *  from its LOCAL tile fields through the group chain — the ONE rule
- *  tiled figures and repeat patterns share: the tile pitch scales as a
- *  (0,0)-anchored rect and the tile-grid offset as a free vector, so a
- *  member inside a 2× group renders at 2× the pitch and 2× the offset —
- *  the repetition count stays constant and the drawing stays locked to
- *  the member's bounds as the group resizes (the offset doesn't slide
- *  relative to it). Members without local tile fields (not repeat mode,
- *  or a stale snapshot) keep their current world values. */
-function materializeTileLocals(
-  chain: readonly GroupNode[],
-  m: {
-    tileMode?: 'repeat';
-    tileWidthL0?: number; tileHeightL0?: number;
-    tileOffsetXL0?: number; tileOffsetYL0?: number;
-    localTileWidthL0?: number; localTileHeightL0?: number;
-    localTileOffsetXL0?: number; localTileOffsetYL0?: number;
-  },
-): {
-  tileWidthL0: number | undefined; tileHeightL0: number | undefined;
-  tileOffsetXL0: number | undefined; tileOffsetYL0: number | undefined;
-} {
-  let tileWidthL0 = m.tileWidthL0;
-  let tileHeightL0 = m.tileHeightL0;
-  let tileOffsetXL0 = m.tileOffsetXL0;
-  let tileOffsetYL0 = m.tileOffsetYL0;
-  if (m.tileMode === 'repeat' && m.localTileWidthL0 !== undefined && m.localTileHeightL0 !== undefined) {
-    const tileBbox = applyChainedGroupTransform(chain, {
-      cellX: 0, cellY: 0,
-      cellWidth: m.localTileWidthL0, cellHeight: m.localTileHeightL0,
-    });
-    tileWidthL0 = tileBbox.cellWidth;
-    tileHeightL0 = tileBbox.cellHeight;
-  }
-  if (m.tileMode === 'repeat' && (m.localTileOffsetXL0 !== undefined || m.localTileOffsetYL0 !== undefined)) {
-    const [woffX, woffY] = applyChainedGroupTransformDelta(
-      chain, m.localTileOffsetXL0 ?? 0, m.localTileOffsetYL0 ?? 0,
-    );
-    tileOffsetXL0 = woffX === 0 ? undefined : woffX;
-    tileOffsetYL0 = woffY === 0 ? undefined : woffY;
-  }
-  return { tileWidthL0, tileHeightL0, tileOffsetXL0, tileOffsetYL0 };
-}
-
-/** Inverse of {@link materializeTileLocals}: the LOCAL tile fields that
- *  re-materialize to the member's current world tile fields under the
- *  chain. Same guards, run backwards (the reconcile direction). */
-function inverseTileLocals(
-  chain: readonly GroupNode[],
-  m: {
-    tileMode?: 'repeat';
-    tileWidthL0?: number; tileHeightL0?: number;
-    tileOffsetXL0?: number; tileOffsetYL0?: number;
-    localTileWidthL0?: number; localTileHeightL0?: number;
-    localTileOffsetXL0?: number; localTileOffsetYL0?: number;
-  },
-): {
-  localTileWidthL0: number | undefined; localTileHeightL0: number | undefined;
-  localTileOffsetXL0: number | undefined; localTileOffsetYL0: number | undefined;
-} {
-  let localTileWidthL0 = m.localTileWidthL0;
-  let localTileHeightL0 = m.localTileHeightL0;
-  let localTileOffsetXL0 = m.localTileOffsetXL0;
-  let localTileOffsetYL0 = m.localTileOffsetYL0;
-  if (m.tileMode === 'repeat') {
-    if (m.tileWidthL0 !== undefined && m.tileHeightL0 !== undefined) {
-      const invTile = inverseChainedGroupTransform(chain, {
-        cellX: 0, cellY: 0, cellWidth: m.tileWidthL0, cellHeight: m.tileHeightL0,
-      });
-      localTileWidthL0 = invTile.cellWidth;
-      localTileHeightL0 = invTile.cellHeight;
-    }
-    // Tile-grid offset is a free vector, not a point — invert through the
-    // chain's scale/rotation/mirror only, matching the forward delta.
-    const [invOffX, invOffY] = inverseChainedGroupTransformDelta(
-      chain, m.tileOffsetXL0 ?? 0, m.tileOffsetYL0 ?? 0,
-    );
-    localTileOffsetXL0 = invOffX === 0 ? undefined : invOffX;
-    localTileOffsetYL0 = invOffY === 0 ? undefined : invOffY;
-  }
-  return { localTileWidthL0, localTileHeightL0, localTileOffsetXL0, localTileOffsetYL0 };
-}
-
-/** Re-derive a figure member's world `cell*` (and tile dim if it tiles)
- *  from its `localCell*` composed with the group transform. Also derives
- *  world `rotation` / `mirrorH` / `mirrorV` / `quads` from the figure's
- *  intrinsic `localRotation` / `localMirror*` / `localQuads` composed
- *  with the group's transform â€” without this, a figure in a rotated
- *  group would have its bbox rotated (via `applyGroupTransform`) but its
- *  sprite would render un-rotated. Returns `null` only when the figure
- *  isn't in the group or has no local rect. */
-function materializeFigureMember(
-  f: CompositionFigure, chain: readonly GroupNode[], groupId: string,
-): CompositionFigure | null {
-  if (f.groupId !== groupId) return null;
-  if (f.localCellX === undefined || f.localCellY === undefined
-    || f.localCellWidth === undefined || f.localCellHeight === undefined) return null;
-  const w = applyChainedGroupTransform(chain, {
-    cellX: f.localCellX, cellY: f.localCellY,
-    cellWidth: f.localCellWidth, cellHeight: f.localCellHeight,
-  });
-  // Tile-mode members scale their tile dim AND tile-grid offset with the
-  // chained group transform (materializeTileLocals — the rule repeat
-  // PATTERN members share).
-  const {
-    tileWidthL0: nextTileW, tileHeightL0: nextTileH,
-    tileOffsetXL0: nextTileOffX, tileOffsetYL0: nextTileOffY,
-  } = materializeTileLocals(chain, f);
-  // Compose world orientation through the chain of group transforms.
-  const local: Orientation = {
-    rotation: f.localRotation ?? 0,
-    mirrorH: f.localMirrorH ?? false,
-    mirrorV: f.localMirrorV ?? false,
-  };
-  const world = composeChainedOrientations(chain, local);
-  // Quads follow the world bbox the same way: apply the group chain's
-  // mirrors then rotations to the figure's `localQuads`.
-  const localQuads = f.localQuads ?? f.quads;
-  const newQuads = localQuads
-    ? transformQuadsByGroupChain(localQuads, { cellWidth: f.localCellWidth, cellHeight: f.localCellHeight }, chain)
-    : undefined;
-  if (
-    f.cellX === w.cellX && f.cellY === w.cellY &&
-    f.cellWidth === w.cellWidth && f.cellHeight === w.cellHeight &&
-    f.tileWidthL0 === nextTileW && f.tileHeightL0 === nextTileH &&
-    f.tileOffsetXL0 === nextTileOffX && f.tileOffsetYL0 === nextTileOffY &&
-    (f.rotation ?? 0) === world.rotation &&
-    (f.mirrorH ?? false) === world.mirrorH &&
-    (f.mirrorV ?? false) === world.mirrorV &&
-    sameQuads(f.quads, newQuads)
-  ) return null;
-  return {
-    ...f,
-    cellX: w.cellX, cellY: w.cellY, cellWidth: w.cellWidth, cellHeight: w.cellHeight,
-    tileWidthL0: nextTileW, tileHeightL0: nextTileH,
-    tileOffsetXL0: nextTileOffX, tileOffsetYL0: nextTileOffY,
-    rotation: world.rotation,
-    mirrorH: world.mirrorH,
-    mirrorV: world.mirrorV,
-    quads: newQuads,
-  };
-}
-
-/** Re-derive an SVG member's world segments and bbox from its
- *  `localSegments` composed with the group transform. Each segment's
- *  start / end (and arc-curve center) are transformed individually.
- *  Returns `null` when the svg isn't in the group or has no local
- *  snapshot. */
-function materializeSVGMember(
-  s: SVGObject, chain: readonly GroupNode[], groupId: string,
-): SVGObject | null {
-  if (s.groupId !== groupId) return null;
-  if (!s.localSegments) return null;
-  const transform = (seg: PathSegment): PathSegment => seg.kind === 'arc' ? {
-    kind: 'arc' as const,
-    start: applyChainedGroupTransformPoint(chain, seg.start[0], seg.start[1]),
-    end: applyChainedGroupTransformPoint(chain, seg.end[0], seg.end[1]),
-    center: applyChainedGroupTransformPoint(chain, seg.center[0], seg.center[1]),
-  } : {
-    kind: 'line' as const,
-    start: applyChainedGroupTransformPoint(chain, seg.start[0], seg.start[1]),
-    end: applyChainedGroupTransformPoint(chain, seg.end[0], seg.end[1]),
-  };
-  const newSegs = safeMapSegments(s.localSegments, transform) ?? [];
-  // Also re-derive world subpaths from localSubpaths through the same
-  // chain. Without this, paint-stroke / join per-color subpaths get
-  // frozen in pre-transform world coords and the SVG visually falls
-  // behind when the group moves / scales / rotates.
-  const newSubs = safeMapSubpaths(s.localSubpaths, transform);
-  const bb = computeSVGBbox(newSegs);
-  return { ...s, segments: newSegs, subpaths: newSubs, ...bb };
-}
-
-/** Re-derive a bbox-only member's (image / text / paint island) world bbox + orientation from its
- *  `localCell*` composed with the group transform. Bbox-only â€” no
- *  vertex/segment list to materialize. World rotation/mirror is the
- *  composition of the group's orientation with the member's intrinsic
- *  orientation, mirroring `materializeFigureMember` minus the
- *  quad-transform pass. Returns `null` when the member isn't in the
- *  group, has no local rect, or already matches the derived state. */
-function materializeBboxMember<T extends BboxMemberLocals>(
-  i: T, chain: readonly GroupNode[], groupId: string,
-): T | null {
-  if (i.groupId !== groupId) return null;
-  if (i.localCellX === undefined || i.localCellY === undefined
-    || i.localCellWidth === undefined || i.localCellHeight === undefined) return null;
-  const w = applyChainedGroupTransform(chain, {
-    cellX: i.localCellX, cellY: i.localCellY,
-    cellWidth: i.localCellWidth, cellHeight: i.localCellHeight,
-  });
-  // The member's LOCAL orientation — its own turn before the group's —
-  // composed through the chain gives the world one. Reading the world
-  // orientation here instead (as this once did) composed the group's turn
-  // onto an orientation that already carried it: a text in a 90° frame
-  // rendered a quarter turn past its bbox after the frame's next
-  // transform, and a word dropped into a rotated frame turned on the spot
-  // while its box stayed put — off its pixels for the hit test and the
-  // selection box alike. A member without the snapshot (grouped before it
-  // existed) is read the way reconcile would seed it: its world
-  // orientation is the truth as it stands, inverted through the chain so
-  // it re-materializes unchanged.
-  const local = localOrientationOf(i, chain);
-  const world = composeChainedOrientations(chain, local.orientation);
-  const angleDeg = worldAngleDeg(chain, local.angleDeg);
-  if (
-    i.cellX === w.cellX && i.cellY === w.cellY &&
-    i.cellWidth === w.cellWidth && i.cellHeight === w.cellHeight &&
-    (i.rotation ?? 0) === world.rotation &&
-    (i.mirrorH ?? false) === world.mirrorH &&
-    (i.mirrorV ?? false) === world.mirrorV &&
-    (i.angleDeg ?? undefined) === angleDeg
-  ) return null;
-  return {
-    ...i,
-    cellX: w.cellX, cellY: w.cellY,
-    cellWidth: w.cellWidth, cellHeight: w.cellHeight,
-    rotation: world.rotation,
-    mirrorH: world.mirrorH,
-    mirrorV: world.mirrorV,
-    angleDeg,
-  };
-}
-
-/** The group-relative fields a bbox-only member (image / text / paint
- *  island / pattern) keeps beside its world ones. */
-type BboxMemberLocals = {
-  groupId?: string;
-  cellX: number; cellY: number; cellWidth: number; cellHeight: number;
-  rotation?: 0 | 90 | 180 | 270; mirrorH?: boolean; mirrorV?: boolean; angleDeg?: number;
-  localCellX?: number; localCellY?: number; localCellWidth?: number; localCellHeight?: number;
-  localRotation?: 0 | 90 | 180 | 270; localMirrorH?: boolean; localMirrorV?: boolean; localAngleDeg?: number;
-};
-
-/** True when the chain, taken together, reflects — an odd number of
- *  mirrors — which is when a free rotation changes sense through it
- *  (mirroredAngleDeg: M ∘ R(θ) = R(−θ) ∘ M). Quarter turns never do. */
-function chainFlips(chain: readonly GroupNode[]): boolean {
-  const o = composeChainedOrientations(chain, { rotation: 0, mirrorH: false, mirrorV: false });
-  return o.mirrorH !== o.mirrorV;
-}
-
-/** A free rotation carried through the chain: negated when the chain
- *  flips, else itself — normalized to the `undefined`-at-zero convention. */
-function worldAngleDeg(chain: readonly GroupNode[], localAngleDeg: number | undefined): number | undefined {
-  if (chainFlips(chain)) return mirroredAngleDeg(localAngleDeg);
-  return localAngleDeg ? normalizeAngleDeg(localAngleDeg) : undefined;
-}
-
-/** A bbox member's local orientation + free rotation: its snapshot when
- *  it has one, else its world orientation inverted through the chain (the
- *  reconcile seeding — world kept). The inverse of a flip is itself, so
- *  the angle inverts the way it composes. */
-function localOrientationOf(
-  i: BboxMemberLocals, chain: readonly GroupNode[],
-): { orientation: Orientation; angleDeg: number | undefined } {
-  if (i.localRotation !== undefined || i.localMirrorH !== undefined || i.localMirrorV !== undefined) {
-    return {
-      orientation: { rotation: i.localRotation ?? 0, mirrorH: i.localMirrorH ?? false, mirrorV: i.localMirrorV ?? false },
-      angleDeg: i.localAngleDeg ? normalizeAngleDeg(i.localAngleDeg) : undefined,
-    };
-  }
-  return {
-    orientation: inverseChainedOrientation(chain, {
-      rotation: i.rotation ?? 0, mirrorH: i.mirrorH ?? false, mirrorV: i.mirrorV ?? false,
-    }),
-    angleDeg: worldAngleDeg(chain, i.angleDeg),
-  };
-}
-
-/** The orientation snapshot a bbox member takes on joining a group born
- *  at identity (local == world). */
-function bboxOrientationSnapshot(i: {
-  rotation?: 0 | 90 | 180 | 270; mirrorH?: boolean; mirrorV?: boolean; angleDeg?: number;
-}): { localRotation: 0 | 90 | 180 | 270; localMirrorH: boolean; localMirrorV: boolean; localAngleDeg: number | undefined } {
-  return {
-    localRotation: i.rotation ?? 0,
-    localMirrorH: i.mirrorH ?? false,
-    localMirrorV: i.mirrorV ?? false,
-    localAngleDeg: i.angleDeg ? normalizeAngleDeg(i.angleDeg) : undefined,
-  };
-}
-
-/** Give every bbox member under `groupId` (its own members and its
- *  descendants') that has no orientation snapshot one, read from its world
- *  orientation through the chain AS IT STANDS — called before a group
- *  transform changes that chain. The snapshot is a derived cache the file
- *  never carries, so a member written before it existed arrives without
- *  one; seeded at the moment of the first transform after the load, under
- *  the old chain, the member keeps its look and then turns with the group
- *  (seeded under the new chain it would keep its look and stay). */
-function seedBboxSnapshots(state: CompositionState, groupId: string): CompositionState {
-  const under = new Set<string>([groupId, ...descendantGroupIds(state.groups, groupId)]);
-  let changed = false;
-  const seed = <T extends BboxMemberLocals>(items: T[] | undefined): T[] | undefined => items?.map((i) => {
-    if (!i.groupId || !under.has(i.groupId)) return i;
-    if (i.localRotation !== undefined || i.localMirrorH !== undefined || i.localMirrorV !== undefined) return i;
-    const chain = groupAncestorChain(state.groups, i.groupId);
-    if (chain.length === 0) return i;
-    const local = localOrientationOf(i, chain);
-    changed = true;
-    return {
-      ...i,
-      localRotation: local.orientation.rotation,
-      localMirrorH: local.orientation.mirrorH,
-      localMirrorV: local.orientation.mirrorV,
-      localAngleDeg: local.angleDeg,
-    };
-  });
-  const images = seed(state.images);
-  const texts = seed(state.texts);
-  const paintObjects = seed(state.paintObjects);
-  const patternObjects = seed(state.patternObjects);
-  return changed ? { ...state, images, texts, paintObjects, patternObjects } : state;
-}
-
-/** Seed missing LOCAL tile fields on grouped repeat patterns from their
- *  world tile fields through the group chain — the binary format doesn't
- *  persist the tile locals (derived caches, like every `local*`), so the
- *  read rebuilds them the way reconcileGroupLocals would; without this
- *  the first group scale after a reload would leave the tiling at its
- *  absolute pitch again. Patterns already carrying locals, not in repeat
- *  mode, or not grouped pass through untouched. */
-export function backfillPatternTileLocals(
-  patterns: PatternObject[], groups: GroupNode[],
-): PatternObject[] {
-  return patterns.map((p) => {
-    if (!p.groupId || p.tileMode !== 'repeat') return p;
-    if (p.localTileWidthL0 !== undefined && p.localTileHeightL0 !== undefined) return p;
-    const chain = groupAncestorChain(groups, p.groupId);
-    if (chain.length === 0) return p;
-    return { ...p, ...inverseTileLocals(chain, p) };
-  });
-}
-
-/** Re-derive a pattern member's world bbox — and, in repeat mode, its
- *  tile pitch + tile-grid offset — from its locals composed with the
- *  group chain: the tiled figure's own rule (materializeTileLocals), so
- *  scaling a group scales the repeating DRAWING itself (the repetition
- *  count stays constant) instead of re-flowing a fixed-pitch tiling into
- *  the resized region — which visibly re-aligned the pattern. */
-function materializePatternMember(
-  p: PatternObject, chain: readonly GroupNode[], groupId: string,
-): PatternObject | null {
-  const base = materializeBboxMember(p, chain, groupId);
-  if (p.groupId !== groupId || p.tileMode !== 'repeat') return base;
-  const tile = materializeTileLocals(chain, p);
-  if (
-    base === null &&
-    p.tileWidthL0 === tile.tileWidthL0 && p.tileHeightL0 === tile.tileHeightL0 &&
-    p.tileOffsetXL0 === tile.tileOffsetXL0 && p.tileOffsetYL0 === tile.tileOffsetYL0
-  ) return null;
-  return { ...(base ?? p), ...tile };
-}
-
-/**
- * Populate missing `local*` fields on grouped figures and SVGs from their
- * world values.
- *
- * Only `.tile` merge calls this now — the loader drops a file's caches
- * instead of completing them, so there is nothing to backfill on open.
- */
-export function backfillMissingLocals<S extends {
-  figures: CompositionFigure[];
-  svgObjects: SVGObject[];
-  images?: ImageObject[];
-  texts?: TextObject[];
-  paintObjects?: PaintObject[];
-  patternObjects?: PatternObject[];
-  groups?: GroupNode[];
-}>(scene: S): S {
-  const { figures, svgObjects } = scene;
-  const newFigures = figures.map((f) => {
-    if (!f.groupId) return f;
-    const needsLocalCell = f.localCellX === undefined || f.localCellY === undefined || f.localCellWidth === undefined || f.localCellHeight === undefined;
-    const needsLocalTile = f.tileMode === 'repeat' && f.tileWidthL0 !== undefined && f.tileHeightL0 !== undefined && (f.localTileWidthL0 === undefined || f.localTileHeightL0 === undefined || f.localTileOffsetXL0 === undefined);
-    const needsLocalOrient = f.localRotation === undefined;
-    if (!needsLocalCell && !needsLocalTile && !needsLocalOrient) return f;
-    return {
-      ...f,
-      ...(needsLocalCell ? {
-        localCellX: f.cellX,
-        localCellY: f.cellY,
-        localCellWidth: f.cellWidth,
-        localCellHeight: f.cellHeight,
-      } : null),
-      ...(needsLocalTile ? {
-        localTileWidthL0: f.tileWidthL0,
-        localTileHeightL0: f.tileHeightL0,
-        localTileOffsetXL0: f.tileOffsetXL0,
-        localTileOffsetYL0: f.tileOffsetYL0,
-      } : null),
-      ...(needsLocalOrient ? {
-        localRotation: f.rotation ?? 0,
-        localMirrorH: f.mirrorH ?? false,
-        localMirrorV: f.mirrorV ?? false,
-        localQuads: f.quads?.map(q => ({ ...q })),
-      } : null),
-    };
-  });
-
-  // SVGObjects: seed `localSegments` from world `segments` for any grouped
-  // svg that's missing the local snapshot, and seed missing bbox fields.
-  const newSVGObjects = svgObjects.map((s) => {
-    const partial = s as Partial<SVGObject>;
-    const needsBbox = partial.cellX === undefined;
-    const needsLocalSegs = !!s.groupId && !s.localSegments;
-    const localSegs = needsLocalSegs ? s.segments.map(clonePathSegment) : s.localSegments;
-    const needsLocalBbox = !!s.groupId && (s.localCellX === undefined || s.localCellY === undefined || s.localCellWidth === undefined || s.localCellHeight === undefined);
-    if (!needsBbox && !needsLocalSegs && !needsLocalBbox) return s;
-    const out: SVGObject = { ...s };
-    if (needsLocalSegs && localSegs) out.localSegments = localSegs;
-    if (needsBbox) {
-      const bb = computeSVGBbox(s.segments);
-      out.cellX = bb.cellX; out.cellY = bb.cellY;
-      out.cellWidth = bb.cellWidth; out.cellHeight = bb.cellHeight;
-    }
-    if (needsLocalBbox && localSegs) {
-      const lb = computeSVGBbox(localSegs);
-      out.localCellX = lb.cellX; out.localCellY = lb.cellY;
-      out.localCellWidth = lb.cellWidth; out.localCellHeight = lb.cellHeight;
-    }
-    return out;
-  });
-
-  // The bbox kinds: a grouped image / text / paint island / pattern with
-  // no orientation snapshot takes one from its world orientation as it
-  // stands, inverted through its chain — the file was written before the
-  // snapshot existed (locals are derived caches the binary never
-  // carries), so its world fields are the truth, and the snapshot is what
-  // re-materializes to them (the same seeding seedBboxSnapshots does at
-  // the first transform, for a scene that skipped this pass).
-  const groups = scene.groups ?? [];
-  const backfillBbox = <T extends BboxMemberLocals>(items: T[] | undefined): T[] | undefined => items?.map((i) => {
-    if (!i.groupId) return i;
-    if (i.localRotation !== undefined || i.localMirrorH !== undefined || i.localMirrorV !== undefined) return i;
-    const local = localOrientationOf(i, groupAncestorChain(groups, i.groupId));
-    return {
-      ...i,
-      localRotation: local.orientation.rotation,
-      localMirrorH: local.orientation.mirrorH,
-      localMirrorV: local.orientation.mirrorV,
-      localAngleDeg: local.angleDeg,
-    };
-  });
-
-  return {
-    ...scene,
-    figures: newFigures,
-    svgObjects: newSVGObjects,
-    ...(scene.images ? { images: backfillBbox(scene.images) } : null),
-    ...(scene.texts ? { texts: backfillBbox(scene.texts) } : null),
-    ...(scene.paintObjects ? { paintObjects: backfillBbox(scene.paintObjects) } : null),
-    ...(scene.patternObjects ? { patternObjects: backfillBbox(scene.patternObjects) } : null),
-  };
-}
-
+;
 
 // â”€â”€ Transform Cycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -3351,7 +2384,7 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
       tileOffsetYL0: newOy === 0 ? undefined : newOy,
       identityCellX: atIdentity ? undefined : identityX,
       identityCellY: atIdentity ? undefined : identityY,
-      localSegments: undefined, localCellX: undefined, localCellY: undefined, localCellWidth: undefined, localCellHeight: undefined };
+      localSegments: undefined };
     // Re-key per-copy paint: the whole pattern block rotates rigidly about
     // the SAME centre as everything else, so map each painted copy's
     // tile-center through that rotation onto the post-rotation grid.
@@ -3378,7 +2411,7 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
     : svg.lineDirection;
   return { ...svg, segments: newSegs, subpaths: newSubpaths, rotation: newRot, identitySegments: newIdSegs, ...computeSVGBbox(newSegs),
     creationBox: rotatedCreationBox, lineDirection: rotatedLineDirection,
-    localSegments: undefined, localCellX: undefined, localCellY: undefined, localCellWidth: undefined, localCellHeight: undefined };
+    localSegments: undefined };
 }
 
 /** Mirror a single SVGObject on a screen axis. Uses the identity-stash
@@ -3450,7 +2483,7 @@ export function mirrorSVG(svg: SVGObject, screenAxis: 'h' | 'v'): SVGObject {
       angleDeg: mirroredAngleDeg(svg.angleDeg),
       tileOffsetXL0: newOx === 0 ? undefined : newOx,
       tileOffsetYL0: newOy === 0 ? undefined : newOy,
-      localSegments: undefined, localCellX: undefined, localCellY: undefined, localCellWidth: undefined, localCellHeight: undefined };
+      localSegments: undefined };
     // Re-key per-copy paint: the pattern block flips about the region center
     // across the screen axis; map each painted copy's tile-center accordingly.
     if (svg.segmentOverrides && svg.segmentOverrides.size > 0) {
@@ -3462,7 +2495,7 @@ export function mirrorSVG(svg: SVGObject, screenAxis: 'h' | 'v'): SVGObject {
   return { ...svg, segments: newSegs, subpaths: newSubpaths, mirrorH: newMH, mirrorV: newMV, identitySegments: newIdSegs, ...computeSVGBbox(newSegs),
     // The free rotation negates with the flip — see mirroredAngleDeg.
     angleDeg: mirroredAngleDeg(svg.angleDeg),
-    localSegments: undefined, localCellX: undefined, localCellY: undefined, localCellWidth: undefined, localCellHeight: undefined };
+    localSegments: undefined };
 }
 
 /**
@@ -3539,6 +2572,29 @@ export function cycleTransformForFigure(fig: CompositionFigure, targetStep: numb
     identityCellX: identityX,
     identityCellY: identityY,
   };
+}
+
+/**
+ * Run a legacy op through the SCENE GRAPH on a composition that has none.
+ *
+ * Builds a graph from the arrays, lets the bridge say what the op means on
+ * it, and renders the arrays back. `pick` is `legacyOpToSceneOps` going
+ * forward and `invertOnGraph` going back — both return ops to apply, since
+ * an inverted op is still a forward one.
+ *
+ * The whole scene is re-rendered, which is what makes this the fallback
+ * and not the path: a composition that edits this way asks for a graph
+ * (`withSceneGraph`) and keeps it.
+ */
+function onGraphFallback(
+  state: CompositionState,
+  op: CompUndoOp,
+  pick: (graph: SceneGraph, op: CompUndoOp) => SceneEntry | null,
+): CompositionState {
+  const graph = fromLegacy(state);
+  const ops = pick(graph, op);
+  if (!ops || ops.length === 0) return state;
+  return { ...state, ...toLegacyView(applySceneOps(graph, ops)) };
 }
 
 function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState {
@@ -3770,18 +2826,6 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         return {
           ...f,
           groupId: op.groupId,
-          localCellX: f.cellX,
-          localCellY: f.cellY,
-          localCellWidth: f.cellWidth,
-          localCellHeight: f.cellHeight,
-          localTileWidthL0: f.tileMode === 'repeat' ? f.tileWidthL0 : undefined,
-          localTileHeightL0: f.tileMode === 'repeat' ? f.tileHeightL0 : undefined,
-          localTileOffsetXL0: f.tileMode === 'repeat' ? f.tileOffsetXL0 : undefined,
-          localTileOffsetYL0: f.tileMode === 'repeat' ? f.tileOffsetYL0 : undefined,
-          localRotation: f.rotation ?? 0,
-          localMirrorH: f.mirrorH ?? false,
-          localMirrorV: f.mirrorV ?? false,
-          localQuads: f.quads?.map(q => ({ ...q })),
         };
       });
       const svgObjects = state.svgObjects.map((s) => {
@@ -3794,10 +2838,6 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
           // the subpaths into localSubpaths keeps both forms in sync so
           // future group transforms can re-derive subpaths from locals.
           localSubpaths: safeMapSubpaths(s.subpaths, clonePathSegment),
-          localCellX: s.cellX,
-          localCellY: s.cellY,
-          localCellWidth: s.cellWidth,
-          localCellHeight: s.cellHeight,
         };
       });
       // The bbox kinds snapshot their orientation + free rotation too (the
@@ -3808,11 +2848,6 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         return {
           ...i,
           groupId: op.groupId,
-          localCellX: i.cellX,
-          localCellY: i.cellY,
-          localCellWidth: i.cellWidth,
-          localCellHeight: i.cellHeight,
-          ...bboxOrientationSnapshot(i),
         };
       });
       const texts = (state.texts ?? []).map((t) => {
@@ -3820,11 +2855,6 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         return {
           ...t,
           groupId: op.groupId,
-          localCellX: t.cellX,
-          localCellY: t.cellY,
-          localCellWidth: t.cellWidth,
-          localCellHeight: t.cellHeight,
-          ...bboxOrientationSnapshot(t),
         };
       });
       const paints = (state.paintObjects ?? []).map((p) => {
@@ -3832,11 +2862,6 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         return {
           ...p,
           groupId: op.groupId,
-          localCellX: p.cellX,
-          localCellY: p.cellY,
-          localCellWidth: p.cellWidth,
-          localCellHeight: p.cellHeight,
-          ...bboxOrientationSnapshot(p),
         };
       });
       const patterns = (state.patternObjects ?? []).map((p) => {
@@ -3844,19 +2869,10 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         return {
           ...p,
           groupId: op.groupId,
-          localCellX: p.cellX,
-          localCellY: p.cellY,
-          localCellWidth: p.cellWidth,
-          localCellHeight: p.cellHeight,
-          ...bboxOrientationSnapshot(p),
           // Repeat patterns snapshot their tile pitch + offset like tiled
           // figures do (the group is born at identity, so local == world):
           // transformGroup materializes from locals, and without these the
           // FIRST scale after grouping would leave the tiling fixed.
-          localTileWidthL0: p.tileMode === 'repeat' ? p.tileWidthL0 : undefined,
-          localTileHeightL0: p.tileMode === 'repeat' ? p.tileHeightL0 : undefined,
-          localTileOffsetXL0: p.tileMode === 'repeat' ? p.tileOffsetXL0 : undefined,
-          localTileOffsetYL0: p.tileMode === 'repeat' ? p.tileOffsetYL0 : undefined,
         };
       });
       // Nest child groups by setting parentGroupId; their names are theirs.
@@ -3895,18 +2911,6 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         f.groupId === op.groupId ? {
           ...f,
           groupId: undefined,
-          localCellX: undefined,
-          localCellY: undefined,
-          localCellWidth: undefined,
-          localCellHeight: undefined,
-          localTileWidthL0: undefined,
-          localTileHeightL0: undefined,
-          localTileOffsetXL0: undefined,
-          localTileOffsetYL0: undefined,
-          localRotation: undefined,
-          localMirrorH: undefined,
-          localMirrorV: undefined,
-          localQuads: undefined,
           identityCellX: undefined,
           identityCellY: undefined,
           transformCycleStep: undefined,
@@ -3919,10 +2923,6 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
           groupId: undefined,
           localSegments: undefined,
           localSubpaths: undefined,
-          localCellX: undefined,
-          localCellY: undefined,
-          localCellWidth: undefined,
-          localCellHeight: undefined,
           creationBox: ungroupNode
             ? ungroupCreationBox(s, ungroupNode, state.gridLevel)
             : s.creationBox,
@@ -3948,10 +2948,6 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         i.groupId === op.groupId ? {
           ...i,
           groupId: undefined,
-          localCellX: undefined,
-          localCellY: undefined,
-          localCellWidth: undefined,
-          localCellHeight: undefined,
           identityCellX: undefined,
           identityCellY: undefined,
           identityCellWidth: undefined,
@@ -3962,10 +2958,6 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         t.groupId === op.groupId ? {
           ...t,
           groupId: undefined,
-          localCellX: undefined,
-          localCellY: undefined,
-          localCellWidth: undefined,
-          localCellHeight: undefined,
           identityCellX: undefined,
           identityCellY: undefined,
           identityCellWidth: undefined,
@@ -3976,10 +2968,6 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         p.groupId === op.groupId ? {
           ...p,
           groupId: undefined,
-          localCellX: undefined,
-          localCellY: undefined,
-          localCellWidth: undefined,
-          localCellHeight: undefined,
           identityCellX: undefined,
           identityCellY: undefined,
           identityCellWidth: undefined,
@@ -3990,14 +2978,6 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         p.groupId === op.groupId ? {
           ...p,
           groupId: undefined,
-          localCellX: undefined,
-          localCellY: undefined,
-          localCellWidth: undefined,
-          localCellHeight: undefined,
-          localTileWidthL0: undefined,
-          localTileHeightL0: undefined,
-          localTileOffsetXL0: undefined,
-          localTileOffsetYL0: undefined,
           identityCellX: undefined,
           identityCellY: undefined,
           identityCellWidth: undefined,
@@ -4025,7 +3005,7 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         affectedGroupIds.add(cid);
         for (const d of descendantGroupIds(groups, cid)) affectedGroupIds.add(d);
       }
-      return reconcileGroupLocalsForGroups(result, affectedGroupIds, ungroupNode);
+      return result;
     }
     case 'reparentNode': {
       const isGroup = state.groups.some((g) => g.id === op.nodeId);
@@ -4037,16 +3017,12 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
           g.id === op.nodeId ? { ...g, parentGroupId: newParent } : g,
         );
         next = { ...state, groups };
-        // Reconcile the moved group + all its descendants against the new chain.
-        const affected = new Set<string>([op.nodeId, ...descendantGroupIds(groups, op.nodeId)]);
-        next = reconcileGroupLocalsForGroups(next, affected);
       } else if (newParent) {
-        // Leaf into a group: set groupId, then reconcile that group's members
-        // so the moved leaf's local coords match the new chain (world kept).
+        // Leaf into a group: stamp the membership. The leaf keeps its world
+        // pose, which is the only copy of it there is.
         next = setLeafGroupId(state, op.nodeId, newParent);
-        next = reconcileGroupLocalsForGroups(next, new Set([newParent]));
       } else {
-        // Leaf out to top level: clear membership + local coords.
+        // Leaf out to top level: clear membership.
         next = setLeafGroupId(state, op.nodeId, undefined);
       }
       // Apply the caller's contiguous order, then reflow as a safety net.
@@ -4074,29 +3050,14 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
           { op: 'setTransform', nodeId: op.nodeId, from: op.from, to: op.to },
         ])),
       };
-    case 'transformGroup': {
-      // Set the GroupNode's transform to the new* values, then materialize
-      // every member's world coords from the updated transform composed
-      // with the unchanged local coords.
-      // Members loaded without their orientation snapshot take one under
-      // the chain as it stands, BEFORE it changes (seedBboxSnapshots).
-      const seeded = seedBboxSnapshots(state, op.groupId);
-      const groups = seeded.groups.map((g) =>
-        g.id === op.groupId ? {
-          ...g,
-          translateX: op.newTranslateX, translateY: op.newTranslateY,
-          scaleX: op.newScaleX, scaleY: op.newScaleY,
-          rotation: op.newRotation,
-          // The op names the group's whole turn in its quarter channel, so
-          // a residual left from an earlier twist would be added on top of
-          // it. This op has always set the transform outright; `angleDeg`
-          // is part of it now.
-          angleDeg: undefined,
-          mirrorH: op.newMirrorH, mirrorV: op.newMirrorV,
-        } : g
-      );
-      return materializeGroupMembers({ ...seeded, groups }, op.groupId);
-    }
+    case 'transformGroup':
+      // A group transform is a transform on the group's NODE. The old
+      // implementation set the GroupNode's fields and then materialized
+      // every member's world coords from its `local*` caches; those caches
+      // are gone (P6-B), and the graph says the same thing without them.
+      // Same shape as `setTransform` above: build a graph from the arrays,
+      // run the op, render the arrays back.
+      return onGraphFallback(state, op, legacyOpToSceneOps);
     case 'createSVG':
       return { ...state, svgObjects: [...state.svgObjects, op.svg] };
     case 'editSVGSegments': {
@@ -4128,8 +3089,8 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
             // derives it there and `null` is how a caller clears it.
             ...(s.groupId === undefined && op.newLocalSegments !== undefined
               ? (op.newLocalSegments === null
-                ? { localSegments: undefined, localCellX: undefined, localCellY: undefined, localCellWidth: undefined, localCellHeight: undefined }
-                : { localSegments: op.newLocalSegments, ...localBboxFromSegments(op.newLocalSegments) })
+                ? { localSegments: undefined }
+                : { localSegments: op.newLocalSegments })
               : null),
             ...(op.newSubpaths !== undefined
               ? (op.newSubpaths === null ? { subpaths: undefined } : { subpaths: op.newSubpaths })
@@ -4217,10 +3178,6 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         // resized image inside a group used to snap back to its old size
         // the next time an ancestor moved.
         ...(i.groupId === undefined ? {
-          localCellX: op.newLocalCellX,
-          localCellY: op.newLocalCellY,
-          localCellWidth: op.newLocalCellWidth,
-          localCellHeight: op.newLocalCellHeight,
         } : null),
       } : i);
       return { ...state, images };
@@ -4258,11 +3215,7 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         selectedFigureIds: newSelected,
         editingLineId: state.editingLineId && allSourceIds.has(state.editingLineId) ? null : state.editingLineId,
       };
-      // When the result inherits a groupId (Expand-figure case), back-fill
-      // localCell* / localSegments from world coords so the group
-      // materialization pipeline can re-derive world coords correctly on
-      // subsequent group transforms.
-      return op.result.groupId ? reconcileGroupLocals(next) : next;
+      return next;
     }
     case 'unionObjects': {
       // Geometric union: replace the source SVG objects with their single
@@ -4297,7 +3250,7 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
         sceneOrder: [...state.sceneOrder, ...op.addedSceneOrder],
         renderGeneration: state.renderGeneration + 1,
       };
-      return reconcileGroupLocals(merged);
+      return merged;
     }
     case 'replaceScene':
       return {
@@ -4540,18 +3493,6 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
         return {
           ...f,
           groupId: undefined,
-          localCellX: undefined,
-          localCellY: undefined,
-          localCellWidth: undefined,
-          localCellHeight: undefined,
-          localTileWidthL0: undefined,
-          localTileHeightL0: undefined,
-          localTileOffsetXL0: undefined,
-          localTileOffsetYL0: undefined,
-          localRotation: undefined,
-          localMirrorH: undefined,
-          localMirrorV: undefined,
-          localQuads: undefined,
           identityCellX: undefined,
           identityCellY: undefined,
           transformCycleStep: undefined,
@@ -4563,10 +3504,6 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
           ...s,
           groupId: undefined,
           localSegments: undefined,
-          localCellX: undefined,
-          localCellY: undefined,
-          localCellWidth: undefined,
-          localCellHeight: undefined,
           creationBox: revertGroup
             ? ungroupCreationBox(s, revertGroup, state.gridLevel)
             : s.creationBox,
@@ -4590,10 +3527,6 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
         return {
           ...i,
           groupId: undefined,
-          localCellX: undefined,
-          localCellY: undefined,
-          localCellWidth: undefined,
-          localCellHeight: undefined,
           identityCellX: undefined,
           identityCellY: undefined,
           identityCellWidth: undefined,
@@ -4605,10 +3538,6 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
         return {
           ...t,
           groupId: undefined,
-          localCellX: undefined,
-          localCellY: undefined,
-          localCellWidth: undefined,
-          localCellHeight: undefined,
           identityCellX: undefined,
           identityCellY: undefined,
           identityCellWidth: undefined,
@@ -4620,10 +3549,6 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
         return {
           ...p,
           groupId: undefined,
-          localCellX: undefined,
-          localCellY: undefined,
-          localCellWidth: undefined,
-          localCellHeight: undefined,
           identityCellX: undefined,
           identityCellY: undefined,
           identityCellWidth: undefined,
@@ -4635,14 +3560,6 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
         return {
           ...p,
           groupId: undefined,
-          localCellX: undefined,
-          localCellY: undefined,
-          localCellWidth: undefined,
-          localCellHeight: undefined,
-          localTileWidthL0: undefined,
-          localTileHeightL0: undefined,
-          localTileOffsetXL0: undefined,
-          localTileOffsetYL0: undefined,
           identityCellX: undefined,
           identityCellY: undefined,
           identityCellWidth: undefined,
@@ -4662,7 +3579,7 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
         affectedGroupIds.add(cid);
         for (const d of descendantGroupIds(groups, cid)) affectedGroupIds.add(d);
       }
-      return reconcileGroupLocalsForGroups(ungroupResult, affectedGroupIds, revertGroup);
+      return ungroupResult;
     }
     case 'ungroupFigures': {
       // Undo ungroup: re-apply groupId and group name, re-nest child
@@ -4707,21 +3624,11 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
           svgObjects: st.svgObjects.map(s => ids.has(s.id) ? { ...s, isMask: true } : s),
         };
       };
-      // groupFigures sets local = world (identity assumption). When the
-      // restored group has a non-identity transform, reconcile locals so
-      // they're correct for the restored chain. Target only the re-grouped
-      // items and any child groups to avoid perturbing unrelated items.
-      if (op.savedTranslateX === undefined) return restoreMasks(regrouped);
-      const affected = new Set<string>([op.groupId]);
-      for (const cid of op.childGroupIds ?? []) {
-        affected.add(cid);
-        for (const d of descendantGroupIds(regrouped.groups, cid)) affected.add(d);
-      }
-      return restoreMasks(reconcileGroupLocalsForGroups(regrouped, affected));
+      return restoreMasks(regrouped);
     }
     case 'reparentNode': {
-      // Restore the exact prior records (membership + local caches) and order.
-      // The snapshots carry correct world coords, so no re-materialization.
+      // Restore the exact prior records (membership) and order. The
+      // snapshots carry correct world coords, which is the whole pose.
       const byId = <T extends { id: string }>(arr: readonly T[], prev: readonly T[] | undefined): T[] => {
         if (!prev || prev.length === 0) return arr as T[];
         const m = new Map(prev.map((p) => [p.id, p]));
@@ -4754,20 +3661,8 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
           { op: 'setTransform', nodeId: op.nodeId, from: op.from, to: op.to },
         ])),
       };
-    case 'transformGroup': {
-      const seeded = seedBboxSnapshots(state, op.groupId);
-      const groups = seeded.groups.map((g) =>
-        g.id === op.groupId ? {
-          ...g,
-          translateX: op.oldTranslateX, translateY: op.oldTranslateY,
-          scaleX: op.oldScaleX, scaleY: op.oldScaleY,
-          rotation: op.oldRotation,
-          angleDeg: undefined,
-          mirrorH: op.oldMirrorH, mirrorV: op.oldMirrorV,
-        } : g
-      );
-      return materializeGroupMembers({ ...seeded, groups }, op.groupId);
-    }
+    case 'transformGroup':
+      return onGraphFallback(state, op, invertOnGraph);
     case 'createSVG':
       return applyOpInner(state, { op: 'removeObject', kind: 'svg', item: op.svg });
     case 'editSVGSegments':
@@ -4844,10 +3739,6 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
         oldIdentityCellY: op.newIdentityCellY, newIdentityCellY: op.oldIdentityCellY,
         oldIdentityCellWidth: op.newIdentityCellWidth, newIdentityCellWidth: op.oldIdentityCellWidth,
         oldIdentityCellHeight: op.newIdentityCellHeight, newIdentityCellHeight: op.oldIdentityCellHeight,
-        oldLocalCellX: op.newLocalCellX, newLocalCellX: op.oldLocalCellX,
-        oldLocalCellY: op.newLocalCellY, newLocalCellY: op.oldLocalCellY,
-        oldLocalCellWidth: op.newLocalCellWidth, newLocalCellWidth: op.oldLocalCellWidth,
-        oldLocalCellHeight: op.newLocalCellHeight, newLocalCellHeight: op.oldLocalCellHeight,
       });
     case 'joinObjects': {
       // Remove result, restore source SVGs and figures
@@ -4953,171 +3844,12 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
 
 // ── Unconditional local-cache reconciliation ────────────────────────
 
-/**
- * Ops that establish a member's local cache as their own semantics, and so
- * must not have it recomputed from world underneath them.
- *
- * `transformGroup` computes world *from* local. Reconciling afterwards
- * would write back whatever the materialize pass rounded (figure cell
- * origins are rounded — docs/transform-refactor.md §2.3) and repeated
- * group transforms would walk the member off its siblings.
- *
- * `groupFigures` mints its group at identity and seeds local := world,
- * which is exact. Reconciling afterwards computes the same transform but
- * re-spells its orientation in `matrixToOrientation`'s canonical form — a
- * lone `mirrorV` becomes the equivalent `rotation: 180` + `mirrorH`.
- * Same pose, so nothing renders differently, but there is no reason to
- * rewrite a correct seed.
- */
-const LOCALS_ALREADY_ESTABLISHED: ReadonlySet<string> = new Set([
-  'transformGroup', 'groupFigures',
-]);
-
-/**
- * Which groups contain a leaf this op rewrote.
- *
- * Derived from object identity rather than a hand-written op → ids table.
- * The reducer is copy-on-write, so an untouched leaf comes out of an op as
- * the *same object*; a leaf that is a different object is one the op
- * rewrote. That matters more than the small cost: a table has to be
- * updated for every new op, and an op missing from it fails silently and
- * invisibly — which is exactly how the stale-locals bug class arose.
- */
-function groupsWithRewrittenLeaves(
-  before: CompositionState, after: CompositionState,
-): Set<string> | null {
-  let out: Set<string> | null = null;
-
-  const scan = (
-    prev: ReadonlyArray<{ id: string; groupId?: string }> | undefined,
-    next: ReadonlyArray<{ id: string; groupId?: string }> | undefined,
-  ) => {
-    if (prev === next || !next) return;
-    let seen: Set<unknown> | undefined;
-    for (const node of next) {
-      if (!node.groupId) continue;
-      if (!seen) seen = new Set(prev ?? []);
-      if (seen.has(node)) continue;
-      (out ??= new Set()).add(node.groupId);
-    }
-  };
-
-  scan(before.figures, after.figures);
-  scan(before.svgObjects, after.svgObjects);
-  scan(before.images, after.images);
-  scan(before.texts, after.texts);
-  scan(before.paintObjects, after.paintObjects);
-  scan(before.patternObjects, after.patternObjects);
-  return out;
-}
-
-/**
- * Keep every grouped leaf's `local*` caches in step with its world pose,
- * after every op that rewrote one.
- *
- * A grouped leaf stores its pose twice — world fields and local caches —
- * and before this, synchronisation was opt-in: `moveNode`, `reparentNode`,
- * `ungroupFigures`, `joinObjects` and `unionObjects` reconciled, and every
- * other world-mutating op (`rotateFigure`, `mirrorFigure`, `scaleFigure`,
- * `setNodeRotation`, `editSVGSegments`, `editImage`, and the
- * `replaceScene` text/paint/pattern edits) did not. The damage stayed
- * invisible until an ancestor was next transformed, at which point
- * `materializeGroupMembers` rewrote world *from* the stale local and the
- * member visibly snapped back to its pre-edit pose — "objects inside a
- * group move relative to each other".
- *
- * Reconciling is idempotent (local := inverse(ancestor chain) . world), so
- * doing it after an op that already reconciled, or after one that changed
- * only a colour, costs a pass and changes nothing.
- */
-function reconcileAfterOp(
-  before: CompositionState, after: CompositionState, op: CompUndoOp,
-): CompositionState {
-  if (before === after) return after;
-  if (LOCALS_ALREADY_ESTABLISHED.has(op.op)) return after;
-  const groups = groupsWithRewrittenLeaves(before, after);
-  return groups ? reconcileGroupLocalsForGroups(after, groups) : after;
-}
-
 function applyOp(state: CompositionState, op: CompUndoOp): CompositionState {
-  return reconcileAfterOp(state, applyOpInner(state, op), op);
+  return applyOpInner(state, op);
 }
 
 function revertOp(state: CompositionState, op: CompUndoOp): CompositionState {
-  return reconcileAfterOp(state, revertOpInner(state, op), op);
-}
-
-/** Apply a composition undo entry forward (for redo) */
-/**
- * When set, every committed entry is checked for the stale-locals bug
- * before it is returned. Off in the app (it copies state per grouped
- * leaf); on for the whole engine test suite, so an op added later that
- * forgets to keep a member's local caches in step fails immediately and
- * names the member, rather than surfacing as "objects inside a group move
- * relative to each other" a release later.
- */
-const ASSERT_GROUP_LOCALS =
-  typeof process !== 'undefined' && process.env?.ASSERT_GROUP_LOCALS === '1';
-
-function checked(
-  before: CompositionState, after: CompositionState,
-  entry: CompUndoEntry, forward: boolean,
-): CompositionState {
-  if (ASSERT_GROUP_LOCALS) {
-    assertNoNewStaleLocals(before, after);
-    // Apply only. The bridge translates an op's FORWARD effect; an undo
-    // would need the inverse legacy op, which for grouping and reparenting
-    // is carried as whole-array snapshots rather than as a transform.
-    if (forward) assertGraphAgrees(before, after, entry);
-  }
-  // No graph to refresh: `applyCompOps` / `revertCompOps` send every
-  // graph-bearing state to `runOnGraph` before they reach here, so a state
-  // that gets this far carries none.
-  return after;
-}
-
-/**
- * The scene graph would have put everything where the legacy ops did.
- *
- * Armed for the whole engine suite alongside the stale-locals check, so
- * every group and transform test in the repo doubles as a differential
- * test for the bridge — which is a far broader proof than the couple of
- * dozen scenes `legacyOpBridge.test.ts` can name by hand, and the thing
- * the phases that move readers onto the graph get to lean on.
- *
- * Only entries made ENTIRELY of pose ops the bridge claims are checked. A
- * mixed entry would need the content ops applied to the graph too, and
- * comparing half a result proves nothing.
- */
-function assertGraphAgrees(
-  before: CompositionState, after: CompositionState, entry: CompUndoEntry,
-): void {
-  if (entry.length === 0 || !entry.every(isPoseOp)) return;
-  // A composition whose two copies of a pose already disagree cannot be
-  // used to judge the graph. `fromLegacy` reads the world fields, which
-  // are what the user saw; the legacy transform path reads the local
-  // caches. Where those differ the two models are answering different
-  // questions and the legacy answer is not the authority — that
-  // disagreement is the bug this whole refactor is about.
-  if (staleGroupedLeaves(before).size > 0) return;
-
-  const viaGraph = toLegacyView(applyLegacyEntryToGraph(fromLegacy(before), entry));
-  const byId = (s: CompositionState) =>
-    worldSnapshot(s).sort((a, b) => a.id.localeCompare(b.id));
-
-  const diff = diffWorldSnapshots(
-    byId(after), byId({ ...after, ...viaGraph }),
-    // An svg's stored bbox is a selection rect the graph recomputes from
-    // the path; `groupId` is what a grouping op is FOR.
-    { ignoreSvgBbox: true, ignoreGroupId: true },
-  );
-  if (diff) {
-    throw new Error(
-      'the scene graph disagrees with the legacy ops about '
-      + `${entry.map((o) => o.op).join(', ')}:
-${diff}`,
-    );
-  }
+  return revertOpInner(state, op);
 }
 
 /**
@@ -5132,13 +3864,14 @@ export function withSceneGraph(state: CompositionState): CompositionState {
   return { ...state, graph: fromLegacy(state) };
 }
 
+/** Apply a composition undo entry forward (for redo) */
 export function applyCompOps(state: CompositionState, entry: CompUndoEntry): CompositionState {
   if (state.graph) return runOnGraph(state, entry, true);
   let result = state;
   for (const op of entry) {
     result = applyOp(result, op);
   }
-  return checked(state, result, entry, true);
+  return result;
 }
 
 /** Revert a composition undo entry (for undo) */
@@ -5149,7 +3882,7 @@ export function revertCompOps(state: CompositionState, entry: CompUndoEntry): Co
   for (let i = entry.length - 1; i >= 0; i--) {
     result = revertOp(result, entry[i]);
   }
-  return checked(state, result, entry, false);
+  return result;
 }
 
 /**

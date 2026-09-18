@@ -70,7 +70,6 @@ describe('v21 shapeKind persistence', () => {
       shapeKind: 'rectangle',
       groupId: 'g1',
       localSegments: rectSegments(),
-      localCellX: 0, localCellY: 0, localCellWidth: 4, localCellHeight: 3,
       creationBox: { minX: 0, minY: 0, width: 4, height: 3 },
     });
 

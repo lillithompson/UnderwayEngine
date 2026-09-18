@@ -207,13 +207,7 @@ const svgAdapter: GeometryAdapter<SVGObject> = {
       identitySegments: undefined, rotation: undefined, mirrorH: undefined, mirrorV: undefined,
       cellX: svg.cellX + dx, cellY: svg.cellY + dy,
     };
-    if (newLocal) {
-      next.localSegments = newLocal;
-      if (svg.localCellX !== undefined && svg.localCellY !== undefined) {
-        next.localCellX = svg.localCellX + dx;
-        next.localCellY = svg.localCellY + dy;
-      }
-    }
+    if (newLocal) next.localSegments = newLocal;
     if (svg.creationBox) {
       next.creationBox = { minX: svg.creationBox.minX + dx, minY: svg.creationBox.minY + dy, width: svg.creationBox.width, height: svg.creationBox.height };
     }

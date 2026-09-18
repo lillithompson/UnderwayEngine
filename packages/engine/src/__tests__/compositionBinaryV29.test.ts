@@ -97,7 +97,6 @@ describe('compositionBinaryFormat v29', () => {
       locked: true,
       hidden: true,
       cellX: 2.25, cellY: -3.5, cellWidth: 6.75, cellHeight: 2.5,
-      localCellX: 1, localCellY: 2, localCellWidth: 3, localCellHeight: 4,
       identityCellX: 0.25, identityCellY: 0.5, identityCellWidth: 6.75, identityCellHeight: 2.5,
       style: {
         fontId: 'CozySerif',
@@ -204,10 +203,6 @@ describe('compositionBinaryFormat v29', () => {
     expect(rt.cellHeight).toBe(2.5);
     // Dropped on load; the identity bbox below is NOT — it is the
     // transform cycle's memory of the authored pose, not a group cache.
-    expect(rt.localCellX).toBeUndefined();
-    expect(rt.localCellY).toBeUndefined();
-    expect(rt.localCellWidth).toBeUndefined();
-    expect(rt.localCellHeight).toBeUndefined();
     expect(rt.identityCellX).toBe(0.25);
     expect(rt.identityCellY).toBe(0.5);
     expect(rt.identityCellWidth).toBe(6.75);
@@ -251,7 +246,6 @@ describe('compositionBinaryFormat v29', () => {
     expect(rm.mirrorV).toBeUndefined();
     expect(rm.locked).toBeUndefined();
     expect(rm.hidden).toBeUndefined();
-    expect(rm.localCellX).toBeUndefined();
     expect(rm.identityCellX).toBeUndefined();
     expect(rm.style.bold).toBeUndefined();
     expect(rm.style.italic).toBeUndefined();

@@ -80,7 +80,6 @@ function maximalPaint(id = 'pnt_max'): PaintObject {
     hidden: true,
     // World bbox no longer equal to the tile-space contentRect.
     cellX: -3.5, cellY: 2.25, cellWidth: 40.5, cellHeight: 12.75,
-    localCellX: 1.5, localCellY: 2.5, localCellWidth: 3.25, localCellHeight: 4.75,
     identityCellX: -0.5, identityCellY: -1.25, identityCellWidth: 33, identityCellHeight: 9.5,
   };
 }
@@ -166,10 +165,6 @@ describe('v52 paint object round-trip', () => {
     expect(outMax.cellHeight).toBe(12.75);
     // Dropped on load (plan §3.7); `identity*` is kept — it is the
     // transform cycle's authored pose, not a group-local cache.
-    expect(outMax.localCellX).toBeUndefined();
-    expect(outMax.localCellY).toBeUndefined();
-    expect(outMax.localCellWidth).toBeUndefined();
-    expect(outMax.localCellHeight).toBeUndefined();
     expect(outMax.identityCellX).toBe(-0.5);
     expect(outMax.identityCellY).toBe(-1.25);
     expect(outMax.identityCellWidth).toBe(33);
@@ -207,7 +202,6 @@ describe('v52 paint object round-trip', () => {
     expect(outMin.mirrorV).toBeUndefined();
     expect(outMin.locked).toBeUndefined();
     expect(outMin.hidden).toBeUndefined();
-    expect(outMin.localCellX).toBeUndefined();
     expect(outMin.identityCellX).toBeUndefined();
     // Fresh from a session: bbox == contentRect, exactly.
     expect(outMin.cellX).toBeCloseTo(min.contentX, 5);

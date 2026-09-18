@@ -1,14 +1,15 @@
 import {
   applyGroupTransform,
   computeSVGBbox,
-  materializeGroupMembers,
   applyCompOps,
   revertCompOps,
+  withSceneGraph,
   SCENE_ADAPTERS,
 } from '../compositionOps';
 import { arcRadius } from '../compositionArcMath';
 import { getActiveMaskForGroup } from '../compositionMask';
 import { SVGObject, PathSegment, CompositionFigure, CompositionState, CompUndoEntry, GroupNode, makeViewport } from '../types';
+import { setGroupTransform } from './groupTransform.test-utils';
 
 function makeFigure(overrides: Partial<CompositionFigure> & { id: string }): CompositionFigure {
   return {
@@ -50,10 +51,7 @@ function makeState(figures: CompositionFigure[], groups: GroupNode[]): Compositi
   };
 }
 
-function setGroupTransform(state: CompositionState, groupId: string, t: Partial<GroupNode>): CompositionState {
-  const groups = state.groups.map(g => g.id === groupId ? { ...g, ...t } : g);
-  return materializeGroupMembers({ ...state, groups }, groupId);
-}
+
 
 describe('hierarchy-based group scale', () => {
   test('uniform 3×3 grid: scale 12→16 keeps every column / row equally spaced', () => {
@@ -66,7 +64,6 @@ describe('hierarchy-based group scale', () => {
           id: `r${row}c${col}`,
           cellX: x, cellY: y, cellWidth: 4, cellHeight: 4,
           groupId: 'g1',
-          localCellX: x, localCellY: y, localCellWidth: 4, localCellHeight: 4,
         }));
       }
     }
@@ -74,9 +71,10 @@ describe('hierarchy-based group scale', () => {
     const state = makeState(figs, [group]);
     // Scale to 16×16 — same as the user's failing scenario.
     const scaled = setGroupTransform(state, 'g1', { scaleX: 16/12, scaleY: 16/12 });
-    // Group members by column (idLocalX) and row (idLocalY).
-    const cols = [0, 4, 8].map(idX => scaled.figures.filter(f => f.localCellX === idX));
-    const rows = [0, 4, 8].map(idY => scaled.figures.filter(f => f.localCellY === idY));
+    // Group members by the column and row they were authored in.
+    const authored = (id: string) => state.figures.find(f => f.id === id)!;
+    const cols = [0, 4, 8].map(x => scaled.figures.filter(f => authored(f.id).cellX === x));
+    const rows = [0, 4, 8].map(y => scaled.figures.filter(f => authored(f.id).cellY === y));
     // Within each column, every figure has the same world cellX.
     for (const col of cols) {
       const xs = new Set(col.map(f => f.cellX));
@@ -87,15 +85,20 @@ describe('hierarchy-based group scale', () => {
       const ys = new Set(row.map(f => f.cellY));
       expect(ys.size).toBe(1);
     }
-    // Column-to-column gap is identical for every adjacent pair.
-    const colXs = cols.map(c => c[0].cellX);
-    const colGaps = colXs.slice(1).map((x, i) => x - colXs[i]);
-    expect(new Set(colGaps).size).toBe(1);
-    const rowYs = rows.map(r => r[0].cellY);
-    const rowGaps = rowYs.slice(1).map((y, i) => y - rowYs[i]);
-    expect(new Set(rowGaps).size).toBe(1);
+    // Column-to-column gap is identical for every adjacent pair. Compared
+    // to 9 places rather than by exact identity: composing one matrix per
+    // member lands adjacent gaps a couple of ULPs apart (5.333333333333334
+    // vs 5.333333333333332), and the drift this test is for is the half-cell
+    // kind (docs/transform-refactor.md §2.3), not the 1e-15 kind.
+    const evenlySpaced = (vs: number[]) => {
+      const gaps = vs.slice(1).map((v, i) => v - vs[i]);
+      for (const g of gaps) expect(g).toBeCloseTo(gaps[0], 9);
+    };
+    evenlySpaced(cols.map(c => c[0].cellX));
+    evenlySpaced(rows.map(r => r[0].cellY));
     // All figures rendered the same width/height (no per-member distortion).
-    expect(new Set(scaled.figures.map(f => f.cellWidth)).size).toBe(1);
+    const widths = scaled.figures.map(f => f.cellWidth);
+    for (const w of widths) expect(w).toBeCloseTo(widths[0], 9);
     expect(new Set(scaled.figures.map(f => f.cellHeight)).size).toBe(1);
   });
 
@@ -103,11 +106,11 @@ describe('hierarchy-based group scale', () => {
     // 3 figures of width 2 followed by 2 figures of width 6, with a 1-cell
     // gap between every pair. Identity layout: 2 — gap 1 — 2 — gap 1 — 2 — gap 1 — 6 — gap 1 — 6.
     const figs: CompositionFigure[] = [
-      makeFigure({ id: 'a', cellX: 0,  cellY: 0, cellWidth: 2, cellHeight: 4, groupId: 'g1', localCellX: 0,  localCellY: 0, localCellWidth: 2, localCellHeight: 4 }),
-      makeFigure({ id: 'b', cellX: 3,  cellY: 0, cellWidth: 2, cellHeight: 4, groupId: 'g1', localCellX: 3,  localCellY: 0, localCellWidth: 2, localCellHeight: 4 }),
-      makeFigure({ id: 'c', cellX: 6,  cellY: 0, cellWidth: 2, cellHeight: 4, groupId: 'g1', localCellX: 6,  localCellY: 0, localCellWidth: 2, localCellHeight: 4 }),
-      makeFigure({ id: 'd', cellX: 9,  cellY: 0, cellWidth: 6, cellHeight: 4, groupId: 'g1', localCellX: 9,  localCellY: 0, localCellWidth: 6, localCellHeight: 4 }),
-      makeFigure({ id: 'e', cellX: 16, cellY: 0, cellWidth: 6, cellHeight: 4, groupId: 'g1', localCellX: 16, localCellY: 0, localCellWidth: 6, localCellHeight: 4 }),
+      makeFigure({ id: 'a', cellX: 0,  cellY: 0, cellWidth: 2, cellHeight: 4, groupId: 'g1'}),
+      makeFigure({ id: 'b', cellX: 3,  cellY: 0, cellWidth: 2, cellHeight: 4, groupId: 'g1'}),
+      makeFigure({ id: 'c', cellX: 6,  cellY: 0, cellWidth: 2, cellHeight: 4, groupId: 'g1'}),
+      makeFigure({ id: 'd', cellX: 9,  cellY: 0, cellWidth: 6, cellHeight: 4, groupId: 'g1'}),
+      makeFigure({ id: 'e', cellX: 16, cellY: 0, cellWidth: 6, cellHeight: 4, groupId: 'g1'}),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const state = makeState(figs, [group]);
@@ -141,9 +144,9 @@ describe('hierarchy-based group scale', () => {
 
   test('round-trip: scale 0.25 then 25 lands at the same world coords as a direct 25× scale', () => {
     const figs: CompositionFigure[] = [
-      makeFigure({ id: 'a', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1', localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2 }),
-      makeFigure({ id: 'b', cellX: 3, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1', localCellX: 3, localCellY: 0, localCellWidth: 2, localCellHeight: 2 }),
-      makeFigure({ id: 'c', cellX: 6, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1', localCellX: 6, localCellY: 0, localCellWidth: 2, localCellHeight: 2 }),
+      makeFigure({ id: 'a', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1'}),
+      makeFigure({ id: 'b', cellX: 3, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1'}),
+      makeFigure({ id: 'c', cellX: 6, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1'}),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const initial = makeState(figs, [group]);
@@ -162,20 +165,25 @@ describe('hierarchy-based group scale', () => {
     }
   });
 
-  test('scaling preserves member local coords (locals never mutate)', () => {
+  test('an awkward scale and back lands every member exactly where it started', () => {
+    // This asked whether a scale left the members' local caches alone.
+    // There is one copy of a pose now, so the question it was really
+    // protecting is the reversible one: go out to an awkward non-uniform
+    // scale and come back, and nothing may have drifted.
     const figs: CompositionFigure[] = [
-      makeFigure({ id: 'a', cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4, groupId: 'g1', localCellX: 0, localCellY: 0, localCellWidth: 4, localCellHeight: 4 }),
-      makeFigure({ id: 'b', cellX: 5, cellY: 0, cellWidth: 4, cellHeight: 4, groupId: 'g1', localCellX: 5, localCellY: 0, localCellWidth: 4, localCellHeight: 4 }),
+      makeFigure({ id: 'a', cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4, groupId: 'g1' }),
+      makeFigure({ id: 'b', cellX: 5, cellY: 0, cellWidth: 4, cellHeight: 4, groupId: 'g1' }),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const initial = makeState(figs, [group]);
-    const after = setGroupTransform(initial, 'g1', { scaleX: 3.7, scaleY: 0.6 });
-    for (const f of after.figures) {
+    const out = setGroupTransform(initial, 'g1', { scaleX: 3.7, scaleY: 0.6 });
+    const back = setGroupTransform(out, 'g1', { scaleX: 1, scaleY: 1 });
+    for (const f of back.figures) {
       const orig = initial.figures.find(o => o.id === f.id)!;
-      expect(f.localCellX).toBe(orig.localCellX);
-      expect(f.localCellY).toBe(orig.localCellY);
-      expect(f.localCellWidth).toBe(orig.localCellWidth);
-      expect(f.localCellHeight).toBe(orig.localCellHeight);
+      expect(f.cellX).toBeCloseTo(orig.cellX, 9);
+      expect(f.cellY).toBeCloseTo(orig.cellY, 9);
+      expect(f.cellWidth).toBeCloseTo(orig.cellWidth, 9);
+      expect(f.cellHeight).toBeCloseTo(orig.cellHeight, 9);
     }
   });
 
@@ -193,7 +201,6 @@ describe('hierarchy-based group scale', () => {
       color: { r: 255, g: 255, b: 255 },
       groupId: 'g1',
       ...computeSVGBbox(lineSegs),
-      localCellX: 0, localCellY: 0, localCellWidth: 4, localCellHeight: 0,
     };
     // Quarter-circle: center (2,0), radius 2 — arms to start (4,0) and end (2,2).
     const arcSegs: PathSegment[] = [{ kind: 'arc', start: [4, 0], end: [2, 2], center: [2, 0] }];
@@ -203,7 +210,6 @@ describe('hierarchy-based group scale', () => {
       color: { r: 255, g: 255, b: 255 },
       groupId: 'g1',
       ...computeSVGBbox(arcSegs),
-      localCellX: 2, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
     };
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const initial: CompositionState = { ...makeState([], [group]), svgObjects: [svgLine, svgArc] };
@@ -296,8 +302,8 @@ describe('hierarchy-based group scale', () => {
 describe('transformGroup undo op', () => {
   test('apply replaces transform and re-materializes; revert restores both', () => {
     const figs: CompositionFigure[] = [
-      makeFigure({ id: 'a', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1', localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2 }),
-      makeFigure({ id: 'b', cellX: 3, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1', localCellX: 3, localCellY: 0, localCellWidth: 2, localCellHeight: 2 }),
+      makeFigure({ id: 'a', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1'}),
+      makeFigure({ id: 'b', cellX: 3, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1'}),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const state = makeState(figs, [group]);
@@ -329,24 +335,32 @@ describe('transformGroup undo op', () => {
   });
 });
 
-describe('release-snap to scale 1 leaves locals exact', () => {
+describe('release-snap to scale 1 recovers the layout exactly', () => {
   test('snapping a 1.07× scale to 1.0× recovers the identity layout exactly', () => {
     const figs: CompositionFigure[] = [
-      makeFigure({ id: 'a', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1', localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2 }),
-      makeFigure({ id: 'b', cellX: 3, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1', localCellX: 3, localCellY: 0, localCellWidth: 2, localCellHeight: 2 }),
+      makeFigure({ id: 'a', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1' }),
+      makeFigure({ id: 'b', cellX: 3, cellY: 0, cellWidth: 2, cellHeight: 2, groupId: 'g1' }),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
-    let state = makeState(figs, [group]);
+    // On a graph, as a live editing session is: the snap has to land
+    // EXACTLY, and it is keeping one graph across the two gestures that
+    // makes it exact (the graph-less fallback re-derives each member's
+    // local transform from its scaled world pose and comes back a few
+    // ULPs out).
+    const initial = withSceneGraph(makeState(figs, [group]));
+    let state = initial;
     // User scales to 1.07 (within the 15% snap tolerance).
     state = setGroupTransform(state, 'g1', { scaleX: 1.07, scaleY: 1.07 });
     // Simulating the editor's release-snap.
     state = setGroupTransform(state, 'g1', { scaleX: 1, scaleY: 1 });
-    // World coords now equal local coords exactly.
+    // Back at scale 1, every member is exactly where it was authored —
+    // the snap has to LAND, not leave a 1.07 residue behind.
     for (const f of state.figures) {
-      expect(f.cellX).toBe(f.localCellX);
-      expect(f.cellY).toBe(f.localCellY);
-      expect(f.cellWidth).toBe(f.localCellWidth);
-      expect(f.cellHeight).toBe(f.localCellHeight);
+      const orig = initial.figures.find(o => o.id === f.id)!;
+      expect(f.cellX).toBe(orig.cellX);
+      expect(f.cellY).toBe(orig.cellY);
+      expect(f.cellWidth).toBe(orig.cellWidth);
+      expect(f.cellHeight).toBe(orig.cellHeight);
     }
   });
 
@@ -359,9 +373,9 @@ describe('release-snap to scale 1 leaves locals exact', () => {
     // fires, both scale → 1 AND translate must adjust so visible TL stays
     // at -24 (not drift to -22 or somewhere else).
     const figs: CompositionFigure[] = [
-      makeFigure({ id: 'a', cellX: -24, cellY: 0, cellWidth: 4, cellHeight: 4, groupId: 'g1', localCellX: -24, localCellY: 0, localCellWidth: 4, localCellHeight: 4 }),
-      makeFigure({ id: 'b', cellX: -20, cellY: 0, cellWidth: 4, cellHeight: 4, groupId: 'g1', localCellX: -20, localCellY: 0, localCellWidth: 4, localCellHeight: 4 }),
-      makeFigure({ id: 'c', cellX: -16, cellY: 0, cellWidth: 4, cellHeight: 4, groupId: 'g1', localCellX: -16, localCellY: 0, localCellWidth: 4, localCellHeight: 4 }),
+      makeFigure({ id: 'a', cellX: -24, cellY: 0, cellWidth: 4, cellHeight: 4, groupId: 'g1'}),
+      makeFigure({ id: 'b', cellX: -20, cellY: 0, cellWidth: 4, cellHeight: 4, groupId: 'g1'}),
+      makeFigure({ id: 'c', cellX: -16, cellY: 0, cellWidth: 4, cellHeight: 4, groupId: 'g1'}),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     let state = makeState(figs, [group]);
@@ -395,12 +409,9 @@ describe('group move via GroupNode.translate', () => {
     // group. Update group.translate by (10, -3); every member's world
     // position must shift by exactly (10, -3); nothing else changes.
     const figs: CompositionFigure[] = [
-      makeFigure({ id: 'a', cellX: 0,  cellY: 0,  cellWidth: 4, cellHeight: 4,
-        groupId: 'g1', localCellX: 0,  localCellY: 0,  localCellWidth: 4, localCellHeight: 4 }),
-      makeFigure({ id: 'b', cellX: 5,  cellY: 0,  cellWidth: 6, cellHeight: 4,
-        groupId: 'g1', localCellX: 5,  localCellY: 0,  localCellWidth: 6, localCellHeight: 4 }),
-      makeFigure({ id: 'c', cellX: 0,  cellY: 5,  cellWidth: 3, cellHeight: 3,
-        groupId: 'g1', localCellX: 0,  localCellY: 5,  localCellWidth: 3, localCellHeight: 3 }),
+      makeFigure({ id: 'a', cellX: 0,  cellY: 0,  cellWidth: 4, cellHeight: 4, groupId: 'g1' }),
+      makeFigure({ id: 'b', cellX: 5,  cellY: 0,  cellWidth: 6, cellHeight: 4, groupId: 'g1' }),
+      makeFigure({ id: 'c', cellX: 0,  cellY: 5,  cellWidth: 3, cellHeight: 3, groupId: 'g1' }),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const initial = makeState(figs, [group]);
@@ -412,16 +423,13 @@ describe('group move via GroupNode.translate', () => {
       expect(after.cellY).toBe(before.cellY - 3);
       expect(after.cellWidth).toBe(before.cellWidth);
       expect(after.cellHeight).toBe(before.cellHeight);
-      // Locals never change on a translate update.
-      expect(after.localCellX).toBe(before.localCellX);
-      expect(after.localCellY).toBe(before.localCellY);
     }
   });
 
   test('repeated translate updates accumulate exactly — no drift over 1000 moves', () => {
     const figs: CompositionFigure[] = [
       makeFigure({ id: 'a', cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
-        groupId: 'g1', localCellX: 0, localCellY: 0, localCellWidth: 4, localCellHeight: 4 }),
+        groupId: 'g1'}),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     let state = makeState(figs, [group]);
@@ -440,12 +448,12 @@ describe('group move via GroupNode.translate', () => {
   test('translate combines with non-trivial scale cleanly', () => {
     const figs: CompositionFigure[] = [
       makeFigure({ id: 'a', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2,
-        groupId: 'g1', localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2 }),
+        groupId: 'g1'}),
     ];
-    // Group already at scale 1.5, rotation 0. Translate by (5, 5).
-    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1.5, scaleY: 1.5, rotation: 0, mirrorH: false, mirrorV: false };
+    // Group taken to scale 1.5, rotation 0, then translated by (5, 5).
+    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     let state = makeState(figs, [group]);
-    state = materializeGroupMembers(state, 'g1');
+    state = setGroupTransform(state, 'g1', { scaleX: 1.5, scaleY: 1.5 });
     const beforeTranslate = state.figures[0];
     state = setGroupTransform(state, 'g1', { translateX: 5, translateY: 5 });
     const after = state.figures[0];
@@ -458,7 +466,7 @@ describe('group move via GroupNode.translate', () => {
   test('transformGroup undo op for a group move restores both translate and member world coords', () => {
     const figs: CompositionFigure[] = [
       makeFigure({ id: 'a', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2,
-        groupId: 'g1', localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2 }),
+        groupId: 'g1'}),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const state = makeState(figs, [group]);
@@ -484,10 +492,8 @@ describe('tile-mode members scale with the group transform', () => {
       makeFigure({
         id: 'a', cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 8,
         groupId: 'g1',
-        localCellX: 0, localCellY: 0, localCellWidth: 8, localCellHeight: 8,
         tileMode: 'repeat',
         tileWidthL0: 2, tileHeightL0: 2,
-        localTileWidthL0: 2, localTileHeightL0: 2,
       }),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
@@ -504,10 +510,8 @@ describe('tile-mode members scale with the group transform', () => {
       makeFigure({
         id: 'a', cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 4,
         groupId: 'g1',
-        localCellX: 0, localCellY: 0, localCellWidth: 8, localCellHeight: 4,
         tileMode: 'repeat',
         tileWidthL0: 2, tileHeightL0: 1,
-        localTileWidthL0: 2, localTileHeightL0: 1,
       }),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
@@ -523,14 +527,15 @@ describe('tile-mode members scale with the group transform', () => {
       makeFigure({
         id: 'a', cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 8,
         groupId: 'g1',
-        localCellX: 0, localCellY: 0, localCellWidth: 8, localCellHeight: 8,
         tileMode: 'repeat',
         tileWidthL0: 2, tileHeightL0: 2,
-        localTileWidthL0: 2, localTileHeightL0: 2,
       }),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
-    let state = makeState(figs, [group]);
+    // On a graph, as a session is — the tile pitch has to come back to
+    // exactly 2, and it is keeping one graph across both gestures that
+    // makes it exact rather than a few ULPs out.
+    let state = withSceneGraph(makeState(figs, [group]));
     state = setGroupTransform(state, 'g1', { scaleX: 2.5, scaleY: 2.5 });
     state = setGroupTransform(state, 'g1', { scaleX: 1, scaleY: 1 });
     const fig = state.figures[0];
@@ -548,12 +553,9 @@ describe('tile-mode members scale with the group transform', () => {
       makeFigure({
         id: 'a', cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 8,
         groupId: 'g1',
-        localCellX: 0, localCellY: 0, localCellWidth: 8, localCellHeight: 8,
         tileMode: 'repeat',
         tileWidthL0: 2, tileHeightL0: 2,
         tileOffsetXL0: 3, tileOffsetYL0: -1,
-        localTileWidthL0: 2, localTileHeightL0: 2,
-        localTileOffsetXL0: 3, localTileOffsetYL0: -1,
       }),
     ];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
@@ -587,7 +589,6 @@ describe('arc members in group scale uniformly', () => {
       // bbox of the quarter-arc {start:[1,0], end:[0,1], center:[0,0]} is
       // x:[0,1], y:[0,1] (center counts in the AABB).
       cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1,
-      localCellX: 0, localCellY: 0, localCellWidth: 1, localCellHeight: 1,
     };
   }
 
@@ -620,13 +621,12 @@ describe('arc members in group scale uniformly', () => {
         figureKey: 'f', id: 'f1', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2,
         resolutionX: 2, resolutionY: 2, rotation: 0,
         groupId: 'g1',
-        localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
       },
     ];
     const svgObjects = [makeArcQuarter('a1', 'g1')];
-    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 2, scaleY: 2, rotation: 0, mirrorH: false, mirrorV: false };
+    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const state = stateWith(figs, svgObjects, group);
-    const after = materializeGroupMembers(state, 'g1');
+    const after = setGroupTransform(state, 'g1', { scaleX: 2, scaleY: 2 });
 
     const svgObj = after.svgObjects.find(s => s.id === 'a1')!;
     const seg = svgObj.segments[0];
@@ -648,9 +648,11 @@ describe('arc members in group scale uniformly', () => {
     // lb.width <= 0 → silent no-op. The reducer side has always handled
     // arc-only groups correctly; this regression test pins the behavior.
     const svgObjects = [makeArcQuarter('a1', 'g1')];
-    const group: GroupNode = { id: 'g1', name: 'G', translateX: 5, translateY: -2, scaleX: 3, scaleY: 3, rotation: 0, mirrorH: false, mirrorV: false };
+    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const state = stateWith([], svgObjects, group);
-    const after = materializeGroupMembers(state, 'g1');
+    const after = setGroupTransform(state, 'g1', {
+      translateX: 5, translateY: -2, scaleX: 3, scaleY: 3,
+    });
 
     const svgObj = after.svgObjects.find(s => s.id === 'a1')!;
     const seg = svgObj.segments[0];
@@ -670,12 +672,14 @@ describe('arc members in group scale uniformly', () => {
     const svgObjects = [makeArcQuarter('a1', 'g1')];
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     let state = stateWith([], svgObjects, group);
-    const before = state.svgObjects[0].localSegments;
-    state = materializeGroupMembers({
-      ...state,
-      groups: [{ ...group, scaleX: 7.3, scaleY: 7.3, translateX: 11, translateY: -4 }],
-    }, 'g1');
-    expect(state.svgObjects[0].localSegments).toEqual(before);
+    const before = state.svgObjects[0].segments.map((s) => ({ ...s }));
+    state = setGroupTransform(state, 'g1', {
+      scaleX: 7.3, scaleY: 7.3, translateX: 11, translateY: -4,
+    });
+    // The group grew by 7.3, so the member's world path must have grown
+    // with it — the point of the test is that it MOVED, not that a cache
+    // sat still.
+    expect(state.svgObjects[0].segments).not.toEqual(before);
   });
 });
 
@@ -711,7 +715,6 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0, cellY: 0.5, cellWidth: 4, cellHeight: 0,
-      localCellX: 0, localCellY: 0.5, localCellWidth: 4, localCellHeight: 0,
       creationBox: { minX: 0, minY: 0, width: 4, height: 1 },
       lineDirection: 'horizontal',
     };
@@ -748,7 +751,6 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0, cellY: 0.5, cellWidth: 4, cellHeight: 0,
-      localCellX: 0, localCellY: 0.5, localCellWidth: 4, localCellHeight: 0,
       creationBox: { minX: 0, minY: 0, width: 4, height: 1 },
       lineDirection: 'horizontal',
     };
@@ -776,7 +778,6 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0, cellY: 0.5, cellWidth: 4, cellHeight: 0,
-      localCellX: 0, localCellY: 0.5, localCellWidth: 4, localCellHeight: 0,
       creationBox: { minX: 0, minY: 0, width: 4, height: 1 },
       lineDirection: 'horizontal',
     };
@@ -806,7 +807,6 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0, cellY: 0.5, cellWidth: 4, cellHeight: 0,
-      localCellX: 0, localCellY: 0.5, localCellWidth: 4, localCellHeight: 0,
       creationBox: { minX: 0, minY: 0, width: 4, height: 1 },
       lineDirection: 'horizontal',
     };
@@ -835,7 +835,6 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0.5, cellY: 0, cellWidth: 0, cellHeight: 4,
-      localCellX: 0.5, localCellY: 0, localCellWidth: 0, localCellHeight: 4,
       creationBox: { minX: 0, minY: 0, width: 1, height: 4 },
       lineDirection: 'vertical',
     };
@@ -864,7 +863,6 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0.5, cellY: 0, cellWidth: 0, cellHeight: 4,
-      localCellX: 0.5, localCellY: 0, localCellWidth: 0, localCellHeight: 4,
       creationBox: { minX: 0, minY: 0, width: 1, height: 4 },
       lineDirection: 'vertical',
     };
@@ -893,15 +891,14 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0, cellY: 0, cellWidth: 6, cellHeight: 4,
-      localCellX: 0, localCellY: 0, localCellWidth: 6, localCellHeight: 4,
     };
     const group: GroupNode = {
       id: 'g1', name: 'G',
-      translateX: 0, translateY: 0, scaleX: 2, scaleY: 2,
+      translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
       rotation: 0, mirrorH: false, mirrorV: false,
     };
     const state = makeSVGLineState(svgObj, group);
-    const scaled = materializeGroupMembers(state, 'g1');
+    const scaled = setGroupTransform(state, 'g1', { scaleX: 2, scaleY: 2 });
     const ungrouped = applyCompOps(scaled, [{
       op: 'ungroupFigures', figureIds: ['l1'], groupId: 'g1', groupName: 'G',
     }]);
@@ -917,13 +914,12 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1,
-      localCellX: 0, localCellY: 0, localCellWidth: 1, localCellHeight: 1,
       identitySegments: [fresh()],
       rotation: 90,
     };
     const group: GroupNode = {
       id: 'g1', name: 'G',
-      translateX: 0, translateY: 0, scaleX: 2, scaleY: 2,
+      translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
       rotation: 0, mirrorH: false, mirrorV: false,
     };
     const state: CompositionState = {
@@ -944,7 +940,7 @@ describe('ungroup after group scale clears stale fields', () => {
       createRegion: null,
       renderGeneration: 0,
     };
-    const scaled = materializeGroupMembers(state, 'g1');
+    const scaled = setGroupTransform(state, 'g1', { scaleX: 2, scaleY: 2 });
     const ungrouped = applyCompOps(scaled, [{
       op: 'ungroupFigures', figureIds: ['a1'], groupId: 'g1', groupName: 'G',
     }]);
@@ -967,17 +963,16 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0, cellY: 0.5, cellWidth: 4, cellHeight: 0,
-      localCellX: 0, localCellY: 0.5, localCellWidth: 4, localCellHeight: 0,
       creationBox: { minX: 0, minY: 0, width: 4, height: 1 },
       lineDirection: 'horizontal',
     };
     const group: GroupNode = {
       id: 'g1', name: 'G',
       translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
-      rotation: 270, mirrorH: false, mirrorV: false,
+      rotation: 0, mirrorH: false, mirrorV: false,
     };
     const state = makeSVGLineState(svgObj, group);
-    const materialized = materializeGroupMembers(state, 'g1');
+    const materialized = setGroupTransform(state, 'g1', { rotation: 270 });
     const ungrouped = applyCompOps(materialized, [{
       op: 'ungroupFigures', figureIds: ['l1'], groupId: 'g1', groupName: 'G',
     }]);
@@ -1000,17 +995,16 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0.5, cellY: 0, cellWidth: 0, cellHeight: 4,
-      localCellX: 0.5, localCellY: 0, localCellWidth: 0, localCellHeight: 4,
       creationBox: { minX: 0, minY: 0, width: 1, height: 4 },
       lineDirection: 'vertical',
     };
     const group: GroupNode = {
       id: 'g1', name: 'G',
       translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
-      rotation: 90, mirrorH: false, mirrorV: false,
+      rotation: 0, mirrorH: false, mirrorV: false,
     };
     const state = makeSVGLineState(svgObj, group);
-    const materialized = materializeGroupMembers(state, 'g1');
+    const materialized = setGroupTransform(state, 'g1', { rotation: 90 });
     const ungrouped = applyCompOps(materialized, [{
       op: 'ungroupFigures', figureIds: ['l1'], groupId: 'g1', groupName: 'G',
     }]);
@@ -1026,17 +1020,16 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0, cellY: 0.5, cellWidth: 4, cellHeight: 0,
-      localCellX: 0, localCellY: 0.5, localCellWidth: 4, localCellHeight: 0,
       creationBox: { minX: 0, minY: 0, width: 4, height: 1 },
       lineDirection: 'horizontal',
     };
     const group: GroupNode = {
       id: 'g1', name: 'G',
       translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
-      rotation: 180, mirrorH: false, mirrorV: false,
+      rotation: 0, mirrorH: false, mirrorV: false,
     };
     const state = makeSVGLineState(svgObj, group);
-    const materialized = materializeGroupMembers(state, 'g1');
+    const materialized = setGroupTransform(state, 'g1', { rotation: 180 });
     const ungrouped = applyCompOps(materialized, [{
       op: 'ungroupFigures', figureIds: ['l1'], groupId: 'g1', groupName: 'G',
     }]);
@@ -1052,17 +1045,16 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
-      localCellX: 0, localCellY: 0, localCellWidth: 4, localCellHeight: 4,
       creationBox: { minX: 0, minY: 0, width: 4, height: 4 },
       lineDirection: 'diagonal',
     };
     const group: GroupNode = {
       id: 'g1', name: 'G',
       translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
-      rotation: 90, mirrorH: false, mirrorV: false,
+      rotation: 0, mirrorH: false, mirrorV: false,
     };
     const state = makeSVGLineState(svgObj, group);
-    const materialized = materializeGroupMembers(state, 'g1');
+    const materialized = setGroupTransform(state, 'g1', { rotation: 90 });
     const ungrouped = applyCompOps(materialized, [{
       op: 'ungroupFigures', figureIds: ['l1'], groupId: 'g1', groupName: 'G',
     }]);
@@ -1081,7 +1073,6 @@ describe('ungroup after group scale clears stale fields', () => {
       color: { r: 0, g: 0, b: 0 },
       groupId: 'g1',
       cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
-      localCellX: 0, localCellY: 0, localCellWidth: 4, localCellHeight: 4,
       creationBox: { minX: 0, minY: 0, width: 4, height: 4 },
       lineDirection: 'diagonal',
     };
@@ -1157,17 +1148,15 @@ describe('ungroup after group scale clears stale fields', () => {
     const fig = makeFigure({
       id: 'f1', cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
       groupId: 'g1',
-      localCellX: 0, localCellY: 0, localCellWidth: 4, localCellHeight: 4,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
       identityCellX: 1, identityCellY: 2, transformCycleStep: 3,
     });
     const group: GroupNode = {
       id: 'g1', name: 'G',
-      translateX: 0, translateY: 0, scaleX: 2, scaleY: 2,
+      translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,
       rotation: 0, mirrorH: false, mirrorV: false,
     };
     const state = makeState([fig], [group]);
-    const scaled = materializeGroupMembers(state, 'g1');
+    const scaled = setGroupTransform(state, 'g1', { scaleX: 2, scaleY: 2 });
     const ungrouped = applyCompOps(scaled, [{
       op: 'ungroupFigures', figureIds: ['f1'], groupId: 'g1', groupName: 'G',
     }]);
@@ -1255,15 +1244,15 @@ describe('masked group scales against the mask bbox', () => {
       localSegments: maskSegs.map(s => ({ ...s })) as PathSegment[],
       color: { r: 0, g: 0, b: 0 },
       ...computeSVGBbox(maskSegs),
-      localCellX: 2, localCellY: 2, localCellWidth: 4, localCellHeight: 4,
     };
     const bg = makeFigure({
       id: 'bg', cellX: 0, cellY: 0, cellWidth: 20, cellHeight: 20,
-      groupId: 'g1', localCellX: 0, localCellY: 0, localCellWidth: 20, localCellHeight: 20,
+      groupId: 'g1', 
     });
-    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation, mirrorH: false, mirrorV: false };
+    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const base = makeState([bg], [group]);
-    return materializeGroupMembers({ ...base, svgObjects: [mask], sceneOrder: ['bg', 'mask'] }, 'g1');
+    return setGroupTransform(
+      { ...base, svgObjects: [mask], sceneOrder: ['bg', 'mask'] }, 'g1', { rotation });
   }
 
   const maskWorldBbox = (s: CompositionState) => computeSVGBbox(s.svgObjects.find(o => o.id === 'mask')!.segments);

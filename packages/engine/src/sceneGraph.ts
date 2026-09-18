@@ -1359,8 +1359,6 @@ function renderLegacyLeaf(graph: SceneGraph, node: SceneNode, world: Mat2D): Leg
     svg.angleDeg = spin === 0 ? undefined : spin;
     svg.localSegments = undefined;
     svg.localSubpaths = undefined;
-    svg.localCellX = undefined; svg.localCellY = undefined;
-    svg.localCellWidth = undefined; svg.localCellHeight = undefined;
     scaleContentLengths(svg as unknown as Record<string, unknown>, world);
     return svg;
   }

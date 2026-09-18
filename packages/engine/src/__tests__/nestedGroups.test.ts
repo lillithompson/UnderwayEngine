@@ -1,7 +1,6 @@
 import {
   applyCompOps,
   revertCompOps,
-  materializeGroupMembers,
   expandToGroup,
   expandIdsToGroups,
   findRootGroupId,
@@ -10,6 +9,7 @@ import {
   descendantGroupIds,
 } from '../compositionOps';
 import { CompositionFigure, CompositionState, CompUndoEntry, GroupNode, makeViewport } from '../types';
+import { setGroupTransform } from './groupTransform.test-utils';
 
 function makeFigure(overrides: Partial<CompositionFigure> & { id: string }): CompositionFigure {
   return {
@@ -254,8 +254,7 @@ describe('nested groups', () => {
       state = groupFigures(state, ['a', 'b'], 'g1', 'Group 1');
 
       // Translate G1 by (5, 5)
-      const groups1 = state.groups.map(g => g.id === 'g1' ? { ...g, translateX: 5, translateY: 5 } : g);
-      state = materializeGroupMembers({ ...state, groups: groups1 }, 'g1');
+      state = setGroupTransform(state, 'g1', { translateX: 5, translateY: 5 });
 
       // Verify inner group world coords
       expect(state.figures.find(f => f.id === 'a')!.cellX).toBe(5);
@@ -267,8 +266,7 @@ describe('nested groups', () => {
       state = groupFigures(state, [], 'g3', 'Group 3', ['g1']);
 
       // Translate G3 by (10, 0)
-      const groups2 = state.groups.map(g => g.id === 'g3' ? { ...g, translateX: 10, translateY: 0 } : g);
-      state = materializeGroupMembers({ ...state, groups: groups2 }, 'g3');
+      state = setGroupTransform(state, 'g3', { translateX: 10, translateY: 0 });
 
       // World coords should be G3(10,0) + G1(5,5) + local
       // A: local=(0,0), G1=(5,5), G3=(10,0) → world = (15, 5)
@@ -277,6 +275,65 @@ describe('nested groups', () => {
       // B: local=(3,0), G1=(5,5), G3=(10,0) → world = (18, 5)
       expect(state.figures.find(f => f.id === 'b')!.cellX).toBe(18);
       expect(state.figures.find(f => f.id === 'b')!.cellY).toBe(5);
+    });
+
+    // RugBug.tile: a turned group (Rug_Outline, rotation=90, holding two
+    // repeat-mode figures) gets grouped with a loose line, and the new
+    // parent is then moved. The turn belongs to the INNER group, so the
+    // members must come out of the move still turned 90° — the old model
+    // re-derived each member's orientation through the whole chain and
+    // composed the inner turn twice, landing them at 180°.
+    test('moving a parent group leaves a turned inner group\'s members turned once', () => {
+      const rugOutline: GroupNode = {
+        id: 'rug', name: 'Rug_Outline',
+        translateX: 10, translateY: 5, scaleX: 1, scaleY: 1,
+        rotation: 90, mirrorH: false, mirrorV: false,
+      };
+      // Both figures are authored where they are DRAWN: turned 90° under
+      // a group that is itself turned 90°, with the world tile pitch that
+      // goes with it (8×4, the turn of the 4×8 they are drawn at).
+      const rugFigure = (id: string, cellY: number) => makeFigure({
+        id, groupId: 'rug',
+        cellX: 2, cellY, cellWidth: 8, cellHeight: 4,
+        resolutionX: 4, resolutionY: 8,
+        rotation: 90,
+        tileMode: 'repeat' as const,
+        tileWidthL0: 8, tileHeightL0: 4,
+      });
+
+      let state = makeState([rugFigure('fig1', 5), rugFigure('fig2', 10)], [rugOutline]);
+      state = {
+        ...state,
+        svgObjects: [{
+          id: 'line1',
+          segments: [{ kind: 'line' as const, start: [0, 0] as [number, number], end: [5, 5] as [number, number] }],
+          color: { r: 0, g: 0, b: 0 },
+          cellX: 0, cellY: 0, cellWidth: 5, cellHeight: 5,
+        }],
+        sceneOrder: ['fig1', 'fig2', 'line1'],
+      };
+
+      // Group Rug_Outline + the loose line under a new parent.
+      state = groupFigures(state, ['line1'], 'parent', 'Parent Group', ['rug']);
+      expect(state.groups.find(g => g.id === 'rug')!.parentGroupId).toBe('parent');
+
+      // Move the parent.
+      state = setGroupTransform(state, 'parent', { translateX: 20, translateY: 0 });
+
+      // Turned once, not twice.
+      expect(state.figures.find(f => f.id === 'fig1')!.rotation).toBe(90);
+      expect(state.figures.find(f => f.id === 'fig2')!.rotation).toBe(90);
+
+      // The tile pitch rode along unchanged — a pure translate does not
+      // rescale a repeat.
+      expect(state.figures.find(f => f.id === 'fig1')!.tileWidthL0).toBe(8);
+      expect(state.figures.find(f => f.id === 'fig1')!.tileHeightL0).toBe(4);
+
+      // And everything shifted by the parent's translate, nothing else.
+      expect(state.figures.find(f => f.id === 'fig1')!.cellX).toBe(22);
+      expect(state.figures.find(f => f.id === 'fig1')!.cellY).toBe(5);
+      expect(state.figures.find(f => f.id === 'fig2')!.cellX).toBe(22);
+      expect(state.figures.find(f => f.id === 'fig2')!.cellY).toBe(10);
     });
   });
 
@@ -641,10 +698,8 @@ describe('nested groups', () => {
     test('renameGroup works even when figure name differs from GroupNode name', () => {
       // This is the RenameFail.tile scenario: figure name and GroupNode name are out of sync
       const figs = [
-        makeFigure({ id: 'a', cellX: 0, cellY: 0, name: 'Left', groupId: 'g1', preGroupName: 'Fig A',
-          localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2 }),
-        makeFigure({ id: 'b', cellX: 3, cellY: 0, groupId: 'g1',
-          localCellX: 3, localCellY: 0, localCellWidth: 2, localCellHeight: 2 }),
+        makeFigure({ id: 'a', cellX: 0, cellY: 0, name: 'Left', groupId: 'g1', preGroupName: 'Fig A' }),
+        makeFigure({ id: 'b', cellX: 3, cellY: 0, groupId: 'g1' }),
       ];
       const groups: GroupNode[] = [
         { id: 'g1', name: 'Group 1', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false },

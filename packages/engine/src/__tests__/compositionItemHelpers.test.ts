@@ -202,7 +202,6 @@ describe('groupFigures op handles mixed selection (figure + svg objects)', () =>
     expect(next.groups).toHaveLength(1);
     expect(next.groups[0].id).toBe('g1');
     expect(next.figures[0].groupId).toBe('g1');
-    expect(next.figures[0].localCellX).toBe(0);
     expect(next.svgObjects[0].groupId).toBe('g1');
     expect(next.svgObjects[0].localSegments).toEqual([{kind: 'line', start: [0, 0], end: [1, 1]}]);
     expect(next.svgObjects[1].groupId).toBe('g1');

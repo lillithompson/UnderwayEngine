@@ -437,21 +437,13 @@ export interface CompositionFigure {
    * group transform applied to these. Only meaningful when `groupId` is
    * set; populated by `groupFigures` and the migration helper.
    */
-  localCellX?: number;
-  localCellY?: number;
-  localCellWidth?: number;
-  localCellHeight?: number;
   /**
    * Tile-mode members carry their tile dim through the hierarchy the
    * same way as cellWidth/Height: world tile = local tile * group scale
    * on each axis. Set on `groupFigures` for tile members; cleared on
    * `ungroupFigures`.
    */
-  localTileWidthL0?: number;
-  localTileHeightL0?: number;
   /** Local-space tile offset, preserved through group/ungroup. */
-  localTileOffsetXL0?: number;
-  localTileOffsetYL0?: number;
   /**
    * Pre-group-transform orientation. World `rotation` / `mirrorH` /
    * `mirrorV` / `quads` are derived by composing these with the group's
@@ -461,10 +453,6 @@ export interface CompositionFigure {
    * sprite render would stay un-rotated. Seeded by `groupFigures` from
    * the figure's current world orientation; cleared by `ungroupFigures`.
    */
-  localRotation?: 0 | 90 | 180 | 270;
-  localMirrorH?: boolean;
-  localMirrorV?: boolean;
-  localQuads?: FigureQuad[];
 }
 
 /**
@@ -710,10 +698,6 @@ export interface SVGObject {
   cellWidth: number;
   cellHeight: number;
   /** Pre-group-transform bbox; only set while groupId is set. */
-  localCellX?: number;
-  localCellY?: number;
-  localCellWidth?: number;
-  localCellHeight?: number;
   /** Segments at identity (rotation=0, no mirror). Stored on first
    *  rotate/mirror so repeated transforms pivot around a stable center
    *  and 360° returns to the exact original position. Cleared on move. */
@@ -1029,10 +1013,6 @@ export interface ImageObject {
   /** Legacy, folded into `name` on load — see CompositionFigure.preGroupName. */
   preGroupName?: string;
   /** Pre-group-transform bbox; only set while groupId is set. */
-  localCellX?: number;
-  localCellY?: number;
-  localCellWidth?: number;
-  localCellHeight?: number;
   /**
    * Pre-group-transform orientation and free rotation; only set while
    * `groupId` is set. World `rotation` / `mirrorH` / `mirrorV` / `angleDeg`
@@ -1045,10 +1025,6 @@ export interface ImageObject {
    * world), by every reconcile (a reparent, a move inside the group) and
    * by the load backfill.
    */
-  localRotation?: 0 | 90 | 180 | 270;
-  localMirrorH?: boolean;
-  localMirrorV?: boolean;
-  localAngleDeg?: number;
   /** Bbox at identity (rotation=0, no mirror). Stored on first
    *  rotate/mirror so repeated transforms pivot around a stable center
    *  and 360° returns to the exact original position. Cleared on move
@@ -1111,15 +1087,7 @@ export interface PaintObject {
   /** Legacy, folded into `name` on load — see CompositionFigure.preGroupName. */
   preGroupName?: string;
   /** Pre-group-transform bbox; only set while groupId is set. */
-  localCellX?: number;
-  localCellY?: number;
-  localCellWidth?: number;
-  localCellHeight?: number;
   /** Pre-group-transform orientation + free rotation; see ImageObject. */
-  localRotation?: 0 | 90 | 180 | 270;
-  localMirrorH?: boolean;
-  localMirrorV?: boolean;
-  localAngleDeg?: number;
   /** Bbox at identity — same stabilization pattern as ImageObject. */
   identityCellX?: number;
   identityCellY?: number;
@@ -1225,24 +1193,12 @@ export interface PatternObject {
   /** Legacy, folded into `name` on load — see CompositionFigure.preGroupName. */
   preGroupName?: string;
   /** Pre-group-transform bbox; only set while groupId is set. */
-  localCellX?: number;
-  localCellY?: number;
-  localCellWidth?: number;
-  localCellHeight?: number;
   /** Pre-group-transform orientation + free rotation; see ImageObject. */
-  localRotation?: 0 | 90 | 180 | 270;
-  localMirrorH?: boolean;
-  localMirrorV?: boolean;
-  localAngleDeg?: number;
   /** Pre-group-transform tile pitch + tile-grid offset (repeat mode); only
    *  set while groupId is set — the same locals a tiled figure keeps, so a
    *  repeat pattern inside a scaled group scales its tile WITH the group
    *  (constant repetition count) instead of re-flowing more tiles into the
    *  resized region. Derived caches (reconcileGroupLocals), never saved. */
-  localTileWidthL0?: number;
-  localTileHeightL0?: number;
-  localTileOffsetXL0?: number;
-  localTileOffsetYL0?: number;
   /** Bbox at identity — same stabilization pattern as ImageObject. */
   identityCellX?: number;
   identityCellY?: number;
@@ -1512,15 +1468,7 @@ export interface TextObject {
   /** Legacy, folded into `name` on load — see CompositionFigure.preGroupName. */
   preGroupName?: string;
   /** Pre-group-transform bbox; only set while groupId is set. */
-  localCellX?: number;
-  localCellY?: number;
-  localCellWidth?: number;
-  localCellHeight?: number;
   /** Pre-group-transform orientation + free rotation; see ImageObject. */
-  localRotation?: 0 | 90 | 180 | 270;
-  localMirrorH?: boolean;
-  localMirrorV?: boolean;
-  localAngleDeg?: number;
   /** Bbox at identity; same stabilization pattern as `ImageObject`. */
   identityCellX?: number;
   identityCellY?: number;
@@ -1979,10 +1927,6 @@ export type CompUndoOp =
       oldIdentityCellWidth?: number; oldIdentityCellHeight?: number;
       newIdentityCellX?: number; newIdentityCellY?: number;
       newIdentityCellWidth?: number; newIdentityCellHeight?: number;
-      oldLocalCellX?: number; oldLocalCellY?: number;
-      oldLocalCellWidth?: number; oldLocalCellHeight?: number;
-      newLocalCellX?: number; newLocalCellY?: number;
-      newLocalCellWidth?: number; newLocalCellHeight?: number;
       /** Free rotation, riding the transform like rotation/mirror (a
        *  mirror negates it — see mirroredAngleDeg). Applied
        *  unconditionally, so the one builder always carries both sides. */

@@ -15,6 +15,7 @@ import {
   CompUndoEntry, CompositionState, GroupNode, ImageObject, PatternObject, SVGObject, TextObject,
   makeViewport,
 } from '../types';
+import { flipOf, turnOf } from './groupTransform.test-utils';
 
 function group(overrides: Partial<GroupNode> = {}): GroupNode {
   return {
@@ -81,7 +82,6 @@ function state(parts: {
 
 const IN_G1 = {
   groupId: 'g1', preGroupName: undefined,
-  localCellX: 0, localCellY: 0, localCellWidth: 1, localCellHeight: 1,
 };
 
 function ungroup(ids: string[]): CompUndoEntry {
@@ -92,7 +92,7 @@ describe('ungroupFigures keeps the bbox kinds’ world orientation', () => {
   test('a pattern turned a quarter and flipped comes out turned and flipped', () => {
     const s = state({
       groups: [group()],
-      patterns: [pattern({ ...IN_G1, rotation: 90, mirrorH: true, tileOffsetXL0: 1, localTileWidthL0: 2, localTileHeightL0: 2 })],
+      patterns: [pattern({ ...IN_G1, rotation: 90, mirrorH: true, tileOffsetXL0: 1})],
     });
     const out = applyCompOps(s, ungroup(['pat'])).patternObjects![0];
     expect(out.groupId).toBeUndefined();
@@ -103,16 +103,13 @@ describe('ungroupFigures keeps the bbox kinds’ world orientation', () => {
     expect(out.tileMode).toBe('repeat');
     expect(out.tileWidthL0).toBe(2);
     expect(out.tileOffsetXL0).toBe(1);
-    expect(out.localCellX).toBeUndefined();
-    expect(out.localTileWidthL0).toBeUndefined();
-    expect(out.localTileHeightL0).toBeUndefined();
     expect(out.identityCellX).toBeUndefined();
   });
 
   test('undoing a GROUPING keeps the poses as well — the group op’s revert had the same wipe', () => {
     const s = state({
       groups: [group()],
-      patterns: [pattern({ ...IN_G1, rotation: 90, mirrorH: true, localTileWidthL0: 2, localTileHeightL0: 2 })],
+      patterns: [pattern({ ...IN_G1, rotation: 90, mirrorH: true})],
       images: [image({ ...IN_G1, mirrorV: true })],
     });
     const back = revertCompOps(s, [{
@@ -122,7 +119,6 @@ describe('ungroupFigures keeps the bbox kinds’ world orientation', () => {
     expect(pat.groupId).toBeUndefined();
     expect(pat.rotation).toBe(90);
     expect(pat.mirrorH).toBe(true);
-    expect(pat.localTileWidthL0).toBeUndefined();
     expect(back.images![0].mirrorV).toBe(true);
     expect(back.groups).toHaveLength(0);
   });
@@ -143,23 +139,26 @@ describe('ungroupFigures keeps the bbox kinds’ world orientation', () => {
   });
 
   test('a pose the group gave the member is kept as well — what was drawn is what stays', () => {
-    // A pattern upright in its locals (its orientation snapshot says so),
-    // inside a group flipped horizontally: the flip materializes into the
-    // member's world flags…
+    // A pattern upright inside a group that is then flipped horizontally:
+    // the flip reaches the member…
     const s = state({
-      groups: [group({ mirrorH: true })],
-      patterns: [pattern({ ...IN_G1, localRotation: 0, localMirrorH: false, localMirrorV: false })],
+      groups: [group({})],
+      patterns: [pattern({ ...IN_G1 })],
     });
     const flipped = applyCompOps(s, [{
       op: 'transformGroup', groupId: 'g1',
       oldTranslateX: 0, oldTranslateY: 0, oldScaleX: 1, oldScaleY: 1, oldRotation: 0, oldMirrorH: false, oldMirrorV: false,
       newTranslateX: 0, newTranslateY: 0, newScaleX: 1, newScaleY: 1, newRotation: 0, newMirrorH: true, newMirrorV: false,
     }]);
-    expect(flipped.patternObjects![0].mirrorH).toBe(true);
+    // Handedness reversed — WHICH flag spells it is the view's business,
+    // since a flip about one axis is a flip about the other plus a half
+    // turn (§1.3).
+    expect(flipOf(flipped, 'pat')).toBe(true);
     // …and ungrouping leaves the loose pattern drawn the same way.
-    const out = applyCompOps(flipped, ungroup(['pat'])).patternObjects![0];
-    expect(out.mirrorH).toBe(true);
-    expect(out.groupId).toBeUndefined();
+    const ungrouped = applyCompOps(flipped, ungroup(['pat']));
+    expect(flipOf(ungrouped, 'pat')).toBe(true);
+    expect(turnOf(ungrouped, 'pat')).toBe(turnOf(flipped, 'pat'));
+    expect(ungrouped.patternObjects![0].groupId).toBeUndefined();
   });
 
   test('undoing the ungroup regroups the members with their poses intact', () => {

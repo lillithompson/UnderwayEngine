@@ -44,7 +44,7 @@ function grouped(): CompositionState {
 }
 
 describe('reparentNode — leaf into a group', () => {
-  it('sets groupId, preserves world coords, seeds locals, clusters sceneOrder', () => {
+  it('sets groupId, preserves world coords, clusters sceneOrder', () => {
     const state = grouped();
     const c = state.figures.find((f) => f.id === 'c')!;
     const op: CompUndoEntry = [{
@@ -55,11 +55,9 @@ describe('reparentNode — leaf into a group', () => {
     const out = applyCompOps(state, op);
     const nc = out.figures.find((f) => f.id === 'c')!;
     expect(nc.groupId).toBe('g1');
-    // Identity group ⇒ world unchanged and local == world.
+    // Identity group ⇒ world unchanged.
     expect(nc.cellX).toBe(10);
     expect(nc.cellY).toBe(10);
-    expect(nc.localCellX).toBe(10);
-    expect(nc.localCellY).toBe(10);
     // a, b, c contiguous in sceneOrder.
     const idx = ['a', 'b', 'c'].map((id) => out.sceneOrder.indexOf(id)).sort((x, y) => x - y);
     expect(idx[2] - idx[0]).toBe(2);
@@ -77,7 +75,6 @@ describe('reparentNode — leaf into a group', () => {
     const back = revertCompOps(out, op);
     const rc = back.figures.find((f) => f.id === 'c')!;
     expect(rc.groupId).toBeUndefined();
-    expect(rc.localCellX).toBeUndefined();
     expect(rc.cellX).toBe(10);
     expect(back.sceneOrder).toEqual(state.sceneOrder);
   });
@@ -95,7 +92,6 @@ describe('reparentNode — leaf out to top level', () => {
     const out = applyCompOps(state, op);
     const nb = out.figures.find((f) => f.id === 'b')!;
     expect(nb.groupId).toBeUndefined();
-    expect(nb.localCellX).toBeUndefined();
     expect(nb.cellX).toBe(3); // world preserved
   });
 });

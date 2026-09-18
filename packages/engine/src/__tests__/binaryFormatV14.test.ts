@@ -83,7 +83,6 @@ describe('v14 node transforms', () => {
     };
     const fig = makeFigure({
       id: 'f1', cellX: 0, cellY: 0, groupId: 'g1',
-      localCellX: 5, localCellY: 5, localCellWidth: 4, localCellHeight: 4,
     });
     const figTransform: Transform2D = { tx: 5, ty: 5, sx: 2, sy: 2, rotation: 0, mirrorH: false, mirrorV: false };
     const groupTransform: Transform2D = { tx: 100, ty: 100, sx: 1, sy: 1, rotation: 0, mirrorH: false, mirrorV: false };
@@ -154,8 +153,7 @@ describe('v14 node transforms', () => {
       translateX: 10, translateY: 10, scaleX: 2, scaleY: 2,
       rotation: 90, mirrorH: false, mirrorV: false,
     };
-    const f1 = makeFigure({ id: 'f1', cellX: 0, cellY: 0, groupId: 'g1',
-      localCellX: 1, localCellY: 1, localCellWidth: 4, localCellHeight: 4 });
+    const f1 = makeFigure({ id: 'f1', cellX: 0, cellY: 0, groupId: 'g1' });
     const f2 = makeFigure({ id: 'f2', cellX: 20, cellY: 20 });
 
     const bundle = makeBundle({
@@ -226,8 +224,6 @@ describe('backward compatibility', () => {
     const fig = makeFigure({
       id: 'f1', cellX: 60, cellY: 60, cellWidth: 8, cellHeight: 8,
       groupId: 'g1',
-      localCellX: 5, localCellY: 5, localCellWidth: 4, localCellHeight: 4,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
 
     const bundle = makeBundle({
@@ -241,10 +237,8 @@ describe('backward compatibility', () => {
 
     const rf = result.meta.figures[0];
     expect(rf.groupId).toBe('g1');
-    // The local bbox is still written and still parsed — the cursor has to
-    // walk past it — but the loader drops it: world is the truth.
-    expect(rf.localCellX).toBeUndefined();
-    expect(rf.localCellY).toBeUndefined();
+    // A <=v61 file's local bbox is still PARSED — the cursor has to walk
+    // past it — but nothing is kept: world is the truth (P6-B).
 
     const rg = result.meta.groups![0];
     expect(rg.translateX).toBe(50);

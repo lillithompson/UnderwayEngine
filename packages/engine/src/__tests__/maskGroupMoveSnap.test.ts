@@ -44,7 +44,6 @@ const mask = {
 // the mask edge — so the two anchors produce visibly different snap deltas.
 const sibling = {
   id: 'sibling', cellX: 9, cellY: 2, cellWidth: 4, cellHeight: 4, groupId: 'g',
-  localCellX: 9, localCellY: 2, localCellWidth: 4, localCellHeight: 4,
 } as unknown as CompositionFigure;
 
 const STEP = 4; // L2

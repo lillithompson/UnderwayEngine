@@ -1,5 +1,6 @@
 ﻿import { applyCompOps, revertCompOps, cycleTransformForFigure, TRANSFORM_CYCLE, rotateGroupMemberFigure90CW, rotateFigureIndividual90CW, mirrorFigureIndividual, screenToLocalFlipAxis, pruneEmptyGroups, buildRemoveObjectOps, withGroupPruning, computeAliveGroupIds, SCENE_ADAPTERS, computeSVGBbox } from '../compositionOps';
 import { CompositionState, CompositionFigure, CompUndoEntry, GroupNode, SVGObject, PathSegment, makeViewport } from '../types';
+import { moveGroupBy } from './groupTransform.test-utils';
 
 function makeFigure(overrides: Partial<CompositionFigure> = {}): CompositionFigure {
   return {
@@ -964,7 +965,11 @@ describe('compositionOps groupFigures', () => {
     expect(result.groups).toEqual([expect.objectContaining({ id: 'g1', name: 'Group 1' })]);
   });
 
-  test('apply seeds localCell* from current cell bounds', () => {
+  test('grouping moves nothing — every member keeps the box it was drawn in', () => {
+    // This used to check that `groupFigures` SEEDED each member's
+    // `localCell*` from its world box. P6-B retired the caches, so the
+    // question is the one they existed to answer: joining a group is not
+    // a move.
     const fig1 = makeFigure({ id: 'a', cellX: 5, cellY: 7, cellWidth: 2, cellHeight: 3 });
     const fig2 = makeFigure({ id: 'b', cellX: 8, cellY: 7, cellWidth: 4, cellHeight: 3 });
     const state = makeState([fig1, fig2]);
@@ -973,27 +978,14 @@ describe('compositionOps groupFigures', () => {
       groupName: 'Group 1',
     }];
     const result = applyCompOps(state, entry);
-    expect(result.figures[0].localCellX).toBe(5);
-    expect(result.figures[0].localCellY).toBe(7);
-    expect(result.figures[0].localCellWidth).toBe(2);
-    expect(result.figures[0].localCellHeight).toBe(3);
-    expect(result.figures[1].localCellX).toBe(8);
-    expect(result.figures[1].localCellWidth).toBe(4);
-  });
-
-  test('revert clears localCell* along with groupId', () => {
-    const fig1 = makeFigure({ id: 'a', name: 'Figure 1', groupId: 'g1',
-      localCellX: 5, localCellY: 7, localCellWidth: 2, localCellHeight: 3 });
-    const state = makeState([fig1]);
-    const entry: CompUndoEntry = [{
-      op: 'groupFigures', figureIds: ['a'], groupId: 'g1',
-      groupName: 'Group 1',
-    }];
-    const result = revertCompOps(state, entry);
-    expect(result.figures[0].localCellX).toBeUndefined();
-    expect(result.figures[0].localCellY).toBeUndefined();
-    expect(result.figures[0].localCellWidth).toBeUndefined();
-    expect(result.figures[0].localCellHeight).toBeUndefined();
+    for (const before of [fig1, fig2]) {
+      const after = result.figures.find((f) => f.id === before.id)!;
+      expect(after.groupId).toBe('g1');
+      expect(after.cellX).toBe(before.cellX);
+      expect(after.cellY).toBe(before.cellY);
+      expect(after.cellWidth).toBe(before.cellWidth);
+      expect(after.cellHeight).toBe(before.cellHeight);
+    }
   });
 
   test('revert clears groupId and leaves the names, which it never changed', () => {
@@ -1922,7 +1914,7 @@ describe('empty group pruning', () => {
   });
 });
 
-describe('joinObjects â†’ reconcileGroupLocals (Expand figure path)', () => {
+describe('joinObjects - the Expand figure path', () => {
   function makeGroup(id: string, name: string, translateX = 0, translateY = 0): GroupNode {
     return {
       id, name,
@@ -1931,7 +1923,7 @@ describe('joinObjects â†’ reconcileGroupLocals (Expand figure path)', () =>
     };
   }
 
-  test('result inheriting groupId gets localCell* and localSegments back-filled', () => {
+  test('the result inherits the group and stays where the figure was drawn', () => {
     // Group translated by (5, 7). Figure at world (10, 10), so its position
     // inside the group is local (5, 3). Expand replaces the figure with an
     // SVGObject in the same group â€” that SVGObject's world coords should be
@@ -1967,25 +1959,18 @@ describe('joinObjects â†’ reconcileGroupLocals (Expand figure path)', () =>
     expect(sv.groupId).toBe('g');
     // World coords preserved
     expect(sv.cellX).toBe(10); expect(sv.cellY).toBe(10);
-    // Locals back-filled by reconcileGroupLocals: inverse of translate(5,7)
-    expect(sv.localCellX).toBe(5);
-    expect(sv.localCellY).toBe(3);
-    expect(sv.localCellWidth).toBe(4);
-    expect(sv.localCellHeight).toBe(4);
-    // localSegments derived from inverse-transformed world segments
-    expect(sv.localSegments).toBeDefined();
-    expect(sv.localSegments!.length).toBe(1);
-    const local = sv.localSegments![0];
-    expect(local.kind).toBe('line');
-    if (local.kind === 'line') {
-      expect(local.start[0]).toBeCloseTo(5);
-      expect(local.start[1]).toBeCloseTo(3);
-      expect(local.end[0]).toBeCloseTo(9);
-      expect(local.end[1]).toBeCloseTo(3);
-    }
+    expect(sv.cellWidth).toBe(4); expect(sv.cellHeight).toBe(4);
+    // It is a member now, so moving the group moves it - by exactly the
+    // group's delta and nothing more. (This used to be checked by reading
+    // the `local*` caches the op back-filled; P6-B retired them, so the
+    // question is asked of the behaviour they were for.)
+    const moved = moveGroupBy(next, 'g', 3, -2);
+    const sm = moved.svgObjects[0];
+    expect(sm.cellX).toBe(13); expect(sm.cellY).toBe(8);
+    expect(sm.segments[0]).toEqual({ kind: 'line', start: [13, 8], end: [17, 8] });
   });
 
-  test('result without groupId skips reconciliation (no locals added)', () => {
+  test('a result without a groupId stays loose', () => {
     const fig1 = makeFigure({ id: 'f1', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2 });
     const fig2 = { ...makeFigure({ id: 'f2', cellX: 4, cellY: 0, cellWidth: 2, cellHeight: 2 }), figureKey: 'k2' };
     const state = makeState([fig1, fig2]);
@@ -2005,7 +1990,6 @@ describe('joinObjects â†’ reconcileGroupLocals (Expand figure path)', () =>
     const next = applyCompOps(state, entry);
     const sv = next.svgObjects[0];
     expect(sv.groupId).toBeUndefined();
-    expect(sv.localCellX).toBeUndefined();
     expect(sv.localSegments).toBeUndefined();
   });
 });

@@ -1,26 +1,28 @@
 /**
  * Scaling a group scales a repeat pattern's TILING with it. The pattern
- * member used to materialize through the plain bbox path: its region
- * scaled but its tile pitch (tileWidthL0/tileHeightL0) and tile-grid
- * offset stayed at their absolute values, so a scaled group re-flowed a
- * fixed-size tiling into the resized region — the pattern visibly
- * re-aligned. Repeat patterns now carry local tile fields and scale them
- * through the chain exactly as tiled FIGURES always did
- * (materializeTileLocals): the repetition count stays constant, and a
- * pattern grouped with non-pattern neighbours scales as one tableau.
+ * member used to scale through the plain bbox path: its region scaled but
+ * its tile pitch (tileWidthL0/tileHeightL0) and tile-grid offset stayed at
+ * their absolute values, so a scaled group re-flowed a fixed-size tiling
+ * into the resized region — the pattern visibly re-aligned. The scene
+ * graph scales the tile with the node, exactly as tiled FIGURES have
+ * always done: the repetition count stays constant, and a pattern grouped
+ * with non-pattern neighbours scales as one tableau.
+ *
+ * These used to seed `local*` tile caches first and scale through a
+ * materialize pass. There are no caches (P6-B), so a reopened page and a
+ * freshly built one are the same state and the first scale after either
+ * behaves the same — which is what the deleted `backfillPatternTileLocals`
+ * test was really protecting.
  */
 
-import {
-  backfillPatternTileLocals,
-  materializeGroupMembers,
-  reconcileGroupLocals,
-} from '../compositionOps';
 import {
   CompositionState,
   GroupNode,
   PatternObject,
   makeViewport,
 } from '../types';
+import { withSceneGraph } from '../compositionOps';
+import { setGroupTransform } from './groupTransform.test-utils';
 
 const WHITE = { r: 255, g: 255, b: 255 };
 
@@ -84,15 +86,8 @@ describe('a repeat pattern in a scaled group', () => {
       groups: [identityGroup('grp_1')],
       patternObjects: [p],
     });
-    // Seed the locals the way the app does after grouping / loading…
-    state = reconcileGroupLocals(state);
-    // …then scale the group 2× and re-materialize its members.
-    state = {
-      ...state,
-      groups: state.groups.map((g) => ({ ...g, scaleX: 2, scaleY: 2 })),
-    };
-    state = materializeGroupMembers(state, 'grp_1');
-    return state.patternObjects![0];
+    return setGroupTransform(state, 'grp_1', { scaleX: 2, scaleY: 2 })
+      .patternObjects![0];
   }
 
   test('scales the tile pitch AND the tile-grid offset with the region', () => {
@@ -128,11 +123,12 @@ describe('a repeat pattern in a scaled group', () => {
       groups: [identityGroup('grp_1')],
       patternObjects: [repeatPattern()],
     });
-    state = reconcileGroupLocals(state);
-    state = { ...state, groups: state.groups.map((g) => ({ ...g, scaleX: 2, scaleY: 2 })) };
-    state = materializeGroupMembers(state, 'grp_1');
-    state = { ...state, groups: state.groups.map((g) => ({ ...g, scaleX: 1, scaleY: 1 })) };
-    state = materializeGroupMembers(state, 'grp_1');
+    // On a graph, as a session is: scaling out and back has to land the
+    // tiling exactly, and keeping one graph across both is what makes it
+    // exact rather than a few ULPs out.
+    state = withSceneGraph(state);
+    state = setGroupTransform(state, 'grp_1', { scaleX: 2, scaleY: 2 });
+    state = setGroupTransform(state, 'grp_1', { scaleX: 1, scaleY: 1 });
     const p = state.patternObjects![0];
     expect(p.cellWidth).toBe(8);
     expect(p.tileWidthL0).toBe(4);
@@ -153,9 +149,7 @@ describe('a repeat pattern in a scaled group', () => {
         cellX: 12, cellY: 4, cellWidth: 4, cellHeight: 4, groupId: 'grp_1',
       }],
     });
-    state = reconcileGroupLocals(state);
-    state = { ...state, groups: state.groups.map((g) => ({ ...g, scaleX: 0.5, scaleY: 0.5 })) };
-    state = materializeGroupMembers(state, 'grp_1');
+    state = setGroupTransform(state, 'grp_1', { scaleX: 0.5, scaleY: 0.5 });
     const p = state.patternObjects![0];
     const img = state.images![0];
     expect(p.cellWidth).toBe(4);
@@ -164,31 +158,5 @@ describe('a repeat pattern in a scaled group', () => {
     expect(img.cellWidth).toBe(2);
     // Relative placement holds: the gap between them halves with the rest.
     expect(img.cellX - (p.cellX + p.cellWidth)).toBeCloseTo(0, 9);
-  });
-});
-
-describe('reloaded pages rebuild the tile locals', () => {
-  // The binary format never writes the tile locals (derived caches): the
-  // read backfills them through the group chain, so the FIRST group scale
-  // after a reload still scales the tiling.
-  test('backfillPatternTileLocals inverts the world tile through the chain', () => {
-    const scaled = {
-      ...repeatPattern(),
-      tileWidthL0: 8, tileHeightL0: 8, tileOffsetXL0: 2, tileOffsetYL0: 4,
-    };
-    const groups = [{ ...identityGroup('grp_1'), scaleX: 2, scaleY: 2 }];
-    const [p] = backfillPatternTileLocals([scaled], groups);
-    expect(p.localTileWidthL0).toBe(4);
-    expect(p.localTileHeightL0).toBe(4);
-    expect(p.localTileOffsetXL0).toBe(1);
-    expect(p.localTileOffsetYL0).toBe(2);
-    // Ungrouped and non-repeat patterns pass through untouched…
-    const loose = { ...scaled, groupId: undefined };
-    expect(backfillPatternTileLocals([loose], groups)[0]).toBe(loose);
-    const flat = { ...scaled, tileMode: undefined };
-    expect(backfillPatternTileLocals([flat], groups)[0]).toBe(flat);
-    // …and so does one that already carries its locals.
-    const carrying = { ...scaled, localTileWidthL0: 4, localTileHeightL0: 4 };
-    expect(backfillPatternTileLocals([carrying], groups)[0]).toBe(carrying);
   });
 });

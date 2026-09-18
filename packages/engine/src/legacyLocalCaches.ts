@@ -15,9 +15,17 @@
  * (`transformCycleStep`), which a figure needs to come back round to
  * where it started.
  *
- * (`compositionOps.clearGroupLocals` is a different job — it is what
+ * (`compositionOps.detachFromGroup` is a different job — it is what
  * UNGROUP does, and clears `groupId`, the world orientation and the
- * cycle's identity snapshot along with these.)
+ * cycle's identity snapshot.)
+ *
+ * P6-B has since removed most of these fields from `types.ts` outright, so
+ * this list is now mostly a DRIFT GUARD: `loaderDropsLocals` checks it
+ * against every `local*` a leaf interface declares, and a new one added to
+ * an interface and to nothing else fails there rather than riding through
+ * the loader. `localSegments` / `localSubpaths` are the two that remain
+ * real — they are ambiguous (the SceneNode ones belong to the GRAPH) and
+ * were never P6-B's to take.
  */
 
 /** Every `local*` field the leaf interfaces in `types.ts` declare. */

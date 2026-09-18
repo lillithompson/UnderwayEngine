@@ -20,7 +20,6 @@ import {
   applyCompOps,
   revertCompOps,
   groupMemberIds,
-  materializeGroupMembers,
 } from '../compositionOps';
 import {
   CompositionState,
@@ -29,6 +28,7 @@ import {
   CompUndoEntry,
   makeViewport,
 } from '../types';
+import { setGroupTransform } from './groupTransform.test-utils';
 
 function makeImage(id: string, overrides: Partial<ImageObject> = {}): ImageObject {
   return {
@@ -299,7 +299,7 @@ describe('image visibility (hidden)', () => {
 });
 
 describe('image grouping', () => {
-  test('groupFigures includes image members and seeds local bbox', () => {
+  test('groupFigures includes image members and leaves their box alone', () => {
     const img = makeImage('img_a', { cellX: 4, cellY: 8, cellWidth: 6, cellHeight: 4 });
     const state = makeState({ images: [img] });
     const entry: CompUndoEntry = [{ op: 'groupFigures',
@@ -308,16 +308,15 @@ describe('image grouping', () => {
     const after = applyCompOps(state, entry);
     expect(after.groups).toHaveLength(1);
     expect(after.images![0].groupId).toBe('g1');
-    expect(after.images![0].localCellX).toBe(4);
-    expect(after.images![0].localCellY).toBe(8);
-    expect(after.images![0].localCellWidth).toBe(6);
-    expect(after.images![0].localCellHeight).toBe(4);
+    expect(after.images![0].cellX).toBe(4);
+    expect(after.images![0].cellY).toBe(8);
+    expect(after.images![0].cellWidth).toBe(6);
+    expect(after.images![0].cellHeight).toBe(4);
   });
 
-  test('ungroupFigures clears image local bbox + identity, and keeps its world rotation', () => {
+  test('ungroupFigures clears the image identity stash and keeps its world rotation', () => {
     const img = makeImage('img_a', {
       groupId: 'g1', preGroupName: 'orig',
-      localCellX: 4, localCellY: 8, localCellWidth: 6, localCellHeight: 4,
       identityCellX: 0, identityCellY: 0, identityCellWidth: 6, identityCellHeight: 4,
       rotation: 90,
     });
@@ -332,7 +331,6 @@ describe('image grouping', () => {
     }];
     const after = applyCompOps(state, entry);
     expect(after.images![0].groupId).toBeUndefined();
-    expect(after.images![0].localCellX).toBeUndefined();
     expect(after.images![0].identityCellX).toBeUndefined();
     // `rotation` is the image's WORLD orientation (what it is drawn at), not
     // a group-local cache — a loose image drawn the same way keeps it.
@@ -348,20 +346,21 @@ describe('image grouping', () => {
     expect(ids).toEqual(expect.arrayContaining(['img_a', 'img_b']));
   });
 
-  test('materializeGroupMembers applies a group transform to image bbox', () => {
+  test('a group transform carries a member image\'s bbox', () => {
     const img = makeImage('img_a', {
       groupId: 'g1',
-      localCellX: 0, localCellY: 0, localCellWidth: 4, localCellHeight: 2,
       cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 2,
     });
     const group: GroupNode = {
       id: 'g1', name: 'Group',
-      translateX: 10, translateY: 20,
-      scaleX: 2, scaleY: 3,
+      translateX: 0, translateY: 0,
+      scaleX: 1, scaleY: 1,
       rotation: 0, mirrorH: false, mirrorV: false,
     };
     const state = makeState({ images: [img], groups: [group] });
-    const next = materializeGroupMembers(state, 'g1');
+    const next = setGroupTransform(state, 'g1', {
+      translateX: 10, translateY: 20, scaleX: 2, scaleY: 3,
+    });
     expect(next.images![0].cellX).toBeCloseTo(10);
     expect(next.images![0].cellY).toBeCloseTo(20);
     expect(next.images![0].cellWidth).toBeCloseTo(8); // 4 × scaleX 2

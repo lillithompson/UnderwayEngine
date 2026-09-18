@@ -4,13 +4,13 @@
  * A grouped leaf's pose is stored twice in a ≤v61 file: the world fields
  * the user saw, and `local*` caches that are supposed to re-derive them
  * through the group chain. Nothing kept the two honest, so real saved
- * files ship with caches that disagree — and any pass that materialises a
- * member from its locals (`materializeGroupMembers`, reached by the
- * legacy transform path) then MOVES it. On `WaveBug.tile` one path moves
- * 65 cells; `Castle.tile` disagrees on all 318 of its grouped leaves.
+ * files ship with caches that disagree — and any pass that materialised a
+ * member from its locals then MOVED it. On `WaveBug.tile` one path moved
+ * 65 cells; `Castle.tile` disagreed on all 318 of its grouped leaves.
  *
  * World is the truth — it is what was drawn — so the loader keeps the
- * world fields and drops the caches. `fromLegacy` already derives a
+ * world fields and drops the caches. P6-B has since removed the fields
+ * themselves; this stays as the drift guard that they do not come back. `fromLegacy` already derives a
  * node's local transform from world alone, so the graph never wanted
  * them; this closes the legacy half.
  *
@@ -27,7 +27,6 @@ import * as zlib from 'zlib';
 
 import { deserializeComposition } from '../compositionBinaryFormat';
 import { LOCAL_CACHE_FIELDS } from '../legacyLocalCaches';
-import { staleGroupedLeaves } from '../compositionOps';
 import { CompositionState, makeViewport } from '../types';
 
 jest.mock('@/native-shell/bridge/webBridge', () => ({
@@ -102,16 +101,11 @@ describe('the loader drops the persisted local caches', () => {
     expect(carried).toEqual([]);
   });
 
-  /**
-   * The point of the drop, and the half that cannot be faked by simply
-   * having no fields: re-deriving a member through its group chain must
-   * land it where the file says it was drawn. Five fixtures fail this
-   * today — Castle (318 leaves), WaveBug (98), JustFrames (26),
-   * Mannequin1 (18), LineBug (8).
-   */
-  it.each(TILES)('%s re-derives every grouped member onto its world pose', (rel) => {
-    expect([...staleGroupedLeaves(loadTile(rel)).keys()]).toEqual([]);
-  });
+  // The other half of the drop — that re-deriving a member through its
+  // group chain lands it where the file says it was drawn — used to be
+  // checked here by materializing every root group. P6-B deleted that
+  // pass; `sceneGraphRoundTrip` and the `worldSnapshotFixtures` snapshots
+  // ask the same question of the model that is left.
 });
 
 /**

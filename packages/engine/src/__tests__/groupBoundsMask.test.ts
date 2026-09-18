@@ -22,7 +22,6 @@ function makeGroup(id: string, parentGroupId?: string): GroupNode {
 function makeFig(id: string, groupId: string, x: number, y: number, w: number, h: number): CompositionFigure {
   return {
     id, cellX: x, cellY: y, cellWidth: w, cellHeight: h, groupId,
-    localCellX: x, localCellY: y, localCellWidth: w, localCellHeight: h,
   } as unknown as CompositionFigure;
 }
 

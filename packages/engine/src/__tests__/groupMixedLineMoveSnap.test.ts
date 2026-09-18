@@ -19,7 +19,6 @@ import {
   bucketMovedIds,
   computeSVGBbox,
   groupBounds,
-  materializeGroupMembers,
   SCENE_ADAPTERS,
 } from '../compositionOps';
 import { computeMoveSnapDelta } from '../compositionCellMath';
@@ -31,6 +30,7 @@ import {
   CompUndoEntry,
   makeViewport,
 } from '../types';
+import { moveGroupBy } from './groupTransform.test-utils';
 
 const WHITE = { r: 255, g: 255, b: 255 };
 
@@ -80,12 +80,8 @@ function makeSVGFromVertices(id: string, vertices: [number, number][], over: Par
 function applyMoveDelta(state: CompositionState, ids: string[], dx: number, dy: number): CompositionState {
   const { groupIds, ungrouped } = bucketMovedIds(state, ids);
   const ungroupedSet = new Set(ungrouped);
-  const groups = state.groups.map(g => groupIds.has(g.id)
-    ? { ...g, translateX: g.translateX + dx, translateY: g.translateY + dy }
-    : g);
   let next: CompositionState = {
     ...state,
-    groups,
     figures: state.figures.map(f => ungroupedSet.has(f.id)
       ? { ...f, cellX: f.cellX + dx, cellY: f.cellY + dy }
       : f),
@@ -97,7 +93,7 @@ function applyMoveDelta(state: CompositionState, ids: string[], dx: number, dy: 
       return { ...s, segments: newSegs, ...computeSVGBbox(newSegs) };
     }),
   };
-  for (const gid of groupIds) next = materializeGroupMembers(next, gid);
+  for (const gid of groupIds) next = moveGroupBy(next, gid, dx, dy);
   return next;
 }
 

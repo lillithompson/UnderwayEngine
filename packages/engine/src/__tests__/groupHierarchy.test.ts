@@ -85,7 +85,7 @@ describe('applyGroupTransform', () => {
 });
 
 
-describe('groupFigures op creates a GroupNode and seeds locals', () => {
+describe('groupFigures op creates a GroupNode and moves nothing', () => {
   test('apply', () => {
     const figs = [
       makeFigure({ id: 'a', cellX: 0, cellY: 0, name: 'A' }),
@@ -98,9 +98,9 @@ describe('groupFigures op creates a GroupNode and seeds locals', () => {
     const out = applyCompOps(state, entry);
     expect(out.groups).toHaveLength(1);
     expect(out.groups[0]).toMatchObject({ id: 'g1', name: 'My Group', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false });
-    // Each member's local seeds match its world coords at group create time.
-    expect(out.figures[0]).toMatchObject({ localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2 });
-    expect(out.figures[1]).toMatchObject({ localCellX: 3, localCellY: 0, localCellWidth: 2, localCellHeight: 2 });
+    // Grouping is not a move: each member keeps the box it was drawn in.
+    expect(out.figures[0]).toMatchObject({ groupId: 'g1', cellHeight: 2 });
+    expect(out.figures[1]).toMatchObject({ groupId: 'g1', cellHeight: 2 });
   });
 
   test('isFrame flag creates a frame group; omitted leaves it undefined', () => {
@@ -129,13 +129,12 @@ describe('groupFigures op creates a GroupNode and seeds locals', () => {
     expect(grouped.groups).toHaveLength(1);
     const ungrouped = revertCompOps(grouped, entry);
     expect(ungrouped.groups).toHaveLength(0);
-    expect(ungrouped.figures.every(f => f.localCellX === undefined)).toBe(true);
   });
 
   test('ungroupFigures removes the GroupNode', () => {
     const g: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const figs = [
-      makeFigure({ id: 'a', cellX: 0, cellY: 0, groupId: 'g1', name: 'G', preGroupName: 'A', localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2 }),
+      makeFigure({ id: 'a', cellX: 0, cellY: 0, groupId: 'g1', name: 'G', preGroupName: 'A'}),
     ];
     const state = makeState(figs, [g]);
     const entry: CompUndoEntry = [{
@@ -143,7 +142,6 @@ describe('groupFigures op creates a GroupNode and seeds locals', () => {
     }];
     const out = applyCompOps(state, entry);
     expect(out.groups).toHaveLength(0);
-    expect(out.figures[0].localCellX).toBeUndefined();
   });
 });
 
@@ -155,8 +153,8 @@ describe('binary format v6 round-trip with groups + locals', () => {
       strokeScale: 8, gridIntensity: 0.5,
       camera: { offsetX: 0, offsetY: 0, zoom: 1 },
       figures: [
-        { id: 'a', figureKey: 'test', cellX: 4, cellY: 6, resolutionX: 2, resolutionY: 2, cellWidth: 2, cellHeight: 2, rotation: 0, groupId: 'g1', localCellX: 4, localCellY: 6, localCellWidth: 2, localCellHeight: 2 },
-        { id: 'b', figureKey: 'test', cellX: 7, cellY: 6, resolutionX: 2, resolutionY: 2, cellWidth: 2, cellHeight: 2, rotation: 0, groupId: 'g1', localCellX: 7, localCellY: 6, localCellWidth: 2, localCellHeight: 2 },
+        { id: 'a', figureKey: 'test', cellX: 4, cellY: 6, resolutionX: 2, resolutionY: 2, cellWidth: 2, cellHeight: 2, rotation: 0, groupId: 'g1'},
+        { id: 'b', figureKey: 'test', cellX: 7, cellY: 6, resolutionX: 2, resolutionY: 2, cellWidth: 2, cellHeight: 2, rotation: 0, groupId: 'g1'},
       ],
       groups: [
         { id: 'g1', name: 'My Group', translateX: 1.5, translateY: -2, scaleX: 1.25, scaleY: 0.75, rotation: 90, mirrorH: true, mirrorV: false },
@@ -175,10 +173,6 @@ describe('binary format v6 round-trip with groups + locals', () => {
     expect(result.meta.groups![0].scaleY).toBeCloseTo(0.75);
     // The group survives whole; the members' local caches are dropped on
     // load (plan §3.7) and re-derived from world where a pass wants them.
-    expect(result.meta.figures[0].localCellX).toBeUndefined();
-    expect(result.meta.figures[0].localCellY).toBeUndefined();
-    expect(result.meta.figures[1].localCellX).toBeUndefined();
-    expect(result.meta.figures[1].localCellY).toBeUndefined();
   });
 
   test('round-trip with empty groups array', () => {
@@ -195,7 +189,6 @@ describe('binary format v6 round-trip with groups + locals', () => {
     const payload = serializeComposition(bundle, []);
     const result = deserializeComposition(payload);
     expect(result.meta.groups).toEqual([]);
-    expect(result.meta.figures[0].localCellX).toBeUndefined();
   });
 });
 

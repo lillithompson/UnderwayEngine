@@ -286,17 +286,18 @@ describe('translateNodeByDelta on text', () => {
     expect(moved.mirrorV).toBe(true);
   });
 
-  test('shifts group-local coords alongside the world bbox', () => {
-    // The group sits at (4,4), so local (1,1) IS world (5,5): a move re-derives
-    // the locals from the world through the group, and they shift with it.
+  test('a member of a moved group shifts by the delta, not by the chain', () => {
+    // The group sits at (4,4). A move of a MEMBER is a world move: the
+    // delta lands on the world box as given, and the group's own offset
+    // has nothing to do with it. (This used to check the `local*` caches
+    // the move re-derived; P6-B retired them.)
     const txt = makeText('txt_a', {
       cellX: 5, cellY: 5, groupId: 'g1',
-      localCellX: 1, localCellY: 1, localCellWidth: 4, localCellHeight: 2,
     });
     const state = makeState({ texts: [txt], groups: [makeGroup('g1', { translateX: 4, translateY: 4 })] });
     const next = translateNodeByDelta(state, 'txt_a', 2, 3);
-    expect(next.texts![0].localCellX).toBe(3);
-    expect(next.texts![0].localCellY).toBe(4);
+    expect(next.texts![0].cellX).toBe(7);
+    expect(next.texts![0].cellY).toBe(8);
   });
 
   test('moveNode is rigid: orientation survives the move, identity rides along, revert is exact', () => {

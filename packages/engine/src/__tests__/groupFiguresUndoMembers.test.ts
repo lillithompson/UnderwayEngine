@@ -101,8 +101,6 @@ describe('groupFigures undo across every member kind', () => {
     expect(back.texts![0].name).toBe('text t1');
 
     // The group-local coords the apply seeded are gone too.
-    expect(back.images![0].localCellX).toBeUndefined();
-    expect(back.texts![0].localCellX).toBeUndefined();
   });
 
   test('grouping leaves every member\'s name exactly as it was', () => {

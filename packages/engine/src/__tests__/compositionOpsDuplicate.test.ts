@@ -27,6 +27,7 @@ import {
   CompUndoEntry,
   makeViewport,
 } from '../types';
+import { turnOf } from './groupTransform.test-utils';
 
 function makeFigure(id: string, overrides: Partial<CompositionFigure> = {}): CompositionFigure {
   return {
@@ -133,25 +134,20 @@ describe('handlePropsDuplicate ops produce a usable duplicated group', () => {
     const fig = makeFigure('fig1', {
       cellX: 0, cellY: 0,
       groupId: 'g1',
-      localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
     const svgLine = makeSVGLine('svg_1', {
       segments: [{kind:'line', start:[5,5], end:[10,5]}],
       groupId: 'g1',
       localSegments: [{kind:'line', start:[5,5], end:[10,5]}],
-      localCellX: 5, localCellY: 5, localCellWidth: 5, localCellHeight: 0,
     });
     const svgArc = makeSVGArc('svg_2', {
       segments: [{ kind: 'arc', start: [1, 0], end: [0, 1], center: [0, 0] }],
       localSegments: [{ kind: 'arc', start: [1, 0], end: [0, 1], center: [0, 0] }],
       groupId: 'g1',
-      localCellX: 0, localCellY: 0, localCellWidth: 1, localCellHeight: 1,
     });
     const img = makeImage('img_1', {
       cellX: 20, cellY: 20,
       groupId: 'g1',
-      localCellX: 20, localCellY: 20, localCellWidth: 4, localCellHeight: 4,
     });
     const group: GroupNode = {
       id: 'g1', name: 'My group',
@@ -182,7 +178,7 @@ describe('handlePropsDuplicate ops produce a usable duplicated group', () => {
     expect(newGroup.name).toBe('My group copy');
   });
 
-  test('duplicate seeds locals from world coords on every kind', () => {
+  test('duplicate lands every kind in the new group at the offset pose', () => {
     const state = buildGroupedState();
     const { ops, newIds, groupIdMap } = buildDuplicateOps(state, ['fig1', 'svg_1', 'svg_2', 'img_1']);
     const newGroupId = groupIdMap.get('g1')!;
@@ -193,20 +189,15 @@ describe('handlePropsDuplicate ops produce a usable duplicated group', () => {
     // gets the 1-cell legacy default. Production callsites pass the
     // viewport-scaled `computeDuplicateOffset(state)` instead.
 
-    // Every duplicate is in the new group and has locals == world.
+    // Every duplicate is in the new group, one cell along.
     const dupFig = after.figures.find(f => newIds.includes(f.id))!;
     expect(dupFig.groupId).toBe(newGroupId);
     expect(dupFig.cellX).toBe(1);
     expect(dupFig.cellY).toBe(1);
-    expect(dupFig.localCellX).toBe(dupFig.cellX);
-    expect(dupFig.localCellY).toBe(dupFig.cellY);
-    expect(dupFig.localCellWidth).toBe(dupFig.cellWidth);
-    expect(dupFig.localCellHeight).toBe(dupFig.cellHeight);
 
     const dupSVGLine = after.svgObjects.find(s => newIds.includes(s.id) && s.segments[0]?.kind === 'line')!;
     expect(dupSVGLine.groupId).toBe(newGroupId);
     expect(dupSVGLine.segments).toEqual([{kind:'line', start:[6, 6], end:[11, 6]}]);
-    expect(dupSVGLine.localSegments).toEqual(dupSVGLine.segments);
 
     const dupSVGArc = after.svgObjects.find(s => newIds.includes(s.id) && s.segments[0]?.kind === 'arc')!;
     expect(dupSVGArc.groupId).toBe(newGroupId);
@@ -215,14 +206,11 @@ describe('handlePropsDuplicate ops produce a usable duplicated group', () => {
     expect(seg.start).toEqual([2, 1]);
     expect(seg.end).toEqual([1, 2]);
     expect(seg.center).toEqual([1, 1]);
-    expect(dupSVGArc.localSegments).toEqual(dupSVGArc.segments);
 
     const dupImg = after.images!.find(i => newIds.includes(i.id))!;
     expect(dupImg.groupId).toBe(newGroupId);
     expect(dupImg.cellX).toBe(21);
     expect(dupImg.cellY).toBe(21);
-    expect(dupImg.localCellX).toBe(dupImg.cellX);
-    expect(dupImg.localCellY).toBe(dupImg.cellY);
   });
 
   test('rotating the duplicate group transforms every member kind (regression)', () => {
@@ -256,10 +244,10 @@ describe('handlePropsDuplicate ops produce a usable duplicated group', () => {
     expect([seg.start, seg.end, seg.center]).not.toEqual([[2, 1], [1, 2], [1, 1]]);
 
     const dupFig = rotated.figures.find(f => newIds.includes(f.id))!;
-    expect(dupFig.rotation).toBe(90);
+    expect(turnOf(rotated, dupFig.id)).toBe(90);
 
     // Original group is untouched.
-    expect(rotated.figures.find(f => f.id === 'fig1')!.rotation).toBe(0);
+    expect(turnOf(rotated, 'fig1')).toBe(0);
     expect(rotated.svgObjects.find(s => s.id === 'svg_1')!.segments).toEqual([{kind:'line', start:[5,5], end:[10,5]}]);
   });
 
@@ -289,12 +277,8 @@ describe('handlePropsDuplicate ops produce a usable duplicated group', () => {
   });
 
   test('multi-source-group selection produces disjoint new groups', () => {
-    const figA = makeFigure('a1', { cellX: 0, cellY: 0, groupId: 'gA',
-      localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false });
-    const figB = makeFigure('b1', { cellX: 30, cellY: 30, groupId: 'gB',
-      localCellX: 30, localCellY: 30, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false });
+    const figA = makeFigure('a1', { cellX: 0, cellY: 0, groupId: 'gA' });
+    const figB = makeFigure('b1', { cellX: 30, cellY: 30, groupId: 'gB' });
     const groupA: GroupNode = { id: 'gA', name: 'A', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const groupB: GroupNode = { id: 'gB', name: 'B', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const state = makeState({ figures: [figA, figB], groups: [groupA, groupB] });
@@ -370,13 +354,9 @@ describe('handlePropsDuplicate ops produce a usable duplicated group', () => {
     };
     const rootFig = makeFigure('f_root', {
       cellX: 10, cellY: 20, groupId: 'root',
-      localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
     const childFig = makeFigure('f_child', {
       cellX: 15, cellY: 25, groupId: 'child',
-      localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
     const state = makeState({
       figures: [rootFig, childFig],
@@ -433,23 +413,15 @@ describe('handlePropsDuplicate ops produce a usable duplicated group', () => {
     };
     const a = makeFigure('a', {
       cellX: 0, cellY: 0, groupId: 'g1',
-      localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
     const b = makeFigure('b', {
       cellX: 2, cellY: 0, groupId: 'g1',
-      localCellX: 2, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
     const ap = makeFigure('ap', {
       cellX: 0, cellY: 4, groupId: 'g1p',
-      localCellX: 0, localCellY: 4, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
     const bp = makeFigure('bp', {
       cellX: 2, cellY: 4, groupId: 'g1p',
-      localCellX: 2, localCellY: 4, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
     const state = makeState({
       figures: [a, b, ap, bp],
@@ -490,8 +462,6 @@ describe('handlePropsDuplicate ops produce a usable duplicated group', () => {
     };
     const fig = makeFigure('f1', {
       cellX: 4, cellY: 6, groupId: 'g1',
-      localCellX: 4, localCellY: 6, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
     const origState = makeState({ figures: [fig], groups: [group] });
 
@@ -615,14 +585,10 @@ describe('handlePropsDuplicate ops produce a usable duplicated group', () => {
     const fig = makeFigure('f1', {
       cellX: 20, cellY: 30, cellWidth: 4, cellHeight: 4,
       groupId: 'child',
-      localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
     // Loose member directly in parent.
     const loose = makeFigure('f2', {
       cellX: 14, cellY: 24, groupId: 'parent',
-      localCellX: 2, localCellY: 2, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
     let state = makeState({
       figures: [fig, loose],
@@ -709,17 +675,14 @@ describe('a duplicate is named from the node’s own name; a tag is kept as it i
     const seed = makeSVGLine('svg_seed', {
       name: 'slot:squiggle', groupId: 'g1',
       localSegments: [{ kind: 'line', start: [5, 5], end: [10, 5] }],
-      localCellX: 5, localCellY: 5, localCellWidth: 5, localCellHeight: 0,
     });
     const arc = makeSVGArc('svg_arc', {
       name: 'arc copy', groupId: 'g1',
       localSegments: [{ kind: 'arc', start: [1, 0], end: [0, 1], center: [0, 0] }],
-      localCellX: 0, localCellY: 0, localCellWidth: 1, localCellHeight: 1,
     });
     const nameless = makeSVGLine('svg_plain', {
       groupId: 'g1', segments: [{ kind: 'line', start: [0, 8], end: [4, 8] }],
       localSegments: [{ kind: 'line', start: [0, 8], end: [4, 8] }],
-      localCellX: 0, localCellY: 8, localCellWidth: 4, localCellHeight: 0,
     });
     const group: GroupNode = {
       id: 'g1', name: 'Group 1', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1,

@@ -224,13 +224,6 @@ function transformFigure(tr: AffineTransform, fig: CompositionFigure): Compositi
     cellWidth: fig.cellWidth * tr.scale,
     cellHeight: fig.cellHeight * tr.scale,
   };
-  if (fig.localCellX !== undefined && fig.localCellY !== undefined) {
-    const [lx, ly] = applyTransformXY(tr, fig.localCellX, fig.localCellY);
-    out.localCellX = lx;
-    out.localCellY = ly;
-  }
-  if (fig.localCellWidth !== undefined) out.localCellWidth = fig.localCellWidth * tr.scale;
-  if (fig.localCellHeight !== undefined) out.localCellHeight = fig.localCellHeight * tr.scale;
   if (fig.identityCellX !== undefined && fig.identityCellY !== undefined) {
     const [ix, iy] = applyTransformXY(tr, fig.identityCellX, fig.identityCellY);
     out.identityCellX = ix;
@@ -240,10 +233,6 @@ function transformFigure(tr: AffineTransform, fig: CompositionFigure): Compositi
   if (fig.tileHeightL0 !== undefined) out.tileHeightL0 = fig.tileHeightL0 * tr.scale;
   if (fig.tileOffsetXL0 !== undefined) out.tileOffsetXL0 = fig.tileOffsetXL0 * tr.scale;
   if (fig.tileOffsetYL0 !== undefined) out.tileOffsetYL0 = fig.tileOffsetYL0 * tr.scale;
-  if (fig.localTileWidthL0 !== undefined) out.localTileWidthL0 = fig.localTileWidthL0 * tr.scale;
-  if (fig.localTileHeightL0 !== undefined) out.localTileHeightL0 = fig.localTileHeightL0 * tr.scale;
-  if (fig.localTileOffsetXL0 !== undefined) out.localTileOffsetXL0 = fig.localTileOffsetXL0 * tr.scale;
-  if (fig.localTileOffsetYL0 !== undefined) out.localTileOffsetYL0 = fig.localTileOffsetYL0 * tr.scale;
   return out;
 }
 
@@ -261,13 +250,6 @@ function transformSVGObject(tr: AffineTransform, svg: SVGObject): SVGObject {
   if (svg.localSegments) out.localSegments = applyTransformSegments(tr, svg.localSegments);
   if (svg.localSubpaths) out.localSubpaths = applyTransformSubpaths(tr, svg.localSubpaths);
   if (svg.identitySegments) out.identitySegments = applyTransformSegments(tr, svg.identitySegments);
-  if (svg.localCellX !== undefined && svg.localCellY !== undefined) {
-    const [lx, ly] = applyTransformXY(tr, svg.localCellX, svg.localCellY);
-    out.localCellX = lx;
-    out.localCellY = ly;
-  }
-  if (svg.localCellWidth !== undefined) out.localCellWidth = svg.localCellWidth * tr.scale;
-  if (svg.localCellHeight !== undefined) out.localCellHeight = svg.localCellHeight * tr.scale;
   if (svg.identityCellX !== undefined && svg.identityCellY !== undefined) {
     const [ix, iy] = applyTransformXY(tr, svg.identityCellX, svg.identityCellY);
     out.identityCellX = ix;
@@ -296,7 +278,6 @@ function transformSVGObject(tr: AffineTransform, svg: SVGObject): SVGObject {
  *  against the node bbox at render time, so they ride the transform. */
 function transformBboxNode<T extends {
   cellX: number; cellY: number; cellWidth: number; cellHeight: number;
-  localCellX?: number; localCellY?: number; localCellWidth?: number; localCellHeight?: number;
   identityCellX?: number; identityCellY?: number; identityCellWidth?: number; identityCellHeight?: number;
 }>(tr: AffineTransform, node: T): T {
   const [cellX, cellY] = applyTransformXY(tr, node.cellX, node.cellY);
@@ -307,13 +288,6 @@ function transformBboxNode<T extends {
     cellWidth: node.cellWidth * tr.scale,
     cellHeight: node.cellHeight * tr.scale,
   };
-  if (node.localCellX !== undefined && node.localCellY !== undefined) {
-    const [lx, ly] = applyTransformXY(tr, node.localCellX, node.localCellY);
-    out.localCellX = lx;
-    out.localCellY = ly;
-  }
-  if (node.localCellWidth !== undefined) out.localCellWidth = node.localCellWidth * tr.scale;
-  if (node.localCellHeight !== undefined) out.localCellHeight = node.localCellHeight * tr.scale;
   if (node.identityCellX !== undefined && node.identityCellY !== undefined) {
     const [ix, iy] = applyTransformXY(tr, node.identityCellX, node.identityCellY);
     out.identityCellX = ix;

@@ -79,7 +79,6 @@ describe('v54 pattern object persistence', () => {
       mirrorH: true,
       locked: true,
       hidden: true,
-      localCellX: 1, localCellY: 2, localCellWidth: 12, localCellHeight: 8,
       identityCellX: 0, identityCellY: 0, identityCellWidth: 12, identityCellHeight: 8,
     });
     expect(out.symmetry).toEqual({ ...PATTERN_SYMMETRY_OFF, mirrorDiag1: true });
@@ -101,7 +100,6 @@ describe('v54 pattern object persistence', () => {
     expect(out.preGroupName).toBe('Old name');
     // Dropped on load (plan §3.7); `identity*` is kept — it is the
     // transform cycle's authored pose, not a group-local cache.
-    expect(out.localCellX).toBeUndefined();
     expect(out.identityCellWidth).toBe(12);
   });
 

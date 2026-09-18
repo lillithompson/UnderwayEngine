@@ -1,7 +1,8 @@
 import { serializeComposition, EmbeddedFile } from '../compositionBinaryFormat';
 import { serializeFile } from '../binaryFormat';
 import { compressTile } from '../tileIO';
-import { applyCompOps, revertCompOps, materializeGroupMembers, reconcileGroupLocals } from '../compositionOps';
+import { applyCompOps, revertCompOps } from '../compositionOps';
+import { moveGroupBy, turnOf } from './groupTransform.test-utils';
 import { CompositionFigure, SVGObject, ImageObject, GroupNode, CompositionState, makeViewport, CompUndoEntry } from '../types';
 
 // ── Storage mock ───────────────────────────────────────────────────
@@ -357,19 +358,23 @@ describe('prepareTileMerge', () => {
     expect(result.images[0].groupId).toBe(wrapper.id);
   });
 
-  test('ungrouped figures get correct local coords', async () => {
-    const tile = await buildTileBytes({
+  test('an ungrouped figure comes through the merge at the box it was drawn in', () => {
+    // This used to check the merge seeded the figure's `local*` caches
+    // from world. There are no caches (P6-B); what survives the merge is
+    // the world box itself.
+    return buildTileBytes({
       figures: [makeFigure({ id: 'fig1', figureKey: 'k', cellX: 5, cellY: 10, cellWidth: 8, cellHeight: 6 })],
+    }).then(async (tile) => {
+      const result = await prepareTileMerge(tile, 'Test.tile');
+      const fig = result.figures[0];
+      expect(fig.cellX).toBe(5);
+      expect(fig.cellY).toBe(10);
+      expect(fig.cellWidth).toBe(8);
+      expect(fig.cellHeight).toBe(6);
+      expect(fig.rotation ?? 0).toBe(0);
+      expect(fig.mirrorH ?? false).toBe(false);
+      expect(fig.mirrorV ?? false).toBe(false);
     });
-    const result = await prepareTileMerge(tile, 'Test.tile');
-    const fig = result.figures[0];
-    expect(fig.localCellX).toBe(fig.cellX);
-    expect(fig.localCellY).toBe(fig.cellY);
-    expect(fig.localCellWidth).toBe(fig.cellWidth);
-    expect(fig.localCellHeight).toBe(fig.cellHeight);
-    expect(fig.localRotation).toBe(0);
-    expect(fig.localMirrorH).toBe(false);
-    expect(fig.localMirrorV).toBe(false);
   });
 
   test('ungrouped SVGs get deep-cloned localSegments', async () => {
@@ -382,8 +387,6 @@ describe('prepareTileMerge', () => {
     expect(svg.localSegments).toHaveLength(svg.segments.length);
     // Must be a distinct array, not the same reference
     expect(svg.localSegments).not.toBe(svg.segments);
-    expect(svg.localCellX).toBe(svg.cellX);
-    expect(svg.localCellY).toBe(svg.cellY);
   });
 
   test('already-grouped items keep their original groupId', async () => {
@@ -422,7 +425,7 @@ describe('prepareTileMerge', () => {
     expect(result.images[0].locked).toBeFalsy();
   });
 
-  test('Starry.tile import wraps all sub-groups under wrapper with valid local coords', async () => {
+  test('Starry.tile import wraps all sub-groups under the wrapper, geometry intact', async () => {
     const fs = require('fs');
     const path = require('path');
     const data = new Uint8Array(fs.readFileSync(path.join(__dirname, '../../test_data/Starry.tile')));
@@ -438,10 +441,11 @@ describe('prepareTileMerge', () => {
     expect(childGroups.length).toBeGreaterThan(0);
     expect(result.groups.length).toBe(childGroups.length + 1);
 
-    // All SVGs have localSegments (needed for resize/materialize)
+    // Every SVG still carries the path it was drawn as. (This used to ask
+    // for `localSegments` — a second copy in group-local space — which
+    // P6-B retired; `segments` is the only copy now.)
     for (const svg of result.svgObjects) {
-      expect(svg.localSegments).toBeDefined();
-      expect(svg.localSegments!.length).toBeGreaterThan(0);
+      expect(svg.segments.length).toBeGreaterThan(0);
     }
 
     // Every SVG belongs to either the wrapper or a child group
@@ -534,8 +538,13 @@ describe('mergeTile undo/redo', () => {
   });
 });
 
-describe('prepareTileMerge backfills missing local fields', () => {
-  test('grouped figure with rotation gets localRotation backfilled', async () => {
+describe('a merged leaf keeps the look the file gave it', () => {
+  // These used to check that the merge BACKFILLED `local*` caches — a
+  // grouped leaf's pose kept a second time in group-local space. P6-B
+  // retired the caches, so there is nothing to backfill and the question
+  // is the one underneath: the leaf comes through drawn as it was.
+
+  test('a grouped figure keeps its turn and its flip', async () => {
     const group = makeGroup('g1', 'Group 1');
     const fig = makeFigure({
       id: 'fig1', figureKey: 'test', groupId: 'g1',
@@ -545,12 +554,13 @@ describe('prepareTileMerge backfills missing local fields', () => {
     const result = await prepareTileMerge(tile, 'Test.tile');
 
     const merged = result.figures[0];
-    expect(merged.localRotation).toBe(90);
-    expect(merged.localMirrorH).toBe(true);
-    expect(merged.localMirrorV).toBe(false);
+    expect(merged.groupId).toBeDefined();
+    expect(merged.rotation).toBe(90);
+    expect(merged.mirrorH).toBe(true);
+    expect(merged.mirrorV ?? false).toBe(false);
   });
 
-  test('grouped figure with tile mode gets localTile dims backfilled', async () => {
+  test('a grouped figure keeps its tile pitch', async () => {
     const group = makeGroup('g1', 'Group 1');
     const fig = makeFigure({
       id: 'fig1', figureKey: 'test', groupId: 'g1',
@@ -561,21 +571,20 @@ describe('prepareTileMerge backfills missing local fields', () => {
     const result = await prepareTileMerge(tile, 'Test.tile');
 
     const merged = result.figures[0];
-    expect(merged.localTileWidthL0).toBe(8);
-    expect(merged.localTileHeightL0).toBe(8);
+    expect(merged.tileWidthL0).toBe(8);
+    expect(merged.tileHeightL0).toBe(8);
   });
 
-  test('grouped SVG without localSegments gets backfilled', async () => {
+  test('a grouped SVG keeps its path and its box', async () => {
     const group = makeGroup('g1', 'Group 1');
     const svg = { ...makeSVG('svg_1'), groupId: 'g1' };
     const tile = await buildTileBytes({ svgObjects: [svg], groups: [group] });
     const result = await prepareTileMerge(tile, 'Test.tile');
 
     const merged = result.svgObjects[0];
-    expect(merged.localSegments).toBeDefined();
-    expect(merged.localSegments!.length).toBeGreaterThan(0);
-    expect(merged.localCellX).toBeDefined();
-    expect(merged.localCellY).toBeDefined();
+    expect(merged.segments.length).toBeGreaterThan(0);
+    expect(merged.cellX).toBeDefined();
+    expect(merged.cellY).toBeDefined();
   });
 
   test('end-to-end: materialize after merge reproduces world rotation', async () => {
@@ -599,20 +608,22 @@ describe('prepareTileMerge backfills missing local fields', () => {
       sceneOrder: merged.sceneOrder,
     });
 
-    // Reconcile locals (same as handleImportFile does)
-    const reconciled = reconcileGroupLocals(state);
+    // The merge lands the figure where the file drew it…
+    expect(state.figures[0].cellX).toBeCloseTo(15, 1);
+    expect(state.figures[0].cellY).toBeCloseTo(25, 1);
+    expect(turnOf(state, state.figures[0].id)).toBe(90);
 
-    // Now materialize through the wrapper group — world coords should be preserved
-    const wrapper = reconciled.groups.find(g => !g.parentGroupId)!;
-    const materialized = materializeGroupMembers(reconciled, wrapper.id);
-
-    const resultFig = materialized.figures[0];
-    expect(resultFig.cellX).toBeCloseTo(15, 1);
-    expect(resultFig.cellY).toBeCloseTo(25, 1);
-    expect(resultFig.rotation).toBe(90);
+    // …and moving the wrapper group carries it rigidly: the same turn, and
+    // the translate, and nothing else.
+    const wrapper = state.groups.find(g => !g.parentGroupId)!;
+    const moved = moveGroupBy(state, wrapper.id, 7, -4);
+    const resultFig = moved.figures[0];
+    expect(resultFig.cellX).toBeCloseTo(22, 1);
+    expect(resultFig.cellY).toBeCloseTo(21, 1);
+    expect(turnOf(moved, resultFig.id)).toBe(90);
   });
 
-  test('JustFrames.tile: all grouped figures have localRotation after merge', async () => {
+  test('JustFrames.tile: every grouped leaf comes out of the merge with a pose', async () => {
     const fs = require('fs');
     const path = require('path');
     const tilePath = path.join(__dirname, '../../test_data/JustFrames.tile');
@@ -620,17 +631,20 @@ describe('prepareTileMerge backfills missing local fields', () => {
     const data = new Uint8Array(fs.readFileSync(tilePath));
     const result = await prepareTileMerge(data, 'JustFrames.tile');
 
-    for (const fig of result.figures) {
-      if (fig.groupId) {
-        expect(fig.localRotation).toBeDefined();
-        expect(fig.localMirrorH).toBeDefined();
-        expect(fig.localMirrorV).toBeDefined();
-      }
+    // This used to check that every grouped leaf came out with its `local*`
+    // caches filled in. There are no caches (P6-B) — the world fields ARE
+    // the pose — so the question is that the merge left each leaf with a
+    // real one, and put it in a group that exists.
+    const groupIds = new Set(result.groups.map((g) => g.id));
+    const finite = (n: number | undefined) => typeof n === 'number' && Number.isFinite(n);
+    for (const leaf of [...result.figures, ...result.svgObjects]) {
+      if (!leaf.groupId) continue;
+      expect(groupIds.has(leaf.groupId)).toBe(true);
+      expect(finite(leaf.cellX) && finite(leaf.cellY)).toBe(true);
+      expect(finite(leaf.cellWidth) && finite(leaf.cellHeight)).toBe(true);
     }
     for (const svg of result.svgObjects) {
-      if (svg.groupId) {
-        expect(svg.localSegments).toBeDefined();
-      }
+      if (svg.groupId) expect(svg.segments.length).toBeGreaterThan(0);
     }
   });
 });

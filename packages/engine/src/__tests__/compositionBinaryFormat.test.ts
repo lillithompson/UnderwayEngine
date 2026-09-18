@@ -1112,7 +1112,6 @@ describe('compositionBinaryFormat', () => {
       cellX: 4, cellY: 8, cellWidth: 8, cellHeight: 8,
       rotation: 90 as const, mirrorH: true,
       groupId: 'g1', preGroupName: 'orig',
-      localCellX: 2, localCellY: 4, localCellWidth: 4, localCellHeight: 4,
       identityCellX: 0, identityCellY: 0, identityCellWidth: 8, identityCellHeight: 8,
     };
     const out = serializeComposition(
@@ -1127,8 +1126,6 @@ describe('compositionBinaryFormat', () => {
     expect(r.preGroupName).toBe('orig');
     // Dropped on load (plan §3.7); `identity*` is kept — it is the
     // transform cycle's authored pose, not a group-local cache.
-    expect(r.localCellX).toBeUndefined();
-    expect(r.localCellWidth).toBeUndefined();
     expect(r.identityCellX).toBe(0);
     expect(r.identityCellWidth).toBe(8);
   });

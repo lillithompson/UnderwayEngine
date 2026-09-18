@@ -49,8 +49,6 @@ function framedState(): CompositionState {
   const fig: CompositionFigure = {
     id: 'fig1', figureKey: 'k', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2,
     resolutionX: 2, resolutionY: 2, rotation: 0, groupId: 'frame',
-    localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-    localRotation: 0, localMirrorH: false, localMirrorV: false,
   } as CompositionFigure;
   return makeState({
     figures: [fig],

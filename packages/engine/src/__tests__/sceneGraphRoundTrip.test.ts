@@ -20,7 +20,7 @@ import * as zlib from 'zlib';
 
 import { deserializeComposition } from '../compositionBinaryFormat';
 import {
-  applyCompOps, assertGroupLocalsConsistent,
+  applyCompOps,
   revertCompOps, withSceneGraph,
 } from '../compositionOps';
 import {
@@ -742,10 +742,9 @@ describe('a graph-backed leaf carries no local caches', () => {
    * and not there.
    *
    * That is the fix for the stale-locals bug at its root: a cache that
-   * does not exist cannot disagree with the pose. The legacy materialize
-   * pass leaves a leaf with no locals alone, which is exactly right for a
-   * leaf whose truth is the graph — so the invariant checker has nothing
-   * to complain about either.
+   * does not exist cannot disagree with the pose. P6-B then removed the
+   * pass that read them and the fields themselves, so this now pins that
+   * the view does not start emitting them again.
    */
   function expectNoLocals(state: CompositionState): void {
     const view = toLegacyView(fromLegacy(state));
@@ -763,8 +762,6 @@ describe('a graph-backed leaf carries no local caches', () => {
           .toEqual({ id: leaf.id, field, value: undefined });
       }
     }
-    // And nothing an ancestor transform would move.
-    expect(() => assertGroupLocalsConsistent({ ...state, ...view })).not.toThrow();
   }
 
   test('a scaled, turned, flipped group', () => {

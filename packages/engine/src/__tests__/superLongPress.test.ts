@@ -1,4 +1,4 @@
-import { findSceneObjectAtCell, clearGroupLocals, groupMemberIds, applyCompOps, buildRemoveObjectOp } from '../compositionOps';
+import { findSceneObjectAtCell, detachFromGroup, groupMemberIds, applyCompOps, buildRemoveObjectOp } from '../compositionOps';
 import { CompositionState, CompositionFigure, SVGObject, ImageObject, CompUndoEntry, makeViewport } from '../types';
 
 function makeFigure(overrides: Partial<CompositionFigure> = {}): CompositionFigure {
@@ -107,32 +107,18 @@ describe('findSceneObjectAtCell with ignoreLock', () => {
   });
 });
 
-// ── clearGroupLocals ──────────────────────────────────────────────────
+// ── detachFromGroup ──────────────────────────────────────────────────
 
-describe('clearGroupLocals', () => {
+describe('detachFromGroup', () => {
   test('clears figure group-local fields', () => {
     const fig = makeFigure({
       groupId: 'g1',
-      localCellX: 1,
-      localCellY: 2,
-      localCellWidth: 3,
-      localCellHeight: 4,
-      localRotation: 90,
-      localMirrorH: true,
-      localMirrorV: false,
       identityCellX: 5,
       identityCellY: 6,
       transformCycleStep: 1,
     }) as any;
-    clearGroupLocals(fig, 'figure');
+    detachFromGroup(fig, 'figure');
     expect(fig.groupId).toBeUndefined();
-    expect(fig.localCellX).toBeUndefined();
-    expect(fig.localCellY).toBeUndefined();
-    expect(fig.localCellWidth).toBeUndefined();
-    expect(fig.localCellHeight).toBeUndefined();
-    expect(fig.localRotation).toBeUndefined();
-    expect(fig.localMirrorH).toBeUndefined();
-    expect(fig.localMirrorV).toBeUndefined();
     expect(fig.identityCellX).toBeUndefined();
     expect(fig.identityCellY).toBeUndefined();
     expect(fig.transformCycleStep).toBeUndefined();
@@ -145,18 +131,13 @@ describe('clearGroupLocals', () => {
     const svg = makeSvg({
       groupId: 'g1',
       localSegments: [{ kind: 'line', start: [0, 0], end: [1, 1] }],
-      localCellX: 1,
-      localCellY: 2,
-      localCellWidth: 3,
-      localCellHeight: 4,
       rotation: 90,
       mirrorH: true,
       mirrorV: false,
     }) as any;
-    clearGroupLocals(svg, 'svg');
+    detachFromGroup(svg, 'svg');
     expect(svg.groupId).toBeUndefined();
     expect(svg.localSegments).toBeUndefined();
-    expect(svg.localCellX).toBeUndefined();
     expect(svg.rotation).toBeUndefined();
     expect(svg.mirrorH).toBeUndefined();
     expect(svg.mirrorV).toBeUndefined();
@@ -171,15 +152,12 @@ describe('clearGroupLocals', () => {
       uri: 'test.png',
       cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2,
       groupId: 'g1',
-      localCellX: 1, localCellY: 2,
-      localCellWidth: 3, localCellHeight: 4,
       identityCellX: 5, identityCellY: 6,
       identityCellWidth: 7, identityCellHeight: 8,
       rotation: 90, mirrorH: true, mirrorV: false,
     };
-    clearGroupLocals(img, 'image');
+    detachFromGroup(img, 'image');
     expect(img.groupId).toBeUndefined();
-    expect(img.localCellX).toBeUndefined();
     expect(img.identityCellX).toBeUndefined();
     expect(img.identityCellWidth).toBeUndefined();
     expect(img.rotation).toBeUndefined();

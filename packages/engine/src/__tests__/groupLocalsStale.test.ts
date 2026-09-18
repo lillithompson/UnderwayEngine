@@ -16,14 +16,15 @@
  * random.
  *
  * The three scenarios below are the probe from docs/transform-refactor.md
- * §2.1, one per broken op family. They are the acceptance test for the
- * containment fix (P1: reconcile after every world-mutating op).
+ * §2.1, one per broken op family. They were the acceptance test for the
+ * containment fix (P1: reconcile after every world-mutating op), and they
+ * are now the acceptance test for the cure (P6-B: there is one copy of a
+ * grouped leaf's pose, so there is no second one to fall behind). The
+ * `assertGroupLocalsConsistent` block that sat below them went with the
+ * caches it was checking.
  */
 
-import {
-  applyCompOps,
-  assertGroupLocalsConsistent,
-} from '../compositionOps';
+import { applyCompOps } from '../compositionOps';
 import {
   CompositionState, CompUndoEntry, ImageObject, PathSegment,
   SVGObject, TextObject, makeViewport,
@@ -181,44 +182,5 @@ describe('a per-member edit survives the next ancestor transform', () => {
     state = translateGroup(state, 'g1', 1, 0);
 
     expect(state.svgObjects[0].segments).toEqual([line([3, -2], [3, 2])]);
-  });
-});
-
-describe('assertGroupLocalsConsistent', () => {
-  test('passes for a freshly grouped, untouched scene', () => {
-    const img = makeImage({ id: 'img_1' });
-    let state = makeState({ images: [img], sceneOrder: ['img_1'] });
-    state = group(state, ['img_1']);
-    expect(() => assertGroupLocalsConsistent(state)).not.toThrow();
-  });
-
-  test('passes for an ungrouped scene', () => {
-    const state = makeState({ images: [makeImage({ id: 'img_1' })], sceneOrder: ['img_1'] });
-    expect(() => assertGroupLocalsConsistent(state)).not.toThrow();
-  });
-
-  test('catches a member whose locals were left behind', () => {
-    const img = makeImage({ id: 'img_1' });
-    let state = makeState({ images: [img], sceneOrder: ['img_1'] });
-    state = group(state, ['img_1']);
-
-    // Hand-forge the exact damage a non-reconciling op does: world moved,
-    // locals untouched.
-    const stale: CompositionState = {
-      ...state,
-      images: state.images!.map((i) => ({ ...i, cellWidth: 8, cellHeight: 6 })),
-    };
-    expect(() => assertGroupLocalsConsistent(stale)).toThrow(/stale/);
-  });
-
-  test('names the offending leaf', () => {
-    const img = makeImage({ id: 'img_1' });
-    let state = makeState({ images: [img], sceneOrder: ['img_1'] });
-    state = group(state, ['img_1']);
-    const stale: CompositionState = {
-      ...state,
-      images: state.images!.map((i) => ({ ...i, cellX: 99 })),
-    };
-    expect(() => assertGroupLocalsConsistent(stale)).toThrow(/img_1/);
   });
 });

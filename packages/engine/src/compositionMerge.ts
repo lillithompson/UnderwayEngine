@@ -1,5 +1,5 @@
 import type { CompositionFigure, SVGObject, ImageObject, GroupNode } from './types';
-import { deriveSceneOrderFromKindArrays, clonePathSegment, safeMapSegments, backfillMissingLocals } from './compositionOps';
+import { deriveSceneOrderFromKindArrays, clonePathSegment, safeMapSegments } from './compositionOps';
 
 export interface MergeTileResult {
   figures: CompositionFigure[];
@@ -280,17 +280,10 @@ export async function prepareTileMerge(data: Uint8Array, fileName?: string): Pro
     wrapperName,
   );
 
-  // Backfill missing local orientation/tile/segment fields so that
-  // subsequent materializeGroupMembers calls produce correct world coords.
-  // Without this, localRotation etc. stay undefined for already-grouped
-  // items deserialized from the binary format, causing rotation/mirror
-  // corruption when the wrapper group is later transformed.
-  const backfilled = backfillMissingLocals(wrapped);
-
   return {
-    figures: backfilled.figures,
-    svgObjects: backfilled.svgObjects,
-    images: backfilled.images,
+    figures: wrapped.figures,
+    svgObjects: wrapped.svgObjects,
+    images: wrapped.images,
     imageBlobs: imgs.blobs,
     groups: wrapped.groups,
     sceneOrder,

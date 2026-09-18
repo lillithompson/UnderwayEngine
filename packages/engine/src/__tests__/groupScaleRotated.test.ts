@@ -18,8 +18,8 @@ import {
   applyGroupTransform,
   computeSVGBbox,
   groupBounds,
-  materializeGroupMembers,
 } from '../compositionOps';
+import { setGroupTransform } from './groupTransform.test-utils';
 import {
   CompositionState,
   GroupNode,
@@ -86,35 +86,35 @@ function applyGroupScale(
   );
   const tx = newCellX - probe.cellX;
   const ty = newCellY - probe.cellY;
-  const groups = state.groups.map(g => g.id === groupId
-    ? { ...g, translateX: tx, translateY: ty, scaleX: sX, scaleY: sY }
-    : g);
-  return materializeGroupMembers({ ...state, groups }, groupId);
+  return setGroupTransform(state, groupId, {
+    translateX: tx, translateY: ty, scaleX: sX, scaleY: sY,
+  });
 }
 
-/** Build a tiny svg-object-only group at identity transform with a known
- *  local bbox (0..10, 0..4), then poke the group into the requested
- *  rotation/mirror state and re-materialize. Returns state +
- *  local-bbox descriptor matching what the live reducer captures at
- *  scale start. */
+/** Build a tiny svg-object-only group whose members span (0..10, 0..4),
+ *  then TURN the group into the requested rotation/mirror state. The group
+ *  is born at identity and the members are authored where they sit under
+ *  it, so the turn is a real group transform rather than a re-derivation
+ *  from caches. Returns state + the local-bbox descriptor matching what
+ *  the live reducer captures at scale start. */
 function buildGroupAt(
   rotation: 0 | 90 | 180 | 270,
   mirrorH: boolean, mirrorV: boolean,
   translate: [number, number] = [0, 0],
 ): { state: CompositionState; lb: { minX: number; minY: number; width: number; height: number } } {
-  const l1 = makeSVGFromVertices('svg_1', [[0, 0], [10, 0]],
-    { localSegments: [{ kind: 'line', start: [0, 0], end: [10, 0] }], localCellX: 0, localCellY: 0, localCellWidth: 10, localCellHeight: 0, groupId: 'g1' });
-  const l2 = makeSVGFromVertices('svg_2', [[0, 4], [10, 4]],
-    { localSegments: [{ kind: 'line', start: [0, 4], end: [10, 4] }], localCellX: 0, localCellY: 4, localCellWidth: 10, localCellHeight: 0, groupId: 'g1' });
+  const l1 = makeSVGFromVertices('svg_1', [[0, 0], [10, 0]], { groupId: 'g1' });
+  const l2 = makeSVGFromVertices('svg_2', [[0, 4], [10, 4]], { groupId: 'g1' });
   const group: GroupNode = {
     id: 'g1', name: 'G',
-    translateX: translate[0], translateY: translate[1],
+    translateX: 0, translateY: 0,
     scaleX: 1, scaleY: 1,
-    rotation, mirrorH, mirrorV,
+    rotation: 0, mirrorH: false, mirrorV: false,
   };
   const state = makeState({ svgObjects: [l1, l2], groups: [group] });
-  const materialized = materializeGroupMembers(state, 'g1');
-  return { state: materialized, lb: { minX: 0, minY: 0, width: 10, height: 4 } };
+  const turned = setGroupTransform(state, 'g1', {
+    translateX: translate[0], translateY: translate[1], rotation, mirrorH, mirrorV,
+  });
+  return { state: turned, lb: { minX: 0, minY: 0, width: 10, height: 4 } };
 }
 
 describe('group scale lands the world bbox at the requested rect for every rotation/mirror', () => {

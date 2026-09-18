@@ -4,7 +4,7 @@ import { FADE_DEFAULT_COLOR, hasFade, type FadeSpec } from './fade';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
-import { backfillPatternTileLocals, computeAliveGroupIds } from './compositionOps';
+import { computeAliveGroupIds } from './compositionOps';
 import { foldLegacyGroupNames } from './legacyGroupNames';
 import { dropLocalCaches } from './legacyLocalCaches';
 import { compSnapStep } from './compositionCellMath';
@@ -873,7 +873,6 @@ function figureBinarySize(fig: CompositionFigure): number {
   if (fig.identityCellX != null) size += 4;
   if (fig.tileWidthL0 != null) size += 8; // tileWidthL0(2) + tileHeightL0(2) + tileOffsetXL0(2) + tileOffsetYL0(2)
   if (fig.quads && fig.quads.length > 0) size += 1 + fig.quads.length * 8;
-  if (fig.localCellX != null) size += 8;
   if (fig.colorOverride != null) size += 4; // r, g, b, blendModeByte
   return size;
 }
@@ -1624,7 +1623,6 @@ function svgBinarySize(svg: SVGObject): number {
   if (svg.preGroupName != null) size += 2;
   if (svg.patternFileId != null) size += 2;
   size += segmentArraySize(svg.segments);
-  if (svg.localSegments != null) size += 2 + segmentArraySize(svg.localSegments);
   if (svg.identitySegments != null) size += 2 + segmentArraySize(svg.identitySegments);
   // Tile-mode payload: tile dims/offsets (8) + dragged-region bbox (8, v19+).
   // The region is NOT recoverable from segment AABB (segments only describe
@@ -1673,7 +1671,6 @@ function imageBinarySize(img: ImageObject): number {
   if (img.name != null) size += 2;
   if (img.groupId != null) size += 2;
   if (img.preGroupName != null) size += 2;
-  if (img.localCellX != null) size += 8;
   if (img.identityCellX != null) size += 8;
   if (img.tint) size += 5; // r,g,b + amount + mode
   if (img.effects) size += effectsBinarySize(img.effects);
@@ -1806,7 +1803,6 @@ function writeSVG(
   if (svg.name != null) flags |= FLAG_HAS_NAME;
   if (svg.groupId != null) flags |= FLAG_HAS_GROUP_ID;
   if (svg.preGroupName != null) flags |= FLAG_HAS_PRE_GROUP_NAME;
-  if (svg.localSegments != null) flags |= FLAG_HAS_LOCAL;
   if (svg.identitySegments != null) flags |= FLAG_HAS_IDENTITY;
   out[pos++] = flags;
 
@@ -1866,10 +1862,6 @@ function writeSVG(
   pos = writeCount16(view, pos, svg.segments.length, `svg(${svg.id}).segments`);
   pos = writeSegments(view, out, pos, svg.segments);
 
-  if (svg.localSegments != null) {
-    pos = writeCount16(view, pos, svg.localSegments.length, `svg(${svg.id}).localSegments`);
-    pos = writeSegments(view, out, pos, svg.localSegments);
-  }
   if (svg.identitySegments != null) {
     pos = writeCount16(view, pos, svg.identitySegments.length, `svg(${svg.id}).identitySegments`);
     pos = writeSegments(view, out, pos, svg.identitySegments);
@@ -2016,17 +2008,11 @@ function readSVG(
   if (rot !== 0) svg.rotation = rot;
 
   if (flags & FLAG_HAS_LOCAL) {
+    // A <=v61 file stores a grouped leaf's pose a second time in
+    // group-local space. P6-B retired those caches, so the bytes are
+    // stepped over and dropped rather than read into the leaf.
     const c = view.getUint16(pos, true); pos += 2;
-    const ls = readSegments(view, data, pos, c);
-    svg.localSegments = ls.segs;
-    const lbb = arcBoundingBox(ls.segs);
-    if (lbb) {
-      svg.localCellX = lbb.minX;
-      svg.localCellY = lbb.minY;
-      svg.localCellWidth = lbb.maxX - lbb.minX;
-      svg.localCellHeight = lbb.maxY - lbb.minY;
-    }
-    pos = ls.pos;
+    pos = readSegments(view, data, pos, c).pos;
   }
   if (flags & FLAG_HAS_IDENTITY) {
     const c = view.getUint16(pos, true); pos += 2;
@@ -2265,7 +2251,6 @@ function readLegacyShared(
   strings: string[],
   version: number,
   segments: PathSegment[],
-  localSegments: PathSegment[] | undefined,
   identitySegments: PathSegment[] | undefined,
   flags: number,
   rotBits: number,
@@ -2293,16 +2278,6 @@ function readLegacyShared(
   if (flags & FLAG_LOCKED) svg.locked = true;
   const rot = BITS_TO_ROTATION[rotBits & 0x03];
   if (rot !== 0) svg.rotation = rot;
-  if (localSegments) {
-    svg.localSegments = localSegments;
-    const lbb = arcBoundingBox(localSegments);
-    if (lbb) {
-      svg.localCellX = lbb.minX;
-      svg.localCellY = lbb.minY;
-      svg.localCellWidth = lbb.maxX - lbb.minX;
-      svg.localCellHeight = lbb.maxY - lbb.minY;
-    }
-  }
   if (identitySegments) svg.identitySegments = identitySegments;
   if (version >= 10 && (rotBits & 0x04)) {
     svg.tileMode = 'repeat';
@@ -2344,12 +2319,12 @@ function readLegacyLine(
   pos = v.pos;
   const segments = polylineToSegments(v.verts);
 
-  let localSegments: PathSegment[] | undefined;
   if (flags & FLAG_HAS_LOCAL) {
+    // A <=v61 file stores a grouped leaf's pose a second time in
+    // group-local space. P6-B retired those caches, so the bytes are
+    // stepped over and dropped rather than read into the leaf.
     const c = view.getUint16(pos, true); pos += 2;
-    const lv = readVerticesLegacy(view, pos, c);
-    pos = lv.pos;
-    localSegments = polylineToSegments(lv.verts);
+    pos = readVerticesLegacy(view, pos, c).pos;
   }
   let identitySegments: PathSegment[] | undefined;
   if (flags & FLAG_HAS_IDENTITY) {
@@ -2361,7 +2336,7 @@ function readLegacyLine(
 
   return readLegacyShared(
     view, data, pos, strings, version,
-    segments, localSegments, identitySegments,
+    segments, identitySegments,
     flags, rotBits, idIdx, nameIdx, groupIdIdx, preGroupNameIdx,
     { r, g, b },
   );
@@ -2392,12 +2367,12 @@ function readLegacyArc(
   const s = readSegments(view, data, pos, segCount);
   pos = s.pos;
 
-  let localSegments: PathSegment[] | undefined;
   if (flags & FLAG_HAS_LOCAL) {
+    // A <=v61 file stores a grouped leaf's pose a second time in
+    // group-local space. P6-B retired those caches, so the bytes are
+    // stepped over and dropped rather than read into the leaf.
     const c = view.getUint16(pos, true); pos += 2;
-    const ls = readSegments(view, data, pos, c);
-    pos = ls.pos;
-    localSegments = ls.segs;
+    pos = readSegments(view, data, pos, c).pos;
   }
   let identitySegments: PathSegment[] | undefined;
   if (flags & FLAG_HAS_IDENTITY) {
@@ -2409,7 +2384,7 @@ function readLegacyArc(
 
   return readLegacyShared(
     view, data, pos, strings, version,
-    s.segs, localSegments, identitySegments,
+    s.segs, identitySegments,
     flags, rotBits, idIdx, nameIdx, groupIdIdx, preGroupNameIdx,
     { r, g, b },
   );
@@ -2433,7 +2408,6 @@ function writeImage(
   if (img.name != null) flags |= FLAG_HAS_NAME;
   if (img.groupId != null) flags |= FLAG_HAS_GROUP_ID;
   if (img.preGroupName != null) flags |= FLAG_HAS_PRE_GROUP_NAME;
-  if (img.localCellX != null) flags |= FLAG_HAS_LOCAL;
   if (img.identityCellX != null) flags |= FLAG_HAS_IDENTITY;
   out[pos++] = flags;
 
@@ -2475,12 +2449,6 @@ function writeImage(
   }
   if (img.preGroupName != null) {
     view.setUint16(pos, indexOf.get(img.preGroupName) ?? 0, true); pos += 2;
-  }
-  if (img.localCellX != null) {
-    view.setInt16(pos, encodeFixed(img.localCellX), true); pos += 2;
-    view.setInt16(pos, encodeFixed(img.localCellY!), true); pos += 2;
-    view.setInt16(pos, encodeFixed(img.localCellWidth!), true); pos += 2;
-    view.setInt16(pos, encodeFixed(img.localCellHeight!), true); pos += 2;
   }
   if (img.identityCellX != null) {
     view.setInt16(pos, encodeFixed(img.identityCellX), true); pos += 2;
@@ -2588,10 +2556,10 @@ function readImage(
   if (opacityByte !== 255) img.opacity = opacityByte / 255;
 
   if (flags & FLAG_HAS_LOCAL) {
-    img.localCellX = decodeFixed(view.getInt16(pos, true)); pos += 2;
-    img.localCellY = decodeFixed(view.getInt16(pos, true)); pos += 2;
-    img.localCellWidth = decodeFixed(view.getInt16(pos, true)); pos += 2;
-    img.localCellHeight = decodeFixed(view.getInt16(pos, true)); pos += 2;
+    // A <=v61 file stores a grouped leaf's pose a second time in
+    // group-local space. P6-B retired those caches, so the bytes are
+    // stepped over and dropped rather than read into the leaf.
+    pos += 8;
   }
   if (flags & FLAG_HAS_IDENTITY) {
     img.identityCellX = decodeFixed(view.getInt16(pos, true)); pos += 2;
@@ -2723,7 +2691,6 @@ function textBinarySize(text: TextObject): number {
   if (text.name != null) size += 2;
   if (text.groupId != null) size += 2;
   if (text.preGroupName != null) size += 2;
-  if (text.localCellX != null) size += TEXT_BBOX_BYTES;
   if (text.identityCellX != null) size += TEXT_BBOX_BYTES;
   if (text.style.letterSpacing != null) size += 4;
   if (text.style.lineHeight != null) size += 4;
@@ -2770,7 +2737,6 @@ function writeText(
   out[pos++] = flags;
 
   let flags2 = 0;
-  if (text.localCellX != null) flags2 |= TFLAG2_HAS_LOCAL;
   if (text.identityCellX != null) flags2 |= TFLAG2_HAS_IDENTITY;
   if (text.effects) flags2 |= TFLAG2_HAS_EFFECTS;
   if (text.angleDeg) flags2 |= TFLAG2_HAS_ANGLE;
@@ -2791,9 +2757,6 @@ function writeText(
 
   pos = writeTextBbox(view, pos, text.cellX, text.cellY, text.cellWidth, text.cellHeight);
 
-  if (text.localCellX != null) {
-    pos = writeTextBbox(view, pos, text.localCellX, text.localCellY!, text.localCellWidth!, text.localCellHeight!);
-  }
   if (text.identityCellX != null) {
     pos = writeTextBbox(view, pos, text.identityCellX, text.identityCellY!, text.identityCellWidth!, text.identityCellHeight!);
   }
@@ -2897,10 +2860,11 @@ function readText(
   const main = readTextBbox(view, pos, version); pos = main.pos;
   const { cellX, cellY, cellWidth, cellHeight } = main.bbox;
 
-  let local: TextBbox | undefined;
   if (flags2 & TFLAG2_HAS_LOCAL) {
-    const r = readTextBbox(view, pos, version); pos = r.pos;
-    local = r.bbox;
+    // A <=v61 file stores a grouped leaf's pose a second time in
+    // group-local space. P6-B retired those caches, so the bytes are
+    // stepped over and dropped rather than read into the leaf.
+    pos = readTextBbox(view, pos, version).pos;
   }
   let identity: TextBbox | undefined;
   if (flags2 & TFLAG2_HAS_IDENTITY) {
@@ -2954,12 +2918,6 @@ function readText(
   if (flags & TFLAG_STICKER) text.sticker = true;
   const rot = BITS_TO_ROTATION[rotBits & 0x03];
   if (rot !== 0) text.rotation = rot;
-  if (local) {
-    text.localCellX = local.cellX;
-    text.localCellY = local.cellY;
-    text.localCellWidth = local.cellWidth;
-    text.localCellHeight = local.cellHeight;
-  }
   if (identity) {
     text.identityCellX = identity.cellX;
     text.identityCellY = identity.cellY;
@@ -3258,7 +3216,6 @@ function serializeCompositionAt(
     if (fig.groupId != null) flags2 |= 0x08;
     if (fig.preGroupName != null) flags2 |= 0x10;
     // 0x20 was groupIdentityCell* in v5/v6; dropped in v7. Reserved.
-    if (fig.localCellX != null) flags2 |= 0x40;
     if (fig.colorOverride != null) flags2 |= 0x80;
     out[pos++] = flags2;
 
@@ -3294,12 +3251,6 @@ function serializeCompositionAt(
       view.setInt16(pos, encodeFixed(fig.tileHeightL0!), true); pos += 2;
       view.setInt16(pos, encodeFixed(fig.tileOffsetXL0 ?? 0), true); pos += 2;
       view.setInt16(pos, encodeFixed(fig.tileOffsetYL0 ?? 0), true); pos += 2;
-    }
-    if (fig.localCellX != null) {
-      view.setInt16(pos, encodeFixed(fig.localCellX), true); pos += 2;
-      view.setInt16(pos, encodeFixed(fig.localCellY!), true); pos += 2;
-      view.setInt16(pos, encodeFixed(fig.localCellWidth!), true); pos += 2;
-      view.setInt16(pos, encodeFixed(fig.localCellHeight!), true); pos += 2;
     }
 
     // Quads
@@ -3459,7 +3410,6 @@ function serializeCompositionAt(
     if (p.opacity != null) flags |= 0x80;
     out[pos++] = flags;
     let flags2 = 0;
-    if (p.localCellX != null) flags2 |= 0x01;
     if (p.identityCellX != null) flags2 |= 0x02;
     if (p.angleDeg) flags2 |= 0x04;
     flags2 |= (ROTATION_TO_BITS[p.rotation ?? 0] & 0x03) << 4;
@@ -3471,12 +3421,6 @@ function serializeCompositionAt(
     view.setFloat32(pos, p.cellY, true); pos += 4;
     view.setFloat32(pos, p.cellWidth, true); pos += 4;
     view.setFloat32(pos, p.cellHeight, true); pos += 4;
-    if (p.localCellX != null) {
-      view.setFloat32(pos, p.localCellX, true); pos += 4;
-      view.setFloat32(pos, p.localCellY ?? 0, true); pos += 4;
-      view.setFloat32(pos, p.localCellWidth ?? 0, true); pos += 4;
-      view.setFloat32(pos, p.localCellHeight ?? 0, true); pos += 4;
-    }
     if (p.identityCellX != null) {
       view.setFloat32(pos, p.identityCellX, true); pos += 4;
       view.setFloat32(pos, p.identityCellY ?? 0, true); pos += 4;
@@ -3513,7 +3457,6 @@ function serializeCompositionAt(
     if (p.opacity != null) flags |= 0x80;
     out[pos++] = flags;
     let flags2 = 0;
-    if (p.localCellX != null) flags2 |= 0x01;
     if (p.identityCellX != null) flags2 |= 0x02;
     if (p.angleDeg) flags2 |= 0x04;
     if (p.symmetry != null) flags2 |= 0x08;
@@ -3533,12 +3476,6 @@ function serializeCompositionAt(
     view.setFloat32(pos, p.cellY, true); pos += 4;
     view.setFloat32(pos, p.cellWidth, true); pos += 4;
     view.setFloat32(pos, p.cellHeight, true); pos += 4;
-    if (p.localCellX != null) {
-      view.setFloat32(pos, p.localCellX, true); pos += 4;
-      view.setFloat32(pos, p.localCellY ?? 0, true); pos += 4;
-      view.setFloat32(pos, p.localCellWidth ?? 0, true); pos += 4;
-      view.setFloat32(pos, p.localCellHeight ?? 0, true); pos += 4;
-    }
     if (p.identityCellX != null) {
       view.setFloat32(pos, p.identityCellX, true); pos += 4;
       view.setFloat32(pos, p.identityCellY ?? 0, true); pos += 4;
@@ -3630,7 +3567,6 @@ function patternObjectBinarySize(p: PatternObject): number {
   if (p.name != null) size += 2;
   if (p.groupId != null) size += 2;
   if (p.preGroupName != null) size += 2;
-  if (p.localCellX != null) size += 16;
   if (p.identityCellX != null) size += 16;
   if (p.opacity != null) size += 4;
   if (p.angleDeg) size += 4;
@@ -3657,7 +3593,6 @@ function paintObjectBinarySize(p: PaintObject): number {
   if (p.name != null) size += 2;
   if (p.groupId != null) size += 2;
   if (p.preGroupName != null) size += 2;
-  if (p.localCellX != null) size += 16;
   if (p.identityCellX != null) size += 16;
   if (p.opacity != null) size += 4;
   if (p.angleDeg) size += 4;
@@ -3846,10 +3781,10 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       pos += 8;
     }
     if (hasLocalCell) {
-      fig.localCellX = decodeFixed(view.getInt16(pos, true)); pos += 2;
-      fig.localCellY = decodeFixed(view.getInt16(pos, true)); pos += 2;
-      fig.localCellWidth = decodeFixed(view.getInt16(pos, true)); pos += 2;
-      fig.localCellHeight = decodeFixed(view.getInt16(pos, true)); pos += 2;
+      // A <=v61 file stores a grouped leaf's pose a second time in
+      // group-local space. P6-B retired those caches, so the bytes are
+      // stepped over and dropped rather than read into the leaf.
+      pos += 8;
     }
     if (hasQuads) {
       const quadCount = data[pos++];
@@ -4134,10 +4069,10 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       p.cellWidth = view.getFloat32(pos, true); pos += 4;
       p.cellHeight = view.getFloat32(pos, true); pos += 4;
       if (flags2 & 0x01) {
-        p.localCellX = view.getFloat32(pos, true); pos += 4;
-        p.localCellY = view.getFloat32(pos, true); pos += 4;
-        p.localCellWidth = view.getFloat32(pos, true); pos += 4;
-        p.localCellHeight = view.getFloat32(pos, true); pos += 4;
+        // A <=v61 file stores a grouped leaf's pose a second time in
+        // group-local space. P6-B retired those caches, so the bytes are
+        // stepped over and dropped rather than read into the leaf.
+        pos += 16;
       }
       if (flags2 & 0x02) {
         p.identityCellX = view.getFloat32(pos, true); pos += 4;
@@ -4200,10 +4135,10 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       p.cellWidth = view.getFloat32(pos, true); pos += 4;
       p.cellHeight = view.getFloat32(pos, true); pos += 4;
       if (flags2 & 0x01) {
-        p.localCellX = view.getFloat32(pos, true); pos += 4;
-        p.localCellY = view.getFloat32(pos, true); pos += 4;
-        p.localCellWidth = view.getFloat32(pos, true); pos += 4;
-        p.localCellHeight = view.getFloat32(pos, true); pos += 4;
+        // A <=v61 file stores a grouped leaf's pose a second time in
+        // group-local space. P6-B retired those caches, so the bytes are
+        // stepped over and dropped rather than read into the leaf.
+        pos += 16;
       }
       if (flags2 & 0x02) {
         p.identityCellX = view.getFloat32(pos, true); pos += 4;
@@ -4303,12 +4238,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       texts,
       background,
       paintObjects: paintObjects.length > 0 ? paintObjects : undefined,
-      // Tile locals are derived caches the format never writes: rebuild
-      // them for grouped repeat patterns so the first group scale after a
-      // reload still scales the tiling (backfillPatternTileLocals).
-      patternObjects: patternObjects.length > 0
-        ? backfillPatternTileLocals(patternObjects, prunedGroups)
-        : undefined,
+      patternObjects: patternObjects.length > 0 ? patternObjects : undefined,
     },
     embeddedFiles,
   };

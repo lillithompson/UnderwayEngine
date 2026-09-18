@@ -2,10 +2,12 @@ import {
   applyCompOps,
   composeOrientations,
   computeSVGBbox,
-  materializeGroupMembers,
   transformQuadsByGroup,
 } from '../compositionOps';
-import { SVGObject, PathSegment, CompositionFigure, CompositionState, CompUndoEntry, FigureQuad, GroupNode, makeViewport } from '../types';
+import { SVGObject, PathSegment, CompositionFigure, CompositionState, FigureQuad, GroupNode, makeViewport } from '../types';
+import { flipOf, poseOf, setGroupTransform, turnOf } from './groupTransform.test-utils';
+import { fromLegacy, worldMatrix } from '../sceneGraph';
+import { leafHitFrame } from '../sceneHitFrame';
 
 const WHITE = { r: 255, g: 255, b: 255 };
 
@@ -115,7 +117,7 @@ describe('transformQuadsByGroup', () => {
   });
 });
 
-describe('materializeGroupMembers — figure orientation propagation', () => {
+describe('a group transform propagates a figure member\'s orientation', () => {
   test('rotating a group rotates its figure member (the user-reported bug)', () => {
     // A figure grouped at identity, then the group rotates 90°. Before
     // this fix, the figure's bbox followed the group rotation but its
@@ -123,13 +125,11 @@ describe('materializeGroupMembers — figure orientation propagation', () => {
     const fig = makeFigure({
       id: 'f1', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2,
       groupId: 'g1',
-      localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
-    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 90, mirrorH: false, mirrorV: false };
+    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const state = makeState({ figures: [fig], groups: [group] });
-    const next = materializeGroupMembers(state, 'g1');
-    expect(next.figures[0].rotation).toBe(90);
+    const next = setGroupTransform(state, 'g1', { rotation: 90 });
+    expect(turnOf(next, 'f1')).toBe(90);
     // Bbox dims swap under 90°, but for a 2×2 figure they're unchanged.
     expect(next.figures[0].cellWidth).toBe(2);
     expect(next.figures[0].cellHeight).toBe(2);
@@ -139,43 +139,57 @@ describe('materializeGroupMembers — figure orientation propagation', () => {
     const fig = makeFigure({
       id: 'f1', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2,
       groupId: 'g1',
-      localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 90, localMirrorH: false, localMirrorV: false,
+      rotation: 90,
     });
-    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 90, mirrorH: false, mirrorV: false };
+    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const state = makeState({ figures: [fig], groups: [group] });
-    const next = materializeGroupMembers(state, 'g1');
-    expect(next.figures[0].rotation).toBe(180);
+    const next = setGroupTransform(state, 'g1', { rotation: 90 });
+    expect(turnOf(next, 'f1')).toBe(180);
   });
 
-  test('group mirror H flips the figure mirror H', () => {
+  test('mirroring a group flips its figure member across the group origin', () => {
     const fig = makeFigure({
-      id: 'f1', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2,
+      id: 'f1', cellX: 1, cellY: 0, cellWidth: 2, cellHeight: 2,
       groupId: 'g1',
-      localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
-    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: true, mirrorV: false };
+    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const state = makeState({ figures: [fig], groups: [group] });
-    const next = materializeGroupMembers(state, 'g1');
-    expect(next.figures[0].mirrorH).toBe(true);
-    expect(next.figures[0].mirrorV).toBe(false);
+    const next = setGroupTransform(state, 'g1', { mirrorH: true });
+    // Handedness reversed. WHICH axis is not asked: a flip about one is a
+    // flip about the other plus a half turn, and both spellings draw the
+    // same picture — so the question is where the figure ended up.
+    expect(flipOf(next, 'f1')).toBe(true);
+    // x ∈ [1, 3] reflects about x = 0 to x ∈ [-3, -1]; y is untouched.
+    expect(poseOf(next, 'f1').at).toEqual([-2, 1]);
+    expect(poseOf(next, 'f1').box).toEqual([2, 2]);
   });
 
-  test('group rotation propagates to figure quads inside the group', () => {
-    const localQuads: FigureQuad[] = [{ offsetX: 0, offsetY: 0, cellWidth: 1, cellHeight: 2 }];
+  test('a group quarter turn is carried by a figure\'s frame, not its quad list', () => {
+    // The legacy pass re-spelled the quad list on every quarter turn —
+    // each offset rewritten into the new orientation and the box swapped.
+    // The graph keeps a figure's quads in its own content frame and spends
+    // the quarter in the frame's matrix instead (`sceneHitFrame.quadSpinDeg`).
+    // Same picture, one fewer rewrite, and — the part worth pinning — a
+    // graph rebuilt from the arrays this wrote reads the quads in exactly
+    // the same frame, so the spelling survives a save and reopen.
+    const quads: FigureQuad[] = [{ offsetX: 0, offsetY: 0, cellWidth: 1, cellHeight: 2 }];
     const fig = makeFigure({
       id: 'f1', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2,
-      groupId: 'g1',
-      localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
-      localQuads,
-      quads: localQuads,
+      groupId: 'g1', rotation: 0, quads,
     });
-    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 90, mirrorH: false, mirrorV: false };
+    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const state = makeState({ figures: [fig], groups: [group] });
-    const next = materializeGroupMembers(state, 'g1');
-    expect(next.figures[0].quads).toEqual([{ offsetX: 0, offsetY: 0, cellWidth: 2, cellHeight: 1 }]);
+    const next = setGroupTransform(state, 'g1', { rotation: 90 });
+
+    expect(turnOf(next, 'f1')).toBe(90);
+    expect(next.figures[0].quads).toEqual(quads);
+
+    const rebuilt = fromLegacy(next);
+    const live = next.graph ?? rebuilt;
+    const frameOf = (g: typeof rebuilt) =>
+      leafHitFrame(g.nodes.get('f1')!, worldMatrix(g, 'f1'));
+    expect(frameOf(rebuilt).box).toEqual(frameOf(live).box);
+    expect(frameOf(rebuilt).toNode).toEqual(frameOf(live).toNode);
   });
 
   test('mixed group (figure + svg objects) — group rotation rotates all uniformly', () => {
@@ -185,23 +199,13 @@ describe('materializeGroupMembers — figure orientation propagation', () => {
     const fig = makeFigure({
       id: 'f1', cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2,
       groupId: 'g1',
-      localCellX: 0, localCellY: 0, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 0, localMirrorH: false, localMirrorV: false,
     });
-    const svgLine = makeSVGFromVertices('l1', [[0, 0], [4, 0]], {
-      groupId: 'g1',
-      localSegments: [{ kind: 'line', start: [0, 0], end: [4, 0] }],
-      localCellX: 0, localCellY: 0, localCellWidth: 4, localCellHeight: 0,
-    });
-    const svgArc = makeSVG('a1', [{ kind: 'arc', start: [1, 0], end: [0, 1], center: [0, 0] }], {
-      groupId: 'g1',
-      localSegments: [{ kind: 'arc', start: [1, 0], end: [0, 1], center: [0, 0] }],
-      localCellX: 0, localCellY: 0, localCellWidth: 1, localCellHeight: 1,
-    });
-    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 90, mirrorH: false, mirrorV: false };
+    const svgLine = makeSVGFromVertices('l1', [[0, 0], [4, 0]], { groupId: 'g1' });
+    const svgArc = makeSVG('a1', [{ kind: 'arc', start: [1, 0], end: [0, 1], center: [0, 0] }], { groupId: 'g1' });
+    const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const state = makeState({ figures: [fig], svgObjects: [svgLine, svgArc], groups: [group] });
-    const next = materializeGroupMembers(state, 'g1');
-    expect(next.figures[0].rotation).toBe(90);
+    const next = setGroupTransform(state, 'g1', { rotation: 90 });
+    expect(turnOf(next, 'f1')).toBe(90);
     // Line segment end (4, 0) rotated 90° CW around the group's local origin
     // (translate=0, no pivot adjust) lands at (0, 4).
     expect(next.svgObjects[0].segments[0].end).toEqual([0, 4]);
@@ -214,78 +218,60 @@ describe('materializeGroupMembers — figure orientation propagation', () => {
   });
 });
 
-describe('groupFigures op seeds local orientation', () => {
-  test('seeds localRotation / localMirrorH / localMirrorV / localQuads from world', () => {
+describe('grouping is not a move', () => {
+  // These used to check that `groupFigures` SEEDED a member's `local*`
+  // caches — its orientation, its quads, its box — from world. P6-B
+  // retired the caches, so what is left to pin is the property they were
+  // maintained FOR: joining or leaving a group changes where nothing is.
+
+  test('a turned, flipped, quadded figure is drawn the same after grouping', () => {
     const fig = makeFigure({
       id: 'f1', cellX: 1, cellY: 1, cellWidth: 2, cellHeight: 4,
       rotation: 90, mirrorH: true, mirrorV: false,
       quads: [{ offsetX: 0, offsetY: 0, cellWidth: 2, cellHeight: 4 }],
     });
     const state = makeState({ figures: [fig] });
-    const entry: CompUndoEntry = [{
-      op: 'groupFigures',
-      figureIds: ['f1'],
-      groupId: 'g1',
-      groupName: 'G',
-    }];
-    const after = applyCompOps(state, entry);
-    expect(after.figures[0].localRotation).toBe(90);
-    expect(after.figures[0].localMirrorH).toBe(true);
-    expect(after.figures[0].localMirrorV).toBe(false);
-    expect(after.figures[0].localQuads).toEqual([{ offsetX: 0, offsetY: 0, cellWidth: 2, cellHeight: 4 }]);
+    const after = applyCompOps(state, [{
+      op: 'groupFigures', figureIds: ['f1'], groupId: 'g1', groupName: 'G',
+    }]);
+    expect(after.figures[0].groupId).toBe('g1');
+    expect(turnOf(after, 'f1')).toBe(turnOf(state, 'f1'));
+    expect(flipOf(after, 'f1')).toBe(flipOf(state, 'f1'));
+    expect(poseOf(after, 'f1').at).toEqual(poseOf(state, 'f1').at);
+    expect(after.figures[0].quads).toEqual(fig.quads);
   });
 
-  test('ungroup clears local orientation alongside other locals', () => {
+  test('ungrouping drops the membership and leaves the pose', () => {
     const fig = makeFigure({
       id: 'f1', cellX: 1, cellY: 1, cellWidth: 2, cellHeight: 2,
       groupId: 'g1',
-      localCellX: 1, localCellY: 1, localCellWidth: 2, localCellHeight: 2,
-      localRotation: 90, localMirrorH: false, localMirrorV: false,
-      localQuads: [{ offsetX: 0, offsetY: 0, cellWidth: 2, cellHeight: 2 }],
     });
     const group: GroupNode = { id: 'g1', name: 'G', translateX: 0, translateY: 0, scaleX: 1, scaleY: 1, rotation: 0, mirrorH: false, mirrorV: false };
     const state = makeState({ figures: [fig], groups: [group] });
-    const entry: CompUndoEntry = [{
-      op: 'ungroupFigures',
-      figureIds: ['f1'],
-      groupId: 'g1',
-      groupName: 'G',
-    }];
-    const after = applyCompOps(state, entry);
-    expect(after.figures[0].localRotation).toBeUndefined();
-    expect(after.figures[0].localMirrorH).toBeUndefined();
-    expect(after.figures[0].localMirrorV).toBeUndefined();
-    expect(after.figures[0].localQuads).toBeUndefined();
+    const after = applyCompOps(state, [{
+      op: 'ungroupFigures', figureIds: ['f1'], groupId: 'g1', groupName: 'G',
+    }]);
+    expect(after.figures[0].groupId).toBeUndefined();
+    expect(poseOf(after, 'f1').at).toEqual(poseOf(state, 'f1').at);
+    expect(turnOf(after, 'f1')).toBe(turnOf(state, 'f1'));
   });
-});
 
-describe('groupFigures op seeds local fields on svg objects', () => {
-  test('seeds localCellX/Y/W/H on line-like svg objects', () => {
+  test('a line and an arc keep their paths and their boxes through grouping', () => {
     const svgLine = makeSVGFromVertices('l1', [[1, 2], [5, 2]]);
-    const state = makeState({ svgObjects: [svgLine] });
-    const entry: CompUndoEntry = [{
-      op: 'groupFigures', figureIds: ['l1'], groupId: 'g1', groupName: 'G',
-    }];
-    const after = applyCompOps(state, entry);
-    expect(after.svgObjects[0].localSegments).toBeDefined();
-    expect(after.svgObjects[0].localCellX).toBe(svgLine.cellX);
-    expect(after.svgObjects[0].localCellY).toBe(svgLine.cellY);
-    expect(after.svgObjects[0].localCellWidth).toBe(svgLine.cellWidth);
-    expect(after.svgObjects[0].localCellHeight).toBe(svgLine.cellHeight);
-  });
-
-  test('seeds localCellX/Y/W/H on arc-like svg objects', () => {
     const svgArc = makeSVG('a1', [{ kind: 'arc', start: [0, 0], end: [3, 3], center: [0, 3] }]);
-    const state = makeState({ svgObjects: [svgArc] });
-    const entry: CompUndoEntry = [{
-      op: 'groupFigures', figureIds: ['a1'], groupId: 'g1', groupName: 'G',
-    }];
-    const after = applyCompOps(state, entry);
-    expect(after.svgObjects[0].localSegments).toBeDefined();
-    expect(after.svgObjects[0].localCellX).toBe(svgArc.cellX);
-    expect(after.svgObjects[0].localCellY).toBe(svgArc.cellY);
-    expect(after.svgObjects[0].localCellWidth).toBe(svgArc.cellWidth);
-    expect(after.svgObjects[0].localCellHeight).toBe(svgArc.cellHeight);
+    const state = makeState({ svgObjects: [svgLine, svgArc] });
+    const after = applyCompOps(state, [{
+      op: 'groupFigures', figureIds: ['l1', 'a1'], groupId: 'g1', groupName: 'G',
+    }]);
+    for (const before of [svgLine, svgArc]) {
+      const now = after.svgObjects.find((s) => s.id === before.id)!;
+      expect(now.groupId).toBe('g1');
+      expect(now.segments).toEqual(before.segments);
+      expect(now.cellX).toBe(before.cellX);
+      expect(now.cellY).toBe(before.cellY);
+      expect(now.cellWidth).toBe(before.cellWidth);
+      expect(now.cellHeight).toBe(before.cellHeight);
+    }
   });
 });
 
@@ -297,9 +283,7 @@ describe('end-to-end group rotate/mirror via applyCompOps then materialize', () 
     const grouped = applyCompOps(state, [{
       op: 'groupFigures', figureIds: ['l1', 'l2'], groupId: 'g1', groupName: 'G',
     }]);
-    // Rotate the group by 90
-    const groups = grouped.groups.map(g => g.id === 'g1' ? { ...g, rotation: 90 as const } : g);
-    const rotated = materializeGroupMembers({ ...grouped, groups }, 'g1');
+    const rotated = setGroupTransform(grouped, 'g1', { rotation: 90 });
     // After 90 CW rotation around origin, end (4, 0) -> (0, 4)
     expect(rotated.svgObjects[0].segments[0].end).toEqual([0, 4]);
     // end (4, 2) -> (-2, 4)
@@ -316,8 +300,7 @@ describe('end-to-end group rotate/mirror via applyCompOps then materialize', () 
     const grouped = applyCompOps(state, [{
       op: 'groupFigures', figureIds: ['a1', 'a2'], groupId: 'g1', groupName: 'G',
     }]);
-    const groups = grouped.groups.map(g => g.id === 'g1' ? { ...g, rotation: 90 as const } : g);
-    const rotated = materializeGroupMembers({ ...grouped, groups }, 'g1');
+    const rotated = setGroupTransform(grouped, 'g1', { rotation: 90 });
     // Arc start (1, 0) rotated 90 CW -> (0, 1)
     const seg0 = rotated.svgObjects[0].segments[0];
     expect(seg0.start).toEqual([0, 1]);
@@ -337,10 +320,9 @@ describe('end-to-end group rotate/mirror via applyCompOps then materialize', () 
       op: 'groupFigures', figureIds: ['f1', 'l1', 'a1'], groupId: 'g1', groupName: 'G',
     }]);
     // Mirror horizontally
-    const groups = grouped.groups.map(g => g.id === 'g1' ? { ...g, mirrorH: true } : g);
-    const mirrored = materializeGroupMembers({ ...grouped, groups }, 'g1');
-    // Figure mirrorH should be composed
-    expect(mirrored.figures[0].mirrorH).toBe(true);
+    const mirrored = setGroupTransform(grouped, 'g1', { mirrorH: true });
+    // The figure comes out flipped
+    expect(flipOf(mirrored, 'f1')).toBe(true);
     // Line segment start (2, 0) -> (-2, 0), end (6, 0) -> (-6, 0)
     expect(mirrored.svgObjects[0].segments[0].start[0]).toBe(-2);
     expect(mirrored.svgObjects[0].segments[0].end[0]).toBe(-6);

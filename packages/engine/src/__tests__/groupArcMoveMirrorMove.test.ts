@@ -21,7 +21,6 @@ import {
   computeSVGBbox,
   groupBounds,
   inverseChainedGroupTransformPoint,
-  materializeGroupMembers,
 } from '../compositionOps';
 import {
   SVGObject,
@@ -30,6 +29,7 @@ import {
   CompositionState,
   makeViewport,
 } from '../types';
+import { moveGroupBy, setGroupTransform } from './groupTransform.test-utils';
 
 const WHITE = { r: 255, g: 255, b: 255 };
 
@@ -101,7 +101,7 @@ function applyMoveDelta(state: CompositionState, ids: string[], dx: number, dy: 
       return { ...s, segments: newSegs, ...computeSVGBbox(newSegs) };
     }),
   };
-  for (const gid of groupIds) next = materializeGroupMembers(next, gid);
+  for (const gid of groupIds) next = moveGroupBy(next, gid, dx, dy);
   return next;
 }
 
@@ -134,9 +134,9 @@ function applyGroupRotate90(state: CompositionState, groupId: string): Compositi
   const newWorldCenter = applyGroupTransformPoint(newGroupForCompute, lcx, lcy);
   const newTranslateX = groupNode.translateX + (oldWorldCenter[0] - newWorldCenter[0]);
   const newTranslateY = groupNode.translateY + (oldWorldCenter[1] - newWorldCenter[1]);
-  const groups = state.groups.map(g => g.id === groupId
-    ? { ...g, rotation: newRot, translateX: newTranslateX, translateY: newTranslateY } : g);
-  return materializeGroupMembers({ ...state, groups }, groupId);
+  return setGroupTransform(state, groupId, {
+    rotation: newRot, translateX: newTranslateX, translateY: newTranslateY,
+  });
 }
 
 /** Toggle mirrorH or mirrorV with the matching translate adjustment. */
@@ -150,9 +150,10 @@ function applyGroupMirror(state: CompositionState, groupId: string, axis: 'h' | 
   const newWorldCenter = applyGroupTransformPoint(newGroupForCompute, lcx, lcy);
   const newTranslateX = groupNode.translateX + (oldWorldCenter[0] - newWorldCenter[0]);
   const newTranslateY = groupNode.translateY + (oldWorldCenter[1] - newWorldCenter[1]);
-  const groups = state.groups.map(g => g.id === groupId
-    ? { ...g, mirrorH: newMirrorH, mirrorV: newMirrorV, translateX: newTranslateX, translateY: newTranslateY } : g);
-  return materializeGroupMembers({ ...state, groups }, groupId);
+  return setGroupTransform(state, groupId, {
+    mirrorH: newMirrorH, mirrorV: newMirrorV,
+    translateX: newTranslateX, translateY: newTranslateY,
+  });
 }
 
 function bboxCenter(state: CompositionState, groupId: string): [number, number] {

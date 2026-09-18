@@ -101,12 +101,11 @@ describe('moveNode op uniformly translates any node type', () => {
     expect(back.svgObjects[0].cellY).toBe(0);
   });
 
-  test('grouped svg: translates localSegments and localCell* alongside world coords', () => {
+  test('grouped svg: translates localSegments alongside world coords', () => {
     const svg: SVGObject = {
       ...makeSVGLine('l1', [{kind:'line', start:[0,0], end:[4,0]}]),
       groupId: 'g1',
       localSegments: [{kind:'line', start:[0,0], end:[4,0]}],
-      localCellX: 0, localCellY: 0, localCellWidth: 4, localCellHeight: 0,
     };
     const state = makeState({ svgObjects: [svg] });
     const entry: CompUndoEntry = [{
@@ -115,8 +114,6 @@ describe('moveNode op uniformly translates any node type', () => {
     const after = applyCompOps(state, entry);
     expect(after.svgObjects[0].segments).toEqual([{kind:'line', start:[3,3], end:[7,3]}]);
     expect(after.svgObjects[0].localSegments).toEqual([{kind:'line', start:[3,3], end:[7,3]}]);
-    expect(after.svgObjects[0].localCellX).toBe(3);
-    expect(after.svgObjects[0].localCellY).toBe(3);
   });
 
   test('zero-delta moveNode is a no-op even on identity-bearing nodes', () => {
