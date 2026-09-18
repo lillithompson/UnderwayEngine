@@ -454,6 +454,14 @@ export interface ObjectPropertiesModel {
     id: string,
     transform: import('./logic/patternEdit').PatternTileTransform,
   ): void;
+  /** Open the selected pattern FOR EDITING — the double border comes up on
+   *  it, it becomes the one grid the tile tool may rework, and that tool is
+   *  armed for it. The Tile page's Edit button, at the right of its Repeat
+   *  row; the host's floating Edit capsule presses the same callback, so a
+   *  page that offers it and a capsule that offers it always do one thing.
+   *  Unset when there is no grid to open (no single pattern selected, or the
+   *  one selected is already open) — the button goes with it. */
+  onPatternEdit?(): void;
   /** Arm the random brush / eraser as the painting sub-tool. */
   onPatternArmTool?(tool: 'random' | 'erase'): void;
   /** Run a grid action (flood replaces the whole grid with the armed tile —

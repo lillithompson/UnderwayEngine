@@ -568,12 +568,13 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     expect(row).not.toContain('SegmentedRow');
     // Setting it to the side it already shows must not toggle back off.
     expect(row).toContain('if (model.repeatMixed || next !== !!model.repeat) model.onToggleRepeat?.();');
-    // The Tile page is that row and nothing else; the Tools bar shows it too.
+    // The Tile page is that row (carrying Edit at its end, below) and
+    // nothing else; the Tools bar shows the same row, bare.
     const tileBar = BARS.slice(
       BARS.indexOf('export function PatternTileBar'),
       BARS.indexOf('export function PatternToolsBar'),
     );
-    expect(tileBar).toContain('<PatternRepeatRow model={model} />');
+    expect(tileBar).toContain('<PatternRepeatRow');
     const toolsBar = BARS.slice(
       BARS.indexOf('export function PatternToolsBar'),
       BARS.indexOf('export function PatternSymmetryBar'),
@@ -582,6 +583,39 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     // …and the panel renders the page the Tile tab names.
     expect(PANEL).toContain("} else if (displaySub === 'patternTile') {");
     expect(PANEL).toContain('<PatternTileBar model={model} />');
+  });
+
+  it('carries Edit at the right end of that same line', () => {
+    // The way INTO the grid, on the page that is already about this object.
+    // It shares the switch's line rather than taking one of its own: a page
+    // holding a single setting has the width, and a second row for one
+    // button would make the sheet taller for nothing — so the page's
+    // reserved height is still the switch row alone.
+    const tileBar = BARS.slice(
+      BARS.indexOf('export function PatternTileBar'),
+      BARS.indexOf('export function PatternToolsBar'),
+    );
+    expect(tileBar).toContain('trailing={model.onPatternEdit ? (');
+    expect(tileBar).toContain(
+      '<EffectButton label="Edit" icon="pencil" inline onPress={model.onPatternEdit} />',
+    );
+    // …and the row hangs it hard right, clear of the ON / OFF word.
+    const effects = readFileSync(resolve(__dirname, '..', 'components', 'effectBar.tsx'), 'utf8');
+    expect(effects).toContain('{trailing ? <View style={styles.switchTrailing}>{trailing}</View> : null}');
+    expect(effects).toContain("switchTrailing: { marginLeft: 'auto' }");
+    // It is the Add pages' button (Add Stroke / Add Fill) in its inline
+    // form — the page's one ACT, which is the same kind of thing those are
+    // — NOT a second button drawn to look like them.
+    expect(effects).toContain('addButtonInline: { flex: 0, height: ROW_SEGMENTED, paddingHorizontal: 12 }');
+    expect(effects).toContain('return inline ? button : <View style={styles.emptyControls}>{button}</View>;');
+    expect(BARS).toContain("import { ActionRow, BarBody, EffectButton, SegmentedRow, SwitchRow } from './effectBar';");
+  });
+
+  it('takes the way in as a host callback, so a host can withhold it', () => {
+    // Unset when there is no grid to open — no single pattern selected, or
+    // the one selected is already open — and the button goes with it.
+    const adapter = readFileSync(resolve(__dirname, '..', 'adapter.ts'), 'utf8');
+    expect(adapter).toContain('onPatternEdit?(): void;');
   });
 
   it("is gone from the pattern's type row, but kept on the svg branch", () => {

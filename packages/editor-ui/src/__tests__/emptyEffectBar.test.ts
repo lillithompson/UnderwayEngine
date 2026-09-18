@@ -25,7 +25,7 @@ describe('EmptyEffectBar (effectBar.tsx)', () => {
     // the Image page's Replace — the same kind of thing (a page of
     // sliders with a single ACT on it), so it looks the same in both.
     expect(bar).toContain('return <EffectButton label={addLabel} onPress={onAdd} />;');
-    expect(bar).toContain('export function EffectButton({ label, icon = \'plus\', onPress }');
+    expect(bar).toContain('export function EffectButton({ label, icon = \'plus\', inline = false, onPress }');
     expect(bar).toContain('accessibilityLabel={label}');
     expect(bar).toContain('onPress={onPress}');
     // Bare ink on the well, no filled pill: a fill read as a control

@@ -15,7 +15,7 @@ import {
   rotatePatternTileTransform,
 } from '../logic/patternEdit';
 import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
-import { ActionRow, BarBody, SegmentedRow, SwitchRow } from './effectBar';
+import { ActionRow, BarBody, EffectButton, SegmentedRow, SwitchRow } from './effectBar';
 import { PatternSetsModal } from './PatternSetsModal';
 import { PatternTileModal } from './PatternTileModal';
 import { PatternTileTransformModal } from './PatternTileTransformModal';
@@ -163,11 +163,16 @@ export function PatternTilesBar({ model }: {
  * One definition, shown as the whole of the Tile page and as a row of the
  * Tools page, so the two can never offer the setting differently.
  */
-export function PatternRepeatRow({ model }: { model: ObjectPropertiesModel }) {
+export function PatternRepeatRow({ model, trailing }: {
+  model: ObjectPropertiesModel;
+  /** Hung at the row's right end — the Tile page's Edit button. */
+  trailing?: React.ReactNode;
+}) {
   if (!model.onToggleRepeat) return null;
   return (
     <SwitchRow
       label="Repeat"
+      trailing={trailing}
       value={!!model.repeat}
       // Several patterns, set differently: the row says Multiple instead of
       // showing one side's value as everyone's, and flipping it FORCES the
@@ -180,11 +185,33 @@ export function PatternRepeatRow({ model }: { model: ObjectPropertiesModel }) {
   );
 }
 
-/** The Tile page: the object's Repeat toggle, and nothing else. */
+/**
+ * The Tile page: the object's Repeat toggle, and — at the far right of
+ * that same line — the way INTO the grid, Edit.
+ *
+ * Edit opens the pattern for editing: the double border comes up on it, it
+ * becomes the one grid the Tile tool may rework, and the tile tool is armed
+ * for it. The host's floating Edit capsule does exactly this from the
+ * canvas (one callback, so the two can't come to mean different things);
+ * the page offers it as well because the page is where you already are when
+ * you have gone looking for what this object can do.
+ *
+ * It shares the switch's line rather than taking one of its own: a page
+ * holding a single setting has the width to spare, and a second row for one
+ * button would make the sheet taller for nothing. The style is the Add
+ * pages' button (EffectButton — "Add Stroke", "Add Fill"), in its inline
+ * form: this is the page's one ACT, which is the same kind of thing those
+ * are, so it looks the same.
+ */
 export function PatternTileBar({ model }: { model: ObjectPropertiesModel }) {
   return (
     <BarBody>
-      <PatternRepeatRow model={model} />
+      <PatternRepeatRow
+        model={model}
+        trailing={model.onPatternEdit ? (
+          <EffectButton label="Edit" icon="pencil" inline onPress={model.onPatternEdit} />
+        ) : null}
+      />
     </BarBody>
   );
 }

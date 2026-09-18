@@ -142,25 +142,37 @@ export function EmptyEffectBar({ addLabel, onAdd }: {
  * page's host opens a file picker, and WebKit only shows the dialog while
  * the gesture's activation is live.
  */
-export function EffectButton({ label, icon = 'plus', onPress }: {
+export function EffectButton({ label, icon = 'plus', inline = false, onPress }: {
   label: string;
   /** The glyph before the word. Defaults to the plus an "Add …" wears. */
   icon?: string;
+  /** Stand BESIDE something rather than filling the page's width: the
+   *  button hugs its own word and takes a row's height, for a page that
+   *  puts its one act at the end of a row it shares with a setting (the
+   *  pattern Tile page's Edit, right of the Repeat switch). Same ink, same
+   *  height, same press — only the width is given up, so the two read as
+   *  one button in two places rather than as two buttons. */
+  inline?: boolean;
   onPress: () => void;
 }) {
-  return (
-    <View style={styles.emptyControls}>
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
-      >
-        <MaterialCommunityIcons name={icon as MCIName} size={16} color={PANEL_INK} />
-        <Text style={styles.addLabel}>{label}</Text>
-      </Pressable>
-    </View>
+  const button = (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [
+        styles.addButton,
+        inline && styles.addButtonInline,
+        pressed && styles.addButtonPressed,
+      ]}
+    >
+      <MaterialCommunityIcons name={icon as MCIName} size={16} color={PANEL_INK} />
+      <Text style={styles.addLabel}>{label}</Text>
+    </Pressable>
   );
+  // Full width: its own one-row-tall line. Inline: the row it joins owns
+  // the height, so the wrapper would only add a second one.
+  return inline ? button : <View style={styles.emptyControls}>{button}</View>;
 }
 
 /** The tap-to-type value box every slider row wears on its right: a white
@@ -415,7 +427,7 @@ export function FadeSliderRow({ label, value, color, apply, onOpenPicker }: {
  * switch is set to, so the row can be read without reading the switch as a
  * picture.
  */
-export function SwitchRow({ label, value, mixed, onValueChange }: {
+export function SwitchRow({ label, value, mixed, onValueChange, trailing }: {
   label: string;
   value: boolean;
   /** The selection does not AGREE — several objects, set differently. The
@@ -424,6 +436,10 @@ export function SwitchRow({ label, value, mixed, onValueChange }: {
    *  value every member then shares. */
   mixed?: boolean;
   onValueChange: (next: boolean) => void;
+  /** Something to hang at the FAR END of the row — pushed hard right, clear
+   *  of the state word. For a page whose whole content is one switch, and
+   *  which would otherwise spend a second line on a single button. */
+  trailing?: React.ReactNode;
 }) {
   const on = !mixed && value;
   return (
@@ -437,6 +453,7 @@ export function SwitchRow({ label, value, mixed, onValueChange }: {
         accessibilityState={mixed ? { checked: 'mixed' } : undefined}
       />
       <Text style={styles.switchState}>{mixed ? 'MULTIPLE' : on ? 'ON' : 'OFF'}</Text>
+      {trailing ? <View style={styles.switchTrailing}>{trailing}</View> : null}
     </View>
   );
 }
@@ -648,6 +665,9 @@ const styles = StyleSheet.create({
   switchState: {
     color: LABEL, fontSize: 11, fontWeight: '600', letterSpacing: 0.6,
   },
+  // The row's far end: an auto margin, so whatever hangs here is flush with
+  // the page's right edge however wide the state word runs.
+  switchTrailing: { marginLeft: 'auto' },
   segmentedRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SEGMENTED },
   // Two segmented controls in one row: the shared label column, then two
   // equal halves each with a compact label of its own.
@@ -713,6 +733,10 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, borderRadius: 9,
   },
+  // Beside a setting instead of under one: it gives up the flex that makes
+  // it span the page and hugs its word, keeping a row's own height so it
+  // lines up with whatever it stands next to.
+  addButtonInline: { flex: 0, height: ROW_SEGMENTED, paddingHorizontal: 12 },
   addButtonPressed: { opacity: 0.7 },
   addLabel: { color: PANEL_INK, fontSize: 14, fontWeight: '600' },
 });
