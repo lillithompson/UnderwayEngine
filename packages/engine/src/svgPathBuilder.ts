@@ -492,90 +492,32 @@ const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 const roundOpacity = (v: number): number => Math.round(v * 1e4) / 1e4;
 
 /**
- * Wrap an SVGObject's finished markup in its whole-object opacity and edge
- * soften — the Opacity bar's two rows. Returns the content unchanged when the
- * object has neither, so the overwhelmingly common case emits nothing new.
+ * Wrap an SVGObject's finished markup in its whole-object opacity — the
+ * Opacity bar's first row. Returns the content unchanged at full opacity, so
+ * the overwhelmingly common case emits nothing new.
  *
  * Both markup builders — the live DOM node layer via
  * {@link buildSVGObjectContent} and the SVG exporter — go through here, the
  * same single-source rule as {@link svgFillPresentation} and
  * {@link svgStrokePresentation}.
  *
- * The soften is a mask whose content is the shape's own silhouette (the
- * corner-rounded outline, filled when closed, stroked at the drawn width)
- * eroded inward and then blurred. The feather depth is `edgeSoften × half the
- * shorter bbox side`; eroding by half of it and blurring the rest (σ = a fifth
- * of the depth, so the 2.5σ tail spans the eroded half) puts the END of the
- * ramp at the original edge — the edge itself is at 0 opacity, fully opaque
- * only a feather-depth in. A plain blur would center the ramp ON the edge and
- * leave it at ~50%. At 0 the mask is the shape itself (hard edges); at 1 the
- * shape fades to transparent toward its edges. A mask — never a filter on the
- * shape itself — so the geometry the stroke and fill draw is untouched, and
- * the filter cost is paid only by objects that opted in. Geometry is in SVG
- * units (both builders' `d` space); the mask and filter regions are stated
- * explicitly in userSpaceOnUse because the defaults resolve against the
- * viewport, not the object (see the alignment mask's caveat in
- * {@link svgStrokePresentation}).
+ * The bar's SECOND row used to be Soften, and this wrapped an eroded,
+ * blurred silhouette mask around the markup for it. The row is Fade now
+ * (engine/fade.ts) and fade is not a mask at all — it moves the colours the
+ * markup is built FROM, before a single path is written — so nothing of it
+ * reaches here. What went with the mask is a `<filter>` on the render path:
+ * a feMorphology and a feGaussianBlur per softened object, which was the
+ * most expensive thing this file could emit.
  */
 export function wrapSVGObjectOpacity(
   obj: SVGObject,
   content: string,
-  strokeScale: number,
+  _strokeScale: number,
 ): string {
   if (!content) return content;
   const alpha = obj.opacity == null ? 1 : clamp01(obj.opacity);
-  const soften = clamp01(obj.edgeSoften ?? 0);
-  if (alpha >= 1 && soften <= 0) return content;
-  const opacityAttr = alpha < 1 ? ` opacity="${roundOpacity(alpha)}"` : '';
-  let defs = '';
-  let maskAttr = '';
-  if (soften > 0 && obj.cellWidth > 0 && obj.cellHeight > 0 && obj.segments.length > 0) {
-    const u = SVG_UNITS_PER_L0_CELL;
-    // The silhouette follows the same corner rounding the stroke draws with.
-    const radius = svgStrokeRadiusCells(obj);
-    const segments = radius > 0 ? roundPathCorners(obj.segments, radius) : obj.segments;
-    const closedD = buildClosedFillPathD(segments);
-    const d = closedD || buildPathD(segments);
-    if (d) {
-      // Stroke width in geometry units so the silhouette covers the stroke.
-      // (The DOM layer's visible stroke is non-scaling — constant screen px —
-      // which a static mask can't track; at base zoom the two agree, and the
-      // mask is only a fade so the mismatch is invisible in practice.)
-      const sw = svgStrokeWidthCells(obj, strokeScale, u) * u;
-      // Feather depth, split between an inward erode and the blur that fades
-      // the eroded half back out to the ORIGINAL edge (see the doc comment).
-      // The erode needs a closed silhouette to eat into; the open-path
-      // fallback (never offered the control) skips it and just blurs.
-      const depth = soften * 0.5 * Math.min(obj.cellWidth, obj.cellHeight) * u;
-      const erode = closedD ? depth / 2 : 0;
-      const sigma = closedD ? depth / 5 : depth / 2;
-      // Region: bbox + stroke overhang + the blur's 3σ tail.
-      const pad = sw / 2 + sigma * 3 + u;
-      const mx = obj.cellX * u - pad;
-      const my = obj.cellY * u - pad;
-      const mw = obj.cellWidth * u + pad * 2;
-      const mh = obj.cellHeight * u + pad * 2;
-      const safe = svgDefIdSafe(obj.id);
-      const filterId = `uw-soften-f-${safe}`;
-      const maskId = `uw-soften-m-${safe}`;
-      const fillAttr = closedD ? ' fill="white"' : ' fill="none"';
-      const erodePrim = erode > 0
-        ? `<feMorphology operator="erode" radius="${roundOpacity(erode)}" />`
-        : '';
-      defs = `<defs><filter id="${filterId}" filterUnits="userSpaceOnUse" `
-        + `x="${mx}" y="${my}" width="${mw}" height="${mh}">`
-        + `${erodePrim}<feGaussianBlur stdDeviation="${roundOpacity(sigma)}" /></filter>`
-        + `<mask id="${maskId}" maskUnits="userSpaceOnUse" `
-        + `x="${mx}" y="${my}" width="${mw}" height="${mh}">`
-        + `<g filter="url(#${filterId})">`
-        + `<path d="${d}"${fillAttr} stroke="white" stroke-width="${sw}" `
-        + `stroke-linecap="round" stroke-linejoin="round" fill-rule="nonzero" /></g>`
-        + `</mask></defs>`;
-      maskAttr = ` mask="url(#${maskId})"`;
-    }
-  }
-  if (!opacityAttr && !maskAttr) return content;
-  return `${defs}<g${opacityAttr}${maskAttr}>${content}</g>`;
+  if (alpha >= 1) return content;
+  return `<g opacity="${roundOpacity(alpha)}">${content}</g>`;
 }
 
 /**

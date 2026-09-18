@@ -38,9 +38,11 @@ describe('submenuHeight (a page’s content area)', () => {
     expect(submenuHeight('opacity')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER]));
   });
 
-  test('the Opacity page drops its Soften row for a selection that fades whole (a word sticker)', () => {
-    expect(submenuHeight('opacity', { opacitySoften: false })).toBe(pageOf([ROW_SLIDER]));
-    expect(submenuHeight('opacity', { opacitySoften: true })).toBe(submenuHeight('opacity'));
+  test('the Opacity page drops its Fade row for a selection with no colour to fade', () => {
+    // A paint island is raster brushwork: no fill, no border, no stroke, so
+    // the row has nothing to interpolate and the page is one slider tall.
+    expect(submenuHeight('opacity', { opacityFade: false })).toBe(pageOf([ROW_SLIDER]));
+    expect(submenuHeight('opacity', { opacityFade: true })).toBe(submenuHeight('opacity'));
   });
 
   test('the Endpoints page is a marker row per end — there is no Caps row to count', () => {

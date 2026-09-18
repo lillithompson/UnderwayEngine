@@ -1,13 +1,19 @@
 /**
- * Tests for the whole-object opacity + edge soften markup (the Opacity bar):
+ * The whole-object opacity markup (the Opacity bar's first row):
  * `wrapSVGObjectOpacity` and its application inside `buildSVGObjectContent`.
  * Both the live DOM layer and the exporter go through the same wrap, so these
- * assert the shared behavior: no-op at the defaults, a group opacity for the
- * Opacity row, a blurred-silhouette mask for the Soften row.
+ * assert the shared behavior: no-op at the default, a group opacity when the
+ * row is set, and nothing else.
+ *
+ * The bar's SECOND row used to be Soften, and this wrap used to carry an
+ * eroded-then-blurred silhouette mask for it — a feMorphology and a
+ * feGaussianBlur per softened object, the most expensive markup this builder
+ * could emit. The row is Fade now: it moves the colours the markup is built
+ * FROM (engine/fade.ts, applied at `svgLocalGeometry`), so nothing of it
+ * reaches the wrap, and a faded shape's markup has no filter in it at all.
  */
 
 import { buildSVGObjectContent, wrapSVGObjectOpacity } from '../svgPathBuilder';
-import { SVG_UNITS_PER_L0_CELL } from '../svgExport';
 import { PathSegment, SVGObject } from '../types';
 
 function line(start: [number, number], end: [number, number]): PathSegment {
@@ -33,9 +39,9 @@ function rect(id: string, extras: Partial<SVGObject> = {}): SVGObject {
 const STROKE_SCALE = 0.2;
 
 describe('wrapSVGObjectOpacity', () => {
-  it('returns the content untouched at the defaults', () => {
+  it('returns the content untouched at the default', () => {
     expect(wrapSVGObjectOpacity(rect('svg_1'), '<path />', STROKE_SCALE)).toBe('<path />');
-    expect(wrapSVGObjectOpacity(rect('svg_1', { opacity: 1, edgeSoften: 0 }), '<path />', STROKE_SCALE))
+    expect(wrapSVGObjectOpacity(rect('svg_1', { opacity: 1 }), '<path />', STROKE_SCALE))
       .toBe('<path />');
   });
 
@@ -44,30 +50,15 @@ describe('wrapSVGObjectOpacity', () => {
     expect(out).toBe('<g opacity="0.5"><path /></g>');
   });
 
-  it('emits an eroded-then-blurred silhouette mask for the Soften row', () => {
-    const out = wrapSVGObjectOpacity(rect('svg_1', { edgeSoften: 0.5 }), '<path />', STROKE_SCALE);
-    expect(out).toContain('mask="url(#uw-soften-m-svg_1)"');
-    expect(out).toContain('<mask id="uw-soften-m-svg_1"');
-    expect(out).toContain('<filter id="uw-soften-f-svg_1"');
-    // Feather depth = soften × half the shorter bbox side, in SVG units. The
-    // erode eats half of it and the blur's 2.5σ tail spans the eroded half
-    // back out — so the ramp ENDS (alpha 0) at the original edge.
-    const round4 = (v: number) => Math.round(v * 1e4) / 1e4;
-    const depth = 0.5 * 0.5 * 3 * SVG_UNITS_PER_L0_CELL;
-    expect(out).toContain(`<feMorphology operator="erode" radius="${round4(depth / 2)}" />`);
-    expect(out).toContain(`<feGaussianBlur stdDeviation="${round4(depth / 5)}" />`);
-    // Regions are explicit userSpaceOnUse boxes (the defaults resolve against
-    // the viewport, which would put the object outside its own mask).
-    expect(out).toContain('maskUnits="userSpaceOnUse"');
-    expect(out).toContain('filterUnits="userSpaceOnUse"');
-    // The silhouette is the filled closed outline, stroked at the drawn width.
-    expect(out).toContain('fill="white"');
-    expect(out).toContain('stroke="white"');
-  });
-
-  it('combines both rows in one wrapping group', () => {
-    const out = wrapSVGObjectOpacity(rect('svg_1', { opacity: 0.25, edgeSoften: 1 }), '<path />', STROKE_SCALE);
-    expect(out).toContain('<g opacity="0.25" mask="url(#uw-soften-m-svg_1)"><path /></g>');
+  it('emits no mask and no filter for a FADED shape — fade is not a mask', () => {
+    // The fade is spent on the colours before the markup exists; by the time
+    // the wrap sees the object there is nothing left of it to express.
+    const out = wrapSVGObjectOpacity(
+      rect('svg_1', { fade: 0.5, fadeColor: { r: 255, g: 255, b: 255 } }), '<path />', STROKE_SCALE,
+    );
+    expect(out).toBe('<path />');
+    expect(out).not.toContain('mask');
+    expect(out).not.toContain('<filter');
   });
 
   it('clamps out-of-range values', () => {
@@ -78,18 +69,13 @@ describe('wrapSVGObjectOpacity', () => {
   it('passes empty content through', () => {
     expect(wrapSVGObjectOpacity(rect('svg_1', { opacity: 0.5 }), '', STROKE_SCALE)).toBe('');
   });
-
-  it('sanitizes the def ids like the stroke-alignment defs do', () => {
-    const out = wrapSVGObjectOpacity(rect('svg a.b', { edgeSoften: 0.5 }), '<path />', STROKE_SCALE);
-    expect(out).toContain('mask="url(#uw-soften-m-svg_a_b)"');
-  });
 });
 
 describe('buildSVGObjectContent with opacity', () => {
-  it('emits legacy markup when the object has neither field', () => {
+  it('emits legacy markup when the object has no opacity', () => {
     const out = buildSVGObjectContent(rect('svg_1'), STROKE_SCALE, 16);
     expect(out).not.toContain('<g opacity');
-    expect(out).not.toContain('uw-soften');
+    expect(out).not.toContain('mask=');
   });
 
   it('wraps the whole drawn markup — fill and stroke fade as one layer', () => {
@@ -106,9 +92,14 @@ describe('buildSVGObjectContent with opacity', () => {
     expect(inner).toContain('stroke="rgb(10,20,30)"');
   });
 
-  it('masks a softened shape', () => {
-    const out = buildSVGObjectContent(rect('svg_1', { edgeSoften: 0.5 }), STROKE_SCALE, 16);
-    expect(out).toContain('mask="url(#uw-soften-m-svg_1)"');
-    expect(out).toContain('<feGaussianBlur');
+  it('never emits a soften filter, whatever the object carries', () => {
+    // Nothing can ask for one any more: the field is gone from the record
+    // and the mask is gone from the builder.
+    const out = buildSVGObjectContent(
+      rect('svg_1', { opacity: 0.5, fade: 1, fillColor: { r: 1, g: 2, b: 3 } }), STROKE_SCALE, 16,
+    );
+    expect(out).not.toContain('feMorphology');
+    expect(out).not.toContain('feGaussianBlur');
+    expect(out).not.toContain('uw-soften');
   });
 });

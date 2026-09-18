@@ -334,14 +334,21 @@ export interface TintModel {
 }
 
 /** Editable whole-object opacity (the Opacity bar): the object's own render
- *  opacity plus how far its edges soften into transparency. Shared by images
- *  and the closed vector shapes (rectangle / circle — see `svgHasOpacity`). */
+ *  opacity, and how far its colours are faded toward one target. Shared by
+ *  images and the closed vector shapes (rectangle / circle — see
+ *  `svgHasOpacity`). */
 export interface OpacityModel {
   /** Whole-object opacity 0…1 (1 = fully opaque). */
   opacity: number;
-  /** Edge soften 0…1: 0 = hard edges, 1 = the object fades to transparent
-   *  toward its edges. */
-  edgeSoften: number;
+  /** How far every colour the object DRAWS — its fill, its stroke, its
+   *  border — is mixed toward {@link OpacityModel.fadeColor}, 0…1. 0 = the
+   *  colours as authored, 1 = all of them at the target. Not an opacity:
+   *  the object stays as solid as it was, so the two rows of the page do
+   *  different things (engine/fade.ts). */
+  fade: number;
+  /** The colour they are mixed toward — what the row's trailing circle
+   *  shows and its picker edits. White until the reader picks otherwise. */
+  fadeColor: RGBLike;
 }
 
 export interface ObjectPropertiesModel {
@@ -766,13 +773,20 @@ export interface ObjectPropertiesModel {
    *  the closed vector shapes (see `svgHasOpacity`). */
   opacityOpen?: boolean;
   onOpacityOpenChange?(open: boolean): void;
-  /** The selection's current opacity + edge soften, seeding the Opacity bar.
-   *  The app resolves absent to the defaults (fully opaque, hard edges) so
-   *  both sliders always have a position to show. */
+  /** The selection's current opacity + fade, seeding the Opacity bar. The app
+   *  resolves absent to the defaults (fully opaque, no fade, a white target)
+   *  so both sliders always have a position to show. */
   objectOpacity?: OpacityModel;
   /** Opacity-bar callback: fires live while dragging (`committed=false`) and
    *  once on release (`committed=true`, one undo step). */
   onObjectOpacity?(opacity: OpacityModel, committed: boolean): void;
+  /** Open the full-screen colour picker on the FADE's target (the same
+   *  picker the top-toolbar colour tool uses) — the Fade row's trailing
+   *  circle. Absent → the page shows no Fade row at all, which is how a
+   *  selection with no fill, border or stroke to fade says so: the same
+   *  "the row exists exactly when the host can serve it" rule the shadow's
+   *  and the border's colour rows keep. */
+  onPickFadeColor?(): void;
   /** Whether the Text styling bar is shown. App-owned so a tap-off dismisses
    *  it before the panel (same as the image effect bars). */
   textStyleOpen?: boolean;

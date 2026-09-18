@@ -110,13 +110,14 @@ describe('v46 shapeKind="polygon" persistence', () => {
     expect(loadedPlain?.shapeKind).toBeUndefined();
   });
 
-  test('polygon tag coexists with fill and the flags4 opacity payload', () => {
+  test('polygon tag coexists with fill and the flags4 opacity and fade payloads', () => {
     const poly = makeSVG('svg_poly', computeRegularPolygonSegments(0, 0, 8, 8, 8), {
       shapeKind: 'polygon',
       fillColor: { r: 10, g: 20, b: 30 },
       fillOpacity: 0.5,
       opacity: 0.75,
-      edgeSoften: 0.25,
+      fade: 0.25,
+      fadeColor: { r: 9, g: 8, b: 7 },
     });
     const data = serializeComposition(makeBundle([poly]), []);
     const { meta } = deserializeComposition(data);
@@ -125,7 +126,8 @@ describe('v46 shapeKind="polygon" persistence', () => {
     expect(loaded?.fillColor).toEqual({ r: 10, g: 20, b: 30 });
     expect(loaded?.fillOpacity).toBeCloseTo(0.5, 2);
     expect(loaded?.opacity).toBeCloseTo(0.75, 2);
-    expect(loaded?.edgeSoften).toBeCloseTo(0.25, 2);
+    expect(loaded?.fade).toBeCloseTo(0.25, 2);
+    expect(loaded?.fadeColor).toEqual({ r: 9, g: 8, b: 7 });
   });
 
   test('rectangle and polygon tags do not cross wires', () => {

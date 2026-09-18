@@ -595,9 +595,11 @@ describe('the panel drives the sheet', () => {
     expect(PANEL).toContain("{ key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },");
     expect(PANEL).toContain("{ key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },");
     expect(PANEL).toContain(": model.showInvert ? [...(cardable ? (['card'] as const) : []), 'shadow', 'opacity']");
-    // A sticker's opacity is its ink alpha, so the page drops Soften — as
-    // plain text's does, for the same reason.
-    expect(PANEL).toContain('!model.showInvert && !model.showTextStyle');
+    // A sticker's opacity is its ink alpha, and its ink is its card
+    // scheme's rather than a colour of its own — so its Opacity page is one
+    // row: the host offers no fade picker for it, and the panel counts and
+    // renders the second row on exactly that.
+    expect(PANEL).toContain('showFade={!!model.onPickFadeColor}');
     // Its card scheme IS its colour, so Word leads its own tab row, and
     // the shared pages follow in the order every other type lists them.
     const sticker = PANEL.slice(PANEL.indexOf('} else if (model.showInvert) {'));
@@ -616,13 +618,22 @@ describe('the panel drives the sheet', () => {
     expect(PANEL).toContain('setLocalSub(isLocalSubmenu(key) ? key : null);');
     expect(PANEL).toContain('if (isLocalSubmenu(key)) { dismissHostSubmenus(); return; }');
     expect(PANEL).toContain("(localSub === 'card' && !cardable)");
-    // Opacity: the page an image opens, kept open for a sticker, its Soften
-    // row dropped and its height counted without it.
+    // Opacity: the page an image opens, kept open for a sticker. Its second
+    // row is FADE now (the Soften it replaced was a mask; this moves the
+    // colours the object draws with — engine/fade.ts), and it stands exactly
+    // when the host can serve its picker, with its height counted on the
+    // same rule.
     expect(PANEL).toContain('model.showRigOptions || model.showInvert || model.showTextStyle;');
-    expect(PANEL).toContain('showSoften={!model.showInvert && !model.showTextStyle}');
-    expect(PANEL).toContain('opacitySoften: !model.showInvert && !model.showTextStyle,');
+    expect(PANEL).toContain('showFade={!!model.onPickFadeColor}');
+    expect(PANEL).toContain('opacityFade: !!model.onPickFadeColor,');
     const opacity = SRC('components', 'OpacityBar.tsx');
-    expect(opacity).toContain('{showSoften ? (');
+    expect(opacity).toContain('{showFade && onOpenFadePicker ? (');
+    expect(opacity).toContain('label="Fade"');
+    // No Soften CONTROL left (the comment explaining its removal says the
+    // word, which is the one place it belongs).
+    expect(opacity).not.toContain('label="Soften"');
+    expect(opacity).not.toContain('edgeSoften');
+    expect(opacity).not.toContain('showSoften');
   });
 
   it('the Endpoints page carries markers alone — no Caps row, and no plumbing left for one', () => {

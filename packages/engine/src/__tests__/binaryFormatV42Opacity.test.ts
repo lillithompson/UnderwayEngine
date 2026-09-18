@@ -1,10 +1,13 @@
 /**
- * Tests for the v42 binary format extension: whole-object opacity + edge
- * soften (the Opacity bar). SVG records carry both as a two-byte payload
- * behind flags4 bit 0x08; image records already persist `opacity`, so only
- * `edgeSoften` is new there (one byte behind image flags2 bit 0x04). Verifies
- * the round-trips, that defaults stay absent (untouched records don't grow),
- * and that the payloads coexist with the other optional blocks.
+ * Tests for the v42 binary format extension: whole-object opacity (the
+ * Opacity bar's first row), an SVG record's one byte behind flags4 bit 0x08.
+ * Verifies the round-trip, that the default stays absent (an untouched record
+ * doesn't grow), and that the payload coexists with the other optional blocks.
+ *
+ * It carried a SECOND byte through v61 — the edge soften the Fade row
+ * replaced. The reader still steps over that byte in an OLDER file and throws
+ * it away, which is the compatibility case pinned at the bottom of this file;
+ * the fade that stands in its place has its own (binaryFormatV62Fade).
  *
  * Mirrors binaryFormatV41Endpoints.test.ts for the endpoints byte.
  */
@@ -61,44 +64,28 @@ function roundTrip(svgObjects: SVGObject[], images: ImageObject[] = []) {
 }
 
 describe('v42 SVG whole-object opacity round-trip', () => {
-  it('preserves opacity and edgeSoften together', () => {
-    const [out] = roundTrip([makeSVG('svg_1', { opacity: 0.5, edgeSoften: 0.25 })]).svgs;
+  it('preserves the opacity', () => {
+    const [out] = roundTrip([makeSVG('svg_1', { opacity: 0.5 })]).svgs;
     expect(out.opacity).toBeCloseTo(0.5, 2);
-    expect(out.edgeSoften).toBeCloseTo(0.25, 2);
   });
 
-  it('preserves each field on its own, the other staying absent', () => {
-    const [a] = roundTrip([makeSVG('svg_1', { opacity: 0.3 })]).svgs;
-    expect(a.opacity).toBeCloseTo(0.3, 2);
-    expect(a.edgeSoften).toBeUndefined();
-    const [b] = roundTrip([makeSVG('svg_1', { edgeSoften: 0.8 })]).svgs;
-    expect(b.opacity).toBeUndefined();
-    expect(b.edgeSoften).toBeCloseTo(0.8, 2);
-  });
-
-  it('leaves an untouched object with neither field', () => {
+  it('leaves an untouched object without it', () => {
     const [out] = roundTrip([makeSVG('svg_1')]).svgs;
     expect(out.opacity).toBeUndefined();
-    expect(out.edgeSoften).toBeUndefined();
   });
 
-  it('treats the defaults as absent, so an opaque hard-edged record costs nothing', () => {
+  it('treats the default as absent, so an opaque record costs nothing', () => {
     const bare = serializeComposition(makeBundle([makeSVG('svg_1')]), []);
-    const defaulted = serializeComposition(makeBundle([makeSVG('svg_1', {
-      opacity: 1, edgeSoften: 0,
-    })]), []);
+    const defaulted = serializeComposition(makeBundle([makeSVG('svg_1', { opacity: 1 })]), []);
     expect(defaulted.length).toBe(bare.length);
-    const [out] = roundTrip([makeSVG('svg_1', { opacity: 1, edgeSoften: 0 })]).svgs;
+    const [out] = roundTrip([makeSVG('svg_1', { opacity: 1 })]).svgs;
     expect(out.opacity).toBeUndefined();
-    expect(out.edgeSoften).toBeUndefined();
   });
 
-  it('costs exactly two bytes on the wire', () => {
+  it('costs exactly ONE byte on the wire — the soften byte is gone', () => {
     const without = serializeComposition(makeBundle([makeSVG('svg_1')]), []);
-    const with_ = serializeComposition(makeBundle([makeSVG('svg_1', {
-      opacity: 0.5, edgeSoften: 0.5,
-    })]), []);
-    expect(with_.length - without.length).toBe(2);
+    const with_ = serializeComposition(makeBundle([makeSVG('svg_1', { opacity: 0.5 })]), []);
+    expect(with_.length - without.length).toBe(1);
   });
 
   it('survives an opacity of 0 (fully transparent is not "absent")', () => {
@@ -110,12 +97,11 @@ describe('v42 SVG whole-object opacity round-trip', () => {
     const { svgs } = roundTrip([
       makeSVG('svg_1', { opacity: 0.25 }),
       makeSVG('svg_2'),
-      makeSVG('svg_3', { edgeSoften: 1 }),
+      makeSVG('svg_3', { opacity: 1 }),
     ]);
     expect(svgs[0].opacity).toBeCloseTo(0.25, 2);
     expect(svgs[1].opacity).toBeUndefined();
-    expect(svgs[1].edgeSoften).toBeUndefined();
-    expect(svgs[2].edgeSoften).toBe(1);
+    expect(svgs[2].opacity).toBeUndefined();
   });
 
   it('coexists with the other optional SVG blocks it shares a record with', () => {
@@ -123,7 +109,6 @@ describe('v42 SVG whole-object opacity round-trip', () => {
     // is the case that catches the stream falling out of sync.
     const [out] = roundTrip([makeSVG('svg_1', {
       opacity: 0.5,
-      edgeSoften: 0.75,
       endpoints: { startMarker: 'circle', endCap: 'square' },
       fill: {
         type: 'linear',
@@ -140,7 +125,6 @@ describe('v42 SVG whole-object opacity round-trip', () => {
       hidden: true,
     })]).svgs;
     expect(out.opacity).toBeCloseTo(0.5, 2);
-    expect(out.edgeSoften).toBeCloseTo(0.75, 2);
     expect(out.endpoints).toEqual({ startMarker: 'circle', endCap: 'square' });
     expect(out.fill?.blend).toBe('multiply');
     expect(out.stroke).toEqual({ width: 0.375, dash: 3 });
@@ -153,57 +137,18 @@ describe('v42 SVG whole-object opacity round-trip', () => {
   });
 });
 
-describe('v42 image edgeSoften round-trip', () => {
-  it('preserves edgeSoften alongside the existing opacity byte', () => {
-    const [out] = roundTrip([], [makeImage('img_1', { opacity: 0.5, edgeSoften: 0.25 })]).images;
-    expect(out.opacity).toBeCloseTo(0.5, 2);
-    expect(out.edgeSoften).toBeCloseTo(0.25, 2);
-  });
-
-  it('preserves edgeSoften on its own', () => {
-    const [out] = roundTrip([], [makeImage('img_1', { edgeSoften: 1 })]).images;
-    expect(out.opacity).toBeUndefined();
-    expect(out.edgeSoften).toBe(1);
-  });
-
-  it('leaves an untouched image with no field and no extra bytes', () => {
-    const [out] = roundTrip([], [makeImage('img_1')]).images;
-    expect(out.edgeSoften).toBeUndefined();
-    const bare = serializeComposition(makeBundle([], [makeImage('img_1')]), []);
-    const defaulted = serializeComposition(makeBundle([], [makeImage('img_1', { edgeSoften: 0 })]), []);
-    expect(defaulted.length).toBe(bare.length);
-  });
-
-  it('costs exactly one byte on the wire', () => {
-    const without = serializeComposition(makeBundle([], [makeImage('img_1')]), []);
-    const with_ = serializeComposition(makeBundle([], [makeImage('img_1', { edgeSoften: 0.5 })]), []);
-    expect(with_.length - without.length).toBe(1);
-  });
-
-  it('coexists with the other optional image blocks in the flags2 section', () => {
-    // edgeSoften is written after the tintFill block — the case that catches
-    // the stream falling out of sync.
-    const [out] = roundTrip([], [makeImage('img_1', {
-      edgeSoften: 0.5,
-      originalImageId: 'orig_1',
-      tintFill: {
-        type: 'radial',
-        solid: { r: 10, g: 20, b: 30 },
-        stops: [
-          { offset: 0, color: { r: 0, g: 0, b: 0 } },
-          { offset: 1, color: { r: 255, g: 255, b: 255 } },
-        ],
-        angle: 45, opacity: 0.6, blend: 'soft-light',
-      },
-      cornerRadius: 0.25,
-      framing: { mode: 'fill', zoom: 1.5 },
-    })]).images;
-    expect(out.edgeSoften).toBeCloseTo(0.5, 2);
-    expect(out.originalImageId).toBe('orig_1');
-    expect(out.tintFill?.type).toBe('radial');
-    expect(out.tintFill?.blend).toBe('soft-light');
-    expect(out.cornerRadius).toBeCloseTo(0.25);
-    expect(out.framing?.zoom).toBeCloseTo(1.5);
-    expect(out.cellWidth).toBeCloseTo(4);
+describe('the soften byte an older file still carries', () => {
+  // v42â€“v61 wrote the edge soften after the opacity byte. The Fade row
+  // replaced that control, so the byte is STEPPED OVER rather than parsed:
+  // skipping it is what keeps the blocks after it in the record landing
+  // where they should. A shape saved softened opens with hard edges â€” the
+  // one visible cost of the removal â€” and its Fade row is free.
+  it('is not written any more, and nothing carries it into the scene', () => {
+    const [out] = roundTrip([makeSVG('svg_1', { opacity: 0.5 })]).svgs;
+    expect(out).not.toHaveProperty('edgeSoften');
+    // An image record's soften bit goes the same way: never set, and its one
+    // byte stepped over in an older file.
+    const [img] = roundTrip([], [makeImage('img_1', { opacity: 0.5 })]).images;
+    expect(img).not.toHaveProperty('edgeSoften');
   });
 });

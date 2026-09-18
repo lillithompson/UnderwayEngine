@@ -156,9 +156,10 @@ export interface SubmenuHeightContext {
   tintType?: TintType;
   /** Crop page: each framing mode brings its own rows. */
   cropMode?: ImageFramingMode;
-    /** Opacity page: whether it shows the Soften row under Opacity (default
-   *  true). A word sticker fades as a whole and offers no soften. */
-  opacitySoften?: boolean;
+  /** Opacity page: whether it shows the Fade row under Opacity (default
+   *  true). A kind with no fill, border or stroke has nothing to fade — a
+   *  paint island is raster brushwork — and drops it. */
+  opacityFade?: boolean;
   /** Fill page: whether it shows the hue row above Opacity — exactly when the
    *  host offers a fill colour to write. */
   svgFillColor?: boolean;
@@ -300,7 +301,7 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // The Replace button and the picture's corner Radius.
       return contentArea([ROW_SEGMENTED, ROW_SLIDER]);
     case 'opacity':
-      return contentArea(ctx.opacitySoften === false ? [ROW_SLIDER] : [ROW_SLIDER, ROW_SLIDER]);
+      return contentArea(ctx.opacityFade === false ? [ROW_SLIDER] : [ROW_SLIDER, ROW_SLIDER]);
     case 'background':
       // The frame's fill: one hue row.
       return contentArea([ROW_SLIDER]);

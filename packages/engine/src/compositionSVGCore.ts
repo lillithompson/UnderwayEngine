@@ -9,6 +9,7 @@
 import { CompItemKind, CompositionFigure, CompositionState, FileConfig, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
 import { patternSVGView } from './patternObjectRender';
 import { patternLocalObject, svgLocalGeometry } from './sceneDrawnContent';
+import { fadedImageObject, fadedTextStyle } from './fade';
 import {
   LegacyLeaf, SceneGraph, SceneNode, fromLegacy, graphDescribes, leafNodeFromLegacy, worldMatrix,
 } from './sceneGraph';
@@ -528,7 +529,13 @@ const FALLBACK_FAMILY_STACK = "system-ui, -apple-system, &apos;Segoe UI&apos;, s
  * changes paint only, so the layout and the framing math still agree.
  */
 function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBColor): string {
-  const style = text.style;
+  // The style as it is DRAWN: the Fade row's mix applied to the ink, to every
+  // per-character brush colour and to the outline stroke before any of them
+  // reaches the markup (engine/fade.ts). Same object back when there is no
+  // fade, which is every text that has never visited the row. A
+  // `colorOverride` outranks it below, as it outranks the authored ink —
+  // that export is repainting the page for a backdrop it never had.
+  const style = fadedTextStyle(text.style);
   // `text` is the node spelled in its OWN space (`sceneHitFrame.localHitObject`):
   // its box is at the origin and it carries no pose channels at all, so the
   // card and the type are laid out here and the caller's single `matrix()`
@@ -1336,17 +1343,23 @@ export async function generateCompositionSVGCore(
     ? input.rasterLongEdgePx / frameLongEdge
     : null;
 
-  for (const img of images) {
+  for (const raw of images) {
     if (cancelled?.()) return null;
+    // The image as it is DRAWN: its own pixels are not a colour parameter
+    // and are untouched, but the tint it is painted with and the border
+    // round it are, so both are mixed toward the Fade row's target before
+    // any markup is written (engine/fade.ts). Same object back when there
+    // is no fade, which is every image that has never visited the row.
+    const img = fadedImageObject(raw);
     // The image's LOCAL frame, placed by one matrix (P5 of
     // docs/transform-refactor.md). The content below was already drawn
     // into a local [0, 0, iw, ih] — its framing, border, rounded-corner
-    // clip, tint and soften mask all measure from that origin — so the
-    // whole of it now scales with the node the way NodeLayer's element
-    // does, and the ImageFraming lengths (the Fit letterbox `margin`, the
-    // Tile `tileGap`, the offsets) come along for free instead of staying
-    // at their authored size inside a grown box.
-    const pose = exportPose(graph, 'image', img);
+    // clip and tint all measure from that origin — so the whole of it now
+    // scales with the node the way NodeLayer's element does, and the
+    // ImageFraming lengths (the Fit letterbox `margin`, the Tile
+    // `tileGap`, the offsets) come along for free instead of staying at
+    // their authored size inside a grown box.
+    const pose = exportPose(graph, 'image', raw);
     const iw = pose.box.width * U;
     const ih = pose.box.height * U;
     // Real exports prefer the higher-res original; thumbnails/previews keep
@@ -1460,40 +1473,12 @@ export async function generateCompositionSVGCore(
         ` preserveAspectRatio="none" style="mix-blend-mode:${paintBlendCss(po.blend) ?? 'normal'}"${ovClipAttr}/>`;
       tintedContent = `<g style="isolation:isolate">${tintedContent}${overlay}</g>`;
     }
-    // v42 edge soften: an eroded-then-blurred silhouette mask over the framed
-    // content — a white rect of the (rounded) frame, eroded inward by half
-    // the feather depth (`edgeSoften × half the shorter side`) and blurred by
-    // a fifth of it, so the ramp's 2.5σ tail ENDS at the frame edge: the edge
-    // is at 0 opacity, fully opaque a feather-depth in (a plain blur would
-    // leave the edge at ~50%; same math as wrapSVGObjectOpacity for shapes).
-    // A mask (not a filter on the content) so the bitmap itself is untouched;
-    // regions are explicit userSpaceOnUse boxes in the image's LOCAL frame
-    // because the defaults resolve against the viewport (see the
-    // stroke-alignment mask's caveat in svgPathBuilder).
-    let softenDefs = '';
-    let softenAttr = '';
-    const soften = img.edgeSoften != null ? Math.max(0, Math.min(1, img.edgeSoften)) : 0;
-    if (soften > 0 && iw > 0 && ih > 0) {
-      const depth = soften * 0.5 * Math.min(iw, ih);
-      const erode = depth / 2;
-      const sigma = depth / 5;
-      const pad = sigma * 3 + U;
-      const softenFilterId = `softenf_${img.id}`;
-      const softenMaskId = `softenm_${img.id}`;
-      const region = `x="${-pad}" y="${-pad}" width="${iw + 2 * pad}" height="${ih + 2 * pad}"`;
-      const rxAttr = cornerR > 0 ? ` rx="${cornerR}" ry="${cornerR}"` : '';
-      softenDefs = `<defs><filter id="${softenFilterId}" filterUnits="userSpaceOnUse" ${region}>`
-        + `<feMorphology operator="erode" radius="${erode}"/>`
-        + `<feGaussianBlur stdDeviation="${sigma}"/></filter>`
-        + `<mask id="${softenMaskId}" maskUnits="userSpaceOnUse" ${region}>`
-        + `<g filter="url(#${softenFilterId})">`
-        + `<rect x="0" y="0" width="${iw}" height="${ih}"${rxAttr} fill="white"/></g>`
-        + `</mask></defs>`;
-      softenAttr = ` mask="url(#${softenMaskId})"`;
-    }
-    const localContent = opacityAttr || softenAttr
-      ? softenDefs + `<g${opacityAttr}${softenAttr}>${tintedContent}</g>`
-      : tintedContent;
+    // The Opacity page's one wrapper. Its Soften row used to put an
+    // eroded-then-blurred silhouette mask round this — a feMorphology and a
+    // feGaussianBlur per image — and the Fade row that replaced it moves the
+    // tint's and the border's colours instead (engine/fade.ts), long before
+    // any markup is written.
+    const localContent = opacityAttr ? `<g${opacityAttr}>${tintedContent}</g>` : tintedContent;
     const effected = applyNodeEffects(
       localContent, img.effects, img.id,
       { cellX: 0, cellY: 0, cellWidth: pose.box.width, cellHeight: pose.box.height, cornerRadius: img.cornerRadius },
@@ -1528,32 +1513,10 @@ export async function generateCompositionSVGCore(
     const tileImages = `<image x="0" y="0" width="${iw}" height="${ih}"` +
       ` href="${overlayPngDataUri(flat, input.paintColorOverride)}" preserveAspectRatio="none"/>`;
     const opacityAttr = p.opacity != null && p.opacity < 1 ? ` opacity="${p.opacity}"` : '';
-    // Edge soften: the images' eroded-then-blurred silhouette mask, built in
-    // the INNER frame's coordinates so it stays glued to the tiles through
-    // the centering translate below (see the image loop for the ramp math).
-    let softenDefs = '';
-    let softenAttr = '';
-    const soften = p.edgeSoften != null ? Math.max(0, Math.min(1, p.edgeSoften)) : 0;
-    if (soften > 0 && iw > 0 && ih > 0) {
-      const depth = soften * 0.5 * Math.min(iw, ih);
-      const erode = depth / 2;
-      const sigma = depth / 5;
-      const pad = sigma * 3 + U;
-      const softenFilterId = `softenf_${p.id}`;
-      const softenMaskId = `softenm_${p.id}`;
-      const region = `x="${-pad}" y="${-pad}" width="${iw + 2 * pad}" height="${ih + 2 * pad}"`;
-      softenDefs = `<defs><filter id="${softenFilterId}" filterUnits="userSpaceOnUse" ${region}>`
-        + `<feMorphology operator="erode" radius="${erode}"/>`
-        + `<feGaussianBlur stdDeviation="${sigma}"/></filter>`
-        + `<mask id="${softenMaskId}" maskUnits="userSpaceOnUse" ${region}>`
-        + `<g filter="url(#${softenFilterId})">`
-        + `<rect x="0" y="0" width="${iw}" height="${ih}" fill="white"/></g>`
-        + `</mask></defs>`;
-      softenAttr = ` mask="url(#${softenMaskId})"`;
-    }
-    const localContent = opacityAttr || softenAttr
-      ? softenDefs + `<g${opacityAttr}${softenAttr}>${tileImages}</g>`
-      : tileImages;
+    // Opacity alone. A paint island is raster brushwork with no fill,
+    // border or stroke, so it is the one kind with nothing for the Fade row
+    // that replaced Soften to fade (engine/fade.ts).
+    const localContent = opacityAttr ? `<g${opacityAttr}>${tileImages}</g>` : tileImages;
     const paintMarkup = `<g transform="${pose.transform}">${localContent}</g>`;
     elementsById.set(p.id, wrapWithMaskClip(paintMarkup, maskMap, groups, p));
   }

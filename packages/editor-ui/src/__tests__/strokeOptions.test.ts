@@ -73,9 +73,14 @@ describe('a line\'s colour reads on its Stroke page, under Dash', () => {
     expect(row).toContain('accent={rgbCss(color)}');
     expect(row).toContain('value={hue / 360}');
     expect(row).toContain('onColor(withHue(color, Math.max(0, Math.min(360, t * 360))), committed)');
-    // …and the circle at the end shows the colour and opens the picker.
-    expect(row).toContain('onPress={onOpenPicker}');
-    expect(row).toContain('<ColorSwatchFill color={color} />');
+    // …and the circle at the end shows the colour and opens the picker. It
+    // is the shared one (ColorEndButton), since the Fade row ends in the
+    // same circle for the same reason — a row whose far end MEANS a colour.
+    expect(row).toContain('<ColorEndButton label={label} color={color} onPress={onOpenPicker} />');
+    const circle = EFFECT.slice(EFFECT.indexOf('function ColorEndButton('), EFFECT.indexOf('export function ColorSliderRow('));
+    expect(circle).toContain('onPress={onPress}');
+    expect(circle).toContain('<ColorSwatchFill color={color} />');
+    expect(circle).toContain('style={styles.colorEnd}');
     expect(EFFECT).toMatch(/colorEnd: \{\s*width: SLIDER_TRACK,\s*height: SLIDER_TRACK/);
   });
 

@@ -804,13 +804,17 @@ export interface SVGObject {
    *  untouched record stays byte-identical to what it was. Distinct from the
    *  fill layer's own `fill.opacity`, which dims only the interior. */
   opacity?: number;
-  /** Edge soften in [0, 1] — the Opacity bar's Soften row (v42+). 0 /
-   *  undefined = hard edges; the edge itself is always at 0 opacity when set,
-   *  with the fade completing `edgeSoften × half the shorter side` inward (at
-   *  1 the shape fades from its center out). Rendered as an eroded-then-
-   *  blurred silhouette mask (never a live filter on the shape itself); only
-   *  the closed shapes offer the control — see `svgHasOpacity` in editor-ui. */
-  edgeSoften?: number;
+  /** How far every colour this object DRAWS is mixed toward {@link SVGObject.fadeColor},
+   *  0…1 — the Opacity bar's Fade row (v62+), which stands where Soften
+   *  stood. 0 / undefined = untouched, so a record that has never visited
+   *  the row is byte-identical to what it was. A render transform and not
+   *  an edit: the colours underneath are kept, so the slider is reversible
+   *  and one number can fade fill, stroke and border at once, each from its own
+   *  starting value. Alphas are NOT touched — a faded object is as solid
+   *  as it ever was (engine/fade.ts). */
+  fade?: number;
+  /** What the fade mixes toward. Undefined = FADE_DEFAULT_COLOR, white. */
+  fadeColor?: RGBColor;
   /** Direction at creation time. Persists through scaling and rotation
    *  so an H/V line never becomes diagonal after creation. Stripped on
    *  join — only original creation-tool lines carry this. */
@@ -981,13 +985,17 @@ export interface ImageObject {
    *  trace-over use; default (undefined) = fully opaque so older saves
    *  and newly imported images render unchanged. */
   opacity?: number;
-  /** Edge soften in [0, 1] — the Opacity bar's Soften row (v42+). 0 /
-   *  undefined = hard edges; the frame edge itself is always at 0 opacity
-   *  when set, with the fade completing `edgeSoften × half the shorter side`
-   *  inward (at 1 the image fades from its center out). Rendered as a
-   *  gradient / eroded-then-blurred mask over the framed content (following
-   *  any corner rounding), never a live filter. */
-  edgeSoften?: number;
+  /** How far every colour this object DRAWS is mixed toward {@link ImageObject.fadeColor},
+   *  0…1 — the Opacity bar's Fade row (v62+), which stands where Soften
+   *  stood. 0 / undefined = untouched, so a record that has never visited
+   *  the row is byte-identical to what it was. A render transform and not
+   *  an edit: the colours underneath are kept, so the slider is reversible
+   *  and one number can fade tint and border at once, each from its own
+   *  starting value. Alphas are NOT touched — a faded object is as solid
+   *  as it ever was (engine/fade.ts). */
+  fade?: number;
+  /** What the fade mixes toward. Undefined = FADE_DEFAULT_COLOR, white. */
+  fadeColor?: RGBColor;
   /** Shader-time recolor (v29+): applied at draw time from the original
    *  bitmap — zero extra memory, no re-encode. Export bakes the tint
    *  when rasterizing and emits `feColorMatrix` in SVG. */
@@ -1097,8 +1105,6 @@ export interface PaintObject {
   /** Render opacity in [0, 1]; undefined = opaque. The island's ONLY
    *  type-specific edit option (no Stroke/Fill — it is raster brushwork). */
   opacity?: number;
-  /** Edge soften in [0, 1] — rides the shared Opacity bar like images. */
-  edgeSoften?: number;
   locked?: boolean;
   hidden?: boolean;
   groupId?: string;
@@ -1437,6 +1443,16 @@ export interface TextStyle {
   vAlign?: TextVAlign;
   /** Optional outline stroke drawn behind the fill. */
   stroke?: TextStroke;
+  /** How far the text's own colours — its ink, each per-character brush
+   *  colour and its outline stroke — are mixed toward {@link TextStyle.fadeColor},
+   *  0…1: the Opacity bar's Fade row (v62+), which stands where Soften
+   *  stood. 0 / undefined = untouched. Kept HERE rather than on the object
+   *  because the ink and its alpha are style, and one record is one place
+   *  to look. Not an alpha: the fade moves colours and leaves every
+   *  opacity alone (engine/fade.ts). */
+  fade?: number;
+  /** What that fade mixes toward. Undefined = FADE_DEFAULT_COLOR, white. */
+  fadeColor?: RGBColor;
   /**
    * Per-character color overrides (the color tool's brush on text), indexed
    * by code point into `content` (the `Array.from` walk every layout and

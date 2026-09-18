@@ -281,6 +281,30 @@ export function SliderRow({ label, value, apply, readout, accent, checker, onDar
   );
 }
 
+/** The circle a colour-bearing row wears where a slider row reads its
+ *  number: the colour itself, at the thumb's own size so the row's line is
+ *  unbroken, and a press on it opens the host's full picker. Shared by the
+ *  hue row below and by the Fade row, which are the two rows that end in a
+ *  colour rather than a value. */
+function ColorEndButton({ label, color, onPress }: {
+  /** The row's own label, for the spoken name of the button. */
+  label: string;
+  color: RGBLike;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${label} color, open picker`}
+      onPress={onPress}
+      hitSlop={6}
+      style={styles.colorEnd}
+    >
+      <View style={styles.colorEndClip}><ColorSwatchFill color={color} /></View>
+    </Pressable>
+  );
+}
+
 /**
  * A COLOUR row built on the slider's own proportions: the same label
  * column, the same track and thumb, with the hue wheel as its ramp — so
@@ -323,15 +347,51 @@ export function ColorSliderRow({ label, color, onColor, onOpenPicker }: {
             onCommit={(v) => apply(v, true)}
           />
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${label} color, open picker`}
-          onPress={onOpenPicker}
-          hitSlop={6}
-          style={styles.colorEnd}
-        >
-          <View style={styles.colorEndClip}><ColorSwatchFill color={color} /></View>
-        </Pressable>
+        <ColorEndButton label={label} color={color} onPress={onOpenPicker} />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The FADE row: a plain 0–1 amount on the slider's own proportions, ending
+ * in the colour circle the hue row ends in rather than in a number —
+ * because what the far end of this slider MEANS is that colour, and the row
+ * would otherwise say "100%" without ever saying 100% of what.
+ *
+ * One number and one target, and every colour the object draws with is
+ * mixed that far toward the target from its own value (engine/fade.ts): at
+ * 0 nothing moves, at 1 the object is a flat silhouette of the circle. So
+ * the row reads left to right as the thing it does — push this object that
+ * far toward THAT.
+ *
+ * The track keeps the pages' own accent rather than wearing the target: a
+ * fill drawn in the target colour would be invisible at the default (white)
+ * on a near-white sheet, which is the one value every object starts at.
+ */
+export function FadeSliderRow({ label, value, color, apply, onOpenPicker }: {
+  label: string;
+  /** How far toward the target, 0…1. */
+  value: number;
+  /** The target itself — what the trailing circle shows and the picker edits. */
+  color: RGBLike;
+  apply: (t: number, committed: boolean) => void;
+  onOpenPicker: () => void;
+}) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <View style={styles.rowControl}>
+        <View style={styles.rowSlider}>
+          <Slider
+            value={value}
+            accent={CONTROL_ACCENT}
+            trackColor={TRACK}
+            onChange={(v) => apply(v, false)}
+            onCommit={(v) => apply(v, true)}
+          />
+        </View>
+        <ColorEndButton label={label} color={color} onPress={onOpenPicker} />
       </View>
     </View>
   );

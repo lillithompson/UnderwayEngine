@@ -6,7 +6,7 @@
  * The PAINT OBJECTS section is the file's final section (after the v51
  * island count, which is still written but always 0 so the section offsets
  * hold). Per object: id + two flag bytes gating every optional field
- * (name/groupId/preGroupName, opacity/edgeSoften/angleDeg, local and
+ * (name/groupId/preGroupName, opacity/angleDeg, local and
  * identity bboxes, rotation bits, mirrors, locked/hidden), f32 world bbox,
  * f32 tile-space contentRect, then the sparse tiles (f32 origin/span + the
  * v48 paint-overlay payload each). See the v52 changelog comment next to
@@ -72,7 +72,6 @@ function maximalPaint(id = 'pnt_max'): PaintObject {
     groupId: 'grp_1',
     preGroupName: 'Loose Brushwork',
     opacity: 0.75,
-    edgeSoften: 0.5,
     rotation: 270,
     angleDeg: 22.5,
     mirrorH: true,
@@ -153,7 +152,6 @@ describe('v52 paint object round-trip', () => {
     expect(outMax.groupId).toBe('grp_1');
     expect(outMax.preGroupName).toBe('Loose Brushwork');
     expect(outMax.opacity).toBeCloseTo(0.75, 6);
-    expect(outMax.edgeSoften).toBeCloseTo(0.5, 6);
     expect(outMax.rotation).toBe(270);
     expect(outMax.angleDeg).toBeCloseTo(22.5, 6);
     expect(outMax.mirrorH).toBe(true);
@@ -203,7 +201,6 @@ describe('v52 paint object round-trip', () => {
     expect(outMin.groupId).toBeUndefined();
     expect(outMin.preGroupName).toBeUndefined();
     expect(outMin.opacity).toBeUndefined();
-    expect(outMin.edgeSoften).toBeUndefined();
     expect(outMin.rotation).toBeUndefined();
     expect(outMin.angleDeg).toBeUndefined();
     expect(outMin.mirrorH).toBeUndefined();

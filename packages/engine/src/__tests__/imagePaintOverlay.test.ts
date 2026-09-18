@@ -421,11 +421,12 @@ describe('paintOverlay binary round-trip (v48)', () => {
 
   test('absent paintOverlay stays absent, alongside the other flags2 payloads', () => {
     const rt = deserializeComposition(
-      serializeComposition(makeBundle([makeImage({ edgeSoften: 0.5 })]), []),
+      serializeComposition(makeBundle([makeImage({ fade: 0.5, fadeColor: { r: 1, g: 2, b: 3 } })]), []),
     );
     const img = rt.meta.images?.[0];
     expect(img?.paintOverlay).toBeUndefined();
-    expect(img?.edgeSoften).toBeCloseTo(0.5, 2);
+    expect(img?.fade).toBeCloseTo(0.5, 2);
+    expect(img?.fadeColor).toEqual({ r: 1, g: 2, b: 3 });
   });
 });
 

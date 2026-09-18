@@ -21,6 +21,7 @@
 import { SceneNode, mapSegments } from './sceneGraph';
 import { Bbox, Mat2D, matEquals, matUniformScale } from './sceneTransform';
 import { localContentBox } from './sceneHitFrame';
+import { fadedSVGObject } from './fade';
 import type { PatternObject, SVGObject } from './types';
 
 export interface SvgLocalGeometry {
@@ -39,7 +40,9 @@ export interface SvgLocalGeometry {
 const svgGeometry = new WeakMap<SceneNode, { world: Mat2D; content: unknown; out: SvgLocalGeometry }>();
 
 /**
- * An svg's local content, ready for `buildSVGObjectContent`.
+ * An svg's local content, ready for `buildSVGObjectContent` — its geometry
+ * in the node's own space, and its colours as they should be DRAWN (the
+ * Fade row's, see the bottom of this function).
  *
  * A stroke width is a WORLD quantity — 0.3125 cells at the default, an
  * authored width verbatim — and the markup builder draws it in user
@@ -98,7 +101,14 @@ export function svgLocalGeometry(
     if (object.tileOffsetYL0 != null) object.tileOffsetYL0 *= s;
   }
   const out: SvgLocalGeometry = {
-    object, box, scale: s,
+    // …and finally the FADE, applied once, here, where both renderers read
+    // the object they draw from: every colour the markup will paint with —
+    // stroke, subpaths, per-copy overrides, fill and border — mixed toward
+    // the object's fade target (engine/fade.ts). Nothing downstream knows
+    // about fade, which is exactly why the screen and the export cannot
+    // disagree about it. Returns the same object untouched when there is no
+    // fade, so the cache below keeps its identity on the common path.
+    object: fadedSVGObject(object), box, scale: s,
     matrix: { a: world.a / s, b: world.b / s, c: world.c / s, d: world.d / s, e: world.e, f: world.f },
   };
   svgGeometry.set(node, { world, content: source, out });

@@ -117,7 +117,9 @@ const DEFAULT_BORDER_MODEL: BorderModel = {
 const DEFAULT_ROW_COLOR: RGBLike = { r: 255, g: 255, b: 255 };
 // Opacity-page defaults: fully opaque, hard edges — what every object renders
 // as until it visits the page.
-const DEFAULT_OPACITY_MODEL: OpacityModel = { opacity: 1, edgeSoften: 0 };
+const DEFAULT_OPACITY_MODEL: OpacityModel = {
+  opacity: 1, fade: 0, fadeColor: { r: 255, g: 255, b: 255 },
+};
 // Design default framing (Zoom 130%, Margin 14pt, Ratio 1:1, Straighten 0°,
 // Size 46, Spacing 6pt). Lengths in world cells (pt ÷ 16).
 const DEFAULT_FRAMING_MODEL: FramingModel = {
@@ -1114,9 +1116,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     activeBarEl = (
       <OpacityBar
         opacity={opacityForBar}
-        showSoften={!model.showInvert && !model.showTextStyle}
+        // The Fade row exists exactly when the host can serve its picker,
+        // which is how a selection with nothing to fade says so — the same
+        // rule the shadow's and the border's colour rows keep.
+        showFade={!!model.onPickFadeColor}
         onChange={(o) => applyOpacity(o, false)}
         onCommit={(o) => applyOpacity(o, true)}
+        onOpenFadePicker={model.onPickFadeColor ? () => model.onPickFadeColor?.() : undefined}
       />
     );
   } else if (displaySub === 'image') {
@@ -1169,8 +1175,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // down (displaySub) keeps its height, so the sheet drops as it stood.
   const contentHeight = !displaySub ? null : addPage ? emptyEffectHeight() : submenuHeight(displaySub, {
     cropMode: framingForBar.mode,
-    // A word sticker fades as a whole: no Soften row.
-    opacitySoften: !model.showInvert && !model.showTextStyle,
+    // …counted exactly where the page will render it, on that same rule.
+    opacityFade: !!model.onPickFadeColor,
     // Every hue row is counted exactly where its page will render it — the
     // page grows by a slider row when the host has that colour to write.
     svgFillColor: !!model.onSvgFillColor,

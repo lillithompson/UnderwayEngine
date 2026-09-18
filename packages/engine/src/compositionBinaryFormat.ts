@@ -1,5 +1,6 @@
 ﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CellState, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, PatternObject, PatternSymmetry, RGBColor, TextObject, TextStyle, TextAlign, TextVAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
 import { normalizeCanvasPaintIslands } from './canvasPaint';
+import { FADE_DEFAULT_COLOR, hasFade, type FadeSpec } from './fade';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
@@ -499,7 +500,7 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      lost. Older files set no bit and read back with no angle, which is
 //      exactly what they have always meant. See GroupNode.angleDeg and
 //      docs/transform-refactor.md §3.7.
-const FORMAT_VERSION = 61;
+const FORMAT_VERSION = 62;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 const HEADER_SIZE = 8;
@@ -926,12 +927,18 @@ const FLAG3_SVG_HAS_ANGLE = 0x80;
 const FLAG4_SVG_HAS_PATTERN_FILE_ID = 0x01;
 const FLAG4_SVG_HAS_FILL = 0x02; // v40+
 const FLAG4_SVG_HAS_ENDPOINTS = 0x04; // v41+
-const FLAG4_SVG_HAS_OPACITY = 0x08; // v42+ (opacity + edgeSoften, two u8s)
+// v42+ whole-object opacity. It carried a SECOND u8 through v61 — the edge
+// soften the Opacity bar's Fade row replaced (engine/fade.ts) — so a file
+// written before v62 has two bytes here and one from v62 on; the reader
+// gates on the version and throws the old byte away.
+const FLAG4_SVG_HAS_OPACITY = 0x08;
 // v46+ presence flag for shapeKind='polygon' (flags2's rectangle bit 0x40 has
 // no free sibling — flags2 is fully spent — so the polygon tag lives here).
 const FLAG4_SVG_IS_POLYGON = 0x10;
-// v49+: color-tool paint overlay payload present (last in the record).
+// v49+: color-tool paint overlay payload present (second-to-last in the record).
 const FLAG4_SVG_HAS_PAINT_OVERLAY = 0x20;
+// v62+: the Fade row — amount u8 + target r,g,b. Last in the record.
+const FLAG4_SVG_HAS_FADE = 0x40;
 
 // v29+ image rotation-byte bits. The image `flags` byte is fully
 // consumed (0x01..0x80), so tint/effects presence rides the spare high
@@ -1029,9 +1036,14 @@ const IMG_FLAGS2_HAS_ORIGINAL = 0x01;
 // originalImageId block (when present) inside the flags2 section.
 const IMG_FLAGS2_HAS_TINT_FILL = 0x02;
 // v42+: edge soften present; one u8 after the tintFill block.
+// v42â€“v61: the edge soften the Fade row replaced (engine/fade.ts). The
+// current writer never sets it; the reader still steps over its one byte so
+// the blocks after it in an older file land where they should.
 const IMG_FLAGS2_HAS_EDGE_SOFTEN = 0x04;
 // v48+: color-tool paint overlay payload present (last in the record).
 const IMG_FLAGS2_HAS_PAINT_OVERLAY = 0x08;
+// v62+: the Fade row â€” amount u8 + target r,g,b, last in the image section.
+const IMG_FLAGS2_HAS_FADE = 0x10;
 
 // v48 paint-overlay blend byte ⇄ BlendMode. Table order is frozen — append
 // only. The unary modes never reach an overlay but map anyway so an
@@ -1130,6 +1142,8 @@ const TFLAG2_HAS_ALPHA = 0x80;
 // text record (flags2 above is fully spent). Each bit gates a payload that
 // follows the byte, in bit order.
 const TEXT_EXT_HAS_BEND = 0x01;
+// v62+: the Fade row â€” amount u8 + target r,g,b, after the bend payload.
+const TEXT_EXT_HAS_FADE = 0x02;
 
 const TSTYLE_BOLD = 0x01;
 const TSTYLE_ITALIC = 0x02;
@@ -1189,6 +1203,49 @@ const BYTE_TO_TINT_BLEND: ImageTintBlend[] = [
 /** Quantize a [0,1] float to a u8. */
 function quantize255(v: number): number {
   return Math.round(Math.max(0, Math.min(1, v)) * 255) & 0xff;
+}
+
+// â”€â”€ The Fade block (v62+) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//
+// The amount quantized to a u8 like every other 0â€¦1 in this file, then the
+// target's three channels. Four bytes, written only when there IS a fade
+// (`hasFade`), so a record that has never visited the row is byte-identical
+// to what it was before the block existed â€” the same absent-at-default rule
+// the stroke, endpoints and opacity blocks keep.
+//
+// One writer and one reader for every kind that carries the pair (an svg,
+// an image, a text style), because three copies of four bytes is how a
+// format drifts.
+
+/** The block's size, for the size pass. */
+const FADE_BYTES = 4;
+
+/** The fade of `spec`, if it has one. Appends nothing otherwise. */
+function writeFade(out: Uint8Array, pos: number, spec: FadeSpec): number {
+  if (!hasFade(spec)) return pos;
+  out[pos++] = quantize255(spec.fade!);
+  const c = spec.fadeColor ?? FADE_DEFAULT_COLOR;
+  out[pos++] = c.r & 0xff;
+  out[pos++] = c.g & 0xff;
+  out[pos++] = c.b & 0xff;
+  return pos;
+}
+
+/** â€¦and back onto `spec`. A white target stays ABSENT, since white is what
+ *  an undefined `fadeColor` means (fade.FADE_DEFAULT_COLOR) â€” so a
+ *  round-trip of the default target is toEqual-identical to what was
+ *  written. A zero amount leaves the record untouched for the same reason. */
+function readFade(data: Uint8Array, pos: number, spec: FadeSpec): number {
+  const amount = data[pos++];
+  const r = data[pos++];
+  const g = data[pos++];
+  const b = data[pos++];
+  if (amount > 0) {
+    spec.fade = amount / 255;
+    const d = FADE_DEFAULT_COLOR;
+    if (r !== d.r || g !== d.g || b !== d.b) spec.fadeColor = { r, g, b };
+  }
+  return pos;
 }
 
 function paintBinarySize(paint: Paint): number {
@@ -1521,12 +1578,11 @@ function hasSVGEndpoints(e: SVGEndpoints | undefined): e is SVGEndpoints {
   return !!e && packEndpoints(e) !== 0;
 }
 
-/** True when the v42 opacity payload carries anything but defaults (fully
- *  opaque, hard edges) — same absent-at-default rule as the stroke and
- *  endpoints blocks, so untouched records never grow. */
-function hasSVGOpacity(svg: Pick<SVGObject, 'opacity' | 'edgeSoften'>): boolean {
-  return (svg.opacity != null && svg.opacity < 1)
-    || (svg.edgeSoften != null && svg.edgeSoften > 0);
+/** True when the v42 opacity payload carries anything but the default
+ *  (fully opaque) — same absent-at-default rule as the stroke and endpoints
+ *  blocks, so untouched records never grow. */
+function hasSVGOpacity(svg: Pick<SVGObject, 'opacity'>): boolean {
+  return svg.opacity != null && svg.opacity < 1;
 }
 
 function packEndpoints(e: SVGEndpoints): number {
@@ -1589,8 +1645,9 @@ function svgBinarySize(svg: SVGObject): number {
   if (hasSVGStroke(svg.stroke)) size += strokeBinarySize(svg.stroke); // v35+
   if (svg.fill) size += tintFillBinarySize(svg.fill); // v40+
   if (hasSVGEndpoints(svg.endpoints)) size += 1; // v41+
-  if (hasSVGOpacity(svg)) size += 2; // v42+ opacity + edgeSoften
+  if (hasSVGOpacity(svg)) size += 1; // v42+ opacity
   if (svg.paintOverlay) size += paintOverlayBinarySize(svg.paintOverlay); // v49+
+  if (hasFade(svg)) size += FADE_BYTES; // v62+
   return size;
 }
 
@@ -1626,8 +1683,8 @@ function imageBinarySize(img: ImageObject): number {
   size += 1; // v34+ image flags2 byte (always written by the current writer)
   if (img.originalImageId != null) size += 2; // v34+ originalImageId index
   if (img.tintFill) size += tintFillBinarySize(img.tintFill); // v36+
-  if (img.edgeSoften != null && img.edgeSoften > 0) size += 1; // v42+
   if (img.paintOverlay) size += paintOverlayBinarySize(img.paintOverlay); // v48+
+  if (hasFade(img)) size += FADE_BYTES; // v62+
   return size;
 }
 
@@ -1790,6 +1847,7 @@ function writeSVG(
   if (hasSVGOpacity(svg)) flags4 |= FLAG4_SVG_HAS_OPACITY;
   if (svg.shapeKind === 'polygon') flags4 |= FLAG4_SVG_IS_POLYGON;
   if (svg.paintOverlay) flags4 |= FLAG4_SVG_HAS_PAINT_OVERLAY;
+  if (hasFade(svg)) flags4 |= FLAG4_SVG_HAS_FADE;
   out[pos++] = flags4;
 
   let rotBits = ROTATION_TO_BITS[svg.rotation ?? 0] & 0x03;
@@ -1887,16 +1945,18 @@ function writeSVG(
   if (hasSVGEndpoints(svg.endpoints)) {
     out[pos++] = packEndpoints(svg.endpoints);
   }
-  // v42+ whole-object opacity + edge soften. Both quantized to u8 like the
-  // image opacity byte (256 levels is beyond what the eye resolves).
+  // v42+ whole-object opacity, quantized to u8 like the image opacity byte
+  // (256 levels is beyond what the eye resolves). One byte from v62: the
+  // soften that used to follow it is gone.
   if (hasSVGOpacity(svg)) {
     out[pos++] = svg.opacity == null ? 255 : quantize255(Math.max(0, Math.min(1, svg.opacity)));
-    out[pos++] = quantize255(Math.max(0, Math.min(1, svg.edgeSoften ?? 0)));
   }
-  // v49+ color-tool paint overlay, last in the record.
+  // v49+ color-tool paint overlay.
   if (svg.paintOverlay) {
     pos = writePaintOverlay(view, out, pos, svg.paintOverlay);
   }
+  // v62+ the Fade row, last in the record.
+  pos = writeFade(out, pos, svg);
   return pos;
 }
 
@@ -2093,14 +2153,18 @@ function readSVG(
   if (version >= 41 && (flags4 & FLAG4_SVG_HAS_ENDPOINTS)) {
     svg.endpoints = unpackEndpoints(data[pos++]);
   }
-  // v42+ whole-object opacity + edge soften. Same gating argument: flags4 bit
-  // 0x08 was always written 0 before v42. Defaults (255 / 0) stay absent so a
+  // v42+ whole-object opacity. Same gating argument: flags4 bit 0x08 was
+  // always written 0 before v42. The default (255) stays absent so a
   // round-trip is toEqual-identical to what was written.
+  //
+  // v42–v61 wrote a SECOND byte here, the edge soften. The Fade row replaced
+  // that control (engine/fade.ts), so the byte is still STEPPED OVER — the
+  // blocks after it would misparse otherwise — and thrown away: a shape saved
+  // with softened edges opens with hard ones, and its Fade row is free.
   if (version >= 42 && (flags4 & FLAG4_SVG_HAS_OPACITY)) {
     const opByte = data[pos++];
-    const softByte = data[pos++];
+    if (version < 62) pos++;
     if (opByte < 255) svg.opacity = opByte / 255;
-    if (softByte > 0) svg.edgeSoften = softByte / 255;
   }
   // v49+ color-tool paint overlay, last in the record. Same gating argument:
   // flags4 bit 0x20 was always written 0 before v49.
@@ -2108,6 +2172,11 @@ function readSVG(
     const po = readPaintOverlay(view, data, pos);
     svg.paintOverlay = po.overlay;
     pos = po.pos;
+  }
+  // v62+ the Fade row, last in the record. Bit 0x40 was always written 0
+  // before v62.
+  if (version >= 62 && (flags4 & FLAG4_SVG_HAS_FADE)) {
+    pos = readFade(data, pos, svg);
   }
 
   // v25+ "Use as mask" flag (presence-only, no payload)
@@ -2445,11 +2514,10 @@ function writeImage(
   // v34+ image flags2 byte, then the originalImageId string index when present.
   // Written after the v33 blocks; bytes ride the existing image-blob section.
   {
-    const hasSoften = img.edgeSoften != null && img.edgeSoften > 0;
     const flags2 = (img.originalImageId != null ? IMG_FLAGS2_HAS_ORIGINAL : 0)
       | (img.tintFill ? IMG_FLAGS2_HAS_TINT_FILL : 0)
-      | (hasSoften ? IMG_FLAGS2_HAS_EDGE_SOFTEN : 0)
-      | (img.paintOverlay ? IMG_FLAGS2_HAS_PAINT_OVERLAY : 0);
+      | (img.paintOverlay ? IMG_FLAGS2_HAS_PAINT_OVERLAY : 0)
+      | (hasFade(img) ? IMG_FLAGS2_HAS_FADE : 0);
     out[pos++] = flags2;
     if (img.originalImageId != null) {
       view.setUint16(pos, indexOf.get(img.originalImageId) ?? 0, true); pos += 2;
@@ -2458,14 +2526,12 @@ function writeImage(
     if (img.tintFill) {
       pos = writeTintFill(view, out, pos, img.tintFill);
     }
-    // v42+ edge soften, one u8 after the tintFill block.
-    if (hasSoften) {
-      out[pos++] = quantize255(Math.max(0, Math.min(1, img.edgeSoften!)));
-    }
-    // v48+ color-tool paint overlay, last in the record.
+    // v48+ color-tool paint overlay.
     if (img.paintOverlay) {
       pos = writePaintOverlay(view, out, pos, img.paintOverlay);
     }
+    // v62+ the Fade row, last in the image section.
+    pos = writeFade(out, pos, img);
   }
 
   return pos;
@@ -2579,16 +2645,20 @@ function readImage(
       img.tintFill = t.tintFill;
       pos = t.pos;
     }
-    // v42+ edge soften. Bit 0x04 was always written 0 before v42.
-    if (version >= 42 && (flags2 & IMG_FLAGS2_HAS_EDGE_SOFTEN)) {
-      const softByte = data[pos++];
-      if (softByte > 0) img.edgeSoften = softByte / 255;
-    }
-    // v48+ color-tool paint overlay, last in the record.
+    // v42â€“v61 edge soften: stepped over, not kept. Bit 0x04 was always
+    // written 0 before v42 and is never written at all from v62, so this
+    // only fires for an older file â€” which opens with hard edges and a
+    // free Fade row (engine/fade.ts).
+    if (version >= 42 && (flags2 & IMG_FLAGS2_HAS_EDGE_SOFTEN)) pos++;
+    // v48+ color-tool paint overlay.
     if (version >= 48 && (flags2 & IMG_FLAGS2_HAS_PAINT_OVERLAY)) {
       const po = readPaintOverlay(view, data, pos);
       img.paintOverlay = po.overlay;
       pos = po.pos;
+    }
+    // v62+ the Fade row, last in the image section.
+    if (version >= 62 && (flags2 & IMG_FLAGS2_HAS_FADE)) {
+      pos = readFade(data, pos, img);
     }
   }
 
@@ -2667,6 +2737,7 @@ function textBinarySize(text: TextObject): number {
   if (text.style.alpha != null) size += 1;  // v55+ ink opacity u8
   size += 1; // v57+ extension byte, always written
   if (text.style.bend != null) size += 4; // v57+ arc bend f32
+  if (hasFade(text.style)) size += FADE_BYTES; // v62+
   return size;
 }
 
@@ -2791,10 +2862,13 @@ function writeText(
   // each set bit gates a payload after it, in bit order.
   let ext = 0;
   if (text.style.bend != null) ext |= TEXT_EXT_HAS_BEND;
+  if (hasFade(text.style)) ext |= TEXT_EXT_HAS_FADE;
   out[pos++] = ext;
   if (text.style.bend != null) {
     view.setFloat32(pos, text.style.bend, true); pos += 4;
   }
+  // v62+ the Fade row, after the bend.
+  pos = writeFade(out, pos, text.style);
 
   return pos;
 }
@@ -2938,6 +3012,11 @@ function readText(
     const ext = data[pos++];
     if (ext & TEXT_EXT_HAS_BEND) {
       style.bend = view.getFloat32(pos, true); pos += 4;
+    }
+    // v62+ the Fade row, after the bend. Bit 0x02 was always written 0
+    // before v62.
+    if (ext & TEXT_EXT_HAS_FADE) {
+      pos = readFade(data, pos, style);
     }
   }
 
@@ -3383,7 +3462,6 @@ function serializeCompositionAt(
     if (p.localCellX != null) flags2 |= 0x01;
     if (p.identityCellX != null) flags2 |= 0x02;
     if (p.angleDeg) flags2 |= 0x04;
-    if (p.edgeSoften != null) flags2 |= 0x08;
     flags2 |= (ROTATION_TO_BITS[p.rotation ?? 0] & 0x03) << 4;
     out[pos++] = flags2;
     if (p.name != null) { view.setUint16(pos, indexOf.get(p.name) ?? 0, true); pos += 2; }
@@ -3410,7 +3488,6 @@ function serializeCompositionAt(
     view.setFloat32(pos, p.contentW, true); pos += 4;
     view.setFloat32(pos, p.contentH, true); pos += 4;
     if (p.opacity != null) { view.setFloat32(pos, p.opacity, true); pos += 4; }
-    if (p.edgeSoften != null) { view.setFloat32(pos, p.edgeSoften, true); pos += 4; }
     if (p.angleDeg) { view.setFloat32(pos, p.angleDeg, true); pos += 4; }
     view.setUint16(pos, p.tiles.length, true); pos += 2;
     for (const tile of p.tiles) {
@@ -3583,7 +3660,6 @@ function paintObjectBinarySize(p: PaintObject): number {
   if (p.localCellX != null) size += 16;
   if (p.identityCellX != null) size += 16;
   if (p.opacity != null) size += 4;
-  if (p.edgeSoften != null) size += 4;
   if (p.angleDeg) size += 4;
   size += 2; // tileCount
   for (const tile of p.tiles) size += 12 + paintOverlayBinarySize(tile.overlay);
@@ -4074,7 +4150,12 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       p.contentW = view.getFloat32(pos, true); pos += 4;
       p.contentH = view.getFloat32(pos, true); pos += 4;
       if (flags & 0x80) { p.opacity = view.getFloat32(pos, true); pos += 4; }
-      if (flags2 & 0x08) { p.edgeSoften = view.getFloat32(pos, true); pos += 4; }
+      // v52â€“v61 edge soften: stepped over, not kept. A paint island is raster
+      // brushwork with no fill, border or stroke, so it is the one kind the
+      // Fade row that replaced Soften has nothing to offer (engine/fade.ts) â€”
+      // its Opacity page is one row now. The current writer never sets bit
+      // 0x08, so this only fires for an older file.
+      if (flags2 & 0x08) { pos += 4; }
       if (flags2 & 0x04) { p.angleDeg = view.getFloat32(pos, true); pos += 4; }
       const tileCount = view.getUint16(pos, true); pos += 2;
       const tiles: CanvasPaintIsland[] = [];
