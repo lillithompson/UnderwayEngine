@@ -27,6 +27,7 @@ import {
 } from './sceneTransform';
 import { arcBoundingBox } from './compositionArcHitTest';
 import type { Bbox } from './transform2d';
+import { bboxToCells } from './transform2d';
 import { contentBoxCells } from './textLayout';
 import type {
   CompItemKind, CompositionFigure, CompositionState, GroupNode, ImageObject,
@@ -362,6 +363,20 @@ export function pathBbox(segments: readonly PathSegment[]): Bbox {
   const bb = arcBoundingBox(segments);
   if (!bb) return { x: 0, y: 0, width: 0, height: 0 };
   return { x: bb.minX, y: bb.minY, width: bb.maxX - bb.minX, height: bb.maxY - bb.minY };
+}
+
+/** The same measure as {@link pathBbox}, under the CELL names the legacy
+ *  arrays use — a leaf's stored `cellX/Y/Width/Height`.
+ *
+ *  Deliberately a rename of `pathBbox` and not a second reading of the same
+ *  arcs: a node's local box and the leaf's stored box have to be the one
+ *  measure, or a round trip through the arrays resizes the path it is
+ *  spelling. Lived in `compositionOps` until the P7 split, which needed it
+ *  from two of the modules it cut out. */
+export function computeSVGBbox(
+  segments: ReadonlyArray<PathSegment>,
+): { cellX: number; cellY: number; cellWidth: number; cellHeight: number } {
+  return bboxToCells(pathBbox(segments));
 }
 
 /** AABB of a path's vertices — arc bulge is NOT accounted for. Cheaper
