@@ -12,7 +12,7 @@ import { patternLocalObject, svgLocalGeometry } from './sceneDrawnContent';
 import {
   LegacyLeaf, SceneGraph, SceneNode, fromLegacy, graphDescribes, leafNodeFromLegacy, worldMatrix,
 } from './sceneGraph';
-import { localContentBox, localHitObject } from './sceneHitFrame';
+import { leafHitFrame, localContentBox, localHitObject } from './sceneHitFrame';
 import {
   Bbox, Mat2D, axisScaleSplit, localMatrix, matApplyBbox, matApplyPoint, matMul, matTranslate,
   matrixString,
@@ -1159,9 +1159,6 @@ export async function generateCompositionSVGCore(
     if (r.maxY > maxCY) maxCY = r.maxY;
   };
 
-  for (const f of framed.figures) {
-    accept(f, f.cellX, f.cellY, f.cellX + f.cellWidth, f.cellY + f.cellHeight);
-  }
   // Cutouts and ink-framed exports frame on the INKED extent: a stroke is
   // centered on its path, so a tight geometric frame slices the outermost
   // strokes down their length (a horizontal line along the top of the bbox
@@ -1181,6 +1178,15 @@ export async function generateCompositionSVGCore(
     return { minX: b.x, minY: b.y, maxX: b.x + b.width, maxY: b.y + b.height };
   };
 
+  for (const f of framed.figures) {
+    // The node's own box through its matrix, like every other kind. The old
+    // reading took the stored world rect, which is the nearest UPRIGHT
+    // rectangle around a figure inside a group that has been stretched off
+    // its axes — the one pose a figure's own fields cannot spell (plan Q1).
+    const pose = exportPose(graph, 'figure', f);
+    const r = drawnRect(pose.world, 0, 0, pose.box.width, pose.box.height);
+    accept(f, r.minX, r.minY, r.maxX, r.maxY);
+  }
   for (const entry of overlay.length > 0 ? [...framed.svgObjects, ...overlay] : framed.svgObjects) {
     // Measured in the node's own space and carried out by its matrix, the
     // way it is drawn. A pattern hands over the view baked in its local box;
@@ -1555,6 +1561,28 @@ export async function generateCompositionSVGCore(
   for (const fig of figures) {
     if (cancelled?.()) return null;
 
+    const figPose = exportPose(graph, 'figure', fig);
+    // A figure draws in its CONTENT frame — its box at the origin, its quads
+    // as they are stored — which is the frame the hit test already measures
+    // one in (`quadSpinDeg`), and `frame.toNode` is the way back out of it.
+    //
+    // What goes onto the matrix and what stays on the object is the whole of
+    // this: the MIRRORS are pose, so they go, and the builders would
+    // otherwise apply them a second time. The quarter `rotation` STAYS,
+    // because for a figure that is not a pose at all but an instruction about
+    // CONTENT — which way to lay the cached art into a box whose width and
+    // height the same quarter has already swapped. `toNode` divides that
+    // quarter back out of the frame and the world matrix puts it on again, so
+    // the two cancel and the builder's turn is the only one left.
+    const figFrame = leafHitFrame(figPose.node, figPose.world);
+    const figTransform = matrixString(matMul(figPose.world, figFrame.toNode), U);
+    const localFig: CompositionFigure = {
+      ...fig,
+      cellX: 0, cellY: 0,
+      cellWidth: figFrame.box.width, cellHeight: figFrame.box.height,
+      mirrorH: false, mirrorV: false,
+    };
+
     let content: string | null = null;
 
     if (fig.fileId) {
@@ -1577,19 +1605,17 @@ export async function generateCompositionSVGCore(
         };
 
         content = fig.tileMode === 'repeat'
-          ? buildBlockSVGContent(fig, cached, effectiveStrokeScale, true)
-          : buildFigureSVGContent(fig, cached, effectiveStrokeScale);
+          ? buildBlockSVGContent(localFig, cached, effectiveStrokeScale, true)
+          : buildFigureSVGContent(localFig, cached, effectiveStrokeScale);
       }
     }
 
     if (!content && input.loadBakedFigurePng) {
       const dataUri = await input.loadBakedFigurePng(fig);
       if (dataUri) {
-        const fx = fig.cellX * U;
-        const fy = fig.cellY * U;
-        const fw = fig.cellWidth * U;
-        const fh = fig.cellHeight * U;
-        const imageSvg = `<image x="${fx}" y="${fy}" width="${fw}" height="${fh}" ` +
+        const fw = figFrame.box.width * U;
+        const fh = figFrame.box.height * U;
+        const imageSvg = `<image x="0" y="0" width="${fw}" height="${fh}" ` +
           `href="${dataUri}" preserveAspectRatio="none"/>`;
         content = wrapWithColorOverride(imageSvg, fig);
       }
@@ -1603,13 +1629,14 @@ export async function generateCompositionSVGCore(
     if (bg) {
       const { r, g, b } = bg.fillColor;
       const oa = bg.fillOpacity != null && bg.fillOpacity < 1 ? ` fill-opacity="${bg.fillOpacity}"` : '';
-      bgRect = `<rect x="${fig.cellX * U}" y="${fig.cellY * U}" ` +
-        `width="${fig.cellWidth * U}" height="${fig.cellHeight * U}" ` +
+      bgRect = `<rect x="0" y="0" ` +
+        `width="${figFrame.box.width * U}" height="${figFrame.box.height * U}" ` +
         `fill="rgb(${r},${g},${b})"${oa} stroke="none" />`;
     }
 
     if (content || bgRect) {
-      elementsById.set(fig.id, wrapWithMaskClip(bgRect + (content ?? ''), maskMap, groups, fig));
+      const figMarkup = `<g transform="${figTransform}">${bgRect}${content ?? ''}</g>`;
+      elementsById.set(fig.id, wrapWithMaskClip(figMarkup, maskMap, groups, fig));
     }
   }
 

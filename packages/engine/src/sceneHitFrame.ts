@@ -92,6 +92,18 @@ export interface NodeHitFrame {
   readonly object: LegacyLeaf;
   /** The node's world AABB: a cheap reject before anything is mapped. */
   readonly aabb: Bbox;
+  /**
+   * The frame's own space → the node's LOCAL space: the way OUT, for a
+   * caller that draws the frame's content rather than testing a point in
+   * it. `matMul(world, toNode)` carries `object` to the page.
+   *
+   * The identity for every kind but a quarter-turned figure, whose quads
+   * are stored a quarter away from the frame `localBox` names — see
+   * {@link quadSpinDeg}. Its exact inverse is the second half of
+   * {@link toLocal}, so a drawer and a tester cannot disagree about where
+   * the content sits.
+   */
+  readonly toNode: Mat2D;
   /** A world point, in the frame. */
   toLocal(x: number, y: number): [number, number];
   /** World length → frame length, the inverse of the matrix's uniform
@@ -139,22 +151,28 @@ function buildLeafHitFrame(node: SceneNode, world: Mat2D): NodeHitFrame {
 
   let inv: Mat2D;
   try { inv = matInvert(world); } catch { inv = MAT_IDENTITY; }
-  // Local frame → content frame: turn about the local box's centre, then
-  // seat the turned box's own corner at the origin. Null whenever
-  // `spinDeg` is 0, which is every kind but a quarter-turned figure.
-  const toContent = spinDeg === 0 ? null : matMul(
-    matTranslate(box.width / 2, box.height / 2),
+  // Content frame → local frame: lift the turned box off its own corner,
+  // turn the quarter back out, and seat it on the local box's centre.
+  // Spelled in this direction because it is the one a DRAWER needs, and
+  // taken back the other way for `toLocal` — a rotation and a translation
+  // is never singular, and one spelling cannot drift from the other.
+  // The identity whenever `spinDeg` is 0, which is every kind but a
+  // quarter-turned figure.
+  const toNode: Mat2D = spinDeg === 0 ? MAT_IDENTITY : matMul(
+    matTranslate(local.x + local.width / 2, local.y + local.height / 2),
     matMul(
-      localMatrix({ ...LOCAL_IDENTITY, rotationDeg: spinDeg }),
-      matTranslate(-(local.x + local.width / 2), -(local.y + local.height / 2)),
+      localMatrix({ ...LOCAL_IDENTITY, rotationDeg: -spinDeg }),
+      matTranslate(-box.width / 2, -box.height / 2),
     ),
   );
+  const toContent = spinDeg === 0 ? null : matInvert(toNode);
 
   return {
     kind: node.kind,
     box,
     object: localHitObject(node, box),
     aabb: matApplyBbox(world, local),
+    toNode,
     toLocal(x: number, y: number): [number, number] {
       const p = matApplyPoint(inv, x, y);
       return toContent ? matApplyPoint(toContent, p[0], p[1]) : p;
