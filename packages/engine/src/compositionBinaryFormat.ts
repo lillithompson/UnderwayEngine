@@ -539,7 +539,24 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      cells bake to an SVGObject view and `fadedSVGObject` is already what
 //      draws it. The bit was always written 0 before, so every v64 file
 //      reads back byte for byte.
-const FORMAT_VERSION = 65;
+// v66: A TEXT CAN BE STRETCHED. `TextObject.stretchX` — how much wider the
+//      glyphs are drawn than their own shape — on the v57 text extension
+//      byte (0x08), one f32 after the shear, written only when the type IS
+//      stretched.
+//
+//      Every other kind takes a group's non-uniform scale into its content:
+//      a path into its points, an image into its box, a pattern into its
+//      bake. A text lays out in its box at its own type size, so a box
+//      pulled twice as wide just re-wraps the same letters — and the view
+//      had nowhere to say otherwise, so it rounded the scale off to
+//      `min(kx, ky)` (sceneGraph.scaleContentLengths). The screen drew
+//      stretched letters through the matrix and the RECORD held
+//      unstretched ones, which is what a DUPLICATE and a reopened page
+//      read: both came back with the stretch gone.
+//
+//      The bit was always written 0 before, and no text anybody has typed
+//      carries a stretch, so every v65 file reads back byte for byte.
+const FORMAT_VERSION = 66;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 const HEADER_SIZE = 8;
@@ -1229,6 +1246,18 @@ const TEXT_EXT_HAS_FADE = 0x02;
 // v63+: the shear â€” one f32, after the fade. It rides the TEXT record, not
 // the style beside it: it is a pose field, like the angle, not ink.
 const TEXT_EXT_HAS_SHEAR = 0x04;
+// v66+: the glyph stretch â€” one f32, after the shear. A pose field too,
+// and the only kind that needs one: see TextObject.stretchX.
+const TEXT_EXT_HAS_STRETCH = 0x08;
+/** The block's size, for the size pass. */
+const STRETCH_BYTES = 4;
+
+/** Is there a stretch to persist? 1 is what an unstretched text means, and
+ *  absent says the same thing, so neither costs a bit or a byte. */
+function hasStretch(text: { stretchX?: number }): boolean {
+  return text.stretchX !== undefined && Number.isFinite(text.stretchX)
+    && text.stretchX > 0 && Math.abs(text.stretchX - 1) > 1e-9;
+}
 
 const TSTYLE_BOLD = 0x01;
 const TSTYLE_ITALIC = 0x02;
@@ -2932,6 +2961,7 @@ function textBinarySize(text: TextObject): number {
   if (text.style.bend != null) size += 4; // v57+ arc bend f32
   if (hasFade(text.style)) size += FADE_BYTES; // v62+
   if (hasShear(text)) size += SHEAR_BYTES; // v63+
+  if (hasStretch(text)) size += STRETCH_BYTES; // v66+
   return size;
 }
 
@@ -3054,6 +3084,7 @@ function writeText(
   if (text.style.bend != null) ext |= TEXT_EXT_HAS_BEND;
   if (hasFade(text.style)) ext |= TEXT_EXT_HAS_FADE;
   if (hasShear(text)) ext |= TEXT_EXT_HAS_SHEAR;
+  if (hasStretch(text)) ext |= TEXT_EXT_HAS_STRETCH;
   out[pos++] = ext;
   if (text.style.bend != null) {
     view.setFloat32(pos, text.style.bend, true); pos += 4;
@@ -3063,6 +3094,8 @@ function writeText(
   // v63+ the shear, after the fade. On the TEXT, not the style beside it:
   // it is a pose field like the angle, not ink.
   pos = writeShear(view, pos, text);
+  // v66+ the glyph stretch, after the shear — the same kind of field.
+  if (hasStretch(text)) { view.setFloat32(pos, text.stretchX!, true); pos += 4; }
 
   return pos;
 }
@@ -3212,6 +3245,11 @@ function readText(
     // neighbours to keep the rule uniform.
     if (version >= 63 && (ext & TEXT_EXT_HAS_SHEAR)) {
       pos = readShear(view, pos, text);
+    }
+    // v66+ the glyph stretch, after the shear. Bit 0x08 was always written
+    // 0 before v66.
+    if (version >= 66 && (ext & TEXT_EXT_HAS_STRETCH)) {
+      text.stretchX = view.getFloat32(pos, true); pos += 4;
     }
   }
 

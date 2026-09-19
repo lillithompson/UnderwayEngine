@@ -1536,6 +1536,27 @@ export interface TextObject {
    *  so an unsheared leaf reads and compares exactly as it always did.
    *  See {@link LocalTransform.shear}. */
   shear?: number;
+  /**
+   * How much WIDER the glyphs are drawn than their own shape — the x
+   * scale the type is stretched by, against a y scale folded into
+   * {@link TextStyle.size}. 1 / undefined = the face's own proportions,
+   * which is every text anyone has typed. v66.
+   *
+   * The one thing a text's box could not say. Every other kind takes a
+   * group's non-uniform scale into its CONTENT — a path into its points,
+   * an image into its box, a pattern into its bake — but a text lays out
+   * in its box at its own type size, so a box pulled twice as wide just
+   * re-wraps the same letters. The view therefore had to round a group's
+   * scale to `min(kx, ky)` and drop the rest: a group stretched sideways
+   * drew stretched letters on screen and un-stretched ones the moment it
+   * was duplicated or reopened (docs/transform-refactor.md Q3).
+   *
+   * Spent between the turn and the box, like {@link shear}: the layout
+   * runs in a box `cellWidth / stretchX` wide and the leaf's own x scale
+   * opens it back out, so the line breaks are the ones the reader sees
+   * and the glyphs carry the stretch.
+   */
+  stretchX?: number;
   mirrorH?: boolean;
   mirrorV?: boolean;
   locked?: boolean;

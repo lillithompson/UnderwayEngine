@@ -405,6 +405,13 @@ interface LegacyPose {
    *  one thing box+angle could never say. See {@link LocalTransform.shear};
    *  absent on every file written before v63 and on every upright pose. */
   shear?: number;
+  /** A TEXT's glyph stretch — how much wider the type is drawn than its
+   *  own shape, against a height already folded into the type size. The
+   *  other thing a box could not say: every other kind takes a non-uniform
+   *  scale into its content, and a text just re-wraps. See
+   *  {@link TextObject.stretchX}; absent before v66 and on every text
+   *  nobody has stretched. */
+  stretchX?: number;
 }
 
 /**
@@ -423,25 +430,45 @@ interface LegacyPose {
  */
 function poseToTransform(p: LegacyPose): { transform: LocalTransform; localBox: Bbox } {
   const content = contentBoxCells(p);
-  const localBox: Bbox = { x: 0, y: 0, width: content.width, height: content.height };
+  // A text's glyph stretch (v66) is the ONE scale a leaf's own transform
+  // carries: the box says how wide the thing lands, and the stretch says
+  // how much of that width is the type being pulled rather than more room
+  // for it. So the local box narrows by it and `sx` opens it back out —
+  // the layout wraps at the narrow width and the glyphs come out stretched,
+  // which is exactly the picture a live group resize draws before anything
+  // is written down. Every other kind, and every text nobody stretched,
+  // goes through here at scale 1 as it always did.
+  const stretch = p.stretchX !== undefined && Number.isFinite(p.stretchX) && p.stretchX > 0
+    ? p.stretchX : 1;
+  const localBox: Bbox = { x: 0, y: 0, width: content.width / stretch, height: content.height };
   const rotationDeg = normalizeDeg((p.rotation ?? 0) + (p.angleDeg ?? 0));
+  // The lean, restated in the transform's units — the inverse of the
+  // conversion `poseFieldsFrom` makes on the way out. A pose field measures
+  // it against the BOX (which carries the size, the transform running at
+  // sx = 1); a transform measures it against its own `sx`, which for a
+  // stretched text is no longer 1. Multiplying it out is what
+  // `localMatrix` does (`kx = shear * sx`), so the two cancel and the world
+  // matrix is the one an unstretched text has always produced.
+  const shear = p.shear ? p.shear / stretch : undefined;
   const linear = localMatrix({
-    ...LOCAL_IDENTITY, rotationDeg,
-    ...(p.shear ? { shear: p.shear } : {}),
+    ...LOCAL_IDENTITY, rotationDeg, sx: stretch,
+    ...(shear ? { shear } : {}),
     ...(p.mirrorH ? { mirrorH: true } : {}),
     ...(p.mirrorV ? { mirrorV: true } : {}),
   });
-  // Put the content box's centre on the world bbox's centre.
+  // Put the content box's centre on the world bbox's centre. Half-extents
+  // are the LOCAL box's, so the linear part (which now carries the stretch)
+  // maps them back onto the stored width.
   const cx = p.cellX + p.cellWidth / 2;
   const cy = p.cellY + p.cellHeight / 2;
-  const hw = content.width / 2, hh = content.height / 2;
+  const hw = localBox.width / 2, hh = localBox.height / 2;
   return {
     localBox,
     transform: {
       tx: cx - (linear.a * hw + linear.c * hh),
       ty: cy - (linear.b * hw + linear.d * hh),
-      sx: 1, sy: 1, rotationDeg,
-      ...(p.shear ? { shear: p.shear } : {}),
+      sx: stretch, sy: 1, rotationDeg,
+      ...(shear ? { shear } : {}),
       ...(p.mirrorH ? { mirrorH: true } : {}),
       ...(p.mirrorV ? { mirrorV: true } : {}),
     },
@@ -1450,18 +1477,41 @@ function renderLegacyLeaf(graph: SceneGraph, node: SceneNode, world: Mat2D): Leg
  * which rebuilds the graph from this view — folds it back into the
  * content, where it stays at scale 1 again. Nothing is counted twice.
  *
- * Type takes the SMALLER axis factor: it cannot be stretched by the
- * legacy renderer, and the smaller factor is the one that keeps it inside
- * a box pulled off-square. A uniform scale, which is what a pinch and a
- * diagonal corner drag produce, is exact. Rendering the glyphs through
- * the matrix — stretched and all — is what the render phase of the
- * refactor brings; this is the view saying the same thing as nearly as
- * it can until then.
+ * Type takes the VERTICAL factor, and the axis RATIO is kept as the
+ * text's own glyph stretch (v66, {@link TextObject.stretchX}). Between
+ * them they say the whole of a non-uniform scale: the type is as tall as
+ * the box got taller, and as much wider than that as the box got wider.
+ *
+ * It used to take `min(kx, ky)` and drop the rest, because a text record
+ * had nowhere to put a stretch — which is why a group pulled sideways drew
+ * stretched letters on screen and un-stretched ones the moment it was
+ * duplicated or the page was reopened: those two read the RECORD, and the
+ * record had rounded the scale off. A uniform scale is unchanged by this:
+ * kx === ky leaves no stretch to store and the type takes the whole of it.
  */
 function scaleContentLengths(leaf: Record<string, unknown>, world: Mat2D): void {
   const t = decomposeMatrix(world);
   const kx = Math.abs(t.sx), ky = Math.abs(t.sy);
   const near1 = (k: number) => Math.abs(k - 1) < 1e-9;
+
+  // Text first, and unconditionally: the stretch has to be RESTATED on
+  // every view, not only when something scaled. A stretched text's node
+  // carries that stretch as its own `sx` for as long as it lives
+  // (poseToTransform), so the view must write back what it reads or the
+  // next write would quietly drop it.
+  const style = leaf.style as TextObject['style'] | undefined;
+  if (style && typeof style.size === 'number') {
+    if (!near1(ky)) {
+      leaf.style = {
+        ...style,
+        size: style.size * ky,
+        ...(style.stroke ? { stroke: { ...style.stroke, width: style.stroke.width * ky } } : {}),
+      };
+    }
+    const stretch = ky > 0 ? kx / ky : 1;
+    leaf.stretchX = Number.isFinite(stretch) && !near1(stretch) ? stretch : undefined;
+  }
+
   if (near1(kx) && near1(ky)) return;
 
   if (leaf.tileMode === 'repeat') {
@@ -1469,17 +1519,5 @@ function scaleContentLengths(leaf: Record<string, unknown>, world: Mat2D): void 
     if (typeof leaf.tileHeightL0 === 'number') leaf.tileHeightL0 *= ky;
     if (typeof leaf.tileOffsetXL0 === 'number') leaf.tileOffsetXL0 *= kx;
     if (typeof leaf.tileOffsetYL0 === 'number') leaf.tileOffsetYL0 *= ky;
-  }
-
-  const style = leaf.style as TextObject['style'] | undefined;
-  if (style && typeof style.size === 'number') {
-    const k = Math.min(kx, ky);
-    if (!near1(k)) {
-      leaf.style = {
-        ...style,
-        size: style.size * k,
-        ...(style.stroke ? { stroke: { ...style.stroke, width: style.stroke.width * k } } : {}),
-      };
-    }
   }
 }

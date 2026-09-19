@@ -228,12 +228,11 @@ function fontSize(svg: string): number {
 
 describe('the text kind lays out in its local box', () => {
   test('a stretched node stretches its glyphs instead of shrinking them', async () => {
-    // The legacy view has no way to say "type stretched": it scales
-    // `style.size` by the SMALLER axis factor and reports a box grown by
-    // both, which for a node pulled off-square is type that does not fill
-    // the box it is in. The layer lays the CONTENT's own style out in the
-    // LOCAL box and lets the matrix stretch the glyphs; the export does
-    // now too.
+    // The layer lays the CONTENT's own style out in the LOCAL box and lets
+    // the matrix stretch the glyphs; the export does too — and since v66
+    // so does the record, which carries the stretch as `stretchX` instead
+    // of rounding the scale off to its smaller axis. That is what makes a
+    // duplicate and a reopened page draw the same letters as the screen.
     const start = withSceneGraph(makeState({ texts: [text()], sceneOrder: ['txt'] }));
     const from = start.graph!.nodes.get('txt')!.transform;
     const stretched = applyCompOps(start, [{
@@ -251,13 +250,19 @@ describe('the text kind lays out in its local box', () => {
     expect(fontSize(withGraph)).toBeCloseTo(2 * U);
     expect(aabbOf(drawnQuad(m, 10, 4)).width / U).toBeCloseTo(30);
 
-    // …where the arrays alone give unstretched type reflowed in a 30-cell
-    // box, which is not what the screen draws.
+    // …and the arrays ALONE now say it too: the record kept the stretch,
+    // so a page rebuilt from it draws the same stretched letters in the
+    // same 30-cell box. (It used to come back as unstretched type reflowed
+    // in that box — the reported duplicate / reopen bug.)
+    expect(stretched.texts![0].stretchX).toBeCloseTo(3);
     const fromArrays = (await generateCompositionSVGCore(
       inputsFor({ ...stretched, graph: undefined }),
     ))!;
-    expect(transformsIn(fromArrays)[0].a).toBeCloseTo(1);
+    const m2 = transformsIn(fromArrays)[0];
+    expect(m2.a).toBeCloseTo(3);
+    expect(m2.d).toBeCloseTo(1);
     expect(fontSize(fromArrays)).toBeCloseTo(2 * U);
+    expect(aabbOf(drawnQuad(m2, 10, 4)).width / U).toBeCloseTo(30);
   });
 });
 
