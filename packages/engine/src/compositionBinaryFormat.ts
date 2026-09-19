@@ -529,7 +529,17 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      Every one of those bits was always written 0 before, and an upright
 //      leaf sets none of them, so a v62 file — which is every page anyone
 //      has ever made — reads back byte for byte.
-const FORMAT_VERSION = 64;
+// v65: A PATTERN CAN FADE. The v62 Fade pair — amount u8 + target r,g,b —
+//      on the pattern record (v54 flags3 0x40), LAST in the record, after
+//      the shear. A pattern object carried an `opacity` and nothing else,
+//      so its properties panel had no Opacity page at all: the one kind
+//      whose colours are its whole content could not be pushed back into
+//      the paper. It fades through the same block, the same writer and the
+//      same reader as an svg, an image and a text, because the pattern's
+//      cells bake to an SVGObject view and `fadedSVGObject` is already what
+//      draws it. The bit was always written 0 before, so every v64 file
+//      reads back byte for byte.
+const FORMAT_VERSION = 65;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 const HEADER_SIZE = 8;
@@ -1355,6 +1365,9 @@ const SHEAR_BYTES = 4;
 // theirs are here.
 /** v54 pattern `flags3`, whose last used bit is `hasStroke` 0x10. */
 const PATTERN_FLAGS3_HAS_SHEAR = 0x20;
+/** v65+: the Fade row on a pattern — the same four bytes every other kind
+ *  spells it in, LAST in the record, after the shear. */
+const PATTERN_FLAGS3_HAS_FADE = 0x40;
 /** v52 paint `flags2`. 0x01 and 0x08 are the retired local-bbox and edge-
  *  soften blocks an older file may still carry, and 0x30 is the rotation
  *  pair, so the first genuinely free bit is 0x40. */
@@ -3696,6 +3709,7 @@ function serializeCompositionAt(
     if (p.allowBorderConnections === false) flags3 |= 0x08;
     if (hasSVGStroke(p.stroke)) flags3 |= 0x10;
     if (hasShear(p)) flags3 |= PATTERN_FLAGS3_HAS_SHEAR;
+    if (hasFade(p)) flags3 |= PATTERN_FLAGS3_HAS_FADE;
     out[pos++] = flags3;
     if (p.name != null) { view.setUint16(pos, indexOf.get(p.name) ?? 0, true); pos += 2; }
     if (p.groupId != null) { view.setUint16(pos, indexOf.get(p.groupId) ?? 0, true); pos += 2; }
@@ -3752,8 +3766,10 @@ function serializeCompositionAt(
         out[pos++] = cell.b;
       }
     }
-    // v63+ the shear, last in the record, after the filled cells.
+    // v63+ the shear, last in the record, after the filled cells…
     pos = writeShear(view, pos, p);
+    // …and v65+ the fade after it.
+    pos = writeFade(out, pos, p);
   }
 
   return out;
@@ -3805,6 +3821,7 @@ function patternObjectBinarySize(p: PatternObject): number {
   if (p.tileOffsetYL0 != null) size += 4;
   if (hasSVGStroke(p.stroke)) size += strokeBinarySize(p.stroke!);
   if (hasShear(p)) size += SHEAR_BYTES; // v63+
+  if (hasFade(p)) size += FADE_BYTES; // v65+
   if (p.symmetry != null) size += 2;
   size += 2; // filledCount
   for (const cell of p.cells) {
@@ -4429,6 +4446,11 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       // 0x20 was always written 0 before v63.
       if (version >= 63 && (flags3 & PATTERN_FLAGS3_HAS_SHEAR)) {
         pos = readShear(view, pos, p);
+      }
+      // v65+ the fade, after the shear. Bit 0x40 was always written 0
+      // before v65.
+      if (version >= 65 && (flags3 & PATTERN_FLAGS3_HAS_FADE)) {
+        pos = readFade(data, pos, p);
       }
       patternObjects.push(p);
     }

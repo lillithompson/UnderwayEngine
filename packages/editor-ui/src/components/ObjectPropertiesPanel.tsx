@@ -438,9 +438,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     : model.showInvert ? [...(cardable ? (['card'] as const) : []), 'shadow', 'opacity']
     : model.showPaintOptions ? ['opacity']
     // A pattern object's pages, in the order its tab row lists them, plus
-    // the Stroke page its baked tile paths share with the vectors.
+    // the Stroke page its baked tile paths share with the vectors and the
+    // Opacity page every kind that draws colour shares.
     : model.showPatternOptions
-      ? [...PATTERN_EDIT_OPTIONS.map((o) => patternActionSubmenu(o.action)), 'stroke' as const]
+      ? [
+          ...PATTERN_EDIT_OPTIONS.map((o) => patternActionSubmenu(o.action)),
+          'stroke' as const,
+          'opacity' as const,
+        ]
     // Vectors and patterns together: the one page they share.
     : model.showStrokeOptions ? ['stroke']
     // A rig's pages — the whole-figure TRANSFORM page, and that alone.
@@ -1471,6 +1476,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // The same Stroke page the vectors get (its open-path form: Width +
     // Dash), pointed at the pattern's own stroke block.
     typeSpecs.push(strokeSpec());
+    // …and the Opacity page every other kind that draws colour offers. A
+    // pattern IS its colours, so both of its rows have something to act
+    // on: Opacity fades the whole tile grid into the page, Fade walks
+    // every cell's ink and the stroke around it toward one target
+    // (engine/fade.ts, applied to the baked view).
+    typeSpecs.push({ key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') });
   } else if (model.showStrokeOptions) {
     // Vectors and pattern objects selected together: every one of them
     // has a stroke and nothing else in common, so the row is Stroke alone

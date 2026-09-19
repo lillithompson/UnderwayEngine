@@ -49,7 +49,12 @@ describe('the rig option set', () => {
     // fading one is not a thing anybody reached this panel to do — it
     // left a two-tab row whose second tab was a slider nobody asked for.
     // The plumbing stands for every other kind that offers the page.
-    expect(SRC).not.toContain("typeSpecs.push({ key: 'opacity'");
+    // Scoped to the rig's own branch: the kinds that DO offer the page
+    // push exactly this spec (a pattern's, next door), so the guard reads
+    // the branch rather than the file.
+    const rig = SRC.slice(SRC.indexOf('} else if (model.showRigOptions) {'),
+      SRC.indexOf('} else if (model.showSvgOptions) {'));
+    expect(rig).not.toContain("key: 'opacity'");
     expect(SRC).not.toContain('RIG_PART_OPTIONS');
   });
 

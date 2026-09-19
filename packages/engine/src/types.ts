@@ -1231,6 +1231,17 @@ export interface PatternObject {
   mirrorV?: boolean;
   /** Whole-object render opacity in [0, 1]; undefined = opaque. */
   opacity?: number;
+  /** How far every colour this pattern DRAWS — each cell's ink and the
+   *  stroke around it — is mixed toward {@link PatternObject.fadeColor},
+   *  0…1. The Opacity page's second row. Undefined / 0 = untouched. A
+   *  render transform, not an edit: the cells keep their own colours, and
+   *  the mix happens on the baked view (engine/fade.ts, applied at
+   *  `sceneDrawnContent.patternLocalGeometry` like every other kind's).
+   *  v65. */
+  fade?: number;
+  /** The colour those colours are mixed TOWARD. Undefined = white
+   *  ({@link FADE_DEFAULT_COLOR}). v65. */
+  fadeColor?: RGBColor;
   /** Per-object stroke overrides — width / dash for the baked tile paths,
    *  the same block SVGObject carries (the Stroke bar authors it). Always
    *  seeded with an explicit world-cell `width` at creation: an authored

@@ -19,6 +19,7 @@ import {
   tintedPatternCell,
 } from '../patternObject';
 import { bakePatternElements, patternSVGView } from '../patternObjectRender';
+import { fadedSVGObject } from '../fade';
 import { gatherConstraints, getRenderedSignature, mirrorCellState } from '../connectivity';
 import { applyCompOps, revertCompOps, findSceneObjectAtCell, SCENE_ADAPTERS } from '../compositionOps';
 import {
@@ -946,6 +947,27 @@ describe('the bake survives a presentation-only edit', () => {
     const cleared = patternSVGView({ ...p })!;
     expect(cleared.angleDeg).toBeUndefined();
     expect(cleared.opacity).toBeUndefined();
+  });
+
+  it('carries the Fade pair, so a pattern fades through the same code as an svg', () => {
+    // A pattern IS its colours, and the Opacity page's second row moves
+    // them. The mix itself belongs to fadedSVGObject, which every draw site
+    // already runs on this view (sceneDrawnContent) — so all the bake owes
+    // the row is to hand the pair along, ON TOP of the cached geometry. The
+    // cells keep their own colours, which is what lets the slider come back
+    // to 0 and give them back exactly.
+    const p = filled();
+    const base = patternSVGView(p)!;
+    const faded = patternSVGView({ ...p, fade: 0.6, fadeColor: { r: 10, g: 20, b: 30 } })!;
+    expect(faded.segments).toBe(base.segments);
+    expect(faded.fade).toBe(0.6);
+    expect(faded.fadeColor).toEqual({ r: 10, g: 20, b: 30 });
+    expect(fadedSVGObject(faded).color).not.toEqual(faded.color);
+    // …and clearing the row leaves nothing of it on the next view.
+    const cleared = patternSVGView({ ...p })!;
+    expect(cleared.fade).toBeUndefined();
+    expect(cleared.fadeColor).toBeUndefined();
+    expect(fadedSVGObject(cleared)).toBe(cleared);
   });
 
   it('still re-bakes when something the bake READS changes', () => {

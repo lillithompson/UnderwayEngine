@@ -83,6 +83,13 @@ function withPatternPresentation(base: SVGObject, p: PatternObject): SVGObject {
   if (p.stroke) view.stroke = p.stroke; else delete view.stroke;
   if (p.angleDeg) view.angleDeg = p.angleDeg; else delete view.angleDeg;
   if (p.opacity != null) view.opacity = p.opacity; else delete view.opacity;
+  // The Fade row rides the view too: the mix is applied to the finished
+  // SVGObject downstream (`fadedSVGObject`, at every draw site), so a
+  // pattern fades through exactly the code every other kind fades through
+  // — and the bake beneath it is untouched, which is why the fade costs
+  // nothing and the cells come back when the slider does.
+  if (p.fade != null) view.fade = p.fade; else delete view.fade;
+  if (p.fadeColor != null) view.fadeColor = p.fadeColor; else delete view.fadeColor;
   if (p.hidden) view.hidden = true; else delete view.hidden;
   if (p.groupId) view.groupId = p.groupId; else delete view.groupId;
   return view;
