@@ -14,28 +14,15 @@
 import { CompositionFigure, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, PathSegment, CompItemKind } from './types';
 import { bakePatternPose } from './patternObject';
 import { lineHitsCell } from './compositionLineHitTest';
-import { arcBoundingBox } from './compositionArcHitTest';
 import { flattenArcSegment } from './compositionArcMath';
 import type { CellBbox } from './transform2d';
+import { offsetPathSegment } from './pathSegmentUtils';
+import { computeSVGBbox } from './sceneGraph';
 
 // Lazy-loaded to break circular dependency with compositionOps.ts
 function getCompositionOps() {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   return require('./compositionOps') as typeof import('./compositionOps');
-}
-
-// ── Inline utilities (to avoid circular imports) ────────────────────
-
-function offsetSeg(seg: PathSegment, dx: number, dy: number): PathSegment {
-  return seg.kind === 'arc'
-    ? { kind: 'arc', start: [seg.start[0] + dx, seg.start[1] + dy], end: [seg.end[0] + dx, seg.end[1] + dy], center: [seg.center[0] + dx, seg.center[1] + dy] }
-    : { kind: 'line', start: [seg.start[0] + dx, seg.start[1] + dy], end: [seg.end[0] + dx, seg.end[1] + dy] };
-}
-
-function svgBbox(segments: ReadonlyArray<PathSegment>): { cellX: number; cellY: number; cellWidth: number; cellHeight: number } {
-  const bb = arcBoundingBox(segments);
-  if (!bb) return { cellX: 0, cellY: 0, cellWidth: 0, cellHeight: 0 };
-  return { cellX: bb.minX, cellY: bb.minY, cellWidth: bb.maxX - bb.minX, cellHeight: bb.maxY - bb.minY };
 }
 
 /** Relative slack on "both axes scaled by the same factor" — the two
@@ -190,11 +177,11 @@ const svgAdapter: GeometryAdapter<SVGObject> = {
   kind: 'svg',
 
   computeBbox(svg) {
-    return svgBbox(svg.segments);
+    return computeSVGBbox(svg.segments);
   },
 
   translate(svg, dx, dy) {
-    const offset = (seg: PathSegment) => offsetSeg(seg, dx, dy);
+    const offset = (seg: PathSegment) => offsetPathSegment(seg, dx, dy);
     const newSegs = Array.isArray(svg.segments) ? svg.segments.map(offset) : [];
     const newLocal = Array.isArray(svg.localSegments) ? svg.localSegments.map(offset) : undefined;
     const newSubs = Array.isArray(svg.subpaths)

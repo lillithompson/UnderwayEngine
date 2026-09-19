@@ -360,3 +360,82 @@ describe('computeMaskMembership resolves a kind, never an id prefix', () => {
     expect(computeMaskMembership(state, 'svg_mask').figureIds).toEqual(['figIn']);
   });
 });
+
+/**
+ * The svg geometry adapter's `computeBbox` is the ONE place the mask sweep
+ * measures a filled or tiled svg, and `compositionMaskRegion`'s own comment
+ * says what it must measure: "an svg is the one kind here whose bbox is its
+ * SEGMENTS rather than its cell fields, so a wrong guess measures a path off
+ * whatever its legacy box happens to say."
+ *
+ * Nothing pinned that. The existing filled/tiled cases above put a ring at
+ * (-5, -5, 20) around a 10x10 mask, which overlaps so hugely that no
+ * plausible mis-measure flips the answer — they cover the LINE and not the
+ * MEASUREMENT. These three do the measurement: the cell fields are set to
+ * disagree with the segments, and the near-miss stops a quarter of a cell
+ * short of the mask, so inflating the measured box at all pulls it in.
+ *
+ * The fixtures are TRIANGLES, never rects. A rect fills its own box, so it
+ * reads the same whichever spelling of the box is taken and would come
+ * through a wrong measure looking perfect (docs/transform-refactor.md 1.3).
+ */
+describe('a filled svg is measured by its SEGMENTS, not its legacy cell fields', () => {
+  /** A triangle spanning [x, x + w] x [y, y + h] that does NOT fill its box. */
+  function triangle(x: number, y: number, w: number, h: number): PathSegment[] {
+    const apex: [number, number] = [x + w, y + h / 2];
+    return [
+      { kind: 'line', start: [x, y], end: apex },
+      { kind: 'line', start: apex, end: [x, y + h] },
+      { kind: 'line', start: [x, y + h], end: [x, y] },
+    ];
+  }
+
+  const FILL = { r: 1, g: 2, b: 3 };
+
+  function maskState(subject: SVGObject): CompositionState {
+    const mask = makeSvg('svg_mask', {
+      segments: MASK, cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 10,
+    });
+    return makeState({ svgObjects: [mask, subject] });
+  }
+
+  test('segments OUTSIDE the mask are excluded though the cell fields sit inside it', () => {
+    const subject = makeSvg('svg_away', {
+      segments: triangle(20, 20, 4, 4), fillColor: FILL,
+      // The legacy box lies: it says the shape is at the mask's origin.
+      cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
+    });
+    expect(computeMaskMembership(maskState(subject), 'svg_mask').figureIds).toEqual([]);
+  });
+
+  test('segments INSIDE the mask are included though the cell fields sit far outside it', () => {
+    const subject = makeSvg('svg_within', {
+      segments: triangle(2, 2, 4, 4), fillColor: FILL,
+      // The legacy box lies the other way, so the test cannot pass by
+      // excluding everything.
+      cellX: 50, cellY: 50, cellWidth: 4, cellHeight: 4,
+    });
+    expect(computeMaskMembership(maskState(subject), 'svg_within').figureIds).toEqual([]);
+    expect(computeMaskMembership(maskState(subject), 'svg_mask').figureIds).toEqual(['svg_within']);
+  });
+
+  test('a filled shape stopping a quarter cell short of the mask stays out', () => {
+    // x runs -4.25 .. -0.25, so the near edge misses the mask's x = 0 by
+    // 0.25 while y overlaps it outright. Widen the measured box by anything
+    // at all and the two right-hand corners land inside the mask.
+    const subject = makeSvg('svg_near', {
+      segments: triangle(-4.25, 2, 4, 4), fillColor: FILL,
+      cellX: -4.25, cellY: 2, cellWidth: 4, cellHeight: 4,
+    });
+    expect(computeMaskMembership(maskState(subject), 'svg_mask').figureIds).toEqual([]);
+  });
+
+  test('the same shape nudged a quarter cell further right IS pulled in', () => {
+    // The control for the case above: the near edge now reaches x = 0.
+    const subject = makeSvg('svg_touching', {
+      segments: triangle(-4, 2, 4, 4), fillColor: FILL,
+      cellX: -4, cellY: 2, cellWidth: 4, cellHeight: 4,
+    });
+    expect(computeMaskMembership(maskState(subject), 'svg_mask').figureIds).toEqual(['svg_touching']);
+  });
+});
