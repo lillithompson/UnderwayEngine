@@ -1356,6 +1356,66 @@ function mirrorQuadV(q: FigureQuad, boundH: number): FigureQuad {
 }
 
 /**
+ * Snap a cell coordinate to the SAME sub-cell phase `phase` sits on.
+ *
+ * The identity-stash placement below rounds the new origin so a leaf
+ * authored on the cell grid stays on it: a 3x4 box turned about its own
+ * centre lands on x.5 otherwise, and the half-cell then drifts on every
+ * further turn. But `Math.round` snaps to the WHOLE-cell lattice, and a
+ * member of a SCALED group does not live there -- the group's rescale
+ * writes the exact mapped box, so the member's origin is fractional
+ * (docs/transform-refactor.md 2.3). Rounding that moved the figure by up
+ * to half a cell on its first turn and never gave it back.
+ *
+ * Snapping to the leaf's own phase keeps the grid discipline where the
+ * leaf is on the grid and leaves a fractional leaf exactly where it is.
+ * For a whole-number `phase` this IS `Math.round(value)`:
+ * `floor(v - p + 0.5) + p === floor(v + 0.5)` for integer p.
+ */
+function snapToPhase(value: number, phase: number): number {
+  return Math.round(value - phase) + phase;
+}
+
+/** A box that remembers the pose it was authored in. */
+interface IdentityAnchoredBox {
+  cellX: number;
+  cellY: number;
+  cellWidth: number;
+  cellHeight: number;
+  identityCellX?: number;
+  identityCellY?: number;
+}
+
+/**
+ * The identity-stash placement shared by `rotateFigureIndividual90CW`,
+ * `cycleTransformForFigure` and tile-mode `rotateSVG90CW`: recover the
+ * authored (identity) origin from the stash or from the current centre,
+ * then place a new `newW` x `newH` box about the identity CENTRE. Placing
+ * every step from one stable reference rather than from the previous step
+ * is what makes 4x90 (and the full 7-step cycle) land exactly on the
+ * original; `identityW`/`identityH` are the box's dimensions at identity,
+ * which is the current pair swapped when the box is already quarter-turned.
+ */
+function placeAboutIdentityCentre(
+  box: IdentityAnchoredBox,
+  identityW: number,
+  identityH: number,
+  newW: number,
+  newH: number,
+): { identityX: number; identityY: number; cellX: number; cellY: number } {
+  const cx = box.cellX + box.cellWidth / 2;
+  const cy = box.cellY + box.cellHeight / 2;
+  const identityX = box.identityCellX ?? snapToPhase(cx - identityW / 2, box.cellX);
+  const identityY = box.identityCellY ?? snapToPhase(cy - identityH / 2, box.cellY);
+  return {
+    identityX,
+    identityY,
+    cellX: snapToPhase(identityX + identityW / 2 - newW / 2, identityX),
+    cellY: snapToPhase(identityY + identityH / 2 - newH / 2, identityY),
+  };
+}
+
+/**
  * Rotate a single group-member figure 90Â° CW around a group center (gcx, gcy).
  * Swaps bbox dimensions, moves position around the group center, and rotates
  * quad offsets. Mirror flags are preserved; identity anchors and transform-
@@ -1410,16 +1470,10 @@ export function rotateFigureIndividual90CW(fig: CompositionFigure): CompositionF
   const next = ((cur + 90) % 360) as 0 | 90 | 180 | 270;
   const identityW = (cur === 90 || cur === 270) ? fig.cellHeight : fig.cellWidth;
   const identityH = (cur === 90 || cur === 270) ? fig.cellWidth : fig.cellHeight;
-  const cx = fig.cellX + fig.cellWidth / 2;
-  const cy = fig.cellY + fig.cellHeight / 2;
-  const identityX = fig.identityCellX ?? Math.round(cx - identityW / 2);
-  const identityY = fig.identityCellY ?? Math.round(cy - identityH / 2);
   const newW = fig.cellHeight;
   const newH = fig.cellWidth;
-  const idCx = identityX + identityW / 2;
-  const idCy = identityY + identityH / 2;
-  const newCellX = Math.round(idCx - newW / 2);
-  const newCellY = Math.round(idCy - newH / 2);
+  const { identityX, identityY, cellX: newCellX, cellY: newCellY } =
+    placeAboutIdentityCentre(fig, identityW, identityH, newW, newH);
   const quads = fig.quads?.map(q => rotateQuad90CW(q, fig.cellHeight));
   return {
     ...fig,
@@ -1574,16 +1628,12 @@ export function rotateSVG90CW(svg: SVGObject): SVGObject {
   if (svg.tileMode === 'repeat') {
     const identityW = (curRot === 90 || curRot === 270) ? svg.cellHeight : svg.cellWidth;
     const identityH = (curRot === 90 || curRot === 270) ? svg.cellWidth  : svg.cellHeight;
-    const rcx = svg.cellX + svg.cellWidth / 2;
-    const rcy = svg.cellY + svg.cellHeight / 2;
-    const identityX = svg.identityCellX ?? Math.round(rcx - identityW / 2);
-    const identityY = svg.identityCellY ?? Math.round(rcy - identityH / 2);
     const newW = svg.cellHeight;
     const newH = svg.cellWidth;
+    const { identityX, identityY, cellX: newCellX, cellY: newCellY } =
+      placeAboutIdentityCentre(svg, identityW, identityH, newW, newH);
     const idCx = identityX + identityW / 2;
     const idCy = identityY + identityH / 2;
-    const newCellX = Math.round(idCx - newW / 2);
-    const newCellY = Math.round(idCy - newH / 2);
     // Tile cell dimensions swap to track the rotated design â€” the
     // renderer (CompositionSVGLayer.applyTiledSVGObject) packs segments
     // into a `tileWidthL0 Ã— tileHeightL0` cell, so if the tile dims
@@ -1756,15 +1806,6 @@ export function cycleTransformForFigure(fig: CompositionFigure, targetStep: numb
   const identityW = (curRot === 90 || curRot === 270) ? fig.cellHeight : fig.cellWidth;
   const identityH = (curRot === 90 || curRot === 270) ? fig.cellWidth : fig.cellHeight;
 
-  // Use stored identity position if available; otherwise recover it from the
-  // current center so we always compute new positions from a stable reference.
-  // This prevents rounding drift when rotating figures with mixed odd/even
-  // dimensions (e.g. 3x4) where the center falls on x.5.
-  const cx = fig.cellX + fig.cellWidth / 2;
-  const cy = fig.cellY + fig.cellHeight / 2;
-  const identityX = fig.identityCellX ?? Math.round(cx - identityW / 2);
-  const identityY = fig.identityCellY ?? Math.round(cy - identityH / 2);
-
   // Recover identity quads: reverse current transforms to get back to identity
   let baseQuads = fig.quads;
   if (baseQuads) {
@@ -1798,11 +1839,13 @@ export function cycleTransformForFigure(fig: CompositionFigure, targetStep: numb
   if (step.mirrorH && quads) quads = quads.map(q => mirrorQuadH(q, newW));
   if (step.mirrorV && quads) quads = quads.map(q => mirrorQuadV(q, newH));
 
-  // Re-center around the stable identity center
-  const idCx = identityX + identityW / 2;
-  const idCy = identityY + identityH / 2;
-  const newCellX = Math.round(idCx - newW / 2);
-  const newCellY = Math.round(idCy - newH / 2);
+  // Re-center around the stable identity center: the stored identity
+  // position when there is one, otherwise recovered from the current
+  // centre, so every step is computed from one reference rather than from
+  // the last step. That is what stops rounding drift on figures with
+  // mixed odd/even dimensions (e.g. 3x4) where the centre falls on x.5.
+  const { identityX, identityY, cellX: newCellX, cellY: newCellY } =
+    placeAboutIdentityCentre(fig, identityW, identityH, newW, newH);
 
   return {
     ...fig,

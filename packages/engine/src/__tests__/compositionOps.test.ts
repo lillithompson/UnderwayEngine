@@ -387,6 +387,61 @@ describe('cycleTransformForFigure', () => {
     expect(fig.cellY).not.toBe(10);
   });
 
+  // A figure inside a SCALED group lands on a FRACTIONAL origin -- the
+  // group's rescale writes the exact mapped box (sceneNodeGeometry's
+  // figure adapter) and clears the identity stash. Every other fixture
+  // here is integer-sized on an integer origin, so the Math.round of the
+  // new cell origin (docs/transform-refactor.md 2.3) had never had
+  // anything to round.
+  test('7 double-taps return to identity (fractional origin)', () => {
+    const orig = makeFigure({ cellWidth: 4, cellHeight: 2, cellX: 10.5, cellY: 10.25, transformCycleStep: 0 });
+    let fig = orig;
+    for (let i = 0; i < TRANSFORM_CYCLE.length; i++) {
+      const nextStep = (i + 1) % TRANSFORM_CYCLE.length;
+      fig = cycleTransformForFigure(fig, nextStep);
+    }
+    expect(fig.rotation).toBe(0);
+    expect(fig.mirrorH ?? false).toBe(false);
+    expect(fig.mirrorV ?? false).toBe(false);
+    expect(fig.cellWidth).toBe(orig.cellWidth);
+    expect(fig.cellHeight).toBe(orig.cellHeight);
+    expect(fig.cellX).toBe(orig.cellX);
+    expect(fig.cellY).toBe(orig.cellY);
+  });
+
+  // The same, with a fractional SIZE as well -- a non-uniform group scale
+  // gives both. The round trip is exact whatever the dimensions, because
+  // every step places the box about the one identity centre.
+  test('7 double-taps return to identity (fractional origin and size)', () => {
+    const orig = makeFigure({ cellWidth: 3.8, cellHeight: 2.4, cellX: 5.3, cellY: 7.1, transformCycleStep: 0 });
+    let fig = orig;
+    for (let i = 0; i < TRANSFORM_CYCLE.length; i++) {
+      const nextStep = (i + 1) % TRANSFORM_CYCLE.length;
+      fig = cycleTransformForFigure(fig, nextStep);
+    }
+    expect(fig.cellX).toBeCloseTo(orig.cellX, 10);
+    expect(fig.cellY).toBeCloseTo(orig.cellY, 10);
+    expect(fig.cellWidth).toBeCloseTo(orig.cellWidth, 10);
+    expect(fig.cellHeight).toBeCloseTo(orig.cellHeight, 10);
+  });
+
+  // Every step of the cycle turns the figure about its OWN centre. A 4x2
+  // box has no odd/even mismatch to snap away (identityW/2 - newW/2 is a
+  // whole number on every step), so the centre must hold exactly -- which
+  // is the half-cell wander this fixture is here to catch.
+  test('the centre holds at every step (fractional origin)', () => {
+    const orig = makeFigure({ cellWidth: 4, cellHeight: 2, cellX: 10.5, cellY: 10.25, transformCycleStep: 0 });
+    const cx = orig.cellX + orig.cellWidth / 2;
+    const cy = orig.cellY + orig.cellHeight / 2;
+    let fig = orig;
+    for (let i = 0; i < TRANSFORM_CYCLE.length; i++) {
+      const nextStep = (i + 1) % TRANSFORM_CYCLE.length;
+      fig = cycleTransformForFigure(fig, nextStep);
+      expect(fig.cellX + fig.cellWidth / 2).toBeCloseTo(cx, 10);
+      expect(fig.cellY + fig.cellHeight / 2).toBeCloseTo(cy, 10);
+    }
+  });
+
   test('quad transformation through the cycle', () => {
     const quads = [
       { offsetX: 0, offsetY: 0, cellWidth: 2, cellHeight: 2 },
@@ -1562,6 +1617,25 @@ describe('rotateFigureIndividual90CW', () => {
     const r2 = rotateFigureIndividual90CW(r1);
     expect(r2.identityCellX).toBe(5);
     expect(r2.identityCellY).toBe(5);
+  });
+
+  // The live path for a figure's quarter turn (GEOMETRY_ADAPTERS.figure
+  // .rotate90CW) at the fractional origin a scaled group leaves behind.
+  test('4 rotations return to original at a fractional origin', () => {
+    let fig = makeFigure({ cellX: 10.5, cellY: 10.25, cellWidth: 4, cellHeight: 2, rotation: 0 });
+    const cx = fig.cellX + fig.cellWidth / 2;
+    const cy = fig.cellY + fig.cellHeight / 2;
+    for (let i = 0; i < 4; i++) {
+      fig = rotateFigureIndividual90CW(fig);
+      // A 4x2 box turns about its own centre with nothing to snap away.
+      expect(fig.cellX + fig.cellWidth / 2).toBeCloseTo(cx, 10);
+      expect(fig.cellY + fig.cellHeight / 2).toBeCloseTo(cy, 10);
+    }
+    expect(fig.rotation).toBe(0);
+    expect(fig.cellX).toBe(10.5);
+    expect(fig.cellY).toBe(10.25);
+    expect(fig.cellWidth).toBe(4);
+    expect(fig.cellHeight).toBe(2);
   });
 
   test('rotates quads 90Â° CW', () => {
