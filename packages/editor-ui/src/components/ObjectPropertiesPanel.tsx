@@ -354,8 +354,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   const prevBorderOpen = useRef(false);
   const [cropDraft, setCropDraft] = useState<FramingModel | null>(null);
   const prevCropOpen = useRef(false);
-  // The Opacity page rides the same draft pattern as Crop — the draft owns
-  // both tracked params (there's no external color to split off).
+  // The Opacity page rides the same draft pattern as Shadow — the draft owns
+  // the two sliders' values, while the Fade target comes from the model (it
+  // is changed externally, via the full-screen picker).
   const [opacityDraft, setOpacityDraft] = useState<OpacityModel | null>(null);
   const prevOpacityOpen = useRef(false);
   // The Stroke page rides the same draft pattern as Border — it IS the Border
@@ -859,9 +860,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     model.onFraming?.(f, committed);
   };
 
-  // Opacity controls → live preview / commit; the draft owns both params
-  // (no external color). No Remove: opacity is not a layer an object can be
-  // without — every object has one — so the sliders are the whole page.
+  // Opacity controls → live preview / commit; the draft owns both sliders
+  // (the Fade target comes from the model). No Remove: opacity is not a layer
+  // an object can be without — every object has one — so the sliders are the
+  // whole page.
   const applyOpacity = (o: OpacityModel, committed: boolean) => {
     setOpacityDraft(o);
     model.onObjectOpacity?.(o, committed);
@@ -904,7 +906,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     ? { ...borderDraft, color: model.border?.color ?? borderDraft.color }
     : (model.border ?? DEFAULT_BORDER_MODEL);
   const framingForBar: FramingModel = cropDraft ?? model.framing ?? DEFAULT_FRAMING_MODEL;
-  const opacityForBar: OpacityModel = opacityDraft ?? model.objectOpacity ?? DEFAULT_OPACITY_MODEL;
+  // The Fade target is the one value on this page the draft must NOT own: it
+  // is picked in the full-screen colour picker, which leaves the page open,
+  // so a draft seeded before the pick would keep answering with the colour
+  // the page opened on (white) and the next slider drag would write that
+  // stale target straight back over the picked one. Same split the shadow's,
+  // the border's and the stroke's colours keep — sliders from the draft,
+  // colour from the model.
+  const opacityForBar: OpacityModel = opacityDraft
+    ? { ...opacityDraft, fadeColor: model.objectOpacity?.fadeColor ?? opacityDraft.fadeColor }
+    : (model.objectOpacity ?? DEFAULT_OPACITY_MODEL);
   const strokeForBar: BorderModel = strokeDraft
     ? { ...strokeDraft, color: model.stroke?.color ?? strokeDraft.color }
     : (model.stroke ?? DEFAULT_BORDER_MODEL);

@@ -700,6 +700,20 @@ describe('the panel drives the sheet', () => {
     expect(opacity).not.toContain('showSoften');
   });
 
+  it("the Fade target comes from the model, never the Opacity page's own draft", () => {
+    // The target is picked in the full-screen colour picker, which leaves
+    // the Opacity page open and its draft seeded — so a draft that owned
+    // fadeColor would keep answering with the colour the page opened on
+    // (white), show white in the trailing circle, and write white back over
+    // the pick on the next drag of the Fade slider. Sliders from the draft,
+    // colour from the model — the split the shadow's, border's and stroke's
+    // colours already keep.
+    expect(PANEL).toContain(
+      '{ ...opacityDraft, fadeColor: model.objectOpacity?.fadeColor ?? opacityDraft.fadeColor }',
+    );
+    expect(PANEL).not.toContain('opacityDraft ?? model.objectOpacity ?? DEFAULT_OPACITY_MODEL');
+  });
+
   it('the Endpoints page carries markers alone — no Caps row, and no plumbing left for one', () => {
     const ends = SRC('components', 'EndpointsBar.tsx');
     expect(ends).toContain('label="Start"');
