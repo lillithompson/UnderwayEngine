@@ -43,6 +43,41 @@ export interface SvgLocalGeometry {
   scale: number;
 }
 
+/**
+ * The split every path-backed kind draws by: what the VERTICES carry, and
+ * what the element's matrix is left wearing.
+ *
+ * A stroke width is a world quantity drawn in user space, so anything the
+ * matrix scales it by is a line changing WEIGHT because its group was
+ * resized. Everything but the TURN is therefore folded into the geometry,
+ * where points carry it exactly, and taken back out of the matrix.
+ *
+ * A similarity keeps the exact arithmetic it always had — one factor out of
+ * the matrix and into the path — so its box and its element matrix come out
+ * bit for bit what they were. Anything else hands the path everything but
+ * the turn, lean included.
+ */
+function drawnSplit(world: Mat2D, lb: Bbox): {
+  s: number; grow: Mat2D; turn: Mat2D; box: Bbox;
+} {
+  const s = matUniformScale(world) || 1;
+  const square = matIsSimilarity(world);
+  const turn = matTurnFrame(world);
+  const grow: Mat2D = square
+    ? { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }
+    : matMul(matInvert(turn), { ...world, e: 0, f: 0 });
+  const box: Bbox = square
+    ? { x: lb.x * s, y: lb.y * s, width: lb.width * s, height: lb.height * s }
+    : matApplyBbox(grow, lb);
+  return { s, grow, turn, box };
+}
+
+/** How far a {@link drawnSplit} stretched each of the path's own axes:
+ *  `s` on both for a similarity, and exactly so — Math.hypot(s, 0) is s. */
+function growAxes(grow: Mat2D): { gx: number; gy: number } {
+  return { gx: Math.hypot(grow.a, grow.b), gy: Math.hypot(grow.c, grow.d) };
+}
+
 const svgGeometry = new WeakMap<SceneNode, { world: Mat2D; content: unknown; out: SvgLocalGeometry }>();
 
 /**
@@ -85,20 +120,7 @@ export function svgLocalGeometry(
   const hit = svgGeometry.get(node);
   if (hit && matEquals(hit.world, world) && hit.content === source) return hit.out;
 
-  const s = matUniformScale(world) || 1;
-  // A similarity keeps the exact arithmetic it always had — one factor
-  // out of the matrix and into the path — so its box and its element
-  // matrix come out bit for bit what they were. Anything else hands the
-  // path everything but the turn.
-  const square = matIsSimilarity(world);
-  const turn = matTurnFrame(world);
-  const grow: Mat2D = square
-    ? { a: s, b: 0, c: 0, d: s, e: 0, f: 0 }
-    : matMul(matInvert(turn), { ...world, e: 0, f: 0 });
-  const lb = localContentBox(node);
-  const box: Bbox = square
-    ? { x: lb.x * s, y: lb.y * s, width: lb.width * s, height: lb.height * s }
-    : matApplyBbox(grow, lb);
+  const { s, grow, turn, box } = drawnSplit(world, localContentBox(node));
   const object: SVGObject = {
     ...source,
     id: node.id,
@@ -121,10 +143,7 @@ export function svgLocalGeometry(
     delete object.subpaths;
   }
   if (object.tileMode === 'repeat') {
-    // How far the grow stretched each of the path's own axes: `s` on both
-    // for a similarity, and exactly so — Math.hypot(s, 0) is s.
-    const gx = Math.hypot(grow.a, grow.b);
-    const gy = Math.hypot(grow.c, grow.d);
+    const { gx, gy } = growAxes(grow);
     if (object.tileWidthL0 != null) object.tileWidthL0 *= gx;
     if (object.tileHeightL0 != null) object.tileHeightL0 *= gy;
     if (object.tileOffsetXL0 != null) object.tileOffsetXL0 *= gx;
@@ -168,4 +187,58 @@ export function patternLocalObject(node: SceneNode): PatternObject {
   delete local.angleDeg;
   patternObjects.set(node, local);
   return local;
+}
+
+const patternGeometry = new WeakMap<SceneNode, { world: Mat2D; out: SvgLocalGeometry | null }>();
+
+/**
+ * A pattern's content in the node's own space, on the SAME terms as an
+ * svg's — `patternSVGView` baked in the local box, then grown by everything
+ * the element's matrix gives back ({@link drawnSplit}).
+ *
+ * A pattern used to be drawn with the FULL matrix on both the screen and
+ * the export: consistent between the two, and different from an svg, whose
+ * stroke is the authored world width whatever the matrix does. So the same
+ * line weight read one way inside a scaled group as a Line and another as a
+ * pattern's, and an off-square group leaned a pattern's strokes while
+ * leaving an svg's upright (plan §5.10, answered 2026-09-18: a pattern's
+ * strokes ARE lines in that sense). Its cells bake to a PATH, so it can
+ * carry the grow in its vertices exactly as an svg does — lean included —
+ * and the repeat-mode tile pitch rides along the same way.
+ *
+ * `view` is the caller's baked view of {@link patternLocalObject}; passing
+ * it keeps the one `patternSVGView` cache shared with the caller rather
+ * than baking a second time. Null when the grid is empty.
+ */
+export function patternLocalGeometry(
+  node: SceneNode, world: Mat2D, view: SVGObject | null,
+): SvgLocalGeometry | null {
+  const hit = patternGeometry.get(node);
+  if (hit && matEquals(hit.world, world)) return hit.out;
+  let out: SvgLocalGeometry | null = null;
+  if (view) {
+    const lb = localContentBox(node);
+    const { s, grow, turn, box } = drawnSplit(world, { x: 0, y: 0, width: lb.width, height: lb.height });
+    const object: SVGObject = {
+      ...view,
+      segments: mapSegments(view.segments ?? [], grow),
+      cellX: box.x, cellY: box.y, cellWidth: box.width, cellHeight: box.height,
+    };
+    if (view.subpaths) {
+      object.subpaths = view.subpaths.map((sp) => ({ ...sp, segments: mapSegments(sp.segments, grow) }));
+    }
+    if (object.tileMode === 'repeat') {
+      const { gx, gy } = growAxes(grow);
+      if (object.tileWidthL0 != null) object.tileWidthL0 *= gx;
+      if (object.tileHeightL0 != null) object.tileHeightL0 *= gy;
+      if (object.tileOffsetXL0 != null) object.tileOffsetXL0 *= gx;
+      if (object.tileOffsetYL0 != null) object.tileOffsetYL0 *= gy;
+    }
+    out = {
+      object: fadedSVGObject(object), box, scale: s,
+      matrix: { ...turn, e: world.e, f: world.f },
+    };
+  }
+  patternGeometry.set(node, { world, out });
+  return out;
 }

@@ -8,7 +8,7 @@
 
 import { CompItemKind, CompositionFigure, CompositionState, FileConfig, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
 import { patternSVGView } from './patternObjectRender';
-import { patternLocalObject, svgLocalGeometry } from './sceneDrawnContent';
+import { patternLocalGeometry, patternLocalObject, svgLocalGeometry } from './sceneDrawnContent';
 import { fadedImageObject, fadedTextStyle } from './fade';
 import {
   LegacyLeaf, SceneGraph, SceneNode, fromLegacy, graphDescribes, leafNodeFromLegacy, worldMatrix,
@@ -964,15 +964,25 @@ export async function generateCompositionSVGCore(
   // loop emits has to be baked in the LOCAL box that its matrix carries;
   // the world view above stays, because the masks, the frame union and
   // `sceneOrder` all still read the scene in world coordinates.
-  const localPatternViews = new Map<string, { object: SVGObject; pose: ExportPose }>();
+  const localPatternViews = new Map<string, {
+    object: SVGObject; pose: ExportPose; matrix: Mat2D;
+  }>();
   for (const p of (input.patternObjects ?? []).filter(shown)) {
     const view = patternSVGView(p);
     if (!view) continue;
     svgObjects.push(view);
     patternViewIds.add(view.id);
     const pose = exportPose(graph, 'pattern', p);
-    const local = patternSVGView(patternLocalObject(pose.node));
-    if (local) localPatternViews.set(view.id, { object: local, pose });
+    // Grown by everything the `<g>` below then omits, exactly as an svg's
+    // path is — so a pattern's strokes keep their authored WORLD width
+    // through a group scaled off square, and stop leaning with it
+    // (plan §5.10). `patternLocalGeometry` is the same reading the node
+    // layer draws from, which is what keeps the screen and the export from
+    // disagreeing about it.
+    const geo = patternLocalGeometry(
+      pose.node, pose.world, patternSVGView(patternLocalObject(pose.node)),
+    );
+    if (geo) localPatternViews.set(view.id, { object: geo.object, pose, matrix: geo.matrix });
   }
 
   // The overlay (`overlaySvgObjects`) is framed on with the scene — drawn or
@@ -1202,7 +1212,7 @@ export async function generateCompositionSVGCore(
     const pose = pattern ? pattern.pose : exportPose(graph, 'svg', entry);
     const geo = pattern ? null : svgLocalGeometry(pose.node, pose.world, entry);
     const object = pattern ? pattern.object : geo!.object;
-    const matrix = pattern ? pose.world : geo!.matrix;
+    const matrix = pattern ? pattern.matrix : geo!.matrix;
     // Cutouts and ink-framed exports frame on the INKED extent: a stroke is
     // centered on its path, so a tight geometric frame slices the outermost
     // strokes down their length (a horizontal line along the top of the bbox
@@ -1623,7 +1633,10 @@ export async function generateCompositionSVGCore(
    */
   const svgDrawnContent = (entry: SVGObject): { object: SVGObject; transform: string } => {
     const pattern = localPatternViews.get(entry.id);
-    if (pattern) return { object: inkOverride(pattern.object), transform: pattern.pose.transform };
+    // The grown geometry's matrix, not the pose's full one — the same
+    // split an svg gets below, so the strokes keep their world width
+    // (plan §5.10).
+    if (pattern) return { object: inkOverride(pattern.object), transform: matrixString(pattern.matrix, U) };
     const pose = exportPose(graph, 'svg', entry);
     const geo = svgLocalGeometry(pose.node, pose.world, entry);
     return { object: geo.object, transform: matrixString(geo.matrix, U) };
