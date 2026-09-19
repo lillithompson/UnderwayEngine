@@ -14,6 +14,7 @@
 import { CompositionFigure, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, PathSegment, CompItemKind } from './types';
 import { bakePatternPose } from './patternObject';
 import { lineHitsCell } from './compositionLineHitTest';
+import { textInkOutset } from './textArc';
 import { flattenArcSegment } from './compositionArcMath';
 import type { CellBbox } from './transform2d';
 import { offsetPathSegment } from './pathSegmentUtils';
@@ -379,8 +380,33 @@ function makeBboxAdapter<T extends BboxOnlyNode>(kind: CompItemKind): GeometryAd
 }
 
 const imageAdapter: GeometryAdapter<ImageObject> = makeBboxAdapter<ImageObject>('image');
-const textAdapter: GeometryAdapter<TextObject> = makeBboxAdapter<TextObject>('text');
 const paintAdapter: GeometryAdapter<PaintObject> = makeBboxAdapter<PaintObject>('paint');
+
+// A text is bbox-shaped like those two, with one wrinkle: BENT text draws
+// outside its own box.
+//
+// Its glyphs ride an arc whose endpoints sit on the flat baseline and whose
+// apex bows off it by one rise (engine/textArc). At a hard bend that lifts
+// the words most of a rise clear of the box AND pulls them in from its
+// sides, so the ink ended up almost entirely outside the only region a tap
+// was accepted in — tapping the words selected nothing, while tapping the
+// empty space under them selected the text.
+//
+// So the hit region is the INK's box, which is the box the selection RING
+// is drawn around (both ask textInkOutset): what a reader sees framed is
+// what answers their finger. Everything else about a text is still the
+// stored box — a corner drag writes that box back, and growing what the
+// drag measures would move the words the moment a corner was touched.
+const textAdapter: GeometryAdapter<TextObject> = {
+  ...makeBboxAdapter<TextObject>('text'),
+  hitTest(node, cellX, cellY, ignoreLock) {
+    if (node.hidden) return false;
+    if (node.locked && !ignoreLock) return false;
+    const { top, bottom } = textInkOutset(node);
+    return cellX >= node.cellX && cellX < node.cellX + node.cellWidth
+      && cellY >= node.cellY - top && cellY < node.cellY + node.cellHeight + bottom;
+  },
+};
 
 // Patterns are bbox-shaped, with two repeat-mode wrinkles.
 //

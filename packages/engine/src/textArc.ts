@@ -99,6 +99,38 @@ export function textBendSign(style: TextStyle): -1 | 0 | 1 {
   return bend === 0 ? 0 : bend > 0 ? -1 : 1;
 }
 
+/** No ink outside the box — every text but a bent one. */
+const NO_INK_OUTSET = { top: 0, bottom: 0 } as const;
+
+/**
+ * How far a text's INK hangs off its own box, per side, in the node's cell
+ * units. Zero on both sides unless the text is bent.
+ *
+ * One rise, on one side: the arc's endpoints sit on the flat baseline and
+ * its apex bows toward the sign of the bend, and horizontally every point
+ * lands nearer the block's centre than it lay flat, so nothing reaches past
+ * the flat left or right edge ({@link textBendRise}).
+ *
+ * The ONE answer to "where is this text actually drawn" — the selection
+ * ring is drawn around it, and a tap is tested against it, so the ring a
+ * reader sees and the region that answers their finger are the same
+ * region. They were not: the ring grew and the hit test kept the stored
+ * box, so a hard bend — which lifts the words most of a rise clear of that
+ * box and pulls them in from its sides — left the ink sitting almost
+ * entirely outside the only place a tap was accepted, and the text could
+ * not be selected by tapping the words at all.
+ */
+export function textInkOutset(node: {
+  cellWidth: number;
+  cellHeight: number;
+  rotation?: 0 | 90 | 180 | 270;
+  style: TextStyle;
+}): { top: number; bottom: number } {
+  const rise = textBendRise(node);
+  if (rise === 0) return NO_INK_OUTSET;
+  return textBendSign(node.style) < 0 ? { top: rise, bottom: 0 } : { top: 0, bottom: rise };
+}
+
 /** One flat line of a block, in the units the paths come back in. */
 export interface TextArcLine {
   /** Where the FLAT line starts: its left edge. */

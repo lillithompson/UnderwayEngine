@@ -4,18 +4,44 @@
  * payload (the text extension byte).
  */
 
-import { textArcGeometry, textArcPaths, textBend, textBendRise, textBendSign } from '../textArc';
+import {
+  textArcGeometry, textArcPaths, textBend, textBendRise, textBendSign, textInkOutset,
+} from '../textArc';
+import { findSceneObjectAtCell } from '../compositionScenePicking';
 import {
   CompositionBundle,
   deserializeComposition,
   serializeComposition,
 } from '../compositionBinaryFormat';
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
-import { TextObject, TextStyle } from '../types';
+import { CompositionState, TextObject, TextStyle, makeViewport } from '../types';
 
 const style = (extras: Partial<TextStyle> = {}): TextStyle => ({
   fontId: 'system', size: 2, color: { r: 10, g: 20, b: 30 }, ...extras,
 });
+
+/** A page holding one text — the picking walk reads a real state. */
+function pageWith(text: TextObject): CompositionState {
+  return {
+    id: 't', name: 't',
+    figures: [], svgObjects: [], images: [], imageBlobs: {},
+    texts: [text],
+    lineDraft: null, arcDraft: null,
+    editingLineId: null, selectedVertexIndex: null,
+    lastChosenColor: { r: 0, g: 0, b: 0 },
+    customColors: [],
+    groups: [],
+    sceneOrder: [text.id],
+    gridLevel: 0, strokeScale: 8, gridIntensity: 0.5,
+    camera: { offsetX: 0, offsetY: 0, zoom: 1 },
+    viewport: makeViewport(800, 600),
+    selectedFigureIds: new Set(),
+    activeFigureKey: null,
+    compTool: 'select',
+    createRegion: null,
+    renderGeneration: 0,
+  } as unknown as CompositionState;
+}
 
 function makeText(overrides: Partial<TextObject> = {}): TextObject {
   return {
@@ -231,6 +257,54 @@ describe('textBendSign — which way it bows', () => {
     expect(textBendSign(style({ bend: -0.5 }))).toBe(1);
     expect(textBendSign(style())).toBe(0);
     expect(textBendSign(style({ bend: 0 }))).toBe(0);
+  });
+});
+
+describe('textInkOutset — the one answer, and a tap is tested against it', () => {
+  test('is nothing at all for flat text', () => {
+    expect(textInkOutset(makeText())).toEqual({ top: 0, bottom: 0 });
+    expect(textInkOutset(makeText({ style: style({ bend: 0 }) }))).toEqual({ top: 0, bottom: 0 });
+  });
+
+  test('is one rise, on the side the block bows toward', () => {
+    const up = makeText({ style: style({ bend: 1 }) });
+    const rise = textBendRise(up);
+    expect(rise).toBeGreaterThan(0);
+    // A POSITIVE bend lifts the middle: the ink leaves the box at the TOP.
+    expect(textInkOutset(up)).toEqual({ top: rise, bottom: 0 });
+    const down = makeText({ style: style({ bend: -1 }) });
+    expect(textInkOutset(down)).toEqual({ top: 0, bottom: textBendRise(down) });
+  });
+
+  test('a TAP lands on the bent words, where it used to land on nothing', () => {
+    // The bug: the hit test measured the stored box while the ring was
+    // drawn around the ink. At a full bend the words lift a rise clear of
+    // that box, so tapping them selected nothing.
+    const text = makeText({ style: style({ bend: 1 }) });
+    const rise = textBendRise(text);
+    const state = pageWith(text);
+    // A point ABOVE the box by half the bow — where the apex of the arc
+    // actually is — now answers.
+    expect(findSceneObjectAtCell(state, text.cellX + text.cellWidth / 2, text.cellY - rise / 2))
+      .toEqual({ kind: 'text', id: text.id });
+    // The box itself still answers, as it always did.
+    expect(findSceneObjectAtCell(state, text.cellX + 1, text.cellY + 1))
+      .toEqual({ kind: 'text', id: text.id });
+    // …and past the bow there is still nothing: the region is the ink's,
+    // not an unbounded halo.
+    expect(findSceneObjectAtCell(state, text.cellX + text.cellWidth / 2, text.cellY - rise - 1))
+      .toBeNull();
+    // Nor does it grow the side the block bows AWAY from.
+    expect(findSceneObjectAtCell(state, text.cellX + 1, text.cellY + text.cellHeight + 0.5))
+      .toBeNull();
+  });
+
+  test('flat text answers for its box and nothing more', () => {
+    const text = makeText();
+    const state = pageWith(text);
+    expect(findSceneObjectAtCell(state, text.cellX + 1, text.cellY + 1))
+      .toEqual({ kind: 'text', id: text.id });
+    expect(findSceneObjectAtCell(state, text.cellX + 1, text.cellY - 0.5)).toBeNull();
   });
 });
 
