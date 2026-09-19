@@ -118,17 +118,44 @@ describe('the panel offers the pattern type page', () => {
   });
 
   it('lets a pattern selection keep the Stroke bar open', () => {
-    // The fold-away guard closes strokeOpen when the selection stops
-    // offering the bar. It must count patterns as offering it — the bug
-    // this pins: the guard knew only showSvgOptions, so opening Stroke on
-    // a pattern was immediately folded away and the previously open
-    // pattern bar snapped back.
-    const guard = SRC.slice(
-      SRC.indexOf('const strokeable ='),
-      SRC.indexOf('if ((!model.visible || !svgFillable)'),
+    // The fold-away closes a page when the selection stops offering it,
+    // and it must count patterns as offering Stroke — the bug this pins:
+    // the guard knew only showSvgOptions, so opening Stroke on a pattern
+    // was immediately folded away and the previously open pattern bar
+    // snapped back. There is no separate guard to keep honest any more:
+    // the rule reads the TAB ROW, and the pattern branch lists 'stroke'.
+    expect(SRC).toContain('const strokeable = !!model.showSvgOptions || !!model.showPatternOptions');
+    const order = SRC.slice(
+      SRC.indexOf('const typeSubmenuOrder'),
+      SRC.indexOf('const submenuOrder'),
     );
-    expect(guard).toContain('model.showPatternOptions');
-    expect(guard).toContain('if ((!model.visible || !strokeable) && model.strokeOpen)');
+    const pattern = order.slice(order.indexOf('model.showPatternOptions'), order.indexOf('model.showStrokeOptions'));
+    expect(pattern).toContain("'stroke' as const,");
+  });
+
+  it('the Opacity tab a pattern grew does not flicker — one rule answers for it', () => {
+    // The bug: Opacity was added to a pattern's tab row and the panel's
+    // per-page fold-away was not told, so `canOpacity` said a pattern has
+    // no Opacity page. Tapping the tab opened the page, the fold-away shut
+    // it on the next render, the landing rule reopened the remembered page
+    // because the ROW still offered it, and the tab flickered on and off
+    // for as long as it was looked at.
+    //
+    // The fold-away asks the row now, so the row and the rule cannot
+    // disagree — about Opacity or about anything a row is taught later.
+    const order = SRC.slice(
+      SRC.indexOf('const typeSubmenuOrder'),
+      SRC.indexOf('const submenuOrder'),
+    );
+    const pattern = order.slice(
+      order.indexOf('model.showPatternOptions'), order.indexOf('model.showStrokeOptions'),
+    );
+    expect(pattern).toContain("'opacity' as const,");
+    expect(SRC).toContain('orderRef.current.includes(activeSubRef.current)');
+    // The hand-written per-page questions are gone, `canOpacity` included.
+    expect(SRC).not.toContain('canOpacity');
+    expect(SRC).not.toContain('const canShadow');
+    expect(SRC).not.toContain('const canBorder');
   });
 
   it('builds the pattern typeSpecs branch, with the shared Stroke bar', () => {

@@ -164,18 +164,24 @@ describe('the Copies page', () => {
   it('folds away on what the TAB ROW offers, not on the vector flag', () => {
     const panel = read('ObjectPropertiesPanel.tsx');
     expect(panel).toContain('const transformable = typeSubmenuOrder.includes(\'transform\');');
+    // The reading this bug forced is now the panel's ONLY fold-away rule,
+    // for every page: a page closes when the row it rides stops listing
+    // it. Six hand-written per-page answers to that question became one
+    // derived from the row itself, so a page and its tab can no longer
+    // disagree — and this loop is no longer sayable for any of them.
     const fold = panel.slice(
-      panel.indexOf('    if ((!model.visible || !strokeable) && model.strokeOpen) {'),
-      panel.indexOf('  // Fold the Layout page away'),
+      panel.indexOf('  // ── The one fold-away rule'),
+      panel.indexOf('  // Seed the shadow / border drafts'),
     );
-    expect(fold).toContain('if ((!model.visible || !transformable) && model.transformOpen) {');
-    // The vector-only flag is gone from the guard AND from its deps, or the
-    // effect would go on running against the old question.
+    expect(fold).toContain('if (!activeSubRef.current) return;');
+    expect(fold).toContain('isHostOnlyPage(activeSubRef.current) || orderRef.current.includes(activeSubRef.current)');
+    expect(fold).toContain('dismissSubmenuRef.current();');
+    expect(fold).toContain("}, [model.visible, activeSub, submenuOrder.join('|')]);");
+    // No per-page predicate survives in it, the vector-only flag least of
+    // all: that flag is read only where the vector branch builds its tabs.
     expect(fold).not.toContain('svgTransformable');
-    expect(panel).toContain('svgEndable, model.endpointsOpen, transformable, model.transformOpen]);');
-    // svgTransformable still says what it always said — which vectors
-    // repeat — and is read only where the vector branch builds its tabs.
-    expect(panel.match(/svgTransformable/g)).toHaveLength(3); // decl, the svg branch, the note
+    expect(fold).not.toContain('model.transformOpen');
+    expect(panel.match(/svgTransformable/g)).toHaveLength(2); // its decl and the svg branch
   });
 
   // The kinds that carry the tab, from the tab order itself: if one of
@@ -203,8 +209,10 @@ describe('the Copies page', () => {
     expect(panel).not.toContain('onTransformRotate');
     expect(panel).toContain("onCopies={(spec) => model.onTransformCopies?.(spec)}");
     expect(panel).toContain("onCopiesPreview={(spec) => model.onTransformCopiesPreview?.(spec)}");
-    // Dismiss and fold-away reach it too.
-    expect(panel.match(/model\.onTransformOpenChange\?\.\(false\);/g)!.length).toBeGreaterThanOrEqual(2);
+    // Closing reaches it through the one closer every page closes by —
+    // which is also what the fold-away calls, so there is exactly one.
+    expect(panel).toContain('model.onTransformOpenChange?.(false);');
+    expect(panel.match(/model\.onTransformOpenChange\?\.\(false\);/g)).toHaveLength(1);
     const adapter = readFileSync(resolve(__dirname, '..', 'adapter.ts'), 'utf8');
     expect(adapter).not.toContain('TransformModel');
     expect(adapter).not.toContain('onTransformRotate');

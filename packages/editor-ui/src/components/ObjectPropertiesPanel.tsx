@@ -471,12 +471,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         ]
     : [];
   // Does THIS selection offer the Copies page? Read off the tab order
-  // itself, so the fold-away below asks exactly the question the tab row
-  // asks. It used to ask `svgTransformable` — "is this a vector" — while
-  // an image and a TEXT carry the tab too: tapping Copies on a text opened
-  // the page, this effect closed it on the next render for not being a
-  // vector, the landing rule re-opened the remembered page, and the tab
-  // flickered on and off for as long as it was looked at.
+  // itself — the reading the one fold-away rule below now makes for every
+  // page, and the first place it was made.
   const transformable = typeSubmenuOrder.includes('transform');
 
   // Layout joins the tail of whatever the selection's type offers, so a mixed
@@ -535,6 +531,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     : action === 'transform' ? 'transform'
     : 'stroke';
 
+  /** Pages a HOST opens with chrome of its own, which no tab row ever
+   *  offers: a rig's part sliders (Hands / Feet / Spine / Head — the row
+   *  carries Transform alone, see RIG_PAGES) and the pattern capsule's
+   *  Tiles and Tools bars. The fold-away rule reads the tab row, so these
+   *  have to be named: they are not the row's to take away, and a rule that
+   *  closed them would shut the capsule's own bar the frame it opened. */
+  const isHostOnlyPage = (key: SubmenuKey): boolean =>
+    key === 'patternTiles' || key === 'patternTools'
+    || (rigPartOfSubmenu(key) != null && key !== 'rigRoot');
+
   const openSubmenu = (key: SubmenuKey) => {
     fontSheetOpenRef.current = false;
     // One page at a time, and the PANEL is what holds to that: an open
@@ -589,6 +595,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     setLocalSub(null);
     dismissHostSubmenus();
   };
+  // The fold-away rule runs in an effect and must read the CURRENT page,
+  // row and closer — all three are rebuilt every render, and listing them
+  // as deps would either re-run it every render or stale it.
+  const activeSubRef = useRef<SubmenuKey | null>(null);
+  activeSubRef.current = activeSub;
+  const orderRef = useRef<SubmenuKey[]>(submenuOrder);
+  orderRef.current = submenuOrder;
+  const dismissSubmenuRef = useRef<() => void>(() => {});
+  dismissSubmenuRef.current = dismissSubmenu;
 
   // The page the sheet last showed — what the sheet keeps rendering through
   // its slide down (activeSub goes null the instant it closes, but the well
@@ -676,51 +691,35 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     }),
   ).current;
 
-  // Fold the effect pages away the moment the selection can no longer use them
-  // (or the whole panel hides) so none lingers over the next object's actions.
-  // Frames reuse the Shadow / Border pages (but never Crop), so keep those open
-  // while a frame is selected. Shadow and Border part company here: text offers
-  // Shadow but not Border, so a text selection must not drag the Shadow page
-  // down with a rule written for the pair.
+  // ── The one fold-away rule ──────────────────────────────────────────
+  //
+  // A page closes the moment the TAB ROW stops offering it — read off
+  // `submenuOrder` itself, the very list the row is built from — or the
+  // panel hides. One rule, one source, for every page the row can hold:
+  // the host's, the panel's own, effect pages and type pages alike.
+  //
+  // It used to be six effects, each with its own hand-written answer to
+  // "can this selection still use this page?", and those answers drifted
+  // from the row's. That drift is not a cosmetic bug, it is a LOOP: the
+  // row offers a page, the user taps it, the fold-away closes it for not
+  // being offered, the landing rule below reopens the remembered page
+  // because the row says it is there, and the tab flickers on and off for
+  // as long as it is looked at. It happened to Copies on a text, and
+  // again to Opacity on a pattern the day the pattern grew an Opacity tab
+  // — the tab row was told and this rule was not. Derived from the row, a
+  // disagreement is no longer sayable.
   useEffect(() => {
-    const canShadow = model.showImageEdit || model.showFrameOptions || model.showTextStyle
-      || model.showSvgOptions;
-    const canBorder = model.showImageEdit || model.showFrameOptions;
-    if (!model.visible || !canShadow) model.onShadowOpenChange?.(false);
-    if (!model.visible || !canBorder) model.onBorderOpenChange?.(false);
-    if (!model.visible || !model.showImageEdit) {
-      model.onCropOpenChange?.(false);
+    if (!activeSubRef.current) return;
+    if (model.visible
+      && (isHostOnlyPage(activeSubRef.current) || orderRef.current.includes(activeSubRef.current))) {
+      return;
     }
-    // model.on*OpenChange are stable setters; listing the whole model would
-    // re-run this every render.
+    dismissSubmenuRef.current();
+    // The refs carry the current reading; the keys below are what CHANGES
+    // it — the panel's visibility, which page is open, and the row itself
+    // (by value, since it is rebuilt every render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showImageEdit, model.showFrameOptions, model.showTextStyle, model.showSvgOptions]);
-  // The Opacity page is shared by images, paint islands, the closed vector
-  // shapes, rigs and word stickers, so it folds away only when the
-  // selection is none of those (or the panel hides).
-  useEffect(() => {
-    const canOpacity = model.showImageEdit || model.showPaintOptions || svgOpacityable
-      || model.showRigOptions || model.showInvert || model.showTextStyle;
-    if ((!model.visible || !canOpacity) && model.opacityOpen) {
-      model.onOpacityOpenChange?.(false);
-    }
-    // model.on* are stable setters; listing the whole model would re-run this
-    // every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showImageEdit, model.showPaintOptions, svgOpacityable, model.showRigOptions, model.showInvert, model.showTextStyle, model.opacityOpen]);
-  // The panel-kept pages fold away when the selection stops offering them
-  // (or the panel hides), like the host's pages do.
-  const imageable = !!model.showImageEdit && !!model.onReplaceImage && !multi;
-  useEffect(() => {
-    if (!model.visible
-      || (localSub === 'background' && !backgroundable)
-      || (localSub === 'card' && !cardable)
-      || (localSub === 'shape' && !svgShapeable)
-      || (localSub === 'image' && !imageable)
-      || (localSub === 'rigColor' && !model.showRigOptions)) {
-      setLocalSub(null);
-    }
-  }, [model.visible, backgroundable, cardable, svgShapeable, imageable, model.showRigOptions, localSub]);
+  }, [model.visible, activeSub, submenuOrder.join('|')]);
 
   // Seed the shadow / border drafts from the current effect each time the
   // controls open.
@@ -782,49 +781,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     }
     prevSvgFillOpen.current = !!model.svgFillOpen;
   }, [model.svgFillOpen, model.svgFill]);
-  // Fold the Stroke page away the moment the selection no longer offers it —
-  // a vector object or a PATTERN (whose tiles share the page) — or the panel
-  // hides, so it never lingers over the next object. The Fill and Endpoints
-  // pages go with it, and also whenever the new vector selection is a subtype
-  // that doesn't offer that one — a shape with no interior to fill, or a
-  // closed one with no loose end to decorate.
-  useEffect(() => {
-    if ((!model.visible || !strokeable) && model.strokeOpen) {
-      model.onStrokeOpenChange?.(false);
-    }
-    if ((!model.visible || !svgFillable) && model.svgFillOpen) {
-      model.onSvgFillOpenChange?.(false);
-    }
-    if ((!model.visible || !svgEndable) && model.endpointsOpen) {
-      model.onEndpointsOpenChange?.(false);
-    }
-    if ((!model.visible || !transformable) && model.transformOpen) {
-      model.onTransformOpenChange?.(false);
-    }
-    // model.on* are stable setters; listing the whole model would re-run this
-    // every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, strokeable, model.strokeOpen, svgFillable, model.svgFillOpen, svgEndable, model.endpointsOpen, transformable, model.transformOpen]);
-  // Fold the Layout page away as soon as the selection stops being a multi one
-  // (a tap that drops it to a single object, or clears it), so it never
-  // lingers over an object it has nothing to say about.
-  useEffect(() => {
-    if ((!model.visible || !showLayout) && model.layoutOpen) model.onLayoutOpenChange?.(false);
-    // model.on* are stable setters; listing the whole model would re-run this
-    // every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, showLayout, model.layoutOpen]);
-  // Fold the Text pages away the moment the selection is no longer editable
-  // text (or the whole panel hides), so they never linger over the next object.
-  useEffect(() => {
-    if ((!model.visible || !model.showTextStyle) && model.textStyleOpen) {
-      model.onTextStyleOpenChange?.(false);
-    }
-    // model.on* are stable setters; listing the whole model would re-run this
-    // every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model.visible, model.showTextStyle, model.textStyleOpen]);
-
   // Shadow controls → live preview / commit through the model; the draft stays
   // in sync so the sliders keep tracking.
   const applyShadow = (s: ShadowModel, committed: boolean) => {

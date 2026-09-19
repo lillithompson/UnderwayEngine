@@ -98,8 +98,14 @@ describe('the panel wires it to the host', () => {
     // …and folds away with the selection that offered it, like every
     // other panel-kept page: a rig's page must not linger over the next
     // object's actions.
-    expect(PANEL).toContain("|| (localSub === 'rigColor' && !model.showRigOptions)) {");
-    expect(PANEL).toContain('model.showRigOptions, localSub]);');
+    // …by the one rule the panel folds every page with: 'rigColor' rides
+    // RIG_PAGES, so a selection that is no longer a rig stops listing it
+    // and the page goes with the listing. The rig's PART pages are the
+    // exception the rule names — the host opens those with its own
+    // floating sliders and no tab row ever offered them.
+    expect(PANEL).toContain('const isHostOnlyPage = (key: SubmenuKey): boolean =>');
+    expect(PANEL).toContain("|| (rigPartOfSubmenu(key) != null && key !== 'rigRoot');");
+    expect(PANEL).toContain(': model.showRigOptions ? RIG_PAGES.map((o) => o.sub)');
   });
 
   it('gives the page no Remove line, like the pose pages', () => {

@@ -681,13 +681,15 @@ describe('the panel drives the sheet', () => {
     // and folded when the selection stops offering it.
     expect(PANEL).toContain('setLocalSub(isLocalSubmenu(key) ? key : null);');
     expect(PANEL).toContain('if (isLocalSubmenu(key)) return;');
-    expect(PANEL).toContain("(localSub === 'card' && !cardable)");
+    // …and folded by the ONE rule every page folds by: the tab row stops
+    // listing 'card' (cardable goes false), so the page goes.
+    expect(PANEL).toContain("...(cardable ? (['card'] as const) : []), 'shadow', 'opacity']");
     // Opacity: the page an image opens, kept open for a sticker. Its second
     // row is FADE now (the Soften it replaced was a mask; this moves the
     // colours the object draws with — engine/fade.ts), and it stands exactly
     // when the host can serve its picker, with its height counted on the
     // same rule.
-    expect(PANEL).toContain('model.showRigOptions || model.showInvert || model.showTextStyle;');
+    expect(PANEL).toContain("'stroke' as const,\n          'opacity' as const,");
     expect(PANEL).toContain('showFade={!!model.onPickFadeColor}');
     expect(PANEL).toContain('opacityFade: !!model.onPickFadeColor,');
     const opacity = SRC('components', 'OpacityBar.tsx');
@@ -732,8 +734,9 @@ describe('the panel drives the sheet', () => {
     expect(PANEL).toContain("const svgShapeable = !!model.showSvgOptions && svgHasShape(model.svgSubtype ?? 'stroke');");
     expect(PANEL).toContain(": action === 'shape' ? 'shape'");
     // The Shape page is the panel's own (like Color) and folds when the
-    // subtype stops offering it.
-    expect(PANEL).toContain("(localSub === 'shape' && !svgShapeable)");
+    // subtype stops offering it — by the one rule, which reads the very
+    // line above: no 'shape' in the row, no Shape page.
+    expect(PANEL).toContain('if (!activeSubRef.current) return;');
     expect(PANEL).toContain('<ShapeBar');
     expect(PANEL).toContain('cornerRadius={model.strokeRadius ?? 0}');
     expect(PANEL).toContain('onCornerRadius={(r, committed) => model.onStrokeRadius?.(r, committed)}');
