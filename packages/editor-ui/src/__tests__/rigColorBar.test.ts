@@ -21,11 +21,12 @@ const PANEL = read('components', 'ObjectPropertiesPanel.tsx');
 const ADAPTER = read('adapter.ts');
 
 describe('the Color tab', () => {
-  it('stands last in the rig’s option row, after the two that are postures', () => {
+  it('stands third in the rig’s option row, between Joints and Transform', () => {
     // A rig's tabs are no longer the part table filtered: Color names no
-    // part of the figure at all, so the row is its own list and both panel
-    // sites read it (rigOptions.test.ts pins those).
-    expect(RIG_PAGES.map((o) => o.label)).toEqual(['Transform', 'Joints', 'Color']);
+    // part of the figure at all — nor does Figure, which leads — so the row
+    // is its own list and both panel sites read it (rigOptions.test.ts pins
+    // those).
+    expect(RIG_PAGES.map((o) => o.label)).toEqual(['Figure', 'Joints', 'Color', 'Transform']);
     expect(RIG_PAGES.find((o) => o.key === 'color')!.sub).toBe('rigColor');
   });
 
@@ -92,9 +93,9 @@ describe('the panel wires it to the host', () => {
     // write through the host as any hue row does, and its circles open
     // the host's picker, neither of which asks whether the page is up.
     expect(PANEL).toContain(
-      "type LocalSubmenu = 'background' | 'card' | 'shape' | 'image' | 'rigColor';",
+      "type LocalSubmenu = 'background' | 'card' | 'shape' | 'image' | 'rigColor' | 'rigFigure';",
     );
-    expect(PANEL).toContain("|| key === 'rigColor';");
+    expect(PANEL).toContain("|| key === 'rigColor' || key === 'rigFigure';");
     // …and folds away with the selection that offered it, like every
     // other panel-kept page: a rig's page must not linger over the next
     // object's actions.

@@ -6,7 +6,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  RIG_JOINT_SECTIONS, RIG_PAGES, RIG_PART_OPTIONS, RIG_PART_PAGES, RIG_SLIDER_REST,
+  RIG_JOINT_SECTIONS, RIG_PAGES, RIG_PART_OPTIONS, RIG_SLIDER_REST,
   restRigSliders, rigJointSliders,
   rigPartOfSubmenu, rigPartSliders, rigPartSubmenu, rigSliderPart,
 } from '../logic/rigEdit';
@@ -33,19 +33,23 @@ describe('the rig option set', () => {
       .toEqual(['rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead', 'rigJoints']);
   });
 
-  it('the panel offers the whole-figure page and Color, then Opacity', () => {
+  it('offers Figure, Joints, Color, Transform — and not Opacity', () => {
     // The part pages (Hands / Feet / Spine / Head) came off the options
-    // row; their sliders live on as the floating slider modes. What is
-    // left of the parts is the whole figure's own page…
-    expect(RIG_PART_PAGES.map((o) => o.label)).toEqual(['Transform', 'Joints']);
-    expect(RIG_PART_PAGES.map((o) => o.sub)).toEqual(['rigRoot', 'rigJoints']);
-    // …and the row adds the one page that is not a posture at all: the two
-    // colours the sketch is drawn in. Both panel sites — the tab row and
-    // the page list — read RIG_PAGES, never the part table, so a tab can
-    // never be offered with no page behind it.
-    expect(RIG_PAGES.map((o) => o.label)).toEqual(['Transform', 'Joints', 'Color']);
-    expect(RIG_PAGES.map((o) => o.sub)).toEqual(['rigRoot', 'rigJoints', 'rigColor']);
-    expect(RIG_PAGES.map((o) => o.key)).toEqual(['rig', 'joints', 'color']);
+    // row; their sliders live on as the floating slider modes. What is left
+    // of the parts is the JOINTS page and the whole figure's three axes —
+    // and the row wraps them in the two pages that are not postures at all:
+    // FIGURE, the rig as an object (its one act, Reset), and COLOR, the two
+    // colours the sketch is drawn in.
+    //
+    // The order runs from what the figure IS to how it is turned, so the
+    // page you reach for to start over leads and the fine adjustment
+    // trails. Both panel sites — the tab row and the page list — read
+    // RIG_PAGES, never the part table, so a tab can never be offered with
+    // no page behind it.
+    expect(RIG_PAGES.map((o) => o.label)).toEqual(['Figure', 'Joints', 'Color', 'Transform']);
+    expect(RIG_PAGES.map((o) => o.sub))
+      .toEqual(['rigFigure', 'rigJoints', 'rigColor', 'rigRoot']);
+    expect(RIG_PAGES.map((o) => o.key)).toEqual(['figure', 'joints', 'color', 'rig']);
     expect(SRC).toContain('model.showRigOptions ? RIG_PAGES.map((o) => o.sub)');
     expect(SRC).toContain('RIG_PAGES.map((opt) => ({');
     // Opacity stood beside Transform and is gone: a figure is a POSE, and
@@ -161,12 +165,11 @@ describe('the rig option set', () => {
     // could only mean "this part back to rest" — and it reset the whole
     // page, untouched sliders included, so one tap flattened a pair of
     // hands posed finger by finger. Resetting is offered over the WHOLE
-    // figure instead, from the RIG page's own row (see below).
+    // figure instead, from the FIGURE page (see below).
     const BAR = readFileSync(join(__dirname, '..', 'components', 'RigPoseBar.tsx'), 'utf8');
     expect(BAR).not.toContain('onRemove');
-    // The RIG page's Reset is not a Remove and is not per-part: it is a
-    // labelled row saying "whole figure" (see below), and no other page has
-    // one.
+    // The Figure page's Reset is not a Remove and is not per-part: it is
+    // that page's one act (see below), and no other page has one.
     expect(BAR).not.toContain('removeLabel');
     // The panel gives the rig pages no Remove line — only the effect pages
     // set one.
@@ -178,34 +181,40 @@ describe('the rig option set', () => {
     expect(ADAPTER).not.toContain('onResetRigPart');
   });
 
-  it('is the parts and nothing else — Reset is not one of them', () => {
+  it("the FIGURE page's one act, in the filled button an Add wears", () => {
     // The row is a row of PAGES: every option opens a bar and lights as the
-    // carousel's position. Reset opened nothing and lit nothing, so it sat in
-    // that row as a button that behaved like no other; it lives at the foot of
-    // the RIG bar now, the page already about the whole figure.
+    // carousel's position. Reset opened nothing and lit nothing, so it sat
+    // in that row as a button that behaved like no other. It is the FIGURE
+    // page's content now — the page about the rig as an object rather than
+    // about any posture — and it wears the same filled button "Add Fill"
+    // wears, because it is the same kind of thing: a page whose whole
+    // content is one act. It stood as a one-cell ActionRow, which is the
+    // shape the pages use for CHOOSING between states.
     expect(SRC).toContain('typeSpecs = RIG_PAGES.map');
     expect(SRC).not.toContain("key: 'resetRig'");
     expect(RIG_PART_OPTIONS.some((o) => o.sub === ('resetRig' as SubmenuKey))).toBe(false);
-    // The bar takes it instead, and only when the host wires it — a locked
-    // rig offers no reset.
-    expect(SRC).toContain('onReset={model.onResetRig}');
+    const figure = SRC.slice(
+      SRC.indexOf("} else if (displaySub === 'rigFigure') {"),
+      SRC.indexOf('} else if (displaySub && rigPartOfSubmenu(displaySub)) {'),
+    );
+    // Only when the host wires it — a locked rig offers no reset.
+    expect(figure).toContain('{model.onResetRig ? (');
+    expect(figure).toContain('<EffectButton label="Reset" icon="restore"');
+    // …and the pose pages have nothing to reset with any more.
     const BAR = readFileSync(join(__dirname, '..', 'components', 'RigPoseBar.tsx'), 'utf8');
-    expect(BAR).toContain("{part === 'rig' && onReset ? (");
-    // It says whose reset it is: under three sliders, an unlabelled button
-    // would read as resetting those three.
-    // No label column: on the whole-figure page "Reset" says enough.
-    expect(BAR).toContain('<ActionRow options={RESET_OPTION} onPress={onReset} />');
-    expect(BAR).not.toContain('Whole figure"');
+    expect(BAR).not.toContain('onReset');
+    expect(BAR).not.toContain('ActionRow');
   });
 
-  it('makes room for that row on the RIG page, and only there', () => {
-    // The bar's height is counted from what it will render, like the Layout
-    // bar's Arrange row: no Reset wired, no row, no room reserved.
-    const withReset = submenuHeight('rigRoot', { rigCanReset: true });
-    expect(withReset).toBe(submenuHeight('rigRoot') + ROW_SEGMENTED + ROW_GAP);
+  it('makes room for that act on the FIGURE page, and only there', () => {
+    // The page's height is counted from what it will render, like the
+    // Layout bar's Arrange row: no Reset wired, no button, no room
+    // reserved — and the Transform page is three sliders either way now.
+    expect(submenuHeight('rigFigure', { rigCanReset: true }))
+      .toBe(submenuHeight('rigFigure') + ROW_SEGMENTED);
     expect(submenuHeight('rigRoot')).toBe(submenuHeight('rigSpine'));
-    // The other pages are untouched by the flag — the reset is not theirs.
-    for (const sub of ['rigHands', 'rigFeet', 'rigSpine', 'rigHead'] as const) {
+    // Every other page is untouched by the flag — the reset is not theirs.
+    for (const sub of ['rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead'] as const) {
       expect(submenuHeight(sub, { rigCanReset: true })).toBe(submenuHeight(sub));
     }
   });

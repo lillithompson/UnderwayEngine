@@ -1,7 +1,7 @@
 import React from 'react';
 import type { RigPart, RigSliderKey } from '../logic/rigEdit';
 import { rigPartSliders } from '../logic/rigEdit';
-import { ActionRow, BarBody, SliderRow } from './effectBar';
+import { BarBody, SliderRow } from './effectBar';
 
 // The rig's pose page: one part per tab (TRANSFORM — the whole figure —
 // then HANDS · FEET · SPINE · HEAD) and a slider per control. The whole figure turns on three axes, the hands
@@ -22,12 +22,12 @@ import { ActionRow, BarBody, SliderRow } from './effectBar';
 // (rigIkStore, off), so the behaviour can be handed back without rebuilding
 // it; nothing in the UI turns it on.
 //
-// RESET lives at the foot of the TRANSFORM page, and only there: it puts the
-// WHOLE figure back — rest pose, facing front, every slider at rest — so it
-// belongs on the page about the figure as a whole rather than beside the
-// hands or the spine. Its cell spans the row, no label column ("Reset" on
-// the whole-figure page says enough). It renders only when the host wires
-// it, so a locked rig offers none.
+// RESET is not here. It puts the WHOLE figure back — rest pose, facing
+// front, every slider at rest — which is a thing said about the figure
+// rather than about any posture, so it is the FIGURE page's one act
+// (ObjectPropertiesPanel's 'rigFigure'). It sat at the foot of this page
+// while Transform was the figure's own tab; now that the row leads with
+// Figure, the act belongs with the noun.
 //
 // The sliders do NOT read the figure's current pose — a hand posed finger
 // by finger has no single "fistness" — so they sit at their rest positions
@@ -41,17 +41,14 @@ import { ActionRow, BarBody, SliderRow } from './effectBar';
 // already reach. It also reset the WHOLE page, the sliders nobody had
 // touched included, so one tap flattened a pair of hands that had been posed
 // finger by finger. Standing the figure up is offered ONCE, over the whole
-// rig, as the labelled Reset row above — not as a per-page Remove whose
-// scope you have to guess.
+// rig, on the Figure page — not as a per-page Remove whose scope you have
+// to guess.
 
-export function RigPoseBar({ part, values, onChange, onCommit, onReset }: {
+export function RigPoseBar({ part, values, onChange, onCommit }: {
   part: RigPart;
   values: Record<RigSliderKey, number>;
   onChange: (key: RigSliderKey, value: number) => void;
   onCommit: (key: RigSliderKey, value: number) => void;
-  /** Stand the whole figure back up — see above. Offered on the RIG page
-   *  alone, and only when the host passes it. */
-  onReset?: () => void;
 }) {
   return (
     <BarBody>
@@ -63,11 +60,6 @@ export function RigPoseBar({ part, values, onChange, onCommit, onReset }: {
           apply={(t, committed) => (committed ? onCommit : onChange)(spec.key, t)}
         />
       ))}
-      {part === 'rig' && onReset ? (
-        <ActionRow options={RESET_OPTION} onPress={onReset} />
-      ) : null}
     </BarBody>
   );
 }
-
-const RESET_OPTION = [{ value: 'reset' as const, label: 'Reset' }];

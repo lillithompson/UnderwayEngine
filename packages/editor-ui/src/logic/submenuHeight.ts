@@ -155,10 +155,12 @@ export type SubmenuKey =
   // dark ink, or the inverse) — the one colour setting a magnet has, and not a
   // hue, so it is a toggle rather than a slider row.
   | 'card'
-  // The poseable rig's parts: the whole figure (three axes, plus the Reset
-  // that stands it back up), six sliders for the hands (curl / twist /
-  // spread per side), four for the feet, three for the spine, two for the
-  // head.
+  // The rig as an OBJECT rather than a posture: the Reset that stands the
+  // whole figure back up, as the one act on its own page.
+  | 'rigFigure'
+  // …and the poseable rig's parts: the whole figure's three axes, six
+  // sliders for the hands (curl / twist / spread per side), four for the
+  // feet, three for the spine, two for the head.
   | 'rigRoot' | 'rigHands' | 'rigFeet' | 'rigSpine' | 'rigHead'
   // …and the bends BETWEEN the ends: a page of pole sliders, elbows on one
   // face and knees on the other.
@@ -200,8 +202,8 @@ export interface SubmenuHeightContext {
   strokeRows?: { position: boolean; color?: boolean };
   /** Layout page: whether the host wired up Grid, which adds the Arrange row. */
   layoutHasGrid?: boolean;
-  /** RIG page: whether the host wired up Reset, which adds its row. A locked
-   *  rig offers none, and its page is three sliders tall. */
+  /** FIGURE page: whether the host wired up Reset, which is the whole of
+   *  that page. A locked rig offers none, and the page stands empty. */
   rigCanReset?: boolean;
   /** Pattern Tools page: how many tile sets the filter offers. Nonzero adds
    *  the Sets row. */
@@ -350,13 +352,16 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // Bend / Twist / Lean.
       return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
     case 'rigRoot':
-      // The three axes the figure stands on, and — when the host offers it —
-      // the Reset that puts the whole figure back at rest. It lives on THIS
-      // page because this is the page about the figure as a whole.
-      return contentArea([
-        ROW_SLIDER, ROW_SLIDER, ROW_SLIDER,
-        ...(ctx.rigCanReset ? [ROW_SEGMENTED] : []),
-      ]);
+      // The three axes the figure stands on. (Reset used to sit under them;
+      // it is the Figure page's one act now — the page about the figure as
+      // a whole, rather than the page about how it is turned.)
+      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
+    case 'rigFigure':
+      // One act, a row tall: the Reset that puts the whole figure back at
+      // rest, in the filled button an "Add Fill" wears (EffectButton, the
+      // same ROW_SEGMENTED height the ActionRow it replaced stood). A host
+      // that wires no reset — a locked rig — leaves the page empty.
+      return contentArea(ctx.rigCanReset ? [ROW_SEGMENTED] : []);
     case 'rigHead':
       // Nod / Shake / Tilt.
       return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);

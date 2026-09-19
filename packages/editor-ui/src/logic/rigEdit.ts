@@ -31,19 +31,16 @@ export const RIG_PART_OPTIONS: readonly RigPartOption[] = [
   { part: 'joints', label: 'Joints', sub: 'rigJoints' },
 ];
 
-/** The pages the panel actually OFFERS a rig selection: the whole figure
- *  only. The part pages (Hands / Feet / Spine / Head) were removed from
- *  the options row — their sliders live on as the floating slider modes
- *  the host drives through {@link rigPartSliders} / {@link rigSliderPart},
- *  which is why the full table above stays: it is the part↔bar/slider
- *  pairing, not the page list. */
-export const RIG_PART_PAGES: readonly RigPartOption[] =
-  RIG_PART_OPTIONS.filter((o) => o.part === 'rig' || o.part === 'joints');
-
-/** One tab of a rig's option row. Most of them open a page of POSTURE
- *  sliders and name a part of the figure ({@link RIG_PART_PAGES}); Color
- *  names no part at all, which is why the row is its own list rather than
- *  the part table filtered again. */
+/** One tab of a rig's option row. Two of them open a page of POSTURE
+ *  sliders and name a part of the figure; Figure and Color name no part at
+ *  all, which is why the row is its own list ({@link RIG_PAGES}) rather
+ *  than the part table filtered.
+ *
+ *  Most rows of that table open no page at all any more: Hands / Feet /
+ *  Spine / Head came off the options row and their sliders live on as the
+ *  floating slider modes the host drives through {@link rigPartSliders} /
+ *  {@link rigSliderPart}, which is why the full table stays — it is the
+ *  part↔bar/slider pairing, not the page list. */
 export interface RigPageOption {
   /** Identity for the tab (a part name, or 'color'). */
   key: string;
@@ -51,14 +48,36 @@ export interface RigPageOption {
   sub: SubmenuKey;
 }
 
-/** The tabs a rig selection OFFERS, in the order the row lists them: the
- *  whole figure's Transform page, the JOINTS page, then Color — the two
- *  colours the sketch is drawn in, which is the one thing about a rig that
- *  is not a pose. Both the tab row and the panel's page list read this, so
- *  a tab can never be offered with no page behind it. */
+/** The FIGURE page's tab: the rig as an object rather than as a posture —
+ *  the one act it offers whole, Reset, which stands it back up. It leads
+ *  the row because it is the thing the other three are about. */
+const RIG_FIGURE_PAGE: RigPageOption = {
+  key: 'figure', label: 'Figure', sub: 'rigFigure' as SubmenuKey,
+};
+
+/** One tab of the row, looked up by the part it is about — so the order
+ *  below can be stated as an order without restating any tab's own label
+ *  or page key. */
+function rigPartPage(part: RigPart): RigPageOption {
+  const o = RIG_PART_OPTIONS.find((p) => p.part === part)!;
+  return { key: o.part, label: o.label, sub: o.sub };
+}
+
+/** The tabs a rig selection OFFERS, in the order the row lists them:
+ *  Figure, then the JOINTS page, then Color — the two colours the sketch is
+ *  drawn in, which is the one thing about a rig that is not a pose — and
+ *  Transform, the three axes the whole figure stands on, last.
+ *
+ *  Figure leads and Transform trails because the row then runs from what
+ *  the figure IS to how it is turned: the page you reach for to start over
+ *  first, the fine adjustment at the end. Both the tab row and the panel's
+ *  page list read this, so a tab can never be offered with no page behind
+ *  it. */
 export const RIG_PAGES: readonly RigPageOption[] = [
-  ...RIG_PART_PAGES.map((o) => ({ key: o.part, label: o.label, sub: o.sub })),
+  RIG_FIGURE_PAGE,
+  rigPartPage('joints'),
   { key: 'color', label: 'Color', sub: 'rigColor' as SubmenuKey },
+  rigPartPage('rig'),
 ];
 
 /** What the Color page shows for a figure whose host wired no colours: the

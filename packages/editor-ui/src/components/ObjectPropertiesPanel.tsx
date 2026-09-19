@@ -183,10 +183,10 @@ function GridButton({ label, icon, iconColor, onPress, compact }: {
 /** One type-specific option, described rather than rendered — it becomes a
  *  tab of the Edit sheet (EditTabSpec), lit while its page is showing. */
 /** The pages whose open state the panel keeps itself (see `localSub`). */
-type LocalSubmenu = 'background' | 'card' | 'shape' | 'image' | 'rigColor';
+type LocalSubmenu = 'background' | 'card' | 'shape' | 'image' | 'rigColor' | 'rigFigure';
 const isLocalSubmenu = (key: SubmenuKey): key is LocalSubmenu =>
   key === 'background' || key === 'card' || key === 'shape' || key === 'image'
-  || key === 'rigColor';
+  || key === 'rigColor' || key === 'rigFigure';
 
 interface OptionSpec extends Omit<EditTabSpec, 'selected'> {
   /** The page this option opens. Options carrying one light up as tabs while
@@ -384,12 +384,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // points own it: the Type tab opens on 'font', Spacing on 'spacing', Align
   // on 'align' (all via openSubmenu).
   const [textPage, setTextPage] = useState<TextPage>('text');
-  // The Color, Shape, Image and rig-Color pages are the panel's own: they
-  // hold nothing the host has to know is open (a swatch opens the host's
-  // picker, a toggle fires its action, the Radius slider writes through
-  // onStrokeRadius as it always did, Replace is one press and the
-  // resolution is just read), so unlike the effect pages their open state
-  // lives here rather than on the model. A page NOT on this list and not
+  // The Color, Shape, Image, rig-Color and rig-Figure pages are the panel's
+  // own: they hold nothing the host has to know is open (a swatch opens the
+  // host's picker, a toggle fires its action, the Radius slider writes
+  // through onStrokeRadius as it always did, Replace is one press, Reset is
+  // one press, and the resolution is just read), so unlike the effect pages
+  // their open state lives here rather than on the model. A page NOT on this list and not
   // wired to a host flag can never open at all — which is what left the
   // Image tab dead, and an image's sheet landing on it empty, and what
   // left the rig's Color tab pressable but inert: openSubmenu ran off the
@@ -456,7 +456,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         ]
     // Vectors and patterns together: the one page they share.
     : model.showStrokeOptions ? ['stroke']
-    // A rig's pages — the whole-figure TRANSFORM page, and that alone.
+    // A rig's pages, in RIG_PAGES' order: Figure, Joints, Color, Transform.
     // (The part pages Hands/Feet/Spine/Head came off the row, their
     // sliders living on as the host's floating slider modes.) Opacity
     // stood beside it and is gone: a figure is a POSE, and fading one is
@@ -541,7 +541,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
 
   /** Pages a HOST opens with chrome of its own, which no tab row ever
    *  offers: a rig's part sliders (Hands / Feet / Spine / Head — the row
-   *  carries Transform alone, see RIG_PAGES) and the pattern capsule's
+   *  carries none of them, see RIG_PAGES) and the pattern capsule's
    *  Tiles and Tools bars. The fold-away rule reads the tab row, so these
    *  have to be named: they are not the row's to take away, and a rule that
    *  closed them would shut the capsule's own bar the frame it opened. */
@@ -1145,6 +1145,21 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         onCommit={(key, v) => model.onRigSlider?.(key, v, true)}
       />
     );
+  } else if (displaySub === 'rigFigure') {
+    // The rig as an OBJECT: the one act said about the whole figure rather
+    // than about a posture. Reset stands it back up — rest pose, facing
+    // front, every slider at rest — and wears the filled button an "Add
+    // Fill" wears, because it is the same kind of thing: a page whose whole
+    // content is one act. It sat at the foot of the Transform page as a
+    // one-cell ActionRow, which is the shape the pages use for CHOOSING
+    // between states and read as a setting with a single option.
+    activeBarEl = (
+      <BarBody>
+        {model.onResetRig ? (
+          <EffectButton label="Reset" icon="restore" onPress={() => model.onResetRig?.()} />
+        ) : null}
+      </BarBody>
+    );
   } else if (displaySub && rigPartOfSubmenu(displaySub)) {
     activeBarEl = (
       <RigPoseBar
@@ -1152,7 +1167,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         values={model.rigSliders ?? restRigSliders()}
         onChange={(key, v) => model.onRigSlider?.(key, v, false)}
         onCommit={(key, v) => model.onRigSlider?.(key, v, true)}
-        onReset={model.onResetRig}
       />
     );
   } else if (displaySub === 'rigColor') {
