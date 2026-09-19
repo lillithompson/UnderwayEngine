@@ -28,16 +28,22 @@ import {
   patternTileSetRows,
 } from '../logic/patternEdit';
 import { patternModalTileSize } from '../logic/patternEdit';
-import { ROW_SEGMENTED, ROW_SWITCH, submenuHeight } from '../logic/submenuHeight';
+import {
+  BAR_CUSHION, CONTENT_PAD, PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_GRID_WIDTH,
+  PATTERN_TILE_GRID_GAP, ROW_SEGMENTED, ROW_SWITCH, SHEET_PAD_HORIZONTAL, submenuHeight,
+} from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
-  it('offers the Tile page alone — the panel adds Stroke beside it', () => {
-    // Tiles, Symmetry and Tools came off the row (their work is the
-    // canvas's tools and the host's floating capsule); Repeat came BACK on
-    // it as the Tile page, being a property of the object.
-    expect(PATTERN_EDIT_OPTIONS.map((o) => [o.action, o.label])).toEqual([['tile', 'Tile']]);
-    // The bars all stand, keyed and sized — the three off the row for a
-    // host that opens them itself, the Tile page for this one.
+  it('offers Tile and Symmetry — the panel adds Stroke and Opacity beside them', () => {
+    // Tiles and Tools stay off the row (their work is the canvas's tools
+    // and the host's floating capsule). Repeat came BACK on it as the Tile
+    // page, and Symmetry came back beside it: both are properties of the
+    // object, which is what this panel is for. The mirror in particular is
+    // the pattern's OWN now, not the mode the canvas toolbar is in.
+    expect(PATTERN_EDIT_OPTIONS.map((o) => [o.action, o.label]))
+      .toEqual([['tile', 'Tile'], ['symmetry', 'Symmetry']]);
+    // The bars all stand, keyed and sized — the two off the row for a
+    // host that opens them itself, the two pages for this one.
     for (const action of ['tile', 'tiles', 'tools', 'symmetry'] as const) {
       const sub = patternActionSubmenu(action);
       expect(patternActionOfSubmenu(sub)).toBe(action);
@@ -295,13 +301,14 @@ describe('the Tiles bar carries the arming grid', () => {
   });
 });
 
-// The Symmetry bar's modes as a plain 4×3 grid — no 'Mirror' label column,
-// every cell a flex rectangle splitting the bar's full width.
-describe('the Symmetry bar is a label-less 4×3 grid', () => {
+// The Symmetry page: the canvas modal's SQUARE glyph buttons, on the
+// pattern pages' own tile-button scale so the whole grid is two rows
+// inside the sheet rather than a screen of its own.
+describe('the Symmetry page is a compact grid of square glyph buttons', () => {
   const SRC = readFileSync(resolve(__dirname, '..', 'components', 'PatternBars.tsx'), 'utf8');
   const symBar = SRC.slice(
     SRC.indexOf('export function PatternSymmetryBar'),
-    SRC.indexOf('const TILE = PATTERN_TILE_BUTTON'),
+    SRC.indexOf('const MIRRORED_GLYPH'),
   );
 
   it("has no 'Mirror' label and no labeled segmented rows", () => {
@@ -309,11 +316,36 @@ describe('the Symmetry bar is a label-less 4×3 grid', () => {
     expect(symBar).not.toContain('<SegmentedRow');
   });
 
-  it('lays the 11 modes + Off out four to a row, cells stretching', () => {
-    expect(symBar).toContain('cells.slice(0, 4), cells.slice(4, 8), cells.slice(8, 12)');
-    expect(symBar).toContain('styles.symRow');
-    // flex: 1 on the cell is what makes the rectangles split the width.
-    expect(SRC).toMatch(/symCell:\s*\{\s*flex:\s*1/);
+  it('lays the 11 modes + Off out as one wrapping run of squares', () => {
+    // One flat list that WRAPS, where it was three hand-sliced rows of
+    // four: the cell is a fixed square now, so the row breaks itself.
+    expect(symBar).not.toContain('cells.slice(');
+    expect(symBar).toContain('styles.symGrid');
+    expect(SRC).toMatch(/symGrid:\s*\{\s*flexDirection: 'row',\s*flexWrap: 'wrap'/);
+    // …CAPPED at six buttons wide, which is what makes it two rows at every
+    // sheet width: uncapped, a wide desktop sheet stretched all twelve into
+    // one row under a page that had reserved two.
+    expect(SRC).toContain('maxWidth: PATTERN_SYMMETRY_GRID_WIDTH,');
+    expect(PATTERN_SYMMETRY_GRID_WIDTH)
+      .toBe(PATTERN_SYMMETRY_BUTTON * 6 + PATTERN_TILE_GRID_GAP * 5);
+    // …and it fits the narrowest sheet there is: an SE's 375, less the
+    // sheet's own padding and the content area's.
+    expect(PATTERN_SYMMETRY_GRID_WIDTH)
+      .toBeLessThanOrEqual(375 - 2 * SHEET_PAD_HORIZONTAL - 2 * CONTENT_PAD);
+    // Square, and the page's height is exactly the two rows of them.
+    expect(SRC).toMatch(/symCell:\s*\{\s*width: PATTERN_SYMMETRY_BUTTON,\s*height: PATTERN_SYMMETRY_BUTTON/);
+    expect(submenuHeight('patternSymmetry'))
+      .toBe(CONTENT_PAD * 2 + PATTERN_SYMMETRY_BUTTON * 2 + PATTERN_TILE_GRID_GAP + BAR_CUSHION);
+  });
+
+  it('wears each mode’s glyph over its word, the canvas modal’s dress', () => {
+    // The glyphs come off the shared entries (PATTERN_SYMMETRY_ENTRIES) —
+    // the same table the host's canvas Symmetry modal reads — so one mode
+    // looks the same wherever it is picked.
+    expect(symBar).toContain('value: e.key, label: e.label, icon: e.icon, mirrored: e.mirrored,');
+    expect(symBar).toContain("{ value: 'off', label: 'Off', icon: PATTERN_SYMMETRY_OFF_ICON");
+    expect(symBar).toContain('<MaterialCommunityIcons');
+    expect(symBar).toContain('style={o.mirrored ? MIRRORED_GLYPH : undefined}');
   });
 
   it('still toggles the active mode back to off', () => {

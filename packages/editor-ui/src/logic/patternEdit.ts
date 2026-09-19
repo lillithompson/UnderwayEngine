@@ -28,11 +28,23 @@ export const PATTERN_SYMMETRY_FLAGS_OFF: PatternSymmetryFlags = {
 };
 
 /** One entry of the symmetry grid: the mode's key, the word the bar shows,
- *  and the exact flag set it stands for. The grid is EXCLUSIVE — one mode
- *  at a time — so each entry spreads from all-false. */
+ *  the MaterialCommunityIcons glyph that stands for it, and the exact flag
+ *  set it means. The grid is EXCLUSIVE — one mode at a time — so each entry
+ *  spreads from all-false.
+ *
+ *  The glyph lives HERE, with the mode it names, rather than in a table
+ *  beside the grid: the host's canvas Symmetry modal and this package's
+ *  per-pattern Symmetry page draw the same eleven modes, and a second table
+ *  is a second chance for the two pictures of one mode to disagree. The
+ *  modal adds only its own None cell (see the host's symmetryModalMeta). */
 export interface PatternSymmetryEntry {
   key: string;
   label: string;
+  /** A MaterialCommunityIcons name. */
+  icon: string;
+  /** Drawn flipped (scaleX −1) — the Diag \ variant of the one glyph the
+   *  two diagonals share. */
+  mirrored?: boolean;
   flags: PatternSymmetryFlags;
 }
 
@@ -41,18 +53,23 @@ const OFF = PATTERN_SYMMETRY_FLAGS_OFF;
 /** The symmetry modes, in display order (the old modal's 4×3 grid, read in
  *  rows). The panel renders them as three segmented rows of four. */
 export const PATTERN_SYMMETRY_ENTRIES: readonly PatternSymmetryEntry[] = [
-  { key: 'h', label: 'H', flags: { ...OFF, mirrorH: true } },
-  { key: 'v', label: 'V', flags: { ...OFF, mirrorV: true } },
-  { key: 'hv', label: 'H+V', flags: { ...OFF, mirrorH: true, mirrorV: true } },
-  { key: 'd1', label: 'Diag \\', flags: { ...OFF, mirrorDiag1: true } },
-  { key: 'd2', label: 'Diag /', flags: { ...OFF, mirrorDiag2: true } },
-  { key: 'dx', label: 'Diag X', flags: { ...OFF, mirrorDiagBoth: true } },
-  { key: 'row', label: 'Row', flags: { ...OFF, mirrorRow: true } },
-  { key: 'col', label: 'Col', flags: { ...OFF, mirrorCol: true } },
-  { key: 'quad', label: 'Quad', flags: { ...OFF, mirrorQuad: true } },
-  { key: 'rot', label: 'Rotate', flags: { ...OFF, mirrorRotate: true } },
-  { key: 'star', label: 'Star', flags: { ...OFF, mirrorStar: true } },
+  { key: 'h', label: 'H', icon: 'flip-horizontal', flags: { ...OFF, mirrorH: true } },
+  { key: 'v', label: 'V', icon: 'flip-vertical', flags: { ...OFF, mirrorV: true } },
+  { key: 'hv', label: 'H+V', icon: 'arrow-all', flags: { ...OFF, mirrorH: true, mirrorV: true } },
+  { key: 'd1', label: 'Diag \\', icon: 'arrow-top-right-bottom-left', mirrored: true, flags: { ...OFF, mirrorDiag1: true } },
+  { key: 'd2', label: 'Diag /', icon: 'arrow-top-right-bottom-left', flags: { ...OFF, mirrorDiag2: true } },
+  { key: 'dx', label: 'Diag X', icon: 'close-thick', flags: { ...OFF, mirrorDiagBoth: true } },
+  { key: 'row', label: 'Row', icon: 'table-column', flags: { ...OFF, mirrorRow: true } },
+  { key: 'col', label: 'Col', icon: 'table-row', flags: { ...OFF, mirrorCol: true } },
+  { key: 'quad', label: 'Quad', icon: 'view-grid', flags: { ...OFF, mirrorQuad: true } },
+  { key: 'rot', label: 'Rotate', icon: 'rotate-right', flags: { ...OFF, mirrorRotate: true } },
+  { key: 'star', label: 'Star', icon: 'star-four-points-outline', flags: { ...OFF, mirrorStar: true } },
 ];
+
+/** The glyph the OFF cell wears — the grid's own twelfth button, which is
+ *  not a mode and so has no entry. Shared with the host's canvas modal, for
+ *  the same reason the entries carry theirs. */
+export const PATTERN_SYMMETRY_OFF_ICON = 'circle-off-outline';
 
 function flagsEqual(a: PatternSymmetryFlags, b: PatternSymmetryFlags): boolean {
   return a.mirrorH === b.mirrorH && a.mirrorV === b.mirrorV
@@ -331,8 +348,9 @@ export interface PatternEditOption {
 }
 
 /** The pattern type options, in display order: the Tile page, which holds
- *  the Repeat toggle and nothing else — the panel adds the Stroke bar
- *  beside it, so a pattern's page reads Tile · Stroke.
+ *  the Repeat toggle and nothing else, and the Symmetry page — the panel
+ *  adds the Stroke and Opacity bars beside them, so a pattern's page reads
+ *  Tile · Symmetry · Stroke · Opacity.
  *
  *  The row emptied out first: Tiles and Symmetry came off (2026-09-10 —
  *  the canvas paints from the Tile tool's own choice and mirrors by the
@@ -341,11 +359,19 @@ export interface PatternEditOption {
  *  floating pill, and came back here (2026-09-11): it is a property of the
  *  object, which is what this panel is for, and a pill at the top of the
  *  screen for one object's one setting was chrome the page already had a
- *  place for. The other three bars, their keys and heights stand
+ *  place for.
+ *
+ *  Symmetry came BACK (2026-09-19), and with it the rule it was taken away
+ *  under: a pattern's mirror is the pattern's own property, not a mode the
+ *  canvas is in, so it is set where every other property of the object is
+ *  set. The toolbar's Symmetry menu is the CANVAS mirror again — it moves
+ *  vectors and paint dabs, and no longer writes itself onto the grid in
+ *  hand. The Tiles and Tools bars, their keys and heights stand
  *  (PatternEditAction, patternActionSubmenu) for a host that opens them
  *  itself. */
 export const PATTERN_EDIT_OPTIONS: readonly PatternEditOption[] = [
   { action: 'tile', label: 'Tile' },
+  { action: 'symmetry', label: 'Symmetry' },
 ];
 
 /** The submenu key an action's bar rides under (see submenuHeight's

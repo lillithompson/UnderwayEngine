@@ -3,12 +3,14 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { ObjectPropertiesModel } from '../adapter';
 import {
-  PATTERN_TILE_BUTTON, PATTERN_TILE_GRID_GAP, ROW_SEGMENTED,
+  PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_GRID_WIDTH,
+  PATTERN_TILE_BUTTON, PATTERN_TILE_GRID_GAP,
 } from '../logic/submenuHeight';
 import {
   PATTERN_ARM_TOOLS,
   PATTERN_GRID_ACTIONS,
   PATTERN_SYMMETRY_ENTRIES,
+  PATTERN_SYMMETRY_OFF_ICON,
   PATTERN_TILE_TRANSFORM_IDENTITY,
   isPatternTileDoubleTap,
   patternTileThumbTransforms,
@@ -270,44 +272,63 @@ export function PatternSymmetryBar({ model }: {
   model: ObjectPropertiesModel;
 }) {
   const current = model.patternSymmetry ?? 'off';
-  // The 11 modes + Off as a 4×3 grid of rectangles (the old modal's grid,
-  // read in rows, with Off closing the set). No label column: the cells
-  // stretch to split the page's full width evenly.
+  // The 11 modes + Off, as the canvas Symmetry takeover's SQUARE buttons —
+  // glyph over a small word — but on this page's own tile-button scale
+  // (PATTERN_TILE_BUTTON, six across), so the whole grid is two rows inside
+  // the sheet instead of a screen of its own. The takeover leads with None
+  // and this page closes with Off: the word differs because the cell does
+  // — there it is a first-class pick among modes, here it is the way out of
+  // the one the pattern is in.
+  //
+  // Same twelve cells, same glyphs (PATTERN_SYMMETRY_ENTRIES carries them),
+  // so a mode looks the same wherever it is picked.
   const cells = [
-    ...PATTERN_SYMMETRY_ENTRIES.map((e) => ({ value: e.key, label: e.label })),
-    { value: 'off', label: 'Off' },
+    ...PATTERN_SYMMETRY_ENTRIES.map((e) => ({
+      value: e.key, label: e.label, icon: e.icon, mirrored: e.mirrored,
+    })),
+    { value: 'off', label: 'Off', icon: PATTERN_SYMMETRY_OFF_ICON, mirrored: undefined },
   ];
-  const rows = [cells.slice(0, 4), cells.slice(4, 8), cells.slice(8, 12)];
   return (
     <View>
       <BarBody>
-        {rows.map((row, i) => (
-          <View key={i} style={styles.symRow}>
-            {row.map((o) => {
-              const active = o.value === current;
-              return (
-                <Pressable
-                  key={o.value}
-                  // Tapping the ACTIVE mode again turns symmetry off, like
-                  // the old modal's toggle.
-                  onPress={() => model.onPatternSymmetry?.(active ? 'off' : o.value)}
-                  style={[styles.symCell, active && styles.symCellActive]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={o.label}
+        <View style={styles.symGrid}>
+          {cells.map((o) => {
+            const active = o.value === current;
+            return (
+              <Pressable
+                key={o.value}
+                // Tapping the ACTIVE mode again turns symmetry off, like
+                // the old modal's toggle.
+                onPress={() => model.onPatternSymmetry?.(active ? 'off' : o.value)}
+                style={[styles.symCell, active && styles.symCellActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Symmetry: ${o.label}`}
+              >
+                <MaterialCommunityIcons
+                  name={o.icon as never}
+                  size={20}
+                  color={active ? PANEL_INK : PANEL_INK_DIM}
+                  style={o.mirrored ? MIRRORED_GLYPH : undefined}
+                />
+                <Text
+                  style={[styles.symWord, active && styles.symWordActive]}
+                  numberOfLines={1}
                 >
-                  <Text style={[styles.symWord, active && styles.symWordActive]} numberOfLines={1}>
-                    {o.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
+                  {o.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </BarBody>
     </View>
   );
 }
+
+/** The one glyph drawn flipped (Diag \ against Diag /). Hoisted so the
+ *  style object is not minted per cell per render. */
+const MIRRORED_GLYPH = { transform: [{ scaleX: -1 }] } as const;
 
 const TILE = PATTERN_TILE_BUTTON;
 
@@ -341,12 +362,23 @@ const styles = StyleSheet.create({
   // Facet Tile Palette's Random/Erase dress: a 22pt glyph over a 9pt word.
   tileCaption: { color: PANEL_INK_DIM, fontSize: 9, fontWeight: '600', marginTop: 2 },
   tileWordActive: { color: PANEL_INK },
-  // The symmetry grid's rows: four flex cells splitting the full bar width
-  // (no label column), each row at the segmented-row height so the bar's
-  // reserved height (submenuHeight's three ROW_SEGMENTED) still fits.
-  symRow: { flexDirection: 'row', gap: PATTERN_TILE_GRID_GAP, height: ROW_SEGMENTED },
+  // The symmetry grid: twelve square buttons wrapping six to a row, which
+  // is the two rows submenuHeight reserves (PATTERN_SYMMETRY_GRID). The
+  // CAP is what guarantees it: at exactly six buttons wide the grid wraps
+  // the same way on a phone and on a desktop sheet, where an uncapped row
+  // stretched all twelve across a wide one and left the page's second row
+  // empty. Row-wise, unlike the Tiles grid's column flow: these cells are a
+  // LIST of modes read left to right, where that one is two stacked columns
+  // of arming choices.
+  symGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: PATTERN_TILE_GRID_GAP,
+    maxWidth: PATTERN_SYMMETRY_GRID_WIDTH,
+  },
   symCell: {
-    flex: 1,
+    width: PATTERN_SYMMETRY_BUTTON,
+    height: PATTERN_SYMMETRY_BUTTON,
     borderRadius: 8,
     backgroundColor: PANEL_TRACK,
     alignItems: 'center',
@@ -355,6 +387,8 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   symCellActive: { borderColor: STATE_ACTIVE },
-  symWord: { color: PANEL_INK_DIM, fontSize: 11, fontWeight: '600' },
+  // A 9pt caption under a 20pt glyph — Facet's Random/Erase dress, which
+  // the arming buttons beside these already wear.
+  symWord: { color: PANEL_INK_DIM, fontSize: 9, fontWeight: '600', marginTop: 2 },
   symWordActive: { color: PANEL_INK },
 });

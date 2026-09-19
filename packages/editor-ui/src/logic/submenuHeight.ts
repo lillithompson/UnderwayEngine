@@ -117,6 +117,26 @@ export const PATTERN_TILE_GRID_GAP = 6;
 export const PATTERN_TILE_GRID =
   PATTERN_TILE_BUTTON * 2 + PATTERN_TILE_GRID_GAP;
 
+/** One square button of the pattern Symmetry page's mode grid, and how many
+ *  sit across it. Smaller than the arming button beside it, because it has
+ *  a smaller job: an arming cell shows a tile's ARTWORK, where these carry
+ *  a glyph and a word, which read fine at 46. The size is what makes the
+ *  twelve modes two rows on the narrowest sheet there is — 6×46 + 5×6 = 306
+ *  inside an SE-width 375 − 2×16 sheet padding − 2×14 content padding = 315
+ *  — and the grid is capped at exactly that width
+ *  ({@link PATTERN_SYMMETRY_GRID_WIDTH}) so a WIDE sheet wraps at six too,
+ *  rather than stretching the twelve into one row under a page that
+ *  reserved two. */
+export const PATTERN_SYMMETRY_BUTTON = 46;
+export const PATTERN_SYMMETRY_COLUMNS = 6;
+export const PATTERN_SYMMETRY_GRID_WIDTH =
+  PATTERN_SYMMETRY_BUTTON * PATTERN_SYMMETRY_COLUMNS
+  + PATTERN_TILE_GRID_GAP * (PATTERN_SYMMETRY_COLUMNS - 1);
+
+/** The whole mode grid: two rows of buttons with one gap between. */
+export const PATTERN_SYMMETRY_GRID =
+  PATTERN_SYMMETRY_BUTTON * 2 + PATTERN_TILE_GRID_GAP;
+
 /** The property pages. An image selection offers crop / shadow / border /
  *  opacity; text font / spacing / align (three pages of the Text controls)
  *  and shadow (the image page, reused); a vector stroke plus whichever of svgFill /
@@ -370,9 +390,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return contentArea(new Array(mainRows).fill(ROW_SEGMENTED));
     }
     case 'patternSymmetry':
-      // The mode grid: 4×3 label-less rectangles, each row at the
-      // segmented-row height (Off rides row 3).
-      return contentArea([ROW_SEGMENTED, ROW_SEGMENTED, ROW_SEGMENTED]);
+      // The mode grid: twelve SQUARE buttons (the eleven modes and Off),
+      // six across, two rows — at every sheet width, because the grid is
+      // capped at six buttons wide (PATTERN_SYMMETRY_GRID_WIDTH).
+      return contentArea([PATTERN_SYMMETRY_GRID]);
     case 'layout':
       // Horizontal and Vertical, plus Arrange when the host offers Grid.
       return contentArea([
