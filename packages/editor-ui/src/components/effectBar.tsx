@@ -386,16 +386,31 @@ export function ColorSliderRow({ label, color, onColor, onOpenPicker }: {
  * the row reads left to right as the thing it does — push this object that
  * far toward THAT.
  *
- * The track keeps the pages' own accent rather than wearing the target: a
- * fill drawn in the target colour would be invisible at the default (white)
- * on a near-white sheet, which is the one value every object starts at.
+ * The TRACK is that walk, drawn: a ramp from the colour the object draws in
+ * right now to the target the circle shows. The value is a POSITION on it,
+ * which is what the slider's `ramp` is for — the same reading a hue
+ * slider's rainbow gets — so the row can be read without being dragged.
+ *
+ * It wore the pages' selection blue before, which named neither end: a bar
+ * of blue under a row about walking from one colour to another. The worry
+ * that kept it there was the default target, white, vanishing on a
+ * near-white sheet — but the ramp runs from the object's OWN ink, so the
+ * left end is the object and only the far end goes pale, which is exactly
+ * what fading to white does and is the thing worth seeing.
+ *
+ * `from` is the object as it draws NOW, its standing fade included, so the
+ * left end is always where the object actually is (see the panel, which
+ * opens the slider there). A kind with no ink of its own passes none and
+ * the ramp starts from the panel's track.
  */
-export function FadeSliderRow({ label, value, color, apply, onOpenPicker }: {
+export function FadeSliderRow({ label, value, color, from, apply, onOpenPicker }: {
   label: string;
   /** How far toward the target, 0…1. */
   value: number;
   /** The target itself — what the trailing circle shows and the picker edits. */
   color: RGBLike;
+  /** What the object draws in now — the ramp's near end. */
+  from?: RGBLike;
   apply: (t: number, committed: boolean) => void;
   onOpenPicker: () => void;
 }) {
@@ -406,8 +421,8 @@ export function FadeSliderRow({ label, value, color, apply, onOpenPicker }: {
         <View style={styles.rowSlider}>
           <Slider
             value={value}
-            accent={CONTROL_ACCENT}
             trackColor={TRACK}
+            ramp={[from ? rgbCss(from) : TRACK, rgbCss(color)]}
             onChange={(v) => apply(v, false)}
             onCommit={(v) => apply(v, true)}
           />

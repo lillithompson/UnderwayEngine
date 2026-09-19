@@ -361,6 +361,18 @@ export interface OpacityModel {
   /** The colour they are mixed toward — what the row's trailing circle
    *  shows and its picker edits. White until the reader picks otherwise. */
   fadeColor: RGBLike;
+  /** The object's lead ink AS AUTHORED — before any fade is spent on it.
+   *  The Fade slider's track is a ramp from where that ink stands when the
+   *  page opens to {@link OpacityModel.fadeColor}, so the row shows the walk
+   *  it performs instead of a bar of selection blue that named neither end.
+   *
+   *  Unfaded, rather than the colour on screen, so the panel can place the
+   *  ramp's near end itself: the target can be re-picked while the page is
+   *  open, which moves where the standing fade has landed, and only the raw
+   *  ink plus the current target can say where. Absent for a kind with no
+   *  ink of its own (an image is a photograph), where the ramp starts from
+   *  the panel's own track. */
+  fadeInk?: RGBLike;
 }
 
 export interface ObjectPropertiesModel {

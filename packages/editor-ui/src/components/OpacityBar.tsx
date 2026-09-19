@@ -1,5 +1,5 @@
 import React from 'react';
-import type { OpacityModel } from '../adapter';
+import type { OpacityModel, RGBLike } from '../adapter';
 import { BarBody, FadeSliderRow, SliderRow } from './effectBar';
 
 // The Opacity page: two rows — Opacity (the whole object's render opacity)
@@ -32,9 +32,19 @@ import { BarBody, FadeSliderRow, SliderRow } from './effectBar';
 //
 // The Opacity slider maps 0–1 directly and so does the Fade amount, so unlike
 // the Border page there are no range constants to keep in sync with the app.
+//
+// Fade is RELATIVE to where the page opened, though — the panel re-bases it
+// so the slider always starts at the left, on the object as it is, and the
+// track ramps from there to the target. So the number this row hands back is
+// how much FURTHER, and the panel composes it with what the object already
+// carried.
 
-export function OpacityBar({ opacity, showFade = true, onChange, onCommit, onOpenFadePicker }: {
+export function OpacityBar({ opacity, fadeFrom, showFade = true, onChange, onCommit, onOpenFadePicker }: {
   opacity: OpacityModel;
+  /** The Fade track's near end — the object's ink stood where the page
+   *  opened it, which the panel computes (it owns the re-base, and the
+   *  target the ink is mixed toward can change while the page is up). */
+  fadeFrom?: RGBLike;
   /** Render the Fade row. Off for a selection with no colour of its own to
    *  fade (a paint island's brushwork). submenuHeight('opacity') is told the
    *  same thing (`opacityFade`). */
@@ -58,6 +68,7 @@ export function OpacityBar({ opacity, showFade = true, onChange, onCommit, onOpe
           label="Fade"
           value={opacity.fade}
           color={opacity.fadeColor}
+          from={fadeFrom}
           apply={(t, c) => set({ fade: t }, c)}
           onOpenPicker={onOpenFadePicker}
         />

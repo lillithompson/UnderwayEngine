@@ -711,9 +711,37 @@ describe('the panel drives the sheet', () => {
     // colour from the model — the split the shadow's, border's and stroke's
     // colours already keep.
     expect(PANEL).toContain(
-      '{ ...opacityDraft, fadeColor: model.objectOpacity?.fadeColor ?? opacityDraft.fadeColor }',
+      'fadeColor: model.objectOpacity?.fadeColor ?? opacityDraft.fadeColor,',
     );
     expect(PANEL).not.toContain('opacityDraft ?? model.objectOpacity ?? DEFAULT_OPACITY_MODEL');
+    // The ramp's NEAR end is the panel's OWN reading: the object's raw ink
+    // (the model's) stood where the page opened it, toward the target of
+    // the moment. Frozen at the open — a near end that chased the drag
+    // would slide the ground out from under the thumb every frame — and
+    // computed rather than reported, so re-picking the target mid-page
+    // moves it correctly.
+    expect(PANEL).toContain(
+      'const fadeFrom = fadeInk ? fadeMix(fadeInk, fadeTarget, fadeBaseRef.current) : undefined;',
+    );
+    expect(PANEL).toContain('fadeFrom={fadeFrom}');
+  });
+
+  it('the Fade slider always opens at the left, on the object as it is', () => {
+    // Fade is a walk from the object's colour to a target, and once walked
+    // the object's colour IS where the walk ended: a slider still sitting
+    // at 0.6 would point at a journey already made, over a track whose near
+    // end is where it finished. So the page re-bases on every open — 0 on
+    // the slider, the standing fade kept beside it — and the number the row
+    // gives back is how much FURTHER.
+    expect(PANEL).toContain('fadeBaseRef.current = open.fade;');
+    expect(PANEL).toContain('setOpacityDraft({ ...open, fade: 0 });');
+    // A fade is a linear mix, so the two compose exactly, which is what
+    // makes the re-base free: open the page, drag back to the left, and the
+    // object is precisely where it was. The arithmetic itself lives in
+    // logic/opacityEdit, where node can check that identity.
+    expect(PANEL).toContain(
+      'model.onObjectOpacity?.({ ...o, fade: composeFade(fadeBaseRef.current, o.fade) }, committed);',
+    );
   });
 
   it('the Endpoints page carries markers alone — no Caps row, and no plumbing left for one', () => {

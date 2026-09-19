@@ -8,6 +8,7 @@ import {
   PATTERN_EDIT_OPTIONS, patternActionOfSubmenu, patternActionSubmenu,
 } from '../logic/patternEdit';
 import { multiSelectionOptions } from '../logic/multiOptions';
+import { composeFade, fadeMix } from '../logic/opacityEdit';
 import { isValueDragging } from '../logic/slider';
 import { SubmenuKey, editSheetHeight, emptyEffectHeight, pageIsWelled, submenuHeight } from '../logic/submenuHeight';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
@@ -359,6 +360,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // is changed externally, via the full-screen picker).
   const [opacityDraft, setOpacityDraft] = useState<OpacityModel | null>(null);
   const prevOpacityOpen = useRef(false);
+  /** The fade the Opacity page OPENED on. The slider starts at the left and
+   *  says how much further; this is what it is further THAN. */
+  const fadeBaseRef = useRef(0);
   // The Stroke page rides the same draft pattern as Border — it IS the Border
   // page, pointed at a vector object's own stroke.
   const [strokeDraft, setStrokeDraft] = useState<BorderModel | null>(null);
@@ -750,9 +754,20 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   }, [model.cropOpen, model.framing]);
   useEffect(() => {
     if (model.opacityOpen && !prevOpacityOpen.current) {
-      // Seeded from the app, which reports the object's CURRENT opacity /
-      // soften (defaults resolved), so the sliders open where the object is.
-      setOpacityDraft(model.objectOpacity ?? DEFAULT_OPACITY_MODEL);
+      // Seeded from the app, which reports the object's CURRENT opacity and
+      // fade (defaults resolved), so Opacity opens where the object is.
+      //
+      // FADE opens at the left instead, always. It is a walk from the colour
+      // the object draws in to the target, and once it has been walked the
+      // object's colour IS the far end of the last walk: a slider still
+      // sitting at 0.6 would be pointing at a journey already made, over a
+      // track whose near end is where the object ended up. So the page
+      // re-bases — the number here is how much FURTHER from here, the track
+      // ramps from here, and the fade the object already carries is kept
+      // beside it to compose with (fadeBaseRef).
+      const open = model.objectOpacity ?? DEFAULT_OPACITY_MODEL;
+      fadeBaseRef.current = open.fade;
+      setOpacityDraft({ ...open, fade: 0 });
     }
     prevOpacityOpen.current = !!model.opacityOpen;
   }, [model.opacityOpen, model.objectOpacity]);
@@ -825,9 +840,17 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // (the Fade target comes from the model). No Remove: opacity is not a layer
   // an object can be without — every object has one — so the sliders are the
   // whole page.
+  //
+  // The draft's `fade` is RELATIVE to where the page opened (see the seed
+  // effect): the slider says how much further from the object's current
+  // colour toward the target. The host wants the absolute one, and a fade is
+  // a linear mix, so the two compose exactly —
+  // mix(mix(c, T, b), T, t) = mix(c, T, b + t(1 − b)). Which is why the
+  // re-base costs the object nothing: opening the page and dragging back to
+  // the left leaves it precisely where it was.
   const applyOpacity = (o: OpacityModel, committed: boolean) => {
     setOpacityDraft(o);
-    model.onObjectOpacity?.(o, committed);
+    model.onObjectOpacity?.({ ...o, fade: composeFade(fadeBaseRef.current, o.fade) }, committed);
   };
 
   // Text style → live preview / commit; the draft owns the tracked params, so
@@ -874,9 +897,27 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // stale target straight back over the picked one. Same split the shadow's,
   // the border's and the stroke's colours keep — sliders from the draft,
   // colour from the model.
+  // The Fade track's NEAR end: the object's own ink, stood where the page
+  // OPENED it — the ink mixed by the fade it already carried, toward the
+  // target as it stands now. Frozen at the open, not followed live, because
+  // the track is the scale the thumb points into: a near end that chased the
+  // drag would slide the ground out from under the thumb on every frame. It
+  // is computed rather than reported so a target re-picked mid-page (the
+  // trailing circle's job, which leaves the page open) moves it correctly —
+  // only the raw ink and the current target can say where a standing fade
+  // has landed.
+  const fadeTarget = model.objectOpacity?.fadeColor ?? DEFAULT_OPACITY_MODEL.fadeColor;
+  const fadeInk = model.objectOpacity?.fadeInk;
+  const fadeFrom = fadeInk ? fadeMix(fadeInk, fadeTarget, fadeBaseRef.current) : undefined;
   const opacityForBar: OpacityModel = opacityDraft
-    ? { ...opacityDraft, fadeColor: model.objectOpacity?.fadeColor ?? opacityDraft.fadeColor }
-    : (model.objectOpacity ?? DEFAULT_OPACITY_MODEL);
+    ? {
+        ...opacityDraft,
+        fadeColor: model.objectOpacity?.fadeColor ?? opacityDraft.fadeColor,
+      }
+    // Before the seed effect has run — one frame, on the open — the fade
+    // still reads at the left, because that is where this page's slider
+    // always starts.
+    : { ...(model.objectOpacity ?? DEFAULT_OPACITY_MODEL), fade: 0 };
   const strokeForBar: BorderModel = strokeDraft
     ? { ...strokeDraft, color: model.stroke?.color ?? strokeDraft.color }
     : (model.stroke ?? DEFAULT_BORDER_MODEL);
@@ -1098,6 +1139,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     activeBarEl = (
       <OpacityBar
         opacity={opacityForBar}
+        fadeFrom={fadeFrom}
         // The Fade row exists exactly when the host can serve its picker,
         // which is how a selection with nothing to fade says so — the same
         // rule the shadow's and the border's colour rows keep.
