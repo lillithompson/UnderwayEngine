@@ -7,7 +7,7 @@
  * wrappers use, and it needs no storage or canvas mocks.
  */
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
-import { DEFAULT_LINE_HEIGHT, layoutText } from '../textLayout';
+import { DEFAULT_LINE_HEIGHT, layoutText, measureTextBbox } from '../textLayout';
 import { STICKER_SHADOW_CELLS } from '../stickerStyle';
 import { CellState, DEFAULT_TRANSFORM, GroupNode, ImageObject, PaintObject, PathSegment, PatternObject, RGBColor, SVGObject, TextObject } from '../types';
 import { commitCanvasPaint, createCanvasPaintWorking, flattenPaintTiles, stampCanvasPaint } from '../canvasPaint';
@@ -81,10 +81,15 @@ function makeInputs(partial: Partial<CompositionSVGInputs>): CompositionSVGInput
   };
 }
 
+/** The fixture text's style, with room to vary one field of it. */
+function styleOf(extras: Partial<TextObject['style']> = {}): TextObject['style'] {
+  return { fontId: 'CozySans', size: 2, color: { r: 10, g: 20, b: 30 }, ...extras };
+}
+
 function makeText(overrides: Partial<TextObject> & { id: string }): TextObject {
   return {
     content: 'word',
-    style: { fontId: 'CozySans', size: 2, color: { r: 10, g: 20, b: 30 } },
+    style: styleOf(),
     cellX: 4, cellY: 5, cellWidth: 6, cellHeight: 3,
     ...overrides,
   };
@@ -709,6 +714,70 @@ describe('subset text framing', () => {
     const line = makeText({ id: 'txt_1', content: 'wren', cellX: 2, cellY: 5, cellWidth: 28, cellHeight: 3.5 });
     const page = await generateCompositionSVGCore(makeInputs({ texts: [line] }));
     expect(viewBoxOf(page!)).toEqual([2 * U, 5 * U, 28 * U, 3.5 * U]);
+  });
+
+  // …but a page export does GROW for glyphs that fall outside their box.
+  // A layout is not fenced by the box it is given, the editor draws all of
+  // it, and the page's viewBox — measured from the boxes alone — then cut
+  // it off at the image edge. The notebook's picture is meant to be the
+  // canvas's.
+  it('grows for a word too wide to break, on both sides it hangs off', async () => {
+    const wide = makeText({
+      id: 'txt_1', content: 'unbreakableword', style: styleOf({ align: 'center' }),
+      cellX: 10, cellY: 5, cellWidth: 2, cellHeight: 3,
+    });
+    const [x, , w] = viewBoxOf((await generateCompositionSVGCore(makeInputs({ texts: [wide] })))!);
+    // A centred line wider than its box hangs off BOTH sides…
+    expect(x).toBeLessThan(10 * U);
+    expect(w).toBeGreaterThan(2 * U);
+    // …and the frame contains the whole of it: the line's own width, which
+    // the same layout the export draws with reports.
+    const lineW = layoutText(wide.content, wide.style, { maxWidth: 2, maxHeight: 3 }).lines[0].width;
+    expect(w).toBeGreaterThanOrEqual(lineW * U);
+  });
+
+  it('grows for a block too tall for its box, on the side it spills', async () => {
+    // Three lines in a box with room for one. vAlign top, so it spills
+    // DOWNWARD and the top edge does not move.
+    const tall = makeText({
+      id: 'txt_1', content: 'one\ntwo\nthree',
+      cellX: 4, cellY: 6, cellWidth: 20, cellHeight: 2,
+    });
+    const [x, y, w, h] = viewBoxOf((await generateCompositionSVGCore(makeInputs({ texts: [tall] })))!);
+    expect([x, y]).toEqual([4 * U, 6 * U]);
+    // Width is the box's — the lines are short, nothing hangs off the sides.
+    expect(w).toBe(20 * U);
+    // Height reaches the block, which is three lines of leading.
+    const block = layoutText(tall.content, tall.style, { maxWidth: 20, maxHeight: 2 }).height;
+    expect(h).toBeCloseTo(block * U, 6);
+  });
+
+  it('…and up instead, when the block is aligned to the bottom', async () => {
+    const up = makeText({
+      id: 'txt_1', content: 'one\ntwo\nthree', style: styleOf({ vAlign: 'bottom' }),
+      cellX: 4, cellY: 6, cellWidth: 20, cellHeight: 2,
+    });
+    const [x, y, , h] = viewBoxOf((await generateCompositionSVGCore(makeInputs({ texts: [up] })))!);
+    expect(x).toBe(4 * U);
+    // The spill is above the box now, and the bottom edge stays put.
+    expect(y).toBeLessThan(6 * U);
+    expect(y + h).toBeCloseTo(6 * U + 2 * U, 6);
+  });
+
+  it('a text whose glyphs sit inside their box frames exactly where it did', async () => {
+    // The guard on the whole change: no existing export's viewBox moves.
+    // A box sized from the layout — which is how the editor sizes one —
+    // holds its glyphs, so nothing spills and nothing grows.
+    const content = 'two words';
+    const style = styleOf();
+    const box = measureTextBbox(content, style, { maxWidth: 30 });
+    const fitted = makeText({
+      id: 'txt_1', content, style,
+      cellX: 3, cellY: 7, cellWidth: box.width, cellHeight: box.height,
+    });
+    const page = await generateCompositionSVGCore(makeInputs({ texts: [fitted] }));
+    const want = [3 * U, 7 * U, box.width * U, box.height * U];
+    viewBoxOf(page!).forEach((v, i) => expect(v).toBeCloseTo(want[i], 6));
   });
 });
 

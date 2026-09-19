@@ -106,7 +106,16 @@ describe('generateCompositionSVGCore — text nodes', () => {
       texts: [makeText({ content: 'hi', cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 2 })],
     }));
     expect(svg).not.toBeNull();
-    expect(svg).toMatch(/viewBox="0 0 2048 512"/);
+    // The box is 8×2, and the frame is 8 wide — the box's own width, since
+    // the glyphs sit well inside it.
+    expect(svg).toMatch(/viewBox="0 0 2048 /);
+    // …but 2.4 TALL, not 2: this fixture's single line is size 2 at the
+    // default 1.2 leading, so the block it lays out is taller than the box
+    // it was given and spills below it. The editor draws that spill (a text
+    // sized by the editor never has one — its box is set to the block's own
+    // height) and the page frame now contains it, where it used to cut at
+    // the box and take the descenders with it.
+    expect(svg).toMatch(/viewBox="0 0 2048 614\.4"/);
   });
 
   it('honors bold, italic, letter-spacing, and the stroke outline', async () => {

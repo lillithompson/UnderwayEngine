@@ -714,6 +714,11 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
  */
 const MEASURER_SLACK = 0.04;
 
+/** The least overhang, in cells, that counts as a text spilling its box —
+ *  see {@link spilledTextBounds}. Far under a printed hairline, and far
+ *  over the float noise it exists to swallow. */
+const SPILL_EPS = 1e-6;
+
 /**
  * How far a text node's paint can spill past the box it lays out in: the
  * sticker card's fixed drop shadow, plus any authored shadow / glow / border.
@@ -773,6 +778,52 @@ function textPaintOutset(text: TextObject): number {
  * Null when the node paints nothing — an empty text node, which the generator
  * also skips drawing, must not pad the frame either.
  */
+function textGlyphRect(
+  text: TextObject, slacked: boolean,
+): { lx: number; ly: number; rx: number; by: number } | null {
+  const content = contentBoxCells(text);
+  const cw = content.width;
+  const ch = content.height;
+  // A sticker's card is painted to fill its content box, so on a magnet the
+  // box already IS the paint.
+  if (text.sticker) return { lx: 0, ly: 0, rx: cw, by: ch };
+  const layout = layoutText(text.content, text.style, { maxWidth: cw, maxHeight: ch });
+  const lineHeight = text.style.size * (text.style.lineHeight ?? DEFAULT_LINE_HEIGHT);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const line of layout.lines) {
+    if (line.text.length === 0) continue; // not emitted, so not framed
+    // Line widths come from the deterministic measurer, but the glyphs are
+    // drawn by the browser from the real font, so the two disagree by a few
+    // percent — and the error grows with the line. A slack proportional to
+    // the line absorbs it; without it a long line risks losing its last
+    // glyph to the viewBox edge. Horizontal only: line height is exactly
+    // `size × lineHeight`, font-independent, and already generous over the
+    // cap height.
+    const slack = slacked ? line.width * MEASURER_SLACK : 0;
+    if (line.x - slack < minX) minX = line.x - slack;
+    if (line.x + line.width + slack > maxX) maxX = line.x + line.width + slack;
+    if (line.y < minY) minY = line.y;
+    if (line.y + lineHeight > maxY) maxY = line.y + lineHeight;
+  }
+  if (minX === Infinity) return null;
+  return { lx: minX, ly: minY, rx: maxX, by: maxY };
+}
+
+/** A local rect through `world`, as the axis-aligned box its corners fit in. */
+function worldRectOf(
+  world: Mat2D, r: { lx: number; ly: number; rx: number; by: number },
+): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [px, py] of [[r.lx, r.ly], [r.rx, r.ly], [r.rx, r.by], [r.lx, r.by]] as const) {
+    const [wx, wy] = matApplyPoint(world, px, py);
+    if (wx < minX) minX = wx;
+    if (wx > maxX) maxX = wx;
+    if (wy < minY) minY = wy;
+    if (wy > maxY) maxY = wy;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
 function paintedTextBounds(
   text: TextObject, world: Mat2D,
 ): { minX: number; minY: number; maxX: number; maxY: number } | null {
@@ -780,47 +831,54 @@ function paintedTextBounds(
   // `world` the matrix that carries that space out, which is exactly what
   // `buildTextSVGContent` is handed — so this measures the box the glyphs
   // are really laid out in, and maps it the way they are really drawn.
-  const content = contentBoxCells(text);
-  const cw = content.width;
-  const ch = content.height;
-  // Local paint rect. A sticker's card fills its content box; plain text
-  // covers only its laid-out lines. The layout call mirrors
-  // buildTextSVGContent's exactly, so the two can't disagree about where the
-  // glyphs land.
-  let lx = 0, ly = 0, rx = cw, by = ch;
-  if (!text.sticker) {
-    const layout = layoutText(text.content, text.style, { maxWidth: cw, maxHeight: ch });
-    const lineHeight = text.style.size * (text.style.lineHeight ?? DEFAULT_LINE_HEIGHT);
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const line of layout.lines) {
-      if (line.text.length === 0) continue; // not emitted, so not framed
-      // Line widths come from the deterministic measurer, but the glyphs are
-      // drawn by the browser from the real font, so the two disagree by a few
-      // percent — and the error grows with the line. A slack proportional to
-      // the line absorbs it; without it a long line risks losing its last
-      // glyph to the viewBox edge. Horizontal only: line height is exactly
-      // `size × lineHeight`, font-independent, and already generous over the
-      // cap height.
-      const slack = line.width * MEASURER_SLACK;
-      if (line.x - slack < minX) minX = line.x - slack;
-      if (line.x + line.width + slack > maxX) maxX = line.x + line.width + slack;
-      if (line.y < minY) minY = line.y;
-      if (line.y + lineHeight > maxY) maxY = line.y + lineHeight;
-    }
-    if (minX === Infinity) return null;
-    lx = minX; ly = minY; rx = maxX; by = maxY;
-  }
-
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const [px, py] of [[lx, ly], [rx, ly], [rx, by], [lx, by]] as const) {
-    const [wx, wy] = matApplyPoint(world, px, py);
-    if (wx < minX) minX = wx;
-    if (wx > maxX) maxX = wx;
-    if (wy < minY) minY = wy;
-    if (wy > maxY) maxY = wy;
-  }
+  const rect = textGlyphRect(text, true);
+  if (!rect) return null;
+  const { minX, minY, maxX, maxY } = worldRectOf(world, rect);
   const pad = textPaintOutset(text);
   return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+}
+
+/**
+ * Where a text's glyphs SPILL past the box they were laid out in, as a world
+ * rect — or null when they sit inside it, which is nearly all text.
+ *
+ * A layout is not fenced by its box. A block taller than the box spills past
+ * it (upward under a middle or bottom vAlign, downward under top), and a
+ * single word wider than the box cannot be broken, so it hangs off both
+ * sides. The editor draws all of it — the node layer clips nothing — and the
+ * export drew it too; it was the page's own viewBox, measured from the boxes
+ * alone, that then cut it off at the image edge. The picture in the notebook
+ * is meant to be the picture on the canvas.
+ *
+ * Only the OVERHANG, and only where there is one, so a page export's frame
+ * can grow but never come in tighter — text whose glyphs sit inside their
+ * box frames exactly where it always did. The measurer's slack rides along
+ * on a side that already spills (the same few percent the cutout allows
+ * for), and nowhere else: a side that does not spill must not be widened by
+ * it, or every existing export's viewBox would move.
+ */
+function spilledTextBounds(
+  text: TextObject, world: Mat2D,
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  const tight = textGlyphRect(text, false);
+  if (!tight) return null;
+  const content = contentBoxCells(text);
+  const slacked = textGlyphRect(text, true) ?? tight;
+  // A spill has to be REAL. The layout's numbers and the box's are float
+  // quotients of the same lengths, so a box sized from its own layout —
+  // which is how the editor sizes one — lands a few ulps either side of an
+  // exact fit; without a floor on what counts, that noise would nudge every
+  // such page's viewBox by a billionth of a cell and no export would be
+  // reproducible.
+  const spill = {
+    lx: tight.lx < -SPILL_EPS ? slacked.lx : 0,
+    ly: tight.ly < -SPILL_EPS ? slacked.ly : 0,
+    rx: tight.rx > content.width + SPILL_EPS ? slacked.rx : content.width,
+    by: tight.by > content.height + SPILL_EPS ? slacked.by : content.height,
+  };
+  if (spill.lx === 0 && spill.ly === 0
+    && spill.rx === content.width && spill.by === content.height) return null;
+  return worldRectOf(world, spill);
 }
 
 /**
@@ -1294,6 +1352,13 @@ export async function generateCompositionSVGCore(
       pose.world, -bow, -bow, pose.box.width + 2 * bow, pose.box.height + 2 * bow,
     );
     accept(txt, r.minX, r.minY, r.maxX, r.maxY);
+    // …and the GLYPHS where they SPILL past that box (spilledTextBounds):
+    // a block too tall for its box, or a word too wide to break, is drawn
+    // outside it on the canvas and was cut off at the image edge in the
+    // export. Null — and so no change at all — for text whose glyphs sit
+    // inside their box, which is nearly all text.
+    const spill = spilledTextBounds(local, pose.world);
+    if (spill) accept(txt, spill.minX, spill.minY, spill.maxX, spill.maxY);
   }
 
   for (const p of framed.paints) {
