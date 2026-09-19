@@ -311,6 +311,53 @@ export function computeHeartSegments(
   return chainPoints(pts, true);
 }
 
+/** A five-pointed star's inner radius as a fraction of its outer one: the
+ *  pentagram's own ratio (sin 18° / sin 54°), which is what makes the five
+ *  points read as a star rather than as a spiky decagon. */
+const STAR_INNER_RATIO = Math.sin(Math.PI / 10) / Math.sin((3 * Math.PI) / 10);
+
+/**
+ * A CLOSED five-pointed star filling the drag's box, point-up: ten vertices
+ * alternating between the outer circle and an inner one at the pentagram's
+ * own ratio, then normalized so the shape's OWN bounds meet the box exactly
+ * — a square drag gives the canonical proportions (a star is wider than it
+ * is tall, so the fit is what puts it in the box), a freeform one stretches
+ * it to fill, the polygon rule.
+ *
+ * `points` is the number of POINTS, not of vertices: five by default, and
+ * any count of three or more draws the same alternating figure.
+ */
+export function computeStarSegments(
+  sx: number, sy: number,
+  ex: number, ey: number,
+  points = 5,
+): PathSegment[] {
+  const n = Math.max(3, Math.round(points));
+  const raw: [number, number][] = [];
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < n * 2; i++) {
+    // Point-up, like the N-gon builder: the first vertex sits straight up.
+    const a = -Math.PI / 2 + (i * Math.PI) / n;
+    const r = i % 2 === 0 ? 1 : STAR_INNER_RATIO;
+    const x = r * Math.cos(a);
+    const y = r * Math.sin(a);
+    raw.push([x, y]);
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const bx = Math.min(sx, ex);
+  const by = Math.min(sy, ey);
+  const bw = Math.abs(ex - sx);
+  const bh = Math.abs(ey - sy);
+  const pts = raw.map(([x, y]): [number, number] => [
+    bx + ((x - minX) / (maxX - minX)) * bw,
+    by + ((y - minY) / (maxY - minY)) * bh,
+  ]);
+  return chainPoints(pts, true);
+}
+
 /**
  * An OPEN Archimedean spiral filling the drag's box: {@link SPIRAL_TURNS}
  * turns winding outward from the box centre, the outermost ending at the

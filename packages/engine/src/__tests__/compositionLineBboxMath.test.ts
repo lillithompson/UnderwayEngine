@@ -8,6 +8,7 @@ import {
   computeHeartSegments,
   computeRectSegments,
   computeSpiralSegments,
+  computeStarSegments,
   recenterLineBoxOnGrid,
 } from '../compositionLineBboxMath';
 
@@ -322,6 +323,62 @@ describe('computeRectSegments', () => {
     expect(segs[1]).toEqual({ kind: 'line', start: [0, 4], end: [0, 0] });
     expect(segs[2]).toEqual({ kind: 'line', start: [0, 0], end: [8, 0] });
     expect(segs[3]).toEqual({ kind: 'line', start: [8, 0], end: [8, 4] });
+  });
+});
+
+describe('computeStarSegments', () => {
+  const segs = () => computeStarSegments(2, 4, 10, 12);
+
+  it('is a CLOSED chain of ten vertices filling the drag box exactly', () => {
+    const s = segs();
+    // Five points, so ten vertices: outer, inner, outer, inner…
+    expect(s).toHaveLength(10);
+    // Closed: every end is the next start, last back to first, bit-for-bit.
+    for (let i = 0; i < s.length; i++) {
+      expect(s[i].end).toEqual(s[(i + 1) % s.length].start);
+    }
+    // Its own bounds meet the box (the polygon rule).
+    const xs = s.map((seg) => seg.start[0]);
+    const ys = s.map((seg) => seg.start[1]);
+    expect(Math.min(...xs)).toBeCloseTo(2, 9);
+    expect(Math.max(...xs)).toBeCloseTo(10, 9);
+    expect(Math.min(...ys)).toBeCloseTo(4, 9);
+    expect(Math.max(...ys)).toBeCloseTo(12, 9);
+  });
+
+  it('points UP: the first vertex is the top point, on the box middle', () => {
+    const s = segs();
+    const pts = s.map((seg) => seg.start);
+    const minY = Math.min(...pts.map(([, y]) => y));
+    expect(s[0].start[1]).toBeCloseTo(minY, 9);
+    expect(s[0].start[0]).toBeCloseTo(6, 6);
+  });
+
+  it('alternates far and near vertices — the pentagram ratio, not a decagon', () => {
+    const s = computeStarSegments(-1, -1, 1, 1);
+    const pts = s.map((seg) => seg.start);
+    // Read the radii from the FIGURE's own centre: the box fit is per-axis
+    // (a star is taller than it is wide), so the two circles come out as
+    // two ellipses and only the alternation survives exactly.
+    const cx = (Math.min(...pts.map(([x]) => x)) + Math.max(...pts.map(([x]) => x))) / 2;
+    const cy = (Math.min(...pts.map(([, y]) => y)) + Math.max(...pts.map(([, y]) => y))) / 2;
+    const r = pts.map(([x, y]) => Math.hypot(x - cx, y - cy));
+    // Every even vertex is a POINT: further out than both its neighbours.
+    for (let i = 0; i < r.length; i += 2) {
+      expect(r[i]).toBeGreaterThan(r[(i + 1) % r.length]);
+      expect(r[i]).toBeGreaterThan(r[(i + r.length - 1) % r.length]);
+    }
+    // …and the inner ring is well inside the outer, which is what makes the
+    // five points read as points rather than as a ten-sided blob.
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const ratio = mean(r.filter((_, i) => i % 2 === 1)) / mean(r.filter((_, i) => i % 2 === 0));
+    expect(ratio).toBeLessThan(0.55);
+    expect(ratio).toBeGreaterThan(0.3);
+  });
+
+  it('draws any count of points, never fewer than three', () => {
+    expect(computeStarSegments(0, 0, 4, 4, 6)).toHaveLength(12);
+    expect(computeStarSegments(0, 0, 4, 4, 1)).toHaveLength(6);
   });
 });
 
