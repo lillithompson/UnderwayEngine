@@ -512,13 +512,11 @@ export function fromLegacy(state: CompositionState): SceneGraph {
   //    scales after rotating; `fromTransform2D` handles the swap.
   for (const g of state.groups ?? []) {
     nodes.set(g.id, {
-      id: g.id, kind: 'group', name: g.name,
+      id: g.id, kind: 'group',
       parentId: g.parentGroupId,
       children: [],
       transform: groupFieldsToTransform(g),
-      ...(g.locked ? { locked: true } : {}),
-      ...(g.hidden ? { hidden: true } : {}),
-      ...(g.isFrame ? { isFrame: true } : {}),
+      ...groupContentOf(g),
     });
   }
 
@@ -623,6 +621,30 @@ export function regraphChangedLeaves(graph: SceneGraph, state: CompositionState)
       nodes.set(leaf.id, contentOnlyNode(graph, node, leaf)
         ?? leafNodeFromLegacy(kind, leaf, safeInvert(parentMatrix(graph, leaf.id))));
     }
+  }
+
+  // Groups, the same way. The shape check has already settled that the same
+  // groups sit in the same places, so all that can have moved here is
+  // CONTENT — a lock, a hide, a rename, a frame flag — and none of it is
+  // pose, so the node keeps the transform it has and only these fields come
+  // back off the array.
+  //
+  // Left out, a group edit landed on the arrays alone and the graph went on
+  // holding the old flags; the next pose op anywhere in the scene rendered
+  // the whole view back out of the graph and undid it. That is why moving
+  // one object silently flipped the lock, the visibility or the name of an
+  // unrelated group.
+  for (const g of state.groups ?? []) {
+    const node = graph.nodes.get(g.id);
+    if (!node || node.kind !== 'group') continue;
+    // Both sides come out of the same helper, so they carry the same keys
+    // and one pass over them settles it — no `sameFields` Set per group on
+    // a pass that runs for every session update.
+    const content = groupContentOf(g);
+    const had = groupContentOf(node);
+    if (keysOf(content).every((k) => content[k] === had[k])) continue;
+    if (!nodes) nodes = new Map(graph.nodes);
+    nodes.set(g.id, { ...node, ...content });
   }
 
   // A fresh graph object either way, never the one that came in: what a
@@ -1112,7 +1134,6 @@ export function toGroupNode(node: SceneNode): GroupNode {
   const swap = quarter === 90 || quarter === 270;
   return {
     id: node.id,
-    name: node.name ?? 'Group',
     translateX: t.tx, translateY: t.ty,
     scaleX: swap ? t.sy : t.sx,
     scaleY: swap ? t.sx : t.sy,
@@ -1123,9 +1144,36 @@ export function toGroupNode(node: SceneNode): GroupNode {
     mirrorH: !!t.mirrorH,
     mirrorV: !!t.mirrorV,
     ...(node.parentId ? { parentGroupId: node.parentId } : {}),
-    ...(node.locked ? { locked: true } : {}),
-    ...(node.hidden ? { hidden: true } : {}),
-    ...(node.isFrame ? { isFrame: true } : {}),
+    ...groupContentOf(node),
+    name: node.name ?? 'Group',
+  };
+}
+
+/**
+ * Everything a group node carries beyond its pose and its parent — the
+ * part of a legacy `GroupNode` that its transform cannot say.
+ *
+ * Written out once so the read-in (`fromLegacy`), the render-out
+ * ({@link toGroupNode}) and the re-read ({@link regraphChangedLeaves}) all
+ * work from the same list. A second copy of it is exactly how a group's
+ * lock came to survive a drag while its name did not.
+ *
+ * Absent flags come back as `undefined` rather than missing, so spreading
+ * the result over a node CLEARS a flag that was turned off — an unlocked
+ * group must stop being locked, not keep the node's old `true`.
+ */
+function keysOf<T extends object>(o: T): (keyof T)[] {
+  return Object.keys(o) as (keyof T)[];
+}
+
+function groupContentOf(
+  g: { name?: string; isFrame?: boolean; locked?: boolean; hidden?: boolean },
+): Pick<SceneNode, 'name' | 'isFrame' | 'locked' | 'hidden'> {
+  return {
+    name: g.name,
+    isFrame: g.isFrame || undefined,
+    locked: g.locked || undefined,
+    hidden: g.hidden || undefined,
   };
 }
 
