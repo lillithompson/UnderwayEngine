@@ -360,6 +360,22 @@ export function normalizeDeg(deg: number): number {
 }
 
 /**
+ * Fold an angle into (-180, 180] -- the same turn, said the short way
+ * round.
+ *
+ * The signed twin of {@link normalizeDeg}, for the places that have to fit
+ * a turn into a SIGNED field. A turn is mod 360, so 340 and -20 are the
+ * same pose; only one of them fits an i16 of hundredths of a degree, which
+ * is what the `.tile` angleDeg block is (see `encodeAngleDeg`).
+ */
+export function signedDeg(deg: number): number {
+  const d = deg % 360;
+  if (d > 180) return d - 360;
+  if (d <= -180) return d + 360;
+  return d;
+}
+
+/**
  * The node's local-to-parent matrix: `T . R . K . S . F`, where `K` is
  * the shear ({@link LocalTransform.shear}). With `shear` 0 or absent —
  * every pose the editor authors directly — this is exactly the old

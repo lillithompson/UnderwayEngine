@@ -8,6 +8,7 @@ import { computeAliveGroupIds } from './compositionOps';
 import { foldLegacyGroupNames } from './legacyGroupNames';
 import { dropLocalCaches } from './legacyLocalCaches';
 import { compSnapStep } from './compositionCellMath';
+import { signedDeg } from './sceneTransform';
 
 // â”€â”€ FCOMP Binary Format v29 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
@@ -105,6 +106,8 @@ import { compSnapStep } from './compositionCellMath';
 //                     0x01 hasPatternFileId (v38+),
 //                     0x80 hasShear (v63+; one f32 LAST in the record)
 //     rotBits:      u8         (low 2 bits â†’ 0/90/180/270, bit 0x04 tileRepeat)
+//                              bit 0x08 hasBox (v64+; four f32 LAST in
+//                              the record, after the shear)
 //     color:        u8 r, u8 g, u8 b
 //     conditional u16 string refs (in flag order): nameIdx, groupIdIdx,
 //                   preGroupNameIdx, patternFileIdIdx (v38+)
@@ -526,7 +529,7 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      Every one of those bits was always written 0 before, and an upright
 //      leaf sets none of them, so a v62 file — which is every page anyone
 //      has ever made — reads back byte for byte.
-const FORMAT_VERSION = 63;
+const FORMAT_VERSION = 64;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 const HEADER_SIZE = 8;
@@ -968,6 +971,28 @@ const FLAG4_SVG_HAS_FADE = 0x40;
 // last free bit; flags2 and flags3 are both fully spent.
 const FLAG4_SVG_HAS_SHEAR = 0x80;
 
+// v64+: the object's own BOX — four f32 LAST in the record, after the shear.
+//
+// All four svg flag bytes are spent (v63 took flags4's last bit), but the
+// svg ROTATION byte is not: it uses 0x03 for the quarter turn and 0x04 for
+// tileRepeat, and every reader masks for exactly those. So the presence bit
+// rides there, as the image record's tint/effects/angle bits already do on
+// its own rotation byte. Nothing is written when the bit is clear, so an
+// upright or ungrouped svg is the v63 record byte for byte.
+// Every other svg derives its box from its path on read (`arcBoundingBox`),
+// which is right for every shape whose box IS its path's bounds — all of
+// them, until a group is pulled off square. Then the stored box is the LOOSE
+// one around the member's mapped rectangle, the path's own bounds are
+// tighter and differently centred, and `leafNodeFromLegacy` makes the stored
+// box's CENTRE the pivot for the free angle and the shear. Derive the box
+// and the pivot moves, and the whole path swings with it — up to ~7% of the
+// shape's size (round R12; docs/transform-refactor.md §4). Written ONLY when
+// the box differs from the path's bounds, so an ordinary svg pays the flag
+// byte and nothing else.
+const SVG_ROT_HAS_BOX = 0x08;
+/** cellX + cellY + cellWidth + cellHeight, f32 each. */
+const SVG_BOX_BYTES = 16;
+
 // v29+ image rotation-byte bits. The image `flags` byte is fully
 // consumed (0x01..0x80), so tint/effects presence rides the spare high
 // bits of the rotation byte: 0x03 rotation, 0x04 hidden (v14+), then:
@@ -1129,8 +1154,23 @@ function readPaintOverlay(
 // v31+ free-rotation encoding: i16 hundredths of a degree (angleDeg * 100).
 // Range ±180° fits comfortably in i16 (±18000), precision 0.01°.
 const ANGLE_DEG_SCALE = 100;
+/**
+ * The angle the field CAN say, not the nearest one it cannot.
+ *
+ * The field reaches 327.67° and `poseFieldsFrom` emits the free angle in
+ * [0, 360), so anything nudged a little ANTICLOCKWISE — the ordinary way
+ * to straighten something — stored 340°-ish and clamped back to 327.67°,
+ * visibly askew: ~9% of all angles, on every `.tile` export since v31. A
+ * turn is mod 360, so the fix is to wrap to the equivalent angle in the
+ * range the field was always documented to hold, not to clamp.
+ *
+ * A page SAVE was never affected (the JSON carries the number), and a file
+ * written by an older build still carries whatever the clamp left in it —
+ * the original angle is gone and nothing here can recover it.
+ * docs/transform-refactor.md §4, "Also open".
+ */
 function encodeAngleDeg(deg: number): number {
-  return Math.max(-32768, Math.min(32767, Math.round(deg * ANGLE_DEG_SCALE)));
+  return Math.max(-32768, Math.min(32767, Math.round(signedDeg(deg) * ANGLE_DEG_SCALE)));
 }
 function decodeAngleDeg(raw: number): number {
   return raw / ANGLE_DEG_SCALE;
@@ -1344,6 +1384,53 @@ function readShear(view: DataView, pos: number, o: ShearSpec): number {
   const shear = view.getFloat32(pos, true);
   if (shear !== 0) o.shear = shear;
   return pos + SHEAR_BYTES;
+}
+
+/**
+ * Does this svg's stored box need saying, or can the reader derive it?
+ *
+ * It can be derived for every shape whose box is its path's own bounds,
+ * which is every svg the editor makes and every one it reloads — until the
+ * shape has been inside a group scaled off square, where the stored box is
+ * the loose one around the mapped rectangle. A repeat-mode path is excluded
+ * because its box is a REGION that is not its path's bounds and it already
+ * writes one (v19+, in the tile block).
+ *
+ * The tolerance is well under the 1/256 the segment coordinates themselves
+ * are quantized to, so this answers no to float noise and yes to anything
+ * that would move the pivot.
+ */
+function hasExplicitSVGBox(svg: SVGObject): boolean {
+  if (svg.tileMode === 'repeat') return false;
+  if (svg.cellX === undefined || svg.cellY === undefined
+      || svg.cellWidth === undefined || svg.cellHeight === undefined) return false;
+  const bb = arcBoundingBox(svg.segments ?? []);
+  if (!bb) return false;
+  const EPS = 1e-9;
+  return Math.abs(svg.cellX - bb.minX) > EPS
+    || Math.abs(svg.cellY - bb.minY) > EPS
+    || Math.abs(svg.cellWidth - (bb.maxX - bb.minX)) > EPS
+    || Math.abs(svg.cellHeight - (bb.maxY - bb.minY)) > EPS;
+}
+
+/** The box of `svg`, if the reader could not work it out. Appends nothing
+ *  otherwise — which is the overwhelmingly common case. */
+function writeSVGBox(view: DataView, pos: number, svg: SVGObject): number {
+  if (!hasExplicitSVGBox(svg)) return pos;
+  view.setFloat32(pos, svg.cellX, true);
+  view.setFloat32(pos + 4, svg.cellY, true);
+  view.setFloat32(pos + 8, svg.cellWidth, true);
+  view.setFloat32(pos + 12, svg.cellHeight, true);
+  return pos + SVG_BOX_BYTES;
+}
+
+/** …and back onto `svg`, over the box the reader derived from the path. */
+function readSVGBox(view: DataView, pos: number, svg: SVGObject): number {
+  svg.cellX = view.getFloat32(pos, true);
+  svg.cellY = view.getFloat32(pos + 4, true);
+  svg.cellWidth = view.getFloat32(pos + 8, true);
+  svg.cellHeight = view.getFloat32(pos + 12, true);
+  return pos + SVG_BOX_BYTES;
 }
 
 function paintBinarySize(paint: Paint): number {
@@ -1746,6 +1833,7 @@ function svgBinarySize(svg: SVGObject): number {
   if (svg.paintOverlay) size += paintOverlayBinarySize(svg.paintOverlay); // v49+
   if (hasFade(svg)) size += FADE_BYTES; // v62+
   if (hasShear(svg)) size += SHEAR_BYTES; // v63+
+  if (hasExplicitSVGBox(svg)) size += SVG_BOX_BYTES; // v64+
   return size;
 }
 
@@ -1950,6 +2038,7 @@ function writeSVG(
 
   let rotBits = ROTATION_TO_BITS[svg.rotation ?? 0] & 0x03;
   if (svg.tileMode === 'repeat') rotBits |= 0x04;
+  if (hasExplicitSVGBox(svg)) rotBits |= SVG_ROT_HAS_BOX; // v64+
   out[pos++] = rotBits;
 
   out[pos++] = svg.color.r & 0xff;
@@ -2049,9 +2138,11 @@ function writeSVG(
   if (svg.paintOverlay) {
     pos = writePaintOverlay(view, out, pos, svg.paintOverlay);
   }
-  // v62+ the Fade row, then v63+ the shear, last in the record.
+  // v62+ the Fade row, then v63+ the shear, then v64+ the box, last in
+  // the record.
   pos = writeFade(out, pos, svg);
   pos = writeShear(view, pos, svg);
+  pos = writeSVGBox(view, pos, svg);
   return pos;
 }
 
@@ -2271,6 +2362,13 @@ function readSVG(
   // always written 0 before v63.
   if (version >= 63 && (flags4 & FLAG4_SVG_HAS_SHEAR)) {
     pos = readShear(view, pos, svg);
+  }
+  // v64+ the object's own box, last in the record, after the shear. There
+  // is no flags5 byte at all before v64, so no older file reaches this.
+  // A repeat-mode path never sets the bit — its region box is restored
+  // from the tile block above, which must stay the last word on its box.
+  if (version >= 64 && (rotBits & SVG_ROT_HAS_BOX) && svg.tileMode !== 'repeat') {
+    pos = readSVGBox(view, pos, svg);
   }
 
   // v25+ "Use as mask" flag (presence-only, no payload)

@@ -36,6 +36,7 @@ import { commitCanvasPaint, createCanvasPaintWorking, stampCanvasPaint } from '.
 import {
   CanvasPaintIsland, ImageObject, PaintObject, PathSegment, PatternObject, SVGObject, TextObject,
 } from '../types';
+import { normalizeDeg } from '../sceneTransform';
 import { patchFormatVersion } from './test-utils';
 
 /** A lean that is exact in an f32, so a round trip is toBe-identical and a
@@ -410,6 +411,35 @@ describe('a file written before v63', () => {
  * offset would corrupt a real file on the first save after the upgrade —
  * and would do it silently, since nothing in the read path would notice.
  */
+/** The same document with every free angle taken OFF, so the rest can be
+ *  compared literally. The angles are compared as TURNS by
+ *  {@link expectSameTurns}: one turn has two spellings in this field and
+ *  the writer is free to pick either. */
+function withoutAngles<T extends CompositionBundle>(meta: T): T {
+  const strip = <O extends { angleDeg?: number }>(o: O): O => {
+    if (o.angleDeg === undefined) return o;
+    const { angleDeg, ...rest } = o;
+    return rest as O;
+  };
+  return {
+    ...meta,
+    svgObjects: (meta.svgObjects ?? []).map(strip),
+    images: (meta.images ?? []).map(strip),
+    texts: (meta.texts ?? []).map(strip),
+  };
+}
+
+/** Every leaf turned the same way in both documents, to the 0.01° the
+ *  field resolves. `-49.89` and `310.11` are one turn. */
+function expectSameTurns(a: CompositionBundle, b: CompositionBundle) {
+  const turns = (m: CompositionBundle) => [
+    ...(m.svgObjects ?? []), ...(m.images ?? []), ...(m.texts ?? []),
+  ].map((o) => normalizeDeg((o as { angleDeg?: number }).angleDeg ?? 0));
+  const ta = turns(a), tb = turns(b);
+  expect(ta).toHaveLength(tb.length);
+  ta.forEach((t, i) => expect(t).toBeCloseTo(tb[i], 1));
+}
+
 describe('the .tile fixtures survive a v63 resave', () => {
   const TEST_DATA = path.join(__dirname, '../../test_data');
   const TILES = fs.readdirSync(TEST_DATA).filter((f) => f.endsWith('.tile')).sort();
@@ -424,12 +454,22 @@ describe('the .tile fixtures survive a v63 resave', () => {
     const resaved = serializeComposition(first.meta, first.embeddedFiles);
     const second = deserializeComposition(resaved);
     // The document, field for field — including the leaves' pose fields,
-    // which is where a shifted offset would show.
-    expect(second.meta).toEqual(first.meta);
+    // which is where a shifted offset would show. Everything but the free
+    // ANGLE, which has two spellings: the field is an i16 of hundredths and
+    // reaches only 327.67, so `encodeAngleDeg` wraps a turn into
+    // (-180, 180] rather than clamping it to a number the field cannot hold
+    // (docs/transform-refactor.md §4). A fixture written by an older build
+    // carries 208.85 where the writer now says -151.15 — the same turn, said
+    // the short way round. So: the rest literally, the angles as turns.
+    expect(withoutAngles(second.meta)).toEqual(withoutAngles(first.meta));
+    expectSameTurns(second.meta, first.meta);
     // And nothing on disk grew: not one of these files has a lean in it,
     // so not one of them should have paid a byte for the bit.
     const again = serializeComposition(second.meta, second.embeddedFiles);
     expect(again.length).toBe(resaved.length);
+    // …and the writer really is a fixed point, bytes and all, from the
+    // second pass on — which is the property the angle wrap must not cost.
+    expect(Array.from(again)).toEqual(Array.from(resaved));
   });
 
   it('not one of them carries a lean, so none is paying for the block', () => {
