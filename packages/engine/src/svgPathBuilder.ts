@@ -304,7 +304,9 @@ export function buildExpandedTileSVGObjectContent(
  *
  * Shared by the composition exporter (which wraps it in effects/mask clips)
  * and the live DOM node layer via {@link buildSVGObjectContent}, so pattern
- * mode can't render one way on the canvas and another in the export.
+ * mode can't render one way on the canvas and another in the export. Both
+ * of those callers reach the object's whole-object opacity through the flat
+ * path alone, so the tiled markup wraps itself in it here — see the return.
  *
  * `unitsPerCell` is the unit the CALLER's strokes are measured in (see
  * {@link buildSVGObjectContent}) — SVG units for the export (the default),
@@ -336,8 +338,10 @@ export function buildTiledSVGObjectRegionMarkup(
 
   if (svg.segmentOverrides && svg.segmentOverrides.size > 0) {
     const instances = buildExpandedTileSVGObjectContent(svg, tileStrokeScale);
-    return `<svg x="${regionX}" y="${regionY}" width="${regionW}" height="${regionH}" overflow="hidden" ` +
-      `viewBox="${regionX} ${regionY} ${regionW} ${regionH}">${instances}</svg>`;
+    return wrapSVGObjectOpacity(svg,
+      `<svg x="${regionX}" y="${regionY}" width="${regionW}" height="${regionH}" overflow="hidden" `
+      + `viewBox="${regionX} ${regionY} ${regionW} ${regionH}">${instances}</svg>`,
+      tileStrokeScale);
   }
 
   // Per-object stroke attrs in SVG units, no non-scaling vector-effect: the
@@ -388,11 +392,20 @@ export function buildTiledSVGObjectRegionMarkup(
   const patOrgX = regionX + (svg.tileOffsetXL0 ?? 0) * U;
   const patOrgY = regionY + (svg.tileOffsetYL0 ?? 0) * U;
   const patId = `pat_svg_${svgDefIdSafe(svg.id)}`;
-  return `<defs><pattern id="${patId}" patternUnits="userSpaceOnUse" ` +
-    `x="${patOrgX}" y="${patOrgY}" width="${tileW}" height="${tileH}">` +
-    tileContent +
-    `</pattern></defs>` +
-    `<rect x="${regionX}" y="${regionY}" width="${regionW}" height="${regionH}" fill="url(#${patId})" stroke="none" />`;
+  // The whole-object Opacity row rides the REGION, the same wrap the flat
+  // markup ends with. Without it the Opacity slider moved nothing for
+  // anything in repeat mode — which is every pattern, since a dragged-out
+  // one is born repeating: the flat path wraps at its returns and this one
+  // returned early, above them. Fade went on working throughout, because
+  // fade moves the colours the markup is built from rather than wrapping
+  // what it drew, which is exactly why only half the page looked broken.
+  return wrapSVGObjectOpacity(svg,
+    `<defs><pattern id="${patId}" patternUnits="userSpaceOnUse" `
+    + `x="${patOrgX}" y="${patOrgY}" width="${tileW}" height="${tileH}">`
+    + tileContent
+    + `</pattern></defs>`
+    + `<rect x="${regionX}" y="${regionY}" width="${regionW}" height="${regionH}" fill="url(#${patId})" stroke="none" />`,
+    tileStrokeScale);
 }
 
 /**
@@ -496,10 +509,15 @@ const roundOpacity = (v: number): number => Math.round(v * 1e4) / 1e4;
  * Opacity bar's first row. Returns the content unchanged at full opacity, so
  * the overwhelmingly common case emits nothing new.
  *
- * Both markup builders — the live DOM node layer via
- * {@link buildSVGObjectContent} and the SVG exporter — go through here, the
- * same single-source rule as {@link svgFillPresentation} and
- * {@link svgStrokePresentation}.
+ * Every markup builder ends here — the flat one
+ * ({@link buildSVGObjectContent}, the live DOM node layer's path), the SVG
+ * exporter's own flat path, and the tiled region
+ * ({@link buildTiledSVGObjectRegionMarkup}, which both of the others hand
+ * repeat mode off to) — the same single-source rule as
+ * {@link svgFillPresentation} and {@link svgStrokePresentation}. The tiled
+ * one was the exception until 2026-09-19, and a pattern is born repeating,
+ * so the Opacity row moved nothing on the one kind whose page had just
+ * grown it.
  *
  * The bar's SECOND row used to be Soften, and this wrapped an eroded,
  * blurred silhouette mask around the markup for it. The row is Fade now
