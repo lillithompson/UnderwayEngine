@@ -345,6 +345,9 @@ describe('generateCompositionSVGCore — node effects', () => {
   it('shadow/glow emit a node-prefixed <filter> def referenced by the node', async () => {
     const svg = await generateCompositionSVGCore(makeInputs({
       svgObjects: [makeSquareSvg({
+        // FILLED, so the shadow takes the plain one-primitive form: an
+        // unfilled shape dilates its outline first (see below).
+        fillColor: { r: 200, g: 0, b: 0 },
         effects: {
           shadow: { dx: 0.5, dy: 0.5, blur: 1, color: { r: 0, g: 0, b: 0 }, alpha: 0.5 },
           glow: { radius: 1, color: { r: 255, g: 255, b: 0 }, alpha: 1 },
@@ -357,6 +360,38 @@ describe('generateCompositionSVGCore — node effects', () => {
     expect(svg).toContain('feGaussianBlur');
     // World-unit geometry scales into SVG units (0.5 cells × 256 = 128).
     expect(svg).toContain(`dx="${0.5 * U}"`);
+  });
+
+  it('an UNFILLED shape dilates its outline before blurring it', async () => {
+    // The reported bug: a shadow is the silhouette, blurred, and an
+    // unfilled shape's silhouette is its outline — a hairline beside the
+    // blur, which spread its ink to nothing. The alpha is dilated to the
+    // width of its own blur first, so what comes out is a ring as soft as
+    // it is wide (paintSvg.outlineShadowSourceCells).
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [makeSquareSvg({
+        stroke: { width: 0.5 },
+        effects: { shadow: { dx: 0.5, dy: 0.5, blur: 4, color: { r: 0, g: 0, b: 0 }, alpha: 0.5 } },
+      })],
+    }));
+    // The floor is the blur (4 cells) against a 0.5-cell stroke, so the
+    // dilate radius is (4 - 0.5) / 2 cells, in SVG units.
+    expect(svg).toContain(`<feMorphology in="SourceAlpha" operator="dilate" radius="${((4 - 0.5) / 2) * U}"`);
+  });
+
+  it('…and a FILLED one is left exactly as it was', async () => {
+    // Its silhouette is a slab; the blur barely dents it, and widening it
+    // would draw a shadow bigger than the shape.
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [makeSquareSvg({
+        fillColor: { r: 200, g: 0, b: 0 },
+        stroke: { width: 0.5 },
+        effects: { shadow: { dx: 0.5, dy: 0.5, blur: 4, color: { r: 0, g: 0, b: 0 }, alpha: 0.5 } },
+      })],
+    }));
+    // No spread authored, so the plain one-primitive form.
+    expect(svg).not.toContain('feMorphology');
+    expect(svg).toContain('feDropShadow');
   });
 
   it('border emits a stroked rect around the node bbox', async () => {

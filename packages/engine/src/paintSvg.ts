@@ -6,7 +6,7 @@
  * representation.
  */
 
-import { Paint, GradientStop, NodeEffects, BorderEffect, BorderPosition, ImageTint, RGBColor } from './types';
+import { Paint, GradientStop, NodeEffects, BorderEffect, BorderPosition, ImageTint, RGBColor, ShadowEffect } from './types';
 import { rgbToHex } from './colorConvert';
 import { blendColor } from './colorBlend';
 import type { CellBbox } from './transform2d';
@@ -126,6 +126,53 @@ function effectsFilterRegion(effects: NodeEffects, box: FilterBox): string {
   return ' filterUnits="userSpaceOnUse"' +
     ` x="${fmt(box.x - left)}" y="${fmt(box.y - top)}"` +
     ` width="${fmt(box.width + left + right)}" height="${fmt(box.height + top + bottom)}"`;
+}
+
+/**
+ * A shadow whose SOURCE is wide enough to be seen — the rule for a shape
+ * that draws no fill.
+ *
+ * A drop shadow is the object's own silhouette, blurred. For a filled shape
+ * that silhouette is a slab and the blur barely dents it; for an UNFILLED
+ * one it is the outline, and an outline is a hairline next to the blur a
+ * shadow is authored with. Blurring a 0.3-cell line with a 1.1-cell radius
+ * spreads its ink over four times its width and leaves about a twentieth of
+ * the shadow's opacity behind: present, and indistinguishable from nothing.
+ * Which is how "adding a drop shadow does nothing" was true of exactly the
+ * shapes with no fill.
+ *
+ * So the shadow of an outline is cast from an outline no narrower than the
+ * blur that is about to soften it. It stays the shape of the outline — a
+ * ring, with the paper still showing through the middle, which is what a
+ * shadow of a frame looks like — and the blur now rounds its edges instead
+ * of erasing it. Scaling the floor to the BLUR rather than to some constant
+ * is what keeps it honest at both ends: a sharp shadow is cast by the line
+ * itself, and a soft one by a band as wide as its own softness.
+ *
+ * Authored `spread` still applies on top, both ways, exactly as it does for
+ * a filled shape.
+ *
+ * One rule, read by both renderers: the export dilates the alpha to this
+ * width with `feMorphology` (the spread it already had), and the node layer
+ * strokes its shadow copy at it.
+ */
+export function outlineShadowSourceCells(
+  strokeWidthCells: number,
+  shadow: Pick<ShadowEffect, 'blur' | 'spread'>,
+): number {
+  const floor = Math.max(strokeWidthCells, Math.max(0, shadow.blur));
+  return floor + 2 * Math.max(0, shadow.spread ?? 0);
+}
+
+/**
+ * …stated as the `spread` that reaches it, for the filter builder, which
+ * dilates the stroke it is given. The authored spread is inside it.
+ */
+export function outlineShadowSpread(
+  strokeWidthCells: number,
+  shadow: Pick<ShadowEffect, 'blur' | 'spread'>,
+): number {
+  return (outlineShadowSourceCells(strokeWidthCells, shadow) - strokeWidthCells) / 2;
 }
 
 /**

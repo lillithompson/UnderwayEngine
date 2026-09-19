@@ -22,7 +22,7 @@ import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, svgFillPresentation, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
+import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, svgFillPresentation, svgIsFilled, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
 import { roundPathCorners, strokeScaleForUnits, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import { arcBoundingBox } from './compositionArcHitTest';
@@ -33,7 +33,7 @@ import { buildMaskClipDefs, wrapWithMaskClip } from './compositionMaskSVG';
 import { effectiveStrokeMultiplier, normalizeStrokeScale } from './strokeScale';
 import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
-import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
+import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, outlineShadowSpread, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
 import { overlayPngDataUri, paintBlendCss, PaintInk, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { flattenPaintTiles } from './canvasPaint';
@@ -458,6 +458,33 @@ function borderRectForBox(border: BorderEffect, box: BorderBox, u: number): stri
     cellWidth: box.cellWidth * u,
     cellHeight: box.cellHeight * u,
   }, u);
+}
+
+/**
+ * A shape's effects as its SHADOW should be cast: with the shadow's spread
+ * raised to {@link outlineShadowSpread} when the shape draws no fill.
+ *
+ * A shadow is the silhouette, blurred, and an unfilled shape's silhouette is
+ * its outline — a hairline beside the blur radius a shadow carries, which
+ * spreads its ink so thin that the shadow reads as nothing at all. So the
+ * alpha is dilated to the width of its own blur first (`feMorphology`, the
+ * primitive the authored spread already goes through), and what comes out is
+ * a ring as soft as it is wide rather than a smudge. See
+ * `paintSvg.outlineShadowSourceCells` for the rule, which the node layer's
+ * own shadow reads too.
+ *
+ * Every other case is handed back untouched — a filled shape, a shape with
+ * no shadow, a node of another kind.
+ */
+function outlineShadowEffects(
+  svg: SVGObject, effects: NodeEffects | undefined, strokeScale: number,
+): NodeEffects | undefined {
+  if (!effects?.shadow || svgIsFilled(svg)) return effects;
+  const width = svgStrokeWidthCells(svg, strokeScale, SVG_UNITS_PER_L0_CELL);
+  return {
+    ...effects,
+    shadow: { ...effects.shadow, spread: outlineShadowSpread(width, effects.shadow) },
+  };
 }
 
 /**
@@ -1755,7 +1782,7 @@ export async function generateCompositionSVGCore(
         ? { ...svg.effects, border: undefined }
         : svg.effects;
       posedAndClipped(entry.id, entry, drawn.transform,
-        applyNodeEffects(paths, effects, entry.id, svg, U));
+        applyNodeEffects(paths, outlineShadowEffects(svg, effects, svgStrokeScale), entry.id, svg, U));
     }
   }
 
