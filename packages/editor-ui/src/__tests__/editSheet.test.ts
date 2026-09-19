@@ -365,6 +365,52 @@ describe('every page can be opened and shown', () => {
       || (viaLookup(key) && PANEL.includes('rigPartOfSubmenu(displaySub)'));
     expect([key, rendered]).toEqual([key, true]);
   });
+
+  // …and opening one must leave NO other page open. `activeSub` picks the
+  // showing page by running down a fixed chain of host flags, so a flag left
+  // set from an earlier page that sits higher in that chain keeps winning it:
+  // the tab pressed lights nothing, the well holds the old page, and the
+  // press reads as dead. That is what a text duplicated through Copies hit —
+  // `transformOpen` was still set, it outranks the text pages, and Text /
+  // Font / Spacing / Align did nothing at all until the selection changed.
+  // The hosts used to each close a hand-named few of their siblings; the
+  // panel closes all of them now, in one place.
+  describe('opening a page closes every other one', () => {
+    const openBodyFull = PANEL.slice(
+      PANEL.indexOf('const openSubmenu = (key: SubmenuKey) => {'),
+      PANEL.indexOf('const dismissSubmenu = () => {'),
+    );
+    const dismissBody = openBodyFull.slice(openBodyFull.indexOf('const dismissHostSubmenus = () => {'));
+
+    it('clears the panel’s own page and the host’s too, before opening anything', () => {
+      const body = openBodyFull.slice(0, openBodyFull.indexOf('const dismissHostSubmenus = () => {'));
+      expect(body).toContain('setLocalSub(isLocalSubmenu(key) ? key : null);');
+      expect(body).toContain('dismissHostSubmenus();');
+      expect(body).toContain('if (isLocalSubmenu(key)) return;');
+      // UNCONDITIONALLY, and first: the local-page branch used to be the
+      // only one that closed the host's pages, which is exactly how a host
+      // page outlived the press that left it.
+      expect(body.indexOf('dismissHostSubmenus();'))
+        .toBeLessThan(body.indexOf("if (key === 'crop')"));
+      expect(body).not.toContain('if (isLocalSubmenu(key)) { dismissHostSubmenus(); return; }');
+    });
+
+    // Every flag the chain can read has to be a flag the dismiss can clear.
+    const hostFlags = [...new Set(
+      [...activeSubChain.matchAll(/model\.([A-Za-z]+)Open\b/g)].map((m) => m[1]),
+    )];
+
+    it('the chain really was read', () => {
+      expect(hostFlags).toContain('transform');
+      expect(hostFlags).toContain('textStyle');
+      expect(hostFlags.length).toBeGreaterThanOrEqual(10);
+    });
+
+    test.each(hostFlags)('dismissHostSubmenus closes %sOpen', (flag) => {
+      const setter = `on${flag[0].toUpperCase()}${flag.slice(1)}OpenChange`;
+      expect([flag, dismissBody.includes(setter)]).toEqual([flag, true]);
+    });
+  });
 });
 
 describe('the common row ends on Properties, the way in', () => {
@@ -634,7 +680,7 @@ describe('the panel drives the sheet', () => {
     // …and its open state is the panel's own, closed as any host page opens
     // and folded when the selection stops offering it.
     expect(PANEL).toContain('setLocalSub(isLocalSubmenu(key) ? key : null);');
-    expect(PANEL).toContain('if (isLocalSubmenu(key)) { dismissHostSubmenus(); return; }');
+    expect(PANEL).toContain('if (isLocalSubmenu(key)) return;');
     expect(PANEL).toContain("(localSub === 'card' && !cardable)");
     // Opacity: the page an image opens, kept open for a sticker. Its second
     // row is FADE now (the Soften it replaced was a mask; this moves the

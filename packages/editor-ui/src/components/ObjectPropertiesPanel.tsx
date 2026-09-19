@@ -531,11 +531,21 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
 
   const openSubmenu = (key: SubmenuKey) => {
     fontSheetOpenRef.current = false;
-    // One page at a time: a panel-kept page (Color, Shape) closes as any
-    // host page opens (the host closes its own siblings the same way), and
-    // opens alone.
+    // One page at a time, and the PANEL is what holds to that: an open
+    // closes every other page first, then opens the one asked for. It used
+    // to close only its OWN pages (Color, Shape) and leave each host page
+    // to close its siblings, and the hosts' lists disagreed — every
+    // open-change handler named a few neighbours by hand and none of them
+    // named all. A page left open that `activeSub` ranks ABOVE the one just
+    // opened keeps winning that chain, so the pressed tab lit nothing and
+    // the well never changed: a text that had been through Copies left
+    // `transformOpen` set, which outranks the text pages, and Text / Font /
+    // Spacing / Align were pressable and dead until the selection changed.
+    // Closing everything here makes the ranking a tie-break with no tie
+    // left to break.
     setLocalSub(isLocalSubmenu(key) ? key : null);
-    if (isLocalSubmenu(key)) { dismissHostSubmenus(); return; }
+    dismissHostSubmenus();
+    if (isLocalSubmenu(key)) return;
     if (key === 'crop') model.onCropOpenChange?.(true);
     else if (key === 'shadow') model.onShadowOpenChange?.(true);
     else if (key === 'border') model.onBorderOpenChange?.(true);
