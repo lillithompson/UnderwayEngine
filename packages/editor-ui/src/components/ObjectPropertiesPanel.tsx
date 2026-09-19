@@ -21,11 +21,12 @@ import {
 import { ShadowBar } from './ShadowBar';
 import { BorderBar } from './BorderBar';
 import { OpacityBar } from './OpacityBar';
+import { RigJointsBar } from './RigJointsBar';
 import { RigPoseBar } from './RigPoseBar';
 import { RigColorBar } from './RigColorBar';
 import {
   RIG_OUTLINES_DEFAULT, RIG_PAGES, RIG_VOLUMES_DEFAULT, restRigSliders, rigPartOfSubmenu,
-  rigPartSubmenu,
+  rigPartSubmenu, type RigJointSection,
 } from '../logic/rigEdit';
 import { CropBar } from './CropBar';
 import { ImageBar } from './ImageBar';
@@ -263,6 +264,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // sheet's height is computed ahead of the render. (Every face stands the
   // same height, so the sheet never moves under a tab press.)
   const [copiesSection, setCopiesSection] = useState<CopiesSection>('copies');
+  // …and the Joints page's own, held here for the same reason: the page's
+  // height must be known before it renders, and it is the same either way.
+  const [jointSection, setJointSection] = useState<RigJointSection>('elbows');
   const [localSheetWanted, setLocalSheetWanted] = useState(false);
   const sheetWanted = model.editOpen ?? localSheetWanted;
   const onEditOpenChange = model.onEditOpenChange;
@@ -1113,6 +1117,20 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     if (svgStrokeRemovable(model.svgSubtype ?? 'stroke')) {
       removeAction = { label: 'Remove stroke', onPress: removeStroke };
     }
+  } else if (displaySub === 'rigJoints') {
+    // The rig page whose two faces are one box with tabs — the Copies
+    // page's shape, because Left and Right are one setting asked twice and
+    // elbows and knees are the same question about a different pair of
+    // chains. Same slider plumbing as every other rig page beneath it.
+    activeBarEl = (
+      <RigJointsBar
+        section={jointSection}
+        onSection={setJointSection}
+        values={model.rigSliders ?? restRigSliders()}
+        onChange={(key, v) => model.onRigSlider?.(key, v, false)}
+        onCommit={(key, v) => model.onRigSlider?.(key, v, true)}
+      />
+    );
   } else if (displaySub && rigPartOfSubmenu(displaySub)) {
     activeBarEl = (
       <RigPoseBar

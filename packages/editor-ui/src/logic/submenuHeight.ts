@@ -160,6 +160,9 @@ export type SubmenuKey =
   // spread per side), four for the feet, three for the spine, two for the
   // head.
   | 'rigRoot' | 'rigHands' | 'rigFeet' | 'rigSpine' | 'rigHead'
+  // …and the bends BETWEEN the ends: a page of pole sliders, elbows on one
+  // face and knees on the other.
+  | 'rigJoints'
   // …and the one page of a rig that is not a posture: the two colours the
   // sketch is drawn in — its opaque volumes and the outlines over them.
   | 'rigColor'
@@ -235,13 +238,14 @@ function bareArea(rows: readonly number[], gap = ROW_GAP): number {
  * Nearly all are: the well is what separates a page's controls from the
  * tabs above them. The Copies page is not, because it brings its own boxes
  * (three RowGroups), and a well around those drew a second rectangle around
- * every section — each one framed twice, for no extra meaning.
+ * every section — each one framed twice, for no extra meaning. The rig's
+ * Joints page brings one box of the same kind, for the same reason.
  *
  * Both the arithmetic here and EditSheet's markup read this, so a page
  * cannot be measured one way and drawn the other.
  */
 export function pageIsWelled(key: SubmenuKey): boolean {
-  return key !== 'transform';
+  return key !== 'transform' && key !== 'rigJoints';
 }
 
 /** A GROUP of rows (effectBar's RowGroup): a shaded rounded box around rows
@@ -356,6 +360,14 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'rigHead':
       // Nod / Shake / Tilt.
       return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
+    case 'rigJoints': {
+      // The Joints page: Left and Right in ONE tabbed box, its tabs
+      // switching elbows for knees — the Copies page's own shape, for the
+      // same reason. Both faces are the same height (the tab row and two
+      // sliders), so the page never resizes under a tab press, and the box
+      // IS the page, so it is drawn with no well around it (pageIsWelled).
+      return bareArea([rowGroupHeight([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER])]);
+    }
     case 'rigColor':
       // Volumes and Outlines: two hue rows, on the slider's own proportions.
       return contentArea([ROW_SLIDER, ROW_SLIDER]);

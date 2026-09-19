@@ -6,10 +6,13 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  RIG_PAGES, RIG_PART_OPTIONS, RIG_PART_PAGES, RIG_SLIDER_REST, restRigSliders,
+  RIG_JOINT_SECTIONS, RIG_PAGES, RIG_PART_OPTIONS, RIG_PART_PAGES, RIG_SLIDER_REST,
+  restRigSliders, rigJointSliders,
   rigPartOfSubmenu, rigPartSliders, rigPartSubmenu, rigSliderPart,
 } from '../logic/rigEdit';
-import { ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, submenuHeight } from '../logic/submenuHeight';
+import {
+  BAR_CUSHION, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, pageIsWelled, rowGroupHeight, submenuHeight,
+} from '../logic/submenuHeight';
 import type { SubmenuKey } from '../logic/submenuHeight';
 
 const SRC = readFileSync(
@@ -18,31 +21,31 @@ const SRC = readFileSync(
 );
 
 describe('the rig option set', () => {
-  it('the pairing TABLE knows the figure and its four parts', () => {
+  it('the pairing TABLE knows the figure and its five parts', () => {
     // The full table stays — it is the part↔bar/slider pairing the hosts'
     // floating slider modes look joints up through — even though most of
     // its rows no longer open a page.
     // The whole figure's page is named for what its sliders do (turn it
     // on three axes), not for the object.
     expect(RIG_PART_OPTIONS.map((o) => o.label))
-      .toEqual(['Transform', 'Hands', 'Feet', 'Spine', 'Head']);
+      .toEqual(['Transform', 'Hands', 'Feet', 'Spine', 'Head', 'Joints']);
     expect(RIG_PART_OPTIONS.map((o) => o.sub))
-      .toEqual(['rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead']);
+      .toEqual(['rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead', 'rigJoints']);
   });
 
   it('the panel offers the whole-figure page and Color, then Opacity', () => {
     // The part pages (Hands / Feet / Spine / Head) came off the options
     // row; their sliders live on as the floating slider modes. What is
     // left of the parts is the whole figure's own page…
-    expect(RIG_PART_PAGES.map((o) => o.label)).toEqual(['Transform']);
-    expect(RIG_PART_PAGES.map((o) => o.sub)).toEqual(['rigRoot']);
+    expect(RIG_PART_PAGES.map((o) => o.label)).toEqual(['Transform', 'Joints']);
+    expect(RIG_PART_PAGES.map((o) => o.sub)).toEqual(['rigRoot', 'rigJoints']);
     // …and the row adds the one page that is not a posture at all: the two
     // colours the sketch is drawn in. Both panel sites — the tab row and
     // the page list — read RIG_PAGES, never the part table, so a tab can
     // never be offered with no page behind it.
-    expect(RIG_PAGES.map((o) => o.label)).toEqual(['Transform', 'Color']);
-    expect(RIG_PAGES.map((o) => o.sub)).toEqual(['rigRoot', 'rigColor']);
-    expect(RIG_PAGES.map((o) => o.key)).toEqual(['rig', 'color']);
+    expect(RIG_PAGES.map((o) => o.label)).toEqual(['Transform', 'Joints', 'Color']);
+    expect(RIG_PAGES.map((o) => o.sub)).toEqual(['rigRoot', 'rigJoints', 'rigColor']);
+    expect(RIG_PAGES.map((o) => o.key)).toEqual(['rig', 'joints', 'color']);
     expect(SRC).toContain('model.showRigOptions ? RIG_PAGES.map((o) => o.sub)');
     expect(SRC).toContain('RIG_PAGES.map((opt) => ({');
     // Opacity stood beside Transform and is gone: a figure is a POSE, and
@@ -84,11 +87,42 @@ describe('the rig option set', () => {
     expect(rigPartSliders('hands')).toHaveLength(8);
     expect(rigPartSliders('feet')).toHaveLength(6);
     expect(rigPartSliders('head')).toHaveLength(3);
-    // Every part's bar is exactly its own rows — no page borrows another's.
+    // Four pole sliders — a left and a right for the elbows and the knees
+    // — of which the page shows TWO at a time, behind its own tabs.
+    expect(rigPartSliders('joints')).toHaveLength(4);
+    // Every LIST page's bar is exactly its own rows — no page borrows
+    // another's. Joints is not one: it is a tabbed box showing two of its
+    // four at a time, so its height is the box's, not its slider count's
+    // (see the Joints page test below).
     for (const opt of RIG_PART_OPTIONS) {
+      if (opt.part === 'joints') continue;
       const rows = rigPartSliders(opt.part).length;
       expect(submenuHeight(opt.sub))
         .toBe(submenuHeight('rigHead') + (rows - 3) * (ROW_SLIDER + ROW_GAP));
+    }
+  });
+
+  it('the Joints page is ONE tabbed box, the same height on either face', () => {
+    // The Copies page's shape, for the same reason: Left and Right are one
+    // setting asked twice, and elbows and knees are the same question
+    // about a different pair of chains. Both faces are a tab row and two
+    // sliders, so the sheet never resizes under a tab press…
+    expect(submenuHeight('rigJoints')).toBe(
+      rowGroupHeight([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER]) + BAR_CUSHION,
+    );
+    // …and the box IS the page, so no well is drawn around it.
+    expect(pageIsWelled('rigJoints')).toBe(false);
+    expect(pageIsWelled('rigRoot')).toBe(true);
+    // Its two faces, and the pair each shows.
+    expect(RIG_JOINT_SECTIONS.map((s) => s.label)).toEqual(['Elbows', 'Knees']);
+    expect(rigJointSliders('elbows')).toEqual(['poleElbowL', 'poleElbowR']);
+    expect(rigJointSliders('knees')).toEqual(['poleKneeL', 'poleKneeR']);
+    // Both are CENTRED, and their two ends are the same place: a pole
+    // angle goes all the way round, which is what lets one bar reach every
+    // position the joint can take.
+    for (const spec of rigPartSliders('joints')) {
+      expect(spec.centered).toBe(true);
+      expect(spec.ends[0]).toBe(spec.ends[1]);
     }
   });
 
@@ -223,6 +257,8 @@ describe('the rig option set', () => {
       ballBendL: 0.5, ballBendR: 0.5,
       bend: 0.5, twist: 0.5, lean: 0.5,
       nod: 0.5, shake: 0.5, tilt: 0.5,
+      // The chain as the drags left it.
+      poleElbowL: 0.5, poleElbowR: 0.5, poleKneeL: 0.5, poleKneeR: 0.5,
     });
     for (const key of Object.keys(rest) as (keyof typeof rest)[]) {
       expect(rigPartSliders(rigSliderPart(key)).some((s) => s.key === key)).toBe(true);

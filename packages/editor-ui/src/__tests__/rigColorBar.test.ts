@@ -21,11 +21,11 @@ const PANEL = read('components', 'ObjectPropertiesPanel.tsx');
 const ADAPTER = read('adapter.ts');
 
 describe('the Color tab', () => {
-  it('stands beside Transform in the rig’s option row', () => {
+  it('stands last in the rig’s option row, after the two that are postures', () => {
     // A rig's tabs are no longer the part table filtered: Color names no
     // part of the figure at all, so the row is its own list and both panel
     // sites read it (rigOptions.test.ts pins those).
-    expect(RIG_PAGES.map((o) => o.label)).toEqual(['Transform', 'Color']);
+    expect(RIG_PAGES.map((o) => o.label)).toEqual(['Transform', 'Joints', 'Color']);
     expect(RIG_PAGES.find((o) => o.key === 'color')!.sub).toBe('rigColor');
   });
 
