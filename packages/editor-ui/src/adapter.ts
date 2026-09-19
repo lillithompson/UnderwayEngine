@@ -215,18 +215,20 @@ export interface TransformCopiesSpec {
    *  its own centre — compounding, as the offsets and the turn do. */
   sx: number;
   sy: number;
-  /** Fade per copy: how much further toward the object's fade target each
-   *  copy is mixed (engine/fade.ts), added i times for the i-th and
-   *  clamped at each end. 0 = every copy as faded as the original.
+  /** How faded the LAST copy is: 0…1 toward the object's fade target
+   *  (engine/fade.ts), the same absolute amount the Opacity page's Fade row
+   *  means. The run walks there in even steps from the object's own fade, so
+   *  the same setting over more copies is a gentler dissolve — the end of
+   *  the run is what the reader is choosing, not the size of a step nobody
+   *  can picture.
    *
-   *  ADDED rather than multiplied, like the offsets and unlike the
-   *  scales: both of these run 0…1, and a factor on a fade that starts at
-   *  0 — which is every object nobody has faded — would move nothing at
-   *  all. */
-  dFade: number;
-  /** Opacity per copy, the same way: added to the object's own opacity
-   *  and clamped to 0…1, so a negative step is a run that dissolves. */
-  dOpacity: number;
+   *  It says how FAR, never where: the target colour is the object's own
+   *  (`OpacityModel.fadeColor`), which the Fade row's trailing circle
+   *  picks — the copies inherit it like every other property. */
+  finalFade: number;
+  /** How opaque the LAST copy is, 0…1, the same way: the run steps evenly
+   *  from the object's own opacity to this. */
+  finalOpacity: number;
 }
 
 /** Editable endpoints for an open path (the Endpoints bar). Unlike the engine's

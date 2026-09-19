@@ -7,6 +7,7 @@ import {
 } from '../logic/submenuHeight';
 import {
   COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
+  copiesSeededFrom, copyInkStep,
 } from '../logic/transform';
 
 // The Copies page (the 'transform' page — its key predates the rename):
@@ -70,10 +71,36 @@ describe('the Copies page', () => {
     expect(SCALE_MIN).toBeLessThan(1);
     expect(SCALE_MAX).toBeGreaterThan(1);
     expect(DEFAULT_COPIES).toMatchObject({ sx: 1, sy: 1 });
+    // …and the ink a run ENDS on, which a bar told the object's own seeds
+    // from it instead: solid and unfaded, where almost every object stands.
+    expect(DEFAULT_COPIES).toMatchObject({ finalFade: 0, finalOpacity: 1 });
+    expect(copiesSeededFrom({ opacity: 0.4, fade: 0.25 }))
+      .toMatchObject({ finalFade: 0.25, finalOpacity: 0.4 });
+    expect(copiesSeededFrom()).toEqual(DEFAULT_COPIES);
+  });
+
+  it('the ink sliders name the LAST copy, and the run walks there in even steps', () => {
+    // A per-copy step made the reader do the division: "how much fainter is
+    // each one" cannot be pictured, while "how faint is the last one" is the
+    // thing being looked at. So the step falls out of the count — twelve
+    // copies to the same end is a gentler dissolve than three, not a longer
+    // one past it.
+    expect(copyInkStep(0, 1, 4)).toBeCloseTo(0.25, 9);
+    expect(copyInkStep(0, 1, 8)).toBeCloseTo(0.125, 9);
+    expect(copyInkStep(0.5, 1, 2)).toBeCloseTo(0.25, 9);
+    // A run that ends where it started moves nothing, and a run of none has
+    // no step to take.
+    expect(copyInkStep(0.4, 0.4, 6)).toBe(0);
+    expect(copyInkStep(0, 1, 0)).toBe(0);
   });
 
   it('the copy settings are the page’s own draft; the object’s rotation is not here', () => {
-    expect(SRC).toContain('const [copies, setCopies] = useState<TransformCopiesSpec>(DEFAULT_COPIES);');
+    // Seeded from the object's own ink at the OPEN, so the Color tab's two
+    // sliders start under the values the object already carries and a press
+    // with nothing touched lays copies that look like it.
+    expect(SRC).toContain(
+      'const [copies, setCopies] = useState<TransformCopiesSpec>(() => copiesSeededFrom(ink));',
+    );
     expect(SRC).not.toContain('label="Rotation"');
     expect(SRC).not.toContain('onRotate');
     expect(SRC).not.toContain('TransformModel');
@@ -87,7 +114,15 @@ describe('the Copies page', () => {
     ]) {
       expect(SRC).toContain(`label="${label}"`);
     }
-    expect(SRC.match(/<SliderRow/g)).toHaveLength(8);
+    // Seven plain sliders and one FADE row: the Color tab wears the Opacity
+    // page's own two rows — the checkered opacity ramp, and the fade's walk
+    // from the object's ink to the target, ending in the circle that picks
+    // it — because those are the rows this tab is about.
+    expect(SRC.match(/<SliderRow/g)).toHaveLength(7);
+    expect(SRC.match(/<FadeSliderRow/g)).toHaveLength(1);
+    expect(SRC).toContain('value={copies.finalOpacity}\n              checker');
+    expect(SRC).toContain('color={fadeColor}');
+    expect(SRC).toContain('from={fadeInk}');
     expect(SRC).not.toContain('<DualSliderRow');
     // All four pairs SHARE one box, its tabs switching which shows (the
     // panel holds which, so the sheet's height is one number known before
@@ -209,6 +244,12 @@ describe('the Copies page', () => {
     expect(panel).not.toContain('onTransformRotate');
     expect(panel).toContain("onCopies={(spec) => model.onTransformCopies?.(spec)}");
     expect(panel).toContain("onCopiesPreview={(spec) => model.onTransformCopiesPreview?.(spec)}");
+    // The Color tab's rows are fed the object's own ink and the same fade
+    // picker the Opacity page opens — straight off the model, never the
+    // Opacity page's draft, which re-bases fade to the left.
+    expect(panel).toContain('ink={model.objectOpacity}');
+    expect(panel).toContain('fadeColor={model.onPickFadeColor ? fadeTarget : undefined}');
+    expect(panel).toContain('fadeInk={fadeInk}');
     // Closing reaches it through the one closer every page closes by —
     // which is also what the fold-away calls, so there is exactly one.
     expect(panel).toContain('model.onTransformOpenChange?.(false);');

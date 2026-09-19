@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { TransformCopiesSpec } from '../adapter';
-import { EffectButton, GroupedBody, RowGroup, SegmentedRow, SliderRow } from './effectBar';
+import type { OpacityModel, RGBLike, TransformCopiesSpec } from '../adapter';
 import {
-  COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, INK_STEP_MAX, INK_STEP_MIN, OFFSET_MAX,
-  ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
+  EffectButton, FadeSliderRow, GroupedBody, RowGroup, SegmentedRow, SliderRow,
+} from './effectBar';
+import {
+  COPIES_MAX, COPIES_MIN, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
+  copiesSeededFrom,
 } from '../logic/transform';
 
 // The Copies page, on every vector shape and line (the 'transform' page —
@@ -44,10 +46,6 @@ const fromT = (t: number, lo: number, hi: number) => lo + t * (hi - lo);
 const degText = (deg: number) => `${Math.round(deg)}°`;
 const cellText = (cells: number) => String(Math.round(cells * 10) / 10);
 const factorText = (f: number) => `${Math.round(f * 100)}%`;
-/** A per-copy INK step as a signed percentage — the sign matters here in a
- *  way it does not on a scale factor: +20% a copy darkens a run, -20% a
- *  copy dissolves it, and 0 is "every copy the same". */
-const stepText = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`;
 
 /** The page's four faces: how many copies and how much each is turned,
  *  how far each sits from the one before, how much each is scaled, or how
@@ -65,7 +63,9 @@ const SECTIONS = [
   { value: 'color' as const, label: 'Color' },
 ];
 
-export function TransformBar({ onCopies, onCopiesPreview, section, onSection }: {
+export function TransformBar({
+  onCopies, onCopiesPreview, section, onSection, ink, fadeColor, fadeInk, onOpenFadePicker,
+}: {
   onCopies: (spec: TransformCopiesSpec) => void;
   /** The live draft: every change while the page is up, null on the way out. */
   onCopiesPreview?: (spec: TransformCopiesSpec | null) => void;
@@ -73,8 +73,29 @@ export function TransformBar({ onCopies, onCopiesPreview, section, onSection }: 
    *  height is the same either way and known before the render. */
   section: CopiesSection;
   onSection: (section: CopiesSection) => void;
+  /** The object's OWN ink — where the run starts. The Color tab's two
+   *  sliders open on it, so a press with nothing touched lays copies that
+   *  look like the object. */
+  ink?: Pick<OpacityModel, 'opacity' | 'fade'>;
+  /** The fade TARGET — what the Fade row's trailing circle wears and its
+   *  picker edits. The object's own (the copies inherit it), so this tab
+   *  says how far the run goes toward it and never where it is going. */
+  fadeColor?: RGBLike;
+  /** The object's lead ink AS AUTHORED, before any fade is spent on it — the
+   *  Fade track's near end, so the ramp runs from the colour the object draws
+   *  in to the target the circle wears. Absent for a kind with no ink of its
+   *  own (a photograph), where the ramp starts from the panel's track. */
+  fadeInk?: RGBLike;
+  /** The Fade row's trailing circle: the host's full colour picker, where
+   *  the target is chosen. Without it the row has no target to name and the
+   *  tab shows the Opacity slider alone. */
+  onOpenFadePicker?: () => void;
 }) {
-  const [copies, setCopies] = useState<TransformCopiesSpec>(DEFAULT_COPIES);
+  // Seeded ONCE, at the open: the ink sliders start under the object's own
+  // values. Re-seeding as the object changed would drag the thumb out from
+  // under the finger — the draft is the page's, and the page is opened per
+  // selection.
+  const [copies, setCopies] = useState<TransformCopiesSpec>(() => copiesSeededFrom(ink));
   const set = (patch: Partial<TransformCopiesSpec>) => setCopies((c) => ({ ...c, ...patch }));
   // Read through a ref so a host passing a fresh closure each render doesn't
   // re-announce an unchanged draft — the effects key on the draft alone.
@@ -145,31 +166,37 @@ export function TransformBar({ onCopies, onCopiesPreview, section, onSection }: 
           </>
         ) : (
           <>
-            {/* The two rows of the Opacity page, asked per COPY: how much
-                further toward the object's fade target each one is mixed,
-                and how much of its opacity each one keeps. Both are ADDED
-                per copy and clamped (TransformCopiesSpec.dFade) — the
-                offsets' arithmetic, not the scales', because a factor on
-                a fade that starts at 0 would move nothing at all. The
-                fade's TARGET is the object's own (engine/fade.ts): this
-                page says how fast the run gets there, not where. */}
-            <SliderRow
-              label="Fade"
-              value={toT(copies.dFade, INK_STEP_MIN, INK_STEP_MAX)}
-              apply={(t) => set({ dFade: Math.round(fromT(t, INK_STEP_MIN, INK_STEP_MAX) * 100) / 100 })}
-              readout={{
-                text: stepText(copies.dFade),
-                commit: (n) => set({ dFade: clamp(n / 100, INK_STEP_MIN, INK_STEP_MAX) }),
-              }}
-            />
+            {/* The two rows of the Opacity page, in the Opacity page's own
+                dress — and asked of the LAST COPY, not of each step. Both
+                sliders say where the run ENDS: the object's ink walks there
+                in even steps, so the same setting over twelve copies is a
+                slower dissolve than over three. A step is not a thing anyone
+                can picture; the far end of the run is.
+
+                Fade wears the Opacity page's Fade row whole (FadeSliderRow):
+                a ramp from the colour the object draws in to the target, and
+                a circle of the target that opens the picker — because what
+                the far end of this slider MEANS is that colour. The target
+                is the OBJECT's (engine/fade.ts); the copies inherit it, so
+                this tab says how far the run goes, never where. */}
+            {onOpenFadePicker && fadeColor ? (
+              <FadeSliderRow
+                label="Fade"
+                value={copies.finalFade}
+                color={fadeColor}
+                from={fadeInk}
+                apply={(t) => set({ finalFade: Math.round(t * 100) / 100 })}
+                onOpenPicker={onOpenFadePicker}
+              />
+            ) : null}
+            {/* An opacity: the alpha checker under the ramp, so its empty
+                end reads as see-through — the same row the Opacity page
+                shows, which is the row this one is about. */}
             <SliderRow
               label="Opacity"
-              value={toT(copies.dOpacity, INK_STEP_MIN, INK_STEP_MAX)}
-              apply={(t) => set({ dOpacity: Math.round(fromT(t, INK_STEP_MIN, INK_STEP_MAX) * 100) / 100 })}
-              readout={{
-                text: stepText(copies.dOpacity),
-                commit: (n) => set({ dOpacity: clamp(n / 100, INK_STEP_MIN, INK_STEP_MAX) }),
-              }}
+              value={copies.finalOpacity}
+              checker
+              apply={(t) => set({ finalOpacity: Math.round(t * 100) / 100 })}
             />
           </>
         )}

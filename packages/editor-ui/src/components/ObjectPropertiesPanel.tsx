@@ -1036,6 +1036,20 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         onCopiesPreview={(spec) => model.onTransformCopiesPreview?.(spec)}
         section={copiesSection}
         onSection={setCopiesSection}
+        // The Color tab asks where the RUN ends, so it needs to know where
+        // the object stands: its own opacity and fade seat both sliders, and
+        // a press with neither touched lays copies that look like it.
+        // Straight off the model, never the Opacity page's draft — that
+        // draft re-bases fade to the left (the page is relative; this tab is
+        // absolute), and reading it here would seat the run at zero on an
+        // object that is already half faded.
+        ink={model.objectOpacity}
+        // …and the target it fades toward, which the copies inherit: the
+        // circle wears it, its press opens the same picker the Opacity page
+        // opens, and the track ramps from the object's authored ink to it.
+        fadeColor={model.onPickFadeColor ? fadeTarget : undefined}
+        fadeInk={fadeInk}
+        onOpenFadePicker={model.onPickFadeColor ? () => model.onPickFadeColor?.() : undefined}
       />
     );
   } else if (displaySub === 'endpoints') {

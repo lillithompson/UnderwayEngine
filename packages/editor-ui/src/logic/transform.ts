@@ -20,15 +20,47 @@ export const OFFSET_MAX = 8;
  *  shape from a speck to the page's width across a run of copies. */
 export const SCALE_MIN = 0.5;
 export const SCALE_MAX = 1.5;
-/** Fade and opacity per copy, either way: the whole range in one step at
- *  the ends, so a two-copy run can go from solid to gone, and every
- *  gentler run is somewhere in between. Both are ADDED per copy (see
- *  TransformCopiesSpec.dFade) and clamped to 0…1 at each step, so the far
- *  end of a long run simply rests there. */
-export const INK_STEP_MIN = -1;
-export const INK_STEP_MAX = 1;
-/** What a fresh bar proposes: no copies yet (the count is the user's
- *  choice), a cell over, a small turn, the same size, the same ink. */
+/** What a fresh bar proposes when the object's own ink is not known: no
+ *  copies yet (the count is the user's choice), a cell over, a small turn,
+ *  the same size — and a run that ends solid and unfaded, which is where
+ *  almost every object already stands.
+ *
+ *  A bar that IS told the ink seeds the two ink values from it
+ *  ({@link copiesSeededFrom}), so the sliders open on the object and a press
+ *  with nothing touched lays copies that look like it. */
 export const DEFAULT_COPIES: TransformCopiesSpec = {
-  count: 0, dx: 1, dy: 0, dAngleDeg: 15, sx: 1, sy: 1, dFade: 0, dOpacity: 0,
+  count: 0, dx: 1, dy: 0, dAngleDeg: 15, sx: 1, sy: 1, finalFade: 0, finalOpacity: 1,
 };
+
+/**
+ * The opening draft for an object whose ink is known: the defaults above,
+ * with the run ENDING where the object already stands. Both ink sliders then
+ * open under the object's own values, and moving one says "by the last copy,
+ * be this" — the end of the run rather than a per-copy step.
+ */
+export function copiesSeededFrom(
+  ink?: { opacity?: number; fade?: number },
+): TransformCopiesSpec {
+  return {
+    ...DEFAULT_COPIES,
+    finalFade: clamp01(ink?.fade ?? DEFAULT_COPIES.finalFade),
+    finalOpacity: clamp01(ink?.opacity ?? DEFAULT_COPIES.finalOpacity),
+  };
+}
+
+/**
+ * The per-copy INK STEP a run of `count` copies takes to land on `final`
+ * having started at `from`: the whole walk divided evenly, so the i-th copy
+ * sits at `from + step × i` and the last one sits exactly on `final`. More
+ * copies, smaller steps — the same end, reached more gently.
+ *
+ * Shared by the host that lays the copies down and by anything that reasons
+ * about the run, so the two can't disagree about what a setting means. A
+ * run of none has no step to take.
+ */
+export function copyInkStep(from: number, final: number, count: number): number {
+  if (!(count >= 1)) return 0;
+  return (final - from) / count;
+}
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
