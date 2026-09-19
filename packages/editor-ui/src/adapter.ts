@@ -215,6 +215,18 @@ export interface TransformCopiesSpec {
    *  its own centre — compounding, as the offsets and the turn do. */
   sx: number;
   sy: number;
+  /** Fade per copy: how much further toward the object's fade target each
+   *  copy is mixed (engine/fade.ts), added i times for the i-th and
+   *  clamped at each end. 0 = every copy as faded as the original.
+   *
+   *  ADDED rather than multiplied, like the offsets and unlike the
+   *  scales: both of these run 0…1, and a factor on a fade that starts at
+   *  0 — which is every object nobody has faded — would move nothing at
+   *  all. */
+  dFade: number;
+  /** Opacity per copy, the same way: added to the object's own opacity
+   *  and clamped to 0…1, so a negative step is a run that dissolves. */
+  dOpacity: number;
 }
 
 /** Editable endpoints for an open path (the Endpoints bar). Unlike the engine's

@@ -20,6 +20,15 @@ export const OFFSET_MAX = 8;
  *  shape from a speck to the page's width across a run of copies. */
 export const SCALE_MIN = 0.5;
 export const SCALE_MAX = 1.5;
+/** Fade and opacity per copy, either way: the whole range in one step at
+ *  the ends, so a two-copy run can go from solid to gone, and every
+ *  gentler run is somewhere in between. Both are ADDED per copy (see
+ *  TransformCopiesSpec.dFade) and clamped to 0…1 at each step, so the far
+ *  end of a long run simply rests there. */
+export const INK_STEP_MIN = -1;
+export const INK_STEP_MAX = 1;
 /** What a fresh bar proposes: no copies yet (the count is the user's
- *  choice), a cell over, a small turn, the same size. */
-export const DEFAULT_COPIES: TransformCopiesSpec = { count: 0, dx: 1, dy: 0, dAngleDeg: 15, sx: 1, sy: 1 };
+ *  choice), a cell over, a small turn, the same size, the same ink. */
+export const DEFAULT_COPIES: TransformCopiesSpec = {
+  count: 0, dx: 1, dy: 0, dAngleDeg: 15, sx: 1, sy: 1, dFade: 0, dOpacity: 0,
+};

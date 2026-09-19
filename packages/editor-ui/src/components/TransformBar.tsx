@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { TransformCopiesSpec } from '../adapter';
 import { EffectButton, GroupedBody, RowGroup, SegmentedRow, SliderRow } from './effectBar';
 import {
-  COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
+  COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, INK_STEP_MAX, INK_STEP_MIN, OFFSET_MAX,
+  ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
 } from '../logic/transform';
 
 // The Copies page, on every vector shape and line (the 'transform' page —
@@ -43,16 +44,25 @@ const fromT = (t: number, lo: number, hi: number) => lo + t * (hi - lo);
 const degText = (deg: number) => `${Math.round(deg)}°`;
 const cellText = (cells: number) => String(Math.round(cells * 10) / 10);
 const factorText = (f: number) => `${Math.round(f * 100)}%`;
+/** A per-copy INK step as a signed percentage — the sign matters here in a
+ *  way it does not on a scale factor: +20% a copy darkens a run, -20% a
+ *  copy dissolves it, and 0 is "every copy the same". */
+const stepText = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`;
 
-/** The page's three faces: how many copies and how much each is turned,
- *  how far each sits from the one before, or how much each is scaled. One
- *  section, one at a time. */
-export type CopiesSection = 'copies' | 'offset' | 'scale';
+/** The page's four faces: how many copies and how much each is turned,
+ *  how far each sits from the one before, how much each is scaled, or how
+ *  much of its ink each keeps. One section, one at a time. */
+export type CopiesSection = 'copies' | 'offset' | 'scale' | 'color';
 
 const SECTIONS = [
   { value: 'copies' as const, label: 'Copies' },
   { value: 'offset' as const, label: 'Offset' },
   { value: 'scale' as const, label: 'Scale' },
+  // …and what each copy is made of, which is the other way a run of them
+  // reads as a run: a shape stepping across the page and dissolving as it
+  // goes says "was here, and here, and is here now" where six solid ones
+  // say "there are six of these".
+  { value: 'color' as const, label: 'Color' },
 ];
 
 export function TransformBar({ onCopies, onCopiesPreview, section, onSection }: {
@@ -118,7 +128,7 @@ export function TransformBar({ onCopies, onCopiesPreview, section, onSection }: 
               readout={{ text: cellText(copies.dy), commit: (n) => set({ dy: clamp(n, -OFFSET_MAX, OFFSET_MAX) }) }}
             />
           </>
-        ) : (
+        ) : section === 'scale' ? (
           <>
             <SliderRow
               label="Scale X"
@@ -131,6 +141,35 @@ export function TransformBar({ onCopies, onCopiesPreview, section, onSection }: 
               value={toT(copies.sy, SCALE_MIN, SCALE_MAX)}
               apply={(t) => set({ sy: Math.round(fromT(t, SCALE_MIN, SCALE_MAX) * 100) / 100 })}
               readout={{ text: factorText(copies.sy), commit: (n) => set({ sy: clamp(n / 100, SCALE_MIN, SCALE_MAX) }) }}
+            />
+          </>
+        ) : (
+          <>
+            {/* The two rows of the Opacity page, asked per COPY: how much
+                further toward the object's fade target each one is mixed,
+                and how much of its opacity each one keeps. Both are ADDED
+                per copy and clamped (TransformCopiesSpec.dFade) — the
+                offsets' arithmetic, not the scales', because a factor on
+                a fade that starts at 0 would move nothing at all. The
+                fade's TARGET is the object's own (engine/fade.ts): this
+                page says how fast the run gets there, not where. */}
+            <SliderRow
+              label="Fade"
+              value={toT(copies.dFade, INK_STEP_MIN, INK_STEP_MAX)}
+              apply={(t) => set({ dFade: Math.round(fromT(t, INK_STEP_MIN, INK_STEP_MAX) * 100) / 100 })}
+              readout={{
+                text: stepText(copies.dFade),
+                commit: (n) => set({ dFade: clamp(n / 100, INK_STEP_MIN, INK_STEP_MAX) }),
+              }}
+            />
+            <SliderRow
+              label="Opacity"
+              value={toT(copies.dOpacity, INK_STEP_MIN, INK_STEP_MAX)}
+              apply={(t) => set({ dOpacity: Math.round(fromT(t, INK_STEP_MIN, INK_STEP_MAX) * 100) / 100 })}
+              readout={{
+                text: stepText(copies.dOpacity),
+                commit: (n) => set({ dOpacity: clamp(n / 100, INK_STEP_MIN, INK_STEP_MAX) }),
+              }}
             />
           </>
         )}

@@ -77,16 +77,19 @@ describe('the Copies page', () => {
     expect(SRC).not.toContain('label="Rotation"');
     expect(SRC).not.toContain('onRotate');
     expect(SRC).not.toContain('TransformModel');
-    // Six sliders, a line each, in three groups of two: the count beside
-    // the turn, then the offsets and the scales. They shared a line per
-    // pair before, which halved every track and set two readouts fighting
-    // for the width.
-    for (const label of ['Offset X', 'Offset Y', 'Scale X', 'Scale Y', 'Copies', 'Rotation offset']) {
+    // Eight sliders, a line each, in four groups of two: the count beside
+    // the turn, then the offsets, the scales and the ink. They shared a
+    // line per pair before, which halved every track and set two readouts
+    // fighting for the width.
+    for (const label of [
+      'Offset X', 'Offset Y', 'Scale X', 'Scale Y', 'Copies', 'Rotation offset',
+      'Fade', 'Opacity',
+    ]) {
       expect(SRC).toContain(`label="${label}"`);
     }
-    expect(SRC.match(/<SliderRow/g)).toHaveLength(6);
+    expect(SRC.match(/<SliderRow/g)).toHaveLength(8);
     expect(SRC).not.toContain('<DualSliderRow');
-    // All three pairs SHARE one box, its tabs switching which shows (the
+    // All four pairs SHARE one box, its tabs switching which shows (the
     // panel holds which, so the sheet's height is one number known before
     // the render). Copies leads: it is what a press lays down.
     expect(SRC.match(/<RowGroup>/g)).toHaveLength(1);
@@ -95,6 +98,11 @@ describe('the Copies page', () => {
     expect(SRC).toContain("{ value: 'copies' as const, label: 'Copies' },");
     expect(SRC).toContain("{ value: 'offset' as const, label: 'Offset' },");
     expect(SRC).toContain("{ value: 'scale' as const, label: 'Scale' },");
+    // …and what each copy is MADE of, which is the other way a run reads
+    // as a run: a shape stepping across the page and dissolving as it
+    // goes says "was here, and here, and is here now".
+    expect(SRC).toContain("{ value: 'color' as const, label: 'Color' },");
+    expect(SRC.indexOf("label: 'Scale'")).toBeLessThan(SRC.indexOf("label: 'Color'"));
     expect(SRC.indexOf("label: 'Copies'")).toBeLessThan(SRC.indexOf("label: 'Offset'"));
     expect(SRC).toContain("{section === 'copies' ? (");
     const panelSrc = read('ObjectPropertiesPanel.tsx');
