@@ -375,6 +375,7 @@ describe('paintBlendCss', () => {
 });
 
 // ── Binary round-trip (v48) ─────────────────────────────────────────
+import { expectNoStoredFade } from './fadeSpent.test-utils';
 
 function makeImage(overrides: Partial<ImageObject> = {}): ImageObject {
   return {
@@ -425,8 +426,10 @@ describe('paintOverlay binary round-trip (v48)', () => {
     );
     const img = rt.meta.images?.[0];
     expect(img?.paintOverlay).toBeUndefined();
-    expect(img?.fade).toBeCloseTo(0.5, 2);
-    expect(img?.fadeColor).toEqual({ r: 1, g: 2, b: 3 });
+    // The fade rides in the same flags2 section and is SPENT on the way
+    // out (engine/fadeBake.ts), so what proves the section read correctly
+    // is that it was consumed rather than that it came back.
+    expectNoStoredFade(img!);
   });
 });
 

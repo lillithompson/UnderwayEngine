@@ -3,6 +3,15 @@
  * quantized to a u8 and the target's three channels, four bytes, written only
  * when there IS a fade.
  *
+ * The block is still WRITTEN and READ, because every file made while the
+ * fade was a stored property carries it. What has changed is what a reader
+ * gets back: `deserializeComposition` SPENDS the pair into the record's
+ * colours and drops it (engine/fadeBake.ts), so a legacy file still looks
+ * exactly as it was written and nothing downstream is handed a colour with
+ * a fade standing over it. These tests therefore read the MIX back, not the
+ * two fields — which is the stronger statement anyway: the picture
+ * survives, byte for byte of intent.
+ *
  * Three records carry the pair, each behind its own presence bit: an SVG
  * (flags4 0x40, last in the record), an image (flags2 0x10, last in the image
  * section) and a text style (its own style flag). One writer and one reader
@@ -21,6 +30,11 @@ import {
   CompositionBundle,
 } from '../compositionBinaryFormat';
 import { ImageObject, PathSegment, SVGObject, TextObject } from '../types';
+import { expectFadedTo, expectNoStoredFade } from './fadeSpent.test-utils';
+
+/** The ink every fixture below is authored in. */
+const SVG_INK = { r: 255, g: 160, b: 50 };
+const TEXT_INK = { r: 0, g: 0, b: 0 };
 
 function line(start: [number, number], end: [number, number]): PathSegment {
   return { kind: 'line', start, end };
@@ -30,7 +44,7 @@ function makeSVG(id: string, extras: Partial<SVGObject> = {}): SVGObject {
   return {
     id,
     segments: [line([0, 0], [4, 0]), line([4, 0], [4, 3])],
-    color: { r: 255, g: 160, b: 50 },
+    color: SVG_INK,
     cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 3,
     ...extras,
   };
@@ -52,7 +66,7 @@ function makeText(id: string, extras: Partial<TextObject['style']> = {}): TextOb
   return {
     id,
     content: 'hello',
-    style: { fontId: 'inter', size: 2, color: { r: 0, g: 0, b: 0 }, ...extras },
+    style: { fontId: 'inter', size: 2, color: TEXT_INK, ...extras },
     cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 2,
   };
 }
@@ -81,22 +95,22 @@ function roundTrip(svgObjects: SVGObject[], images: ImageObject[] = [], texts: T
 }
 
 describe('v62 SVG fade round-trip', () => {
-  it('preserves the amount and the target together', () => {
+  it('preserves the amount and the target together — as the colour they make', () => {
     const [out] = roundTrip([makeSVG('svg_1', {
       fade: 0.5, fadeColor: { r: 10, g: 20, b: 30 },
     })]).svgs;
-    expect(out.fade).toBeCloseTo(0.5, 2);
-    expect(out.fadeColor).toEqual({ r: 10, g: 20, b: 30 });
+    expectFadedTo(out.color, SVG_INK, 0.5, { r: 10, g: 20, b: 30 });
+    expectNoStoredFade(out);
   });
 
-  it('leaves a WHITE target absent, since white is what absent means', () => {
-    // fade.FADE_DEFAULT_COLOR. Keeping it absent is what makes a round-trip
-    // of the default toEqual-identical to what was written.
+  it('a WHITE target is written absent, and still walks the colour to white', () => {
+    // fade.FADE_DEFAULT_COLOR — an absent target MEANS white on the wire,
+    // so the reader has to supply it before the mix can be spent.
     const [out] = roundTrip([makeSVG('svg_1', {
       fade: 0.5, fadeColor: { r: 255, g: 255, b: 255 },
     })]).svgs;
-    expect(out.fade).toBeCloseTo(0.5, 2);
-    expect(out.fadeColor).toBeUndefined();
+    expectFadedTo(out.color, SVG_INK, 0.5, { r: 255, g: 255, b: 255 });
+    expectNoStoredFade(out);
   });
 
   it('leaves an untouched object with neither field, and no extra bytes', () => {
@@ -119,7 +133,8 @@ describe('v62 SVG fade round-trip', () => {
 
   it('survives a full fade (1 is not "absent")', () => {
     const [out] = roundTrip([makeSVG('svg_1', { fade: 1 })]).svgs;
-    expect(out.fade).toBe(1);
+    expect(out.color).toEqual({ r: 255, g: 255, b: 255 });
+    expectNoStoredFade(out);
   });
 
   it('keeps values distinct across several objects', () => {
@@ -128,10 +143,12 @@ describe('v62 SVG fade round-trip', () => {
       makeSVG('svg_2'),
       makeSVG('svg_3', { fade: 1, fadeColor: { r: 0, g: 0, b: 0 } }),
     ]);
-    expect(svgs[0].fade).toBeCloseTo(0.25, 2);
-    expect(svgs[1].fade).toBeUndefined();
-    expect(svgs[2].fade).toBe(1);
-    expect(svgs[2].fadeColor).toEqual({ r: 0, g: 0, b: 0 });
+    expectFadedTo(svgs[0].color, SVG_INK, 0.25, { r: 255, g: 255, b: 255 });
+    // The one with no fade is untouched, which is the common case and must
+    // cost the loader nothing.
+    expect(svgs[1].color).toEqual(SVG_INK);
+    expect(svgs[2].color).toEqual({ r: 0, g: 0, b: 0 });
+    for (const o of svgs) expectNoStoredFade(o);
   });
 
   it('coexists with the other optional SVG blocks it shares a record with', () => {
@@ -147,8 +164,8 @@ describe('v62 SVG fade round-trip', () => {
       name: 'boxy',
       hidden: true,
     })]).svgs;
-    expect(out.fade).toBeCloseTo(0.75, 2);
-    expect(out.fadeColor).toEqual({ r: 9, g: 8, b: 7 });
+    expectFadedTo(out.color, SVG_INK, 0.75, { r: 9, g: 8, b: 7 });
+    expectNoStoredFade(out);
     expect(out.opacity).toBeCloseTo(0.5, 2);
     expect(out.endpoints).toEqual({ startMarker: 'circle', endCap: 'square' });
     expect(out.stroke).toEqual({ width: 0.375, dash: 3 });
@@ -162,12 +179,16 @@ describe('v62 SVG fade round-trip', () => {
 });
 
 describe('v62 image fade round-trip', () => {
-  it('preserves the amount and the target', () => {
+  it('preserves the amount and the target — as the tint they make', () => {
+    // An image's own pixels are not a colour parameter; what a fade moves
+    // is what it PAINTS with, so the fixture carries a tint to move.
+    const ink = { r: 200, g: 100, b: 0 };
     const [out] = roundTrip([], [makeImage('img_1', {
       fade: 0.25, fadeColor: { r: 4, g: 5, b: 6 },
+      tint: { color: ink, amount: 1, mode: 'tint' },
     })]).images;
-    expect(out.fade).toBeCloseTo(0.25, 2);
-    expect(out.fadeColor).toEqual({ r: 4, g: 5, b: 6 });
+    expectFadedTo(out.tint?.color, ink, 0.25, { r: 4, g: 5, b: 6 });
+    expectNoStoredFade(out);
   });
 
   it('leaves an untouched image with neither field and no extra bytes', () => {
@@ -196,7 +217,10 @@ describe('v62 image fade round-trip', () => {
       cornerRadius: 0.25,
       framing: { mode: 'fill', zoom: 1.5 },
     })]).images;
-    expect(out.fade).toBeCloseTo(0.5, 2);
+    expectNoStoredFade(out);
+    // The fade moved the overlay's own colours, and the stream stayed in
+    // sync past it — which is what this case is really for.
+    expectFadedTo(out.tintFill?.solid, { r: 10, g: 20, b: 30 }, 0.5, { r: 255, g: 255, b: 255 });
     expect(out.originalImageId).toBe('orig_1');
     expect(out.tintFill?.type).toBe('radial');
     expect(out.tintFill?.blend).toBe('soft-light');
@@ -211,9 +235,10 @@ describe('v62 text fade round-trip', () => {
     const [out] = roundTrip([], [], [makeText('txt_1', {
       fade: 0.5, fadeColor: { r: 7, g: 7, b: 7 }, alpha: 0.4,
     })]).texts;
-    expect(out.style.fade).toBeCloseTo(0.5, 2);
-    expect(out.style.fadeColor).toEqual({ r: 7, g: 7, b: 7 });
-    // The alpha beside it is untouched: two different rows of one page.
+    expectFadedTo(out.style.color, TEXT_INK, 0.5, { r: 7, g: 7, b: 7 });
+    expectNoStoredFade(out.style);
+    // The alpha beside it is untouched: two different rows of one page,
+    // and only one of them is spent.
     expect(out.style.alpha).toBeCloseTo(0.4, 2);
   });
 

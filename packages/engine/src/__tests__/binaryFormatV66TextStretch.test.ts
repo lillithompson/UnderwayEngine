@@ -16,6 +16,7 @@ import {
   CompositionBundle,
 } from '../compositionBinaryFormat';
 import { TextObject } from '../types';
+import { expectFadedTo, expectNoStoredFade } from './fadeSpent.test-utils';
 
 function makeText(id: string, extras: Partial<TextObject> = {}): TextObject {
   return {
@@ -57,7 +58,11 @@ describe('v66 text stretch round-trip', () => {
     expect(out.angleDeg).toBeCloseTo(29, 5);
     // …and every block before it in the record still reads back.
     expect(out.style.bend).toBeCloseTo(0.25, 5);
-    expect(out.style.fade).toBeCloseTo(0.5, 2);
+    // The fade block is read and then SPENT into the ink
+    // (engine/fadeBake.ts) — reading the mix back is how this case proves
+    // the stream stayed in sync past it.
+    expectFadedTo(out.style.color, { r: 1, g: 2, b: 3 }, 0.5, { r: 255, g: 255, b: 255 });
+    expectNoStoredFade(out.style);
     expect(out.style.alpha).toBeCloseTo(0.75, 2);
     expect(out.content).toBe('wide');
   });

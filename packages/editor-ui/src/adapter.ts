@@ -215,16 +215,20 @@ export interface TransformCopiesSpec {
    *  its own centre — compounding, as the offsets and the turn do. */
   sx: number;
   sy: number;
-  /** How faded the LAST copy is: 0…1 toward the object's fade target
+  /** How faded the LAST copy is: 0…1 toward the fade target
    *  (engine/fade.ts), the same absolute amount the Opacity page's Fade row
-   *  means. The run walks there in even steps from the object's own fade, so
+   *  means. The run walks there in even steps from the object itself, so
    *  the same setting over more copies is a gentler dissolve — the end of
    *  the run is what the reader is choosing, not the size of a step nobody
    *  can picture.
    *
-   *  It says how FAR, never where: the target colour is the object's own
-   *  (`OpacityModel.fadeColor`), which the Fade row's trailing circle
-   *  picks — the copies inherit it like every other property. */
+   *  Each copy's share is SPENT into its own colours (engine/fadeBake.ts),
+   *  so a copy comes out with colours of its own and its Stroke page can
+   *  still say what they are.
+   *
+   *  It says how FAR, never where: the target is
+   *  {@link OpacityModel.fadeColor}, which the Fade row's trailing circle
+   *  picks and the host carries through to the press. */
   finalFade: number;
   /** How opaque the LAST copy is, 0…1, the same way: the run steps evenly
    *  from the object's own opacity to this. */
@@ -355,25 +359,33 @@ export interface OpacityModel {
   /** Whole-object opacity 0…1 (1 = fully opaque). */
   opacity: number;
   /** How far every colour the object DRAWS — its fill, its stroke, its
-   *  border — is mixed toward {@link OpacityModel.fadeColor}, 0…1. 0 = the
-   *  colours as authored, 1 = all of them at the target. Not an opacity:
-   *  the object stays as solid as it was, so the two rows of the page do
-   *  different things (engine/fade.ts). */
+   *  border — is to be mixed toward {@link OpacityModel.fadeColor}, 0…1.
+   *  0 = the colours as they now stand, 1 = all of them at the target. Not
+   *  an opacity: the object stays as solid as it was, so the two rows of
+   *  the page do different things (engine/fade.ts).
+   *
+   *  A fade is an ADJUSTMENT, not a property: the host spends it into the
+   *  object's own colours and stores nothing (engine/fadeBake.ts). So this
+   *  always reads 0 coming OUT of the host, and the row opens at the left
+   *  on every visit — 0 means "the colours as they are", which after a
+   *  previous spend is exactly where that spend left them. It is also what
+   *  keeps the Stroke page, and not this slider, the authority on what the
+   *  object's colour is. */
   fade: number;
   /** The colour they are mixed toward — what the row's trailing circle
-   *  shows and its picker edits. White until the reader picks otherwise. */
+   *  shows and its picker edits. The HOST's, standing across selections
+   *  like the active colour, since no object carries one. White until the
+   *  reader picks otherwise. */
   fadeColor: RGBLike;
-  /** The object's lead ink AS AUTHORED — before any fade is spent on it.
-   *  The Fade slider's track is a ramp from where that ink stands when the
-   *  page opens to {@link OpacityModel.fadeColor}, so the row shows the walk
-   *  it performs instead of a bar of selection blue that named neither end.
+  /** The object's lead ink: the near end of the Fade slider's track, which
+   *  ramps from there to {@link OpacityModel.fadeColor} so the row shows
+   *  the walk it performs instead of a bar of selection blue that named
+   *  neither end.
    *
-   *  Unfaded, rather than the colour on screen, so the panel can place the
-   *  ramp's near end itself: the target can be re-picked while the page is
-   *  open, which moves where the standing fade has landed, and only the raw
-   *  ink plus the current target can say where. Absent for a kind with no
-   *  ink of its own (an image is a photograph), where the ramp starts from
-   *  the panel's own track. */
+   *  It is the colour the object draws in NOW — which, with the fade spent
+   *  rather than stored, is the same thing as the colour it was authored
+   *  in. Absent for a kind with no ink of its own (an image is a
+   *  photograph), where the ramp starts from the panel's own track. */
   fadeInk?: RGBLike;
 }
 

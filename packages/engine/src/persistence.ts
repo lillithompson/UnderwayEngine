@@ -1,4 +1,5 @@
 import storage from './storage';
+import { bakeStoredFades } from './fadeBake';
 import { Layer, CellState, GridLevel, LAYER_PX, CompositionEntry, CompositionState, CompositionFigure, Camera, FileConfig, CanvasPaintIsland, ClipBox, GroupNode, SVGObject, SVGSubpath, ImageObject, ImagePaintOverlay, BlendMode, PaintObject, PatternObject, PatternSymmetry, PathSegment, RGBColor, SVGDesignTemplate, TextObject, Paint, makeViewport, initDirtyRects, markFullDirty, hideHeavyLayerFields } from './types';
 import { normalizeCanvasPaintIslands, paintTilesContentRect } from './canvasPaint';
 import { mintPaintObjectId } from './paintObject';
@@ -863,13 +864,19 @@ export async function loadCompositionState(
   const groups = parsed.groups ?? [];
   const texts: TextObject[] = parsed.texts ?? [];
   const patternObjects = sanitizePatternObjects(parsed.patternObjects);
+  // A fade is an ADJUSTMENT to the colours an object draws in, not a
+  // property standing over them (engine/fadeBake.ts). Files written while
+  // it WAS stored still carry the pair; spend it here, once, so nothing
+  // past a load sees a fade outranking a colour — which is what left the
+  // Stroke page setting a colour the screen never showed.
+  const faded = bakeStoredFades({ svgObjects, images, texts, patternObjects });
   const normalizeInput = {
     figures,
-    svgObjects,
-    images,
-    texts,
+    svgObjects: faded.svgObjects,
+    images: faded.images,
+    texts: faded.texts,
     paintObjects,
-    patternObjects,
+    patternObjects: faded.patternObjects,
     groups,
     gridLevel: parsed.gridLevel ?? 1,
     strokeScale: normalizeStrokeScale(parsed.strokeScale),

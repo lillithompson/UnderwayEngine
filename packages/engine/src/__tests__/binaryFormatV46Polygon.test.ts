@@ -15,6 +15,7 @@ import { computeRegularPolygonSegments } from '../compositionLineBboxMath';
 import { isClosedPath } from '../compositionArcMath';
 import { svgSubtype } from '../svgStroke';
 import { SVGObject, PathSegment } from '../types';
+import { expectFadedTo, expectNoStoredFade } from './fadeSpent.test-utils';
 
 function makeBundle(svgObjects: SVGObject[]): CompositionBundle {
   return {
@@ -123,11 +124,14 @@ describe('v46 shapeKind="polygon" persistence', () => {
     const { meta } = deserializeComposition(data);
     const loaded = meta.svgObjects?.[0];
     expect(loaded?.shapeKind).toBe('polygon');
-    expect(loaded?.fillColor).toEqual({ r: 10, g: 20, b: 30 });
+    expectFadedTo(loaded!.fillColor, { r: 10, g: 20, b: 30 }, 0.25, { r: 9, g: 8, b: 7 });
     expect(loaded?.fillOpacity).toBeCloseTo(0.5, 2);
     expect(loaded?.opacity).toBeCloseTo(0.75, 2);
-    expect(loaded?.fade).toBeCloseTo(0.25, 2);
-    expect(loaded?.fadeColor).toEqual({ r: 9, g: 8, b: 7 });
+    // The fade payload is read and then SPENT (engine/fadeBake.ts): the
+    // fill above moved, the stroke moved with it from its OWN value, and
+    // nothing is left on the record to outrank either.
+    expectFadedTo(loaded!.color, { r: 255, g: 160, b: 50 }, 0.25, { r: 9, g: 8, b: 7 });
+    expectNoStoredFade(loaded!);
   });
 
   test('rectangle and polygon tags do not cross wires', () => {

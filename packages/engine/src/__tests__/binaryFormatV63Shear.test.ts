@@ -44,6 +44,7 @@ import { patchFormatVersion } from './test-utils';
 const LEAN = 0.375;
 /** …and one that is not on any obvious grid, for the precision claim. */
 const ODD_LEAN = 0.31830988618379;
+import { expectFadedTo, expectNoStoredFade } from './fadeSpent.test-utils';
 
 function line(start: [number, number], end: [number, number]): PathSegment {
   return { kind: 'line', start, end };
@@ -231,8 +232,11 @@ describe('v63 shear alongside the rest of the record', () => {
       })],
     }).svgObjects!;
     expect(out.shear).toBe(LEAN);
-    expect(out.fade).toBeCloseTo(0.75, 2);
-    expect(out.fadeColor).toEqual({ r: 9, g: 8, b: 7 });
+    // The fade is READ (the block is still on the wire) and then SPENT:
+    // the colour moved, and nothing is left standing over it
+    // (engine/fadeBake.ts).
+    expectFadedTo(out.color, { r: 255, g: 160, b: 50 }, 0.75, { r: 9, g: 8, b: 7 });
+    expectNoStoredFade(out);
     expect(out.opacity).toBeCloseTo(0.5, 2);
     expect(out.endpoints).toEqual({ startMarker: 'circle', endCap: 'square' });
     expect(out.stroke).toEqual({ width: 0.375, dash: 3 });
@@ -256,7 +260,7 @@ describe('v63 shear alongside the rest of the record', () => {
       })],
     }).images!;
     expect(out.shear).toBe(-0.25);
-    expect(out.fade).toBeCloseTo(0.5, 2);
+    expectNoStoredFade(out);
     expect(out.originalImageId).toBe('orig_1');
     expect(out.cornerRadius).toBeCloseTo(0.25);
     expect(out.framing?.zoom).toBeCloseTo(1.5);
@@ -278,7 +282,8 @@ describe('v63 shear alongside the rest of the record', () => {
     expect(out.shear).toBe(LEAN);
     expect((out.style as { shear?: number }).shear).toBeUndefined();
     expect(out.style.bend).toBeCloseTo(0.4, 6);
-    expect(out.style.fade).toBeCloseTo(0.5, 2);
+    expectFadedTo(out.style.color, { r: 1, g: 2, b: 3 }, 0.5, { r: 255, g: 255, b: 255 });
+    expectNoStoredFade(out.style);
     expect(out.style.alpha).toBeCloseTo(0.6, 2);
     expect(out.style.vAlign).toBe('middle');
     expect(out.angleDeg).toBeCloseTo(29, 1);

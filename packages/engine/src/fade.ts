@@ -25,23 +25,37 @@ import type {
  * letting the page show through it. The two rows of the page therefore do
  * different things and can be used together.
  *
- * It is a RENDER transform, not an edit: the fade and its target are the
- * only things stored, so the colours underneath are untouched and dragging
- * the slider back to 0 gives them back exactly. That is what lets one
- * slider fade fill, stroke and border at once — each is interpolated from
- * the value it still has, so their RELATIONSHIP survives the fade instead
- * of every colour collapsing onto one.
+ * Each colour is interpolated from the value it still has, so their
+ * RELATIONSHIP survives the fade instead of every colour collapsing onto
+ * one — that is what lets a single slider fade fill, stroke and border at
+ * once.
+ *
+ * WHERE THE MIX LANDS. The Fade row SPENDS it into the object's own
+ * colours and stores nothing — see fadeBake.ts, which is what the editor
+ * calls and why. It used to be stored (`fade` + `fadeColor`) and applied at
+ * draw time, and that made the pair outrank every colour beneath it: an
+ * object left at fade 1 drew as a flat silhouette of the target, so the
+ * Stroke page's swatch changed the record and nothing on the screen.
+ *
+ * The functions below are therefore two things at once: the arithmetic the
+ * bake is built from, and the draw-time transform a record that still
+ * CARRIES the pair goes through. Only one thing still produces such a
+ * record — the binary reader, decoding a file written while the fade was
+ * stored — and `bakeStoredFades` spends it as the file loads. The draw-time
+ * path stays because it costs nothing (an object with no fade comes back
+ * unchanged, identity and all) and because it is what the bake reuses, so
+ * the spent fade and the drawn fade cannot disagree about which colours
+ * move.
  *
  * Applied at the one place both renderers read an object from:
  * `sceneDrawnContent.svgLocalGeometry`, which the live DOM node layer and
- * the SVG export both draw through. Nothing downstream knows about fade,
- * which is why the export and the screen cannot disagree about it.
+ * the SVG export both draw through.
  */
 
 /** The target a fade starts on: white — the page's own paper, so the first
- *  pull of the slider reads as the object receding into it. Stored only
- *  once the reader has picked something else (`fadeColor` absent means
- *  this), so an untouched object carries nothing. */
+ *  pull of the slider reads as the object receding into it. On the wire an
+ *  absent `fadeColor` MEANS this, which is why the reader has to supply it
+ *  before a stored fade can be spent. */
 export const FADE_DEFAULT_COLOR: RGBColor = { r: 255, g: 255, b: 255 };
 
 /** What the two stored fields are, wherever a node carries them. Every

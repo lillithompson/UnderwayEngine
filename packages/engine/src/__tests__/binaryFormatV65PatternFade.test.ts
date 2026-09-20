@@ -9,6 +9,11 @@
  * pattern gets; this pins the record's own byte layout.
  *
  * Mirrors binaryFormatV63Shear.test.ts for the block that precedes it.
+ *
+ * As with every kind, the pair is written and read but never handed on:
+ * `deserializeComposition` SPENDS it (engine/fadeBake.ts), and a pattern
+ * spends it into its CELLS, since that is where a pattern's colour lives.
+ * So these read the mixed cells back rather than the two fields.
  */
 
 import {
@@ -17,11 +22,16 @@ import {
   CompositionBundle,
 } from '../compositionBinaryFormat';
 import { PatternObject } from '../types';
+import { expectFadedTo, expectNoStoredFade } from './fadeSpent.test-utils';
+
+/** The colour cell every fixture below carries. */
+const CELL_INK = { r: 200, g: 100, b: 50 };
+const cellColor = (p: PatternObject) => p.cells[1] as unknown as { r: number; g: number; b: number };
 
 function makePattern(id: string, extras: Partial<PatternObject> = {}): PatternObject {
   const cells = new Array(4).fill(null);
   cells[1] = {
-    type: 'color' as const, r: 200, g: 100, b: 50,
+    type: 'color' as const, ...CELL_INK,
     transform: { rotation: 0 as const, mirrorH: false, mirrorV: false },
   };
   return {
@@ -47,20 +57,20 @@ const roundTrip = (patterns: PatternObject[]): PatternObject[] =>
   deserializeComposition(serializeComposition(makeBundle(patterns), [])).meta.patternObjects ?? [];
 
 describe('v65 pattern fade round-trip', () => {
-  it('preserves the amount and the target together', () => {
+  it('preserves the amount and the target together — as the cells they make', () => {
     const [out] = roundTrip([makePattern('pat_1', {
       fade: 0.5, fadeColor: { r: 10, g: 20, b: 30 },
     })]);
-    expect(out.fade).toBeCloseTo(0.5, 2);
-    expect(out.fadeColor).toEqual({ r: 10, g: 20, b: 30 });
+    expectFadedTo(cellColor(out), CELL_INK, 0.5, { r: 10, g: 20, b: 30 });
+    expectNoStoredFade(out);
   });
 
-  it('leaves a WHITE target absent, since white is what absent means', () => {
+  it('a WHITE target is written absent, and still walks the cells to white', () => {
     const [out] = roundTrip([makePattern('pat_1', {
       fade: 0.5, fadeColor: { r: 255, g: 255, b: 255 },
     })]);
-    expect(out.fade).toBeCloseTo(0.5, 2);
-    expect(out.fadeColor).toBeUndefined();
+    expectFadedTo(cellColor(out), CELL_INK, 0.5, { r: 255, g: 255, b: 255 });
+    expectNoStoredFade(out);
   });
 
   it('rides beside the shear and the opacity, not instead of them', () => {
@@ -72,11 +82,12 @@ describe('v65 pattern fade round-trip', () => {
     })]);
     expect(out.opacity).toBeCloseTo(0.4, 5);
     expect(out.shear).toBeCloseTo(0.25, 5);
-    expect(out.fade).toBeCloseTo(0.75, 2);
-    expect(out.fadeColor).toEqual({ r: 1, g: 2, b: 3 });
-    // …and the cells are still where they were, after the extra bytes.
-    expect(out.cells[1]).toEqual({
-      type: 'color', r: 200, g: 100, b: 50,
+    expectFadedTo(cellColor(out), CELL_INK, 0.75, { r: 1, g: 2, b: 3 });
+    expectNoStoredFade(out);
+    // …and the cell is still the cell it was, after the extra bytes: the
+    // fade moved its colour and touched nothing else about it.
+    expect(out.cells[1]).toMatchObject({
+      type: 'color',
       transform: { rotation: 0, mirrorH: false, mirrorV: false },
     });
   });
@@ -92,12 +103,14 @@ describe('v65 pattern fade round-trip', () => {
     })]), []);
     expect(zeroed.length).toBe(bare.length);
     const [out] = roundTrip([makePattern('pat_1')]);
-    expect(out.fade).toBeUndefined();
-    expect(out.fadeColor).toBeUndefined();
+    expectNoStoredFade(out);
+    // …and an unfaded pattern's cells come back exactly as written.
+    expect(cellColor(out)).toMatchObject(CELL_INK);
   });
 
   it('survives a full fade (1 is not "absent")', () => {
     const [out] = roundTrip([makePattern('pat_1', { fade: 1 })]);
-    expect(out.fade).toBeCloseTo(1, 2);
+    expect(cellColor(out)).toMatchObject({ r: 255, g: 255, b: 255 });
+    expectNoStoredFade(out);
   });
 });

@@ -766,9 +766,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       // object's colour IS the far end of the last walk: a slider still
       // sitting at 0.6 would be pointing at a journey already made, over a
       // track whose near end is where the object ended up. So the page
-      // re-bases — the number here is how much FURTHER from here, the track
-      // ramps from here, and the fade the object already carries is kept
-      // beside it to compose with (fadeBaseRef).
+      // re-bases — the number here is how much FURTHER from here, and the
+      // track ramps from here.
+      //
+      // The host spends a fade into the object's colours rather than
+      // storing one (engine/fadeBake.ts), so `open.fade` is 0 and there is
+      // nothing to compose with: the object's colour after a spend simply
+      // IS where the last walk ended, which is what makes "open at the
+      // left" the whole of the rule. fadeBaseRef stands for a host that
+      // still reports a standing fade — composing with it is exact either
+      // way (see applyOpacity).
       const open = model.objectOpacity ?? DEFAULT_OPACITY_MODEL;
       fadeBaseRef.current = open.fade;
       setOpacityDraft({ ...open, fade: 0 });
@@ -847,11 +854,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   //
   // The draft's `fade` is RELATIVE to where the page opened (see the seed
   // effect): the slider says how much further from the object's current
-  // colour toward the target. The host wants the absolute one, and a fade is
-  // a linear mix, so the two compose exactly —
-  // mix(mix(c, T, b), T, t) = mix(c, T, b + t(1 − b)). Which is why the
-  // re-base costs the object nothing: opening the page and dragging back to
-  // the left leaves it precisely where it was.
+  // colour toward the target. A fade is a linear mix, so a standing one
+  // composes with it exactly — mix(mix(c, T, b), T, t) = mix(c, T,
+  // b + t(1 − b)) — and with the host spending its fades (b = 0) this is
+  // simply the number the slider shows.
+  //
+  // Either way the amount is relative to the colours the page OPENED on,
+  // which is the contract the host applies it under: it holds that snapshot
+  // for as long as the page is up, so dragging back to the left leaves the
+  // object precisely where it was.
   const applyOpacity = (o: OpacityModel, committed: boolean) => {
     setOpacityDraft(o);
     model.onObjectOpacity?.({ ...o, fade: composeFade(fadeBaseRef.current, o.fade) }, committed);

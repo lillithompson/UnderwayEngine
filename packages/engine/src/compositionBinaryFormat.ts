@@ -1,6 +1,7 @@
 ﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CellState, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, PatternObject, PatternSymmetry, RGBColor, TextObject, TextStyle, TextAlign, TextVAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
 import { normalizeCanvasPaintIslands } from './canvasPaint';
 import { FADE_DEFAULT_COLOR, hasFade, type FadeSpec } from './fade';
+import { bakeStoredFades } from './fadeBake';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { Transform2D } from './transform2d';
 import { normalizeStrokeScale, migrateLegacyStrokeScale, DEFAULT_STROKE_SCALE } from './strokeScale';
@@ -4521,6 +4522,13 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     ? groups
     : groups.filter((g) => aliveGroupIds.has(g.id));
 
+  // A fade is an ADJUSTMENT spent into the colours, never a property
+  // standing over them (engine/fadeBake.ts). The reader above still
+  // decodes the pair, because every file written while it was stored
+  // carries it; this is where it is spent, so nothing downstream of a
+  // load can be handed a colour a fade outranks.
+  const faded = bakeStoredFades({ svgObjects, images, texts, patternObjects });
+
   return {
     meta: {
       name: strings[nameIdx],
@@ -4530,17 +4538,17 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       camera: { offsetX: cameraX, offsetY: cameraY, zoom: cameraZoom },
       figures,
       groups: prunedGroups,
-      svgObjects,
-      images,
+      svgObjects: faded.svgObjects,
+      images: faded.images,
       imageBlobs,
       ...(imageAssetRefs.length > 0 ? { imageAssetRefs } : {}),
       sceneOrder,
       nodeTransforms,
       customColors,
-      texts,
+      texts: faded.texts,
       background,
       paintObjects: paintObjects.length > 0 ? paintObjects : undefined,
-      patternObjects: patternObjects.length > 0 ? patternObjects : undefined,
+      patternObjects: faded.patternObjects.length > 0 ? faded.patternObjects : undefined,
     },
     embeddedFiles,
   };

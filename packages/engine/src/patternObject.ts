@@ -38,6 +38,7 @@ import {
   reconcileCanvas,
   mirrorCellState,
 } from './connectivity';
+import { fadeRgb } from './fade';
 import {
   computePaintMirrorTargets,
   computeMirrorSymmetry,
@@ -522,22 +523,62 @@ export function patternFloodEdits(
   return edits;
 }
 
-/** Re-ink every sprite cell, keeping its tile and transform — what the
- *  Stroke bar's swatch does to a pattern, and the pattern's answer to
- *  recolouring a vector object. 'color' cells are left alone: one IS a
- *  colour rather than a tile drawn in one, so re-inking would replace the
- *  thing instead of colouring it. Cells already drawing in `color` drop
- *  out, so re-picking the same ink builds no undo step. */
-export function patternRecolorEdits(p: PatternObject, color: RGBColor): PatternCellEdit[] {
+/** Re-ink every sprite cell through `ink`, which is handed the colour the
+ *  cell draws in now and answers with the one it should draw in — the one
+ *  loop behind every per-cell colour edit (a flat recolour, a fade spent
+ *  into the grid), so they cannot drift apart about which cells answer.
+ *
+ *  'color' cells are left alone: one IS a colour rather than a tile drawn
+ *  in one, so re-inking would replace the thing instead of colouring it.
+ *  Cells that come back unchanged drop out, so an edit that asks for what
+ *  is already there builds no undo step. */
+function patternCellInkEdits(
+  p: PatternObject,
+  ink: (current: RGBColor, index: number) => RGBColor,
+  colorCells: 'skip' | 'move' = 'skip',
+): PatternCellEdit[] {
   const edits: PatternCellEdit[] = [];
   for (let i = 0; i < p.cells.length; i++) {
     const cell = p.cells[i] ?? null;
-    if (!cell || cell.type !== 'sprite') continue;
-    const newState = tintedPatternCell(cell, color);
+    if (!cell) continue;
+    let newState: CellState;
+    if (cell.type === 'sprite') {
+      newState = tintedPatternCell(cell, ink(effectivePatternCellColor(p, i), i));
+    } else if (cell.type === 'color' && colorCells === 'move') {
+      const c = ink({ r: cell.r, g: cell.g, b: cell.b }, i);
+      newState = { ...cell, r: c.r, g: c.g, b: c.b };
+    } else continue;
     if (cellStatesEqual(cell, newState)) continue;
     edits.push({ index: i, oldState: cell, newState });
   }
   return edits;
+}
+
+/** Re-ink every sprite cell, keeping its tile and transform — what the
+ *  Stroke bar's swatch does to a pattern, and the pattern's answer to
+ *  recolouring a vector object. 'color' cells are left alone: one IS a
+ *  colour rather than a tile drawn in one, so re-inking would replace the
+ *  thing instead of colouring it. */
+export function patternRecolorEdits(p: PatternObject, color: RGBColor): PatternCellEdit[] {
+  return patternCellInkEdits(p, () => color);
+}
+
+/** Every sprite cell's ink mixed `amount` of the way toward `target` —
+ *  the Fade row spent INTO a pattern's grid.
+ *
+ *  A pattern draws through its cells, so this is where a fade has to land
+ *  for it to be an edit rather than a render transform: the cells keep
+ *  their relationships (each mixes from its OWN ink), and the Stroke bar
+ *  is free to say what the grid's colour is afterwards without a stored
+ *  fade standing over the answer. See fadeBake.ts. */
+export function patternFadeEdits(
+  p: PatternObject, amount: number, target: RGBColor,
+): PatternCellEdit[] {
+  // 'color' cells move too, unlike a recolour: a fade pushes everything
+  // the object DRAWS toward the target, and a colour cell is as much a
+  // thing it draws as a tinted tile is. (A recolour would be replacing
+  // one outright, which is why that one leaves them where they are.)
+  return patternCellInkEdits(p, (current) => fadeRgb(current, amount, target), 'move');
 }
 
 /** The colour cell `index` draws in — its own tint where it has one, else

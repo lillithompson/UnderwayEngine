@@ -36,6 +36,7 @@ import {
 } from '../compositionBinaryFormat';
 import { PathSegment, SVGObject } from '../types';
 import { patchFormatVersion } from './test-utils';
+import { expectNoStoredFade } from './fadeSpent.test-utils';
 
 function line(start: [number, number], end: [number, number]): PathSegment {
   return { kind: 'line', start, end };
@@ -144,7 +145,9 @@ describe('the block coexists with everything else last in the record', () => {
     expect(back.name).toBe('leaning');
     expect(back.angleDeg).toBeCloseTo(41.5, 2);
     expect(back.shear).toBe(-0.25);
-    expect(back.fade).toBeCloseTo(0.5, 2);
+    // The fade block is read and then SPENT (engine/fadeBake.ts); what
+    // this case is really for is the bytes AFTER it still lining up.
+    expectNoStoredFade(back);
     expect(back.cellHeight).toBeCloseTo(LOOSE.cellHeight, 5);
   });
 
