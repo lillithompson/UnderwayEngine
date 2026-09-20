@@ -6,11 +6,13 @@ import { PathSegment, RGBColor, SVGObject } from '../types';
 
 // Stretching a MERGED object used to deform its arcs. A merge concatenates
 // its sources' segments, so the result is a mix that no uniform-scale rule
-// guards (`requiresUniformScale` only locks a path that is circular as a
-// WHOLE) — and the per-axis map then moved each arc's start, end and center
-// independently, leaving the one radius the arc format infers from them
-// disagreeing with its own endpoints. The fix sheds arcs into polylines
-// before a stretch, so the curve maps into a true ellipse.
+// guards (the host's `requiresUniformScale` only locks a path that is
+// circular as a WHOLE) — and the per-axis map then moved each arc's start,
+// end and center independently, leaving the one radius the arc format infers
+// from them disagreeing with its own endpoints. The fix sheds arcs into
+// polylines before a stretch, so the curve maps into a true ellipse. The
+// scene graph's own map does the same, for the same reason — see
+// mapSegmentsStretch.test.ts.
 
 const WHITE: RGBColor = { r: 255, g: 255, b: 255 };
 

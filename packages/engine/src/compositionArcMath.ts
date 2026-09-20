@@ -275,6 +275,28 @@ export function flattenArcSegment(seg: PathSegment): PathSegment[] {
 }
 
 /**
+ * A whole chain made stretch-ready: every arc in it shed into the polyline
+ * of the curve it already is ({@link flattenArcSegment}), and the chain
+ * handed straight back when it holds no arc at all.
+ *
+ * THE gate in front of every map that is not a similarity — a corner
+ * resize with unequal factors (`rescaleSegs`), and the scene graph's
+ * per-vertex map under a stretched group or multi-selection
+ * (`mapSegments`). Both had the same bug for the same reason and both now
+ * ask this one question, so "what a stretch does to a curve" cannot mean
+ * two different things depending on which door the stretch came through.
+ *
+ * The identity fast path matters: `mapSegments` runs on every read of a
+ * node's world geometry, and the overwhelmingly common chain — a polyline
+ * — must not pay an allocation to be told it has nothing to flatten.
+ */
+export function flattenArcs(segments: readonly PathSegment[]): readonly PathSegment[] {
+  let i = 0;
+  while (i < segments.length && segments[i].kind !== 'arc') i++;
+  return i === segments.length ? segments : segments.flatMap(flattenArcSegment);
+}
+
+/**
  * Translate all points in an arc's segments by (dx, dy).
  */
 export function translateSegments(segments: PathSegment[], dx: number, dy: number): PathSegment[] {

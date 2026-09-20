@@ -23,9 +23,10 @@
 import {
   LOCAL_IDENTITY, LocalTransform, MAT_IDENTITY, Mat2D,
   decomposeMatrix, localMatrix, localResidual, matAbout, matApplyBbox, matApplyPoint, matInvert,
-  matMul, matTranslate, normalizeDeg, respellMirror, withoutShear,
+  matIsSimilarity, matMul, matTranslate, normalizeDeg, respellMirror, withoutShear,
 } from './sceneTransform';
 import { arcBoundingBox } from './compositionArcHitTest';
+import { flattenArcs } from './compositionArcMath';
 import type { Bbox } from './transform2d';
 import { bboxToCells } from './transform2d';
 import { contentBoxCells } from './textLayout';
@@ -276,11 +277,35 @@ function unionBbox(boxes: readonly Bbox[]): Bbox {
 
 // ── Segment geometry ───────────────────────────────────────────────────
 
-/** Map every vertex of a path through a matrix. */
+/**
+ * Map every vertex of a path through a matrix.
+ *
+ * An arc is the one segment that is not just its vertices: it is (start,
+ * end, center) with ONE radius inferred from them, and it renders as `A r,r`.
+ * Under a map that is not a SIMILARITY — a group or a multi-selection pulled
+ * off-square, whose per-axis scale lands on the node's own matrix — those
+ * three points move independently and the radius stops agreeing with its own
+ * endpoints, so each quarter of a circle is stretched to reach and the shape
+ * comes out kinked rather than oval. (The `center` in the output is not even
+ * the ellipse's centre any more; it is wherever the old circle's centre
+ * happened to map.)
+ *
+ * So arcs are shed into the polyline of the curve they already are BEFORE
+ * such a map, where every point simply maps and the result is a true
+ * elliptical arc — the same rule, through the same {@link flattenArcs}, that
+ * the corner-handle resize applies in `rescaleSegs`. A similarity (every
+ * ordinary move, turn, flip and uniform scale) keeps its arcs exact, so a
+ * circle is still a circle and still exports as two arc commands.
+ *
+ * Flattening here rather than at the node's own geometry is deliberate: the
+ * node keeps its arcs in its LOCAL segments, so the stretch is only ever a
+ * reading of them. Pull the box back to square and the circle comes back.
+ */
 export function mapSegments(
   segments: readonly PathSegment[], m: Mat2D,
 ): PathSegment[] {
-  return segments.map((seg) => seg.kind === 'arc'
+  const source = matIsSimilarity(m) ? segments : flattenArcs(segments);
+  return source.map((seg) => seg.kind === 'arc'
     ? {
       kind: 'arc' as const,
       start: matApplyPoint(m, seg.start[0], seg.start[1]),

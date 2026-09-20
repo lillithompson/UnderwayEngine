@@ -15,7 +15,7 @@ import { CompositionFigure, SVGObject, ImageObject, PaintObject, PatternObject, 
 import { bakePatternPose } from './patternObject';
 import { lineHitsCell } from './compositionLineHitTest';
 import { textInkOutset } from './textArc';
-import { flattenArcSegment } from './compositionArcMath';
+import { flattenArcs } from './compositionArcMath';
 import type { CellBbox } from './transform2d';
 import { offsetPathSegment } from './pathSegmentUtils';
 import { computeSVGBbox } from './sceneGraph';
@@ -51,16 +51,16 @@ export function rescaleSegs(
   ];
   // A STRETCH can't keep an arc an arc: its three points infer one radius,
   // and per-axis mapping leaves that radius disagreeing with the endpoints
-  // (see flattenArcSegment). Shed the arcs into the polyline of the curve
-  // they already are first, and the stretch turns them into true elliptical
-  // arcs instead of kinked ones — which is what lets a MERGED object, whose
+  // (see flattenArcs). Shed the arcs into the polyline of the curve they
+  // already are first, and the stretch turns them into true elliptical arcs
+  // instead of kinked ones — which is what lets a MERGED object, whose
   // concatenated segments are a mix no uniform-scale rule guards, be
   // stretched smoothly at all.
   //
   // A uniform scale maps all three points by one factor, so the radius
   // stays honest: those arcs are kept exact, and a circle is still a circle.
   const uniform = Math.abs(sx - sy) <= Math.max(Math.abs(sx), Math.abs(sy)) * UNIFORM_SCALE_EPS;
-  const source = uniform ? segments : segments.flatMap(flattenArcSegment);
+  const source = uniform ? segments : flattenArcs(segments);
   return source.map(seg => seg.kind === 'arc'
     ? { kind: 'arc', start: mapPt(seg.start), end: mapPt(seg.end), center: mapPt(seg.center) }
     : { kind: 'line', start: mapPt(seg.start), end: mapPt(seg.end) }
