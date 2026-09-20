@@ -68,7 +68,7 @@ describe('the panel wires it to the host', () => {
     // A shade of the page's ground under the masses, a soft charcoal nib
     // over them — Figgie's own defaults, which the host's rigColor test
     // pins these against.
-    expect(RIG_VOLUMES_DEFAULT).toEqual({ r: 243, g: 237, b: 228 });
+    expect(RIG_VOLUMES_DEFAULT).toEqual({ r: 252, g: 251, b: 249 });
     expect(RIG_OUTLINES_DEFAULT).toEqual({ r: 41, g: 38, b: 36 });
   });
 

@@ -89,7 +89,7 @@ export const RIG_PAGES: readonly RigPageOption[] = [
  *  untouched page would show a colour the figure is not drawn in; the app's
  *  rigColor test pins the two pairs together, the same way rigParts pins
  *  the hand slider's rest position to Figgie's HAND_STRAIGHT_AT. */
-export const RIG_VOLUMES_DEFAULT: RGBLike = { r: 243, g: 237, b: 228 };
+export const RIG_VOLUMES_DEFAULT: RGBLike = { r: 252, g: 251, b: 249 };
 export const RIG_OUTLINES_DEFAULT: RGBLike = { r: 41, g: 38, b: 36 };
 
 /** The bar a part opens, and the part a bar belongs to — the SAME pairing,
