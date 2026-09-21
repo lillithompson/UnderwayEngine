@@ -10,6 +10,7 @@ import {
   type CompositionSubsetScene,
   type CompositionSubsetSelector,
   type CompositionSVGInputs,
+  type ExportFrameCrop,
   type SVGFontResolver,
 } from './compositionSVGCore';
 
@@ -24,6 +25,7 @@ export type {
   CompositionSubsetScene,
   CompositionSubsetSelector,
   CompositionSVGInputs,
+  ExportFrameCrop,
   SVGFontResolver,
 };
 
@@ -169,6 +171,10 @@ export interface CompositionExportOptions {
    *  longer edge — content-framed exports only (a frame-pinned export keeps
    *  its exact edge) — see {@link CompositionSVGInputs.viewBoxPadFraction}. */
   viewBoxPadFraction?: number;
+  /** Crop the finished frame to a shape, panned toward a point — for an
+   *  export that must come out square (say) without losing the one thing
+   *  the square is for. See {@link CompositionSVGInputs.frameCrop}. */
+  frameCrop?: ExportFrameCrop;
   /** Frame SVG objects on their inked extent (geometry + stroke half-width),
    *  as subset cutouts do — see {@link CompositionSVGInputs.frameInkExtents}.
    *  For content-framed exports, where the bare geometry slices boundary
@@ -610,6 +616,7 @@ export async function exportCompositionSVGFromState(
     paintColorOverride: options?.paintColorOverride,
     dropTextShadow: options?.dropTextShadow,
     viewBoxPadFraction: options?.viewBoxPadFraction,
+    frameCrop: options?.frameCrop,
     frameInkExtents: options?.frameInkExtents,
     groups: partial.groups ?? [],
     sceneOrder: partial.sceneOrder,

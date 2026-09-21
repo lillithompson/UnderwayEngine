@@ -244,6 +244,84 @@ describe('rotated content framing', () => {
   });
 });
 
+describe('frameCrop — the finished frame cropped to a shape, panned', () => {
+  // seedWide is 32×16 cells: a frame twice as wide as it is tall, so a
+  // square crop of it is 16×16 and has 16 cells of slack to slide along.
+  const U = 256;
+
+  it('takes the biggest rect of the asked-for shape that fits', async () => {
+    seedWide('cropsquare');
+    const svg = await exportCompositionSVG('cropsquare', undefined, undefined, {
+      normalize: false,
+      frameCrop: { aspect: 1, focusX: 16, focusY: 8 },
+    });
+    const [x, y, w, h] = parseViewBox(svg!);
+    // The short edge, centred on a focus in the middle of the frame.
+    expect(w).toBeCloseTo(16 * U);
+    expect(h).toBeCloseTo(16 * U);
+    expect(x).toBeCloseTo(8 * U);
+    expect(y).toBeCloseTo(0);
+  });
+
+  it('PANS to the focus point — the crop follows it along the long axis', async () => {
+    seedWide('cropleft');
+    const svg = await exportCompositionSVG('cropleft', undefined, undefined, {
+      normalize: false,
+      frameCrop: { aspect: 1, focusX: 20, focusY: 8 },
+    });
+    const [x, , w] = parseViewBox(svg!);
+    expect(w).toBeCloseTo(16 * U);
+    expect(x).toBeCloseTo(12 * U);
+  });
+
+  it('slides back INSIDE the frame rather than inventing empty space', async () => {
+    // A focus at the very left edge would centre a square half outside the
+    // picture; it comes to rest against the edge instead, which is what
+    // "as far that way as the picture goes" means.
+    seedWide('cropedge');
+    const svg = await exportCompositionSVG('cropedge', undefined, undefined, {
+      normalize: false,
+      frameCrop: { aspect: 1, focusX: 0, focusY: 0 },
+    });
+    const [x, y, w, h] = parseViewBox(svg!);
+    expect(x).toBeCloseTo(0);
+    expect(y).toBeCloseTo(0);
+    expect(w).toBeCloseTo(16 * U);
+    expect(h).toBeCloseTo(16 * U);
+  });
+
+  it('crops the PADDED frame, so the margin is cropped like everything else', async () => {
+    seedWide('croppad');
+    const svg = await exportCompositionSVG('croppad', undefined, undefined, {
+      normalize: false,
+      viewBoxPadFraction: 0.05,
+      frameCrop: { aspect: 1, focusX: 16, focusY: 8 },
+    });
+    const [, , w, h] = parseViewBox(svg!);
+    // Padded frame is 35.2 × 19.2 cells; its square is the short edge.
+    expect(w).toBeCloseTo(19.2 * U, 2);
+    expect(h).toBeCloseTo(19.2 * U, 2);
+  });
+
+  it('does not ZOOM: a crop asking for the frame s own shape changes nothing', async () => {
+    seedWide('cropsame');
+    const svg = await exportCompositionSVG('cropsame', undefined, undefined, {
+      normalize: false,
+      frameCrop: { aspect: 2, focusX: 16, focusY: 8 },
+    });
+    expect(parseViewBox(svg!)).toEqual([0, 0, 32 * U, 16 * U]);
+  });
+
+  it('is ignored for a shape nothing could be cropped to', async () => {
+    seedWide('cropnone');
+    const svg = await exportCompositionSVG('cropnone', undefined, undefined, {
+      normalize: false,
+      frameCrop: { aspect: 0, focusX: 16, focusY: 8 },
+    });
+    expect(parseViewBox(svg!)).toEqual([0, 0, 32 * U, 16 * U]);
+  });
+});
+
 describe('exportCompositionJPEGSized', () => {
   it('returns the data URI with the raster dimensions it drew at', async () => {
     seedWide('sized');

@@ -94,6 +94,20 @@ export interface CompositionSubsetScene {
 export type CompositionSubsetSelector = (scene: CompositionSubsetScene) => ReadonlySet<string>;
 
 /**
+ * A crop of the export frame: the shape it must come out, and the point
+ * the crop is panned toward. See
+ * {@link CompositionSVGInputs.frameCrop}.
+ */
+export interface ExportFrameCrop {
+  /** Width ÷ height of the rect cropped out of the frame. 1 is a square. */
+  aspect: number;
+  /** The point the crop centres on where the frame allows it, in world
+   *  cells — the same coordinates a node's `cellX`/`cellY` are in. */
+  focusX: number;
+  focusY: number;
+}
+
+/**
  * Inputs for the pure SVG-generation core. Decoupled from IndexedDB so
  * Node-side tooling can call this, threading pre-deserialized figure data
  * through `loadFigure`.
@@ -162,6 +176,31 @@ export interface CompositionSVGInputs {
    * existing export has.
    */
   viewBoxPadFraction?: number;
+  /**
+   * CROP the finished frame to an aspect, panned toward a point — for an
+   * export that has to come out a given shape and must not lose one
+   * particular thing to the crop.
+   *
+   * The frame is worked out exactly as it would be without this (the
+   * content union, or a Figma frame's pin, plus
+   * {@link viewBoxPadFraction}); then the largest rect of `aspect` that
+   * fits INSIDE it is taken, placed as near as it can be to centred on
+   * (`focusX`, `focusY`) and slid back inside the frame where that would
+   * hang over an edge. So the crop never invents empty space beyond what
+   * was already framed, and a focus point out at the edge of the content
+   * reads as "as far that way as the picture goes".
+   *
+   * It is a CROP, not a zoom: the rect keeps the frame's own scale, which
+   * is what makes it a pan. The objects it cuts off are still drawn — the
+   * viewport clips them — so nothing has to be re-selected to crop.
+   *
+   * Poise's Today tile is the case it was built for: the card zooms a
+   * cutout to FILL a square tile, so a standing figure's square middle is
+   * all that survives, and the face — the whole point of a pose — is
+   * cropped away. A square asked for HERE, panned to the head, is the
+   * picture the card then shows whole.
+   */
+  frameCrop?: ExportFrameCrop;
   /**
    * Frame each SVG object on its INKED extent — its geometry grown by the
    * stroke half-width — the way a subset cutout already does. A stroke is
@@ -1382,6 +1421,23 @@ export async function generateCompositionSVGCore(
   if (padFraction > 0) {
     const pad = Math.max(maxCX - minCX, maxCY - minCY) * padFraction;
     minCX -= pad; minCY -= pad; maxCX += pad; maxCY += pad;
+  }
+
+  // …and the CROP (see frameCrop), last of all, because it is a crop of
+  // the finished frame: the biggest rect of the asked-for shape that fits
+  // inside it, centred on the focus point as far as the frame allows and
+  // slid back in where it would hang over an edge. The scale is the
+  // frame's own — this pans, it does not zoom.
+  const crop = input.frameCrop;
+  if (crop && crop.aspect > 0) {
+    const frameW = maxCX - minCX;
+    const frameH = maxCY - minCY;
+    const cropW = Math.min(frameW, frameH * crop.aspect);
+    const cropH = cropW / crop.aspect;
+    const x = Math.min(Math.max(crop.focusX - cropW / 2, minCX), maxCX - cropW);
+    const y = Math.min(Math.max(crop.focusY - cropH / 2, minCY), maxCY - cropH);
+    minCX = x; maxCX = x + cropW;
+    minCY = y; maxCY = y + cropH;
   }
 
   const U = SVG_UNITS_PER_L0_CELL;
