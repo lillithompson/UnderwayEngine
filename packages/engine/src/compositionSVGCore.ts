@@ -33,7 +33,7 @@ import { buildMaskClipDefs, wrapWithMaskClip } from './compositionMaskSVG';
 import { effectiveStrokeMultiplier, normalizeStrokeScale } from './strokeScale';
 import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
-import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, outlineShadowSpread, scaleEffects, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
+import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, scaleEffects, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
 import { overlayPngDataUri, paintBlendCss, PaintInk, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { flattenPaintTiles } from './canvasPaint';
@@ -431,30 +431,21 @@ function borderRectForBox(border: BorderEffect, box: BorderBox, u: number): stri
 }
 
 /**
- * A shape's effects as its SHADOW should be cast: with the shadow's spread
- * raised to {@link outlineShadowSpread} when the shape draws no fill.
+ * The width a shape's effects are cast FROM when it draws no fill — its
+ * stroke — and `undefined` for every shape that does.
  *
- * A shadow is the silhouette, blurred, and an unfilled shape's silhouette is
- * its outline — a hairline beside the blur radius a shadow carries, which
- * spreads its ink so thin that the shadow reads as nothing at all. So the
- * alpha is dilated to the width of its own blur first (`feMorphology`, the
- * primitive the authored spread already goes through), and what comes out is
- * a ring as soft as it is wide rather than a smudge. See
- * `paintSvg.outlineShadowSourceCells` for the rule, which the node layer's
- * own shadow reads too.
- *
- * Every other case is handed back untouched — a filled shape, a shape with
- * no shadow, a node of another kind.
+ * A cast effect is the silhouette, blurred, and an unfilled shape's
+ * silhouette is its outline: a hairline beside the blur a shadow or a glow
+ * carries, which spreads its ink so thin that the effect reads as nothing at
+ * all. Handing the width to the filter builder is what lets every stage
+ * dilate that alpha to its own softness first (`feMorphology`, the primitive
+ * the authored spread already goes through), so what comes out is a ring as
+ * soft as it is wide rather than a smudge. See `paintSvg.outlineCastDilate`
+ * for the rule, which the node layer's own drawn rings read too.
  */
-function outlineShadowEffects(
-  svg: SVGObject, effects: NodeEffects | undefined, strokeScale: number,
-): NodeEffects | undefined {
-  if (!effects?.shadow || svgIsFilled(svg)) return effects;
-  const width = svgStrokeWidthCells(svg, strokeScale, SVG_UNITS_PER_L0_CELL);
-  return {
-    ...effects,
-    shadow: { ...effects.shadow, spread: outlineShadowSpread(width, effects.shadow) },
-  };
+function outlineCastWidth(svg: SVGObject, strokeScale: number): number | undefined {
+  if (svgIsFilled(svg)) return undefined;
+  return svgStrokeWidthCells(svg, strokeScale, SVG_UNITS_PER_L0_CELL);
 }
 
 /**
@@ -473,6 +464,9 @@ function applyNodeEffects(
   nodeId: string,
   node: BorderBox,
   u: number,
+  /** The caster's stroke width in world cells when its silhouette is an
+   *  outline rather than a solid — see {@link outlineCastWidth}. */
+  outlineWidth?: number,
 ): string {
   if (!effects) return markup;
   const scaled = scaleEffects(effects, u);
@@ -486,7 +480,7 @@ function applyNodeEffects(
     y: node.cellY * u,
     width: node.cellWidth * u,
     height: node.cellHeight * u,
-  });
+  }, outlineWidth !== undefined ? outlineWidth * u : undefined);
   if (defs && filterRef) {
     out = `<defs>${defs}</defs><g filter="${filterRef}">${out}</g>`;
   }
@@ -1839,7 +1833,7 @@ export async function generateCompositionSVGCore(
         ? { ...svg.effects, border: undefined }
         : svg.effects;
       posedAndClipped(entry.id, entry, drawn.transform,
-        applyNodeEffects(paths, outlineShadowEffects(svg, effects, svgStrokeScale), entry.id, svg, U));
+        applyNodeEffects(paths, effects, entry.id, svg, U, outlineCastWidth(svg, svgStrokeScale)));
     }
   }
 

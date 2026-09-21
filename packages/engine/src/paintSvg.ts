@@ -83,14 +83,21 @@ const RELATIVE_REGION = ' x="-50%" y="-50%" width="200%" height="200%"';
  *  shadow off with a hard straight edge. The blur reaches 3σ in every
  *  direction; the offset slides that whole disc one way, so only the side it
  *  moves toward pays for it; a positive spread dilates before the blur (a
- *  negative one erodes, and can only shrink the reach — treated as 0). */
+ *  negative one erodes, and can only shrink the reach — treated as 0).
+ *
+ *  `outlineWidth` is the caster's stroke width when its silhouette is an
+ *  OUTLINE rather than a solid — an unfilled shape. That source is dilated
+ *  to the effect's own softness before it casts ({@link outlineCastSpread}),
+ *  and a region measured from the authored spread alone would crop the wider
+ *  ring that comes out. */
 export function effectsFilterOutset(
   effects: NodeEffects,
+  outlineWidth?: number,
 ): { left: number; right: number; top: number; bottom: number } {
   const out = { left: 0, right: 0, top: 0, bottom: 0 };
   const sh = effects.shadow;
   if (sh) {
-    const reach = BLUR_EXTENT_SIGMAS * blurSigma(sh.blur) + Math.max(0, sh.spread ?? 0);
+    const reach = BLUR_EXTENT_SIGMAS * blurSigma(sh.blur) + Math.max(0, castSpread(sh, outlineWidth));
     out.left = reach + Math.max(0, -sh.dx);
     out.right = reach + Math.max(0, sh.dx);
     out.top = reach + Math.max(0, -sh.dy);
@@ -98,7 +105,7 @@ export function effectsFilterOutset(
   }
   const gl = effects.glow;
   if (gl) {
-    const reach = BLUR_EXTENT_SIGMAS * blurSigma(gl.radius) + Math.max(0, gl.spread ?? 0);
+    const reach = BLUR_EXTENT_SIGMAS * blurSigma(gl.radius) + Math.max(0, castSpread(gl, outlineWidth));
     out.left = Math.max(out.left, reach);
     out.right = Math.max(out.right, reach);
     out.top = Math.max(out.top, reach);
@@ -160,8 +167,10 @@ export interface FilterBox { x: number; y: number; width: number; height: number
  *  SOURCE too, and a source can spill slightly past the bbox it was measured
  *  from (a centered stroke, an italic glyph's overhang). Without it a node
  *  whose only effect is a hard-edged offset shadow would clip its own paint. */
-function effectsFilterRegion(effects: NodeEffects, box: FilterBox): string {
-  const o = effectsFilterOutset(effects);
+function effectsFilterRegion(
+  effects: NodeEffects, box: FilterBox, outlineWidth?: number,
+): string {
+  const o = effectsFilterOutset(effects, outlineWidth);
   const left = Math.max(o.left, box.width * 0.1);
   const right = Math.max(o.right, box.width * 0.1);
   const top = Math.max(o.top, box.height * 0.1);
@@ -172,50 +181,82 @@ function effectsFilterRegion(effects: NodeEffects, box: FilterBox): string {
 }
 
 /**
- * A shadow whose SOURCE is wide enough to be seen — the rule for a shape
- * that draws no fill.
- *
- * A drop shadow is the object's own silhouette, blurred. For a filled shape
- * that silhouette is a slab and the blur barely dents it; for an UNFILLED
- * one it is the outline, and an outline is a hairline next to the blur a
- * shadow is authored with. Blurring a 0.3-cell line with a 1.1-cell radius
- * spreads its ink over four times its width and leaves about a twentieth of
- * the shadow's opacity behind: present, and indistinguishable from nothing.
- * Which is how "adding a drop shadow does nothing" was true of exactly the
- * shapes with no fill.
- *
- * So the shadow of an outline is cast from an outline no narrower than the
- * blur that is about to soften it. It stays the shape of the outline — a
- * ring, with the paper still showing through the middle, which is what a
- * shadow of a frame looks like — and the blur now rounds its edges instead
- * of erasing it. Scaling the floor to the BLUR rather than to some constant
- * is what keeps it honest at both ends: a sharp shadow is cast by the line
- * itself, and a soft one by a band as wide as its own softness.
- *
- * Authored `spread` still applies on top, both ways, exactly as it does for
- * a filled shape.
- *
- * One rule, read by both renderers: the export dilates the alpha to this
- * width with `feMorphology` (the spread it already had), and the node layer
- * strokes its shadow copy at it.
+ * A cast effect's own softness, whichever field names it: a shadow blurs by
+ * its `blur`, a glow by its `radius`. The outline rule below reads this and
+ * nothing else about the effect, which is what lets one rule serve all three.
  */
-export function outlineShadowSourceCells(
-  strokeWidthCells: number,
-  shadow: Pick<ShadowEffect, 'blur' | 'spread'>,
-): number {
-  const floor = Math.max(strokeWidthCells, Math.max(0, shadow.blur));
-  return floor + 2 * Math.max(0, shadow.spread ?? 0);
+export function castSoftness(effect: ShadowEffect | GlowEffect): number {
+  return 'blur' in effect ? effect.blur : effect.radius;
 }
 
 /**
- * …stated as the `spread` that reaches it, for the filter builder, which
- * dilates the stroke it is given. The authored spread is inside it.
+ * A SOURCE wide enough to be seen — the rule for a shape that draws no fill.
+ *
+ * A cast effect is the object's own silhouette, blurred. For a filled shape
+ * that silhouette is a slab and the blur barely dents it; for an UNFILLED
+ * one it is the outline, and an outline is a hairline next to the blur these
+ * effects are authored with. Blurring a 0.3-cell line with a 1.1-cell radius
+ * spreads its ink over four times its width and leaves about a twentieth of
+ * the opacity behind: present, and indistinguishable from nothing. Which is
+ * how "adding a shadow does nothing" — and then "adding a glow does nothing"
+ * — was true of exactly the shapes with no fill.
+ *
+ * So an outline casts from an outline no narrower than the blur that is
+ * about to soften it. It stays the shape of the outline — a ring, with the
+ * paper still showing through the middle, which is what the shadow of a
+ * frame looks like — and the blur now rounds its edges instead of erasing
+ * it. Scaling the floor to the effect's OWN softness rather than to some
+ * constant is what keeps it honest at both ends, and keeps a tight glow
+ * tight beside a soft shadow: a sharp effect is cast by the line itself, a
+ * soft one by a band as wide as its own softness.
+ *
+ * Returned as the DILATION that gets it there, which is what an inner glow
+ * needs — see {@link outlineCastSpread} for the outward pair, whose own
+ * spread can be folded in with it.
  */
-export function outlineShadowSpread(
+export function outlineCastDilate(strokeWidthCells: number, softnessCells: number): number {
+  return Math.max(0, Math.max(0, softnessCells) - Math.max(0, strokeWidthCells)) / 2;
+}
+
+/**
+ * …stated as the `spread` that reaches an OUTWARD cast — a shadow or an
+ * outer glow — for the filter builder, which dilates the stroke it is given.
+ * The authored spread is inside it: it still applies on top, exactly as it
+ * does for a filled shape. A negative one only thins a silhouette that was
+ * already too thin to cast, so against an outline it is dropped rather than
+ * left to fight the floor.
+ *
+ * An INNER glow takes {@link outlineCastDilate} on its own instead, because
+ * its spread ERODES — the two can't be folded into one number.
+ */
+export function outlineCastSpread(
   strokeWidthCells: number,
-  shadow: Pick<ShadowEffect, 'blur' | 'spread'>,
+  effect: ShadowEffect | GlowEffect,
 ): number {
-  return (outlineShadowSourceCells(strokeWidthCells, shadow) - strokeWidthCells) / 2;
+  return outlineCastDilate(strokeWidthCells, castSoftness(effect))
+    + Math.max(0, effect.spread ?? 0);
+}
+
+/**
+ * …and as the WIDTH the cast is DRAWN at, for the node layer, which strokes
+ * the path a second time rather than dilating an alpha. Same silhouette, from
+ * the other side.
+ */
+export function outlineCastSourceCells(
+  strokeWidthCells: number,
+  effect: ShadowEffect | GlowEffect,
+): number {
+  return strokeWidthCells + 2 * outlineCastSpread(strokeWidthCells, effect);
+}
+
+/** The spread an outward cast actually gets: the authored one for a solid
+ *  silhouette, the outline floor (with the authored one inside it) for a
+ *  caster that is only a line. `outlineWidth` undefined means solid — the
+ *  case every node but an unfilled shape is in. */
+function castSpread(effect: ShadowEffect | GlowEffect, outlineWidth?: number): number {
+  return outlineWidth === undefined
+    ? effect.spread ?? 0
+    : outlineCastSpread(outlineWidth, effect);
 }
 
 /**
@@ -248,11 +289,19 @@ export function outlineShadowSpread(
  * shadow that travels further than half the node's own box: fine for a big
  * image, wrong for a line of text, whose box is a couple of cells tall and
  * whose shadow is measured in the same cells.
+ *
+ * Pass `outlineWidth` — the caster's stroke width — when its silhouette is
+ * an OUTLINE rather than a solid, which for a shape means it draws no fill.
+ * Every stage then casts from that outline dilated to its own softness
+ * instead of from the hairline itself; see {@link outlineCastDilate} for
+ * why, and note that the SOURCE ITSELF is untouched either way — the shape
+ * still draws exactly what it drew, and only the light around it changes.
  */
 export function effectsToSvgFilter(
   effects: NodeEffects,
   defId: string,
   box?: FilterBox,
+  outlineWidth?: number,
 ): { defs: string | null; filterRef: string | null } {
   const sh = effects.shadow;
   const gl = effects.glow;
@@ -264,7 +313,7 @@ export function effectsToSvgFilter(
   // until a stage puts something behind it.
   let under = 'SourceGraphic';
   if (sh) {
-    const spread = sh.spread ?? 0;
+    const spread = castSpread(sh, outlineWidth);
     // Named only for a stage that follows; the last one's output IS the
     // filter's.
     const result = gl || ig ? ' result="withShadow"' : '';
@@ -291,7 +340,7 @@ export function effectsToSvgFilter(
     under = 'withShadow';
   }
   if (gl) {
-    const spread = gl.spread ?? 0;
+    const spread = castSpread(gl, outlineWidth);
     // The same expansion the shadow buys its spread with: the halo is cast
     // by a silhouette dilated (or eroded) before the blur softens it.
     if (spread !== 0) {
@@ -311,23 +360,38 @@ export function effectsToSvgFilter(
   }
   if (ig) {
     const spread = ig.spread ?? 0;
+    // The silhouette this band lives inside. For a solid caster that is its
+    // own alpha; for an OUTLINE it is that alpha dilated to the glow's
+    // radius — an inner glow needs an inside, and a hairline has none.
+    // Kept separate from the authored `spread` below because the two go
+    // opposite ways: the floor dilates, the spread erodes.
+    const dilate = outlineWidth === undefined
+      ? 0
+      : outlineCastDilate(outlineWidth, ig.radius);
+    const inside = dilate > 0 ? 'innerSrc' : 'SourceAlpha';
+    if (dilate > 0) {
+      prims.push(
+        `<feMorphology in="SourceAlpha" operator="dilate" ` +
+        `radius="${fmt(dilate)}" result="innerSrc"/>`,
+      );
+    }
     if (spread !== 0) {
       prims.push(
-        `<feMorphology in="SourceAlpha" operator="${spread > 0 ? 'erode' : 'dilate'}" ` +
+        `<feMorphology in="${inside}" operator="${spread > 0 ? 'erode' : 'dilate'}" ` +
         `radius="${fmt(Math.abs(spread))}" result="innerSpread"/>`,
       );
     }
     prims.push(
-      `<feComponentTransfer in="${spread !== 0 ? 'innerSpread' : 'SourceAlpha'}" result="innerInv">` +
+      `<feComponentTransfer in="${spread !== 0 ? 'innerSpread' : inside}" result="innerInv">` +
       `<feFuncA type="table" tableValues="1 0"/></feComponentTransfer>`,
       `<feGaussianBlur in="innerInv" stdDeviation="${fmt(blurSigma(ig.radius))}" result="innerBlur"/>`,
-      `<feComposite in="innerBlur" in2="SourceAlpha" operator="in" result="innerMask"/>`,
+      `<feComposite in="innerBlur" in2="${inside}" operator="in" result="innerMask"/>`,
       `<feFlood flood-color="${hex(ig.color)}" flood-opacity="${fmt(ig.alpha)}" result="innerColor"/>`,
       `<feComposite in="innerColor" in2="innerMask" operator="in" result="innerGlow"/>`,
       `<feMerge><feMergeNode in="${under}"/><feMergeNode in="innerGlow"/></feMerge>`,
     );
   }
-  const region = box ? effectsFilterRegion(effects, box) : RELATIVE_REGION;
+  const region = box ? effectsFilterRegion(effects, box, outlineWidth) : RELATIVE_REGION;
   const defs =
     `<filter id="${defId}"${region} ` +
     `color-interpolation-filters="sRGB">${prims.join('')}</filter>`;

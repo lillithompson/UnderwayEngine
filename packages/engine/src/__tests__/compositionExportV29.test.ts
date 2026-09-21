@@ -376,7 +376,7 @@ describe('generateCompositionSVGCore — node effects', () => {
     // unfilled shape's silhouette is its outline — a hairline beside the
     // blur, which spread its ink to nothing. The alpha is dilated to the
     // width of its own blur first, so what comes out is a ring as soft as
-    // it is wide (paintSvg.outlineShadowSourceCells).
+    // it is wide (paintSvg.outlineCastDilate).
     const svg = await generateCompositionSVGCore(makeInputs({
       svgObjects: [makeSquareSvg({
         stroke: { width: 0.5 },
@@ -386,6 +386,26 @@ describe('generateCompositionSVGCore — node effects', () => {
     // The floor is the blur (4 cells) against a 0.5-cell stroke, so the
     // dilate radius is (4 - 0.5) / 2 cells, in SVG units.
     expect(svg).toContain(`<feMorphology in="SourceAlpha" operator="dilate" radius="${((4 - 0.5) / 2) * U}"`);
+  });
+
+  it('…and its GLOWS are dilated the same way, by the same rule', async () => {
+    // The second half of the same bug: an outer glow blurs that same
+    // hairline, and an inner one has no INSIDE to gather in at all. Both
+    // read the floor off their own radius — see outlineCastEffects.test.ts
+    // for the rule itself; this is that it reaches the export.
+    const glow = { radius: 4, color: { r: 255, g: 255, b: 255 }, alpha: 0.6 };
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [makeSquareSvg({
+        stroke: { width: 0.5 },
+        effects: { glow, innerGlow: glow },
+      })],
+    }));
+    const dilate = ((4 - 0.5) / 2) * U;
+    expect(svg).toContain(`<feMorphology in="SourceAlpha" operator="dilate" radius="${dilate}" result="glowSpread"/>`);
+    // The inner glow gathers inside the silhouette the floor built, not
+    // inside the hairline — clipped back to `innerSrc`, not to SourceAlpha.
+    expect(svg).toContain(`<feMorphology in="SourceAlpha" operator="dilate" radius="${dilate}" result="innerSrc"/>`);
+    expect(svg).toContain('<feComposite in="innerBlur" in2="innerSrc" operator="in" result="innerMask"/>');
   });
 
   it('…and a FILLED one is left exactly as it was', async () => {
@@ -401,6 +421,19 @@ describe('generateCompositionSVGCore — node effects', () => {
     // No spread authored, so the plain one-primitive form.
     expect(svg).not.toContain('feMorphology');
     expect(svg).toContain('feDropShadow');
+  });
+
+  it('…its glows too: a solid has an inside of its own', async () => {
+    const glow = { radius: 4, color: { r: 255, g: 255, b: 255 }, alpha: 0.6 };
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [makeSquareSvg({
+        fillColor: { r: 200, g: 0, b: 0 },
+        stroke: { width: 0.5 },
+        effects: { glow, innerGlow: glow },
+      })],
+    }));
+    expect(svg).not.toContain('feMorphology');
+    expect(svg).toContain('<feComponentTransfer in="SourceAlpha" result="innerInv">');
   });
 
   it('border emits a stroked rect around the node bbox', async () => {
