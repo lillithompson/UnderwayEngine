@@ -22,7 +22,7 @@ import { PatternSetsModal } from './PatternSetsModal';
 import { PatternTileModal } from './PatternTileModal';
 import { PatternTileTransformModal } from './PatternTileTransformModal';
 
-// The pattern object's three property pages — siblings of the effect pages,
+// The pattern object's property pages — siblings of the effect pages,
 // sharing their row grammar (effectBar.tsx):
 //
 //   • Tiles    — the ARMING grid: Random, Erase, the five most recently
@@ -35,6 +35,9 @@ import { PatternTileTransformModal } from './PatternTileTransformModal';
 //                the grid edge, and the tile-set filter.
 //   • Symmetry — the painting-mirror grid (the old symmetry modal's modes),
 //                exclusive, with Off closing the set.
+//   • Patchwork — the one page that MAKES rather than sets: a single button
+//                that cuts the drawing into a closed shape per region of the
+//                pattern's own bounding box and lays them behind it.
 
 export function PatternTilesBar({ model }: {
   model: ObjectPropertiesModel;
@@ -325,6 +328,33 @@ export function PatternSymmetryGrid({ value, onPick }: {
         );
       })}
     </View>
+  );
+}
+
+/**
+ * The Patchwork page: Create patches, and nothing else.
+ *
+ * The one page on this sheet that MAKES rather than SETS. A press cuts the
+ * pattern's drawing into the regions it divides its own bounding box into —
+ * the Patchwork game's patches, of this pattern instead of the day's line —
+ * and lays one closed shape per region behind the pattern, in one undo step.
+ *
+ * So it is a BUTTON and not a row of controls, and it wears the Add pages'
+ * dress (EffectButton — "Add Stroke", "Add Fill"): those are the sheet's
+ * other acts, and this is the same kind of thing. It is alone on its page
+ * because there is nothing to set about it — the regions are a fact about
+ * the drawing, not a setting anyone picks.
+ */
+export function PatternPatchworkBar({ model }: { model: ObjectPropertiesModel }) {
+  if (!model.onPatternCreatePatches) return null;
+  return (
+    <BarBody>
+      <EffectButton
+        label="Create patches"
+        icon="shape-plus"
+        onPress={model.onPatternCreatePatches}
+      />
+    </BarBody>
   );
 }
 

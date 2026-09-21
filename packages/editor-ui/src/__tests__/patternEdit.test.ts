@@ -35,21 +35,35 @@ import {
 } from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
-  it('offers Tile and Symmetry — the panel adds Stroke and Opacity beside them', () => {
+  it('offers Tile, Symmetry and Patchwork — the panel adds Stroke and Opacity beside them', () => {
     // Tiles and Tools stay off the row (their work is the canvas's tools
     // and the host's floating capsule). Repeat came BACK on it as the Tile
     // page, and Symmetry came back beside it: both are properties of the
     // object, which is what this panel is for. The mirror in particular is
     // the pattern's OWN now, not the mode the canvas toolbar is in.
+    // Patchwork is last and is not a property at all — it is the one page
+    // that MAKES something (a closed shape per region of the drawing).
     expect(PATTERN_EDIT_OPTIONS.map((o) => [o.action, o.label]))
-      .toEqual([['tile', 'Tile'], ['symmetry', 'Symmetry']]);
+      .toEqual([['tile', 'Tile'], ['symmetry', 'Symmetry'], ['patchwork', 'Patchwork']]);
     // The bars all stand, keyed and sized — the two off the row for a
-    // host that opens them itself, the two pages for this one.
-    for (const action of ['tile', 'tiles', 'tools', 'symmetry'] as const) {
+    // host that opens them itself, the three pages for this one.
+    for (const action of ['tile', 'tiles', 'tools', 'symmetry', 'patchwork'] as const) {
       const sub = patternActionSubmenu(action);
       expect(patternActionOfSubmenu(sub)).toBe(action);
       expect(submenuHeight(sub)).toBeGreaterThan(0);
     }
+  });
+
+  it('the Patchwork page is one button, and its button is the only way to it', () => {
+    // The page holds Create patches and nothing else, so it stands one row
+    // tall — and it draws nothing at all for a host that offers no callback,
+    // which is how a selection with nothing to cut says so.
+    expect(submenuHeight('patternPatchwork')).toBe(submenuHeight('patternTile'));
+    const SRC = readFileSync(
+      resolve(__dirname, '../components/PatternBars.tsx'), 'utf8',
+    );
+    expect(SRC).toContain('label="Create patches"');
+    expect(SRC).toContain('if (!model.onPatternCreatePatches) return null;');
   });
 
   it('the Tools bar runs Flood, Close and Clear on the grid', () => {

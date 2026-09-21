@@ -201,8 +201,11 @@ export type SubmenuKey =
   // sketch is drawn in — its opaque volumes and the outlines over them.
   | 'rigColor'
   // A pattern object's pages: the Tile page (its Repeat toggle), the tile
-  // menu, the grid tools, and the painting-symmetry grid.
-  | 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry';
+  // menu, the grid tools, the painting-symmetry grid — and Patchwork, the
+  // one that makes rather than sets: the button that cuts the pattern's
+  // drawing into a closed shape per region.
+  | 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry'
+  | 'patternPatchwork';
 
 /** The current state of everything that changes a page's row count. Values are
  *  optional so a caller can describe only the pages its selection can open; a
@@ -467,6 +470,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       const mainRows = 2 + (ctx.patternCanRepeat ? 1 : 0) + (setCount > 0 ? 1 : 0);
       return contentArea(new Array(mainRows).fill(ROW_SEGMENTED));
     }
+    case 'patternPatchwork':
+      // Create patches, alone on its line — the Add pages' shape (one
+      // button, one row), because it is one act and nothing else.
+      return contentArea([ROW_SEGMENTED]);
     case 'patternSymmetry':
       // The mode grid: twelve SQUARE buttons (the eleven modes and Off),
       // six across, two rows — at every sheet width, because the grid is

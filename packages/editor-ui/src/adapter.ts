@@ -520,6 +520,14 @@ export interface ObjectPropertiesModel {
    *  Unset when there is no grid to open (no single pattern selected, or the
    *  one selected is already open) — the button goes with it. */
   onPatternEdit?(): void;
+  /** CREATE PATCHES (the Patchwork page): cut the pattern's drawing into one
+   *  closed shape per region of its own bounding box and place them, in one
+   *  undo step. The pattern itself is not changed — this ADDS objects beside
+   *  it, the only page on the sheet that does.
+   *
+   *  Unset when there is nothing to cut (no single pattern selected), and
+   *  the page's one button goes with it. */
+  onPatternCreatePatches?(): void;
   /** Arm the random brush / eraser as the painting sub-tool. */
   onPatternArmTool?(tool: 'random' | 'erase'): void;
   /** Run a grid action (flood replaces the whole grid with the armed tile —

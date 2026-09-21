@@ -36,6 +36,7 @@ import { EndpointsBar } from './EndpointsBar';
 import { TransformBar, type CopiesSection } from './TransformBar';
 import { LayoutBar } from './LayoutBar';
 import {
+  PatternPatchworkBar,
   PatternSymmetryBar, PatternSymmetryGrid, PatternTileBar, PatternTilesBar, PatternToolsBar,
 } from './PatternBars';
 import {
@@ -1603,6 +1604,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     activeBarEl = <PatternToolsBar model={model} />;
   } else if (displaySub === 'patternSymmetry') {
     activeBarEl = <PatternSymmetryBar model={model} />;
+  } else if (displaySub === 'patternPatchwork') {
+    activeBarEl = <PatternPatchworkBar model={model} />;
   } else if (displaySub === 'text' || displaySub === 'font' || displaySub === 'spacing' || displaySub === 'align') {
     activeBarEl = (
       <TextBar
