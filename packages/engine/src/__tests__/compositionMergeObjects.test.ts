@@ -113,6 +113,22 @@ describe('mergedSVGObject', () => {
     expect(merged.cellHeight).toBeCloseTo(10);
   });
 
+  it('keeps the front-most source s PATTERN fill, as it keeps its stroke', () => {
+    // A merged object IS the front-most source wearing more outline; its
+    // pattern goes with it (and repeats across the bigger box), rather
+    // than being dropped without a word.
+    const cells: CellState[] = [
+      { type: 'sprite', spriteId: 'test/tile_00000000', transform: { ...DEFAULT_TRANSFORM } },
+      null, null, null,
+    ];
+    const patternFill = { size: 2, cells, tileL0: 2 };
+    const a = makeSVG('a', square(0, 0, 10));
+    const b = makeSVG('b', square(5, 5, 10), { patternFill });
+    expect(mergedSVGObject([a, b], 'm').patternFill).toEqual(patternFill);
+    // …and nothing is invented for sources that carry none.
+    expect(mergedSVGObject([b, a], 'm2').patternFill).toBeUndefined();
+  });
+
   it('keeps each source its own color, as a sub-path', () => {
     const a = makeSVG('a', square(0, 0, 10), { color: RED });
     const b = makeSVG('b', square(5, 5, 10), { color: BLUE });

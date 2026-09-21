@@ -622,9 +622,20 @@ export interface ObjectPropertiesModel {
    *  {@link onPickStrokeColor}'s picker writes, so the row and the picker
    *  cannot disagree. Absent → the page shows no colour row. */
   onStrokeColor?(color: RGBLike, committed: boolean): void;
+  /** Whether the selection ENCLOSES AN AREA — asked of its geometry, not of
+   *  its kind (the engine's `svgEnclosesArea`; every member, for a
+   *  multi-selection). What the interior pages — Fill and Pattern — are
+   *  offered on.
+   *
+   *  The subtype's own answer (`svgHasFill`) is right for everything a tool
+   *  drew and wrong for a MERGE: flatten a few lines into one object and it
+   *  is subtype `stroke`, loose ends and all, while the loop among those
+   *  lines is a perfectly good interior. Omitted falls back to the subtype,
+   *  so a host that never says is unchanged. */
+  svgEncloses?: boolean;
   /** Whether the Fill bar is shown. App-owned so a tap-off dismisses it before
    *  the panel (same as the Stroke / Shadow / Border bars). Only reachable from
-   *  a subtype whose option menu offers Fill — see `svgHasFill`. */
+   *  a selection whose option menu offers Fill — see {@link svgEncloses}. */
   svgFillOpen?: boolean;
   onSvgFillOpenChange?(open: boolean): void;
   /** The selected shape's current fill, seeding the Fill bar (defaults supplied
@@ -673,6 +684,39 @@ export interface ObjectPropertiesModel {
    *  color in Solid mode or `svgFill.stops[svgFill.selectedStop]` in gradient
    *  modes; the app reads the current fill to know which. */
   onPickSvgFillColor?(): void;
+  /** Whether the PATTERN page is shown — a closed shape's tile fill, the
+   *  page straight after Fill. App-owned like every other page. */
+  svgPatternOpen?: boolean;
+  onSvgPatternOpenChange?(open: boolean): void;
+  /** Whether the selection actually CARRIES a pattern fill. `false` (with
+   *  {@link onAddSvgPattern}) renders the page as the absent-effect Add bar
+   *  — the same rule Fill, Stroke, Shadow and Border go by: opening a menu
+   *  must never edit the object. Omitted means present. */
+  svgPatternPresent?: boolean;
+  /** Add a pattern fill to the selection — the Add bar's one button. One
+   *  undo step: the shape gets a grid sized to its own box, flooded with
+   *  connected tiles so it arrives as a PATTERN rather than as an empty
+   *  grid, and the host opens that grid for painting (the swatch banner
+   *  goes up and the shape wears its editing outline). */
+  onAddSvgPattern?(): void;
+  /** Re-open an existing pattern fill for painting — the page's Edit
+   *  button, the same act the Add above ends on. */
+  onEditSvgPattern?(): void;
+  /** The tile's edge in CELLS — the page's Size slider, 1–8. A pattern is
+   *  square: 2 is a 2×2 tile, repeating across the shape. */
+  svgPatternSize?: number;
+  /** Commit a new tile size. Called on RELEASE only (the page holds the
+   *  handle's own draft while it moves): a size change re-rolls the cells
+   *  the larger tile exposes, which is one undo step and not something to
+   *  do sixty times a second. */
+  onSvgPatternSize?(size: number): void;
+  /** Remove the pattern fill — the page's Remove line. One undo step; what
+   *  the shape drew underneath (its own fill and outline) is untouched. */
+  onRemoveSvgPattern?(): void;
+  /** Whether that grid is the one open for painting right now — the shape
+   *  wearing the editing outline. The page's Edit button says "Editing"
+   *  and stands down while it is. */
+  svgPatternEditing?: boolean;
   /** Whether the Endpoints bar is shown. App-owned so a tap-off dismisses it
    *  before the panel (same as the Stroke / Fill bars). Only reachable from a
    *  subtype whose option menu offers it — see `svgHasEndpoints`. */

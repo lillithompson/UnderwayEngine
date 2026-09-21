@@ -1,6 +1,9 @@
 ﻿import { BlendMode, CompositionState, CompositionFigure, CompUndoEntry, CompUndoOp, GroupNode, PaintObject, PatternObject, PaintStrokeDraft, RGBColor, SVGObject, SVGSubpath, PathSegment, ImageObject, TextObject, CompItemKind } from './types';
 import { mintPaintObjectId } from './paintObject';
 import { mintPatternObjectId, applyPatternCellEdits } from './patternObject';
+import {
+  mapShapePatternGrid, shapeHoldingPatternGrid, withShapePatternFill,
+} from './shapePatternFill';
 import { GEOMETRY_ADAPTERS, rescaleSegs } from './sceneNodeGeometry';
 import { nextGroupName } from './sceneOutlineHelpers';
 import { colorsEqual } from './colorBlend';
@@ -1482,16 +1485,30 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
       }
       return state;
     }
+    case 'setShapePatternFill': {
+      const svgObjects = state.svgObjects.map(s => (s.id === op.svgId
+        ? withShapePatternFill(s, op.newFill)
+        : s));
+      return { ...state, svgObjects };
+    }
     case 'editPatternCells': {
+      if (shapeHoldingPatternGrid(state, op.patternId)) {
+        return mapShapePatternGrid(state, op.patternId,
+          (grid) => applyPatternCellEdits(grid, op.edits, 'apply'));
+      }
       const patternObjects = (state.patternObjects ?? []).map(p =>
         p.id === op.patternId ? applyPatternCellEdits(p, op.edits, 'apply') : p);
       return { ...state, patternObjects };
     }
     case 'setPatternSettings': {
+      const settings = {
+        symmetry: op.newSymmetry, allowBorderConnections: op.newAllowBorderConnections,
+      };
+      if (shapeHoldingPatternGrid(state, op.patternId)) {
+        return mapShapePatternGrid(state, op.patternId, (grid) => ({ ...grid, ...settings }));
+      }
       const patternObjects = (state.patternObjects ?? []).map(p =>
-        p.id === op.patternId
-          ? { ...p, symmetry: op.newSymmetry, allowBorderConnections: op.newAllowBorderConnections }
-          : p);
+        p.id === op.patternId ? { ...p, ...settings } : p);
       return { ...state, patternObjects };
     }
     case 'groupFigures': {
@@ -2156,7 +2173,16 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
         newCellX: op.oldCellX, newCellY: op.oldCellY,
         newCellWidth: op.oldCellWidth, newCellHeight: op.oldCellHeight,
       });
+    case 'setShapePatternFill':
+      return applyOpInner(state, {
+        op: 'setShapePatternFill', svgId: op.svgId,
+        oldFill: op.newFill, newFill: op.oldFill,
+      });
     case 'editPatternCells': {
+      if (shapeHoldingPatternGrid(state, op.patternId)) {
+        return mapShapePatternGrid(state, op.patternId,
+          (grid) => applyPatternCellEdits(grid, op.edits, 'revert'));
+      }
       const patternObjects = (state.patternObjects ?? []).map(p =>
         p.id === op.patternId ? applyPatternCellEdits(p, op.edits, 'revert') : p);
       return { ...state, patternObjects };

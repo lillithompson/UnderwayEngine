@@ -769,6 +769,14 @@ export interface SVGObject {
    *
    *  Only closed shapes offer it (a rectangle or a circle); see `svgSubtype`. */
   fill?: ShapeFill;
+  /** The shape's PATTERN fill — the Pattern page (v67+): a tile grid
+   *  painted inside the path, clipped to the same closed outline the solid
+   *  fill paints and drawn over it, under the shape's own stroke.
+   *
+   *  Only closed shapes offer it, the same `svgHasFill` split `fill` takes:
+   *  a pattern needs an interior to lie in. See {@link ShapePatternFill}
+   *  and engine/shapePatternFill.ts. */
+  patternFill?: ShapePatternFill;
   /** Color-tool brushwork (v49+): a hidden low-resolution RGBA layer the
    *  drag-paint brush colors into, spanning the bbox and MASKED to the
    *  shape's closed outline at render, composited with one blend mode.
@@ -1267,6 +1275,50 @@ export interface PatternObject {
   identityCellY?: number;
   identityCellWidth?: number;
   identityCellHeight?: number;
+}
+
+/**
+ * A closed shape's PATTERN fill (v67+): the tile grid painted inside its
+ * path — {@link SVGObject.patternFill}.
+ *
+ * The grid alone. Everything a {@link PatternObject} says about WHERE it
+ * sits — box, turn, mirrors, opacity, fade — the shape already says, so a
+ * fill states none of it: it is drawn in the shape's own local box, the
+ * shape's matrix carries the pose, and the shape's outline clips it. The
+ * fields that remain are exactly the ones a grid needs to be painted
+ * into, and they are named and shaped as PatternObject's own, so the
+ * grid logic (connectivity, symmetry mirroring, the bake) takes a
+ * fill through `shapePatternGrid` unchanged rather than through a second
+ * implementation of any of it. See engine/shapePatternFill.ts.
+ */
+export interface ShapePatternFill {
+  /** The tile's edge in CELLS — the Pattern page's Size slider, 1..8
+   *  ({@link MAX_SHAPE_PATTERN_SIZE}). A pattern is SQUARE by
+   *  construction: size 2 is a 2×2 tile, and that tile repeats across the
+   *  shape. (The grid a {@link PatternObject} carries can be oblong; a
+   *  fill's cannot, because what it describes is one repeat.) */
+  size: number;
+  /** Row-major cell states, length size*size; null is an empty cell. */
+  cells: CellState[];
+  /** What one repeat SPANS, in world cells — the tile's edge on the page.
+   *  Set at creation to `size × the composition's grid step` (one pattern
+   *  cell per grid cell) and rescaled with the Size slider so the CELLS
+   *  keep their size and the repeat grows, not the other way round.
+   *
+   *  Absolute, not a fraction of the shape: resizing a patterned shape
+   *  lays MORE copies rather than stretching the one, which is the rule a
+   *  repeat-mode pattern object already goes by. A group's scale does
+   *  carry the tile with it (the leaf's matrix scales it — see
+   *  `shapePatternGrid`), so a scaled group keeps its repetition count. */
+  tileL0: number;
+  /** Painting symmetry (the Pattern page's Symmetry row). Undefined = off. */
+  symmetry?: PatternSymmetry;
+  /** Border-connection rule for connectivity. Undefined = true. */
+  allowBorderConnections?: boolean;
+  /** The line weight the tiles are drawn at, seeded at creation like a
+   *  pattern object's (see {@link PatternObject.stroke}). Undefined falls
+   *  back to the composition-wide strokeScale. */
+  stroke?: SVGStroke;
 }
 
 // ── Paint, effects, tint, text (v29 additions) ──────────────────────
@@ -1915,15 +1967,26 @@ export type CompUndoOp =
   | { op: 'cleanupLibrary'; removedFileIds: string[]; oldGroups: { id: string; name: string; fileIds: string[] }[] }
   // ── SVG ops ───────────────────────────────────────────────────────────
   | { op: 'createSVG'; svg: SVGObject }
-  /** Edit tile cells of a PatternObject. Apply: for each edit, set
+  /** Add, replace or REMOVE a closed shape's pattern fill (v67). Full
+   *  before/after blocks, `undefined` on either side meaning "no pattern"
+   *  — so the Add and the Remove the Pattern page offers are one op read
+   *  in the two directions, and a swatch pick is the same op with a block
+   *  on both sides. */
+  | { op: 'setShapePatternFill'; svgId: string;
+      oldFill: ShapePatternFill | undefined; newFill: ShapePatternFill | undefined }
+  /** Edit tile cells of a PatternObject — or of the grid a closed shape
+   *  carries as its pattern fill, which `patternId` names by the SHAPE's
+   *  own id (see engine/shapePatternFill.ts). Apply: for each edit, set
    *  `cells[index] = newState`. Revert: set `cells[index] = oldState`.
    *  One op carries a whole stroke (or a reconcile/clear sweep) so it
    *  round-trips as a single undo step. */
   | { op: 'editPatternCells'; patternId: string;
       edits: { index: number; oldState: CellState; newState: CellState }[] }
   /** Change a PatternObject's editing settings (symmetry mode and/or the
-   *  border-connections rule). Full before/after snapshots of both fields;
-   *  `undefined` symmetry = off, `undefined` allowBorderConnections = true. */
+   *  border-connections rule) — or a shape's pattern fill's, named by the
+   *  shape's id exactly as `editPatternCells` names it. Full before/after
+   *  snapshots of both fields; `undefined` symmetry = off, `undefined`
+   *  allowBorderConnections = true. */
   | { op: 'setPatternSettings'; patternId: string;
       oldSymmetry: PatternSymmetry | undefined; newSymmetry: PatternSymmetry | undefined;
       oldAllowBorderConnections: boolean | undefined; newAllowBorderConnections: boolean | undefined }

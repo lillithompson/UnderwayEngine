@@ -41,6 +41,14 @@ export interface SvgLocalGeometry {
    *  lengths grew by, which for an off-square matrix is the geometric
    *  mean of its two axis factors. */
   scale: number;
+  /** …and the same thing PER AXIS: how far the geometry's own x and y
+   *  were stretched. Equal to `scale` for a similarity. A world length the
+   *  markup draws in this space — a repeat's tile pitch, and a shape's
+   *  PATTERN FILL tile (engine/shapePatternFill.ts) — has to be grown by
+   *  these or it would be drawn at its authored size in a space that is no
+   *  longer world-sized. */
+  growX: number;
+  growY: number;
 }
 
 /**
@@ -149,6 +157,7 @@ export function svgLocalGeometry(
     if (object.tileOffsetXL0 != null) object.tileOffsetXL0 *= gx;
     if (object.tileOffsetYL0 != null) object.tileOffsetYL0 *= gy;
   }
+  const axes = growAxes(grow);
   const out: SvgLocalGeometry = {
     // …and finally the FADE, applied once, here, where both renderers read
     // the object they draw from: every colour the markup will paint with —
@@ -158,6 +167,7 @@ export function svgLocalGeometry(
     // disagree about it. Returns the same object untouched when there is no
     // fade, so the cache below keeps its identity on the common path.
     object: fadedSVGObject(object), box, scale: s,
+    growX: axes.gx, growY: axes.gy,
     matrix: { ...turn, e: world.e, f: world.f },
   };
   svgGeometry.set(node, { world, content: source, out });
@@ -234,8 +244,10 @@ export function patternLocalGeometry(
       if (object.tileOffsetXL0 != null) object.tileOffsetXL0 *= gx;
       if (object.tileOffsetYL0 != null) object.tileOffsetYL0 *= gy;
     }
+    const axes = growAxes(grow);
     out = {
       object: fadedSVGObject(object), box, scale: s,
+      growX: axes.gx, growY: axes.gy,
       matrix: { ...turn, e: world.e, f: world.f },
     };
   }

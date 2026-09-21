@@ -7,7 +7,7 @@
  */
 
 import { CompItemKind, CompositionFigure, CompositionState, FileConfig, SVGObject, ImageObject, PaintObject, PatternObject, TextObject, Layer, ClipBox, GroupNode, Paint, NodeEffects, BorderEffect, RGBColor } from './types';
-import { patternSVGView } from './patternObjectRender';
+import { patternSVGView, shapePatternFillTiles } from './patternObjectRender';
 import { patternLocalGeometry, patternLocalObject, svgLocalGeometry } from './sceneDrawnContent';
 import { fadedImageObject, fadedTextStyle } from './fade';
 import {
@@ -22,7 +22,7 @@ import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, svgFillPresentation, svgIsFilled, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
+import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgFillPresentation, svgIsFilled, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
 import { roundPathCorners, strokeScaleForUnits, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import { arcBoundingBox } from './compositionArcHitTest';
@@ -1723,15 +1723,29 @@ export async function generateCompositionSVGCore(
    * generator has REPLACED — one recoloured by `strokeColorOverride` —
    * keeps its new colours while taking the node's exact geometry.
    */
-  const svgDrawnContent = (entry: SVGObject): { object: SVGObject; transform: string } => {
+  const svgDrawnContent = (entry: SVGObject): {
+    object: SVGObject; transform: string; grow: { gx: number; gy: number };
+  } => {
     const pattern = localPatternViews.get(entry.id);
     // The grown geometry's matrix, not the pose's full one — the same
     // split an svg gets below, so the strokes keep their world width
     // (plan §5.10).
-    if (pattern) return { object: inkOverride(pattern.object), transform: matrixString(pattern.matrix, U) };
+    if (pattern) {
+      return {
+        object: inkOverride(pattern.object),
+        transform: matrixString(pattern.matrix, U),
+        grow: { gx: 1, gy: 1 },
+      };
+    }
     const pose = exportPose(graph, 'svg', entry);
     const geo = svgLocalGeometry(pose.node, pose.world, entry);
-    return { object: geo.object, transform: matrixString(geo.matrix, U) };
+    return {
+      object: geo.object,
+      transform: matrixString(geo.matrix, U),
+      // …and what the vertices took out of that matrix, which a PATTERN
+      // FILL's tile has to be grown by too (shapePatternGrid).
+      grow: { gx: geo.growX, gy: geo.growY },
+    };
   };
 
   /**
@@ -1787,7 +1801,11 @@ export async function generateCompositionSVGCore(
     // with a hole — fills every loop under `fill-rule="nonzero"`. Chaining it
     // into one path instead, as this did, filled nothing at all for those:
     // they have no single chain, so the export dropped a fill the canvas drew.
-    const closedD = fillPres || svg.paintOverlay ? buildClosedFillPathD(strokeSegments) : '';
+    // …and a PATTERN fill needs the same outline to be clipped to, so it
+    // joins the two that ask for one.
+    const patternTiles = shapePatternFillTiles(svg, storedStrokeScale, drawn.grow);
+    const closedD = fillPres || svg.paintOverlay || patternTiles
+      ? buildClosedFillPathD(strokeSegments) : '';
     if (fillPres && closedD) {
       fillElement = `${fillPres.defs}<path d="${closedD}" ${fillPres.attrs} stroke="none" fill-rule="nonzero" />`;
     }
@@ -1802,6 +1820,10 @@ export async function generateCompositionSVGCore(
       );
       fillElement = `<g style="isolation:isolate">${fillElement}${overlay}</g>`;
     }
+    // The pattern fill (v67), over the solid fill and under the strokes —
+    // the same wrapper the live DOM layer's markup uses, clipped to the
+    // same outline, so a patterned shape exports as it is drawn.
+    fillElement += shapePatternFillMarkup(svg, patternTiles, closedD);
 
     let paths = strokeDefs + fillElement;
     if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {

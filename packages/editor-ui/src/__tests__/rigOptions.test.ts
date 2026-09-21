@@ -293,7 +293,10 @@ describe('the panel', () => {
 
   it('offers the parts BEFORE the vector options a rig would otherwise get', () => {
     // A rig's figure IS an svg object; the rig branch has to win.
-    expect(SRC.indexOf('model.showRigOptions ? ')).toBeLessThan(SRC.indexOf('model.showSvgOptions\n'));
+    // The BRANCH in the page-order chain, named by its leading `:` — the
+    // flag itself is read in a few other places (what encloses an area,
+    // what repeats), and any of those would otherwise answer this.
+    expect(SRC.indexOf('model.showRigOptions ? ')).toBeLessThan(SRC.indexOf(': model.showSvgOptions'));
     // …and the carousel's order IS the options row's, not a second copy of it.
     expect(SRC).toContain('model.showRigOptions ? RIG_PAGES.map((o) => o.sub)');
   });

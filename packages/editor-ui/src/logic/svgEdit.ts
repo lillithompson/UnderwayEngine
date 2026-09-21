@@ -37,7 +37,7 @@ import type { SVGSubtypeKind } from '../adapter';
  *    the one before. Every subtype has it; a line repeats as readily as a
  *    shape. (The key predates the page's rename; the object's own rotation
  *    is the two-finger twist and the selection tool's Rotate slider.) */
-export type SVGEditAction = 'stroke' | 'shape' | 'fill' | 'endpoints' | 'shadow' | 'opacity' | 'transform';
+export type SVGEditAction = 'stroke' | 'shape' | 'fill' | 'pattern' | 'endpoints' | 'shadow' | 'opacity' | 'transform';
 
 export interface SVGEditOption {
   action: SVGEditAction;
@@ -60,7 +60,7 @@ const STROKE_ICON: Record<SVGSubtypeKind, string> = {
 };
 
 /**
- * Whether a subtype offers the Fill bar.
+ * Whether a subtype offers the Fill bar BY ITS KIND.
  *
  * A fill needs an enclosed interior to paint, so it is CLOSED-PATH ONLY — and
  * every closed subtype takes it: the three the shape tools author
@@ -69,6 +69,13 @@ const STROKE_ICON: Record<SVGSubtypeKind, string> = {
  * freeform — a merged pair of strokes that met end to end, a join, a union
  * result, a preset. What closes is what fills; nothing about how the outline
  * came to be changes that.
+ *
+ * It is the DEFAULT answer, not the last word: the subtype says what the tool
+ * that drew the object offers, and an object can enclose an area the subtype
+ * knows nothing about — a merge of several lines is subtype `stroke`, loose
+ * ends and all, and may still hold a perfectly good closed loop. The host
+ * answers that geometrically (`svgEnclosesArea`) and hands it to
+ * {@link svgEditOptions} as `encloses`.
  */
 export function svgHasFill(subtype: SVGSubtypeKind): boolean {
   return subtype === 'rectangle' || subtype === 'circle'
@@ -129,18 +136,33 @@ export function svgHasShape(subtype: SVGSubtypeKind): boolean {
 
 /** The option menu for one vector subtype, in display order. Stroke leads —
  *  it is the one action every subtype has — then Shape on the polygonal
- *  ones, then the subtype's own next action: Fill on the shapes that
- *  enclose an area, Endpoints on the paths that don't.
+ *  ones, then the subtype's own next action: Fill — and the Pattern that
+ *  goes over it — on the shapes that enclose an area, Endpoints on the
+ *  paths that don't.
  *
  *  The last three are the SHARED TAIL every kind of object ends on, vector
  *  or not — Shadow, Opacity, Copies — so the pages an image, a text and a
  *  line have in common sit in the same order wherever you are. */
-export function svgEditOptions(subtype: SVGSubtypeKind): readonly SVGEditOption[] {
+export function svgEditOptions(
+  subtype: SVGSubtypeKind,
+  opts?: {
+    /** Whether THIS object encloses an area, asked of its geometry rather
+     *  than of its kind (the host's `svgEnclosesArea`). Omitted falls back
+     *  to the subtype's own answer, which is right for everything a tool
+     *  drew; a merged collection of lines is where the two differ, and it
+     *  gets the interior pages on the strength of the loop it holds —
+     *  keeping its Ends, which are just as real. */
+    encloses?: boolean;
+  },
+): readonly SVGEditOption[] {
   const options: SVGEditOption[] = [
     { action: 'stroke', label: 'Stroke', icon: STROKE_ICON[subtype] ?? STROKE_ICON.stroke },
   ];
   if (svgHasShape(subtype)) options.push({ action: 'shape', label: 'Shape', icon: 'rounded-corner' });
-  if (svgHasFill(subtype)) options.push({ action: 'fill', label: 'Fill', icon: 'format-color-fill' });
+  if (opts?.encloses ?? svgHasFill(subtype)) {
+    options.push({ action: 'fill', label: 'Fill', icon: 'format-color-fill' });
+    options.push({ action: 'pattern', label: 'Pattern', icon: 'view-grid-outline' });
+  }
   if (svgHasEndpoints(subtype)) options.push({ action: 'endpoints', label: 'Ends', icon: 'ray-start-end' });
   options.push({ action: 'shadow', label: 'Shadow', icon: 'box-shadow' });
   if (svgHasOpacity(subtype)) options.push({ action: 'opacity', label: 'Opacity', icon: 'opacity' });

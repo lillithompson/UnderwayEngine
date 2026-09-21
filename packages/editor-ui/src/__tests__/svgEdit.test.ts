@@ -30,10 +30,26 @@ describe('svgEditOptions', () => {
   it('adds Fill to the shapes with an interior, and to nothing else', () => {
     for (const subtype of FILLED) {
       expect(svgEditOptions(subtype).map((o) => o.action).filter((a) => a !== 'shape'))
-        .toEqual(['stroke', 'fill', 'shadow', 'opacity', 'transform']);
+        .toEqual(['stroke', 'fill', 'pattern', 'shadow', 'opacity', 'transform']);
     }
     for (const subtype of SUBTYPES.filter((s) => !FILLED.includes(s))) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('fill');
+    }
+  });
+
+  it('adds Pattern beside Fill — the tile fill goes where a colour fill can', () => {
+    // The two are companions: a pattern is painted INSIDE the interior,
+    // over whatever colour is there. So they take the same closed-path
+    // split, and Pattern follows Fill.
+    for (const subtype of FILLED) {
+      const actions = svgEditOptions(subtype).map((o) => o.action);
+      expect(actions.indexOf('pattern')).toBe(actions.indexOf('fill') + 1);
+      const pattern = svgEditOptions(subtype).find((o) => o.action === 'pattern')!;
+      expect(pattern.label).toBe('Pattern');
+      expect(pattern.icon).toBe('view-grid-outline');
+    }
+    for (const subtype of SUBTYPES.filter((s) => !FILLED.includes(s))) {
+      expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('pattern');
     }
   });
 
@@ -67,10 +83,39 @@ describe('svgEditOptions', () => {
     }
   });
 
-  it('never offers both Fill and Ends — closed and open are complements', () => {
+  it('never offers both Fill and Ends BY KIND — closed and open are complements', () => {
     for (const subtype of SUBTYPES) {
       const actions = svgEditOptions(subtype).map((o) => o.action);
       expect(actions.includes('fill') && actions.includes('endpoints')).toBe(false);
+    }
+  });
+
+  it('offers the interior pages to anything that ENCLOSES an area, whatever its kind', () => {
+    // A merged collection of lines is subtype `stroke` — the flatten kept
+    // its loose ends — and still holds a loop to paint inside. The host
+    // asks the geometry (svgEnclosesArea) and says so here.
+    const merged = svgEditOptions('stroke', { encloses: true }).map((o) => o.action);
+    expect(merged).toContain('fill');
+    expect(merged).toContain('pattern');
+    // …and it keeps its Ends, which are every bit as real. This is the one
+    // object that has both, which is why the rule above is about KINDS.
+    expect(merged).toContain('endpoints');
+    expect(merged.indexOf('pattern')).toBe(merged.indexOf('fill') + 1);
+  });
+
+  it('takes the interior pages AWAY from a kind that encloses nothing', () => {
+    // The same question asked the other way: a `shape` whose geometry never
+    // closed (a merge that came apart) drops Fill and Pattern rather than
+    // offering pages with no interior to act on.
+    const open = svgEditOptions('shape', { encloses: false }).map((o) => o.action);
+    expect(open).not.toContain('fill');
+    expect(open).not.toContain('pattern');
+  });
+
+  it('falls back to the KIND when the host says nothing', () => {
+    for (const subtype of SUBTYPES) {
+      expect(svgEditOptions(subtype).map((o) => o.action))
+        .toEqual(svgEditOptions(subtype, {}).map((o) => o.action));
     }
   });
 
@@ -78,12 +123,12 @@ describe('svgEditOptions', () => {
     // However the outline came to be — merged, joined, unioned, drawn — a
     // closed path has an inside to paint. (No Shape page: a freeform has
     // no line→line corners to round.)
-    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke', 'fill', 'shadow', 'opacity', 'transform']);
+    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke', 'fill', 'pattern', 'shadow', 'opacity', 'transform']);
   });
 
   it('adds Shape — the corner Radius page — right after Stroke on the polygonal shapes only', () => {
-    expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'shadow', 'opacity', 'transform']);
-    expect(svgEditOptions('polygon').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'shadow', 'opacity', 'transform']);
+    expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'pattern', 'shadow', 'opacity', 'transform']);
+    expect(svgEditOptions('polygon').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'pattern', 'shadow', 'opacity', 'transform']);
     for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'polygon')) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('shape');
       expect(svgHasShape(subtype)).toBe(false);

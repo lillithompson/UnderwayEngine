@@ -21,6 +21,7 @@ import {
   CompositionFigure,
   FileConfig,
   PatternObject,
+  RGBColor,
   SVGObject,
   SVGSubpath,
 } from './types';
@@ -29,6 +30,7 @@ import {
   patternIsEmpty,
   PATTERN_CELL_L0,
 } from './patternObject';
+import { shapePatternGrid } from './shapePatternFill';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { simplifySVG } from './simplifySVG';
 import {
@@ -37,7 +39,7 @@ import {
 } from './figureToPaths';
 import type { CachedFigureSVG } from './svgFigureBuilders';
 import { normalizeClosedSegments } from './compositionArcMath';
-import { buildSVGObjectContent } from './svgPathBuilder';
+import { buildSVGObjectContent, withSVGObjectStrokeColor } from './svgPathBuilder';
 import { strokeScaleForUnits } from './svgStroke';
 
 const svgViewCache = new WeakMap<PatternObject, SVGObject | null>();
@@ -231,4 +233,75 @@ function buildPatternSVGView(p: PatternObject): SVGObject | null {
   //     above, and so is keyed into bakeKey);
   //   • opacity / hidden / groupId / name — scene bookkeeping.
   return view;
+}
+
+/**
+ * The baked TILES of a closed shape's pattern fill, in the shape's own
+ * local space — ready to be clipped to its outline and painted over its
+ * solid fill (`shapePatternFillMarkup`). '' when the shape carries no
+ * fill, or none of the fill's cells is filled.
+ *
+ * Here, beside the bake it is one call away from, rather than in
+ * shapePatternFill.ts: that module is the grid's, and compositionOps
+ * imports it — while this pipeline's imports reach compositionOps, which
+ * is the same cycle that put this whole file beside patternObject.ts.
+ *
+ * `strokeScale` is the composition-wide one, not a unit-converted copy:
+ * the markup is drawn in SVG units like every other pattern render site
+ * (see {@link patternViewNodeMarkup}), so the tiles inside a shape carry
+ * the same world line weight as the tiles in a pattern object beside it.
+ * `grow` is the drawn geometry's per-axis stretch (`growX` / `growY`),
+ * which the TILE has to be grown by for the same reason a stroke width is
+ * — see {@link shapePatternGrid}.
+ */
+export function shapePatternFillTiles(
+  svg: SVGObject, strokeScale: number, grow?: { gx: number; gy: number },
+): string {
+  const grid = shapePatternGrid(svg, grow);
+  if (!grid) return '';
+  const view = patternSVGView(grid);
+  if (!view) return '';
+  return patternViewNodeMarkup(view, strokeScale);
+}
+
+/**
+ * One pattern grid as a square data-URI thumbnail, `size` px — what the
+ * pattern-fill swatch row shows for each pattern already on the page.
+ *
+ * The bake, in the grid's own box, wrapped in an `<svg>` whose viewBox is
+ * that box: the swatch is the pattern drawn exactly as the canvas draws
+ * it, rather than a second rendering of the cells. Null for an empty grid
+ * (there is no picture of nothing to offer).
+ *
+ * Cached on the view the bake already caches, so a row of swatches
+ * re-renders without re-encoding: the string is long, and a pattern that
+ * has not changed hands back the very same one.
+ */
+const thumbUris = new WeakMap<SVGObject, Map<string, string>>();
+
+export function patternGridThumbnailUri(
+  p: PatternObject, size: number, strokeScale: number = 1, ink?: RGBColor,
+): string | null {
+  const baked = patternSVGView(p);
+  if (!baked) return null;
+  // Re-inked when the caller says so: a swatch is CHROME, and the ink a
+  // pattern happens to be painted in is not what it is offering (white
+  // tiles on a light chip are no swatch at all). The same choice the tile
+  // menu's own thumbnails make — buildTileSvgDataUri inks them in the
+  // panel's ink — through the engine's one re-ink helper, fills included.
+  const view = ink ? withSVGObjectStrokeColor(baked, ink, { floodFills: true }) : baked;
+  const key = `${size}|${strokeScale}|${ink ? `${ink.r},${ink.g},${ink.b}` : ''}`;
+  let byKey = thumbUris.get(baked);
+  const hit = byKey?.get(key);
+  if (hit) return hit;
+  const u = SVG_UNITS_PER_L0_CELL;
+  const w = Math.max(view.cellWidth, 1e-3) * u;
+  const h = Math.max(view.cellHeight, 1e-3) * u;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${view.cellX * u} ${view.cellY * u} ${w} ${h}"`
+    + ` width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet" fill="none">`
+    + `${patternViewNodeMarkup(view, strokeScale)}</svg>`;
+  const uri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  if (!byKey) { byKey = new Map(); thumbUris.set(baked, byKey); }
+  byKey.set(key, uri);
+  return uri;
 }

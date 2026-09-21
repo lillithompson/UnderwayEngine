@@ -142,6 +142,11 @@ export function mergedSVGObject(
     ...(top.stroke ? { stroke: { ...top.stroke } } : null),
     ...(top.effects ? { effects: { ...top.effects } } : null),
     ...(top.opacity != null ? { opacity: top.opacity } : null),
+    // …and the front-most source's PATTERN fill, on the same rule as its
+    // stroke and its effects: the merged object is that object, wearing
+    // what it wore, with more outline. The tile repeats across the new
+    // box and clips to whatever the flattened geometry encloses.
+    ...(top.patternFill ? { patternFill: top.patternFill } : null),
     ...(groupId ? { groupId, localSegments } : null),
     ...computeSVGBbox(segments),
   };

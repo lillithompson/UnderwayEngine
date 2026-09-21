@@ -42,6 +42,7 @@ import {
   EffectButton,
   EmptyEffectBar,
   MultiToggleRow,
+  SliderRow,
 } from './effectBar';
 import { ShapeBar } from './ShapeBar';
 import { EditSheet, EditTabSpec } from './EditSheet';
@@ -140,6 +141,13 @@ const sameFramingModel = (a: FramingModel, b: FramingModel): boolean =>
 const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
   fontId: 'system', weight: 'regular', size: 2, letterSpacing: 0, lineHeight: 1.2, bend: 0, align: 'left', vAlign: 'top', color: { r: 58, g: 53, b: 50 },
 };
+
+// A pattern fill's tile is square and holds 1..8 cells per edge — the
+// Pattern page's Size row. Mirrors the engine's MIN/MAX_SHAPE_PATTERN_SIZE
+// (this package stays engine-import-free, like PatternSymmetryFlags).
+const MIN_SVG_PATTERN_SIZE = 1;
+const MAX_SVG_PATTERN_SIZE = 8;
+const DEFAULT_SVG_PATTERN_SIZE = 2;
 
 // The property pages, in tab order. Image selections offer crop / shadow /
 // border / opacity (matching their tab order); text offers font / align (two
@@ -374,6 +382,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // The Fill page rides the Tint page's draft pattern — it IS the Tint page,
   // pointed at a closed shape's interior.
   const [svgFillDraft, setSvgFillDraft] = useState<TintModel | null>(null);
+  // The Pattern page's Size handle while it is moving; null when it rests
+  // on what the shape actually carries.
+  const [svgPatternSizeDraft, setSvgPatternSizeDraft] = useState<number | null>(null);
   const prevSvgFillOpen = useRef(false);
   // The Text pages own their tracked params too (color still comes from the
   // model — it's changed externally via the full-screen picker).
@@ -399,7 +410,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // ── The pages (Crop / Shadow / Border / Text …) ──────────────────────
   // The open page is what the Edit sheet's well holds, and its tab is the lit
   // one. The pages are separate components but only one shows at a time.
-  const svgFillable = !!model.showSvgOptions && svgHasFill(model.svgSubtype ?? 'stroke');
+  // The INTERIOR pages (Fill, Pattern) go by what the selection encloses,
+  // which the host answers from its geometry; the subtype is the fallback
+  // for a host that doesn't (and the right answer for anything a tool drew).
+  const svgFillable = !!model.showSvgOptions
+    && (model.svgEncloses ?? svgHasFill(model.svgSubtype ?? 'stroke'));
   const svgEndable = !!model.showSvgOptions && svgHasEndpoints(model.svgSubtype ?? 'stroke');
   const svgOpacityable = !!model.showSvgOptions && svgHasOpacity(model.svgSubtype ?? 'stroke');
   // Every vector subtype repeats (svgEditOptions' Copies).
@@ -471,6 +486,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
           'stroke',
           ...(svgShapeable ? (['shape'] as const) : []),
           ...(svgFillable ? (['svgFill'] as const) : []),
+          ...(svgFillable && (model.onAddSvgPattern || model.onEditSvgPattern)
+            ? (['svgPattern'] as const) : []),
           ...(svgEndable ? (['endpoints'] as const) : []),
           // …then the tail every kind shares — Shadow, Opacity, Copies.
           'shadow',
@@ -496,6 +513,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     : model.opacityOpen ? 'opacity'
     : model.strokeOpen ? 'stroke'
     : model.svgFillOpen ? 'svgFill'
+    : model.svgPatternOpen ? 'svgPattern'
     : model.endpointsOpen ? 'endpoints'
     : model.transformOpen ? 'transform'
     : localSub ? localSub
@@ -532,6 +550,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
    *  and the lit state need it, and they must agree. */
   const svgActionSubmenu = (action: string): SubmenuKey =>
     action === 'fill' ? 'svgFill'
+    : action === 'pattern' ? 'svgPattern'
     : action === 'shape' ? 'shape'
     : action === 'shadow' ? 'shadow'
     : action === 'endpoints' ? 'endpoints'
@@ -572,6 +591,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     else if (key === 'opacity') model.onOpacityOpenChange?.(true);
     else if (key === 'stroke') model.onStrokeOpenChange?.(true);
     else if (key === 'svgFill') model.onSvgFillOpenChange?.(true);
+    else if (key === 'svgPattern') model.onSvgPatternOpenChange?.(true);
     else if (key === 'endpoints') model.onEndpointsOpenChange?.(true);
     else if (key === 'transform') model.onTransformOpenChange?.(true);
     else if (key === 'layout') model.onLayoutOpenChange?.(true);
@@ -591,6 +611,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     model.onOpacityOpenChange?.(false);
     model.onStrokeOpenChange?.(false);
     model.onSvgFillOpenChange?.(false);
+    model.onSvgPatternOpenChange?.(false);
     model.onEndpointsOpenChange?.(false);
     model.onTransformOpenChange?.(false);
     model.onLayoutOpenChange?.(false);
@@ -807,6 +828,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     }
     prevSvgFillOpen.current = !!model.svgFillOpen;
   }, [model.svgFillOpen, model.svgFill]);
+
+  // The Size handle rests on what the shape carries the moment that
+  // changes — the commit's own echo, and a selection that moved to a
+  // differently-sized pattern (a stale draft would otherwise show the last
+  // shape's number over this one's tile).
+  useEffect(() => {
+    setSvgPatternSizeDraft(null);
+  }, [model.svgPatternSize, model.svgPatternPresent]);
   // Shadow controls → live preview / commit through the model; the draft stays
   // in sync so the sliders keep tracking.
   const applyShadow = (s: ShadowModel, committed: boolean) => {
@@ -1013,6 +1042,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   } else if (displaySub === 'svgFill' && model.svgFillPresent === false && model.onAddSvgFill) {
     addPage = true;
     activeBarEl = <EmptyEffectBar addLabel="Add Fill" onAdd={() => model.onAddSvgFill?.()} />;
+  } else if (displaySub === 'svgPattern' && model.svgPatternPresent === false && model.onAddSvgPattern) {
+    addPage = true;
+    activeBarEl = <EmptyEffectBar addLabel="Add Pattern" onAdd={() => model.onAddSvgPattern?.()} />;
   } else if (displaySub === 'shadow' && model.shadowPresent === false && model.onAddShadow) {
     addPage = true;
     activeBarEl = <EmptyEffectBar addLabel="Add Drop Shadow" onAdd={() => model.onAddShadow?.()} />;
@@ -1040,6 +1072,50 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       />
     );
     removeAction = { label: 'Remove fill', onPress: removeSvgFill };
+  } else if (displaySub === 'svgPattern') {
+    // How big one REPEAT is — the tile is square, so the row reads "2×2"
+    // — over the one act that opens it: the tiles themselves are painted
+    // ON THE CANVAS, inside the shape. While that tile IS open the button
+    // says so and stands down.
+    //
+    // The slider keeps its own handle (svgPatternSizeDraft) and commits on
+    // release: a size change re-rolls the cells the bigger tile exposes,
+    // which is one undo step, not sixty a second.
+    const editing = !!model.svgPatternEditing;
+    const size = svgPatternSizeDraft
+      ?? model.svgPatternSize ?? DEFAULT_SVG_PATTERN_SIZE;
+    activeBarEl = (
+      <BarBody>
+        <SliderRow
+          label="Size"
+          value={(size - MIN_SVG_PATTERN_SIZE) / (MAX_SVG_PATTERN_SIZE - MIN_SVG_PATTERN_SIZE)}
+          apply={(t, committed) => {
+            const next = Math.round(
+              MIN_SVG_PATTERN_SIZE + t * (MAX_SVG_PATTERN_SIZE - MIN_SVG_PATTERN_SIZE),
+            );
+            setSvgPatternSizeDraft(committed ? null : next);
+            if (committed) model.onSvgPatternSize?.(next);
+          }}
+          readout={{
+            text: `${size}×${size}`,
+            commit: (n) => {
+              setSvgPatternSizeDraft(null);
+              model.onSvgPatternSize?.(Math.round(
+                Math.min(MAX_SVG_PATTERN_SIZE, Math.max(MIN_SVG_PATTERN_SIZE, n)),
+              ));
+            },
+          }}
+        />
+        <EffectButton
+          label={editing ? 'Editing' : 'Edit Pattern'}
+          icon={editing ? 'check' : 'pencil'}
+          onPress={() => { if (!editing) model.onEditSvgPattern?.(); }}
+        />
+      </BarBody>
+    );
+    if (model.onRemoveSvgPattern) {
+      removeAction = { label: 'Remove pattern', onPress: () => model.onRemoveSvgPattern?.() };
+    }
   } else if (displaySub === 'transform') {
     activeBarEl = (
       <TransformBar
@@ -1464,12 +1540,20 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   } else if (model.showSvgOptions) {
     // Vector selection: the subtype's own option menu (svgEdit.ts). Every
     // subtype offers Stroke — a path IS its stroke; the closed shapes add Fill.
-    typeSpecs = svgEditOptions(model.svgSubtype ?? 'stroke').map((opt) => ({
-      key: opt.action,
-      label: opt.label,
-      sub: svgActionSubmenu(opt.action),
-      onPress: () => openSubmenu(svgActionSubmenu(opt.action)),
-    }));
+    typeSpecs = svgEditOptions(model.svgSubtype ?? 'stroke', { encloses: svgFillable })
+      // …less the Pattern tab on a host that cannot paint one. A pattern
+      // fill is painted with the TILE tool, on the canvas, so a format
+      // whose toolbar has no tile tool offers no pattern either — and
+      // says so by leaving the tab out rather than by standing it there
+      // inert. (The host reports that by passing neither callback.)
+      .filter((opt) => opt.action !== 'pattern'
+        || !!model.onAddSvgPattern || !!model.onEditSvgPattern)
+      .map((opt) => ({
+        key: opt.action,
+        label: opt.label,
+        sub: svgActionSubmenu(opt.action),
+        onPress: () => openSubmenu(svgActionSubmenu(opt.action)),
+      }));
     if (model.onToggleRepeat) {
       // Pattern-mode toggle (tile pattern objects): repeat the tile across
       // the bounding box instead of scaling it. A toggle rather than a page,

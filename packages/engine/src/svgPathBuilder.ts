@@ -1,6 +1,8 @@
 import { PathSegment, RGBColor, SVGObject } from './types';
 import { SVG_UNITS_PER_L0_CELL, SVG_STROKE_WIDTH } from './svgExport';
-import { computeSweepFlag, arcRadius, chainSegments, chainSegmentsLoops } from './compositionArcMath';
+import {
+  computeSweepFlag, arcRadius, chainSegments, closedSegmentLoops,
+} from './compositionArcMath';
 import { packKey, unpackKey, forEachVisibleTile } from './tileSegmentOverrides';
 import { borderDashPattern, paintToSvg } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
@@ -409,26 +411,44 @@ export function buildTiledSVGObjectRegionMarkup(
 }
 
 /**
- * Build a closed SVG `d` attribute for a fill. Chains the segments into one
- * or more closed loops and emits each as its own `M…Z` subpath. Multiple
- * subpaths are required for shapes that aren't a single loop — a geometric
- * union can produce disjoint regions and/or holes (outer loop + inner loops).
- * With `fill-rule="nonzero"` (set on the fill <path>), a counter-wound inner
- * loop renders as a hole and disjoint loops each fill. Returns '' on failure.
+ * Build a closed SVG `d` attribute for a fill: every loop the segments
+ * ENCLOSE, each as its own `M…Z` subpath. Multiple subpaths are required for
+ * shapes that aren't a single loop — a geometric union can produce disjoint
+ * regions and/or holes (outer loop + inner loops). With `fill-rule="nonzero"`
+ * (set on the fill <path>), a counter-wound inner loop renders as a hole and
+ * disjoint loops each fill. Returns '' when nothing closes.
+ *
+ * What does NOT close is simply left out (`closedSegmentLoops`), rather than
+ * refusing the whole object: a MERGED object can hold a closed loop and a
+ * loose line at once — flatten a rectangle together with a stroke beside it —
+ * and the rectangle is still an area to paint. The loose chain goes on
+ * drawing as the stroke it is.
  */
 export function buildClosedFillPathD(segments: ReadonlyArray<PathSegment>): string {
-  const loops = chainSegmentsLoops(segments);
-  if (!loops) return '';
-  return loops.map(loop => buildPathD(loop) + ' Z').join(' ');
+  return closedSegmentLoops(segments).map(loop => buildPathD(loop) + ' Z').join(' ');
 }
 
 /**
  * Tile-local variant of buildClosedFillPathD (coordinates relative to minX, minY).
  */
 export function buildTileFillPathD(segments: ReadonlyArray<PathSegment>, minX: number, minY: number): string {
-  const loops = chainSegmentsLoops(segments);
-  if (!loops) return '';
-  return loops.map(loop => buildTilePathD(loop, minX, minY) + ' Z').join(' ');
+  return closedSegmentLoops(segments)
+    .map(loop => buildTilePathD(loop, minX, minY) + ' Z').join(' ');
+}
+
+/**
+ * Whether a vector object ENCLOSES AN AREA — whether there is an interior to
+ * fill at all.
+ *
+ * The geometric question behind the Fill and Pattern pages, and deliberately
+ * not the same as the SUBTYPE question (`svgHasFill`, which says what the
+ * tool that drew it offers): a merged collection of lines is subtype
+ * `stroke` — it has loose ends — and can still hold a perfectly good closed
+ * loop to paint inside. Anything that closes gets an interior, however it
+ * came to be.
+ */
+export function svgEnclosesArea(obj: Pick<SVGObject, 'segments'>): boolean {
+  return closedSegmentLoops(obj.segments).length > 0;
 }
 
 /**
@@ -670,6 +690,29 @@ export function withSVGObjectStrokeColor(
 }
 
 /**
+ * A shape's baked pattern tiles, clipped to its own closed outline — the
+ * markup a pattern fill actually contributes, shared by the live DOM
+ * layer (through {@link buildSVGObjectContent}) and the SVG export, so
+ * the canvas and the exported page cannot clip one pattern two ways.
+ *
+ * '' when there are no tiles or the shape has no closed outline to hold
+ * them: a pattern fill in an unclosed path would spill across the page,
+ * so it draws nothing at all rather than nearly the right thing.
+ *
+ * The clip id is the object's, which is unique within a document by
+ * construction, so two patterned shapes in one export never share one.
+ */
+export function shapePatternFillMarkup(
+  obj: SVGObject, tiles: string, closedD: string,
+): string {
+  if (!tiles || !closedD) return '';
+  const id = `patfill_${obj.id}`;
+  return `<defs><clipPath id="${id}" clipPathUnits="userSpaceOnUse">`
+    + `<path d="${closedD}" fill-rule="nonzero" /></clipPath></defs>`
+    + `<g clip-path="url(#${id})">${tiles}</g>`;
+}
+
+/**
  * Build complete SVG path element(s) for an SVGObject, including
  * multi-color subpath support, optional solid fill, and the object's own
  * per-object stroke settings (see {@link svgStrokePresentation}).
@@ -697,6 +740,17 @@ export function buildSVGObjectContent(
      *  passes 'canvas' and draws the slot after mount; see
      *  {@link PaintOverlaySlot} for why the DOM must not inline pixels. */
     paintOverlaySlot?: PaintOverlaySlot;
+    /** The shape's PATTERN fill, already baked into tile markup in this
+     *  object's own space (`shapePatternFillTiles`) — clipped here to the
+     *  same closed outline the solid fill paints and drawn over it, under
+     *  the strokes.
+     *
+     *  Passed IN rather than baked here because the bake's import chain
+     *  (patternObjectRender → figureToPaths → … → compositionOps) reaches
+     *  back into this module; the clip is built here because it is the
+     *  fill's own outline, corner rounding and all, and neither renderer
+     *  should be building a second copy of it. */
+    patternFillMarkup?: string;
   },
 ): string {
   if (obj.segments.length === 0) return '';
@@ -715,7 +769,8 @@ export function buildSVGObjectContent(
   // svgFillPresentation decides the paint (and skips a pattern-fill mask,
   // whose fill belongs to the tiled figure beneath it).
   const fill = svgFillPresentation(obj, `grad_${obj.id}`);
-  const closedD = fill || obj.paintOverlay ? buildClosedFillPathD(segments) : '';
+  const patternTiles = opts?.patternFillMarkup ?? '';
+  const closedD = fill || obj.paintOverlay || patternTiles ? buildClosedFillPathD(segments) : '';
   let fillMarkup = '';
   if (fill && closedD) {
     fillMarkup = `${fill.defs}<path d="${closedD}" ${fill.attrs} stroke="none" fill-rule="nonzero" />`;
@@ -736,6 +791,12 @@ export function buildSVGObjectContent(
     fillMarkup = `<g style="isolation:isolate">${fillMarkup}${overlay}</g>`;
   }
   result += fillMarkup;
+  // The PATTERN fill (v67), over the solid fill and under the strokes: a
+  // shape carrying both shows its colour through the gaps in the tiles,
+  // and its own outline on top of them either way. Clipped to the fill's
+  // own closed outline — the tiles are baked across the shape's whole box
+  // and it is the clip that makes them a FILL.
+  result += shapePatternFillMarkup(obj, patternTiles, closedD);
 
   if (Array.isArray(obj.subpaths) && obj.subpaths.length > 0) {
     // Fill subpaths first so stroke subpaths draw on top of them.

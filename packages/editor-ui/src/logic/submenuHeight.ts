@@ -146,6 +146,10 @@ export type SubmenuKey =
   | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
   | 'image'
   | 'text' | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
+  // A closed shape's PATTERN fill: the square tile it repeats inside its
+  // outline. The Size slider (how many cells one repeat holds) over the
+  // Edit that opens that tile on the canvas, where it is painted.
+  | 'svgPattern'
   // The Shape page: a polygonal shape's corner Radius (see svgHasShape).
   | 'shape'
   // A frame's Background page: the one hue row its boundary rect's fill reads
@@ -321,6 +325,11 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'shape':
       // The Radius slider alone.
       return contentArea([ROW_SLIDER]);
+    case 'svgPattern':
+      // Size over Edit: how big one repeat is, and the way into painting
+      // it — the tiles themselves are laid ON THE CANVAS, inside the
+      // shape. (The sheet's Remove line is the sheet's own height.)
+      return contentArea([ROW_SLIDER, ROW_SEGMENTED]);
     case 'crop':
       return contentArea(cropRows(ctx.cropMode));
     case 'image':

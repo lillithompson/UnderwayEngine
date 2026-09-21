@@ -1,4 +1,4 @@
-﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CellState, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, PatternObject, PatternSymmetry, RGBColor, TextObject, TextStyle, TextAlign, TextVAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
+﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CellState, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, PatternObject, PatternSymmetry, ShapePatternFill, RGBColor, TextObject, TextStyle, TextAlign, TextVAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
 import { normalizeCanvasPaintIslands } from './canvasPaint';
 import { FADE_DEFAULT_COLOR, hasFade, type FadeSpec } from './fade';
 import { bakeStoredFades } from './fadeBake';
@@ -557,7 +557,24 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //
 //      The bit was always written 0 before, and no text anybody has typed
 //      carries a stretch, so every v65 file reads back byte for byte.
-const FORMAT_VERSION = 66;
+// v67: A SHAPE CAN BE FILLED WITH A PATTERN. `SVGObject.patternFill` — the
+//      square tile a closed shape REPEATS inside its own outline (the
+//      Pattern page; engine/shapePatternFill.ts) — LAST in the svg record,
+//      after the box: size u8 + flags u8 + tileL0 f32 (what one repeat
+//      spans on the page), the optional symmetry (u16) and stroke, then
+//      the filled cells in the SAME codec the pattern-object record has
+//      used since v54 (writePatternCells — one grid, one encoding). A
+//      fill's sprite ids ride the string table beside a pattern object's.
+//
+//      Presence rides the svg ROTATION byte's bit 0x10 — all four svg flag
+//      bytes were spent by v63, and v64's box bit took 0x08 there for the
+//      same reason. The block carries no box, pose, opacity or fade: the
+//      SHAPE's are the fill's, which is what lets a grid ride an svg
+//      record at all.
+//
+//      The bit was always written 0 before, so every v66 file reads back
+//      byte for byte.
+const FORMAT_VERSION = 67;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 const HEADER_SIZE = 8;
@@ -841,6 +858,11 @@ function buildStringTable(
       add(s.groupId);
       add(s.preGroupName);
       add(s.patternFileId);
+      // v67: a pattern FILL's sprite ids ride the table exactly as a
+      // pattern object's do — same tiles, same dedupe.
+      for (const cell of s.patternFill?.cells ?? []) {
+        if (cell?.type === 'sprite') add(cell.spriteId);
+      }
     }
   }
 
@@ -1018,6 +1040,12 @@ const FLAG4_SVG_HAS_SHEAR = 0x80;
 // the box differs from the path's bounds, so an ordinary svg pays the flag
 // byte and nothing else.
 const SVG_ROT_HAS_BOX = 0x08;
+
+// v67+: the shape's PATTERN fill — the grid block, LAST in the record,
+// after the box. The rotation byte's next free bit, for the same reason
+// v64 took 0x08: all four svg flag bytes have been spent since v63.
+// Every earlier writer left it 0, so a v66 file reads back byte for byte.
+const SVG_ROT_HAS_PATTERN_FILL = 0x10;
 /** cellX + cellY + cellWidth + cellHeight, f32 each. */
 const SVG_BOX_BYTES = 16;
 
@@ -1877,6 +1905,7 @@ function svgBinarySize(svg: SVGObject): number {
   if (hasFade(svg)) size += FADE_BYTES; // v62+
   if (hasShear(svg)) size += SHEAR_BYTES; // v63+
   if (hasExplicitSVGBox(svg)) size += SVG_BOX_BYTES; // v64+
+  if (svg.patternFill) size += shapePatternFillBinarySize(svg.patternFill); // v67+
   return size;
 }
 
@@ -2082,6 +2111,7 @@ function writeSVG(
   let rotBits = ROTATION_TO_BITS[svg.rotation ?? 0] & 0x03;
   if (svg.tileMode === 'repeat') rotBits |= 0x04;
   if (hasExplicitSVGBox(svg)) rotBits |= SVG_ROT_HAS_BOX; // v64+
+  if (svg.patternFill) rotBits |= SVG_ROT_HAS_PATTERN_FILL; // v67+
   out[pos++] = rotBits;
 
   out[pos++] = svg.color.r & 0xff;
@@ -2181,11 +2211,12 @@ function writeSVG(
   if (svg.paintOverlay) {
     pos = writePaintOverlay(view, out, pos, svg.paintOverlay);
   }
-  // v62+ the Fade row, then v63+ the shear, then v64+ the box, last in
-  // the record.
+  // v62+ the Fade row, then v63+ the shear, then v64+ the box, then v67+
+  // the pattern fill, last in the record.
   pos = writeFade(out, pos, svg);
   pos = writeShear(view, pos, svg);
   pos = writeSVGBox(view, pos, svg);
+  if (svg.patternFill) pos = writeShapePatternFill(view, out, pos, svg.patternFill, indexOf);
   return pos;
 }
 
@@ -2412,6 +2443,13 @@ function readSVG(
   // from the tile block above, which must stay the last word on its box.
   if (version >= 64 && (rotBits & SVG_ROT_HAS_BOX) && svg.tileMode !== 'repeat') {
     pos = readSVGBox(view, pos, svg);
+  }
+  // v67+ the pattern fill, last in the record, after the box. The bit was
+  // always written 0 before v67.
+  if (version >= 67 && (rotBits & SVG_ROT_HAS_PATTERN_FILL)) {
+    const read = readShapePatternFill(view, data, pos, strings);
+    svg.patternFill = read.fill;
+    pos = read.pos;
   }
 
   // v25+ "Use as mask" flag (presence-only, no payload)
@@ -3777,34 +3815,7 @@ function serializeCompositionAt(
     if (p.symmetry != null) {
       view.setUint16(pos, packPatternSymmetry(p.symmetry), true); pos += 2;
     }
-    const filled: { index: number; cell: NonNullable<CellState> }[] = [];
-    for (let i = 0; i < p.cells.length; i++) {
-      const cell = p.cells[i];
-      if (cell != null) filled.push({ index: i, cell });
-    }
-    view.setUint16(pos, filled.length, true); pos += 2;
-    for (const { index, cell } of filled) {
-      view.setUint16(pos, index, true); pos += 2;
-      let cellFlags = ROTATION_TO_BITS[cell.transform.rotation] & 0x03;
-      if (cell.transform.mirrorH) cellFlags |= 0x04;
-      if (cell.transform.mirrorV) cellFlags |= 0x08;
-      const hasTint = cell.type === 'sprite' && cell.tintR != null;
-      if (cell.type === 'color') cellFlags |= 0x10;
-      if (hasTint) cellFlags |= 0x20;
-      out[pos++] = cellFlags;
-      if (cell.type === 'sprite') {
-        view.setUint16(pos, indexOf.get(cell.spriteId) ?? 0, true); pos += 2;
-        if (hasTint) {
-          out[pos++] = cell.tintR ?? 0;
-          out[pos++] = cell.tintG ?? 0;
-          out[pos++] = cell.tintB ?? 0;
-        }
-      } else {
-        out[pos++] = cell.r;
-        out[pos++] = cell.g;
-        out[pos++] = cell.b;
-      }
-    }
+    pos = writePatternCells(view, out, pos, p.cells, indexOf);
     // v63+ the shear, last in the record, after the filled cells…
     pos = writeShear(view, pos, p);
     // …and v65+ the fade after it.
@@ -3815,6 +3826,151 @@ function serializeCompositionAt(
 }
 
 // ── Pattern object encoding helpers ─────────────────────────────────
+
+/**
+ * A GRID's cells — the filled ones, each with its index, pose and ink.
+ *
+ * One codec, two records: a pattern object's (v54) and the pattern FILL a
+ * closed shape carries (v67). The two grids are the same grid — a fill is
+ * a PatternObject everywhere but on disk (engine/shapePatternFill.ts) —
+ * so they are written and read by the same four functions rather than by
+ * two copies that could disagree about a tint byte.
+ */
+function writePatternCells(
+  view: DataView, out: Uint8Array, pos: number,
+  cells: readonly CellState[], indexOf: Map<string, number>,
+): number {
+  const filled: { index: number; cell: NonNullable<CellState> }[] = [];
+  for (let i = 0; i < cells.length; i++) {
+    const cell = cells[i];
+    if (cell != null) filled.push({ index: i, cell });
+  }
+  view.setUint16(pos, filled.length, true); pos += 2;
+  for (const { index, cell } of filled) {
+    view.setUint16(pos, index, true); pos += 2;
+    let cellFlags = ROTATION_TO_BITS[cell.transform.rotation] & 0x03;
+    if (cell.transform.mirrorH) cellFlags |= 0x04;
+    if (cell.transform.mirrorV) cellFlags |= 0x08;
+    const hasTint = cell.type === 'sprite' && cell.tintR != null;
+    if (cell.type === 'color') cellFlags |= 0x10;
+    if (hasTint) cellFlags |= 0x20;
+    out[pos++] = cellFlags;
+    if (cell.type === 'sprite') {
+      view.setUint16(pos, indexOf.get(cell.spriteId) ?? 0, true); pos += 2;
+      if (hasTint) {
+        out[pos++] = cell.tintR ?? 0;
+        out[pos++] = cell.tintG ?? 0;
+        out[pos++] = cell.tintB ?? 0;
+      }
+    } else {
+      out[pos++] = cell.r;
+      out[pos++] = cell.g;
+      out[pos++] = cell.b;
+    }
+  }
+  return pos;
+}
+
+/** The bytes {@link writePatternCells} will spend on `cells`. */
+function patternCellsBinarySize(cells: readonly CellState[]): number {
+  let size = 2; // filledCount
+  for (const cell of cells) {
+    if (cell == null) continue;
+    size += 3; // index(2) + cellFlags(1)
+    if (cell.type === 'sprite') size += 2 + (cell.tintR != null ? 3 : 0);
+    else size += 3;
+  }
+  return size;
+}
+
+/** Read what {@link writePatternCells} wrote into a `length`-long grid;
+ *  an index past the end is dropped (a truncated or mis-sized record
+ *  loses that cell rather than the file). */
+function readPatternCells(
+  view: DataView, data: Uint8Array, pos: number,
+  length: number, strings: string[],
+): { cells: CellState[]; pos: number } {
+  const cells: CellState[] = new Array(length).fill(null);
+  const filledCount = view.getUint16(pos, true); pos += 2;
+  for (let ci = 0; ci < filledCount; ci++) {
+    const index = view.getUint16(pos, true); pos += 2;
+    const cellFlags = data[pos++];
+    const transform = {
+      rotation: BITS_TO_ROTATION[cellFlags & 0x03],
+      mirrorH: (cellFlags & 0x04) !== 0,
+      mirrorV: (cellFlags & 0x08) !== 0,
+    };
+    let cell: CellState;
+    if (cellFlags & 0x10) {
+      cell = { type: 'color', r: data[pos++], g: data[pos++], b: data[pos++], transform };
+    } else {
+      const spriteId = strings[view.getUint16(pos, true)]; pos += 2;
+      cell = { type: 'sprite', spriteId, transform };
+      if (cellFlags & 0x20) {
+        cell = { ...cell, tintR: data[pos++], tintG: data[pos++], tintB: data[pos++] };
+      }
+    }
+    if (index < cells.length) cells[index] = cell;
+  }
+  return { cells, pos };
+}
+
+// ── The pattern FILL block (v67) ────────────────────────────────────
+// A closed shape's pattern fill, LAST in the svg record: size u8 + flags
+// u8 + tileL0 f32, then the optional symmetry (u16) and stroke, then the
+// cells. The TILE only — a fill is one square repeat, and it has no box,
+// pose or opacity of its own (the shape's are its own), which is what
+// keeps this block small enough to ride an svg record at all.
+const FILL_HAS_SYMMETRY = 0x01;
+const FILL_NO_BORDER_CONNECTIONS = 0x02;
+const FILL_HAS_STROKE = 0x04;
+
+function writeShapePatternFill(
+  view: DataView, out: Uint8Array, pos: number,
+  fill: ShapePatternFill, indexOf: Map<string, number>,
+): number {
+  out[pos++] = fill.size;
+  let flags = 0;
+  if (fill.symmetry != null) flags |= FILL_HAS_SYMMETRY;
+  if (fill.allowBorderConnections === false) flags |= FILL_NO_BORDER_CONNECTIONS;
+  if (hasSVGStroke(fill.stroke)) flags |= FILL_HAS_STROKE;
+  out[pos++] = flags;
+  view.setFloat32(pos, fill.tileL0, true); pos += 4;
+  if (fill.symmetry != null) {
+    view.setUint16(pos, packPatternSymmetry(fill.symmetry), true); pos += 2;
+  }
+  if (hasSVGStroke(fill.stroke)) pos = writeSVGStroke(view, out, pos, fill.stroke!);
+  return writePatternCells(view, out, pos, fill.cells, indexOf);
+}
+
+function shapePatternFillBinarySize(fill: ShapePatternFill): number {
+  let size = 2 + 4; // size + flags + tileL0
+  if (fill.symmetry != null) size += 2;
+  if (hasSVGStroke(fill.stroke)) size += strokeBinarySize(fill.stroke!);
+  return size + patternCellsBinarySize(fill.cells);
+}
+
+function readShapePatternFill(
+  view: DataView, data: Uint8Array, pos: number, strings: string[],
+): { fill: ShapePatternFill; pos: number } {
+  const tileCells = data[pos++];
+  const flags = data[pos++];
+  const tileL0 = view.getFloat32(pos, true); pos += 4;
+  const fill: ShapePatternFill = { size: tileCells, cells: [], tileL0 };
+  if (flags & FILL_HAS_SYMMETRY) {
+    fill.symmetry = unpackPatternSymmetry(view.getUint16(pos, true)); pos += 2;
+  }
+  if (flags & FILL_NO_BORDER_CONNECTIONS) fill.allowBorderConnections = false;
+  if (flags & FILL_HAS_STROKE) {
+    const st = readSVGStroke(view, data, pos);
+    fill.stroke = st.stroke;
+    pos = st.pos;
+  }
+  const read = readPatternCells(view, data, pos, tileCells * tileCells, strings);
+  fill.cells = read.cells;
+  return { fill, pos: read.pos };
+}
+
 
 /** Bit order matches the v54 changelog: H,V,Rotate,Quad,Row,Col,Diag1,
  *  Diag2,DiagBoth,Star (bit 0 → bit 9). */
@@ -3862,14 +4018,7 @@ function patternObjectBinarySize(p: PatternObject): number {
   if (hasShear(p)) size += SHEAR_BYTES; // v63+
   if (hasFade(p)) size += FADE_BYTES; // v65+
   if (p.symmetry != null) size += 2;
-  size += 2; // filledCount
-  for (const cell of p.cells) {
-    if (cell == null) continue;
-    size += 3; // index(2) + cellFlags(1)
-    if (cell.type === 'sprite') size += 2 + (cell.tintR != null ? 3 : 0);
-    else size += 3;
-  }
-  return size;
+  return size + patternCellsBinarySize(p.cells);
 }
 
 // ── Paint island size estimation ────────────────────────────────────
@@ -4459,28 +4608,9 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       if (flags2 & 0x08) {
         p.symmetry = unpackPatternSymmetry(view.getUint16(pos, true)); pos += 2;
       }
-      p.cells = new Array(p.cols * p.rows).fill(null);
-      const filledCount = view.getUint16(pos, true); pos += 2;
-      for (let ci = 0; ci < filledCount; ci++) {
-        const index = view.getUint16(pos, true); pos += 2;
-        const cellFlags = data[pos++];
-        const transform = {
-          rotation: BITS_TO_ROTATION[cellFlags & 0x03],
-          mirrorH: (cellFlags & 0x04) !== 0,
-          mirrorV: (cellFlags & 0x08) !== 0,
-        };
-        let cell: CellState;
-        if (cellFlags & 0x10) {
-          cell = { type: 'color', r: data[pos++], g: data[pos++], b: data[pos++], transform };
-        } else {
-          const spriteId = strings[view.getUint16(pos, true)]; pos += 2;
-          cell = { type: 'sprite', spriteId, transform };
-          if (cellFlags & 0x20) {
-            cell = { ...cell, tintR: data[pos++], tintG: data[pos++], tintB: data[pos++] };
-          }
-        }
-        if (index < p.cells.length) p.cells[index] = cell;
-      }
+      const readCells = readPatternCells(view, data, pos, p.cols * p.rows, strings);
+      p.cells = readCells.cells;
+      pos = readCells.pos;
       // v63+ the shear, last in the record, after the filled cells. Bit
       // 0x20 was always written 0 before v63.
       if (version >= 63 && (flags3 & PATTERN_FLAGS3_HAS_SHEAR)) {

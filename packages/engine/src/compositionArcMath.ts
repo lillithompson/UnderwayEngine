@@ -471,17 +471,26 @@ export function chainSegments(segments: readonly PathSegment[]): PathSegment[] |
 }
 
 /**
- * Chain an unordered bag of segments into one or more closed loops (greedy,
- * with reversal). Returns null if any chain stays open. Used to count and
- * separate the loops in a union result (outer boundary + holes).
+ * Chain an unordered bag of segments (greedy, with reversal), separating what
+ * CLOSES from what does not: the closed loops, and the open chains left over.
+ *
+ * One walk, two questions. `chainSegmentsLoops` asks whether the WHOLE bag
+ * closes (a union result is its outer boundary plus its holes, and all of it
+ * is boundary); `closedSegmentLoops` asks what encloses an area at all, which
+ * is what a FILL is painted in — and those parted company the moment objects
+ * could be merged: flatten a closed shape together with a line beside it and
+ * the bag holds a perfectly good loop with a stray chain next to it.
  */
-export function chainSegmentsLoops(segments: readonly PathSegment[]): PathSegment[][] | null {
+function chainSegmentBag(segments: readonly PathSegment[]): {
+  loops: PathSegment[][]; open: PathSegment[][];
+} {
   const n = segments.length;
-  if (n === 0) return null;
+  const loops: PathSegment[][] = [];
+  const open: PathSegment[][] = [];
+  if (n === 0) return { loops, open };
   const eq = (a: readonly [number, number], b: readonly [number, number]) =>
     Math.abs(a[0] - b[0]) <= 1e-6 && Math.abs(a[1] - b[1]) <= 1e-6;
   const used = new Array<boolean>(n).fill(false);
-  const loops: PathSegment[][] = [];
 
   for (let s = 0; s < n; s++) {
     if (used[s]) continue;
@@ -508,10 +517,36 @@ export function chainSegmentsLoops(segments: readonly PathSegment[]): PathSegmen
         break;
       }
     }
-    if (!eq(loop[0].start, loop[loop.length - 1].end)) return null; // open chain
-    loops.push(loop);
+    if (loop.length > 1 && eq(loop[0].start, loop[loop.length - 1].end)) loops.push(loop);
+    else open.push(loop);
   }
+  return { loops, open };
+}
+
+/**
+ * Chain an unordered bag of segments into one or more closed loops (greedy,
+ * with reversal). Returns null if any chain stays open. Used to count and
+ * separate the loops in a union result (outer boundary + holes), and to ask
+ * whether a path is closed at all ({@link isClosedPath}).
+ */
+export function chainSegmentsLoops(segments: readonly PathSegment[]): PathSegment[][] | null {
+  if (segments.length === 0) return null;
+  const { loops, open } = chainSegmentBag(segments);
+  if (open.length > 0) return null;
   return loops.length > 0 ? loops : null;
+}
+
+/**
+ * The closed loops in a bag of segments — what it ENCLOSES — with any open
+ * chains left out rather than refusing the lot.
+ *
+ * This is the question a fill asks, and it is not the same as "is this path
+ * closed": a merged object can hold a closed loop and a loose line at once
+ * (flatten a rectangle together with a stroke beside it), and the loop is
+ * still an area to paint. Empty when nothing closes.
+ */
+export function closedSegmentLoops(segments: readonly PathSegment[]): PathSegment[][] {
+  return chainSegmentBag(segments).loops;
 }
 
 /**

@@ -47,6 +47,7 @@ describe('the panel swaps the Add page in for an absent effect', () => {
 
   it.each([
     ['svgFill', 'Add Fill'],
+    ['svgPattern', 'Add Pattern'],
     ['shadow', 'Add Drop Shadow'],
     ['border', 'Add Border'],
   ])('%s: absent + onAdd renders EmptyEffectBar labelled %s', (key, label) => {
@@ -63,8 +64,12 @@ describe('the panel swaps the Add page in for an absent effect', () => {
     expect(emptyEffectHeight()).toBeLessThan(submenuHeight('shadow'));
     expect(emptyEffectHeight()).toBeLessThan(submenuHeight('border'));
     expect(emptyEffectHeight()).toBeLessThan(submenuHeight('svgFill'));
+    // …and never taller than the shortest page of all: the Pattern page,
+    // whose controls ARE one button (the Edit that opens the grid on the
+    // canvas), so there is nothing for its Add page to stand in for.
+    expect(emptyEffectHeight()).toBeLessThanOrEqual(submenuHeight('svgPattern'));
     // Every Add branch flags the page, and the height reads the flag.
-    expect(panel.match(/addPage = true;/g)).toHaveLength(4);
+    expect(panel.match(/addPage = true;/g)).toHaveLength(5);
     expect(panel).toContain('addPage ? emptyEffectHeight() : submenuHeight(displaySub, {');
   });
 
@@ -81,6 +86,7 @@ describe('the panel swaps the Add page in for an absent effect', () => {
     expect(panel).toContain("removeAction = { label: 'Remove drop shadow', onPress: removeShadow };");
     expect(panel).toContain("removeAction = { label: 'Remove border', onPress: removeBorder };");
     expect(panel).toContain("removeAction = { label: 'Remove stroke', onPress: removeStroke };");
+    expect(panel).toContain("removeAction = { label: 'Remove pattern', onPress: () => model.onRemoveSvgPattern?.() };");
   });
 
   it('stroke: an outline-less closed shape opens on Add Stroke', () => {
