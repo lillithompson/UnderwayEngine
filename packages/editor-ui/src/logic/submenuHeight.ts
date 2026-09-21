@@ -200,12 +200,10 @@ export type SubmenuKey =
   // …and the one page of a rig that is not a posture: the two colours the
   // sketch is drawn in — its opaque volumes and the outlines over them.
   | 'rigColor'
-  // A pattern object's pages: the Tile page (its Repeat toggle), the tile
-  // menu, the grid tools, the painting-symmetry grid — and Patchwork, the
-  // one that makes rather than sets: the button that cuts the pattern's
-  // drawing into a closed shape per region.
-  | 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry'
-  | 'patternPatchwork';
+  // A pattern object's pages: the Tile page (its Repeat toggle and the
+  // Create patches button beside it), the tile menu, the grid tools, and
+  // the painting-symmetry grid.
+  | 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry';
 
 /** The current state of everything that changes a page's row count. Values are
  *  optional so a caller can describe only the pages its selection can open; a
@@ -455,7 +453,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return bareArea([tabbed, ROW_SEGMENTED], GROUP_GAP);
     }
     case 'patternTile':
-      // The Tile page: the Repeat switch, and nothing else.
+      // The Tile page: the Repeat switch, with Create patches hung at the
+      // right end of that same line — so still one row, not two.
       return contentArea([ROW_SWITCH]);
     case 'patternTiles':
       // The arming grid: two rows of square buttons.
@@ -470,10 +469,6 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       const mainRows = 2 + (ctx.patternCanRepeat ? 1 : 0) + (setCount > 0 ? 1 : 0);
       return contentArea(new Array(mainRows).fill(ROW_SEGMENTED));
     }
-    case 'patternPatchwork':
-      // Create patches, alone on its line — the Add pages' shape (one
-      // button, one row), because it is one act and nothing else.
-      return contentArea([ROW_SEGMENTED]);
     case 'patternSymmetry':
       // The mode grid: twelve SQUARE buttons (the eleven modes and Off),
       // six across, two rows — at every sheet width, because the grid is

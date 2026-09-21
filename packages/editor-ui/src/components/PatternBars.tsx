@@ -35,9 +35,6 @@ import { PatternTileTransformModal } from './PatternTileTransformModal';
 //                the grid edge, and the tile-set filter.
 //   • Symmetry — the painting-mirror grid (the old symmetry modal's modes),
 //                exclusive, with Off closing the set.
-//   • Patchwork — the one page that MAKES rather than sets: a single button
-//                that cuts the drawing into a closed shape per region of the
-//                pattern's own bounding box and lays them behind it.
 
 export function PatternTilesBar({ model }: {
   model: ObjectPropertiesModel;
@@ -170,7 +167,7 @@ export function PatternTilesBar({ model }: {
  */
 export function PatternRepeatRow({ model, trailing }: {
   model: ObjectPropertiesModel;
-  /** Hung at the row's right end — the Tile page's Edit button. */
+  /** Hung at the row's right end — the Tile page's Create patches button. */
   trailing?: React.ReactNode;
 }) {
   if (!model.onToggleRepeat) return null;
@@ -192,29 +189,41 @@ export function PatternRepeatRow({ model, trailing }: {
 
 /**
  * The Tile page: the object's Repeat toggle, and — at the far right of
- * that same line — the way INTO the grid, Edit.
+ * that same line — the page's one ACT, Create patches.
  *
- * Edit opens the pattern for editing: the double border comes up on it, it
- * becomes the one grid the Tile tool may rework, and the tile tool is armed
- * for it. The host's floating Edit capsule does exactly this from the
- * canvas (one callback, so the two can't come to mean different things);
- * the page offers it as well because the page is where you already are when
- * you have gone looking for what this object can do.
+ * Create patches cuts the pattern's drawing into the regions it divides
+ * its own bounding box into — the Patchwork game's patches, of this
+ * pattern instead of the day's line — and lays one closed shape per region
+ * behind the pattern, in one undo step. It does not SET anything about the
+ * pattern, which is why it is a button and not a row of controls: the
+ * regions are a fact about the drawing, not a setting anyone picks.
+ *
+ * It had a tab of its own for a day (Patchwork) and lost it: a whole page
+ * holding a single button is a place to go for something that could simply
+ * be pressed, and this page had the width to spare. It stands where the
+ * Edit button used to (2026-09-21) — the way into the grid is the canvas's
+ * floating Edit capsule, which is where you are when you want it.
  *
  * It shares the switch's line rather than taking one of its own: a page
  * holding a single setting has the width to spare, and a second row for one
  * button would make the sheet taller for nothing. The style is the Add
  * pages' button (EffectButton — "Add Stroke", "Add Fill"), in its inline
- * form: this is the page's one ACT, which is the same kind of thing those
- * are, so it looks the same.
+ * form: this is the same kind of act those are, so it looks the same. A
+ * host that offers no callback — a selection with nothing to cut — gets no
+ * button, and the row is the switch alone.
  */
 export function PatternTileBar({ model }: { model: ObjectPropertiesModel }) {
   return (
     <BarBody>
       <PatternRepeatRow
         model={model}
-        trailing={model.onPatternEdit ? (
-          <EffectButton label="Edit" icon="pencil" layout="inline" onPress={model.onPatternEdit} />
+        trailing={model.onPatternCreatePatches ? (
+          <EffectButton
+            label="Create patches"
+            icon="shape-plus"
+            layout="inline"
+            onPress={model.onPatternCreatePatches}
+          />
         ) : null}
       />
     </BarBody>
@@ -328,33 +337,6 @@ export function PatternSymmetryGrid({ value, onPick }: {
         );
       })}
     </View>
-  );
-}
-
-/**
- * The Patchwork page: Create patches, and nothing else.
- *
- * The one page on this sheet that MAKES rather than SETS. A press cuts the
- * pattern's drawing into the regions it divides its own bounding box into —
- * the Patchwork game's patches, of this pattern instead of the day's line —
- * and lays one closed shape per region behind the pattern, in one undo step.
- *
- * So it is a BUTTON and not a row of controls, and it wears the Add pages'
- * dress (EffectButton — "Add Stroke", "Add Fill"): those are the sheet's
- * other acts, and this is the same kind of thing. It is alone on its page
- * because there is nothing to set about it — the regions are a fact about
- * the drawing, not a setting anyone picks.
- */
-export function PatternPatchworkBar({ model }: { model: ObjectPropertiesModel }) {
-  if (!model.onPatternCreatePatches) return null;
-  return (
-    <BarBody>
-      <EffectButton
-        label="Create patches"
-        icon="shape-plus"
-        onPress={model.onPatternCreatePatches}
-      />
-    </BarBody>
   );
 }
 

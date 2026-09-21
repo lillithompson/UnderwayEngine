@@ -512,21 +512,14 @@ export interface ObjectPropertiesModel {
     id: string,
     transform: import('./logic/patternEdit').PatternTileTransform,
   ): void;
-  /** Open the selected pattern FOR EDITING — the double border comes up on
-   *  it, it becomes the one grid the tile tool may rework, and that tool is
-   *  armed for it. The Tile page's Edit button, at the right of its Repeat
-   *  row; the host's floating Edit capsule presses the same callback, so a
-   *  page that offers it and a capsule that offers it always do one thing.
-   *  Unset when there is no grid to open (no single pattern selected, or the
-   *  one selected is already open) — the button goes with it. */
-  onPatternEdit?(): void;
-  /** CREATE PATCHES (the Patchwork page): cut the pattern's drawing into one
-   *  closed shape per region of its own bounding box and place them, in one
-   *  undo step. The pattern itself is not changed — this ADDS objects beside
-   *  it, the only page on the sheet that does.
+  /** CREATE PATCHES (the Tile page, at the right of its Repeat row): cut the
+   *  pattern's drawing into one closed shape per region of its own bounding
+   *  box and place them, in one undo step. The pattern itself is not changed
+   *  — this ADDS objects beside it, the only thing on the sheet that does,
+   *  which is why it is a button rather than a setting.
    *
    *  Unset when there is nothing to cut (no single pattern selected), and
-   *  the page's one button goes with it. */
+   *  the button goes with it — the Repeat row is then the whole page. */
   onPatternCreatePatches?(): void;
   /** Arm the random brush / eraser as the painting sub-tool. */
   onPatternArmTool?(tool: 'random' | 'erase'): void;

@@ -340,7 +340,7 @@ export const PATTERN_GRID_ACTIONS: readonly { action: PatternGridAction; label: 
 
 // ── The options row ─────────────────────────────────────────────────
 
-export type PatternEditAction = 'tile' | 'symmetry' | 'patchwork' | 'tiles' | 'tools';
+export type PatternEditAction = 'tile' | 'symmetry' | 'tiles' | 'tools';
 
 export interface PatternEditOption {
   action: PatternEditAction;
@@ -348,9 +348,9 @@ export interface PatternEditOption {
 }
 
 /** The pattern type options, in display order: the Tile page, which holds
- *  the Repeat toggle and nothing else, the Symmetry page, and the Patchwork
- *  page — the panel adds the Stroke and Opacity bars beside them, so a
- *  pattern's page reads Tile · Symmetry · Patchwork · Stroke · Opacity.
+ *  the Repeat toggle and the Create patches button, and the Symmetry page —
+ *  the panel adds the Stroke and Opacity bars beside them, so a pattern's
+ *  page reads Tile · Symmetry · Stroke · Opacity.
  *
  *  The row emptied out first: Tiles and Symmetry came off (2026-09-10 —
  *  the canvas paints from the Tile tool's own choice and mirrors by the
@@ -370,27 +370,25 @@ export interface PatternEditOption {
  *  (PatternEditAction, patternActionSubmenu) for a host that opens them
  *  itself.
  *
- *  PATCHWORK came last (2026-09-21) and is the odd one out: its page does
- *  not SET anything about the pattern, it MAKES something out of it — one
- *  closed shape per region the pattern's drawing cuts its own bounding box
- *  into, the way the Patchwork game's page opens with a patch per region of
- *  the day's line. It sits among the pattern's own pages rather than the
- *  panel's shared ones because only a pattern has regions to cut. */
+ *  PATCHWORK had a page of its own for a day (2026-09-21) and lost it the
+ *  same week: cutting the drawing into one closed shape per region of its
+ *  bounding box is a single ACT, and a whole tab that holds one button is a
+ *  place to go for something that could simply be pressed. Create patches
+ *  moved onto the Tile page's spare width — where Edit used to sit — and
+ *  the tab came off the row. */
 export const PATTERN_EDIT_OPTIONS: readonly PatternEditOption[] = [
   { action: 'tile', label: 'Tile' },
   { action: 'symmetry', label: 'Symmetry' },
-  { action: 'patchwork', label: 'Patchwork' },
 ];
 
 /** The submenu key an action's bar rides under (see submenuHeight's
  *  SubmenuKey), and its inverse — the same pairing rigEdit keeps. */
 export function patternActionSubmenu(
   action: PatternEditAction,
-): 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry' | 'patternPatchwork' {
+): 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry' {
   return action === 'tile' ? 'patternTile'
     : action === 'tiles' ? 'patternTiles'
     : action === 'tools' ? 'patternTools'
-    : action === 'patchwork' ? 'patternPatchwork'
     : 'patternSymmetry';
 }
 
@@ -398,7 +396,6 @@ export function patternActionOfSubmenu(key: string): PatternEditAction | null {
   return key === 'patternTile' ? 'tile'
     : key === 'patternTiles' ? 'tiles'
     : key === 'patternTools' ? 'tools'
-    : key === 'patternPatchwork' ? 'patchwork'
     : key === 'patternSymmetry' ? 'symmetry'
     : null;
 }

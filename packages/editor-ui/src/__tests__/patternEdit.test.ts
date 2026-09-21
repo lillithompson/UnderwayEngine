@@ -35,35 +35,39 @@ import {
 } from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
-  it('offers Tile, Symmetry and Patchwork — the panel adds Stroke and Opacity beside them', () => {
+  it('offers Tile and Symmetry — the panel adds Stroke and Opacity beside them', () => {
     // Tiles and Tools stay off the row (their work is the canvas's tools
     // and the host's floating capsule). Repeat came BACK on it as the Tile
     // page, and Symmetry came back beside it: both are properties of the
     // object, which is what this panel is for. The mirror in particular is
     // the pattern's OWN now, not the mode the canvas toolbar is in.
-    // Patchwork is last and is not a property at all — it is the one page
-    // that MAKES something (a closed shape per region of the drawing).
     expect(PATTERN_EDIT_OPTIONS.map((o) => [o.action, o.label]))
-      .toEqual([['tile', 'Tile'], ['symmetry', 'Symmetry'], ['patchwork', 'Patchwork']]);
+      .toEqual([['tile', 'Tile'], ['symmetry', 'Symmetry']]);
     // The bars all stand, keyed and sized — the two off the row for a
-    // host that opens them itself, the three pages for this one.
-    for (const action of ['tile', 'tiles', 'tools', 'symmetry', 'patchwork'] as const) {
+    // host that opens them itself, the two pages for this one.
+    for (const action of ['tile', 'tiles', 'tools', 'symmetry'] as const) {
       const sub = patternActionSubmenu(action);
       expect(patternActionOfSubmenu(sub)).toBe(action);
       expect(submenuHeight(sub)).toBeGreaterThan(0);
     }
   });
 
-  it('the Patchwork page is one button, and its button is the only way to it', () => {
-    // The page holds Create patches and nothing else, so it stands one row
-    // tall — and it draws nothing at all for a host that offers no callback,
-    // which is how a selection with nothing to cut says so.
-    expect(submenuHeight('patternPatchwork')).toBe(submenuHeight('patternTile'));
+  it('has no Patchwork page: its one button rides the Tile page instead', () => {
+    // A whole tab holding a single button is a place to go for something
+    // that could simply be pressed — so the tab came off the row, the key
+    // came off SubmenuKey, and Create patches took the Tile page's spare
+    // width (where Edit used to sit).
+    expect(PATTERN_EDIT_OPTIONS.map((o) => o.action)).not.toContain('patchwork');
+    expect(patternActionOfSubmenu('patternPatchwork')).toBeNull();
     const SRC = readFileSync(
       resolve(__dirname, '../components/PatternBars.tsx'), 'utf8',
     );
+    expect(SRC).not.toContain('PatternPatchworkBar');
     expect(SRC).toContain('label="Create patches"');
-    expect(SRC).toContain('if (!model.onPatternCreatePatches) return null;');
+    const PANEL_SRC = readFileSync(
+      resolve(__dirname, '../components/ObjectPropertiesPanel.tsx'), 'utf8',
+    );
+    expect(PANEL_SRC).not.toContain('patternPatchwork');
   });
 
   it('the Tools bar runs Flood, Close and Clear on the grid', () => {
@@ -665,8 +669,8 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     expect(PANEL).toContain('<PatternTileBar model={model} />');
   });
 
-  it('carries Edit at the right end of that same line', () => {
-    // The way INTO the grid, on the page that is already about this object.
+  it('carries Create patches at the right end of that same line', () => {
+    // The page's one ACT, on the page that is already about this object.
     // It shares the switch's line rather than taking one of its own: a page
     // holding a single setting has the width, and a second row for one
     // button would make the sheet taller for nothing — so the page's
@@ -675,10 +679,13 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
       BARS.indexOf('export function PatternTileBar'),
       BARS.indexOf('export function PatternToolsBar'),
     );
-    expect(tileBar).toContain('trailing={model.onPatternEdit ? (');
-    expect(tileBar).toContain(
-      '<EffectButton label="Edit" icon="pencil" layout="inline" onPress={model.onPatternEdit} />',
-    );
+    expect(tileBar).toContain('trailing={model.onPatternCreatePatches ? (');
+    expect(tileBar).toContain('label="Create patches"');
+    expect(tileBar).toContain("layout=\"inline\"");
+    expect(tileBar).toContain('onPress={model.onPatternCreatePatches}');
+    // Edit is gone from the page — the way INTO the grid is the canvas's
+    // floating Edit capsule, and the callback the page pressed went with it.
+    expect(tileBar).not.toContain('onPatternEdit');
     // …and the row hangs it hard right, clear of the ON / OFF word.
     const effects = readFileSync(resolve(__dirname, '..', 'components', 'effectBar.tsx'), 'utf8');
     expect(effects).toContain('{trailing ? <View style={styles.switchTrailing}>{trailing}</View> : null}');
@@ -693,11 +700,12 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     expect(BARS).toContain("import { ActionRow, BarBody, EffectButton, SegmentedRow, SwitchRow } from './effectBar';");
   });
 
-  it('takes the way in as a host callback, so a host can withhold it', () => {
-    // Unset when there is no grid to open — no single pattern selected, or
-    // the one selected is already open — and the button goes with it.
+  it('takes the act as a host callback, so a host can withhold it', () => {
+    // Unset when there is nothing to cut (no single pattern selected), and
+    // the button goes with it — the Repeat row is then the whole page.
     const adapter = readFileSync(resolve(__dirname, '..', 'adapter.ts'), 'utf8');
-    expect(adapter).toContain('onPatternEdit?(): void;');
+    expect(adapter).toContain('onPatternCreatePatches?(): void;');
+    expect(adapter).not.toContain('onPatternEdit');
   });
 
   it("is gone from the pattern's type row, but kept on the svg branch", () => {
