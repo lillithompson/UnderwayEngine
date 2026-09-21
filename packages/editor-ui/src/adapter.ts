@@ -738,10 +738,12 @@ export interface ObjectPropertiesModel {
    *  at that resolution, which is one undo step and not something to do
    *  sixty times a second. */
   onSvgPatternSize?(size: number): void;
-  /** How many composition GRID SQUARES one repeat spans — the page's SIZE
-   *  slider, a quarter-square to eight in quarter steps. The other half of
-   *  the pair: Resolution says how finely the repeat is cut, Size says how
-   *  big it draws, and moving one leaves the other alone. */
+  /** How big one repeat draws, in TENTHS of the width of the shape being
+   *  filled — the page's SIZE slider, 1 to 10 in whole steps: 10 puts one
+   *  repeat across the whole shape, 1 steps ten of them across it. The
+   *  other half of the pair: Resolution says how finely the repeat is
+   *  cut, Size says how big it draws, and moving one leaves the other
+   *  alone. */
   svgPatternSpan?: number;
   /** Commit a new repeat size. Called on RELEASE only, like the row above
    *  — but this one does NOT re-roll: the same motif at a new scale is

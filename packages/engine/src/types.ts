@@ -1301,17 +1301,21 @@ export interface ShapePatternFill {
   /** Row-major cell states, length size*size; null is an empty cell. */
   cells: CellState[];
   /** What one repeat SPANS, in world cells — the tile's edge on the page,
-   *  and the Pattern page's SIZE slider read in grid squares
-   *  (engine/shapePatternFill's shapePatternSpanGrid). Set at creation to
-   *  one grid square and moved two ways: the Resolution slider rescales it
-   *  so the CELLS keep their size and the repeat grows around them, while
-   *  the Size slider sets it outright and the cells scale with it.
+   *  and what the Pattern page's SIZE slider sets, that row reading it as
+   *  TENTHS of the shape's own width: 10 is one repeat across the whole
+   *  shape, 1 is ten of them (engine/shapePatternFill's
+   *  shapePatternSpanOfWidth). Set at creation to one composition grid
+   *  square, so a seeded pattern lands on the page's lattice, and moved
+   *  only by that row — the Resolution slider leaves it exactly alone,
+   *  cutting the repeat finer in place, which is what makes the two rows
+   *  independent.
    *
    *  Absolute, not a fraction of the shape: resizing a patterned shape
    *  lays MORE copies rather than stretching the one, which is the rule a
-   *  repeat-mode pattern object already goes by. A group's scale does
-   *  carry the tile with it (the leaf's matrix scales it — see
-   *  `shapePatternGrid`), so a scaled group keeps its repetition count. */
+   *  repeat-mode pattern object already goes by (the Size row then reads
+   *  the new fraction). A group's scale does carry the tile with it (the
+   *  leaf's matrix scales it — see `shapePatternGrid`), so a scaled group
+   *  keeps its repetition count. */
   tileL0: number;
   /** Painting symmetry (the Pattern page's Symmetry row). Undefined = off. */
   symmetry?: PatternSymmetry;

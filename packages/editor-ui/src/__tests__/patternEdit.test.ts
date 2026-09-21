@@ -774,12 +774,12 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
 
   it('puts a SIZE row under Resolution, for how big the repeat draws', () => {
     // Two independent questions about one tile: Resolution cuts it finer,
-    // Size scales the whole motif. The Size row is measured in grid
-    // squares and steps in quarters, which keeps the tile lattice a
-    // sub-lattice of the page's own.
-    expect(PANEL).toContain('const MIN_SVG_PATTERN_SPAN = 0.25;');
-    expect(PANEL).toContain('const MAX_SVG_PATTERN_SPAN = 8;');
-    expect(PANEL).toContain('const SVG_PATTERN_SPAN_STEP = 0.25;');
+    // Size scales the whole motif. The Size row is ten whole steps, read
+    // as TENTHS of the width of the shape being filled — 10 draws one
+    // repeat across the whole of it, 1 steps ten of them across.
+    expect(PANEL).toContain('const MIN_SVG_PATTERN_SPAN = 1;');
+    expect(PANEL).toContain('const MAX_SVG_PATTERN_SPAN = 10;');
+    expect(PANEL).toContain('const SVG_PATTERN_SPAN_STEP = 1;');
     expect(PANEL).toContain('label="Size"');
     expect(PANEL).toContain('model.onSvgPatternSpan?.(next);');
     // …under Resolution, not over it.

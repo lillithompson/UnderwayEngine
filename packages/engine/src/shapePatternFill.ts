@@ -10,10 +10,11 @@
  * The page asks two independent questions about that tile. Resolution is
  * how finely one repeat is cut (`size`): raising it holds the repeat where
  * it is and cuts it into smaller cells. SIZE is how big the repeat itself
- * draws (`tileL0`, {@link setShapePatternSpan}): moving it scales the
- * whole motif, cells and all, and leaves the cell count alone. The two
- * stored numbers are the two sliders, one each, so moving either leaves
- * the other's handle exactly where it stood.
+ * draws (`tileL0`, {@link setShapePatternSpan}), in tenths of the shape's
+ * own width — 10 is one repeat across the whole of it, 1 is ten repeats:
+ * moving it scales the whole motif, cells and all, and leaves the cell
+ * count alone. The two stored numbers are the two sliders, one each, so
+ * moving either leaves the other's handle exactly where it stood.
  *
  * The tile is the pattern kind's own grid, not a second one. Everything
  * about WHERE a pattern sits — box, quarter turn, mirrors, opacity, fade —
@@ -68,11 +69,13 @@ export const DEFAULT_SHAPE_PATTERN_SIZE = 2;
  * composition's grid: two, so its tiles are drawn at TWICE the grid's own
  * resolution.
  *
- * It is what makes the Size slider's number read as a count of repeats
- * rather than of grid squares: at 2 cells per square, a 2×2 tile spans one
- * square, so a shape two squares across shows the pattern twice. (The
- * pattern TOOL's dragged region is one cell per square — a region is a
- * patch of grid, where a fill is a motif inside a shape.)
+ * It is the CREATION pitch only — a fresh fill lands on the lattice the
+ * rest of the page is drawn to, at half its pitch, so a seeded pattern
+ * lines up with the drawing around it. What the Size row then says about
+ * that tile is measured against the SHAPE, not against this
+ * ({@link shapePatternSpanOfWidth}). (The pattern TOOL's dragged region is
+ * one cell per square — a region is a patch of grid, where a fill is a
+ * motif inside a shape.)
  */
 export const SHAPE_PATTERN_CELLS_PER_GRID = 2;
 
@@ -93,24 +96,40 @@ export function shapePatternCellL0(fill: ShapePatternFill): number {
 }
 
 /**
- * The SIZE slider's range: one repeat spans a quarter of a composition
- * grid square to eight of them, in quarter-square steps.
+ * The SIZE slider's range: 1 to 10, in whole steps, read as TENTHS of the
+ * width of the shape being filled.
  *
- * Quarters rather than a free number so the tile lattice stays a
- * SUB-LATTICE of the composition's own — every repeat edge still lands on
- * a gridline the rest of the page is drawn to, at one, two or four times
- * its pitch. A free scale would drift the pattern off the grid it shares
- * the page with, which reads as a pattern that is slightly wrong
- * everywhere rather than as a smaller one.
+ * 10 is one repeat across the whole shape — the motif drawn once, as big
+ * as the area it fills. 1 is a repeat a tenth of that width, so ten of
+ * them step across it. Every number in between is that fraction: 5 is
+ * half the width, two repeats across.
  *
- * A fresh fill opens at 1: one repeat to the grid square, which is what
- * `buildShapePatternFill` lays down (`size` cells at
- * {@link SHAPE_PATTERN_CELLS_PER_GRID} to the square).
+ * Measured against the SHAPE rather than against the page's grid, because
+ * what a pattern looks like is how many times it repeats inside the
+ * outline you can see — a repeat that reads as fine cloth in a big patch
+ * reads as two big blobs in a small one, at the very same number of grid
+ * squares. Whole tenths keep the row's ten stops nameable; the tile
+ * lattice no longer needs to be a sub-lattice of the page's, the shape's
+ * own edges being what a fill is measured and clipped by.
+ *
+ * What is STORED is still absolute world cells ({@link ShapePatternFill}'s
+ * `tileL0`), so resizing a patterned shape lays more or fewer copies
+ * rather than stretching the one — and the row then reads the new
+ * fraction, which is the truth about the pattern, it having not moved.
  */
-export const MIN_SHAPE_PATTERN_SPAN = 0.25;
-export const MAX_SHAPE_PATTERN_SPAN = 8;
-export const SHAPE_PATTERN_SPAN_STEP = 0.25;
-export const DEFAULT_SHAPE_PATTERN_SPAN = 1;
+export const MIN_SHAPE_PATTERN_SPAN = 1;
+export const MAX_SHAPE_PATTERN_SPAN = 10;
+export const SHAPE_PATTERN_SPAN_STEP = 1;
+
+/** The slider's top, which is also its unit: a span of N means N/10 of the
+ *  shape's width, so MAX is the whole of it. One name for the two, so the
+ *  "1 means a tenth" rule cannot drift from the range that states it. */
+export const SHAPE_PATTERN_SPAN_SCALE = MAX_SHAPE_PATTERN_SPAN;
+
+/** Where the row sits for a fill whose tile says nothing readable — a
+ *  fifth of the shape, five repeats across. Only the clamp's fallback for
+ *  a non-finite number; a real fill's span is read off its tile. */
+export const DEFAULT_SHAPE_PATTERN_SPAN = 2;
 
 /** `span` clamped into the Size slider's range and put on its step. */
 export function clampShapePatternSpan(span: number): number {
@@ -120,24 +139,28 @@ export function clampShapePatternSpan(span: number): number {
 }
 
 /**
- * How many GRID SQUARES one repeat spans — the Size slider's number, and
- * the other half of the pair the Pattern page asks about a tile.
+ * Where the Size row's handle sits for a fill inside a shape `widthL0`
+ * wide: the repeat as tenths of that width, on the slider's own step.
+ *
+ * The other half of the pair the Pattern page asks about a tile.
  * RESOLUTION (`size`) is how finely the repeat is cut; SIZE is how big it
  * draws. The two are independent: moving one leaves the other where it is.
  *
- * `step` is the composition's grid step ({@link compSnapStep} of its
- * level), the same one `buildShapePatternFill` seeds `tileL0` from. The
- * stored quantity is absolute world cells, so a composition that later
- * changes grid level reads its patterns at a different number of squares —
- * which is the truth about them, the pattern having not moved.
+ * `widthL0` is the shape's own box width in world cells — its local frame,
+ * the same one the tile is laid in, so a group's scale (which carries both)
+ * cannot change the number. Clamped, so a tile finer or coarser than the
+ * row can say still seats the handle at an end of the track rather than
+ * off it.
  */
-export function shapePatternSpanGrid(fill: ShapePatternFill, step: number): number {
-  return fill.tileL0 / (step > 0 ? step : 1);
+export function shapePatternSpanOfWidth(fill: ShapePatternFill, widthL0: number): number {
+  const width = widthL0 > 0 ? widthL0 : 1;
+  return clampShapePatternSpan((fill.tileL0 / width) * SHAPE_PATTERN_SPAN_SCALE);
 }
 
 /**
  * The same fill with its repeat at a new SPAN — what the Pattern page's
- * Size slider commits.
+ * Size slider commits: `span` tenths of the shape's width, written down as
+ * the absolute tile the fill stores.
  *
  * The CELLS are untouched, unlike a resolution change
  * ({@link resizeShapePatternFill}, which re-rolls): the same motif at a
@@ -150,9 +173,10 @@ export function shapePatternSpanGrid(fill: ShapePatternFill, step: number): numb
  * lands where it started commits nothing.
  */
 export function setShapePatternSpan(
-  fill: ShapePatternFill, span: number, step: number,
+  fill: ShapePatternFill, span: number, widthL0: number,
 ): ShapePatternFill {
-  const tileL0 = clampShapePatternSpan(span) * (step > 0 ? step : 1);
+  const width = widthL0 > 0 ? widthL0 : 1;
+  const tileL0 = (clampShapePatternSpan(span) / SHAPE_PATTERN_SPAN_SCALE) * width;
   if (tileL0 === fill.tileL0) return fill;
   return { ...fill, tileL0 };
 }
@@ -320,6 +344,12 @@ export function shapePatternFillIsEmpty(fill: ShapePatternFill | undefined): boo
  * ONE square, and a shape two squares across repeats it twice; the tiles
  * still land on the lattice everything else is drawn on, at half its
  * pitch.
+ *
+ * The page's Size row then reads that tile against the SHAPE rather than
+ * against the grid ({@link shapePatternSpanOfWidth}), so where its handle
+ * opens depends on how big the shape is — a fresh fill in a small shape
+ * opens nearer the top of the row than the same fill in a large one,
+ * which is what the row is for.
  *
  * `flood` fills it with connectivity-respecting random tiles under
  * `symmetry`, in the ink `tint` — which is what makes an added pattern

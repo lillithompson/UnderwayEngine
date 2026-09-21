@@ -164,20 +164,19 @@ const MIN_SVG_PATTERN_SIZE = 1;
 const MAX_SVG_PATTERN_SIZE = 8;
 const DEFAULT_SVG_PATTERN_SIZE = 2;
 
-// …and how big that repeat DRAWS: the Size row, in composition grid
-// squares, a quarter-square to eight of them in quarter steps. Mirrors the
-// engine's MIN/MAX/STEP_SHAPE_PATTERN_SPAN on the same engine-import-free
-// rule as the resolution numbers above. Quarters keep the tile lattice a
-// sub-lattice of the page's own grid, so a repeat edge still lands on a
-// gridline whatever the slider says.
-const MIN_SVG_PATTERN_SPAN = 0.25;
-const MAX_SVG_PATTERN_SPAN = 8;
-const SVG_PATTERN_SPAN_STEP = 0.25;
-const DEFAULT_SVG_PATTERN_SPAN = 1;
+// …and how big that repeat DRAWS: the Size row, 1 to 10 in whole steps,
+// read as TENTHS of the width of the shape being filled — 10 draws one
+// repeat across the whole shape, 1 steps ten of them across it. Mirrors
+// the engine's MIN/MAX/STEP_SHAPE_PATTERN_SPAN on the same
+// engine-import-free rule as the resolution numbers above.
+const MIN_SVG_PATTERN_SPAN = 1;
+const MAX_SVG_PATTERN_SPAN = 10;
+const SVG_PATTERN_SPAN_STEP = 1;
+const DEFAULT_SVG_PATTERN_SPAN = 2;
 
 /** The Size row's number, written the shortest way that is still exact:
- *  "1", "1.5", "0.25". A trailing ".00" on a slider readout reads as
- *  precision the control does not have. */
+ *  "1", "10". A trailing ".00" on a slider readout reads as precision the
+ *  control does not have. */
 const spanText = (span: number): string => String(Number(span.toFixed(2)));
 
 /** The Pattern page's three sections, in display order: the tile itself,
@@ -1357,8 +1356,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
                 },
               }}
             />
-            {/* …and how big that repeat DRAWS, under it. The pair is the
-                whole of what a tile is: Resolution cuts the repeat finer
+            {/* …and how big that repeat DRAWS, under it, in tenths of the
+                filled shape's width — 10 is the motif drawn once across
+                the whole shape, 1 is ten repeats. The pair is the whole
+                of what a tile is: Resolution cuts the repeat finer
                 without moving it, Size scales the whole motif without
                 re-cutting it, and neither handle moves the other.
                 Unlike Resolution this one never re-rolls — the same
