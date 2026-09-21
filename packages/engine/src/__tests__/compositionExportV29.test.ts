@@ -388,24 +388,57 @@ describe('generateCompositionSVGCore — node effects', () => {
     expect(svg).toContain(`<feMorphology in="SourceAlpha" operator="dilate" radius="${((4 - 0.5) / 2) * U}"`);
   });
 
-  it('…and its GLOWS are dilated the same way, by the same rule', async () => {
+  it('…and its OUTER glow is dilated the same way, by the same rule', async () => {
     // The second half of the same bug: an outer glow blurs that same
-    // hairline, and an inner one has no INSIDE to gather in at all. Both
-    // read the floor off their own radius — see outlineCastEffects.test.ts
-    // for the rule itself; this is that it reaches the export.
+    // hairline. It reads the floor off its own radius — see
+    // outlineCastEffects.test.ts for the rule itself; this is that it
+    // reaches the export.
     const glow = { radius: 4, color: { r: 255, g: 255, b: 255 }, alpha: 0.6 };
     const svg = await generateCompositionSVGCore(makeInputs({
-      svgObjects: [makeSquareSvg({
-        stroke: { width: 0.5 },
-        effects: { glow, innerGlow: glow },
-      })],
+      svgObjects: [makeSquareSvg({ stroke: { width: 0.5 }, effects: { glow } })],
     }));
     const dilate = ((4 - 0.5) / 2) * U;
     expect(svg).toContain(`<feMorphology in="SourceAlpha" operator="dilate" radius="${dilate}" result="glowSpread"/>`);
-    // The inner glow gathers inside the silhouette the floor built, not
-    // inside the hairline — clipped back to `innerSrc`, not to SourceAlpha.
-    expect(svg).toContain(`<feMorphology in="SourceAlpha" operator="dilate" radius="${dilate}" result="innerSrc"/>`);
-    expect(svg).toContain('<feComposite in="innerBlur" in2="innerSrc" operator="in" result="innerMask"/>');
+  });
+
+  it('…and its INNER glow is PAINTED inside the outline it encloses', async () => {
+    // Widening the line would put the band on both sides of it, which reads
+    // as a glowing tube rather than as light inside a shape. So the shape
+    // paints its own closed outline as an invisible source and filters that
+    // down to the band — the light a filled shape would have had just inside
+    // its edge, with nothing filling the middle.
+    const glow = { radius: 4, color: { r: 255, g: 255, b: 255 }, alpha: 0.6 };
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [makeSquareSvg({ stroke: { width: 0.5 }, effects: { innerGlow: glow } })],
+    }));
+    // The band's own filter, on the object's own id…
+    expect(svg).toContain('<filter id="uw-iglow-svg_a"');
+    // …emitting the band and NOT the source that cast it: no feMerge puts
+    // SourceGraphic back, so the black fill below never reaches the page.
+    expect(svg).not.toContain('<feMergeNode in="SourceGraphic"/>');
+    expect(svg).toContain('fill="#000000" stroke="none" fill-rule="nonzero" filter="url(#uw-iglow-svg_a)"');
+    // …gathered inside the SHAPE's alpha, with nothing widened.
+    expect(svg).toContain('<feComposite in="innerBlur" in2="SourceAlpha" operator="in" result="innerMask"/>');
+    expect(svg).not.toContain('result="innerSrc"');
+    // …and the node's own effects filter no longer carries it at all, or the
+    // shape would be lit twice.
+    expect(svg).not.toContain('filter id="fx_svg_a"');
+  });
+
+  it('…but an OPEN path has no inside, so it falls back to the widened line', async () => {
+    // Three sides of the square: nothing encloses, so there is no interior
+    // to paint a band in and the filter's floor is the only inside a line
+    // has.
+    const glow = { radius: 4, color: { r: 255, g: 255, b: 255 }, alpha: 0.6 };
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [makeSquareSvg({
+        segments: closedSquare.slice(0, 3),
+        stroke: { width: 0.5 },
+        effects: { innerGlow: glow },
+      })],
+    }));
+    expect(svg).not.toContain('uw-iglow-svg_a');
+    expect(svg).toContain(`<feMorphology in="SourceAlpha" operator="dilate" radius="${((4 - 0.5) / 2) * U}" result="innerSrc"/>`);
   });
 
   it('…and a FILLED one is left exactly as it was', async () => {
@@ -433,7 +466,10 @@ describe('generateCompositionSVGCore — node effects', () => {
       })],
     }));
     expect(svg).not.toContain('feMorphology');
+    // Its interior is its own paint, so the band stays in the node's filter
+    // — no second path is painted to stand in for it.
     expect(svg).toContain('<feComponentTransfer in="SourceAlpha" result="innerInv">');
+    expect(svg).not.toContain('uw-iglow-svg_a');
   });
 
   it('border emits a stroked rect around the node bbox', async () => {

@@ -4,7 +4,7 @@ import {
   computeSweepFlag, arcRadius, chainSegments, closedSegmentLoops,
 } from './compositionArcMath';
 import { packKey, unpackKey, forEachVisibleTile } from './tileSegmentOverrides';
-import { borderDashPattern, paintToSvg } from './paintSvg';
+import { borderDashPattern, innerGlowBandFilter, paintToSvg, scaleEffects } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
 import { PaintOverlaySlot, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { svgEndpointsMarkup } from './svgEndpoints';
@@ -469,6 +469,63 @@ export function svgIsFilled(
 }
 
 /**
+ * Whether a shape paints its OWN inner glow, rather than leaving it to the
+ * filter its node effects hang on.
+ *
+ * An inner glow is the band of light just inside an edge, and the node
+ * filter gathers it inside the node's own alpha. For a shape with no fill
+ * that alpha is the STROKE — so the band lands inside the line, spilling to
+ * both sides of it, and reads as a glowing tube rather than as light inside
+ * a shape. Which is not an inner glow at all.
+ *
+ * So a shape that encloses an area paints the band itself, inside that area:
+ * the light a filled shape would have had just inside its edge, with nothing
+ * filling the middle. See {@link svgInnerGlowBandMarkup}.
+ *
+ * An OPEN path has no interior for this to be true of, and falls back to the
+ * filter, which widens the line to the glow's own radius first — the only
+ * inside a line has (`paintSvg.outlineCastDilate`).
+ */
+export function svgDrawsOwnInnerGlow(
+  obj: Pick<SVGObject, 'effects' | 'fill' | 'fillPaint' | 'fillColor' | 'isPatternFill' | 'segments'>,
+): boolean {
+  return !!obj.effects?.innerGlow && !svgIsFilled(obj) && svgEnclosesArea(obj);
+}
+
+/**
+ * That band, as markup: the shape's own closed outline, painted as an
+ * invisible SOURCE and filtered down to the light just inside it.
+ *
+ * The `<path>` is filled opaque because the filter reads its ALPHA and
+ * floods the glow's own colour in — the fill colour never reaches the page.
+ * What the element emits is the band and not the source that cast it
+ * ({@link innerGlowBandFilter}), so the middle stays exactly as empty as the
+ * shape the user drew.
+ *
+ * `segments` are the ones already rendered — corner-rounded, and in the
+ * caller's units — so the band follows the outline the stroke does, and
+ * `unitsPerCell` puts the glow's own lengths in that same space. Empty
+ * string for every shape that doesn't ask for this, which is nearly all of
+ * them.
+ */
+export function svgInnerGlowBandMarkup(
+  obj: SVGObject,
+  segments: ReadonlyArray<PathSegment>,
+  unitsPerCell: number,
+): string {
+  const glow = obj.effects?.innerGlow;
+  if (!glow || svgIsFilled(obj)) return '';
+  // An empty `d` IS the open-path case {@link svgDrawsOwnInnerGlow} rules
+  // out, asked once instead of walking the loops twice over.
+  const d = buildClosedFillPathD(segments);
+  if (!d) return '';
+  const scaled = scaleEffects({ innerGlow: glow }, unitsPerCell).innerGlow!;
+  const { defs, filterRef } = innerGlowBandFilter(scaled, `uw-iglow-${svgDefIdSafe(obj.id)}`);
+  return `<defs>${defs}</defs>`
+    + `<path d="${d}" fill="#000000" stroke="none" fill-rule="nonzero" filter="${filterRef}" />`;
+}
+
+/**
  * The paint half of a shape's fill: everything deciding HOW the fill path is
  * painted — the `fill`, its `fill-opacity` and blend mode, plus any gradient
  * `<defs>` those reference — leaving the `d` to the caller.
@@ -829,6 +886,10 @@ export function buildSVGObjectContent(
   // the line in whichever space this markup lands in.
   result += svgEndpointsMarkup(obj, segments, svgStrokeWidthCells(obj, strokeScale, unitsPerCell));
   // The whole-object Opacity bar (opacity + edge soften) wraps everything the
-  // object drew, so fill, stroke and decorations fade as one layer.
-  return wrapSVGObjectOpacity(obj, result, strokeScale);
+  // object drew, so fill, stroke and decorations fade as one layer — and the
+  // inner-glow band goes OUTSIDE it, where the node's effects filter sits,
+  // so the two inner glows (filtered and painted) land in the same place in
+  // the stack.
+  return wrapSVGObjectOpacity(obj, result, strokeScale)
+    + svgInnerGlowBandMarkup(obj, segments, unitsPerCell);
 }

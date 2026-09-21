@@ -359,43 +359,90 @@ export function effectsToSvgFilter(
     under = 'withGlow';
   }
   if (ig) {
-    const spread = ig.spread ?? 0;
-    // The silhouette this band lives inside. For a solid caster that is its
-    // own alpha; for an OUTLINE it is that alpha dilated to the glow's
-    // radius — an inner glow needs an inside, and a hairline has none.
-    // Kept separate from the authored `spread` below because the two go
-    // opposite ways: the floor dilates, the spread erodes.
-    const dilate = outlineWidth === undefined
-      ? 0
-      : outlineCastDilate(outlineWidth, ig.radius);
-    const inside = dilate > 0 ? 'innerSrc' : 'SourceAlpha';
-    if (dilate > 0) {
-      prims.push(
-        `<feMorphology in="SourceAlpha" operator="dilate" ` +
-        `radius="${fmt(dilate)}" result="innerSrc"/>`,
-      );
-    }
-    if (spread !== 0) {
-      prims.push(
-        `<feMorphology in="${inside}" operator="${spread > 0 ? 'erode' : 'dilate'}" ` +
-        `radius="${fmt(Math.abs(spread))}" result="innerSpread"/>`,
-      );
-    }
     prims.push(
-      `<feComponentTransfer in="${spread !== 0 ? 'innerSpread' : inside}" result="innerInv">` +
-      `<feFuncA type="table" tableValues="1 0"/></feComponentTransfer>`,
-      `<feGaussianBlur in="innerInv" stdDeviation="${fmt(blurSigma(ig.radius))}" result="innerBlur"/>`,
-      `<feComposite in="innerBlur" in2="${inside}" operator="in" result="innerMask"/>`,
-      `<feFlood flood-color="${hex(ig.color)}" flood-opacity="${fmt(ig.alpha)}" result="innerColor"/>`,
-      `<feComposite in="innerColor" in2="innerMask" operator="in" result="innerGlow"/>`,
+      ...innerGlowPrims(ig, outlineWidth),
       `<feMerge><feMergeNode in="${under}"/><feMergeNode in="innerGlow"/></feMerge>`,
     );
   }
   const region = box ? effectsFilterRegion(effects, box, outlineWidth) : RELATIVE_REGION;
-  const defs =
-    `<filter id="${defId}"${region} ` +
+  return { defs: filterDefs(defId, region, prims), filterRef: `url(#${defId})` };
+}
+
+/** `<filter>` wrapper: the id, the region, and sRGB compositing — which is
+ *  what the editor's CSS filters blend in, so the two agree. */
+function filterDefs(defId: string, region: string, prims: string[]): string {
+  return `<filter id="${defId}"${region} ` +
     `color-interpolation-filters="sRGB">${prims.join('')}</filter>`;
-  return { defs, filterRef: `url(#${defId})` };
+}
+
+/**
+ * The inner glow's own primitives, leaving the band in `result="innerGlow"`.
+ * What it merges with — the layers under it, or nothing at all — is the
+ * caller's: {@link effectsToSvgFilter} lays it over the node's own paint,
+ * and {@link innerGlowBandFilter} takes the band alone.
+ *
+ * `outlineWidth` widens the silhouette the band lives inside before anything
+ * reads it, for a caster that is only a line. It is the LAST resort: a shape
+ * that encloses an area paints its band inside that area instead (the export
+ * and the node layer both go through `svgInnerGlowBandMarkup`), because a
+ * band gathered inside a widened line sits on both sides of it and reads as
+ * a tube rather than as light inside a shape. Only an OPEN path — which has
+ * no inside at all — ends up here.
+ */
+function innerGlowPrims(ig: GlowEffect, outlineWidth?: number): string[] {
+  const prims: string[] = [];
+  const spread = ig.spread ?? 0;
+  // Kept separate from the authored `spread` because the two go opposite
+  // ways: the floor dilates, the spread erodes.
+  const dilate = outlineWidth === undefined
+    ? 0
+    : outlineCastDilate(outlineWidth, ig.radius);
+  const inside = dilate > 0 ? 'innerSrc' : 'SourceAlpha';
+  if (dilate > 0) {
+    prims.push(
+      `<feMorphology in="SourceAlpha" operator="dilate" ` +
+      `radius="${fmt(dilate)}" result="innerSrc"/>`,
+    );
+  }
+  if (spread !== 0) {
+    prims.push(
+      `<feMorphology in="${inside}" operator="${spread > 0 ? 'erode' : 'dilate'}" ` +
+      `radius="${fmt(Math.abs(spread))}" result="innerSpread"/>`,
+    );
+  }
+  prims.push(
+    `<feComponentTransfer in="${spread !== 0 ? 'innerSpread' : inside}" result="innerInv">` +
+    `<feFuncA type="table" tableValues="1 0"/></feComponentTransfer>`,
+    `<feGaussianBlur in="innerInv" stdDeviation="${fmt(blurSigma(ig.radius))}" result="innerBlur"/>`,
+    `<feComposite in="innerBlur" in2="${inside}" operator="in" result="innerMask"/>`,
+    `<feFlood flood-color="${hex(ig.color)}" flood-opacity="${fmt(ig.alpha)}" result="innerColor"/>`,
+    `<feComposite in="innerColor" in2="innerMask" operator="in" result="innerGlow"/>`,
+  );
+  return prims;
+}
+
+/**
+ * The inner glow's band ALONE — the filter for an element that exists only
+ * to cast it.
+ *
+ * A shape with no fill has no interior for {@link effectsToSvgFilter} to
+ * light: its alpha is the stroke, and a band gathered inside a stroke lies
+ * on both sides of the line. So the shape paints its own closed outline —
+ * invisibly, as a source — and wears this, which emits the band and NOT the
+ * source that cast it. What comes out is the light a filled shape would have
+ * had just inside its edge, with nothing filling the middle.
+ *
+ * The glow's lengths must already be in the user space the filter is
+ * referenced from ({@link scaleEffects}).
+ */
+export function innerGlowBandFilter(
+  glow: GlowEffect,
+  defId: string,
+): { defs: string; filterRef: string } {
+  return {
+    defs: filterDefs(defId, RELATIVE_REGION, innerGlowPrims(glow)),
+    filterRef: `url(#${defId})`,
+  };
 }
 
 /**

@@ -22,7 +22,7 @@ import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgFillPresentation, svgIsFilled, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
+import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgDrawsOwnInnerGlow, svgFillPresentation, svgInnerGlowBandMarkup, svgIsFilled, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
 import { roundPathCorners, strokeScaleForUnits, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import { arcBoundingBox } from './compositionArcHitTest';
@@ -1825,13 +1825,20 @@ export async function generateCompositionSVGCore(
     // the object drew, INSIDE the node effects so a drop shadow is cast by
     // the already-faded shape. Same helper as the live DOM layer.
     paths = wrapSVGObjectOpacity(svg, paths, svgStrokeScale);
+    // …and an unfilled shape's INNER GLOW is painted here rather than
+    // filtered below: its alpha is the stroke, and a band gathered inside a
+    // stroke lies on both sides of the line. Same helper the live DOM layer
+    // emits it through, so the two draw one band.
+    paths += svgInnerGlowBandMarkup(svg, strokeSegments, U);
     if (paths) {
       // A frame boundary's border is emitted as an overlay over the frame's
       // whole run instead (see frameBorders) — its shadow/glow still belong
       // to the node, behind the frame's contents.
-      const effects = frameBorderBoundaryIds.has(entry.id)
-        ? { ...svg.effects, border: undefined }
-        : svg.effects;
+      let effects = svg.effects;
+      if (frameBorderBoundaryIds.has(entry.id)) effects = { ...effects, border: undefined };
+      // The band above IS the inner glow for a shape that has no interior of
+      // its own; the node filter must not light it a second time.
+      if (svgDrawsOwnInnerGlow(svg)) effects = { ...effects, innerGlow: undefined };
       posedAndClipped(entry.id, entry, drawn.transform,
         applyNodeEffects(paths, effects, entry.id, svg, U, outlineCastWidth(svg, svgStrokeScale)));
     }

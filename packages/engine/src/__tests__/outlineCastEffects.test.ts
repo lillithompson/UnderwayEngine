@@ -20,10 +20,14 @@
  */
 
 import {
-  castSoftness, effectsFilterOutset, effectsToSvgFilter,
+  castSoftness, effectsFilterOutset, effectsToSvgFilter, innerGlowBandFilter,
   outlineCastDilate, outlineCastSourceCells, outlineCastSpread,
 } from '../paintSvg';
-import { GlowEffect, ShadowEffect } from '../types';
+import {
+  buildSVGObjectContent, svgDrawsOwnInnerGlow, svgInnerGlowBandMarkup,
+} from '../svgPathBuilder';
+import { SVG_UNITS_PER_L0_CELL } from '../svgExport';
+import { GlowEffect, PathSegment, ShadowEffect, SVGObject } from '../types';
 
 /** The panel's own defaults — the numbers a first press of each + button
  *  puts on the object, so these are the case actually reported. */
@@ -185,5 +189,122 @@ describe('a SOLID silhouette is left exactly as it was', () => {
     const { defs } = effectsToSvgFilter({ glow: GLOW }, 'fx', undefined, 0);
     expect(defs).toContain('operator="dilate"');
     expect(outlineCastSourceCells(0, GLOW)).toBeCloseTo(1.125 + 2 * 0.125, 9);
+  });
+});
+
+// ── The INNER glow is not one of the rings ──────────────────────────────
+//
+// Widening the line gives a shadow and an outer glow exactly what they need:
+// they live OUTSIDE the silhouette, and a wider silhouette is a wider ring.
+// An inner glow lives inside one, and the inside of a widened line is the
+// line — so the band came out on both sides of it and read as a glowing
+// tube, not as light inside a shape.
+//
+// So a shape that encloses an area paints the band itself, inside that area:
+// its own closed outline as an invisible SOURCE, filtered down to the light
+// just inside the edge, with nothing filling the middle.
+
+const SQUARE: PathSegment[] = [
+  { kind: 'line', start: [0, 0], end: [4, 0] },
+  { kind: 'line', start: [4, 0], end: [4, 4] },
+  { kind: 'line', start: [4, 4], end: [0, 4] },
+  { kind: 'line', start: [0, 4], end: [0, 0] },
+];
+const GLOWING = (over: Partial<SVGObject> = {}): SVGObject => ({
+  id: 'sq', segments: SQUARE, color: { r: 0, g: 0, b: 0 },
+  cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
+  effects: { innerGlow: { ...GLOW, spread: 0 } },
+  ...over,
+} as SVGObject);
+
+describe('which shapes paint their own inner glow', () => {
+  it('one with no fill that encloses an area', () => {
+    expect(svgDrawsOwnInnerGlow(GLOWING())).toBe(true);
+  });
+
+  it('…and not a FILLED one, which has an interior of its own to light', () => {
+    expect(svgDrawsOwnInnerGlow(GLOWING({ fillColor: { r: 1, g: 2, b: 3 } }))).toBe(false);
+  });
+
+  it('…nor an OPEN path, which has no inside for a band to be in', () => {
+    // Three sides of the square: the filter's widened line is the only
+    // answer left, and it keeps it.
+    expect(svgDrawsOwnInnerGlow(GLOWING({ segments: SQUARE.slice(0, 3) }))).toBe(false);
+  });
+
+  it('…nor one with no inner glow at all, which is nearly every shape', () => {
+    expect(svgDrawsOwnInnerGlow(GLOWING({ effects: undefined }))).toBe(false);
+    expect(svgDrawsOwnInnerGlow(GLOWING({ effects: { glow: GLOW } }))).toBe(false);
+  });
+});
+
+describe('the band a shape paints for itself', () => {
+  /** The one space this markup is emitted in — the path walk projects into
+   *  it, and the glow's own lengths are scaled into it to match. */
+  const U = SVG_UNITS_PER_L0_CELL;
+
+  it('is its closed outline, cast as a source and kept out of the picture', () => {
+    const markup = svgInnerGlowBandMarkup(GLOWING(), SQUARE, U);
+    // The outline the fill would have taken, closed.
+    expect(markup).toContain(`d="M 0,0 L ${4 * U},0 L ${4 * U},${4 * U} L 0,${4 * U} L 0,0 Z"`);
+    // Opaque, because the filter reads its ALPHA and floods the glow's own
+    // ink in — the fill colour never reaches the page.
+    expect(markup).toContain('fill="#000000"');
+    expect(markup).toContain('filter="url(#uw-iglow-sq)"');
+    // …and what comes out is the band and NOT the source: nothing merges
+    // SourceGraphic back, which is the whole difference from the node's own
+    // effects filter.
+    expect(markup).not.toContain('feMergeNode');
+    expect(markup).toContain('result="innerGlow"');
+  });
+
+  it('gathers inside the SHAPE’s own alpha, nothing widened', () => {
+    const markup = svgInnerGlowBandMarkup(GLOWING(), SQUARE, U);
+    expect(markup).toContain('<feComponentTransfer in="SourceAlpha" result="innerInv">');
+    expect(markup).toContain('<feComposite in="innerBlur" in2="SourceAlpha" operator="in" result="innerMask"/>');
+    expect(markup).not.toContain('innerSrc');
+  });
+
+  it('scales its lengths into the units it is drawn in', () => {
+    // The glow's radius is a WORLD length and the markup is in the caller's
+    // space, so σ moves with it — the same scaler the effects filter uses.
+    expect(svgInnerGlowBandMarkup(GLOWING(), SQUARE, U))
+      .toContain(`stdDeviation="${(GLOW.radius * U) / 2}"`);
+    expect(svgInnerGlowBandMarkup(GLOWING(), SQUARE, U * 2))
+      .toContain(`stdDeviation="${(GLOW.radius * U * 2) / 2}"`);
+  });
+
+  it('is empty for every shape that does not ask for it', () => {
+    expect(svgInnerGlowBandMarkup(GLOWING({ effects: undefined }), SQUARE, U)).toBe('');
+    expect(svgInnerGlowBandMarkup(
+      GLOWING({ fillColor: { r: 1, g: 2, b: 3 } }), SQUARE, U,
+    )).toBe('');
+  });
+
+  it('rides the ONE markup reader, so both renderers draw one band', () => {
+    // buildSVGObjectContent is the live node layer's path; the export calls
+    // the same helper beside its own. A band that only one of them emitted
+    // is the drift this shape prevents.
+    const drawn = buildSVGObjectContent(GLOWING(), 1, U);
+    expect(drawn).toContain('filter="url(#uw-iglow-sq)"');
+    // Outside the opacity wrap, where the node's effects filter sits, so the
+    // painted band and the filtered one land in the same place in the stack.
+    const faded = buildSVGObjectContent(GLOWING({ opacity: 0.5 }), 1, U);
+    expect(faded.indexOf('opacity="0.5"')).toBeLessThan(faded.indexOf('uw-iglow-sq'));
+  });
+});
+
+describe('innerGlowBandFilter', () => {
+  it('is the effects filter’s own chain, with nothing under it', () => {
+    const band = innerGlowBandFilter({ ...GLOW, spread: 0 }, 'b');
+    const whole = effectsToSvgFilter({ innerGlow: { ...GLOW, spread: 0 } }, 'w');
+    expect(band.filterRef).toBe('url(#b)');
+    // Every primitive of the band is in the full filter, in order — one
+    // chain, read twice, so the two inner glows cannot drift.
+    const prims = band.defs.slice(band.defs.indexOf('>') + 1, band.defs.lastIndexOf('</filter>'));
+    expect(whole.defs).toContain(prims);
+    // …and the full one goes on to lay it over the node's paint.
+    expect(whole.defs).toContain('<feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="innerGlow"/></feMerge>');
+    expect(band.defs).not.toContain('feMerge');
   });
 });
