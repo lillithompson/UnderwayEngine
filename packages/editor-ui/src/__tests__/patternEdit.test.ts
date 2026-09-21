@@ -30,8 +30,8 @@ import {
 import { patternModalTileSize } from '../logic/patternEdit';
 import {
   BAR_CUSHION, CONTENT_PAD, PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_GRID_WIDTH,
-  PATTERN_TILE_GRID_GAP, ROW_GAP, ROW_SEGMENTED, ROW_SWITCH, SHEET_PAD_HORIZONTAL,
-  submenuHeight,
+  PATTERN_TILE_GRID_GAP, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, ROW_SWITCH,
+  SHEET_PAD_HORIZONTAL, submenuHeight,
 } from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
@@ -713,15 +713,74 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
     resolve(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'), 'utf8',
   );
 
-  it('splits the Pattern page into Tile and Symmetry sections', () => {
-    // A sub-tab under the one tab, rather than a second tab of its own:
-    // the tile is one thing with two questions about it. (A pattern OBJECT
-    // asks them as two tabs, having no other property pages to share a row
-    // with.)
+  it('splits the Pattern page into Tile, Symmetry and Stroke sections', () => {
+    // Sub-tabs under the one tab, rather than tabs of their own: the tile
+    // is one thing with three questions about it. (A pattern OBJECT asks
+    // them as tabs, having no other property pages to share a row with.)
     expect(PANEL).toContain("{ value: 'tile' as const, label: 'Tile' },");
     expect(PANEL).toContain("{ value: 'symmetry' as const, label: 'Symmetry' },");
+    expect(PANEL).toContain("{ value: 'stroke' as const, label: 'Stroke' },");
     expect(PANEL).toContain('options={SVG_PATTERN_SECTIONS}');
-    expect(PANEL).toContain("useState<'tile' | 'symmetry'>('tile')");
+    expect(PANEL).toContain("useState<'tile' | 'symmetry' | 'stroke'>('tile')");
+  });
+
+  it('gives the TILES their own line — width, dash and ink', () => {
+    // The Border page's own rows, pointed at the mark INSIDE the shape
+    // rather than at the outline around it: one component, so the
+    // pattern's line is set with the same ranges as every other line.
+    expect(PANEL).toContain("svgPatternSection === 'stroke' ? (");
+    expect(PANEL).toContain('border={svgPatternStrokeForBar}');
+    // No Position row: a mark inside a clip has no side to align to.
+    expect(PANEL).toContain('showPosition={false}');
+    expect(PANEL).toContain('onOpenColorPicker={() => model.onPickSvgPatternStrokeColor?.()}');
+    // Its own draft, so a drag here is never read back as the SHAPE's.
+    expect(PANEL).toContain('setSvgPatternStrokeDraft(b);');
+    expect(PANEL).toContain('color: model.svgPatternStroke?.color ?? svgPatternStrokeDraft.color,');
+  });
+
+  it('measures the Stroke section as the Border page without Position', () => {
+    const stroke = submenuHeight('svgPattern', { svgPatternSection: 'stroke' });
+    expect(stroke).toBe(
+      CONTENT_PAD * 2 + ROW_SEGMENTED + ROW_GAP
+      + ROW_SLIDER + ROW_GAP + ROW_SLIDER + ROW_GAP + ROW_SLIDER + BAR_CUSHION,
+    );
+  });
+
+  it('calls the cells-per-edge row RESOLUTION, not Size', () => {
+    // More cells per edge is a DENSER tile, not a bigger one — the stored
+    // field is still `size`, but the word on the page was the wrong one
+    // and it was the word "Size" that the repeat's drawn size wanted.
+    expect(PANEL).toContain('label="Resolution"');
+    // …and the readout stays the cells-per-edge pair it always was.
+    expect(PANEL).toContain('text: `${size}×${size}`,');
+  });
+
+  it('puts a SIZE row under Resolution, for how big the repeat draws', () => {
+    // Two independent questions about one tile: Resolution cuts it finer,
+    // Size scales the whole motif. The Size row is measured in grid
+    // squares and steps in quarters, which keeps the tile lattice a
+    // sub-lattice of the page's own.
+    expect(PANEL).toContain('const MIN_SVG_PATTERN_SPAN = 0.25;');
+    expect(PANEL).toContain('const MAX_SVG_PATTERN_SPAN = 8;');
+    expect(PANEL).toContain('const SVG_PATTERN_SPAN_STEP = 0.25;');
+    expect(PANEL).toContain('label="Size"');
+    expect(PANEL).toContain('model.onSvgPatternSpan?.(next);');
+    // …under Resolution, not over it.
+    expect(PANEL.indexOf('label="Resolution"')).toBeLessThan(PANEL.indexOf('label="Size"'));
+    // Its own draft handle, reset on its own quantity: the two rows are
+    // independent, so a Size commit must not drop a Resolution drag.
+    expect(PANEL).toContain('setSvgPatternSpanDraft(null);');
+    expect(PANEL).toContain('}, [model.svgPatternSpan, model.svgPatternPresent]);');
+  });
+
+  it('reserves the Tile section s SECOND slider row', () => {
+    // The page is measured before any layout happens, so a row that is
+    // rendered and not counted opens the sheet short of its own controls.
+    const tile = submenuHeight('svgPattern', { svgPatternSection: 'tile' });
+    expect(tile).toBe(
+      CONTENT_PAD * 2 + ROW_SEGMENTED + ROW_GAP + ROW_SLIDER + ROW_GAP
+      + ROW_SLIDER + ROW_GAP + ROW_SEGMENTED + BAR_CUSHION,
+    );
   });
 
   it('draws the very grid the pattern object draws, bound to the shape', () => {
@@ -732,11 +791,14 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
 
   it('measures the page by the section showing', () => {
     // The mirror grid stands two rows of square buttons where the Tile
-    // section is a slider and a button, so the sheet animates between them
-    // rather than reserving the taller of the two.
+    // section is two sliders and a button, so the sheet animates between
+    // them rather than reserving the taller of the two. (Tile is the
+    // taller of the two now that it asks its second question; before the
+    // Size row it was the shorter. The point of the measurement is that
+    // the sheet tracks whichever is showing, either way.)
     const tile = submenuHeight('svgPattern', { svgPatternSection: 'tile' });
     const symmetry = submenuHeight('svgPattern', { svgPatternSection: 'symmetry' });
-    expect(symmetry).toBeGreaterThan(tile);
+    expect(symmetry).not.toBe(tile);
     expect(symmetry).toBe(
       CONTENT_PAD * 2 + ROW_SEGMENTED + ROW_GAP
       + PATTERN_SYMMETRY_BUTTON * 2 + PATTERN_TILE_GRID_GAP + BAR_CUSHION,

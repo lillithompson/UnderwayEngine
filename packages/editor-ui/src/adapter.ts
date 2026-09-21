@@ -722,14 +722,23 @@ export interface ObjectPropertiesModel {
   /** Re-open an existing pattern fill for painting — the page's Edit
    *  button, the same act the Add above ends on. */
   onEditSvgPattern?(): void;
-  /** The tile's edge in CELLS — the page's Size slider, 1–8. A pattern is
-   *  square: 2 is a 2×2 tile, repeating across the shape. */
+  /** The tile's edge in CELLS — the page's RESOLUTION slider, 1–8. A
+   *  pattern is square: 2 is a 2×2 tile, repeating across the shape. */
   svgPatternSize?: number;
-  /** Commit a new tile size. Called on RELEASE only (the page holds the
-   *  handle's own draft while it moves): a size change re-rolls the tile
-   *  at that size, which is one undo step and not something to do sixty
-   *  times a second. */
+  /** Commit a new tile resolution. Called on RELEASE only (the page holds
+   *  the handle's own draft while it moves): the change re-rolls the tile
+   *  at that resolution, which is one undo step and not something to do
+   *  sixty times a second. */
   onSvgPatternSize?(size: number): void;
+  /** How many composition GRID SQUARES one repeat spans — the page's SIZE
+   *  slider, a quarter-square to eight in quarter steps. The other half of
+   *  the pair: Resolution says how finely the repeat is cut, Size says how
+   *  big it draws, and moving one leaves the other alone. */
+  svgPatternSpan?: number;
+  /** Commit a new repeat size. Called on RELEASE only, like the row above
+   *  — but this one does NOT re-roll: the same motif at a new scale is
+   *  still that motif, so a sweep back to where it started is a no-op. */
+  onSvgPatternSpan?(span: number): void;
   /** The painting mirror the shape's tile is under, as a grid key ('h',
    *  'quad', …) or 'off' — the Pattern page's Symmetry section, which is
    *  the same twelve-cell grid a pattern OBJECT picks its mode from. */
@@ -738,6 +747,19 @@ export interface ObjectPropertiesModel {
    *  under the new rule (the cells already down were laid under the old
    *  one), as one undo step. */
   onSvgPatternSymmetry?(key: string): void;
+  /** The line the TILES are drawn in — the Pattern page's Stroke section,
+   *  which is the pattern's own line and not the outline the shape wears
+   *  (that is the Stroke TAB, a row up). Width and dash come off the
+   *  fill's own block; the colour is the ink every cell draws in, and is
+   *  null-ish when the cells disagree. Position is unused: the tiles are a
+   *  mark inside a clip, with no side to align to. */
+  svgPatternStroke?: BorderModel;
+  /** Commit that line. Live (false) while a handle moves and once on
+   *  release (true), like every other slider page. A colour change re-inks
+   *  every cell of the tile, which is what a pattern's colour IS. */
+  onSvgPatternStroke?(stroke: BorderModel, committed: boolean): void;
+  /** Open the host's full-screen picker on that ink. */
+  onPickSvgPatternStrokeColor?(): void;
   /** Remove the pattern fill — the page's Remove line. One undo step; what
    *  the shape drew underneath (its own fill and outline) is untouched. */
   onRemoveSvgPattern?(): void;

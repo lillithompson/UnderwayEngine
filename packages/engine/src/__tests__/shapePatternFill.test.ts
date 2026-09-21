@@ -17,9 +17,15 @@ import { patternGridThumbnailUri, shapePatternFillTiles } from '../patternObject
 import {
   DEFAULT_SHAPE_PATTERN_SIZE,
   MAX_SHAPE_PATTERN_SIZE,
+  MAX_SHAPE_PATTERN_SPAN,
+  MIN_SHAPE_PATTERN_SPAN,
   buildShapePatternFill,
+  clampShapePatternSpan,
   resizeShapePatternFill,
+  setShapePatternSpan,
   shapePatternCellL0,
+  shapePatternSpanGrid,
+  shapePatternStrokeWidthCells,
   shapePatternFillIsEmpty,
   shapePatternFillOf,
   shapePatternGrid,
@@ -233,6 +239,113 @@ describe('resizeShapePatternFill', () => {
     const fill = seeded();
     expect(resizeShapePatternFill(fill, 2)).toBe(fill);
     expect(resizeShapePatternFill(fill, 99).size).toBe(MAX_SHAPE_PATTERN_SIZE);
+  });
+});
+
+describe('setShapePatternSpan — how big one repeat DRAWS', () => {
+  // step 2 is gridLevel 1's, which is what makeState carries.
+  const STEP = 2;
+  const seeded = () => buildShapePatternFill(rect('svg_1', 0, 0, 8, 8), STEP, {
+    size: 2, flood: true,
+  });
+
+  it('opens at ONE grid square to a repeat', () => {
+    // buildShapePatternFill lays `size` cells at two to the square, so a
+    // 2x2 tile spans exactly one — which is the Size slider's default and
+    // the number the page shows on a pattern nobody has scaled.
+    expect(shapePatternSpanGrid(seeded(), STEP)).toBeCloseTo(1, 9);
+  });
+
+  it('scales the whole motif — cells and all — and keeps the cell COUNT', () => {
+    const fill = seeded();
+    const bigger = setShapePatternSpan(fill, 2, STEP);
+    expect(shapePatternSpanGrid(bigger, STEP)).toBeCloseTo(2, 9);
+    // Resolution is untouched: same cells, same count, same order.
+    expect(bigger.size).toBe(fill.size);
+    expect(bigger.cells).toEqual(fill.cells);
+    // …and each CELL doubled with the repeat, which is what makes this a
+    // scale rather than a re-cut (the Resolution slider holds this still).
+    expect(shapePatternCellL0(bigger)).toBeCloseTo(shapePatternCellL0(fill) * 2, 9);
+  });
+
+  it('goes SMALLER as well as bigger', () => {
+    const fill = seeded();
+    const smaller = setShapePatternSpan(fill, 0.5, STEP);
+    expect(smaller.tileL0).toBeCloseTo(fill.tileL0 / 2, 9);
+    expect(smaller.cells).toEqual(fill.cells);
+  });
+
+  it('never re-rolls, so a sweep back hands the pattern back untouched', () => {
+    // The whole difference from a Resolution change: the same motif at a
+    // new scale is still that motif, so there is nothing to re-roll.
+    const fill = seeded();
+    const there = setShapePatternSpan(fill, 4, STEP);
+    const back = setShapePatternSpan(there, 1, STEP);
+    expect(back.cells).toEqual(fill.cells);
+    expect(back.tileL0).toBeCloseTo(fill.tileL0, 9);
+  });
+
+  it('hands the same block back for no change', () => {
+    const fill = seeded();
+    expect(setShapePatternSpan(fill, 1, STEP)).toBe(fill);
+  });
+
+  it('clamps to the slider s range and lands on its quarter steps', () => {
+    expect(clampShapePatternSpan(99)).toBe(MAX_SHAPE_PATTERN_SPAN);
+    expect(clampShapePatternSpan(0)).toBe(MIN_SHAPE_PATTERN_SPAN);
+    expect(clampShapePatternSpan(-5)).toBe(MIN_SHAPE_PATTERN_SPAN);
+    // Quarters keep the tile lattice a sub-lattice of the page's grid.
+    expect(clampShapePatternSpan(1.3)).toBeCloseTo(1.25, 9);
+    expect(clampShapePatternSpan(1.4)).toBeCloseTo(1.5, 9);
+  });
+
+  it('reads the span against the grid it is asked about', () => {
+    // tileL0 is absolute world cells; the number the page shows is that
+    // against the composition's own step, so a coarser grid reads fewer
+    // squares to a repeat.
+    const fill = seeded();
+    expect(shapePatternSpanGrid(fill, STEP * 2)).toBeCloseTo(0.5, 9);
+  });
+});
+
+describe('the line the TILES are drawn in', () => {
+  it('is half the shape s when the fill says nothing, and follows it', () => {
+    const svg = { ...rect('svg_1', 0, 0, 8, 8), stroke: { width: 0.6 }, patternFill: filledFill() };
+    expect(shapePatternStrokeWidthCells(svg)).toBeCloseTo(0.3, 9);
+    expect(shapePatternGrid(svg)!.stroke!.width).toBeCloseTo(0.3, 9);
+    // …and moves with it, being derived at every draw rather than seeded.
+    const thinner = { ...svg, stroke: { width: 0.2 } };
+    expect(shapePatternGrid(thinner)!.stroke!.width).toBeCloseTo(0.1, 9);
+  });
+
+  it('is the fill s OWN width once its Stroke section sets one', () => {
+    // Asking for a width means the pattern stops tracking the shape.
+    const fill = { ...filledFill(), stroke: { width: 0.05 } };
+    const svg = { ...rect('svg_1', 0, 0, 8, 8), stroke: { width: 0.6 }, patternFill: fill };
+    expect(shapePatternStrokeWidthCells(svg)).toBeCloseTo(0.05, 9);
+    expect(shapePatternGrid(svg)!.stroke!.width).toBeCloseTo(0.05, 9);
+  });
+
+  it('never writes the DERIVED width back into the fill', () => {
+    // The grid carries a RESOLVED width, so copying its stroke block
+    // wholesale on the way back would freeze an untouched pattern to
+    // whatever the shape happened to be at the first time a cell moved.
+    const svg = { ...rect('svg_1', 0, 0, 8, 8), stroke: { width: 0.6 }, patternFill: filledFill() };
+    const grid = shapePatternGrid(svg)!;
+    const back = shapePatternFillOf(svg.patternFill!, grid);
+    expect(back.stroke?.width).toBeUndefined();
+    // A width the fill DOES own survives the same round trip.
+    const owned = { ...filledFill(), stroke: { width: 0.05 } };
+    const ownedGrid = shapePatternGrid({ ...svg, patternFill: owned })!;
+    expect(shapePatternFillOf(owned, ownedGrid).stroke?.width).toBeCloseTo(0.05, 9);
+  });
+
+  it('carries the fill s DASH through, both ways', () => {
+    const dashed = { ...filledFill(), stroke: { dash: 4 } };
+    const svg = { ...rect('svg_1', 0, 0, 8, 8), patternFill: dashed };
+    const grid = shapePatternGrid(svg)!;
+    expect(grid.stroke!.dash).toBe(4);
+    expect(shapePatternFillOf(dashed, grid).stroke!.dash).toBe(4);
   });
 });
 
