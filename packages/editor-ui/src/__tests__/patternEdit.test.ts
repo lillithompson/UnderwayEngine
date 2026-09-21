@@ -713,15 +713,37 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
     resolve(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'), 'utf8',
   );
 
-  it('splits the Pattern page into Tile and Symmetry sections', () => {
-    // A sub-tab under the one tab, rather than a second tab of its own:
-    // the tile is one thing with two questions about it. (A pattern OBJECT
-    // asks them as two tabs, having no other property pages to share a row
-    // with.)
+  it('splits the Pattern page into Tile, Symmetry and Stroke sections', () => {
+    // Sub-tabs under the one tab, rather than tabs of their own: the tile
+    // is one thing with three questions about it. (A pattern OBJECT asks
+    // them as tabs, having no other property pages to share a row with.)
     expect(PANEL).toContain("{ value: 'tile' as const, label: 'Tile' },");
     expect(PANEL).toContain("{ value: 'symmetry' as const, label: 'Symmetry' },");
+    expect(PANEL).toContain("{ value: 'stroke' as const, label: 'Stroke' },");
     expect(PANEL).toContain('options={SVG_PATTERN_SECTIONS}');
-    expect(PANEL).toContain("useState<'tile' | 'symmetry'>('tile')");
+    expect(PANEL).toContain("useState<'tile' | 'symmetry' | 'stroke'>('tile')");
+  });
+
+  it('gives the TILES their own line — width, dash and ink', () => {
+    // The Border page's own rows, pointed at the mark INSIDE the shape
+    // rather than at the outline around it: one component, so the
+    // pattern's line is set with the same ranges as every other line.
+    expect(PANEL).toContain("svgPatternSection === 'stroke' ? (");
+    expect(PANEL).toContain('border={svgPatternStrokeForBar}');
+    // No Position row: a mark inside a clip has no side to align to.
+    expect(PANEL).toContain('showPosition={false}');
+    expect(PANEL).toContain('onOpenColorPicker={() => model.onPickSvgPatternStrokeColor?.()}');
+    // Its own draft, so a drag here is never read back as the SHAPE's.
+    expect(PANEL).toContain('setSvgPatternStrokeDraft(b);');
+    expect(PANEL).toContain('color: model.svgPatternStroke?.color ?? svgPatternStrokeDraft.color,');
+  });
+
+  it('measures the Stroke section as the Border page without Position', () => {
+    const stroke = submenuHeight('svgPattern', { svgPatternSection: 'stroke' });
+    expect(stroke).toBe(
+      CONTENT_PAD * 2 + ROW_SEGMENTED + ROW_GAP
+      + ROW_SLIDER + ROW_GAP + ROW_SLIDER + ROW_GAP + ROW_SLIDER + BAR_CUSHION,
+    );
   });
 
   it('calls the cells-per-edge row RESOLUTION, not Size', () => {

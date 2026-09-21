@@ -156,10 +156,11 @@ export function setShapePatternSpan(
 }
 
 /**
- * The line the TILES are drawn in: HALF the shape's own, so the pattern
- * reads as the finer mark inside the outline that frames it — and follows
- * it, since it is derived at every draw rather than seeded once. Move the
- * Stroke page's Width and the pattern thins with it.
+ * The line the TILES are drawn in when the fill says nothing: HALF the
+ * shape's own, so the pattern reads as the finer mark inside the outline
+ * that frames it — and follows it, since it is derived at every draw
+ * rather than seeded once. Move the shape's Stroke page Width and an
+ * unset pattern thins with it.
  *
  * Half the composition's default for a shape drawing NO outline (its
  * stroke removed, width 0): half of nothing is nothing, and a pattern that
@@ -171,12 +172,34 @@ export function setShapePatternSpan(
  */
 export const SHAPE_PATTERN_STROKE_FRACTION = 0.5;
 
-function tileStrokeWidth(svg: SVGObject, strokeScale: number): number {
+function derivedTileStrokeWidth(svg: SVGObject, strokeScale: number): number {
   const u = SVG_UNITS_PER_L0_CELL;
   const scaled = strokeScaleForUnits(strokeScale, u);
   const own = svgStrokeWidthCells(svg, scaled, u);
   const width = own > 0 ? own : svgStrokeWidthCells({ stroke: undefined }, scaled, u);
   return width * SHAPE_PATTERN_STROKE_FRACTION;
+}
+
+/**
+ * The width the tiles are ACTUALLY drawn at, in world cells: what the
+ * fill's own Stroke page set, else half the shape's
+ * ({@link derivedTileStrokeWidth}).
+ *
+ * The derived width stays the default rather than being written down at
+ * creation, so a pattern nobody has touched goes on following the outline
+ * that frames it. Once the Pattern page's Stroke tab moves Width, the
+ * stored number wins and the pattern stops tracking the shape — which is
+ * what asking for a width means.
+ *
+ * Also the number that page's Width slider seeds at, so an untouched
+ * pattern opens the row at the width it is being drawn with rather than
+ * at zero (the same rule `svgStrokeWidthCells` keeps for an object).
+ */
+export function shapePatternStrokeWidthCells(
+  svg: SVGObject, strokeScale = 1,
+): number {
+  const stored = svg.patternFill?.stroke?.width;
+  return stored != null ? Math.max(0, stored) : derivedTileStrokeWidth(svg, strokeScale);
 }
 
 /**
@@ -216,7 +239,7 @@ export function shapePatternGrid(
   if (!fill) return null;
   const gx = opts?.gx ?? 1;
   const gy = opts?.gy ?? 1;
-  const strokeWidth = tileStrokeWidth(svg, opts?.strokeScale ?? 1);
+  const strokeWidth = shapePatternStrokeWidthCells(svg, opts?.strokeScale ?? 1);
   // The box is the shape's, and it moves (a drag, a resize, a group's
   // scale) while the block stays the very same object — so it is part of
   // the cache key, not just of the value. The tiles' line rides the SHAPE's
@@ -243,8 +266,9 @@ export function shapePatternGrid(
     tileOffsetYL0: (svg.cellHeight - tileHeightL0) / 2,
     ...(fill.symmetry ? { symmetry: fill.symmetry } : null),
     ...(fill.allowBorderConnections === false ? { allowBorderConnections: false } : null),
-    // The fill's own block carries the dash and the rest; the WIDTH is the
-    // shape's half, whatever is stored.
+    // The fill's own block carries the dash and the rest; the WIDTH is
+    // resolved — the fill's where its Stroke page set one, half the
+    // shape's where it did not (shapePatternStrokeWidthCells).
     stroke: { ...fill.stroke, width: strokeWidth },
   };
   grids.set(fill, { key, grid });
@@ -256,7 +280,15 @@ export function shapePatternGrid(
  *  pattern machinery and has a new {@link PatternObject} in hand. Only the
  *  CELLS and the settings cross back: the box, the region and the tile's
  *  own geometry are the shape's and the slider's, not the grid's to
- *  move. */
+ *  move.
+ *
+ *  The stroke's WIDTH is the one field that does not cross back. The grid
+ *  carries a RESOLVED width — the fill's own where it has one, half the
+ *  shape's where it does not — so copying the grid's block wholesale would
+ *  write that resolved number down as the fill's, and the first cell
+ *  anyone painted would silently freeze a pattern to the width the shape
+ *  happened to be at. The fill keeps its own answer (including having
+ *  none), and everything else about the line comes from the grid. */
 export function shapePatternFillOf(
   fill: ShapePatternFill, grid: PatternObject,
 ): ShapePatternFill {
@@ -264,7 +296,11 @@ export function shapePatternFillOf(
   if (grid.symmetry) next.symmetry = grid.symmetry; else delete next.symmetry;
   if (grid.allowBorderConnections === false) next.allowBorderConnections = false;
   else delete next.allowBorderConnections;
-  if (grid.stroke) next.stroke = grid.stroke; else delete next.stroke;
+  const stroke = grid.stroke
+    ? { ...grid.stroke, ...(fill.stroke?.width != null ? { width: fill.stroke.width } : null) }
+    : undefined;
+  if (stroke && fill.stroke?.width == null) delete stroke.width;
+  if (stroke && Object.keys(stroke).length > 0) next.stroke = stroke; else delete next.stroke;
   return next;
 }
 

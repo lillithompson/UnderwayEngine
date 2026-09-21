@@ -25,6 +25,7 @@ import {
   setShapePatternSpan,
   shapePatternCellL0,
   shapePatternSpanGrid,
+  shapePatternStrokeWidthCells,
   shapePatternFillIsEmpty,
   shapePatternFillOf,
   shapePatternGrid,
@@ -304,6 +305,47 @@ describe('setShapePatternSpan — how big one repeat DRAWS', () => {
     // squares to a repeat.
     const fill = seeded();
     expect(shapePatternSpanGrid(fill, STEP * 2)).toBeCloseTo(0.5, 9);
+  });
+});
+
+describe('the line the TILES are drawn in', () => {
+  it('is half the shape s when the fill says nothing, and follows it', () => {
+    const svg = { ...rect('svg_1', 0, 0, 8, 8), stroke: { width: 0.6 }, patternFill: filledFill() };
+    expect(shapePatternStrokeWidthCells(svg)).toBeCloseTo(0.3, 9);
+    expect(shapePatternGrid(svg)!.stroke!.width).toBeCloseTo(0.3, 9);
+    // …and moves with it, being derived at every draw rather than seeded.
+    const thinner = { ...svg, stroke: { width: 0.2 } };
+    expect(shapePatternGrid(thinner)!.stroke!.width).toBeCloseTo(0.1, 9);
+  });
+
+  it('is the fill s OWN width once its Stroke section sets one', () => {
+    // Asking for a width means the pattern stops tracking the shape.
+    const fill = { ...filledFill(), stroke: { width: 0.05 } };
+    const svg = { ...rect('svg_1', 0, 0, 8, 8), stroke: { width: 0.6 }, patternFill: fill };
+    expect(shapePatternStrokeWidthCells(svg)).toBeCloseTo(0.05, 9);
+    expect(shapePatternGrid(svg)!.stroke!.width).toBeCloseTo(0.05, 9);
+  });
+
+  it('never writes the DERIVED width back into the fill', () => {
+    // The grid carries a RESOLVED width, so copying its stroke block
+    // wholesale on the way back would freeze an untouched pattern to
+    // whatever the shape happened to be at the first time a cell moved.
+    const svg = { ...rect('svg_1', 0, 0, 8, 8), stroke: { width: 0.6 }, patternFill: filledFill() };
+    const grid = shapePatternGrid(svg)!;
+    const back = shapePatternFillOf(svg.patternFill!, grid);
+    expect(back.stroke?.width).toBeUndefined();
+    // A width the fill DOES own survives the same round trip.
+    const owned = { ...filledFill(), stroke: { width: 0.05 } };
+    const ownedGrid = shapePatternGrid({ ...svg, patternFill: owned })!;
+    expect(shapePatternFillOf(owned, ownedGrid).stroke?.width).toBeCloseTo(0.05, 9);
+  });
+
+  it('carries the fill s DASH through, both ways', () => {
+    const dashed = { ...filledFill(), stroke: { dash: 4 } };
+    const svg = { ...rect('svg_1', 0, 0, 8, 8), patternFill: dashed };
+    const grid = shapePatternGrid(svg)!;
+    expect(grid.stroke!.dash).toBe(4);
+    expect(shapePatternFillOf(dashed, grid).stroke!.dash).toBe(4);
   });
 });
 

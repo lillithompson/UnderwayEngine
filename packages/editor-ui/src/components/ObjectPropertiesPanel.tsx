@@ -178,11 +178,14 @@ const DEFAULT_SVG_PATTERN_SPAN = 1;
  *  precision the control does not have. */
 const spanText = (span: number): string => String(Number(span.toFixed(2)));
 
-/** The Pattern page's two sections, in display order: the tile itself,
- *  then the mirror it is painted under. */
+/** The Pattern page's three sections, in display order: the tile itself,
+ *  the mirror it is painted under, and the LINE the tiles are drawn in —
+ *  which is the pattern's own, not the outline the shape wears. (That one
+ *  is the Stroke TAB, a row up; this is the mark inside it.) */
 const SVG_PATTERN_SECTIONS = [
   { value: 'tile' as const, label: 'Tile' },
   { value: 'symmetry' as const, label: 'Symmetry' },
+  { value: 'stroke' as const, label: 'Stroke' },
 ];
 
 // The property pages, in tab order. Image selections offer crop / effects /
@@ -451,7 +454,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // …and which of its two sections is showing (the Copies page keeps its
   // own the same way). It outlives a selection, like that one: a section
   // is where you were working, not a property of the shape.
-  const [svgPatternSection, setSvgPatternSection] = useState<'tile' | 'symmetry'>('tile');
+  const [svgPatternSection, setSvgPatternSection] =
+    useState<'tile' | 'symmetry' | 'stroke'>('tile');
+  const [svgPatternStrokeDraft, setSvgPatternStrokeDraft] = useState<BorderModel | null>(null);
   const prevSvgFillOpen = useRef(false);
   // The Text pages own their tracked params too (color still comes from the
   // model — it's changed externally via the full-screen picker).
@@ -952,6 +957,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   useEffect(() => {
     setSvgPatternSpanDraft(null);
   }, [model.svgPatternSpan, model.svgPatternPresent]);
+  useEffect(() => {
+    setSvgPatternStrokeDraft(null);
+  }, [model.svgPatternPresent]);
   // Shadow controls → live preview / commit through the model; the draft stays
   // in sync so the sliders keep tracking.
   const applyShadow = (s: ShadowModel, committed: boolean) => {
@@ -1017,6 +1025,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   const removeStroke = () => {
     model.onStroke?.(null, true);
     model.onStrokeOpenChange?.(false);
+  };
+
+  // The PATTERN's line — the same two rows and the same hue row, pointed
+  // at the tiles instead of at the outline around them. Its own draft, so
+  // a drag here cannot be read back as the shape's.
+  const applySvgPatternStroke = (b: BorderModel, committed: boolean) => {
+    setSvgPatternStrokeDraft(b);
+    model.onSvgPatternStroke?.(b, committed);
   };
 
   // Crop controls → live preview / commit; the draft owns the tracked params
@@ -1144,6 +1160,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   const strokeForBar: BorderModel = strokeDraft
     ? { ...strokeDraft, color: model.stroke?.color ?? strokeDraft.color }
     : (model.stroke ?? DEFAULT_BORDER_MODEL);
+  // …and the pattern's, on the same rule: tracked params from the draft,
+  // the colour from the model (the full-screen picker writes it).
+  const svgPatternStrokeForBar: BorderModel = svgPatternStrokeDraft
+    ? {
+      ...svgPatternStrokeDraft,
+      color: model.svgPatternStroke?.color ?? svgPatternStrokeDraft.color,
+    }
+    : (model.svgPatternStroke ?? DEFAULT_BORDER_MODEL);
   // Tracked type params come from the draft; color comes from the model (the
   // full-screen picker changes it externally, like the effect pages' colors).
   const textForBar: TextStyleModel = textDraft
@@ -1282,6 +1306,29 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
           <PatternSymmetryGrid
             value={model.svgPatternSymmetry ?? 'off'}
             onPick={(key) => model.onSvgPatternSymmetry?.(key)}
+          />
+        ) : svgPatternSection === 'stroke' ? (
+          // The tiles' OWN line: Width, Dash, and the ink they are drawn
+          // in — the shape's Stroke page pointed inward. The same
+          // component, so the pattern's line is set with the same rows and
+          // the same ranges as every other line in the editor.
+          //
+          // No Position row: alignment asks which side of a path to keep,
+          // and the tiles are a mark inside a clip, not an outline around
+          // an area. The Remove line stays the PAGE's (it removes the
+          // pattern) — a line is not something a pattern can be without.
+          <BorderBar
+            border={svgPatternStrokeForBar}
+            showPosition={false}
+            color={svgPatternStrokeForBar.color}
+            onColor={model.onSvgPatternStroke
+              ? (color, committed) => applySvgPatternStroke(
+                { ...svgPatternStrokeForBar, color }, committed,
+              )
+              : undefined}
+            onOpenColorPicker={() => model.onPickSvgPatternStrokeColor?.()}
+            onChange={(b) => applySvgPatternStroke(b, false)}
+            onCommit={(b) => applySvgPatternStroke(b, true)}
           />
         ) : (
           <>

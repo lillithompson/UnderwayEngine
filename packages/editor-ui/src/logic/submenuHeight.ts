@@ -154,10 +154,12 @@ export type SubmenuKey =
   | 'image'
   | 'text' | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
   // A closed shape's PATTERN fill: the square tile it repeats inside its
-  // outline. Two sections under one tab — Tile (the Resolution and Size
+  // outline. Three sections under one tab — Tile (the Resolution and Size
   // sliders over the Edit that opens the tile on the canvas, where it is
-  // painted) and Symmetry (the mirror the tile is painted under, the same
-  // twelve-cell grid a pattern object picks its mode from).
+  // painted), Symmetry (the mirror the tile is painted under, the same
+  // twelve-cell grid a pattern object picks its mode from) and Stroke (the
+  // line the TILES are drawn in, which is not the outline the shape
+  // wears).
   | 'svgPattern'
   // The Shape page: a polygonal shape's corner Radius (see svgHasShape).
   | 'shape'
@@ -205,7 +207,7 @@ export interface SubmenuHeightContext {
    *  stands two rows of square buttons tall where the Tile section is a
    *  slider and a button, so the page is measured by the section the way
    *  the Crop page is measured by its mode. */
-  svgPatternSection?: 'tile' | 'symmetry';
+  svgPatternSection?: 'tile' | 'symmetry' | 'stroke';
   /** An effect's controls page: whether it shows the hue row under the
    *  block, on the same rule. */
   effectColor?: boolean;
@@ -349,11 +351,19 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // two questions — Resolution (how finely one repeat is cut) over
       // Size (how big it draws) — and then the way into painting it: the
       // tiles themselves are laid ON THE CANVAS, inside the shape.
-      // SYMMETRY is the mode grid, two rows of square buttons.
+      // SYMMETRY is the mode grid, two rows of square buttons. STROKE is
+      // the Border page's own rows pointed at the tiles' line — Width,
+      // Dash and the ink, with no Position (a mark inside a clip has no
+      // side to align to), so it is measured by the same borderRows the
+      // Stroke page is.
       // (The sheet's Remove line is the sheet's own height.)
-      return ctx.svgPatternSection === 'symmetry'
-        ? contentArea([ROW_SEGMENTED, PATTERN_SYMMETRY_GRID])
-        : contentArea([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
+      if (ctx.svgPatternSection === 'symmetry') {
+        return contentArea([ROW_SEGMENTED, PATTERN_SYMMETRY_GRID]);
+      }
+      if (ctx.svgPatternSection === 'stroke') {
+        return contentArea([ROW_SEGMENTED, ...borderRows({ position: false, color: true })]);
+      }
+      return contentArea([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
     case 'crop':
       return contentArea(cropRows(ctx.cropMode));
     case 'image':
