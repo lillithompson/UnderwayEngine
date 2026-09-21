@@ -1358,8 +1358,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
               }}
             />
             {/* …and how big that repeat DRAWS, under it. The pair is the
-                whole of what a tile is: Resolution cuts it finer, Size
-                scales the whole motif, and neither touches the other.
+                whole of what a tile is: Resolution cuts the repeat finer
+                without moving it, Size scales the whole motif without
+                re-cutting it, and neither handle moves the other.
                 Unlike Resolution this one never re-rolls — the same
                 pattern larger is the same pattern — so its handle can be
                 swept without spending the cells. */}

@@ -18,6 +18,7 @@ import {
   DEFAULT_SHAPE_PATTERN_SIZE,
   MAX_SHAPE_PATTERN_SIZE,
   MAX_SHAPE_PATTERN_SPAN,
+  MIN_SHAPE_PATTERN_SIZE,
   MIN_SHAPE_PATTERN_SPAN,
   buildShapePatternFill,
   clampShapePatternSpan,
@@ -213,13 +214,32 @@ describe('resizeShapePatternFill', () => {
     size: 2, flood: true,
   });
 
-  it('grows the repeat and leaves the CELLS the size they were drawn at', () => {
+  it('cuts the repeat finer and leaves the repeat the size it DRAWS at', () => {
     const fill = seeded();
     const bigger = resizeShapePatternFill(fill, 4);
     expect(bigger.size).toBe(4);
     expect(bigger.cells).toHaveLength(16);
-    expect(shapePatternCellL0(bigger)).toBeCloseTo(shapePatternCellL0(fill), 5);
-    expect(bigger.tileL0).toBeCloseTo(fill.tileL0 * 2, 5);
+    // The Size slider's quantity is untouched — the two sliders are
+    // independent — so the cells halve to fit the same repeat.
+    expect(bigger.tileL0).toBeCloseTo(fill.tileL0, 9);
+    expect(shapePatternCellL0(bigger)).toBeCloseTo(shapePatternCellL0(fill) / 2, 9);
+    // …and the other way: coarser cuts the same repeat into bigger cells.
+    const coarser = resizeShapePatternFill(fill, 1);
+    expect(coarser.tileL0).toBeCloseTo(fill.tileL0, 9);
+    expect(shapePatternCellL0(coarser)).toBeCloseTo(shapePatternCellL0(fill) * 2, 9);
+  });
+
+  it('never moves the Size slider, at any resolution', () => {
+    // The whole of the independence rule, read the way the page reads it:
+    // sweep Resolution end to end and the span the Size row shows is the
+    // one it opened at.
+    const fill = seeded();
+    const STEP = 1;
+    const span = shapePatternSpanGrid(fill, STEP);
+    for (let size = MIN_SHAPE_PATTERN_SIZE; size <= MAX_SHAPE_PATTERN_SIZE; size += 1) {
+      const at = resizeShapePatternFill(fill, size);
+      expect(shapePatternSpanGrid(at, STEP)).toBeCloseTo(span, 9);
+    }
   });
 
   it('RE-ROLLS at the new size — a finished pattern, not a cropped one', () => {

@@ -8,10 +8,12 @@
  * shape shows more copies.
  *
  * The page asks two independent questions about that tile. Resolution is
- * how finely one repeat is cut (`size`): raising it keeps the cells the
- * size they draw at and grows the repeat around them. SIZE is how big the
- * repeat itself draws (`tileL0`, {@link setShapePatternSpan}): moving it
- * scales the whole motif, cells and all, and leaves the cell count alone.
+ * how finely one repeat is cut (`size`): raising it holds the repeat where
+ * it is and cuts it into smaller cells. SIZE is how big the repeat itself
+ * draws (`tileL0`, {@link setShapePatternSpan}): moving it scales the
+ * whole motif, cells and all, and leaves the cell count alone. The two
+ * stored numbers are the two sliders, one each, so moving either leaves
+ * the other's handle exactly where it stood.
  *
  * The tile is the pattern kind's own grid, not a second one. Everything
  * about WHERE a pattern sits — box, quarter turn, mirrors, opacity, fade —
@@ -83,9 +85,9 @@ export function clampShapePatternSize(size: number): number {
 }
 
 /** What ONE CELL of the fill spans on the page, in world cells — the tile
- *  divided by its own edge. The quantity the RESOLUTION slider holds still
- *  while it changes how many of them a repeat is made of, and the one the
- *  SIZE slider scales while holding the count. */
+ *  divided by its own edge. Derived from both sliders and stored by
+ *  neither: Resolution changes it by changing the count, Size by changing
+ *  the repeat. */
 export function shapePatternCellL0(fill: ShapePatternFill): number {
   return fill.tileL0 / Math.max(1, fill.size);
 }
@@ -360,9 +362,14 @@ export function buildShapePatternFill(
  * slider commits. (Its SIZE slider is {@link setShapePatternSpan}, which
  * moves the other quantity and keeps this one.)
  *
- * The cells keep the size they are drawn at ({@link shapePatternCellL0}),
- * so the repeat grows or shrinks AROUND them rather than the art being
- * scaled: that is what "a 2 makes a 2×2 pattern" means on the page.
+ * The REPEAT is held still and cut finer or coarser inside it: `tileL0` is
+ * untouched, so each cell shrinks as the count grows
+ * ({@link shapePatternCellL0} is derived from the two). That is what makes
+ * the page's two sliders independent — Resolution moves the cell count and
+ * nothing else, Size moves the repeat and nothing else, and neither
+ * handle drags the other one along. (Holding the CELL still instead grew
+ * the repeat with the count, which walked the Size slider up the moment
+ * Resolution was touched.)
  *
  * The tile is RE-ROLLED at its new size — a fresh connectivity-respecting
  * flood under the fill's own mirror, in `tint`. A size change is a change
@@ -384,7 +391,8 @@ export function resizeShapePatternFill(
     ...fill,
     size: next,
     cells: new Array(next * next).fill(null),
-    tileL0: shapePatternCellL0(fill) * next,
+    // tileL0 rides along untouched: the repeat draws exactly as big as it
+    // did, only cut into a different number of cells.
   };
   // The flood needs a box to reason about; only the CELLS are being asked
   // for, and connectivity reads the grid rather than the page, so a bare
