@@ -2,11 +2,16 @@
  * A closed shape's PATTERN fill (v67+): the tile that REPEATS inside its
  * own outline — {@link SVGObject.patternFill}.
  *
- * A fill is one square tile — `size × size` cells, the Pattern page's Size
- * slider — laid over and over across the shape's box and clipped to its
- * outline. It is not a grid stretched to fit: a bigger shape shows more
- * copies, and the Size slider changes how many CELLS one copy holds, so
- * the cells keep their size and the repeat grows around them.
+ * A fill is one square tile — `size × size` cells, the Pattern page's
+ * RESOLUTION slider — laid over and over across the shape's box and
+ * clipped to its outline. It is not a grid stretched to fit: a bigger
+ * shape shows more copies.
+ *
+ * The page asks two independent questions about that tile. Resolution is
+ * how finely one repeat is cut (`size`): raising it keeps the cells the
+ * size they draw at and grows the repeat around them. SIZE is how big the
+ * repeat itself draws (`tileL0`, {@link setShapePatternSpan}): moving it
+ * scales the whole motif, cells and all, and leaves the cell count alone.
  *
  * The tile is the pattern kind's own grid, not a second one. Everything
  * about WHERE a pattern sits — box, quarter turn, mirrors, opacity, fade —
@@ -47,7 +52,7 @@ import { patternFloodEdits } from './patternObject';
 import { SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { strokeScaleForUnits, svgStrokeWidthCells } from './svgStroke';
 
-/** The Size slider's range: one repeat holds 1×1 to 8×8 cells. */
+/** The RESOLUTION slider's range: one repeat holds 1×1 to 8×8 cells. */
 export const MIN_SHAPE_PATTERN_SIZE = 1;
 export const MAX_SHAPE_PATTERN_SIZE = 8;
 
@@ -78,10 +83,76 @@ export function clampShapePatternSize(size: number): number {
 }
 
 /** What ONE CELL of the fill spans on the page, in world cells — the tile
- *  divided by its own edge. The quantity the Size slider holds still while
- *  it changes how many of them a repeat is made of. */
+ *  divided by its own edge. The quantity the RESOLUTION slider holds still
+ *  while it changes how many of them a repeat is made of, and the one the
+ *  SIZE slider scales while holding the count. */
 export function shapePatternCellL0(fill: ShapePatternFill): number {
   return fill.tileL0 / Math.max(1, fill.size);
+}
+
+/**
+ * The SIZE slider's range: one repeat spans a quarter of a composition
+ * grid square to eight of them, in quarter-square steps.
+ *
+ * Quarters rather than a free number so the tile lattice stays a
+ * SUB-LATTICE of the composition's own — every repeat edge still lands on
+ * a gridline the rest of the page is drawn to, at one, two or four times
+ * its pitch. A free scale would drift the pattern off the grid it shares
+ * the page with, which reads as a pattern that is slightly wrong
+ * everywhere rather than as a smaller one.
+ *
+ * A fresh fill opens at 1: one repeat to the grid square, which is what
+ * `buildShapePatternFill` lays down (`size` cells at
+ * {@link SHAPE_PATTERN_CELLS_PER_GRID} to the square).
+ */
+export const MIN_SHAPE_PATTERN_SPAN = 0.25;
+export const MAX_SHAPE_PATTERN_SPAN = 8;
+export const SHAPE_PATTERN_SPAN_STEP = 0.25;
+export const DEFAULT_SHAPE_PATTERN_SPAN = 1;
+
+/** `span` clamped into the Size slider's range and put on its step. */
+export function clampShapePatternSpan(span: number): number {
+  const stepped = Math.round((Number.isFinite(span) ? span : DEFAULT_SHAPE_PATTERN_SPAN)
+    / SHAPE_PATTERN_SPAN_STEP) * SHAPE_PATTERN_SPAN_STEP;
+  return Math.max(MIN_SHAPE_PATTERN_SPAN, Math.min(MAX_SHAPE_PATTERN_SPAN, stepped));
+}
+
+/**
+ * How many GRID SQUARES one repeat spans — the Size slider's number, and
+ * the other half of the pair the Pattern page asks about a tile.
+ * RESOLUTION (`size`) is how finely the repeat is cut; SIZE is how big it
+ * draws. The two are independent: moving one leaves the other where it is.
+ *
+ * `step` is the composition's grid step ({@link compSnapStep} of its
+ * level), the same one `buildShapePatternFill` seeds `tileL0` from. The
+ * stored quantity is absolute world cells, so a composition that later
+ * changes grid level reads its patterns at a different number of squares —
+ * which is the truth about them, the pattern having not moved.
+ */
+export function shapePatternSpanGrid(fill: ShapePatternFill, step: number): number {
+  return fill.tileL0 / (step > 0 ? step : 1);
+}
+
+/**
+ * The same fill with its repeat at a new SPAN — what the Pattern page's
+ * Size slider commits.
+ *
+ * The CELLS are untouched, unlike a resolution change
+ * ({@link resizeShapePatternFill}, which re-rolls): the same motif at a
+ * different scale is still that motif, so there is nothing to re-roll and
+ * a slider swept back and forth hands back exactly what it started with.
+ * Only `tileL0` moves, and each cell moves with it
+ * ({@link shapePatternCellL0} is derived, never stored).
+ *
+ * Returns the same object when the span is unchanged, so a slider that
+ * lands where it started commits nothing.
+ */
+export function setShapePatternSpan(
+  fill: ShapePatternFill, span: number, step: number,
+): ShapePatternFill {
+  const tileL0 = clampShapePatternSpan(span) * (step > 0 ? step : 1);
+  if (tileL0 === fill.tileL0) return fill;
+  return { ...fill, tileL0 };
 }
 
 /**
@@ -249,8 +320,9 @@ export function buildShapePatternFill(
 }
 
 /**
- * The same fill at a new tile SIZE — what the Pattern page's slider
- * commits.
+ * The same fill at a new RESOLUTION — what the Pattern page's Resolution
+ * slider commits. (Its SIZE slider is {@link setShapePatternSpan}, which
+ * moves the other quantity and keeps this one.)
  *
  * The cells keep the size they are drawn at ({@link shapePatternCellL0}),
  * so the repeat grows or shrinks AROUND them rather than the art being

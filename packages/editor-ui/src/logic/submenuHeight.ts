@@ -154,10 +154,10 @@ export type SubmenuKey =
   | 'image'
   | 'text' | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
   // A closed shape's PATTERN fill: the square tile it repeats inside its
-  // outline. Two sections under one tab — Tile (the Size slider over the
-  // Edit that opens the tile on the canvas, where it is painted) and
-  // Symmetry (the mirror the tile is painted under, the same twelve-cell
-  // grid a pattern object picks its mode from).
+  // outline. Two sections under one tab — Tile (the Resolution and Size
+  // sliders over the Edit that opens the tile on the canvas, where it is
+  // painted) and Symmetry (the mirror the tile is painted under, the same
+  // twelve-cell grid a pattern object picks its mode from).
   | 'svgPattern'
   // The Shape page: a polygonal shape's corner Radius (see svgHasShape).
   | 'shape'
@@ -345,14 +345,15 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // The Radius slider alone.
       return contentArea([ROW_SLIDER]);
     case 'svgPattern':
-      // The section row, then what that section holds. TILE is Size over
-      // Edit: how big one repeat is, and the way into painting it — the
+      // The section row, then what that section holds. TILE is the tile's
+      // two questions — Resolution (how finely one repeat is cut) over
+      // Size (how big it draws) — and then the way into painting it: the
       // tiles themselves are laid ON THE CANVAS, inside the shape.
       // SYMMETRY is the mode grid, two rows of square buttons.
       // (The sheet's Remove line is the sheet's own height.)
       return ctx.svgPatternSection === 'symmetry'
         ? contentArea([ROW_SEGMENTED, PATTERN_SYMMETRY_GRID])
-        : contentArea([ROW_SEGMENTED, ROW_SLIDER, ROW_SEGMENTED]);
+        : contentArea([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
     case 'crop':
       return contentArea(cropRows(ctx.cropMode));
     case 'image':

@@ -162,6 +162,22 @@ const MIN_SVG_PATTERN_SIZE = 1;
 const MAX_SVG_PATTERN_SIZE = 8;
 const DEFAULT_SVG_PATTERN_SIZE = 2;
 
+// …and how big that repeat DRAWS: the Size row, in composition grid
+// squares, a quarter-square to eight of them in quarter steps. Mirrors the
+// engine's MIN/MAX/STEP_SHAPE_PATTERN_SPAN on the same engine-import-free
+// rule as the resolution numbers above. Quarters keep the tile lattice a
+// sub-lattice of the page's own grid, so a repeat edge still lands on a
+// gridline whatever the slider says.
+const MIN_SVG_PATTERN_SPAN = 0.25;
+const MAX_SVG_PATTERN_SPAN = 8;
+const SVG_PATTERN_SPAN_STEP = 0.25;
+const DEFAULT_SVG_PATTERN_SPAN = 1;
+
+/** The Size row's number, written the shortest way that is still exact:
+ *  "1", "1.5", "0.25". A trailing ".00" on a slider readout reads as
+ *  precision the control does not have. */
+const spanText = (span: number): string => String(Number(span.toFixed(2)));
+
 /** The Pattern page's two sections, in display order: the tile itself,
  *  then the mirror it is painted under. */
 const SVG_PATTERN_SECTIONS = [
@@ -431,6 +447,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // The Pattern page's Size handle while it is moving; null when it rests
   // on what the shape actually carries.
   const [svgPatternSizeDraft, setSvgPatternSizeDraft] = useState<number | null>(null);
+  const [svgPatternSpanDraft, setSvgPatternSpanDraft] = useState<number | null>(null);
   // …and which of its two sections is showing (the Copies page keeps its
   // own the same way). It outlives a selection, like that one: a section
   // is where you were working, not a property of the shape.
@@ -923,13 +940,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     prevSvgFillOpen.current = !!model.svgFillOpen;
   }, [model.svgFillOpen, model.svgFill]);
 
-  // The Size handle rests on what the shape carries the moment that
-  // changes — the commit's own echo, and a selection that moved to a
-  // differently-sized pattern (a stale draft would otherwise show the last
-  // shape's number over this one's tile).
+  // Each handle rests on what the shape carries the moment that changes —
+  // the commit's own echo, and a selection that moved to a differently
+  // sized pattern (a stale draft would otherwise show the last shape's
+  // number over this one's tile). One effect per row, keyed on its own
+  // quantity: the two are independent, so a Size commit must not throw
+  // away a Resolution drag in flight.
   useEffect(() => {
     setSvgPatternSizeDraft(null);
   }, [model.svgPatternSize, model.svgPatternPresent]);
+  useEffect(() => {
+    setSvgPatternSpanDraft(null);
+  }, [model.svgPatternSpan, model.svgPatternPresent]);
   // Shadow controls → live preview / commit through the model; the draft stays
   // in sync so the sliders keep tracking.
   const applyShadow = (s: ShadowModel, committed: boolean) => {
@@ -1242,6 +1264,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     const editing = !!model.svgPatternEditing;
     const size = svgPatternSizeDraft
       ?? model.svgPatternSize ?? DEFAULT_SVG_PATTERN_SIZE;
+    const span = svgPatternSpanDraft
+      ?? model.svgPatternSpan ?? DEFAULT_SVG_PATTERN_SPAN;
     activeBarEl = (
       <BarBody>
         {/* The page's two sections, under the tab rather than beside it:
@@ -1278,6 +1302,32 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
                   model.onSvgPatternSize?.(Math.round(
                     Math.min(MAX_SVG_PATTERN_SIZE, Math.max(MIN_SVG_PATTERN_SIZE, n)),
                   ));
+                },
+              }}
+            />
+            {/* …and how big that repeat DRAWS, under it. The pair is the
+                whole of what a tile is: Resolution cuts it finer, Size
+                scales the whole motif, and neither touches the other.
+                Unlike Resolution this one never re-rolls — the same
+                pattern larger is the same pattern — so its handle can be
+                swept without spending the cells. */}
+            <SliderRow
+              label="Size"
+              value={(span - MIN_SVG_PATTERN_SPAN) / (MAX_SVG_PATTERN_SPAN - MIN_SVG_PATTERN_SPAN)}
+              apply={(t, committed) => {
+                const raw = MIN_SVG_PATTERN_SPAN
+                  + t * (MAX_SVG_PATTERN_SPAN - MIN_SVG_PATTERN_SPAN);
+                const next = Math.round(raw / SVG_PATTERN_SPAN_STEP) * SVG_PATTERN_SPAN_STEP;
+                setSvgPatternSpanDraft(committed ? null : next);
+                if (committed) model.onSvgPatternSpan?.(next);
+              }}
+              readout={{
+                text: spanText(span),
+                commit: (n) => {
+                  setSvgPatternSpanDraft(null);
+                  model.onSvgPatternSpan?.(
+                    Math.min(MAX_SVG_PATTERN_SPAN, Math.max(MIN_SVG_PATTERN_SPAN, n)),
+                  );
                 },
               }}
             />

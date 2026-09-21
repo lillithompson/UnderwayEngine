@@ -1292,7 +1292,7 @@ export interface PatternObject {
  * implementation of any of it. See engine/shapePatternFill.ts.
  */
 export interface ShapePatternFill {
-  /** The tile's edge in CELLS — the Pattern page's Size slider, 1..8
+  /** The tile's edge in CELLS — the Pattern page's RESOLUTION slider, 1..8
    *  ({@link MAX_SHAPE_PATTERN_SIZE}). A pattern is SQUARE by
    *  construction: size 2 is a 2×2 tile, and that tile repeats across the
    *  shape. (The grid a {@link PatternObject} carries can be oblong; a
@@ -1300,10 +1300,12 @@ export interface ShapePatternFill {
   size: number;
   /** Row-major cell states, length size*size; null is an empty cell. */
   cells: CellState[];
-  /** What one repeat SPANS, in world cells — the tile's edge on the page.
-   *  Set at creation to `size × the composition's grid step` (one pattern
-   *  cell per grid cell) and rescaled with the Size slider so the CELLS
-   *  keep their size and the repeat grows, not the other way round.
+  /** What one repeat SPANS, in world cells — the tile's edge on the page,
+   *  and the Pattern page's SIZE slider read in grid squares
+   *  (engine/shapePatternFill's shapePatternSpanGrid). Set at creation to
+   *  one grid square and moved two ways: the Resolution slider rescales it
+   *  so the CELLS keep their size and the repeat grows around them, while
+   *  the Size slider sets it outright and the cells scale with it.
    *
    *  Absolute, not a fraction of the shape: resizing a patterned shape
    *  lays MORE copies rather than stretching the one, which is the rule a

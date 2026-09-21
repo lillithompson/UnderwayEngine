@@ -722,14 +722,23 @@ export interface ObjectPropertiesModel {
   /** Re-open an existing pattern fill for painting — the page's Edit
    *  button, the same act the Add above ends on. */
   onEditSvgPattern?(): void;
-  /** The tile's edge in CELLS — the page's Size slider, 1–8. A pattern is
-   *  square: 2 is a 2×2 tile, repeating across the shape. */
+  /** The tile's edge in CELLS — the page's RESOLUTION slider, 1–8. A
+   *  pattern is square: 2 is a 2×2 tile, repeating across the shape. */
   svgPatternSize?: number;
-  /** Commit a new tile size. Called on RELEASE only (the page holds the
-   *  handle's own draft while it moves): a size change re-rolls the tile
-   *  at that size, which is one undo step and not something to do sixty
-   *  times a second. */
+  /** Commit a new tile resolution. Called on RELEASE only (the page holds
+   *  the handle's own draft while it moves): the change re-rolls the tile
+   *  at that resolution, which is one undo step and not something to do
+   *  sixty times a second. */
   onSvgPatternSize?(size: number): void;
+  /** How many composition GRID SQUARES one repeat spans — the page's SIZE
+   *  slider, a quarter-square to eight in quarter steps. The other half of
+   *  the pair: Resolution says how finely the repeat is cut, Size says how
+   *  big it draws, and moving one leaves the other alone. */
+  svgPatternSpan?: number;
+  /** Commit a new repeat size. Called on RELEASE only, like the row above
+   *  — but this one does NOT re-roll: the same motif at a new scale is
+   *  still that motif, so a sweep back to where it started is a no-op. */
+  onSvgPatternSpan?(span: number): void;
   /** The painting mirror the shape's tile is under, as a grid key ('h',
    *  'quad', …) or 'off' — the Pattern page's Symmetry section, which is
    *  the same twelve-cell grid a pattern OBJECT picks its mode from. */
