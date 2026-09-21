@@ -715,6 +715,18 @@ function contentOnlyNode(
   const view = toLegacyLeaf(graph, node) as unknown as Record<string, unknown>;
   const incoming = leaf as unknown as Record<string, unknown>;
   const world = worldMatrix(graph, node.id);
+  // SUBPATHS are the one piece of content the probe cannot settle, because
+  // the node keeps its own mirror of them (`localSubpaths`) and that mirror
+  // is what everything DRAWN reads (`svgLocalGeometry`). The render carries
+  // `subpaths` straight through from the content whenever the mirror is
+  // absent, so a recolour that splits one outline into coloured runs passes
+  // the probe field for field and leaves the node with no mirror at all —
+  // and the drawing then throws the runs away and paints the whole path in
+  // the leading colour. (That was a paint stroke across a shape's outline:
+  // the brush's own preview showed the run it had coloured, and the drop
+  // repainted the entire outline in it.) A change here means read the leaf
+  // in again, which is what builds the mirror.
+  if (!sameValue(view.subpaths, incoming.subpaths)) return null;
 
   for (const base of [view, node.content as unknown as Record<string, unknown> | undefined]) {
     if (!base) continue;
