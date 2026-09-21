@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import { svgEditOptions, SVG_EDIT_OPTIONS } from '../logic/svgEdit';
 import {
   BAR_CUSHION, CONTENT_PAD, GROUP_GAP, GROUP_PAD, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER,
-  pageIsWelled, rowGroupHeight, submenuHeight,
+  SECTION_TABS_ROW, pageIsWelled, rowGroupHeight, submenuHeight,
 } from '../logic/submenuHeight';
 import {
   COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
@@ -38,7 +38,9 @@ describe('the Copies option', () => {
     // The box is ONE section with tabs: its row of tabs and the two sliders
     // the lit tab shows. Every face stands the same height, so the page is
     // one number and never resizes under a tab press.
-    const tabbed = rowGroupHeight([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER]);
+    // The tab strip heads the box flush, so it is counted at
+    // SECTION_TABS_ROW — its height less the gap it puts padding in place of.
+    const tabbed = rowGroupHeight([SECTION_TABS_ROW, ROW_SLIDER, ROW_SLIDER]);
     expect(submenuHeight('transform', {}))
       .toBe(BAR_CUSHION + tabbed + ROW_SEGMENTED + GROUP_GAP);
     expect(GROUP_GAP).toBeGreaterThan(ROW_GAP);
@@ -129,7 +131,14 @@ describe('the Copies page', () => {
     // the render). Copies leads: it is what a press lays down.
     expect(SRC.match(/<RowGroup>/g)).toHaveLength(1);
     expect(SRC).not.toContain('CollapsibleRowGroup');
-    expect(SRC).toContain('<SegmentedRow options={SECTIONS} value={section} onChange={onSection} />');
+    // …and they head that box as one solid line, edge to edge, rather than
+    // floating in it as a control: they say which pair you are looking at,
+    // not what any setting is.
+    expect(SRC).toContain('<SectionTabs');
+    expect(SRC).toContain('options={SECTIONS}');
+    expect(SRC).toContain('pad={GROUP_PAD}');
+    expect(SRC).toContain('radius={SECTION_TABS_GROUP_RADIUS}');
+    expect(SRC).not.toContain('<SegmentedRow');
     expect(SRC).toContain("{ value: 'copies' as const, label: 'Copies' },");
     expect(SRC).toContain("{ value: 'offset' as const, label: 'Offset' },");
     expect(SRC).toContain("{ value: 'scale' as const, label: 'Scale' },");

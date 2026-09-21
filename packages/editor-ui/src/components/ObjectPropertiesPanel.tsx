@@ -44,6 +44,7 @@ import {
   EffectButton,
   EmptyEffectBar,
   MultiToggleRow,
+  SectionTabs,
   SegmentedRow,
   SliderRow,
 } from './effectBar';
@@ -1292,12 +1293,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       ?? model.svgPatternSpan ?? DEFAULT_SVG_PATTERN_SPAN;
     activeBarEl = (
       <BarBody>
-        {/* The page's two sections, under the tab rather than beside it:
-            the tile is one thing with two questions about it — how big a
-            repeat is, and what mirror it is painted under. (A pattern
-            OBJECT asks them as two tabs of its own, having no other
-            property pages to share a row with.) */}
-        <SegmentedRow
+        {/* The page's three sections, under the tab rather than beside it:
+            the tile is one thing with several questions about it — how big
+            a repeat is, what mirror it is painted under, what line it is
+            drawn in. (A pattern OBJECT asks them as tabs of its own, having
+            no other property pages to share a row with.) They head the well
+            as one solid line rather than sitting in it as a control: they
+            say which properties you are looking at, not what any property
+            is. */}
+        <SectionTabs
           options={SVG_PATTERN_SECTIONS}
           value={svgPatternSection}
           onChange={setSvgPatternSection}

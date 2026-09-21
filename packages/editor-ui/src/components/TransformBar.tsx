@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { OpacityModel, RGBLike, TransformCopiesSpec } from '../adapter';
 import {
-  EffectButton, FadeSliderRow, GroupedBody, RowGroup, SegmentedRow, SliderRow,
+  EffectButton, FadeSliderRow, GroupedBody, RowGroup, SECTION_TABS_GROUP_RADIUS, SectionTabs,
+  SliderRow,
 } from './effectBar';
 import {
   COPIES_MAX, COPIES_MIN, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
   copiesSeededFrom,
 } from '../logic/transform';
+import { GROUP_PAD } from '../logic/submenuHeight';
 
 // The Copies page, on every vector shape and line (the 'transform' page —
 // its key predates the rename): Create copies — how far each sits from the
@@ -112,7 +114,13 @@ export function TransformBar({
           one place on the page. Copies leads: it is what a press lays
           down, and the pair most presses set. */}
       <RowGroup>
-        <SegmentedRow options={SECTIONS} value={section} onChange={onSection} />
+        <SectionTabs
+          options={SECTIONS}
+          value={section}
+          onChange={onSection}
+          pad={GROUP_PAD}
+          radius={SECTION_TABS_GROUP_RADIUS}
+        />
         {section === 'copies' ? (
           <>
             <SliderRow

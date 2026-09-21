@@ -30,7 +30,7 @@ import {
 import { patternModalTileSize } from '../logic/patternEdit';
 import {
   BAR_CUSHION, CONTENT_PAD, PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_GRID_WIDTH,
-  PATTERN_TILE_GRID_GAP, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, ROW_SWITCH,
+  PATTERN_TILE_GRID_GAP, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, ROW_SWITCH, SECTION_TABS_ROW,
   SHEET_PAD_HORIZONTAL, submenuHeight,
 } from '../logic/submenuHeight';
 
@@ -720,6 +720,9 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
     expect(PANEL).toContain("{ value: 'tile' as const, label: 'Tile' },");
     expect(PANEL).toContain("{ value: 'symmetry' as const, label: 'Symmetry' },");
     expect(PANEL).toContain("{ value: 'stroke' as const, label: 'Stroke' },");
+    // They head the well as one solid line, edge to edge — SectionTabs,
+    // not the inset SegmentedRow a property would use.
+    expect(PANEL).toContain('<SectionTabs');
     expect(PANEL).toContain('options={SVG_PATTERN_SECTIONS}');
     expect(PANEL).toContain("useState<'tile' | 'symmetry' | 'stroke'>('tile')");
   });
@@ -741,7 +744,7 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
   it('measures the Stroke section as the Border page without Position', () => {
     const stroke = submenuHeight('svgPattern', { svgPatternSection: 'stroke' });
     expect(stroke).toBe(
-      CONTENT_PAD * 2 + ROW_SEGMENTED + ROW_GAP
+      CONTENT_PAD * 2 + SECTION_TABS_ROW + ROW_GAP
       + ROW_SLIDER + ROW_GAP + ROW_SLIDER + ROW_GAP + ROW_SLIDER + BAR_CUSHION,
     );
   });
@@ -778,7 +781,7 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
     // rendered and not counted opens the sheet short of its own controls.
     const tile = submenuHeight('svgPattern', { svgPatternSection: 'tile' });
     expect(tile).toBe(
-      CONTENT_PAD * 2 + ROW_SEGMENTED + ROW_GAP + ROW_SLIDER + ROW_GAP
+      CONTENT_PAD * 2 + SECTION_TABS_ROW + ROW_GAP + ROW_SLIDER + ROW_GAP
       + ROW_SLIDER + ROW_GAP + ROW_SEGMENTED + BAR_CUSHION,
     );
   });
@@ -800,7 +803,7 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
     const symmetry = submenuHeight('svgPattern', { svgPatternSection: 'symmetry' });
     expect(symmetry).not.toBe(tile);
     expect(symmetry).toBe(
-      CONTENT_PAD * 2 + ROW_SEGMENTED + ROW_GAP
+      CONTENT_PAD * 2 + SECTION_TABS_ROW + ROW_GAP
       + PATTERN_SYMMETRY_BUTTON * 2 + PATTERN_TILE_GRID_GAP + BAR_CUSHION,
     );
     // …and with nothing said it is the Tile section, the one it opens on.

@@ -10,7 +10,8 @@
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
-  BAR_CUSHION, CONTENT_PAD, ROW_GAP, ROW_SLIDER, SHADOW_PAD_SIZE, submenuHeight,
+  BAR_CUSHION, CONTENT_PAD, GROUP_PAD, PATTERN_SYMMETRY_GRID, ROW_GAP, ROW_SECTION_TABS, ROW_SLIDER,
+  SECTION_TABS_ROW, SHADOW_PAD_SIZE, rowGroupHeight, submenuHeight,
 } from '../logic/submenuHeight';
 
 const SRC = (...p: string[]) => readFileSync(resolve(__dirname, '..', ...p), 'utf8');
@@ -829,6 +830,32 @@ describe('the panel drives the sheet', () => {
     const eb = SRC('components', 'effectBar.tsx');
     expect(eb).toContain('segmentedRow: { flexDirection: \'row\', alignItems: \'center\', height: ROW_SEGMENTED }');
     expect(submenuHeight('border')).toBe(submenuHeight('border', { borderRows: { position: true } }));
+  });
+
+  it('sub-tabs head their box as one solid line, edge to edge', () => {
+    // A page with SECTIONS (Pattern's Tile / Symmetry / Stroke, Copies'
+    // four faces) wears SectionTabs, not the inset SegmentedRow a property
+    // uses: the cells meet with no gaps and no track padding, and the strip
+    // cancels the holding box's top and side padding so it runs to its
+    // edges instead of floating inside them.
+    expect(BAR).toContain("sectionTabs: { flexDirection: 'row', height: ROW_SECTION_TABS, backgroundColor: SEG_TRACK }");
+    expect(BAR).toContain('{ marginTop: -pad, marginHorizontal: -pad, marginBottom: pad - ROW_GAP }');
+    // Only the OUTER corners round, to whichever box holds the strip; the
+    // seams between cells stay square, which is what makes it one line.
+    expect(BAR).toContain('i === 0 && { borderTopLeftRadius: radius }');
+    expect(BAR).toContain('i === last && { borderTopRightRadius: radius }');
+    expect(BAR).toContain('sectionTab: { flex: 1');
+    expect(BAR).not.toContain('sectionTab: { flex: 1, paddingVertical');
+    // The strip puts the cancelled top padding back UNDER itself, so the
+    // first control keeps its normal inset and the page stands exactly one
+    // ROW_GAP shorter than the inset row it replaced.
+    expect(SECTION_TABS_ROW).toBe(ROW_SECTION_TABS - ROW_GAP);
+    // …which is the number both boxes that head with one are measured by.
+    expect(submenuHeight('svgPattern', { svgPatternSection: 'symmetry' })).toBe(
+      CONTENT_PAD * 2 + SECTION_TABS_ROW + ROW_GAP + PATTERN_SYMMETRY_GRID + BAR_CUSHION,
+    );
+    const copiesBox = rowGroupHeight([SECTION_TABS_ROW, ROW_SLIDER, ROW_SLIDER]);
+    expect(copiesBox).toBe(GROUP_PAD * 2 + ROW_SECTION_TABS + ROW_SLIDER * 2 + ROW_GAP);
   });
 
   it('a tab that opens a page opens it — it never toggles the page closed', () => {

@@ -40,6 +40,23 @@ export const ROW_PILL = 36;
 export const ROW_SWITCH = ROW_SEGMENTED;
 /** Space between rows inside a page's `controls` stack. */
 export const ROW_GAP = 2;
+/** A flush section-tab strip (effectBar's SectionTabs — the Pattern page's
+ *  Tile / Symmetry / Stroke, the Copies page's four faces). It is one solid
+ *  line of buttons across the TOP of the box that holds it, so it stands as
+ *  tall as a segmented row but keeps none of its margins. */
+export const ROW_SECTION_TABS = ROW_SEGMENTED;
+/**
+ * What a {@link ROW_SECTION_TABS} strip adds to its box's row stack.
+ *
+ * The strip cancels the box's top and side padding with negative margins
+ * and puts the top padding back UNDER itself, so from the box's top edge to
+ * the first control below it the distance is the strip's height plus that
+ * one padding — exactly what an ordinary first row would have measured,
+ * less the {@link ROW_GAP} the stack adds after every row. Counting the
+ * strip at that smaller number is what keeps the sheet's height and its
+ * markup the same arithmetic.
+ */
+export const SECTION_TABS_ROW = ROW_SECTION_TABS - ROW_GAP;
 /** A dim hint line under a control (effectBar's Hint): 2 above + an 11pt line
  *  + 2 below. */
 export const HINT_HEIGHT = 17;
@@ -347,8 +364,9 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // The Radius slider alone.
       return contentArea([ROW_SLIDER]);
     case 'svgPattern':
-      // The section row, then what that section holds. TILE is the tile's
-      // two questions — Resolution (how finely one repeat is cut) over
+      // The section STRIP heading the well, then what that section holds.
+      // TILE is the tile's two questions — Resolution (how finely one
+      // repeat is cut) over
       // Size (how big it draws) — and then the way into painting it: the
       // tiles themselves are laid ON THE CANVAS, inside the shape.
       // SYMMETRY is the mode grid, two rows of square buttons. STROKE is
@@ -358,12 +376,12 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // Stroke page is.
       // (The sheet's Remove line is the sheet's own height.)
       if (ctx.svgPatternSection === 'symmetry') {
-        return contentArea([ROW_SEGMENTED, PATTERN_SYMMETRY_GRID]);
+        return contentArea([SECTION_TABS_ROW, PATTERN_SYMMETRY_GRID]);
       }
       if (ctx.svgPatternSection === 'stroke') {
-        return contentArea([ROW_SEGMENTED, ...borderRows({ position: false, color: true })]);
+        return contentArea([SECTION_TABS_ROW, ...borderRows({ position: false, color: true })]);
       }
-      return contentArea([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
+      return contentArea([SECTION_TABS_ROW, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
     case 'crop':
       return contentArea(cropRows(ctx.cropMode));
     case 'image':
@@ -430,7 +448,7 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // sliders), so the page never resizes under a tab press. Its group IS
       // its box, so it is drawn with no well around it (pageIsWelled) and
       // measured without the well's padding.
-      const tabbed = rowGroupHeight([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER]);
+      const tabbed = rowGroupHeight([SECTION_TABS_ROW, ROW_SLIDER, ROW_SLIDER]);
       return bareArea([tabbed, ROW_SEGMENTED], GROUP_GAP);
     }
     case 'patternTile':

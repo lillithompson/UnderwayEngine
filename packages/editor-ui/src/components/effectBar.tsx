@@ -2,8 +2,8 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import {
-  ASIDE_GAP, GROUP_GAP, GROUP_PAD, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, ROW_SWITCH, SLIDER_CONTROL,
-  SLIDER_LABEL, SLIDER_LABEL_GAP,
+  ASIDE_GAP, CONTENT_PAD, GROUP_GAP, GROUP_PAD, ROW_GAP, ROW_SECTION_TABS, ROW_SEGMENTED, ROW_SLIDER,
+  ROW_SWITCH, SLIDER_CONTROL, SLIDER_LABEL, SLIDER_LABEL_GAP,
 } from '../logic/submenuHeight';
 import { percentText, percentToValue } from '../logic/slider';
 import {
@@ -566,6 +566,77 @@ export function SegmentedRow<T extends string>({ label, options, value, onChange
   );
 }
 
+/** The radius of the two boxes a {@link SectionTabs} strip can head: the
+ *  Edit sheet's content well, and a RowGroup inside it. The strip rounds
+ *  its outer corners to whichever it sits in, so the box's corner stays a
+ *  corner rather than showing a square band poking out of it. */
+export const SECTION_TABS_WELL_RADIUS = 16;
+export const SECTION_TABS_GROUP_RADIUS = 12;
+
+/**
+ * A page's SUB-TABS: one solid line of buttons across the top of the box
+ * that holds them, edge to edge.
+ *
+ * Where {@link SegmentedRow} is a control the page asks a question with —
+ * inset, rounded, floating in the page's field — this is the page's own
+ * head: the Pattern page's Tile / Symmetry / Stroke, the Copies page's
+ * Copies / Offset / Scale / Color. They do not set a property, they say
+ * which properties you are looking at, so they read as the bed's lid rather
+ * than as its first control. The strip cancels the box's top and side
+ * padding (`pad`) with negative margins, rounds its outer corners to the
+ * box's own (`radius`), and puts that padding back under itself so the
+ * first control keeps its normal inset. logic/submenuHeight's
+ * SECTION_TABS_ROW is the same arithmetic, so a page measures the way it
+ * draws.
+ */
+export function SectionTabs<T extends string>({ options, value, onChange, pad = CONTENT_PAD, radius = SECTION_TABS_WELL_RADIUS }: {
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+  /** The holding box's padding, which the strip cancels. CONTENT_PAD for
+   *  the Edit sheet's well, GROUP_PAD for a RowGroup. */
+  pad?: number;
+  /** …and its corner radius, which the strip's outer cells copy. */
+  radius?: number;
+}) {
+  const last = options.length - 1;
+  return (
+    <View
+      style={[
+        styles.sectionTabs,
+        { marginTop: -pad, marginHorizontal: -pad, marginBottom: pad - ROW_GAP },
+        { borderTopLeftRadius: radius, borderTopRightRadius: radius },
+      ]}
+    >
+      {options.map((o, i) => {
+        const active = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            style={[
+              styles.sectionTab,
+              active && styles.sectionTabActive,
+              i === 0 && { borderTopLeftRadius: radius },
+              i === last && { borderTopRightRadius: radius },
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={o.label}
+          >
+            <Text
+              style={[styles.sectionTabText, active && styles.sectionTabTextActive]}
+              numberOfLines={1}
+            >
+              {o.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 /** One row of ACTIONS: the same 50pt label column + equal-width track as
  *  {@link SegmentedRow}, but every cell is a button that fires and stays
  *  unlit — there is no selected value to show. The Layout bar's align rows
@@ -755,6 +826,15 @@ const styles = StyleSheet.create({
   },
   segmentText: { color: SEG_TEXT, fontSize: 11.5, fontWeight: '600' },
   segmentTextActive: { color: PANEL_INK },
+  // The sub-tab strip: no track padding and no gaps, so the cells meet and
+  // the row reads as ONE line rather than as four chips. Only the outer
+  // corners round (to the holding box's radius, set inline); the seams
+  // between cells stay square.
+  sectionTabs: { flexDirection: 'row', height: ROW_SECTION_TABS, backgroundColor: SEG_TRACK },
+  sectionTab: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  sectionTabActive: { backgroundColor: SEG_ACTIVE },
+  sectionTabText: { color: SEG_TEXT, fontSize: 11.5, fontWeight: '600' },
+  sectionTabTextActive: { color: PANEL_INK },
   // The value box: the segmented rows' raised white cell, one track tall,
   // wide enough for "100%" without reflowing as the value changes.
   readout: {
