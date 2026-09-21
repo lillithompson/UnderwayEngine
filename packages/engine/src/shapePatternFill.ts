@@ -36,16 +36,16 @@
  */
 
 import {
-  CellState,
   CompositionState,
   PatternObject,
   PatternSymmetry,
   RGBColor,
   ShapePatternFill,
   SVGObject,
-  SVGStroke,
 } from './types';
-import { patternApplyToolAt, patternFloodEdits } from './patternObject';
+import { patternFloodEdits } from './patternObject';
+import { SVG_UNITS_PER_L0_CELL } from './svgExport';
+import { strokeScaleForUnits, svgStrokeWidthCells } from './svgStroke';
 
 /** The Size slider's range: one repeat holds 1×1 to 8×8 cells. */
 export const MIN_SHAPE_PATTERN_SIZE = 1;
@@ -55,6 +55,19 @@ export const MAX_SHAPE_PATTERN_SIZE = 8;
  *  sight — it has an inside to answer itself across, and every mirror mode
  *  has something to mirror — where a 1×1 is one tile stamped everywhere. */
 export const DEFAULT_SHAPE_PATTERN_SIZE = 2;
+
+/**
+ * How many pattern CELLS a fresh fill lays across one square of the
+ * composition's grid: two, so its tiles are drawn at TWICE the grid's own
+ * resolution.
+ *
+ * It is what makes the Size slider's number read as a count of repeats
+ * rather than of grid squares: at 2 cells per square, a 2×2 tile spans one
+ * square, so a shape two squares across shows the pattern twice. (The
+ * pattern TOOL's dragged region is one cell per square — a region is a
+ * patch of grid, where a fill is a motif inside a shape.)
+ */
+export const SHAPE_PATTERN_CELLS_PER_GRID = 2;
 
 /** `size` clamped into the slider's range and made whole. */
 export function clampShapePatternSize(size: number): number {
@@ -72,6 +85,30 @@ export function shapePatternCellL0(fill: ShapePatternFill): number {
 }
 
 /**
+ * The line the TILES are drawn in: HALF the shape's own, so the pattern
+ * reads as the finer mark inside the outline that frames it — and follows
+ * it, since it is derived at every draw rather than seeded once. Move the
+ * Stroke page's Width and the pattern thins with it.
+ *
+ * Half the composition's default for a shape drawing NO outline (its
+ * stroke removed, width 0): half of nothing is nothing, and a pattern that
+ * vanished because the frame around it did would read as a bug.
+ *
+ * `strokeScale` is the composition-wide one; omitted (a swatch thumbnail,
+ * the hit tests) it stands at 1, which is the shape's own authored width
+ * wherever there is one.
+ */
+export const SHAPE_PATTERN_STROKE_FRACTION = 0.5;
+
+function tileStrokeWidth(svg: SVGObject, strokeScale: number): number {
+  const u = SVG_UNITS_PER_L0_CELL;
+  const scaled = strokeScaleForUnits(strokeScale, u);
+  const own = svgStrokeWidthCells(svg, scaled, u);
+  const width = own > 0 ? own : svgStrokeWidthCells({ stroke: undefined }, scaled, u);
+  return width * SHAPE_PATTERN_STROKE_FRACTION;
+}
+
+/**
  * The stored tile dressed as a {@link PatternObject} — what every
  * grid-taking function in the engine wants. Null when the shape carries no
  * fill.
@@ -85,11 +122,14 @@ export function shapePatternCellL0(fill: ShapePatternFill): number {
  * shape's node matrix carries the turn, the mirrors and the lean, so
  * handing the bake a rotation here would apply it twice.
  *
- * `grow` is what the drawn geometry took OUT of that matrix and folded
- * into the vertices (sceneDrawnContent's `growX` / `growY`) — a tile is a
- * world length like a stroke width, so it has to grow with them or a shape
- * inside a scaled group would repeat at the wrong size. Omitted (the hit
- * tests, which ask in world coordinates) means 1.
+ * `gx` / `gy` are what the drawn geometry took OUT of that matrix and
+ * folded into the vertices (sceneDrawnContent's `growX` / `growY`) — a tile
+ * is a world length like a stroke width, so it has to grow with them or a
+ * shape inside a scaled group would repeat at the wrong size. Omitted (the
+ * hit tests, which ask in world coordinates) they stand at 1.
+ *
+ * The tiles' own line is derived here too, at half the shape's
+ * ({@link tileStrokeWidth}), which is why `strokeScale` comes along.
  *
  * Cached per fill block so `patternSVGView`'s own per-object cache hits:
  * the block is immutable per edit (every op replaces it), which makes it
@@ -98,16 +138,20 @@ export function shapePatternCellL0(fill: ShapePatternFill): number {
 const grids = new WeakMap<ShapePatternFill, { key: string; grid: PatternObject }>();
 
 export function shapePatternGrid(
-  svg: SVGObject, grow?: { gx: number; gy: number },
+  svg: SVGObject,
+  opts?: { gx?: number; gy?: number; strokeScale?: number },
 ): PatternObject | null {
   const fill = svg.patternFill;
   if (!fill) return null;
-  const gx = grow?.gx ?? 1;
-  const gy = grow?.gy ?? 1;
+  const gx = opts?.gx ?? 1;
+  const gy = opts?.gy ?? 1;
+  const strokeWidth = tileStrokeWidth(svg, opts?.strokeScale ?? 1);
   // The box is the shape's, and it moves (a drag, a resize, a group's
   // scale) while the block stays the very same object — so it is part of
-  // the cache key, not just of the value.
-  const key = `${svg.id}|${svg.cellX}|${svg.cellY}|${svg.cellWidth}|${svg.cellHeight}|${gx}|${gy}`;
+  // the cache key, not just of the value. The tiles' line rides the SHAPE's
+  // stroke, so it is keyed too.
+  const key = `${svg.id}|${svg.cellX}|${svg.cellY}|${svg.cellWidth}|${svg.cellHeight}`
+    + `|${gx}|${gy}|${strokeWidth}`;
   const hit = grids.get(fill);
   if (hit && hit.key === key) return hit.grid;
   const tileWidthL0 = fill.tileL0 * gx;
@@ -128,7 +172,9 @@ export function shapePatternGrid(
     tileOffsetYL0: (svg.cellHeight - tileHeightL0) / 2,
     ...(fill.symmetry ? { symmetry: fill.symmetry } : null),
     ...(fill.allowBorderConnections === false ? { allowBorderConnections: false } : null),
-    ...(fill.stroke ? { stroke: fill.stroke } : null),
+    // The fill's own block carries the dash and the rest; the WIDTH is the
+    // shape's half, whatever is stored.
+    stroke: { ...fill.stroke, width: strokeWidth },
   };
   grids.set(fill, { key, grid });
   return grid;
@@ -159,15 +205,20 @@ export function shapePatternFillIsEmpty(fill: ShapePatternFill | undefined): boo
 }
 
 /**
- * A fresh pattern fill for `svg`: a `size × size` tile whose CELLS are one
- * composition grid step each (`step`), so a repeat spans `size` grid cells
- * and the tiles land on the same lattice everything else is drawn on.
+ * A fresh pattern fill for `svg`: a `size × size` tile drawn at twice the
+ * composition grid's resolution — `step` is one grid square, and a cell is
+ * {@link SHAPE_PATTERN_CELLS_PER_GRID} to the square. So a 2×2 tile spans
+ * ONE square, and a shape two squares across repeats it twice; the tiles
+ * still land on the lattice everything else is drawn on, at half its
+ * pitch.
  *
  * `flood` fills it with connectivity-respecting random tiles under
  * `symmetry`, in the ink `tint` — which is what makes an added pattern
- * arrive as a PATTERN rather than as an empty tile drawing nothing. The
- * same three seeds a dragged pattern region takes (symmetry, stroke,
- * tint), because it is the same act.
+ * arrive as a PATTERN rather than as an empty tile drawing nothing.
+ *
+ * No line weight is seeded: the tiles are drawn at half the SHAPE's,
+ * derived at every draw ({@link tileStrokeWidth}), so there is nothing
+ * here to go stale when the Stroke page moves.
  */
 export function buildShapePatternFill(
   svg: SVGObject,
@@ -175,7 +226,6 @@ export function buildShapePatternFill(
   opts?: {
     size?: number;
     symmetry?: PatternSymmetry;
-    stroke?: SVGStroke;
     flood?: boolean;
     excludedFamilies?: Set<string>;
     tint?: RGBColor | null;
@@ -185,9 +235,8 @@ export function buildShapePatternFill(
   const fill: ShapePatternFill = {
     size,
     cells: new Array(size * size).fill(null),
-    tileL0: size * (step > 0 ? step : 1),
+    tileL0: size * ((step > 0 ? step : 1) / SHAPE_PATTERN_CELLS_PER_GRID),
     ...(opts?.symmetry ? { symmetry: opts.symmetry } : null),
-    ...(opts?.stroke ? { stroke: opts.stroke } : null),
   };
   if (!opts?.flood) return fill;
   const grid = shapePatternGrid({ ...svg, patternFill: fill });
@@ -207,11 +256,14 @@ export function buildShapePatternFill(
  * so the repeat grows or shrinks AROUND them rather than the art being
  * scaled: that is what "a 2 makes a 2×2 pattern" means on the page.
  *
- * What is already painted stays painted — the old tile is copied into the
- * new one from its top-left corner — and the cells that appear when the
- * tile grows are filled with connectivity-respecting picks, so a larger
- * size extends the pattern instead of leaving a corner of it drawn and the
- * rest blank. Returns the same object when the size is unchanged.
+ * The tile is RE-ROLLED at its new size — a fresh connectivity-respecting
+ * flood under the fill's own mirror, in `tint`. A size change is a change
+ * of motif, not a crop: carrying the old cells into a bigger tile left
+ * their pattern sitting in one corner of it (and into a smaller one, a
+ * cropped quarter of what was there). The slider is a way of trying sizes,
+ * so each one hands back a finished pattern. Returns the same object when
+ * the size is unchanged, so a slider that lands where it started commits
+ * nothing.
  */
 export function resizeShapePatternFill(
   fill: ShapePatternFill,
@@ -220,35 +272,23 @@ export function resizeShapePatternFill(
 ): ShapePatternFill {
   const next = clampShapePatternSize(size);
   if (next === fill.size) return fill;
-  const cellL0 = shapePatternCellL0(fill);
-  const cells: CellState[] = new Array(next * next).fill(null);
-  const keep = Math.min(next, fill.size);
-  for (let y = 0; y < keep; y++) {
-    for (let x = 0; x < keep; x++) cells[y * next + x] = fill.cells[y * fill.size + x] ?? null;
-  }
-  const resized: ShapePatternFill = { ...fill, size: next, cells, tileL0: cellL0 * next };
-  if (next <= fill.size) return resized;
-  // The cells the growth exposed, rolled against the ones already down so
-  // the pattern carries on across the seam — the same per-cell pick the
-  // brush makes (patternApplyToolAt), under the tile's own symmetry. The
-  // box is a bare unit square: only the CELLS are being asked about, and
-  // connectivity reads the grid, not the page.
+  const resized: ShapePatternFill = {
+    ...fill,
+    size: next,
+    cells: new Array(next * next).fill(null),
+    tileL0: shapePatternCellL0(fill) * next,
+  };
+  // The flood needs a box to reason about; only the CELLS are being asked
+  // for, and connectivity reads the grid rather than the page, so a bare
+  // unit square does.
   const box = { id: 'fill', cellX: 0, cellY: 0, cellWidth: next, cellHeight: next } as SVGObject;
-  let working = shapePatternGrid({ ...box, patternFill: resized });
-  if (!working) return resized;
-  const filled = cells.slice();
-  for (let y = 0; y < next; y++) {
-    for (let x = 0; x < next; x++) {
-      if (filled[y * next + x] != null) continue;
-      const edits = patternApplyToolAt(
-        working, x, y, { kind: 'random' }, opts?.excludedFamilies, opts?.tint,
-      ).filter((e) => filled[e.index] == null);
-      if (edits.length === 0) continue;
-      for (const e of edits) filled[e.index] = e.newState;
-      working = { ...working, cells: filled.slice() };
-    }
-  }
-  return { ...resized, cells: filled };
+  const grid = shapePatternGrid({ ...box, patternFill: resized });
+  if (!grid) return resized;
+  const edits = patternFloodEdits(grid, { kind: 'random' }, opts?.excludedFamilies, opts?.tint);
+  if (edits.length === 0) return resized;
+  const cells = resized.cells.slice();
+  for (const e of edits) cells[e.index] = e.newState;
+  return { ...resized, cells };
 }
 
 // ── Reading and writing a fill on the scene ─────────────────────────

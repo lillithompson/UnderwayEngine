@@ -130,22 +130,54 @@ describe('shapePatternGrid', () => {
 
   it('round-trips the tile s fields through shapePatternFillOf', () => {
     const symmetry: PatternSymmetry = { ...PATTERN_SYMMETRY_OFF, mirrorH: true };
-    const fill: ShapePatternFill = { ...filledFill(), symmetry, stroke: { width: 0.3 } };
+    const fill: ShapePatternFill = { ...filledFill(), symmetry, stroke: { dash: 3 } };
     const svg = { ...rect('svg_1', 0, 0, 4, 4), patternFill: fill };
     const grid = shapePatternGrid(svg)!;
-    expect(shapePatternFillOf(fill, grid)).toEqual(fill);
+    // The WIDTH the grid wears is derived and does not cross back — what
+    // the fill stores of its stroke (the dash) is what round-trips.
+    expect(shapePatternFillOf(fill, grid).stroke?.dash).toBe(3);
+    expect({ ...shapePatternFillOf(fill, grid), stroke: fill.stroke }).toEqual(fill);
+  });
+
+  it('draws the tiles at HALF the shape s own line, and follows it', () => {
+    const fill = filledFill();
+    const thick = { ...rect('svg_1', 0, 0, 4, 4), patternFill: fill, stroke: { width: 0.8 } };
+    expect(shapePatternGrid(thick)!.stroke!.width).toBeCloseTo(0.4, 6);
+    // Move the Stroke page's Width and the pattern thins with it.
+    const thin = { ...thick, stroke: { width: 0.2 } };
+    expect(shapePatternGrid(thin)!.stroke!.width).toBeCloseTo(0.1, 6);
+    // A shape drawing NO outline still shows its pattern: half of the
+    // composition's own default rather than half of nothing.
+    const bare = { ...thick, stroke: { width: 0 } };
+    expect(shapePatternGrid(bare)!.stroke!.width).toBeGreaterThan(0);
+    // …and the dash the fill stores rides along with it.
+    const dashed = { ...thick, patternFill: { ...fill, stroke: { dash: 2 } } };
+    expect(shapePatternGrid(dashed)!.stroke).toMatchObject({ dash: 2 });
   });
 });
 
 describe('buildShapePatternFill', () => {
-  it('makes a square tile of size cells, one grid step each', () => {
+  it('makes a square tile at TWICE the grid s resolution', () => {
     const fill = buildShapePatternFill(rect('svg_1', 0, 0, 8, 4), 2, { size: 3 });
     expect(fill.size).toBe(3);
     expect(fill.cells).toHaveLength(9);
-    // One cell per grid step: a repeat spans `size` grid cells.
-    expect(fill.tileL0).toBeCloseTo(6, 5);
-    expect(shapePatternCellL0(fill)).toBeCloseTo(2, 5);
+    // Two cells to a grid square (SHAPE_PATTERN_CELLS_PER_GRID): a cell is
+    // half a step, so a 3×3 tile spans one and a half squares.
+    expect(shapePatternCellL0(fill)).toBeCloseTo(1, 5);
+    expect(fill.tileL0).toBeCloseTo(3, 5);
     expect(shapePatternFillIsEmpty(fill)).toBe(true);
+  });
+
+  it('repeats the Size slider s number across that many grid squares', () => {
+    // What the number on the slider means on the page: a 2×2 tile spans
+    // ONE grid square, so a shape two squares across shows it twice.
+    const step = 2;
+    const shape = rect('svg_1', 0, 0, 2 * step, 2 * step);
+    const fill = buildShapePatternFill(shape, step, { size: 2 });
+    expect(fill.tileL0).toBeCloseTo(step, 5);
+    const grid = shapePatternGrid({ ...shape, patternFill: fill })!;
+    expect(grid.cellWidth / grid.tileWidthL0!).toBeCloseTo(2, 5);
+    expect(grid.cellHeight / grid.tileHeightL0!).toBeCloseTo(2, 5);
   });
 
   it('opens at the default size, and never outside the slider s range', () => {
@@ -184,24 +216,17 @@ describe('resizeShapePatternFill', () => {
     expect(bigger.tileL0).toBeCloseTo(fill.tileL0 * 2, 5);
   });
 
-  it('keeps what is already painted, and fills what the growth exposed', () => {
+  it('RE-ROLLS at the new size — a finished pattern, not a cropped one', () => {
+    // A size change is a change of motif: the old cells carried into a
+    // bigger tile would sit in one corner of it, and into a smaller one
+    // would be a quarter of what was there.
     const fill = seeded();
     const bigger = resizeShapePatternFill(fill, 3);
-    // The old tile, top-left.
-    for (let y = 0; y < 2; y++) {
-      for (let x = 0; x < 2; x++) {
-        expect(bigger.cells[y * 3 + x]).toEqual(fill.cells[y * 2 + x]);
-      }
-    }
-    // …and nothing left blank behind it.
+    expect(bigger.cells).toHaveLength(9);
     expect(bigger.cells.every((c) => c != null)).toBe(true);
-  });
-
-  it('crops to the top-left corner on the way down', () => {
-    const fill = seeded();
     const smaller = resizeShapePatternFill(fill, 1);
     expect(smaller.size).toBe(1);
-    expect(smaller.cells).toEqual([fill.cells[0]]);
+    expect(smaller.cells.every((c) => c != null)).toBe(true);
   });
 
   it('hands the same block back for no change, and clamps the range', () => {

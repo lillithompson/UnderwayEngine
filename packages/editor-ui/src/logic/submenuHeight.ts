@@ -147,8 +147,10 @@ export type SubmenuKey =
   | 'image'
   | 'text' | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
   // A closed shape's PATTERN fill: the square tile it repeats inside its
-  // outline. The Size slider (how many cells one repeat holds) over the
-  // Edit that opens that tile on the canvas, where it is painted.
+  // outline. Two sections under one tab — Tile (the Size slider over the
+  // Edit that opens the tile on the canvas, where it is painted) and
+  // Symmetry (the mirror the tile is painted under, the same twelve-cell
+  // grid a pattern object picks its mode from).
   | 'svgPattern'
   // The Shape page: a polygonal shape's corner Radius (see svgHasShape).
   | 'shape'
@@ -192,6 +194,11 @@ export interface SubmenuHeightContext {
   /** Fill page: whether it shows the hue row above Opacity — exactly when the
    *  host offers a fill colour to write. */
   svgFillColor?: boolean;
+  /** Pattern page: which of its two sections is showing. The mirror grid
+   *  stands two rows of square buttons tall where the Tile section is a
+   *  slider and a button, so the page is measured by the section the way
+   *  the Crop page is measured by its mode. */
+  svgPatternSection?: 'tile' | 'symmetry';
   /** Shadow page: whether it shows the hue row above Opacity, on the same
    *  rule. */
   shadowColor?: boolean;
@@ -326,10 +333,14 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // The Radius slider alone.
       return contentArea([ROW_SLIDER]);
     case 'svgPattern':
-      // Size over Edit: how big one repeat is, and the way into painting
-      // it — the tiles themselves are laid ON THE CANVAS, inside the
-      // shape. (The sheet's Remove line is the sheet's own height.)
-      return contentArea([ROW_SLIDER, ROW_SEGMENTED]);
+      // The section row, then what that section holds. TILE is Size over
+      // Edit: how big one repeat is, and the way into painting it — the
+      // tiles themselves are laid ON THE CANVAS, inside the shape.
+      // SYMMETRY is the mode grid, two rows of square buttons.
+      // (The sheet's Remove line is the sheet's own height.)
+      return ctx.svgPatternSection === 'symmetry'
+        ? contentArea([ROW_SEGMENTED, PATTERN_SYMMETRY_GRID])
+        : contentArea([ROW_SEGMENTED, ROW_SLIDER, ROW_SEGMENTED]);
     case 'crop':
       return contentArea(cropRows(ctx.cropMode));
     case 'image':

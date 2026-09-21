@@ -252,12 +252,13 @@ function buildPatternSVGView(p: PatternObject): SVGObject | null {
  * the same world line weight as the tiles in a pattern object beside it.
  * `grow` is the drawn geometry's per-axis stretch (`growX` / `growY`),
  * which the TILE has to be grown by for the same reason a stroke width is
- * — see {@link shapePatternGrid}.
+ * — see {@link shapePatternGrid}, which also derives the tiles' own line
+ * from the shape's out of the `strokeScale` this passes on.
  */
 export function shapePatternFillTiles(
   svg: SVGObject, strokeScale: number, grow?: { gx: number; gy: number },
 ): string {
-  const grid = shapePatternGrid(svg, grow);
+  const grid = shapePatternGrid(svg, { ...grow, strokeScale });
   if (!grid) return '';
   const view = patternSVGView(grid);
   if (!view) return '';

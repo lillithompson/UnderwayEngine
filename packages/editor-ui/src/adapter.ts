@@ -706,10 +706,18 @@ export interface ObjectPropertiesModel {
    *  square: 2 is a 2×2 tile, repeating across the shape. */
   svgPatternSize?: number;
   /** Commit a new tile size. Called on RELEASE only (the page holds the
-   *  handle's own draft while it moves): a size change re-rolls the cells
-   *  the larger tile exposes, which is one undo step and not something to
-   *  do sixty times a second. */
+   *  handle's own draft while it moves): a size change re-rolls the tile
+   *  at that size, which is one undo step and not something to do sixty
+   *  times a second. */
   onSvgPatternSize?(size: number): void;
+  /** The painting mirror the shape's tile is under, as a grid key ('h',
+   *  'quad', …) or 'off' — the Pattern page's Symmetry section, which is
+   *  the same twelve-cell grid a pattern OBJECT picks its mode from. */
+  svgPatternSymmetry?: string;
+  /** Pick that mirror. Like a pattern object's, the pick re-lays the tile
+   *  under the new rule (the cells already down were laid under the old
+   *  one), as one undo step. */
+  onSvgPatternSymmetry?(key: string): void;
   /** Remove the pattern fill — the page's Remove line. One undo step; what
    *  the shape drew underneath (its own fill and outline) is untouched. */
   onRemoveSvgPattern?(): void;

@@ -268,20 +268,28 @@ export function PatternToolsBar({ model }: {
   );
 }
 
-export function PatternSymmetryBar({ model }: {
-  model: ObjectPropertiesModel;
+/**
+ * The painting-mirror grid: the eleven modes and Off, as the canvas
+ * Symmetry takeover's SQUARE buttons — glyph over a small word — but on
+ * the pattern pages' own tile-button scale (PATTERN_TILE_BUTTON, six
+ * across), so the whole set is two rows inside the sheet instead of a
+ * screen of its own. The takeover leads with None and this closes with
+ * Off: the word differs because the cell does — there it is a first-class
+ * pick among modes, here it is the way out of the one in force.
+ *
+ * Same twelve cells, same glyphs (PATTERN_SYMMETRY_ENTRIES carries them),
+ * so a mode looks the same wherever it is picked — which is the point of
+ * this being a component rather than a shape it is drawn in twice: a
+ * pattern OBJECT picks its mirror here, and so does the tile a shape
+ * repeats as its pattern fill (the Pattern page's Symmetry section).
+ */
+export function PatternSymmetryGrid({ value, onPick }: {
+  /** The grid key in force ('h', 'quad', …), or 'off'. */
+  value: string;
+  /** The key picked. Pressing the ACTIVE mode hands back 'off', like the
+   *  old modal's toggle — the caller need not special-case it. */
+  onPick: (key: string) => void;
 }) {
-  const current = model.patternSymmetry ?? 'off';
-  // The 11 modes + Off, as the canvas Symmetry takeover's SQUARE buttons —
-  // glyph over a small word — but on this page's own tile-button scale
-  // (PATTERN_TILE_BUTTON, six across), so the whole grid is two rows inside
-  // the sheet instead of a screen of its own. The takeover leads with None
-  // and this page closes with Off: the word differs because the cell does
-  // — there it is a first-class pick among modes, here it is the way out of
-  // the one the pattern is in.
-  //
-  // Same twelve cells, same glyphs (PATTERN_SYMMETRY_ENTRIES carries them),
-  // so a mode looks the same wherever it is picked.
   const cells = [
     ...PATTERN_SYMMETRY_ENTRIES.map((e) => ({
       value: e.key, label: e.label, icon: e.icon, mirrored: e.mirrored,
@@ -289,38 +297,48 @@ export function PatternSymmetryBar({ model }: {
     { value: 'off', label: 'Off', icon: PATTERN_SYMMETRY_OFF_ICON, mirrored: undefined },
   ];
   return (
+    <View style={styles.symGrid}>
+      {cells.map((o) => {
+        const active = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onPick(active ? 'off' : o.value)}
+            style={[styles.symCell, active && styles.symCellActive]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={`Symmetry: ${o.label}`}
+          >
+            <MaterialCommunityIcons
+              name={o.icon as never}
+              size={20}
+              color={active ? PANEL_INK : PANEL_INK_DIM}
+              style={o.mirrored ? MIRRORED_GLYPH : undefined}
+            />
+            <Text
+              style={[styles.symWord, active && styles.symWordActive]}
+              numberOfLines={1}
+            >
+              {o.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** A pattern OBJECT's Symmetry page: the grid, in the sheet's own body. */
+export function PatternSymmetryBar({ model }: {
+  model: ObjectPropertiesModel;
+}) {
+  return (
     <View>
       <BarBody>
-        <View style={styles.symGrid}>
-          {cells.map((o) => {
-            const active = o.value === current;
-            return (
-              <Pressable
-                key={o.value}
-                // Tapping the ACTIVE mode again turns symmetry off, like
-                // the old modal's toggle.
-                onPress={() => model.onPatternSymmetry?.(active ? 'off' : o.value)}
-                style={[styles.symCell, active && styles.symCellActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`Symmetry: ${o.label}`}
-              >
-                <MaterialCommunityIcons
-                  name={o.icon as never}
-                  size={20}
-                  color={active ? PANEL_INK : PANEL_INK_DIM}
-                  style={o.mirrored ? MIRRORED_GLYPH : undefined}
-                />
-                <Text
-                  style={[styles.symWord, active && styles.symWordActive]}
-                  numberOfLines={1}
-                >
-                  {o.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <PatternSymmetryGrid
+          value={model.patternSymmetry ?? 'off'}
+          onPick={(key) => model.onPatternSymmetry?.(key)}
+        />
       </BarBody>
     </View>
   );

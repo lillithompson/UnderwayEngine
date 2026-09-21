@@ -30,7 +30,8 @@ import {
 import { patternModalTileSize } from '../logic/patternEdit';
 import {
   BAR_CUSHION, CONTENT_PAD, PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_GRID_WIDTH,
-  PATTERN_TILE_GRID_GAP, ROW_SEGMENTED, ROW_SWITCH, SHEET_PAD_HORIZONTAL, submenuHeight,
+  PATTERN_TILE_GRID_GAP, ROW_GAP, ROW_SEGMENTED, ROW_SWITCH, SHEET_PAD_HORIZONTAL,
+  submenuHeight,
 } from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
@@ -333,8 +334,11 @@ describe('the Tiles bar carries the arming grid', () => {
 // inside the sheet rather than a screen of its own.
 describe('the Symmetry page is a compact grid of square glyph buttons', () => {
   const SRC = readFileSync(resolve(__dirname, '..', 'components', 'PatternBars.tsx'), 'utf8');
+  // The grid and the bar that wraps it: the cells moved into a component
+  // of their own (PatternSymmetryGrid) when a shape's pattern FILL grew a
+  // Symmetry section of its own — one grid, two pages.
   const symBar = SRC.slice(
-    SRC.indexOf('export function PatternSymmetryBar'),
+    SRC.indexOf('export function PatternSymmetryGrid'),
     SRC.indexOf('const MIRRORED_GLYPH'),
   );
 
@@ -376,7 +380,10 @@ describe('the Symmetry page is a compact grid of square glyph buttons', () => {
   });
 
   it('still toggles the active mode back to off', () => {
-    expect(symBar).toContain("model.onPatternSymmetry?.(active ? 'off' : o.value)");
+    // The toggle is the GRID's, so both pages get it without either
+    // special-casing the active cell.
+    expect(symBar).toContain("onPick(active ? 'off' : o.value)");
+    expect(symBar).toContain('onPick={(key) => model.onPatternSymmetry?.(key)}');
   });
 });
 
@@ -696,5 +703,43 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     // Repeat and Sets stack — both rows, not one standing in for the other.
     expect(submenuHeight('patternTools', { patternCanRepeat: true, patternTileSetCount: 3 }))
       .toBeGreaterThan(withRepeat);
+  });
+});
+
+describe("a shape's pattern fill picks its mirror from the same grid", () => {
+  const PANEL = readFileSync(
+    resolve(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'), 'utf8',
+  );
+
+  it('splits the Pattern page into Tile and Symmetry sections', () => {
+    // A sub-tab under the one tab, rather than a second tab of its own:
+    // the tile is one thing with two questions about it. (A pattern OBJECT
+    // asks them as two tabs, having no other property pages to share a row
+    // with.)
+    expect(PANEL).toContain("{ value: 'tile' as const, label: 'Tile' },");
+    expect(PANEL).toContain("{ value: 'symmetry' as const, label: 'Symmetry' },");
+    expect(PANEL).toContain('options={SVG_PATTERN_SECTIONS}');
+    expect(PANEL).toContain("useState<'tile' | 'symmetry'>('tile')");
+  });
+
+  it('draws the very grid the pattern object draws, bound to the shape', () => {
+    expect(PANEL).toContain('<PatternSymmetryGrid');
+    expect(PANEL).toContain("value={model.svgPatternSymmetry ?? 'off'}");
+    expect(PANEL).toContain('onPick={(key) => model.onSvgPatternSymmetry?.(key)}');
+  });
+
+  it('measures the page by the section showing', () => {
+    // The mirror grid stands two rows of square buttons where the Tile
+    // section is a slider and a button, so the sheet animates between them
+    // rather than reserving the taller of the two.
+    const tile = submenuHeight('svgPattern', { svgPatternSection: 'tile' });
+    const symmetry = submenuHeight('svgPattern', { svgPatternSection: 'symmetry' });
+    expect(symmetry).toBeGreaterThan(tile);
+    expect(symmetry).toBe(
+      CONTENT_PAD * 2 + ROW_SEGMENTED + ROW_GAP
+      + PATTERN_SYMMETRY_BUTTON * 2 + PATTERN_TILE_GRID_GAP + BAR_CUSHION,
+    );
+    // …and with nothing said it is the Tile section, the one it opens on.
+    expect(submenuHeight('svgPattern')).toBe(tile);
   });
 });

@@ -35,13 +35,16 @@ import { TintBar } from './TintBar';
 import { EndpointsBar } from './EndpointsBar';
 import { TransformBar, type CopiesSection } from './TransformBar';
 import { LayoutBar } from './LayoutBar';
-import { PatternSymmetryBar, PatternTileBar, PatternTilesBar, PatternToolsBar } from './PatternBars';
+import {
+  PatternSymmetryBar, PatternSymmetryGrid, PatternTileBar, PatternTilesBar, PatternToolsBar,
+} from './PatternBars';
 import {
   BarBody,
   ColorSliderRow,
   EffectButton,
   EmptyEffectBar,
   MultiToggleRow,
+  SegmentedRow,
   SliderRow,
 } from './effectBar';
 import { ShapeBar } from './ShapeBar';
@@ -148,6 +151,13 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 const MIN_SVG_PATTERN_SIZE = 1;
 const MAX_SVG_PATTERN_SIZE = 8;
 const DEFAULT_SVG_PATTERN_SIZE = 2;
+
+/** The Pattern page's two sections, in display order: the tile itself,
+ *  then the mirror it is painted under. */
+const SVG_PATTERN_SECTIONS = [
+  { value: 'tile' as const, label: 'Tile' },
+  { value: 'symmetry' as const, label: 'Symmetry' },
+];
 
 // The property pages, in tab order. Image selections offer crop / shadow /
 // border / opacity (matching their tab order); text offers font / align (two
@@ -385,6 +395,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // The Pattern page's Size handle while it is moving; null when it rests
   // on what the shape actually carries.
   const [svgPatternSizeDraft, setSvgPatternSizeDraft] = useState<number | null>(null);
+  // …and which of its two sections is showing (the Copies page keeps its
+  // own the same way). It outlives a selection, like that one: a section
+  // is where you were working, not a property of the shape.
+  const [svgPatternSection, setSvgPatternSection] = useState<'tile' | 'symmetry'>('tile');
   const prevSvgFillOpen = useRef(false);
   // The Text pages own their tracked params too (color still comes from the
   // model — it's changed externally via the full-screen picker).
@@ -1086,31 +1100,50 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       ?? model.svgPatternSize ?? DEFAULT_SVG_PATTERN_SIZE;
     activeBarEl = (
       <BarBody>
-        <SliderRow
-          label="Size"
-          value={(size - MIN_SVG_PATTERN_SIZE) / (MAX_SVG_PATTERN_SIZE - MIN_SVG_PATTERN_SIZE)}
-          apply={(t, committed) => {
-            const next = Math.round(
-              MIN_SVG_PATTERN_SIZE + t * (MAX_SVG_PATTERN_SIZE - MIN_SVG_PATTERN_SIZE),
-            );
-            setSvgPatternSizeDraft(committed ? null : next);
-            if (committed) model.onSvgPatternSize?.(next);
-          }}
-          readout={{
-            text: `${size}×${size}`,
-            commit: (n) => {
-              setSvgPatternSizeDraft(null);
-              model.onSvgPatternSize?.(Math.round(
-                Math.min(MAX_SVG_PATTERN_SIZE, Math.max(MIN_SVG_PATTERN_SIZE, n)),
-              ));
-            },
-          }}
+        {/* The page's two sections, under the tab rather than beside it:
+            the tile is one thing with two questions about it — how big a
+            repeat is, and what mirror it is painted under. (A pattern
+            OBJECT asks them as two tabs of its own, having no other
+            property pages to share a row with.) */}
+        <SegmentedRow
+          options={SVG_PATTERN_SECTIONS}
+          value={svgPatternSection}
+          onChange={setSvgPatternSection}
         />
-        <EffectButton
-          label={editing ? 'Editing' : 'Edit Pattern'}
-          icon={editing ? 'check' : 'pencil'}
-          onPress={() => { if (!editing) model.onEditSvgPattern?.(); }}
-        />
+        {svgPatternSection === 'symmetry' ? (
+          <PatternSymmetryGrid
+            value={model.svgPatternSymmetry ?? 'off'}
+            onPick={(key) => model.onSvgPatternSymmetry?.(key)}
+          />
+        ) : (
+          <>
+            <SliderRow
+              label="Size"
+              value={(size - MIN_SVG_PATTERN_SIZE) / (MAX_SVG_PATTERN_SIZE - MIN_SVG_PATTERN_SIZE)}
+              apply={(t, committed) => {
+                const next = Math.round(
+                  MIN_SVG_PATTERN_SIZE + t * (MAX_SVG_PATTERN_SIZE - MIN_SVG_PATTERN_SIZE),
+                );
+                setSvgPatternSizeDraft(committed ? null : next);
+                if (committed) model.onSvgPatternSize?.(next);
+              }}
+              readout={{
+                text: `${size}×${size}`,
+                commit: (n) => {
+                  setSvgPatternSizeDraft(null);
+                  model.onSvgPatternSize?.(Math.round(
+                    Math.min(MAX_SVG_PATTERN_SIZE, Math.max(MIN_SVG_PATTERN_SIZE, n)),
+                  ));
+                },
+              }}
+            />
+            <EffectButton
+              label={editing ? 'Editing' : 'Edit Pattern'}
+              icon={editing ? 'check' : 'pencil'}
+              onPress={() => { if (!editing) model.onEditSvgPattern?.(); }}
+            />
+          </>
+        )}
       </BarBody>
     );
     if (model.onRemoveSvgPattern) {
@@ -1337,6 +1370,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // Every hue row is counted exactly where its page will render it — the
     // page grows by a slider row when the host has that colour to write.
     svgFillColor: !!model.onSvgFillColor,
+    // …and the Pattern page by the section showing: a mirror grid stands
+    // two rows of square buttons where the tile's own section is a slider
+    // and a button.
+    svgPatternSection,
     shadowColor: !!model.onShadowColor && !!model.onPickShadowColor,
     textColor: !!model.onTextColor && !!model.onPickTextColor,
     // The image / frame border offers every row; a vector's stroke drops the

@@ -1315,9 +1315,11 @@ export interface ShapePatternFill {
   symmetry?: PatternSymmetry;
   /** Border-connection rule for connectivity. Undefined = true. */
   allowBorderConnections?: boolean;
-  /** The line weight the tiles are drawn at, seeded at creation like a
-   *  pattern object's (see {@link PatternObject.stroke}). Undefined falls
-   *  back to the composition-wide strokeScale. */
+  /** Dash and the rest of the tiles' stroke block. NOT its width: the
+   *  tiles are drawn at HALF the shape's own line, derived at every draw
+   *  (engine/shapePatternFill's tileStrokeWidth), so the pattern follows
+   *  the outline that frames it rather than holding a copy of its width
+   *  that goes stale the moment the Stroke page moves. */
   stroke?: SVGStroke;
 }
 
