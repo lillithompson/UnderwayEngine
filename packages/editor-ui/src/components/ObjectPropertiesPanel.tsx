@@ -1277,7 +1277,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // How FINELY one repeat is cut — the tile is square, so the row reads
     // "2×2" — over the one act that opens it: the tiles themselves are
     // painted ON THE CANVAS, inside the shape. While that tile IS open the
-    // button says so and stands down.
+    // button has nothing left to do and goes away.
     //
     // Called RESOLUTION, not Size: more cells per edge is a denser tile,
     // not a bigger one. (Size is how big the repeat draws, which is the
@@ -1385,11 +1385,17 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
                 },
               }}
             />
-            <EffectButton
-              label={editing ? 'Editing' : 'Edit Pattern'}
-              icon={editing ? 'check' : 'pencil'}
-              onPress={() => { if (!editing) model.onEditSvgPattern?.(); }}
-            />
+            {/* The one act that opens the tile. While it IS open there is
+                nothing for the button to do, so the page drops it rather
+                than parking an inert "Editing" in the well — the canvas
+                already shows the tile is open. */}
+            {editing ? null : (
+              <EffectButton
+                label="Edit Pattern"
+                icon="pencil"
+                onPress={() => model.onEditSvgPattern?.()}
+              />
+            )}
           </>
         )}
       </BarBody>
