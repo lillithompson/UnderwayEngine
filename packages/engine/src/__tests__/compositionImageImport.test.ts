@@ -3,6 +3,7 @@ import {
   prepareImageReplacement, SVG_MIME_TYPE, svgIntrinsicSize, svgNominalPixelSize,
 } from '../compositionImageImport';
 import { perfDelta } from '../debug/perfCounters';
+import { COVER_FRAMING, coverImageRect, effectiveFraming } from '../imageFraming';
 
 describe('placementBbox', () => {
   it('sizes to 8 L0 cells at grid level 0', () => {
@@ -264,6 +265,61 @@ function installFakeDecoder(nativeW: number, nativeH: number): FakeEnv {
   g.OffscreenCanvas = FakeOffscreenCanvas;
   return env;
 }
+
+describe('an imported image is born scale-to-fill', () => {
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).createImageBitmap;
+    delete (globalThis as Record<string, unknown>).OffscreenCanvas;
+  });
+
+  const MARKUP = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 12"><rect width="24" height="12"/></svg>';
+
+  it('a raster import carries the cover framing', async () => {
+    installFakeDecoder(4000, 3000);
+    const { image } = await prepareImageImport(jpegHeader(4000, 3000), 'image/jpeg', 0, 0);
+    expect(image.framing).toEqual(COVER_FRAMING);
+  });
+
+  it('a vector import carries it too — a drawing is no more stretchable than a photo', async () => {
+    const { image } = await prepareImageImport(new TextEncoder().encode(MARKUP), SVG_MIME_TYPE, 16, 16);
+    expect(image.framing).toEqual(COVER_FRAMING);
+  });
+
+  it('is its own copy, so editing one image\u2019s crop cannot move another\u2019s', async () => {
+    const a = await prepareImageImport(new TextEncoder().encode(MARKUP), SVG_MIME_TYPE, 16, 16);
+    const b = await prepareImageImport(new TextEncoder().encode(MARKUP), SVG_MIME_TYPE, 16, 16);
+    expect(a.image.framing).not.toBe(b.image.framing);
+    expect(a.image.framing).not.toBe(COVER_FRAMING);
+  });
+
+  it('draws the placement box exactly — the birth framing crops nothing', async () => {
+    // placementBbox gives the bitmap's own ratio, so cover into it is the
+    // identity. The record matters the moment that box changes, not before:
+    // it is what turns a later resize into a CROP instead of a stretch.
+    installFakeDecoder(4000, 3000);
+    const { image } = await prepareImageImport(jpegHeader(4000, 3000), 'image/jpeg', 0, 0);
+    const f = effectiveFraming(image.framing);
+    const rect = coverImageRect(
+      image.cellWidth, image.cellHeight, image.pixelWidth / image.pixelHeight, f.zoom);
+    expect(rect.x).toBeCloseTo(0, 9);
+    expect(rect.y).toBeCloseTo(0, 9);
+    expect(rect.w).toBeCloseTo(image.cellWidth, 9);
+    expect(rect.h).toBeCloseTo(image.cellHeight, 9);
+  });
+
+  it('a frame pulled off the picture\u2019s ratio crops it, never squashes it', async () => {
+    installFakeDecoder(4000, 3000);
+    const { image } = await prepareImageImport(jpegHeader(4000, 3000), 'image/jpeg', 0, 0);
+    // The user drags the 4:3 node's box to a tall 1:2 frame.
+    const f = effectiveFraming(image.framing);
+    const rect = coverImageRect(4, 8, image.pixelWidth / image.pixelHeight, f.zoom);
+    // The drawn bitmap still measures 4:3 — it overflows the frame sideways
+    // and is clipped there, which is a crop. A stretch would have made it 1:2.
+    expect(rect.w / rect.h).toBeCloseTo(4 / 3, 9);
+    expect(rect.h).toBeCloseTo(8, 9);
+    expect(rect.w).toBeGreaterThan(4);
+  });
+});
 
 describe('the import pipeline reads the source size from its HEADER', () => {
   afterEach(() => {

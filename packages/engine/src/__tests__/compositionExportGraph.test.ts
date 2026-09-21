@@ -138,11 +138,20 @@ describe('exportGraph', () => {
 
 const BLOB = { blob: new Uint8Array([137, 80, 78, 71]) };
 
-/** The first `<image>`'s x/y/width/height, in SVG units. */
+/** The first `<image>`'s x/y/width/height, in SVG units — the rect the BITMAP
+ *  is drawn into, which for a cover framing overflows the frame. */
 function imageRect(svg: string): { x: number; y: number; width: number; height: number } {
   const m = svg.match(/<image x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/);
   if (!m) throw new Error('no <image> in the export');
   return { x: +m[1], y: +m[2], width: +m[3], height: +m[4] };
+}
+
+/** The nested `<svg>` viewport a square-cornered framed image clips its bitmap
+ *  to — the node's LOCAL FRAME, the box the matrix then places. */
+function frameRect(svg: string): { width: number; height: number } {
+  const m = svg.match(/<svg x="0" y="0" width="([-\d.]+)" height="([-\d.]+)" overflow="hidden"/);
+  if (!m) throw new Error('no frame viewport in the export');
+  return { width: +m[1], height: +m[2] };
 }
 
 function aabbOf(quad: [number, number][]): { x: number; y: number; width: number; height: number } {
@@ -163,9 +172,16 @@ describe('the image kind draws its local frame through one matrix', () => {
       makeState({ images: [img], sceneOrder: ['img'] }),
       { imageBlobs: BLOB },
     )))!;
+    // The FRAME is emitted at the un-turned size: 4 cells wide, 8 tall. (The
+    // bitmap inside it is the cover rect every image is drawn with, which
+    // overflows this frame and is clipped by it — see the cover assertion
+    // below.)
+    const frame = frameRect(svg);
+    expect([frame.width / U, frame.height / U]).toEqual([4, 8]);
+    // 40×20 pixels cover-fitted into a 4×8 frame: 16 wide, 8 tall, centred.
     const rect = imageRect(svg);
-    // Content emitted at the un-turned size: 4 cells wide, 8 tall.
-    expect([rect.width / U, rect.height / U]).toEqual([4, 8]);
+    expect([rect.width / U, rect.height / U]).toEqual([16, 8]);
+    expect([rect.x / U, rect.y / U]).toEqual([-6, 0]);
     const box = aabbOf(drawnQuad(transformsIn(svg)[0], 4, 8));
     expect(box.x / U).toBeCloseTo(0);
     expect(box.y / U).toBeCloseTo(0);

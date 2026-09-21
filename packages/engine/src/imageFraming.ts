@@ -4,6 +4,11 @@
 // shared by the DOM preview (NodeLayer) and the SVG export (compositionSVGCore)
 // so the two can't drift, and unit-tested in node.
 //
+// There is no fifth, unframed mode: a node with no framing record is drawn as
+// COVER_FRAMING (see effectiveFraming), so a bitmap is never stretched or
+// skewed by its node's transform — the transform sets the frame, the framing
+// places the picture in it.
+//
 // Lengths here (margin, tileGap, offset) are in the same world-cell units as
 // the node bbox; zoom is a cover-relative scale (1 = plain cover), angle is in
 // degrees, tileScale is a 0–1 relative size. The bar maps its pt/percent ranges
@@ -16,7 +21,9 @@ export type ImageFramingMode = 'fill' | 'fit' | 'crop' | 'tile';
 export type ImageCropRatio = 'free' | 'square' | 'fourFive' | 'sixteenNine';
 
 /** Per-image framing. All but `mode` are optional so untouched images stay
- *  clean in the JSON; unset fields fall back to {@link FRAMING_DEFAULTS}. */
+ *  clean in the JSON; unset fields fall back to {@link FRAMING_DEFAULTS}.
+ *  A node with NO framing record at all is drawn as {@link COVER_FRAMING} —
+ *  see {@link effectiveFraming}. */
 export interface ImageFraming {
   mode: ImageFramingMode;
   /** Fill zoom: cover-relative scale ≥ 1 (1 = plain cover). Design 100–300%. */
@@ -50,6 +57,25 @@ export const FRAMING_DEFAULTS = {
   offsetY: 0,
 };
 
+/**
+ * The framing every image is BORN with, and the one an image carrying no
+ * framing record is DRAWN with: plain cover — the bitmap scaled uniformly to
+ * fill the frame, aspect intact, the overflow clipped (not discarded, so Crop
+ * mode can still reach it).
+ *
+ * This is the whole contract between an image node's transform and its
+ * pixels: the transform sets the FRAME, the framing says how the bitmap sits
+ * inside it. A bbox dragged off the bitmap's own ratio therefore CROPS the
+ * picture; it can never stretch or skew it. Before this, an image with no
+ * framing rendered `preserveAspectRatio="none"` / `object-fit: fill` — a
+ * non-uniform scale straight off the bbox, which deformed the photo — and
+ * that legacy stretch is gone from every render path.
+ *
+ * Explicit `zoom: 1` (not the Crop bar's 130% default) keeps a birth, or a
+ * legacy node's first draw, from silently zooming in.
+ */
+export const COVER_FRAMING: ImageFraming = { mode: 'fill', zoom: 1 };
+
 export interface ResolvedFraming {
   mode: ImageFramingMode;
   zoom: number;
@@ -79,6 +105,17 @@ export function resolveFraming(f: ImageFraming): ResolvedFraming {
     offsetX: f.offsetX ?? 0,
     offsetY: f.offsetY ?? 0,
   };
+}
+
+/**
+ * {@link resolveFraming} for a node whose framing may be absent: a missing
+ * record resolves to {@link COVER_FRAMING}. The single place that decision is
+ * made, so the DOM preview (NodeLayer), the SVG export (compositionSVGCore)
+ * and the world-geometry readers (svgImageGeometry) can't drift on what an
+ * unframed image looks like.
+ */
+export function effectiveFraming(f: ImageFraming | undefined): ResolvedFraming {
+  return resolveFraming(f ?? COVER_FRAMING);
 }
 
 /** Size (in frame units) of the FULL bitmap when cover-scaled to fill a

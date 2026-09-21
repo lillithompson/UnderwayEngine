@@ -40,7 +40,7 @@ import { flattenPaintTiles } from './canvasPaint';
 import { textArcPaths, textBend, textBendRise } from './textArc';
 import { charColorRuns, contentBoxCells, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
 import { STICKER_BORDER_CELLS, STICKER_SHADOW_CELLS, stickerColors } from './stickerStyle';
-import { resolveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
+import { effectiveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
 
 /** Layer set + dimensions returned by a figure loader. Mirrors the relevant
  *  subset of what `loadFileStateLite` provides. */
@@ -1512,38 +1512,28 @@ export async function generateCompositionSVGCore(
         `<feColorMatrix type="matrix" values="${tintToFeColorMatrix(img.tint)}"/></filter></defs>`;
       tintAttr = ` filter="url(#${tintId})"`;
     }
-    // Rounded corners: clip the <image> to a rounded rect of its own box, so
-    // the tint (a filter on the same element) and any wrapping node effects
-    // all follow the rounded shape.
-    let clipDefs = '';
-    let clipAttr = '';
+    // Rounded corners, in the image's own box, so the tint (a filter on the
+    // same element) and any wrapping node effects all follow the rounded
+    // shape. The clip itself is built inside framedImageSVG — every framing
+    // mode needs one, since Fill/Crop overflow the frame on purpose.
     const cornerR = img.cornerRadius ? Math.min(0.5, img.cornerRadius) * Math.min(iw, ih) : 0;
-    if (cornerR > 0) {
-      const clipId = `round_${img.id}`;
-      clipDefs = `<defs><clipPath id="${clipId}">` +
-        `<rect x="0" y="0" width="${iw}" height="${ih}" rx="${cornerR}" ry="${cornerR}"/></clipPath></defs>`;
-      clipAttr = ` clip-path="url(#${clipId})"`;
-    }
-    // Framing (Crop bar) replaces the legacy stretch: Fill/Fit/Crop/Tile lay
-    // the bitmap out inside the frame (see framedImageSVG). Untouched images
-    // keep the exact `preserveAspectRatio="none"` stretch for back-compat.
-    let framedContent: string;
-    if (img.framing) {
-      const rf = resolveFraming(img.framing);
-      const fu: ResolvedFraming = {
-        ...rf,
-        margin: rf.margin * U,
-        tileGap: rf.tileGap * U,
-        offsetX: rf.offsetX * U,
-        offsetY: rf.offsetY * U,
-      };
-      const imageAspect = img.pixelHeight > 0 ? img.pixelWidth / img.pixelHeight : 1;
-      framedContent = framedImageSVG(fu, dataUri, iw, ih, imageAspect, tintAttr, cornerR, img.id);
-    } else {
-      framedContent = clipDefs +
-        `<image x="0" y="0" width="${iw}" height="${ih}" ` +
-        `href="${dataUri}" preserveAspectRatio="none"${tintAttr}${clipAttr}/>`;
-    }
+    // Framing (Crop bar) is the ONLY way a bitmap meets its frame:
+    // Fill/Fit/Crop/Tile lay it out inside (see framedImageSVG), and a node
+    // with no framing record draws the same plain cover it is born with
+    // (effectiveFraming / COVER_FRAMING). The old `preserveAspectRatio="none"`
+    // branch for an unframed image is gone — it scaled the bitmap off the bbox
+    // on each axis independently, so a frame dragged off the picture's ratio
+    // deformed it.
+    const rf = effectiveFraming(img.framing);
+    const fu: ResolvedFraming = {
+      ...rf,
+      margin: rf.margin * U,
+      tileGap: rf.tileGap * U,
+      offsetX: rf.offsetX * U,
+      offsetY: rf.offsetY * U,
+    };
+    const imageAspect = img.pixelHeight > 0 ? img.pixelWidth / img.pixelHeight : 1;
+    const framedContent = framedImageSVG(fu, dataUri, iw, ih, imageAspect, tintAttr, cornerR, img.id);
     // Node effects (shadow/glow filter + border) are applied in the image's
     // LOCAL frame [0,0,iw,ih] and then wrapped by the transform group below,
     // so they rotate/mirror with the bitmap — matching the editor preview and

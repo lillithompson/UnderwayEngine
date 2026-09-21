@@ -713,6 +713,11 @@ describe('generateCompositionSVGCore — no-feature churn guard', () => {
     // Legacy markup is intact.
     expect(svg).toContain('fill="rgb(111,122,133)"');
     expect(svg).toContain('stroke="rgb(5,6,7)"');
-    expect(svg).toMatch(/<image [^>]*preserveAspectRatio="none"\/>/);
+    // The one deliberate departure from pre-v29 image markup: a bitmap is
+    // laid into its frame by its framing, never by a non-uniform stretch off
+    // the bbox, so a node with no framing record draws the plain cover it is
+    // born with instead of `preserveAspectRatio="none"`.
+    expect(svg).not.toContain('preserveAspectRatio="none"');
+    expect(svg).toMatch(/<image [^>]*preserveAspectRatio="xMidYMid slice"\/>/);
   });
 });

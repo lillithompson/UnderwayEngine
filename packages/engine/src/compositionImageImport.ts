@@ -1,4 +1,5 @@
 import { ImageObject } from './types';
+import { COVER_FRAMING } from './imageFraming';
 import { compSnapStep } from './compositionCellMath';
 import { canvasHasTransparency } from './canvasAlpha';
 import { imageHeaderSize } from './imageHeaderSize';
@@ -445,6 +446,11 @@ export async function prepareImageImport(
       cellY: bbox.cellY,
       cellWidth: bbox.cellWidth,
       cellHeight: bbox.cellHeight,
+      // Born scale-to-fill, like every image — see COVER_FRAMING. The bbox is
+      // the vector's own ratio here, so this draws identically; it matters the
+      // moment a caller re-boxes the node (a slot fill) or the user drags a
+      // handle, which then crops rather than deforming the drawing.
+      framing: { ...COVER_FRAMING },
     };
     return { image, bytes: rawBytes };
   }
@@ -475,6 +481,11 @@ export async function prepareImageImport(
     cellY: bbox.cellY,
     cellWidth: bbox.cellWidth,
     cellHeight: bbox.cellHeight,
+    // Born scale-to-fill: the transform sets the frame, the framing places the
+    // picture in it (COVER_FRAMING). `placementBbox` gives the bitmap's own
+    // ratio, so this is a no-op visually — it is the guarantee that survives
+    // the caller re-boxing the node or the user dragging a handle.
+    framing: { ...COVER_FRAMING },
   };
   if (!needsSeparateOriginal) {
     return { image, bytes: display.bytes };
