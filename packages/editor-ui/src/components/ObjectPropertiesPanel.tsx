@@ -153,8 +153,11 @@ const DEFAULT_TEXT_STYLE_MODEL: TextStyleModel = {
 };
 
 // A pattern fill's tile is square and holds 1..8 cells per edge — the
-// Pattern page's Size row. Mirrors the engine's MIN/MAX_SHAPE_PATTERN_SIZE
-// (this package stays engine-import-free, like PatternSymmetryFlags).
+// Pattern page's RESOLUTION row. Mirrors the engine's
+// MIN/MAX_SHAPE_PATTERN_SIZE (this package stays engine-import-free, like
+// PatternSymmetryFlags), whose stored name is still `size`: what the row
+// sets is how many cells the tile is cut into, which is a density, and
+// the word "Size" was taken by how big the repeat DRAWS.
 const MIN_SVG_PATTERN_SIZE = 1;
 const MAX_SVG_PATTERN_SIZE = 8;
 const DEFAULT_SVG_PATTERN_SIZE = 2;
@@ -1224,14 +1227,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     );
     removeAction = { label: 'Remove fill', onPress: removeSvgFill };
   } else if (displaySub === 'svgPattern') {
-    // How big one REPEAT is — the tile is square, so the row reads "2×2"
-    // — over the one act that opens it: the tiles themselves are painted
-    // ON THE CANVAS, inside the shape. While that tile IS open the button
-    // says so and stands down.
+    // How FINELY one repeat is cut — the tile is square, so the row reads
+    // "2×2" — over the one act that opens it: the tiles themselves are
+    // painted ON THE CANVAS, inside the shape. While that tile IS open the
+    // button says so and stands down.
+    //
+    // Called RESOLUTION, not Size: more cells per edge is a denser tile,
+    // not a bigger one. (Size is how big the repeat draws, which is the
+    // row below.)
     //
     // The slider keeps its own handle (svgPatternSizeDraft) and commits on
-    // release: a size change re-rolls the cells the bigger tile exposes,
-    // which is one undo step, not sixty a second.
+    // release: a change re-rolls the cells the finer tile exposes, which
+    // is one undo step, not sixty a second.
     const editing = !!model.svgPatternEditing;
     const size = svgPatternSizeDraft
       ?? model.svgPatternSize ?? DEFAULT_SVG_PATTERN_SIZE;
@@ -1255,7 +1262,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         ) : (
           <>
             <SliderRow
-              label="Size"
+              label="Resolution"
               value={(size - MIN_SVG_PATTERN_SIZE) / (MAX_SVG_PATTERN_SIZE - MIN_SVG_PATTERN_SIZE)}
               apply={(t, committed) => {
                 const next = Math.round(

@@ -724,6 +724,15 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
     expect(PANEL).toContain("useState<'tile' | 'symmetry'>('tile')");
   });
 
+  it('calls the cells-per-edge row RESOLUTION, not Size', () => {
+    // More cells per edge is a DENSER tile, not a bigger one — the stored
+    // field is still `size`, but the word on the page was the wrong one
+    // and it was the word "Size" that the repeat's drawn size wanted.
+    expect(PANEL).toContain('label="Resolution"');
+    const page = PANEL.slice(PANEL.indexOf("displaySub === 'svgPattern'"));
+    expect(page.slice(0, page.indexOf('displaySub === \'transform\''))).not.toContain('label="Size"');
+  });
+
   it('draws the very grid the pattern object draws, bound to the shape', () => {
     expect(PANEL).toContain('<PatternSymmetryGrid');
     expect(PANEL).toContain("value={model.svgPatternSymmetry ?? 'off'}");
