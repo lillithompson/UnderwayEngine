@@ -20,6 +20,7 @@ import {
   SLIDER_LABEL_GAP,
   SubmenuKey,
   editSheetHeight,
+  pageIsWelled,
   sheetBottomInset,
   submenuHeight,
 } from '../logic/submenuHeight';
@@ -64,9 +65,9 @@ describe('submenuHeight (a page’s content area)', () => {
     expect(submenuHeight('border')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]));
     expect(submenuHeight('border', { borderRows: { position: true, color: true } }))
       .toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]));
-    // The Shadow page's rows only outgrow its offset pad once the colour row
+    // An effect page's rows only outgrow its offset pad once the colour row
     // joins them — three sliders are exactly the pad's height.
-    expect(submenuHeight('shadow', { shadowColor: true }))
+    expect(submenuHeight('shadow', { effectColor: true }))
       .toBeGreaterThan(submenuHeight('shadow'));
   });
 
@@ -123,18 +124,28 @@ describe('submenuHeight (a page’s content area)', () => {
     expect(submenuHeight('crop', { cropMode: 'tile' })).not.toBe(submenuHeight('crop', { cropMode: 'fill' }));
   });
 
-  test('the Shadow page is its three sliders, and the offset pad is the SQUARE beside them', () => {
-    expect(submenuHeight('shadow')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER], SHADOW_PAD_SIZE));
+  test('an effect page is its three sliders, the offset pad the SQUARE beside them', () => {
+    expect(submenuHeight('shadow'))
+      .toBe(pageOf([Math.max(ROW_SLIDER * 3 + ROW_GAP * 2, SHADOW_PAD_SIZE)]));
+    // The Effects page itself is the three Add / Remove buttons, one row —
+    // and BARE: no well behind them, so none of the well's padding either.
+    expect(pageIsWelled('effects')).toBe(false);
+    expect(submenuHeight('effects')).toBe(ROW_SEGMENTED + BAR_CUSHION);
     // The pad is exactly as tall as the three rows it stands against, and
     // square — a direction chooser has to read the same distance on both
     // axes, and a smaller square in a taller column read as squat. Derived
     // from the rows, so neither can drift from the other.
     expect(SHADOW_PAD_SIZE).toBe(ROW_SLIDER * 3 + ROW_GAP * 2);
     // …which leaves the page exactly as tall as its rows: the pad fills the
-    // column rather than setting a floor above it.
-    expect(submenuHeight('shadow')).toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]));
-    const shadow = readFileSync(resolve(__dirname, '..', 'components', 'ShadowBar.tsx'), 'utf8');
-    expect(shadow).toContain('width: PAD_SIZE, height: PAD_SIZE,');
+    // column rather than setting a floor above it. And so a GLOW face —
+    // the same rows with the pad gone — stands at exactly the same height,
+    // which is why the sheet never moves as the chooser is pressed.
+    expect(submenuHeight('shadow'))
+      .toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]));
+    expect(submenuHeight('glowOuter')).toBe(submenuHeight('shadow'));
+    expect(submenuHeight('glowInner')).toBe(submenuHeight('shadow'));
+    const effects = readFileSync(resolve(__dirname, '..', 'components', 'EffectsBar.tsx'), 'utf8');
+    expect(effects).toContain('width: PAD_SIZE, height: PAD_SIZE,');
   });
 
   test('a slider row is its caption, the gap under it, and the control line', () => {
@@ -162,14 +173,17 @@ describe('submenuHeight (a page’s content area)', () => {
     // so none may come back as bare chrome — at least one row (a word
     // sticker's Card page, one chip, is the shortest real page).
     const ALL: SubmenuKey[] = [
-      'tint', 'crop', 'shadow', 'border', 'opacity',
+      'tint', 'crop', 'effects', 'shadow', 'glowOuter', 'glowInner', 'border', 'opacity',
       'font', 'spacing', 'align', 'stroke', 'svgFill', 'endpoints', 'transform', 'layout', 'shape',
       'background', 'card',
       'rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead',
       'patternTiles', 'patternTools', 'patternSymmetry',
     ];
     for (const key of ALL) {
-      expect([key, submenuHeight(key) >= CHROME + ROW_SEGMENTED]).toEqual([key, true]);
+      // …counted against that page's own chrome: a page drawn with no well
+      // pays none of the well's padding (pageIsWelled).
+      const chrome = pageIsWelled(key) ? CHROME : BAR_CUSHION;
+      expect([key, submenuHeight(key) >= chrome + ROW_SEGMENTED]).toEqual([key, true]);
     }
   });
 
@@ -188,8 +202,8 @@ describe('submenuHeight (a page’s content area)', () => {
     expect(bar).toMatch(/rows: \{ gap: ROW_GAP \}/);
     const sheet = readFileSync(resolve(__dirname, '..', 'components', 'EditSheet.tsx'), 'utf8');
     expect(sheet).toMatch(/well: \{[^}]*padding: CONTENT_PAD/s);
-    const shadow = readFileSync(resolve(__dirname, '..', 'components', 'ShadowBar.tsx'), 'utf8');
-    expect(shadow).toContain('const PAD_SIZE = SHADOW_PAD_SIZE;');
+    const effects = readFileSync(resolve(__dirname, '..', 'components', 'EffectsBar.tsx'), 'utf8');
+    expect(effects).toContain('const PAD_SIZE = SHADOW_PAD_SIZE;');
   });
 });
 

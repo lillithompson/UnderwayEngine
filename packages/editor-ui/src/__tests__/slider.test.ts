@@ -242,7 +242,7 @@ describe('the drag guard is actually wired up', () => {
   });
 
   it('the XY offset pad claims it too', () => {
-    const SRC = read('components/ShadowBar.tsx');
+    const SRC = read('components/EffectsBar.tsx');
     expect(SRC.match(/beginValueDrag\(\)/g)).toHaveLength(1);
     expect(SRC.match(/endValueDrag\(\)/g)).toHaveLength(2);
   });

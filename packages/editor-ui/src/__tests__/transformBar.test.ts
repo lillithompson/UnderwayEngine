@@ -24,7 +24,7 @@ describe('the Copies option', () => {
       expect(last).toEqual({ action: 'transform', label: 'Copies', icon: 'content-copy' });
     }
     expect(svgEditOptions('line').map((o) => o.action))
-      .toEqual(['stroke', 'endpoints', 'shadow', 'opacity', 'transform']);
+      .toEqual(['stroke', 'endpoints', 'effects', 'opacity', 'transform']);
   });
 
   it('stands as ONE tabbed section and a button row — no rotation row, and no well', () => {
@@ -206,7 +206,7 @@ describe('the Copies page', () => {
     // disagree — and this loop is no longer sayable for any of them.
     const fold = panel.slice(
       panel.indexOf('  // ── The one fold-away rule'),
-      panel.indexOf('  // Seed the shadow / border drafts'),
+      panel.indexOf('  // Seed the effect / border drafts'),
     );
     expect(fold).toContain('if (!activeSubRef.current) return;');
     expect(fold).toContain('isHostOnlyPage(activeSubRef.current) || orderRef.current.includes(activeSubRef.current)');

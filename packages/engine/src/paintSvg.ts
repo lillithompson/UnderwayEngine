@@ -6,7 +6,7 @@
  * representation.
  */
 
-import { Paint, GradientStop, NodeEffects, BorderEffect, BorderPosition, ImageTint, RGBColor, ShadowEffect } from './types';
+import { Paint, GlowEffect, GradientStop, NodeEffects, BorderEffect, BorderPosition, ImageTint, RGBColor, ShadowEffect } from './types';
 import { rgbToHex } from './colorConvert';
 import { blendColor } from './colorBlend';
 import type { CellBbox } from './transform2d';
@@ -98,11 +98,54 @@ export function effectsFilterOutset(
   }
   const gl = effects.glow;
   if (gl) {
-    const reach = BLUR_EXTENT_SIGMAS * blurSigma(gl.radius);
+    const reach = BLUR_EXTENT_SIGMAS * blurSigma(gl.radius) + Math.max(0, gl.spread ?? 0);
     out.left = Math.max(out.left, reach);
     out.right = Math.max(out.right, reach);
     out.top = Math.max(out.top, reach);
     out.bottom = Math.max(out.bottom, reach);
+  }
+  // An INNER glow reaches nowhere: it is clipped to the silhouette that
+  // casts it, so it adds nothing to the region the filter has to cover.
+  return out;
+}
+
+/** One glow with every length multiplied through — see {@link scaleEffects}. */
+function scaleGlow(glow: GlowEffect, u: number): GlowEffect {
+  return {
+    ...glow,
+    radius: glow.radius * u,
+    spread: glow.spread !== undefined ? glow.spread * u : undefined,
+  };
+}
+
+/**
+ * Scale a NodeEffects' world-unit geometry (shadow offset/blur, glow radius
+ * and spread, border width/radius) into the user space a filter is
+ * referenced from. The builders below are unit-agnostic, so this is what
+ * puts the numbers in their space: export space is L0 cells ×
+ * SVG_UNITS_PER_L0_CELL, and the editor's node layer scales into its own
+ * inline `<svg>` the same way. One scaler, so the two renderers cannot
+ * drift over what a blur radius means.
+ */
+export function scaleEffects(effects: NodeEffects, u: number): NodeEffects {
+  const out: NodeEffects = {};
+  if (effects.shadow) {
+    out.shadow = {
+      ...effects.shadow,
+      dx: effects.shadow.dx * u,
+      dy: effects.shadow.dy * u,
+      blur: effects.shadow.blur * u,
+      spread: effects.shadow.spread !== undefined ? effects.shadow.spread * u : undefined,
+    };
+  }
+  if (effects.glow) out.glow = scaleGlow(effects.glow, u);
+  if (effects.innerGlow) out.innerGlow = scaleGlow(effects.innerGlow, u);
+  if (effects.border) {
+    out.border = {
+      ...effects.border,
+      width: effects.border.width * u,
+      radius: effects.border.radius !== undefined ? effects.border.radius * u : undefined,
+    };
   }
   return out;
 }
@@ -176,8 +219,8 @@ export function outlineShadowSpread(
 }
 
 /**
- * Build a `<filter>` def for a node's shadow/glow, or nulls when neither
- * is present (borders need no filter).
+ * Build a `<filter>` def for a node's shadow / glow / inner glow, or nulls
+ * when it carries none of them (borders need no filter).
  *
  * Shadow uses the single `feDropShadow` primitive (SVG 2 / filter-effects
  * spec; universally supported in browsers and much shorter than the
@@ -185,6 +228,19 @@ export function outlineShadowSpread(
  * it with the glow color, composites `in`, and merges under the source.
  * When both are present the drop-shadowed source (which includes the
  * source itself) merges over the glow halo.
+ *
+ * The INNER glow is that same band laid the other way about: what gets
+ * blurred is the silhouette's COMPLEMENT (SourceAlpha inverted), the result
+ * is clipped back `in` to SourceAlpha — so the light gathers just inside
+ * the node's own edge — and it merges OVER everything else rather than
+ * under it. Its `spread` erodes where an outer glow's dilates: shrinking
+ * the silhouette is what lets the complement reach further in, which is
+ * what thickens a band that grows inward.
+ *
+ * The three stack in one chain, each reading the layer built so far:
+ * shadow furthest back, then the outer glow, then the node's own paint,
+ * then the inner glow. A stage names its result only when a LATER stage
+ * reads it — the last primitive's output is the filter's own.
  *
  * Pass `box` — the caster's bbox in the user space the filter is referenced
  * from — to size the filter region to what the effect actually reaches.
@@ -200,17 +256,23 @@ export function effectsToSvgFilter(
 ): { defs: string | null; filterRef: string | null } {
   const sh = effects.shadow;
   const gl = effects.glow;
-  if (!sh && !gl) return { defs: null, filterRef: null };
+  const ig = effects.innerGlow;
+  if (!sh && !gl && !ig) return { defs: null, filterRef: null };
 
   const prims: string[] = [];
+  // The layer the next stage composites against — the node's own paint
+  // until a stage puts something behind it.
+  let under = 'SourceGraphic';
   if (sh) {
     const spread = sh.spread ?? 0;
+    // Named only for a stage that follows; the last one's output IS the
+    // filter's.
+    const result = gl || ig ? ' result="withShadow"' : '';
     if (spread !== 0) {
       // feDropShadow has no spread, so expand it: dilate (positive) or erode
       // (negative) SourceAlpha, blur + offset that, flood with the shadow
       // color, then merge the source back on top. `withShadow` result feeds
       // the glow merge below when present.
-      const merge = gl ? ' result="withShadow"' : '';
       const op = spread > 0 ? 'dilate' : 'erode';
       prims.push(
         `<feMorphology in="SourceAlpha" operator="${op}" radius="${fmt(Math.abs(spread))}" result="shSpread"/>`,
@@ -218,22 +280,51 @@ export function effectsToSvgFilter(
         `<feOffset in="shBlur" dx="${fmt(sh.dx)}" dy="${fmt(sh.dy)}" result="shOffset"/>`,
         `<feFlood flood-color="${hex(sh.color)}" flood-opacity="${fmt(sh.alpha)}" result="shColor"/>`,
         `<feComposite in="shColor" in2="shOffset" operator="in" result="shShadow"/>`,
-        `<feMerge${merge}><feMergeNode in="shShadow"/><feMergeNode in="SourceGraphic"/></feMerge>`,
+        `<feMerge${result}><feMergeNode in="shShadow"/><feMergeNode in="SourceGraphic"/></feMerge>`,
       );
     } else {
-      const result = gl ? ' result="withShadow"' : '';
       prims.push(
         `<feDropShadow dx="${fmt(sh.dx)}" dy="${fmt(sh.dy)}" stdDeviation="${fmt(blurSigma(sh.blur))}" ` +
         `flood-color="${hex(sh.color)}" flood-opacity="${fmt(sh.alpha)}"${result}/>`,
       );
     }
+    under = 'withShadow';
   }
   if (gl) {
+    const spread = gl.spread ?? 0;
+    // The same expansion the shadow buys its spread with: the halo is cast
+    // by a silhouette dilated (or eroded) before the blur softens it.
+    if (spread !== 0) {
+      prims.push(
+        `<feMorphology in="SourceAlpha" operator="${spread > 0 ? 'dilate' : 'erode'}" ` +
+        `radius="${fmt(Math.abs(spread))}" result="glowSpread"/>`,
+      );
+    }
     prims.push(
-      `<feGaussianBlur in="SourceAlpha" stdDeviation="${fmt(blurSigma(gl.radius))}" result="glowBlur"/>`,
+      `<feGaussianBlur in="${spread !== 0 ? 'glowSpread' : 'SourceAlpha'}" ` +
+      `stdDeviation="${fmt(blurSigma(gl.radius))}" result="glowBlur"/>`,
       `<feFlood flood-color="${hex(gl.color)}" flood-opacity="${fmt(gl.alpha)}" result="glowColor"/>`,
       `<feComposite in="glowColor" in2="glowBlur" operator="in" result="glow"/>`,
-      `<feMerge><feMergeNode in="glow"/><feMergeNode in="${sh ? 'withShadow' : 'SourceGraphic'}"/></feMerge>`,
+      `<feMerge${ig ? ' result="withGlow"' : ''}><feMergeNode in="glow"/><feMergeNode in="${under}"/></feMerge>`,
+    );
+    under = 'withGlow';
+  }
+  if (ig) {
+    const spread = ig.spread ?? 0;
+    if (spread !== 0) {
+      prims.push(
+        `<feMorphology in="SourceAlpha" operator="${spread > 0 ? 'erode' : 'dilate'}" ` +
+        `radius="${fmt(Math.abs(spread))}" result="innerSpread"/>`,
+      );
+    }
+    prims.push(
+      `<feComponentTransfer in="${spread !== 0 ? 'innerSpread' : 'SourceAlpha'}" result="innerInv">` +
+      `<feFuncA type="table" tableValues="1 0"/></feComponentTransfer>`,
+      `<feGaussianBlur in="innerInv" stdDeviation="${fmt(blurSigma(ig.radius))}" result="innerBlur"/>`,
+      `<feComposite in="innerBlur" in2="SourceAlpha" operator="in" result="innerMask"/>`,
+      `<feFlood flood-color="${hex(ig.color)}" flood-opacity="${fmt(ig.alpha)}" result="innerColor"/>`,
+      `<feComposite in="innerColor" in2="innerMask" operator="in" result="innerGlow"/>`,
+      `<feMerge><feMergeNode in="${under}"/><feMergeNode in="innerGlow"/></feMerge>`,
     );
   }
   const region = box ? effectsFilterRegion(effects, box) : RELATIVE_REGION;

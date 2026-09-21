@@ -663,7 +663,7 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     );
     expect(tileBar).toContain('trailing={model.onPatternEdit ? (');
     expect(tileBar).toContain(
-      '<EffectButton label="Edit" icon="pencil" inline onPress={model.onPatternEdit} />',
+      '<EffectButton label="Edit" icon="pencil" layout="inline" onPress={model.onPatternEdit} />',
     );
     // …and the row hangs it hard right, clear of the ON / OFF word.
     const effects = readFileSync(resolve(__dirname, '..', 'components', 'effectBar.tsx'), 'utf8');
@@ -673,7 +673,9 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     // form — the page's one ACT, which is the same kind of thing those are
     // — NOT a second button drawn to look like them.
     expect(effects).toContain('addButtonInline: { flex: 0, height: ROW_SEGMENTED, paddingHorizontal: 12 }');
-    expect(effects).toContain('return inline ? button : <View style={styles.emptyControls}>{button}</View>;');
+    expect(effects).toContain(
+      "return layout === 'block' ? <View style={styles.emptyControls}>{button}</View> : button;",
+    );
     expect(BARS).toContain("import { ActionRow, BarBody, EffectButton, SegmentedRow, SwitchRow } from './effectBar';");
   });
 

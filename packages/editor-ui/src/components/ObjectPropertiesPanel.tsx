@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { AlignEdge, BorderModel, EndpointsModel, FramingModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
+import type { AlignEdge, BorderModel, EffectKind, EndpointsModel, FramingModel, GlowKind, GlowModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, isSingleImageAction, swipeDismissDirection } from '../logic/imageEdit';
 import { PAINT_EDIT_OPTIONS } from '../logic/paintEdit';
 import {
@@ -18,7 +18,7 @@ import {
   objectPanelLayout,
   objectPanelPages,
 } from '../logic/panelLayout';
-import { ShadowBar } from './ShadowBar';
+import { EffectBar, EffectsBar, EFFECT_KINDS, effectLabel } from './EffectsBar';
 import { BorderBar } from './BorderBar';
 import { OpacityBar } from './OpacityBar';
 import { RigJointsBar } from './RigJointsBar';
@@ -79,8 +79,8 @@ import {
 //            enough to need no caption. Every selection has this page, first,
 //            and it is the row the panel itself shows.
 //   edit   — the EDIT SHEET (components/EditSheet.tsx): every option the
-//            selection's KIND offers (images: crop / shadow / border /
-//            opacity; text: edit / type / align / shadow) followed by what
+//            selection's KIND offers (images: crop / effects / border /
+//            opacity; text: edit / type / align / effects) followed by what
 //            the SELECTION offers (Layout · Group · Merge, multi-selections
 //            only — a mixed selection has just those), as a row of tabs
 //            over a darkened well holding the lit tab's controls. Present
@@ -106,6 +106,13 @@ const ICON_COLOR_STRONG = PANEL_INK; // full ink — the locked state, a step up
 const COMPACT_MAX_WIDTH = 500;
 const DEFAULT_SHADOW_MODEL: ShadowModel = {
   dx: 0.75, dy: 0.875, blur: 1.125, spread: 0.125, color: { r: 0, g: 0, b: 0 }, opacity: 0.45,
+};
+// …and a glow's: the shadow's softness with nowhere to fall, in white
+// rather than black — a glow is light where a shadow is its absence. Only a
+// fallback for the frame before the host reports its own, as with every
+// other page's default.
+const DEFAULT_GLOW_MODEL: GlowModel = {
+  blur: 1.125, spread: 0.125, color: { r: 255, g: 255, b: 255 }, opacity: 0.6,
 };
 // Design default endpoints: bare ends, round caps — how every path has always
 // been drawn. Only a fallback for the transient frame before model.endpoints
@@ -159,9 +166,9 @@ const SVG_PATTERN_SECTIONS = [
   { value: 'symmetry' as const, label: 'Symmetry' },
 ];
 
-// The property pages, in tab order. Image selections offer crop / shadow /
+// The property pages, in tab order. Image selections offer crop / effects /
 // border / opacity (matching their tab order); text offers font / align (two
-// pages of the Text controls) and then shadow — the SAME Drop Shadow page an
+// pages of the Text controls) and then effects — the SAME Effects page an
 // image opens, cast by the glyphs rather than by the box; a vector selection
 // has stroke, plus its subtype's second page — svgFill on the closed shapes,
 // endpoints on the open paths — plus opacity on the closed shapes.
@@ -200,6 +207,19 @@ function GridButton({ label, icon, iconColor, onPress, compact }: {
 
 /** One type-specific option, described rather than rendered — it becomes a
  *  tab of the Edit sheet (EditTabSpec), lit while its page is showing. */
+/** Which page each effect's own tab opens, and which effect a page is for.
+ *
+ *  These tabs are unlike every other tab in the sheet: they EXIST only
+ *  while the selection wears the effect, and the Effects page's buttons are
+ *  what put them there and take them away. One map for both directions, so
+ *  the tab a button makes and the page that tab opens can never disagree. */
+const EFFECT_PAGE: Record<EffectKind, SubmenuKey> = {
+  shadow: 'shadow', outer: 'glowOuter', inner: 'glowInner',
+};
+const EFFECT_OF_PAGE: Partial<Record<SubmenuKey, EffectKind>> = {
+  shadow: 'shadow', glowOuter: 'outer', glowInner: 'inner',
+};
+
 /** The pages whose open state the panel keeps itself (see `localSub`). */
 type LocalSubmenu = 'background' | 'card' | 'shape' | 'image' | 'rigColor' | 'rigFigure';
 const isLocalSubmenu = (key: SubmenuKey): key is LocalSubmenu =>
@@ -367,12 +387,25 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     if (model.visible && !hasOptions) setSheetWanted(false);
   }, [typeSig, model.visible, hasOptions]);
 
-  // Shadow / Border controls each seed a local draft from model.shadow /
-  // model.border when they open, then own the tracked params so live previews
-  // don't fight the sliders (color still comes from the model — it's changed
-  // externally via the full-screen picker).
+  // Effects / Border controls each seed a local draft from the model when
+  // they open, then own the tracked params so live previews don't fight the
+  // sliders (color still comes from the model — it's changed externally via
+  // the full-screen picker).
+  //
+  // The Effects family holds THREE of them — the shadow and a glow each way
+  // — and seeds all three when the family opens rather than on each tab
+  // press: moving between the effect tabs is a look at another effect, not
+  // an edit, and re-seeding as a tab is pressed would let a half-dragged
+  // value on one of them be written by another.
   const [shadowDraft, setShadowDraft] = useState<ShadowModel | null>(null);
-  const prevShadowOpen = useRef(false);
+  const [glowDrafts, setGlowDrafts] = useState<Partial<Record<GlowKind, GlowModel>>>({});
+  /** Which of the Effects family's pages is showing — the Add / Remove
+   *  buttons, or one effect's controls. The four share ONE host flag
+   *  (`effectsOpen`), exactly as the four text pages share `textStyleOpen`,
+   *  and this picks between them. Held HERE because the sheet's height is
+   *  worked out before the page renders. */
+  const [effectsPage, setEffectsPage] = useState<SubmenuKey>('effects');
+  const prevEffectsOpen = useRef(false);
   const [borderDraft, setBorderDraft] = useState<BorderModel | null>(null);
   const prevBorderOpen = useRef(false);
   const [cropDraft, setCropDraft] = useState<FramingModel | null>(null);
@@ -421,7 +454,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // end of its chain (rigColor names no rig PART, so the rig branch skips
   // it too) and set nothing, so the page could never become the open one.
   const [localSub, setLocalSub] = useState<LocalSubmenu | null>(null);
-  // ── The pages (Crop / Shadow / Border / Text …) ──────────────────────
+  // ── The pages (Crop / Effects / Border / Text …) ─────────────────────
   // The open page is what the Edit sheet's well holds, and its tab is the lit
   // one. The pages are separate components but only one shows at a time.
   // The INTERIOR pages (Fill, Pattern) go by what the selection encloses,
@@ -438,9 +471,27 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // Vectors and patterns share the Stroke page (and its colour).
   const strokeable = !!model.showSvgOptions || !!model.showPatternOptions || !!model.showStrokeOptions;
 
+  // ── Which effects the selection WEARS ─────────────────────────────────
+  // This is the one reading in the panel that decides how many TABS there
+  // are. Everywhere else a tab is a fixed property of the selection's kind;
+  // here the Effects page's buttons add and remove them as they add and
+  // remove the effects themselves.
+  //
+  // Read strictly (`=== true`), unlike the absent-effect Add pages' own
+  // `!== false`: those fall back to showing controls, which is harmless,
+  // where this would conjure a tab — a place to GO — for an effect a host
+  // that reports nothing may not have.
+  const effectWorn = (kind: EffectKind): boolean => (kind === 'shadow'
+    ? model.shadowPresent === true
+    : model.glowPresent?.[kind] === true);
+  const wornEffects = EFFECT_KINDS.filter(effectWorn);
+  /** The Effects tab, then one tab per effect worn — the run of pages that
+   *  goes wherever a kind's tab order names `effects`. */
+  const effectPages: SubmenuKey[] = ['effects', ...wornEffects.map((k) => EFFECT_PAGE[k])];
+
   // ── Where a colour reads ──────────────────────────────────────────────
   // On the page of the thing it colours, and nowhere else: the Stroke page's
-  // hue row is the line's ink, the Fill page's is the fill, the Shadow and
+  // hue row is the line's ink, the Fill page's is the fill, the Effects and
   // Border pages' are their own, and a text's ink leads its Text page. There
   // is no shared Color page any more — it collected every colour onto one tab
   // and left the pages named after them unable to set them (a Fill page whose
@@ -461,18 +512,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   const cardable = !!model.showInvert;
   const typeSubmenuOrder: SubmenuKey[] =
     model.showImageEdit ? (multi
-      ? ['shadow', 'border', 'opacity', 'transform']
-      : [...(model.onReplaceImage ? (['image'] as const) : []), 'crop', 'shadow', 'border', 'opacity', 'transform'])
+      ? [...effectPages, 'border', 'opacity', 'transform']
+      : [...(model.onReplaceImage ? (['image'] as const) : []), 'crop', ...effectPages, 'border', 'opacity', 'transform'])
     // A frame leads on its own fill — Background — then the two effects it
     // dresses its edge with.
     : model.showFrameOptions
-      ? [...(backgroundable ? (['background'] as const) : []), 'shadow', 'border']
+      ? [...(backgroundable ? (['background'] as const) : []), ...effectPages, 'border']
     // A text leads on the text ITSELF — its ink and its size — then the
     // pages that dress it.
-    : model.showTextStyle ? ['text', 'font', 'spacing', 'align', 'shadow', 'opacity', 'transform']
+    : model.showTextStyle ? ['text', 'font', 'spacing', 'align', ...effectPages, 'opacity', 'transform']
     // A word sticker: its card scheme, then Opacity.
     // A word sticker: its card scheme, then the pages every kind shares.
-    : model.showInvert ? [...(cardable ? (['card'] as const) : []), 'shadow', 'opacity']
+    : model.showInvert ? [...(cardable ? (['card'] as const) : []), ...effectPages, 'opacity']
     : model.showPaintOptions ? ['opacity']
     // A pattern object's pages, in the order its tab row lists them, plus
     // the Stroke page its baked tile paths share with the vectors and the
@@ -503,8 +554,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
           ...(svgFillable && (model.onAddSvgPattern || model.onEditSvgPattern)
             ? (['svgPattern'] as const) : []),
           ...(svgEndable ? (['endpoints'] as const) : []),
-          // …then the tail every kind shares — Shadow, Opacity, Copies.
-          'shadow',
+          // …then the tail every kind shares — Effects (and the tabs its
+          // buttons have made), Opacity, Copies.
+          ...effectPages,
           ...(svgOpacityable ? (['opacity'] as const) : []),
           ...(svgTransformable ? (['transform'] as const) : []),
         ]
@@ -522,7 +574,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   const activeSub: SubmenuKey | null =
     model.layoutOpen ? 'layout'
     : model.cropOpen ? 'crop'
-    : model.shadowOpen ? 'shadow'
+    : model.effectsOpen ? effectsPage
     : model.borderOpen ? 'border'
     : model.opacityOpen ? 'opacity'
     : model.strokeOpen ? 'stroke'
@@ -566,7 +618,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     action === 'fill' ? 'svgFill'
     : action === 'pattern' ? 'svgPattern'
     : action === 'shape' ? 'shape'
-    : action === 'shadow' ? 'shadow'
+    : action === 'effects' ? 'effects'
     : action === 'endpoints' ? 'endpoints'
     : action === 'opacity' ? 'opacity'
     : action === 'transform' ? 'transform'
@@ -600,7 +652,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     dismissHostSubmenus();
     if (isLocalSubmenu(key)) return;
     if (key === 'crop') model.onCropOpenChange?.(true);
-    else if (key === 'shadow') model.onShadowOpenChange?.(true);
+    else if (key === 'effects' || EFFECT_OF_PAGE[key]) {
+      // The Effects page and the three it creates ride one host flag; the
+      // page state picks which shows (the text pages' arrangement).
+      setEffectsPage(key);
+      model.onEffectsOpenChange?.(true);
+    }
     else if (key === 'border') model.onBorderOpenChange?.(true);
     else if (key === 'opacity') model.onOpacityOpenChange?.(true);
     else if (key === 'stroke') model.onStrokeOpenChange?.(true);
@@ -619,7 +676,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     }
   };
   const dismissHostSubmenus = () => {
-    model.onShadowOpenChange?.(false);
+    model.onEffectsOpenChange?.(false);
     model.onBorderOpenChange?.(false);
     model.onCropOpenChange?.(false);
     model.onOpacityOpenChange?.(false);
@@ -663,6 +720,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // page it last showed, so the well doesn't empty as it goes.
   const displaySub: SubmenuKey | null = activeSub
     ?? (sheetOpen ? landingSubmenu(submenuOrder, lastSubRef.current) : lastSubRef.current);
+  /** The effect whose CONTROLS are showing — null on the Effects page
+   *  itself (its buttons belong to all three) and on every other page. The
+   *  shadow stands in where nothing is showing, so the values below are
+   *  always something coherent. */
+  const shownEffect: EffectKind | null = displaySub ? (EFFECT_OF_PAGE[displaySub] ?? null) : null;
+  const effectKind: EffectKind = shownEffect ?? 'shadow';
 
   /** Pop the sheet up. Asking is ALL it does: the landing effect below sees
    *  a sheet with no page and opens the tab it lands on (the remembered one
@@ -688,7 +751,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // action) stays as its tabs alone.
   const landingRef = useRef<() => void>(() => {});
   landingRef.current = () => {
-    const target = landingSubmenu(submenuOrder, lastSubRef.current);
+    const last = lastSubRef.current;
+    // An EFFECT page that has gone — its effect was just removed, or this
+    // selection doesn't wear it — lands on Effects: the page that makes
+    // those tabs, and the one place the effect can be brought back. The
+    // shared rule would drop it on the row's FIRST tab instead, which for
+    // an image is Crop, nowhere near what was being worked on.
+    const target = last && EFFECT_OF_PAGE[last] && !submenuOrder.includes(last)
+      && submenuOrder.includes('effects')
+      ? ('effects' as SubmenuKey)
+      : landingSubmenu(submenuOrder, last);
     if (target) openSubmenu(target);
   };
   useEffect(() => {
@@ -764,14 +836,19 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.visible, activeSub, submenuOrder.join('|')]);
 
-  // Seed the shadow / border drafts from the current effect each time the
-  // controls open.
+  // Seed the effect / border drafts from the current effects each time the
+  // controls open. One seed for the whole Effects family: its four pages
+  // share the flag, so moving between them keeps whatever was dragged.
   useEffect(() => {
-    if (model.shadowOpen && !prevShadowOpen.current) {
+    if (model.effectsOpen && !prevEffectsOpen.current) {
       setShadowDraft(model.shadow ?? DEFAULT_SHADOW_MODEL);
+      setGlowDrafts({
+        outer: model.glows?.outer ?? DEFAULT_GLOW_MODEL,
+        inner: model.glows?.inner ?? DEFAULT_GLOW_MODEL,
+      });
     }
-    prevShadowOpen.current = !!model.shadowOpen;
-  }, [model.shadowOpen, model.shadow]);
+    prevEffectsOpen.current = !!model.effectsOpen;
+  }, [model.effectsOpen, model.shadow, model.glows]);
   useEffect(() => {
     if (model.borderOpen && !prevBorderOpen.current) {
       setBorderDraft(model.border ?? DEFAULT_BORDER_MODEL);
@@ -856,9 +933,43 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     setShadowDraft(s);
     model.onShadow?.(s, committed);
   };
-  const removeShadow = () => {
-    model.onShadow?.(null, true);
-    model.onShadowOpenChange?.(false);
+  // Glow controls → the same live preview / commit, told which of the two
+  // it is. One path for both: they differ in which way the light goes and
+  // in nothing else.
+  const applyGlow = (kind: GlowKind, g: GlowModel, committed: boolean) => {
+    setGlowDrafts((d) => ({ ...d, [kind]: g }));
+    model.onGlow?.(kind, g, committed);
+  };
+  /** Take an effect off the object — from its own page's Remove line, or by
+   *  pressing its (lit) button on the Effects page.
+   *
+   *  Its tab goes with it, so the sheet lands back on Effects: the page that
+   *  makes these tabs, where the press came from in one case and where the
+   *  effect can be put back in both. (Setting the page here is what makes
+   *  that immediate; the landing rule above is the backstop for a tab that
+   *  goes some other way.) */
+  const removeEffect = (kind: EffectKind) => {
+    if (kind === 'shadow') model.onShadow?.(null, true);
+    else model.onGlow?.(kind, null, true);
+    setEffectsPage('effects');
+  };
+  /** The Effects page's buttons: one press each way.
+   *
+   *  Adding OPENS the new tab at once — it is the tab the press just made,
+   *  and the thing it was made to edit is sitting on it. The face's draft is
+   *  dropped on the way: it was seeded on the ABSENT effect, and the
+   *  controls that come up should read the freshly created one off the
+   *  model (the Stroke page's Add does the same). */
+  const toggleEffect = (kind: EffectKind, add: boolean) => {
+    if (!add) { removeEffect(kind); return; }
+    if (kind === 'shadow') {
+      setShadowDraft(null);
+      model.onAddShadow?.();
+    } else {
+      setGlowDrafts((d) => ({ ...d, [kind]: undefined }));
+      model.onAddGlow?.(kind);
+    }
+    openSubmenu(EFFECT_PAGE[kind]);
   };
 
   // Border controls → live preview / commit through the model; same pattern.
@@ -944,6 +1055,35 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   const shadowForBar: ShadowModel = shadowDraft
     ? { ...shadowDraft, color: model.shadow?.color ?? shadowDraft.color }
     : (model.shadow ?? DEFAULT_SHADOW_MODEL);
+  // …and the same reading for the showing GLOW, lifted into the shadow's
+  // shape so the page has one set of rows to render. A glow has no offset,
+  // so the pad's two numbers are zeroed rather than carried: nothing on a
+  // glow face can write them, and a stale pair riding through would land on
+  // the shadow the moment the chooser went back.
+  const glowForBar = (kind: GlowKind): ShadowModel => {
+    const draft = glowDrafts[kind];
+    const live = model.glows?.[kind];
+    const g = draft
+      ? { ...draft, color: live?.color ?? draft.color }
+      : (live ?? DEFAULT_GLOW_MODEL);
+    return { ...g, dx: 0, dy: 0 };
+  };
+  /** The showing effect, as the one set of rows reads it. */
+  const effectForBar: ShadowModel = effectKind === 'shadow'
+    ? shadowForBar
+    : glowForBar(effectKind);
+  /** Whether the host has the showing effect's colour to write — what the
+   *  hue row is gated on, and what the sheet's height is counted with. */
+  const effectColorWritable = effectKind === 'shadow'
+    ? !!model.onShadowColor && !!model.onPickShadowColor
+    : !!model.onGlowColor && !!model.onPickGlowColor;
+  /** One write for whichever effect is showing: the three pages are the same
+   *  rows, so they edit through one callback and this is where it forks. */
+  const applyEffect = (s: ShadowModel, committed: boolean) => {
+    if (effectKind === 'shadow') { applyShadow(s, committed); return; }
+    const { dx: _dx, dy: _dy, ...glow } = s;
+    applyGlow(effectKind, glow, committed);
+  };
   const borderForBar: BorderModel = borderDraft
     ? { ...borderDraft, color: model.border?.color ?? borderDraft.color }
     : (model.border ?? DEFAULT_BORDER_MODEL);
@@ -1059,9 +1199,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   } else if (displaySub === 'svgPattern' && model.svgPatternPresent === false && model.onAddSvgPattern) {
     addPage = true;
     activeBarEl = <EmptyEffectBar addLabel="Add Pattern" onAdd={() => model.onAddSvgPattern?.()} />;
-  } else if (displaySub === 'shadow' && model.shadowPresent === false && model.onAddShadow) {
-    addPage = true;
-    activeBarEl = <EmptyEffectBar addLabel="Add Drop Shadow" onAdd={() => model.onAddShadow?.()} />;
   } else if (displaySub === 'border' && model.borderPresent === false && model.onAddBorder) {
     addPage = true;
     activeBarEl = <EmptyEffectBar addLabel="Add Border" onAdd={() => model.onAddBorder?.()} />;
@@ -1186,22 +1323,39 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         onGrid={model.onGrid ? () => model.onGrid?.() : undefined}
       />
     );
-  } else if (displaySub === 'shadow') {
+  } else if (displaySub === 'effects') {
+    // Three buttons, one per effect: lit for the ones the object wears, and
+    // a press either way. No Remove line — every button IS one.
+    activeBarEl = <EffectsBar present={effectWorn} onToggle={toggleEffect} />;
+  } else if (shownEffect) {
+    const glowKind: GlowKind | null = shownEffect === 'shadow' ? null : shownEffect;
     activeBarEl = (
-      <ShadowBar
-        shadow={shadowForBar}
-        // The shadow's own ink, under Spread: the colour is the SHADOW's, not
+      <EffectBar
+        effect={effectForBar}
+        // Only the shadow has somewhere to fall, so only its page brings the
+        // XY offset pad; the rows beside it are the same rows either way.
+        directional={shownEffect === 'shadow'}
+        // The effect's own ink, under Spread: the colour is the EFFECT's, not
         // a field of the draft the sliders keep, so the host writes it down
         // its own path (the one the full picker writes too) and reports it
         // back each move — which is what moves the handle.
-        color={shadowForBar.color}
-        onColor={model.onShadowColor ? (color, committed) => model.onShadowColor?.(color, committed) : undefined}
-        onOpenColorPicker={model.onPickShadowColor ? () => model.onPickShadowColor?.() : undefined}
-        onChange={(s) => applyShadow(s, false)}
-        onCommit={(s) => applyShadow(s, true)}
+        color={effectForBar.color}
+        onColor={effectColorWritable
+          ? (color, committed) => (glowKind
+            ? model.onGlowColor?.(glowKind, color, committed)
+            : model.onShadowColor?.(color, committed))
+          : undefined}
+        onOpenColorPicker={effectColorWritable
+          ? () => (glowKind ? model.onPickGlowColor?.(glowKind) : model.onPickShadowColor?.())
+          : undefined}
+        onChange={(s) => applyEffect(s, false)}
+        onCommit={(s) => applyEffect(s, true)}
       />
     );
-    removeAction = { label: 'Remove drop shadow', onPress: removeShadow };
+    removeAction = {
+      label: `Remove ${effectLabel(shownEffect).toLowerCase()}`,
+      onPress: () => removeEffect(shownEffect),
+    };
   } else if (displaySub === 'border') {
     activeBarEl = (
       <BorderBar
@@ -1374,7 +1528,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // two rows of square buttons where the tile's own section is a slider
     // and a button.
     svgPatternSection,
-    shadowColor: !!model.onShadowColor && !!model.onPickShadowColor,
+    effectColor: effectColorWritable,
     textColor: !!model.onTextColor && !!model.onPickTextColor,
     // The image / frame border offers every row; a vector's stroke drops the
     // ones its subtype has no answer for.
@@ -1522,6 +1676,20 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // The Stroke tab as the pattern row and the mixed row both list it:
   // one spec, so the two can't drift.
   const strokeSpec = () => ({ key: 'stroke', label: 'Stroke', sub: 'stroke' as const, onPress: () => openSubmenu('stroke') });
+  /** The Effects tab and the tabs its buttons have made — one per effect the
+   *  selection wears, in the order the buttons stand. THE one place this run
+   *  is built, so every kind's row grows and shrinks the same way, and so
+   *  the row can't disagree with `effectPages` (which is what says the sheet
+   *  may open them). */
+  const effectSpecs = (): OptionSpec[] => [
+    { key: 'effects', label: 'Effects', sub: 'effects', onPress: () => openSubmenu('effects') },
+    ...wornEffects.map((kind): OptionSpec => ({
+      key: EFFECT_PAGE[kind],
+      label: effectLabel(kind),
+      sub: EFFECT_PAGE[kind],
+      onPress: () => openSubmenu(EFFECT_PAGE[kind]),
+    })),
+  ];
   if (model.showImageEdit) {
     typeSpecs = IMAGE_EDIT_OPTIONS
       // Image and Crop are single-target only — a mixed selection has no one
@@ -1529,22 +1697,23 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       .filter((opt) => !multi || !isSingleImageAction(opt.action))
       // …and the Image page is the host's Replace: no callback, no page.
       .filter((opt) => opt.action !== 'image' || !!model.onReplaceImage)
-      // Every image action names a page, and shares its key.
-      .map((opt) => ({
+      // Every image action names a page, and shares its key — except
+      // Effects, which brings its own tabs with it.
+      .flatMap((opt): OptionSpec[] => (opt.action === 'effects' ? effectSpecs() : [{
         key: opt.action,
         label: opt.label,
         sub: opt.action as SubmenuKey,
         onPress: () => openSubmenu(opt.action as SubmenuKey),
-      }));
+      }]));
   } else if (model.showFrameOptions) {
-    // Frame tabs: Background · Shadow · Border · Ungroup. Background leads —
-    // it is the frame's OWN colour, where Shadow and Border dress its edge —
-    // and those two reuse the image effect pages.
+    // Frame tabs: Background · Effects · Border · Ungroup. Background leads —
+    // it is the frame's OWN colour, where the cast effects and the Border
+    // dress its edge — and those two reuse the image pages.
     typeSpecs = [
       ...(backgroundable
         ? [{ key: 'background', label: 'Background', sub: 'background' as const, onPress: () => openSubmenu('background') }]
         : []),
-      { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },
+      ...effectSpecs(),
       { key: 'border', label: 'Border', sub: 'border', onPress: () => openSubmenu('border') },
     ];
     if (model.onUngroup) {
@@ -1585,12 +1754,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       // inert. (The host reports that by passing neither callback.)
       .filter((opt) => opt.action !== 'pattern'
         || !!model.onAddSvgPattern || !!model.onEditSvgPattern)
-      .map((opt) => ({
+      .flatMap((opt): OptionSpec[] => (opt.action === 'effects' ? effectSpecs() : [{
         key: opt.action,
         label: opt.label,
         sub: svgActionSubmenu(opt.action),
         onPress: () => openSubmenu(svgActionSubmenu(opt.action)),
-      }));
+      }]));
     if (model.onToggleRepeat) {
       // Pattern-mode toggle (tile pattern objects): repeat the tile across
       // the bounding box instead of scaling it. A toggle rather than a page,
@@ -1612,7 +1781,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     }
   } else if (model.showInvert) {
     // Word sticker (magnetic poetry): Word — its one colour setting,
-    // Invert (dark card ⇄ light card) — then Shadow and Opacity. Content
+    // Invert (dark card ⇄ light card) — then Effects and Opacity. Content
     // and typography are fixed, so no Type / Align.
     //
     // The tab is named for the OBJECT, as every other type's first tab is
@@ -1624,7 +1793,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       ...(cardable
         ? [{ key: 'card', label: 'Word', sub: 'card' as const, onPress: () => openSubmenu('card') }]
         : []),
-      { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },
+      ...effectSpecs(),
       { key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },
     ];
   } else if (model.showPaintOptions) {
@@ -1665,19 +1834,19 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     typeSpecs = [strokeSpec()];
   } else if (model.showTextStyle) {
     // Text · Font · Spacing · Align (each opening the Text controls straight
-    // on its page) · Shadow. The four text tabs show the same component;
+    // on its page) · Effects. The four text tabs show the same component;
     // they differ only in which page it lands on, and each is named for
     // what its page holds — Text leads with the ink and the size (the text
-    // itself, where the others dress it). Shadow is
-    // the image's own page, unchanged — one Drop Shadow control for every
-    // object that can cast one. Editing the CONTENT is not a tab: a tap on
-    // the selected text opens the host's overlay.
+    // itself, where the others dress it). Effects is the image's own page,
+    // unchanged — one set of cast effects for every object that can wear
+    // them. Editing the CONTENT is not a tab: a tap on the selected text
+    // opens the host's overlay.
     typeSpecs = [
       { key: 'text', label: 'Text', sub: 'text', onPress: () => openSubmenu('text') },
       { key: 'font', label: 'Font', sub: 'font', onPress: () => openSubmenu('font') },
       { key: 'spacing', label: 'Spacing', sub: 'spacing', onPress: () => openSubmenu('spacing') },
       { key: 'align', label: 'Align', sub: 'align', onPress: () => openSubmenu('align') },
-      { key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },
+      ...effectSpecs(),
       { key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },
       { key: 'transform', label: 'Copies', sub: 'transform', onPress: () => openSubmenu('transform') },
     ];

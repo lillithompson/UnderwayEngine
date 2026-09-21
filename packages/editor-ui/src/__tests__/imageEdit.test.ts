@@ -10,7 +10,7 @@ describe('IMAGE_EDIT_OPTIONS', () => {
     // Pages saved with an image tint keep rendering it; only the page is
     // gone from the row.
     expect(IMAGE_EDIT_OPTIONS.map((o) => o.action)).toEqual([
-      'image', 'crop', 'shadow', 'border', 'opacity', 'transform',
+      'image', 'crop', 'effects', 'border', 'opacity', 'transform',
     ]);
   });
   test('every option opens a page — Replace is a control ON the Image page, not an option', () => {
@@ -27,7 +27,7 @@ describe('IMAGE_EDIT_OPTIONS', () => {
     // several images.
     expect(IMAGE_EDIT_OPTIONS.filter((o) => isSingleImageAction(o.action)).map((o) => o.action))
       .toEqual(['image', 'crop']);
-    for (const action of ['shadow', 'border', 'opacity'] as const) {
+    for (const action of ['effects', 'border', 'opacity'] as const) {
       expect(isSingleImageAction(action)).toBe(false);
     }
   });

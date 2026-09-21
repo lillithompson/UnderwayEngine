@@ -211,7 +211,7 @@ export function PatternTileBar({ model }: { model: ObjectPropertiesModel }) {
       <PatternRepeatRow
         model={model}
         trailing={model.onPatternEdit ? (
-          <EffectButton label="Edit" icon="pencil" inline onPress={model.onPatternEdit} />
+          <EffectButton label="Edit" icon="pencil" layout="inline" onPress={model.onPatternEdit} />
         ) : null}
       />
     </BarBody>

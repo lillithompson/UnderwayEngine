@@ -16,7 +16,7 @@
 export type ImageEditAction =
   | 'image'
   | 'crop'
-  | 'shadow'
+  | 'effects'
   | 'border'
   | 'opacity'
   | 'transform';
@@ -37,7 +37,7 @@ export interface ImageEditOption {
 export const IMAGE_EDIT_OPTIONS: readonly ImageEditOption[] = [
   { action: 'image', label: 'Image', icon: 'image-outline' },
   { action: 'crop', label: 'Crop', icon: 'crop' },
-  { action: 'shadow', label: 'Shadow', icon: 'box-shadow' },
+  { action: 'effects', label: 'Effects', icon: 'box-shadow' },
   { action: 'border', label: 'Border', icon: 'border-outside' },
   { action: 'opacity', label: 'Opacity', icon: 'opacity' },
   { action: 'transform', label: 'Copies', icon: 'content-copy' },

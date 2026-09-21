@@ -154,7 +154,8 @@ import { signedDeg } from './sceneTransform';
 //
 // EFFECTS PAYLOAD (v29+, shared by SVG, image, and text records)
 //   presenceMask: u8 (0x01 shadow, 0x02 glow, 0x04 border,
-//                 v44+: 0x08 shadow spread, 0x10 border extension)
+//                 v44+: 0x08 shadow spread, 0x10 border extension,
+//                 v68+: 0x20 glow spread, 0x40 inner glow)
 //   shadow:       dx f32 + dy f32 + blur f32 + r u8 + g u8 + b u8
 //                 + alpha u8 (0-255 quantized /255)
 //   glow:         radius f32 + r u8 + g u8 + b u8 + alpha u8 (quantized)
@@ -165,6 +166,10 @@ import { signedDeg } from './sceneTransform';
 //   borderExt:    subMask u8 (0x01 hasPosition, 0x02 hasDash)
 //                 + position u8 (0 inside, 1 center, 2 outside) if set
 //                 + dash u8 (0-10) if set
+//   v68 blocks follow those, in mask-bit order:
+//   glowSpread:   spread f32 (written only when non-zero)
+//   innerGlow:    radius f32 + r u8 + g u8 + b u8 + alpha u8 (quantized)
+//                 + spread f32
 //
 // EMBEDDED FILES
 //   fileCount:   u16 LE
@@ -574,7 +579,18 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //
 //      The bit was always written 0 before, so every v66 file reads back
 //      byte for byte.
-const FORMAT_VERSION = 67;
+// v68: AN OBJECT CAN GLOW, INSIDE AND OUT. `NodeEffects.innerGlow` — the
+//      band of light laid just inside a node's own edge — and the `spread`
+//      both glows grew (GlowEffect), so a glow is authored with the same
+//      Blur / Spread / Opacity / Color a drop shadow is (the Effects page).
+//      Both ride the effects payload's presence mask, which had three spare
+//      bits: 0x20 carries the outer glow's spread (a lone f32, written only
+//      when non-zero, so a plain glow costs nothing) and 0x40 the whole
+//      inner-glow block, appended after the v44 extensions.
+//
+//      Both bits were always written 0 before, so every v67 file reads back
+//      byte for byte.
+const FORMAT_VERSION = 68;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 const HEADER_SIZE = 8;
@@ -1325,6 +1341,11 @@ const BORDER_EXT_HAS_DASH = 0x02;
 // v55+: border color opacity (u8, 0-255). Rides the same extension block;
 // the bit was always written 0 before, so older files read back unchanged.
 const BORDER_EXT_HAS_ALPHA = 0x04;
+// v68 extension bits: the outer glow's spread (a lone f32) and the whole
+// inner-glow block. Both written only when present, so a v67 effects block
+// is byte-identical.
+const EFFECT_HAS_GLOW_SPREAD = 0x20;
+const EFFECT_HAS_INNER_GLOW = 0x40;
 
 // v29+ paint kind byte.
 const PAINT_KIND_SOLID = 0;
@@ -1640,6 +1661,13 @@ function hasBorderExt(fx: NodeEffects): boolean {
     && (fx.border.position != null || fx.border.dash != null || fx.border.alpha != null);
 }
 
+/** True when the OUTER glow carries a spread — the one field GlowEffect
+ *  grew after the v29 payload was fixed. Absent-at-default (0), so a plain
+ *  glow never grows the record. The inner glow's rides its own block. */
+function hasGlowSpread(fx: NodeEffects): boolean {
+  return !!fx.glow && fx.glow.spread != null && fx.glow.spread !== 0;
+}
+
 function effectsBinarySize(fx: NodeEffects): number {
   let size = 1; // presenceMask
   if (fx.shadow) size += 12 + 4;            // dx,dy,blur f32 + r,g,b,alpha u8
@@ -1653,6 +1681,9 @@ function effectsBinarySize(fx: NodeEffects): number {
     if (fx.border!.dash != null) size += 1;
     if (fx.border!.alpha != null) size += 1; // v55 alpha u8
   }
+  // …then the v68 blocks, in the same mask-bit order.
+  if (hasGlowSpread(fx)) size += 4;         // spread f32
+  if (fx.innerGlow) size += 4 + 4 + 4;      // radius f32 + rgba u8 + spread f32
   return size;
 }
 
@@ -1663,6 +1694,8 @@ function writeEffects(view: DataView, out: Uint8Array, pos: number, fx: NodeEffe
   if (fx.border) mask |= EFFECT_HAS_BORDER;
   if (hasShadowSpread(fx)) mask |= EFFECT_HAS_SHADOW_SPREAD;
   if (hasBorderExt(fx)) mask |= EFFECT_HAS_BORDER_EXT;
+  if (hasGlowSpread(fx)) mask |= EFFECT_HAS_GLOW_SPREAD;
+  if (fx.innerGlow) mask |= EFFECT_HAS_INNER_GLOW;
   out[pos++] = mask;
   if (fx.shadow) {
     view.setFloat32(pos, fx.shadow.dx, true); pos += 4;
@@ -1707,6 +1740,22 @@ function writeEffects(view: DataView, out: Uint8Array, pos: number, fx: NodeEffe
     if (b.position != null) out[pos++] = BORDER_POSITION_TO_BYTE[b.position] ?? 1;
     if (b.dash != null) out[pos++] = Math.max(0, Math.min(10, Math.round(b.dash))) & 0xff;
     if (b.alpha != null) out[pos++] = quantize255(b.alpha);
+  }
+  // …and the v68 extensions after those, so a v67 reader stopping at the end
+  // of the border extension sees exactly the bytes it expects.
+  if (hasGlowSpread(fx)) {
+    view.setFloat32(pos, fx.glow!.spread!, true); pos += 4;
+  }
+  if (fx.innerGlow) {
+    const ig = fx.innerGlow;
+    view.setFloat32(pos, ig.radius, true); pos += 4;
+    out[pos++] = ig.color.r & 0xff;
+    out[pos++] = ig.color.g & 0xff;
+    out[pos++] = ig.color.b & 0xff;
+    out[pos++] = quantize255(ig.alpha);
+    // Written unconditionally, unlike the outer glow's: this whole block is
+    // new, so there is no older layout for a default to stay compatible with.
+    view.setFloat32(pos, ig.spread ?? 0, true); pos += 4;
   }
   return pos;
 }
@@ -1761,6 +1810,18 @@ function readEffects(
     if (version >= 55 && (sub & BORDER_EXT_HAS_ALPHA)) {
       effects.border.alpha = data[pos++] / 255;
     }
+  }
+  // v68 extension blocks, on the same rule: both bits were always written 0
+  // before, so no older file can be misread as carrying them.
+  if (version >= 68 && (mask & EFFECT_HAS_GLOW_SPREAD) && effects.glow) {
+    effects.glow.spread = view.getFloat32(pos, true); pos += 4;
+  }
+  if (version >= 68 && (mask & EFFECT_HAS_INNER_GLOW)) {
+    const radius = view.getFloat32(pos, true); pos += 4;
+    const r = data[pos++], g = data[pos++], b = data[pos++];
+    const alpha = data[pos++] / 255;
+    const spread = view.getFloat32(pos, true); pos += 4;
+    effects.innerGlow = { radius, color: { r, g, b }, alpha, spread };
   }
   return { effects, pos };
 }

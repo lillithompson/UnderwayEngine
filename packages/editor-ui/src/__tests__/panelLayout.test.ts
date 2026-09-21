@@ -38,28 +38,28 @@ describe('objectPanelPages', () => {
 
 describe('landingSubmenu (the tab the sheet opens on)', () => {
   test('a fresh sheet opens on the selection’s first page', () => {
-    expect(landingSubmenu(['crop', 'shadow', 'border', 'opacity'], null)).toBe('crop');
+    expect(landingSubmenu(['crop', 'effects', 'border', 'opacity'], null)).toBe('crop');
     expect(landingSubmenu(['stroke', 'svgFill'], null)).toBe('stroke');
   });
 
   test('keeps the page the last selection was on, when this one has it', () => {
     // Working through a drawing's shadows, the next shape should open on the
-    // Shadow tab too — re-landing every selection on the first tab makes the
+    // Effects tab too — re-landing every selection on the first tab makes the
     // sheet something to re-navigate rather than a place to be.
-    expect(landingSubmenu(['crop', 'shadow', 'border', 'opacity'], 'shadow')).toBe('shadow');
-    expect(landingSubmenu(['font', 'align', 'shadow'], 'shadow')).toBe('shadow');
+    expect(landingSubmenu(['crop', 'effects', 'border', 'opacity'], 'effects')).toBe('effects');
+    expect(landingSubmenu(['font', 'align', 'effects'], 'effects')).toBe('effects');
   });
 
   test('cannot keep a page the new selection does not have', () => {
     // The last selection was on Crop; a text has no Crop — its first page.
-    expect(landingSubmenu(['font', 'align', 'shadow'], 'crop')).toBe('font');
+    expect(landingSubmenu(['font', 'align', 'effects'], 'crop')).toBe('font');
   });
 
   test('a selection whose tabs are all actions has no page to land on', () => {
     // A word sticker's one tab is Invert, a toggle: the sheet shows its tab
     // row alone, with no well.
     expect(landingSubmenu([], null)).toBeNull();
-    expect(landingSubmenu([], 'shadow')).toBeNull();
+    expect(landingSubmenu([], 'effects')).toBeNull();
   });
 });
 
@@ -91,7 +91,12 @@ describe('the panel’s two pages', () => {
   });
 
   test('lands each new selection on the remembered page, else its first', () => {
-    expect(PANEL).toContain('const target = landingSubmenu(submenuOrder, lastSubRef.current);');
+    expect(PANEL).toContain(': landingSubmenu(submenuOrder, last);');
+    // …with one exception the shared rule can't know about: an EFFECT page
+    // whose tab has gone (its effect was removed, or this selection doesn't
+    // wear it) lands on Effects, the page that makes those tabs, rather
+    // than on the row's first.
+    expect(PANEL).toContain("const target = last && EFFECT_OF_PAGE[last] && !submenuOrder.includes(last)");
     // …both when the sheet is popped and when it is already up with nothing
     // showing (the selection changed under it).
     expect(PANEL).toContain('if (sheetOpen && !submenuOpen) landingRef.current();');

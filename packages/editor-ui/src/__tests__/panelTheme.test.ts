@@ -41,7 +41,7 @@ const MENU_FILES = [
   'EndpointsBar.tsx',
   'LayoutBar.tsx',
   'OpacityBar.tsx',
-  'ShadowBar.tsx',
+  'EffectsBar.tsx',
   'TextBar.tsx',
   'TintBar.tsx',
 ];
@@ -104,8 +104,8 @@ describe('object-properties chrome matches the toolbar', () => {
     // pale, which is what fading to white looks like.
     expect(bar.match(/accent=\{(accent \?\? )?CONTROL_ACCENT\}/g)).toHaveLength(1);
     expect(bar).toContain('ramp={[from ? rgbCss(from) : TRACK, rgbCss(color)]}');
-    // The Shadow page's XY pad is the same control on two axes.
-    expect(/backgroundColor: CONTROL_ACCENT/.test(read('ShadowBar.tsx'))).toBe(true);
+    // The Effects page's XY pad is the same control on two axes.
+    expect(/backgroundColor: CONTROL_ACCENT/.test(read('EffectsBar.tsx'))).toBe(true);
   });
 
   it('keeps the common actions as icon buttons and hands the options to the sheet', () => {

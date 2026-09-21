@@ -19,7 +19,7 @@ const read = (file: string) =>
 
 const CONTROLS = [
   { file: 'Slider.tsx', name: 'the slider' },
-  { file: 'ShadowBar.tsx', name: 'the shadow offset pad' },
+  { file: 'EffectsBar.tsx', name: 'the shadow offset pad' },
 ];
 
 describe.each(CONTROLS)('$name', ({ file }) => {

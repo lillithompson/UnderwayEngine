@@ -78,6 +78,12 @@ export const PANEL_CONTENT_WELL = 'rgba(42, 42, 42, 0.16)';
 // from here in turn.
 export const PANEL_GROUP_WELL = 'rgba(42, 42, 42, 0.07)';
 export const PANEL_CONTROL = '#ffffff'; // selected segment, raised cell
+// A toggled button's fill, where selection blue would over-claim it. The
+// Effects page's three say "this effect is ON THE OBJECT", which is not the
+// thing a lit tab says ("this is the page you're looking at"), and wearing
+// the same blue made the row of buttons read as a second row of tabs. Dark
+// grey — the panel's own ink, laid on thickly enough to carry white.
+export const PANEL_CONTROL_ON = 'rgba(42, 42, 42, 0.78)';
 export const PANEL_SWATCH_BORDER = 'rgba(42, 42, 42, 0.45)'; // ring around a color swatch
 // Popover sheets presented over a bar (font list, tint presets): a hair
 // lighter than the bar so the layer reads as sitting above it.

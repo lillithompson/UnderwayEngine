@@ -11,16 +11,25 @@
  * Shares the byte-budgeted LRU with textTextureCache via rasterLruCache.
  */
 
-import { NodeEffects } from './types';
+import { GlowEffect, NodeEffects } from './types';
 import { createRasterLruCache } from './rasterLruCache';
 
 /** Default budget: 32 MB of estimated RGBA bytes. */
 const DEFAULT_BUDGET_BYTES = 32 * 1024 * 1024;
 
+/** One glow's blur-relevant parameters, for the key. `prefix` names which
+ *  of the two a node carries, so an outer glow and an inner one with the
+ *  same numbers can never collide on one key. */
+function glowKeyPart(prefix: string, glow: GlowEffect | undefined): string {
+  if (!glow) return `${prefix}-`;
+  return `${prefix}${glow.radius}:${glow.spread ?? 0}`
+    + `:${glow.color.r},${glow.color.g},${glow.color.b}:${glow.alpha}`;
+}
+
 /**
  * Key for a node's pre-blurred effect texture, or null when the node has
- * no shadow and no glow (nothing to rasterize). Includes blur radii,
- * colors, and alphas; excludes shadow dx/dy (draw-time offset).
+ * no shadow and neither glow (nothing to rasterize). Includes blur radii,
+ * spreads, colors, and alphas; excludes shadow dx/dy (draw-time offset).
  */
 export function effectsRasterKey(
   nodeId: string,
@@ -29,10 +38,13 @@ export function effectsRasterKey(
 ): string | null {
   const sh = effects.shadow;
   const gl = effects.glow;
-  if (!sh && !gl) return null;
-  const shPart = sh ? `s${sh.blur}:${sh.color.r},${sh.color.g},${sh.color.b}:${sh.alpha}` : 's-';
-  const glPart = gl ? `g${gl.radius}:${gl.color.r},${gl.color.g},${gl.color.b}:${gl.alpha}` : 'g-';
-  return `fx|${nodeId}|v${contentVersion}|${shPart}|${glPart}`;
+  const ig = effects.innerGlow;
+  if (!sh && !gl && !ig) return null;
+  const shPart = sh
+    ? `s${sh.blur}:${sh.spread ?? 0}:${sh.color.r},${sh.color.g},${sh.color.b}:${sh.alpha}`
+    : 's-';
+  return `fx|${nodeId}|v${contentVersion}|${shPart}`
+    + `|${glowKeyPart('g', gl)}|${glowKeyPart('i', ig)}`;
 }
 
 export interface EffectsRasterEntry {

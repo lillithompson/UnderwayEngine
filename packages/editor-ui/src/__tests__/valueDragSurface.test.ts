@@ -29,7 +29,7 @@ describe('VALUE_DRAG_SURFACE', () => {
 
 describe.each([
   { file: 'Slider.tsx', style: 'hit', name: 'the slider' },
-  { file: 'ShadowBar.tsx', style: 'pad', name: 'the shadow offset pad' },
+  { file: 'EffectsBar.tsx', style: 'pad', name: 'the shadow offset pad' },
   { file: 'TintBar.tsx', style: 'stopBarHit', name: 'the tint stop bar' },
   { file: 'BrushControlsPanel.tsx', style: 'row', name: 'the brush size strip' },
 ])('$name', ({ file, style }) => {

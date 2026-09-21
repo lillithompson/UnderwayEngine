@@ -33,7 +33,7 @@ import { buildMaskClipDefs, wrapWithMaskClip } from './compositionMaskSVG';
 import { effectiveStrokeMultiplier, normalizeStrokeScale } from './strokeScale';
 import { simplifySVG } from './simplifySVG';
 import { patternFillBackground } from './patternFill';
-import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, outlineShadowSpread, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
+import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, outlineShadowSpread, scaleEffects, tintToFeColorMatrix, borderToSvgRect } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
 import { overlayPngDataUri, paintBlendCss, PaintInk, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { flattenPaintTiles } from './canvasPaint';
@@ -403,36 +403,6 @@ function escapeXml(s: string): string {
     .replace(/'/g, '&apos;');
 }
 
-/**
- * Scale a NodeEffects' world-unit geometry (shadow offset/blur, glow
- * radius, border width/radius) into SVG units. The paintSvg builders are
- * unit-agnostic; export space is L0 cells × SVG_UNITS_PER_L0_CELL, so the
- * effect geometry must scale the same way node bboxes do.
- */
-function scaleEffectsToSvgUnits(effects: NodeEffects, u: number): NodeEffects {
-  const out: NodeEffects = {};
-  if (effects.shadow) {
-    out.shadow = {
-      ...effects.shadow,
-      dx: effects.shadow.dx * u,
-      dy: effects.shadow.dy * u,
-      blur: effects.shadow.blur * u,
-      spread: effects.shadow.spread !== undefined ? effects.shadow.spread * u : undefined,
-    };
-  }
-  if (effects.glow) {
-    out.glow = { ...effects.glow, radius: effects.glow.radius * u };
-  }
-  if (effects.border) {
-    out.border = {
-      ...effects.border,
-      width: effects.border.width * u,
-      radius: effects.border.radius !== undefined ? effects.border.radius * u : undefined,
-    };
-  }
-  return out;
-}
-
 /** Bbox a border effect is stroked around — a node's own box, or a frame's. */
 interface BorderBox {
   cellX: number; cellY: number; cellWidth: number; cellHeight: number; cornerRadius?: number;
@@ -445,7 +415,7 @@ interface BorderBox {
  * two can't disagree about where a border sits.
  */
 function borderRectForBox(border: BorderEffect, box: BorderBox, u: number): string {
-  const scaled = scaleEffectsToSvgUnits({ border }, u).border!;
+  const scaled = scaleEffects({ border }, u).border!;
   // Round the stroke to the node's own corner rounding when it has one
   // (images carry cornerRadius as a fraction of the shorter side) so the
   // border hugs the rounded image; otherwise use the border's own radius.
@@ -505,7 +475,7 @@ function applyNodeEffects(
   u: number,
 ): string {
   if (!effects) return markup;
-  const scaled = scaleEffectsToSvgUnits(effects, u);
+  const scaled = scaleEffects(effects, u);
   let out = markup;
   // The node's box, in the same user space the filter is referenced from —
   // world for svg/text, the local bitmap frame for images. Sizing the region

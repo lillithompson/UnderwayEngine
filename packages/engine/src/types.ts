@@ -1349,7 +1349,22 @@ export interface ShadowEffect { dx: number; dy: number; blur: number; color: RGB
   /** Dilation of the shadow shape before blur, in world cells (CSS box-shadow
    *  "spread"). Undefined / 0 = the plain drop shadow. */
   spread?: number }
-export interface GlowEffect { radius: number; color: RGBColor; alpha: number }
+/**
+ * A glow: the node's own silhouette, blurred and flooded with one colour,
+ * with no offset to it — the effect a shadow becomes when nothing casts it
+ * sideways. {@link NodeEffects.glow} halos OUTWARD from the edge;
+ * {@link NodeEffects.innerGlow} the same band laid INSIDE it, clipped to
+ * the silhouette.
+ *
+ * `radius` is the CSS-style blur radius (2σ), the same unit
+ * {@link ShadowEffect.blur} is authored in; `spread` dilates the silhouette
+ * before the blur, exactly as a shadow's does (a negative one erodes), so
+ * an outer glow reaches further out and an inner one further in.
+ */
+export interface GlowEffect { radius: number; color: RGBColor; alpha: number;
+  /** Dilation of the glow's source before the blur, in world cells.
+   *  Undefined / 0 = the plain glow. */
+  spread?: number }
 /** Stroke alignment relative to the node's bbox edge. */
 export type BorderPosition = 'inside' | 'center' | 'outside';
 export interface BorderEffect { width: number; color: RGBColor; radius?: number;
@@ -1371,7 +1386,12 @@ export interface BorderEffect { width: number; color: RGBColor; radius?: number;
  */
 export interface NodeEffects {
   shadow?: ShadowEffect;
+  /** The OUTER glow: the halo outside the silhouette. */
   glow?: GlowEffect;
+  /** The INNER glow: the same band, laid inside the silhouette and clipped
+   *  to it, so it lights the node's own edge rather than the paper around
+   *  it. Independent of {@link glow} — a node can wear both. */
+  innerGlow?: GlowEffect;
   border?: BorderEffect;
 }
 

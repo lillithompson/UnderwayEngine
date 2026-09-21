@@ -71,7 +71,7 @@ describe('the slider row', () => {
 
 describe('every Opacity row', () => {
   it('shows the alpha checker under its ramp, in the property bars too', () => {
-    for (const f of ['OpacityBar.tsx', 'ShadowBar.tsx', 'TintBar.tsx']) {
+    for (const f of ['OpacityBar.tsx', 'EffectsBar.tsx', 'TintBar.tsx']) {
       const src = read(f);
       const at = src.indexOf('label="Opacity"');
       expect([f, at >= 0]).toEqual([f, true]);
@@ -85,7 +85,7 @@ describe('every Opacity row', () => {
   });
 
   it('ramps in the color it controls where there is one', () => {
-    expect(read('ShadowBar.tsx')).toContain('accent={rgbCss(withAlpha(shadow.color, 1))}');
+    expect(read('EffectsBar.tsx')).toContain('accent={rgbCss(withAlpha(effect.color, 1))}');
     expect(read('TintBar.tsx')).toContain("accent={shown.type === 'solid' ? rgbCss(withAlpha(shown.solid, 1)) : undefined}");
   });
 });

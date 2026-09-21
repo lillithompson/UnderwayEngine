@@ -25,7 +25,10 @@ describe('EmptyEffectBar (effectBar.tsx)', () => {
     // the Image page's Replace — the same kind of thing (a page of
     // sliders with a single ACT on it), so it looks the same in both.
     expect(bar).toContain('return <EffectButton label={addLabel} onPress={onAdd} />;');
-    expect(bar).toContain('export function EffectButton({ label, icon = \'plus\', inline = false, onPress }');
+    expect(bar).toContain('export function EffectButton({');
+    expect(bar).toContain(
+      "  label, icon = 'plus', layout = 'block', active = false, accessibilityLabel, onPress,",
+    );
     expect(bar).toContain('accessibilityLabel={label}');
     expect(bar).toContain('onPress={onPress}');
     // Bare ink on the well, no filled pill: a fill read as a control
@@ -35,7 +38,7 @@ describe('EmptyEffectBar (effectBar.tsx)', () => {
     expect(bar).toMatch(/addButton: \{[^}]*\}/s);
     expect(/addButton: \{[^}]*backgroundColor/s.test(bar)).toBe(false);
     expect(bar).toMatch(/addLabel: \{ color: PANEL_INK/);
-    expect(bar).toContain('<MaterialCommunityIcons name={icon as MCIName} size={16} color={PANEL_INK} />');
+    expect(bar).toContain('        color={active ? BUTTON_ON_INK : PANEL_INK}');
     // The per-page header is gone from every page: the Edit sheet's title
     // and tabs are the chrome now.
     expect(bar).not.toContain('EffectBarHeader');
@@ -48,7 +51,6 @@ describe('the panel swaps the Add page in for an absent effect', () => {
   it.each([
     ['svgFill', 'Add Fill'],
     ['svgPattern', 'Add Pattern'],
-    ['shadow', 'Add Drop Shadow'],
     ['border', 'Add Border'],
   ])('%s: absent + onAdd renders EmptyEffectBar labelled %s', (key, label) => {
     expect(panel).toContain(
@@ -58,8 +60,8 @@ describe('the panel swaps the Add page in for an absent effect', () => {
   });
 
   it('sizes the sheet to the one Add button, not to the controls it stands in for', () => {
-    // A shadowless image's Shadow tab used to stand as tall as the pad and
-    // three sliders it wasn't showing.
+    // A fill-less shape's Fill tab used to stand as tall as the controls it
+    // wasn't showing.
     expect(emptyEffectHeight()).toBe(CONTENT_PAD * 2 + ROW_SEGMENTED + BAR_CUSHION);
     expect(emptyEffectHeight()).toBeLessThan(submenuHeight('shadow'));
     expect(emptyEffectHeight()).toBeLessThan(submenuHeight('border'));
@@ -69,8 +71,29 @@ describe('the panel swaps the Add page in for an absent effect', () => {
     // canvas), so there is nothing for its Add page to stand in for.
     expect(emptyEffectHeight()).toBeLessThanOrEqual(submenuHeight('svgPattern'));
     // Every Add branch flags the page, and the height reads the flag.
-    expect(panel.match(/addPage = true;/g)).toHaveLength(5);
+    expect(panel.match(/addPage = true;/g)).toHaveLength(4);
     expect(panel).toContain('addPage ? emptyEffectHeight() : submenuHeight(displaySub, {');
+  });
+
+  // The EFFECTS page is the exception, and deliberately: an absent effect
+  // there is not an empty page waiting to be filled — it is a button that
+  // has not been pressed, standing beside two others in the same state. So
+  // it has no Add page of its own: the page IS the three buttons, and it
+  // measures the same whichever of them are lit.
+  it('the Effects page is three buttons, and is that whatever the object wears', () => {
+    const bar = read(join('components', 'EffectsBar.tsx'));
+    expect(bar).toContain('<EffectButtonRow>');
+    expect(bar).toContain("icon={on ? 'check' : 'plus'}");
+    expect(bar).toContain('active={on}');
+    // One row of them — and no well behind it, unlike the Add page it
+    // replaces: three buttons are not a field of controls to gather, and
+    // the grey slab behind them was saying they were. So it stands the Add
+    // page's height less exactly the well's padding.
+    expect(submenuHeight('effects')).toBe(ROW_SEGMENTED + BAR_CUSHION);
+    expect(emptyEffectHeight() - submenuHeight('effects')).toBe(CONTENT_PAD * 2);
+    // …and it never flags itself as an Add page: there is nothing absent
+    // about it.
+    expect(panel).not.toContain("displaySub === 'effects' && ");
   });
 
   it('offers nothing to remove while the effect is absent', () => {
@@ -83,7 +106,7 @@ describe('the panel swaps the Add page in for an absent effect', () => {
     );
     expect(addBranches).not.toContain('removeAction =');
     expect(panel).toContain("removeAction = { label: 'Remove fill', onPress: removeSvgFill };");
-    expect(panel).toContain("removeAction = { label: 'Remove drop shadow', onPress: removeShadow };");
+    expect(panel).toContain('label: `Remove ${effectLabel(shownEffect).toLowerCase()}`,');
     expect(panel).toContain("removeAction = { label: 'Remove border', onPress: removeBorder };");
     expect(panel).toContain("removeAction = { label: 'Remove stroke', onPress: removeStroke };");
     expect(panel).toContain("removeAction = { label: 'Remove pattern', onPress: () => model.onRemoveSvgPattern?.() };");

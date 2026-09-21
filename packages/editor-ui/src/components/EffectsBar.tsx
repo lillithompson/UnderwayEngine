@@ -1,32 +1,51 @@
 import React, { useRef } from 'react';
 import { GestureResponderEvent, PanResponder, StyleSheet, View } from 'react-native';
-import type { RGBLike, ShadowModel } from '../adapter';
+import type { EffectKind, RGBLike, ShadowModel } from '../adapter';
 import { ROW_GAP, SHADOW_PAD_SIZE } from '../logic/submenuHeight';
-import { BarBody, ColorSliderRow, CONTROL_ACCENT, SliderRow } from './effectBar';
+import {
+  BarBody, ColorSliderRow, CONTROL_ACCENT, EffectButton, EffectButtonRow, SliderRow,
+} from './effectBar';
 import { beginValueDrag, endValueDrag, padOffsetFromTouch, VALUE_DRAG_SURFACE } from '../logic/slider';
 import { rgbCss, withAlpha } from '../logic/hsv';
 
-// The Drop Shadow page (design "2a"): the XY offset pad on the left and
-// Blur / Spread / Opacity beside it, the sliders spread to the pad's height
-// so the two columns square off against each other. The pad is exactly as
-// tall as those three rows (SHADOW_PAD_SIZE) and exactly as wide — a
-// direction chooser has to read the same distance on both axes, and a
-// smaller square parked in a taller column read as squat.
+// The three effects an object can cast over its own paint — a drop shadow,
+// and a glow each way — and the two pages they take.
+//
+// THE EFFECTS PAGE ({@link EffectsBar}) is three buttons side by side, one
+// per effect, in the shape every page's one act wears ("Add Fill"). Off,
+// a button is bare ink and its press ADDS that effect; on, it is filled in
+// selection blue and its press takes it away again. It is the only page in
+// the sheet that changes how many tabs there are: adding an effect puts a
+// tab of its own on the row (and the panel opens it at once), removing it
+// takes that tab away.
+//
+// AN EFFECT'S OWN PAGE ({@link EffectBar}) is the controls — design "2a":
+// the XY offset pad on the left and Blur / Spread / Opacity beside it, the
+// sliders spread to the pad's height so the two columns square off against
+// each other. The pad is exactly as tall as those three rows
+// (SHADOW_PAD_SIZE) and exactly as wide — a direction chooser has to read
+// the same distance on both axes, and a smaller square parked in a taller
+// column read as squat.
+//
+// A GLOW is that same page with the pad taken away, and that is the only
+// difference between the three: a glow is a shadow cast in every direction
+// at once, so it has blur, dilation, opacity and ink and nothing to point
+// them at. Which way the light goes — out from the edge or in from it — is
+// which tab you are on, not a control.
 //
 // Values are the app's world-cell units (see the ranges below, mapped from
 // the design's iOS-point ranges at 16px/cell). The slider rows and the body
 // layout come from the shared page grammar (see effectBar.tsx); the sheet
-// around the page — its Shadow tab and the Remove line — is the Edit
-// sheet's.
+// around them — the tabs and the Remove line — is the Edit sheet's.
 //
-// The shadow's own colour reads UNDER both columns, full width. It is the
+// The effect's own colour reads UNDER both columns, full width. It is the
 // one setting on the page that belongs to neither the direction nor the
 // amount, and standing it between Spread and Opacity broke the run of
 // "how much" sliders in half and squeezed the column it sat in against
 // the pad.
 //
-// ONE page, shared: an image, a frame and a TEXT all open this, so the
-// layout is the same wherever a shadow is cast.
+// ONE set of pages, shared: an image, a frame and a TEXT all open these, so
+// the layout is the same wherever an effect is cast.
 
 // ── Ranges (world cells; design pt ÷ 16) ─────────────────────────────
 const MAX_OFFSET = 1.5; // ±  (≈ ±24pt)
@@ -43,6 +62,55 @@ const CENTER_DOT = 'rgba(42,42,42,0.34)';
 
 const PAD_SIZE = SHADOW_PAD_SIZE;
 const PAD_HANDLE = 26;
+
+/** The three effects, in the order the buttons stand and the tabs follow:
+ *  the shadow first — the effect this page has always held, and the one
+ *  with somewhere to fall — then the glow that leaves the object and the
+ *  glow that stays inside it. */
+export const EFFECT_KINDS: readonly EffectKind[] = ['shadow', 'outer', 'inner'];
+
+/** What one effect is called — on its button, on the tab it creates, and in
+ *  the Remove line at the foot of that tab's page. ONE name for all three
+ *  places, so the button you press and the tab you land on say the same
+ *  word. */
+export function effectLabel(kind: EffectKind): string {
+  return kind === 'shadow' ? 'Shadow' : kind === 'outer' ? 'Outer Glow' : 'Inner Glow';
+}
+
+/**
+ * The Effects page: one button per effect, side by side.
+ *
+ * `present` says which the selection already wears — those read as toggled
+ * ON — and a press hands the kind back either way: the host adds what is
+ * absent and removes what is there. Both are one undo step, and both change
+ * the tab row, which is what makes this page unlike every other one in the
+ * sheet.
+ */
+export function EffectsBar({ present, onToggle }: {
+  present: (kind: EffectKind) => boolean;
+  onToggle: (kind: EffectKind, add: boolean) => void;
+}) {
+  return (
+    <EffectButtonRow>
+      {EFFECT_KINDS.map((kind) => {
+        const on = present(kind);
+        return (
+          <EffectButton
+            key={kind}
+            layout="column"
+            label={effectLabel(kind)}
+            // A plus to add; a check to say it is already there — the same
+            // glyph pair the pattern page's Edit / Editing button uses.
+            icon={on ? 'check' : 'plus'}
+            active={on}
+            accessibilityLabel={`${on ? 'Remove' : 'Add'} ${effectLabel(kind)}`}
+            onPress={() => onToggle(kind, !on)}
+          />
+        );
+      })}
+    </EffectButtonRow>
+  );
+}
 
 /** The XY offset pad: drag (or tap) anywhere to set the shadow offset; the
  *  handle jumps to the touch and tracks. X→dx (right positive), Y→dy (down
@@ -94,15 +162,27 @@ function XYPad({ dx, dy, onChange, onCommit }: {
   );
 }
 
-export function ShadowBar({ shadow, color, onColor, onOpenColorPicker, onChange, onCommit }: {
-  shadow: ShadowModel;
-  /** The shadow's own ink, shown as a hue row above Opacity. Given with
-   *  `onColor` and `onOpenColorPicker` — omit all three and the row is absent
-   *  (a page whose host has no colour to write).
+/**
+ * One effect's controls — the page its own tab opens.
+ *
+ * `directional` brings the XY offset pad, which only the drop shadow has a
+ * use for; the rows beside it are the same rows either way, which is why
+ * the two faces stand at exactly the same height and the sheet never moves
+ * between them.
+ */
+export function EffectBar({
+  effect, directional, color, onColor, onOpenColorPicker, onChange, onCommit,
+}: {
+  /** The effect's values. `dx`/`dy` are read only when `directional`. */
+  effect: ShadowModel;
+  directional: boolean;
+  /** The effect's own ink, shown as a hue row under both columns. Given
+   *  with `onColor` and `onOpenColorPicker` — omit all three and the row is
+   *  absent (a page whose host has no colour to write).
    *
-   *  Read off `shadow.color`, i.e. the MODEL, not the panel's draft: the full
-   *  picker changes it externally, and a row fed by its own writes would stand
-   *  still while the shadow recoloured. */
+   *  Read off the MODEL, not the panel's draft: the full picker changes it
+   *  externally, and a row fed by its own writes would stand still while
+   *  the effect recoloured. */
   color?: RGBLike;
   onColor?: (color: RGBLike, committed: boolean) => void;
   onOpenColorPicker?: () => void;
@@ -110,34 +190,34 @@ export function ShadowBar({ shadow, color, onColor, onOpenColorPicker, onChange,
   onCommit: (s: ShadowModel) => void;
 }) {
   const set = (patch: Partial<ShadowModel>, committed: boolean) =>
-    (committed ? onCommit : onChange)({ ...shadow, ...patch });
+    (committed ? onCommit : onChange)({ ...effect, ...patch });
   return (
     <View style={styles.page}>
       <BarBody
-        spread
-        aside={(
+        spread={directional}
+        aside={directional ? (
           <XYPad
-            dx={shadow.dx}
-            dy={shadow.dy}
+            dx={effect.dx}
+            dy={effect.dy}
             onChange={(dx, dy) => set({ dx, dy }, false)}
             onCommit={(dx, dy) => set({ dx, dy }, true)}
           />
-        )}
+        ) : undefined}
       >
-        {/* How much of a shadow there is, in one run: how far it softens,
+        {/* How much of an effect there is, in one run: how far it softens,
             how far it is dilated, and how much of it shows. */}
-        <SliderRow label="Blur" value={shadow.blur / MAX_BLUR} apply={(t, c) => set({ blur: t * MAX_BLUR }, c)} />
+        <SliderRow label="Blur" value={effect.blur / MAX_BLUR} apply={(t, c) => set({ blur: t * MAX_BLUR }, c)} />
         <SliderRow
           label="Spread"
-          value={(shadow.spread - MIN_SPREAD) / (MAX_SPREAD - MIN_SPREAD)}
+          value={(effect.spread - MIN_SPREAD) / (MAX_SPREAD - MIN_SPREAD)}
           apply={(t, c) => set({ spread: MIN_SPREAD + t * (MAX_SPREAD - MIN_SPREAD) }, c)}
         />
-        {/* The shadow's own color ramping up over the alpha checker — "how
-            much of THIS shadow", as the color picker's Opacity reads. */}
+        {/* The effect's own color ramping up over the alpha checker — "how
+            much of THIS effect", as the color picker's Opacity reads. */}
         <SliderRow
           label="Opacity"
-          value={shadow.opacity}
-          accent={rgbCss(withAlpha(shadow.color, 1))}
+          value={effect.opacity}
+          accent={rgbCss(withAlpha(effect.color, 1))}
           checker
           apply={(t, c) => set({ opacity: t }, c)}
         />

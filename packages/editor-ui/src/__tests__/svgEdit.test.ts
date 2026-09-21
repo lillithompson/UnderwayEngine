@@ -30,7 +30,7 @@ describe('svgEditOptions', () => {
   it('adds Fill to the shapes with an interior, and to nothing else', () => {
     for (const subtype of FILLED) {
       expect(svgEditOptions(subtype).map((o) => o.action).filter((a) => a !== 'shape'))
-        .toEqual(['stroke', 'fill', 'pattern', 'shadow', 'opacity', 'transform']);
+        .toEqual(['stroke', 'fill', 'pattern', 'effects', 'opacity', 'transform']);
     }
     for (const subtype of SUBTYPES.filter((s) => !FILLED.includes(s))) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('fill');
@@ -53,19 +53,19 @@ describe('svgEditOptions', () => {
     }
   });
 
-  it('ends every subtype on the SHARED TAIL — Shadow, Opacity, Copies', () => {
+  it('ends every subtype on the SHARED TAIL — Effects, Opacity, Copies', () => {
     // The pages an image, a text and a line have in common, in the same
     // order wherever you are.
     for (const subtype of SUBTYPES) {
       expect(svgEditOptions(subtype).map((o) => o.action).slice(-3))
-        .toEqual(['shadow', 'opacity', 'transform']);
+        .toEqual(['effects', 'opacity', 'transform']);
     }
   });
 
   it('adds Ends to the three open paths, and to nothing else', () => {
     for (const subtype of ['line', 'arc', 'stroke'] as SVGSubtypeKind[]) {
       expect(svgEditOptions(subtype).map((o) => o.action))
-        .toEqual(['stroke', 'endpoints', 'shadow', 'opacity', 'transform']);
+        .toEqual(['stroke', 'endpoints', 'effects', 'opacity', 'transform']);
     }
     for (const subtype of ['rectangle', 'circle', 'polygon', 'shape'] as SVGSubtypeKind[]) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('endpoints');
@@ -123,12 +123,12 @@ describe('svgEditOptions', () => {
     // However the outline came to be — merged, joined, unioned, drawn — a
     // closed path has an inside to paint. (No Shape page: a freeform has
     // no line→line corners to round.)
-    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke', 'fill', 'pattern', 'shadow', 'opacity', 'transform']);
+    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke', 'fill', 'pattern', 'effects', 'opacity', 'transform']);
   });
 
   it('adds Shape — the corner Radius page — right after Stroke on the polygonal shapes only', () => {
-    expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'pattern', 'shadow', 'opacity', 'transform']);
-    expect(svgEditOptions('polygon').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'pattern', 'shadow', 'opacity', 'transform']);
+    expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'pattern', 'effects', 'opacity', 'transform']);
+    expect(svgEditOptions('polygon').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'pattern', 'effects', 'opacity', 'transform']);
     for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'polygon')) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('shape');
       expect(svgHasShape(subtype)).toBe(false);
@@ -181,7 +181,7 @@ describe('svgEditOptions', () => {
     expect(options[0].action).toBe('stroke');
     // …and offers it neither of the two subtype-specific bars — just
     // Stroke and the shared tail.
-    expect(options.map((o) => o.action)).toEqual(['stroke', 'shadow', 'opacity', 'transform']);
+    expect(options.map((o) => o.action)).toEqual(['stroke', 'effects', 'opacity', 'transform']);
   });
 
   it('exposes the same menus through the whole-table export', () => {

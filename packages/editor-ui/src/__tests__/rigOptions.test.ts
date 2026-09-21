@@ -74,7 +74,7 @@ describe('the rig option set', () => {
       expect(rigPartOfSubmenu(opt.sub)).toBe(opt.part);
     }
     // A bar that is not a rig page belongs to no part.
-    expect(rigPartOfSubmenu('shadow')).toBeNull();
+    expect(rigPartOfSubmenu('effects')).toBeNull();
   });
 
   it('sizes each bar to the rows it renders', () => {

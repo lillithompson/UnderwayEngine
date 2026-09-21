@@ -15,16 +15,21 @@ import { ColorSwatchFill } from './ColorSwatch';
 // The Edit sheet: the type-specific half of the object-properties panel,
 // popped up OVER the panel's common-actions row.
 //
-//   Crop  Shadow  Border  …    ← one tab per option, from the left
+//   Crop  Effects  Shadow  Border  …  ← one tab per option, from the left
 //   ┌────────────────────────┐
 //   │ the showing page's     │ ← a slightly darkened, rounded well holding
 //   │ controls               │   the lit tab's controls (a property page)
 //   └────────────────────────┘
 //                      Remove ← when the page's effect can be removed
 //
-// Tabs are the selection's options — what its KIND offers (crop / shadow /
+// Tabs are the selection's options — what its KIND offers (crop / effects /
 // border …) followed by what the SELECTION offers (Layout · Group · Merge on
-// a multi-selection). A tab that opens a page lights up in selection blue
+// a multi-selection). One run of them is not fixed by the kind: the Effects
+// page's three buttons ADD and REMOVE tabs as they add and remove the
+// effects they stand for — the one place in the sheet where working on a
+// page changes how many tabs there are, and why the row's length is read
+// from the panel's props on every render rather than settled per kind.
+// A tab that opens a page lights up in selection blue
 // while its page is showing; a tab that is a one-press action (Group, Edit)
 // fires and stays unlit; a toggle (Repeat, Invert) lights in its own colour
 // while on. The row runs from the left edge, one gap apart, and SCROLLS when

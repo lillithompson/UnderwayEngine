@@ -53,7 +53,7 @@ export const BAR_CUSHION = 3;
 /** The gap between a page's aside column (the Shadow page's offset pad) and
  *  its rows. */
 export const ASIDE_GAP = 16;
-/** The Shadow page's XY offset pad — its aside column, and a SQUARE one: it
+/** An effect page's XY offset pad — its aside column, and a SQUARE one: it
  *  is a direction chooser, so its two axes have to read as the same
  *  distance. It takes the exact height of the three sliders beside it
  *  (Blur / Spread / Opacity), which is what makes it square in the page
@@ -137,13 +137,20 @@ export const PATTERN_SYMMETRY_GRID_WIDTH =
 export const PATTERN_SYMMETRY_GRID =
   PATTERN_SYMMETRY_BUTTON * 2 + PATTERN_TILE_GRID_GAP;
 
-/** The property pages. An image selection offers crop / shadow / border /
+/** The property pages. An image selection offers crop / effects / border /
  *  opacity; text font / spacing / align (three pages of the Text controls)
- *  and shadow (the image page, reused); a vector stroke plus whichever of svgFill /
+ *  and effects (the image page, reused); a vector stroke plus whichever of svgFill /
  *  endpoints / opacity / transform its subtype has. `layout` rides on a
- *  multi-selection rather than on a type. */
+ *  multi-selection rather than on a type.
+ *
+ *  `effects` is the page the three cast effects are ADDED from — three
+ *  buttons, one each — and `shadow` / `glowOuter` / `glowInner` are their
+ *  controls, on tabs that exist only while the selection wears them. The
+ *  three controls pages are one page's worth of rows: a glow is a shadow
+ *  with nowhere to fall, so it is the shadow's page without the offset
+ *  pad, and the two measure the same. */
 export type SubmenuKey =
-  | 'tint' | 'crop' | 'shadow' | 'border' | 'opacity'
+  | 'tint' | 'crop' | 'effects' | 'shadow' | 'glowOuter' | 'glowInner' | 'border' | 'opacity'
   | 'image'
   | 'text' | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
   // A closed shape's PATTERN fill: the square tile it repeats inside its
@@ -199,9 +206,9 @@ export interface SubmenuHeightContext {
    *  slider and a button, so the page is measured by the section the way
    *  the Crop page is measured by its mode. */
   svgPatternSection?: 'tile' | 'symmetry';
-  /** Shadow page: whether it shows the hue row above Opacity, on the same
-   *  rule. */
-  shadowColor?: boolean;
+  /** An effect's controls page: whether it shows the hue row under the
+   *  block, on the same rule. */
+  effectColor?: boolean;
   /** Text page: whether it shows the ink's hue row above Size. */
   textColor?: boolean;
   /** Border page: which optional rows the image / frame border shows —
@@ -254,11 +261,16 @@ function bareArea(rows: readonly number[], gap = ROW_GAP): number {
  * every section — each one framed twice, for no extra meaning. The rig's
  * Joints page brings one box of the same kind, for the same reason.
  *
+ * The EFFECTS page is not, for the opposite reason: it brings no box at
+ * all. It is three buttons, and a button already reads as a thing you can
+ * press — the well behind them added a grey slab whose only job elsewhere
+ * is to gather CONTROLS into a field, with nothing here to gather.
+ *
  * Both the arithmetic here and EditSheet's markup read this, so a page
  * cannot be measured one way and drawn the other.
  */
 export function pageIsWelled(key: SubmenuKey): boolean {
-  return key !== 'transform' && key !== 'rigJoints';
+  return key !== 'transform' && key !== 'rigJoints' && key !== 'effects';
 }
 
 /** A GROUP of rows (effectBar's RowGroup): a shaded rounded box around rows
@@ -453,7 +465,14 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'align':
       // The horizontal and the vertical alignment rows.
       return contentArea([ROW_SEGMENTED, ROW_SEGMENTED]);
-    case 'shadow': {
+    case 'effects':
+      // The three Add / Remove buttons, side by side on one row — and no
+      // well around them (pageIsWelled), so no padding of the well's
+      // either: the row and its cushion are the whole page.
+      return bareArea([ROW_SEGMENTED]);
+    case 'shadow':
+    case 'glowOuter':
+    case 'glowInner': {
       // The XY pad and its three sliders (Blur / Spread / Opacity) side by
       // side — the same height by construction, SHADOW_PAD_SIZE being
       // exactly those three rows — and then, where the host has a colour to
@@ -461,8 +480,14 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // used to stand in the right-hand column, which grew the page past
       // the pad; it is a row of the page now, so it adds its own height
       // rather than deepening the block beside the pad.
+      //
+      // A GLOW's page is the same arithmetic with the pad gone, and comes
+      // out at the same number: the pad is exactly as tall as the three
+      // sliders that stand beside it, so the block is those three rows
+      // either way. Which is why moving between the effect tabs never
+      // resizes the sheet.
       const block = Math.max(stack([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]), SHADOW_PAD_SIZE);
-      return contentArea(ctx.shadowColor ? [block, ROW_SLIDER] : [block]);
+      return contentArea(ctx.effectColor ? [block, ROW_SLIDER] : [block]);
     }
     default: {
       // Exhaustiveness guard: adding a SubmenuKey without giving it rows here
@@ -475,9 +500,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
 
 /** How tall an ABSENT effect's page stands: the one Add button
  *  (EmptyEffectBar), a segmented row tall, in the well's chrome — not the
- *  controls that will swap in once it is pressed. Without this a shadowless
- *  image's Shadow tab stood as tall as the pad and three sliders it wasn't
- *  showing. */
+ *  controls that will swap in once it is pressed. Without this a fill-less
+ *  shape's Fill tab stood as tall as the controls it wasn't showing. */
 export function emptyEffectHeight(): number {
   return contentArea([ROW_SEGMENTED]);
 }

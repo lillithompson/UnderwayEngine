@@ -28,8 +28,9 @@ import type { SVGSubtypeKind } from '../adapter';
  *  - `endpoints` opens the Endpoints page — a marker (none / circle / arrow)
  *    for each of an open path's two loose ends. (The cap control that used
  *    to sit under them is gone; see EndpointsBar.)
- *  - `shadow` opens the Drop Shadow page — the same page an image and a
- *    text open, cast by the path instead of by a box.
+ *  - `effects` opens the Effects page — the same page an image and a text
+ *    open, holding the drop shadow and the two glows, cast by the path
+ *    instead of by a box.
  *  - `opacity` opens the Opacity bar — the whole object's render opacity plus
  *    an edge soften (0 = hard edges, 1 = transparent toward the edges).
  *  - `transform` opens the Copies page — Create copies: a count, a position
@@ -37,7 +38,7 @@ import type { SVGSubtypeKind } from '../adapter';
  *    the one before. Every subtype has it; a line repeats as readily as a
  *    shape. (The key predates the page's rename; the object's own rotation
  *    is the two-finger twist and the selection tool's Rotate slider.) */
-export type SVGEditAction = 'stroke' | 'shape' | 'fill' | 'pattern' | 'endpoints' | 'shadow' | 'opacity' | 'transform';
+export type SVGEditAction = 'stroke' | 'shape' | 'fill' | 'pattern' | 'endpoints' | 'effects' | 'opacity' | 'transform';
 
 export interface SVGEditOption {
   action: SVGEditAction;
@@ -102,7 +103,7 @@ export function svgHasEndpoints(subtype: SVGSubtypeKind): boolean {
  * that softening an edge into transparency wants an enclosed silhouette —
  * but the first slider on that page is plain opacity, which a line wants as
  * much as a rectangle does, and fading one was simply unreachable. Kept as
- * a predicate rather than inlined: Shadow and Opacity now go to every
+ * a predicate rather than inlined: Effects and Opacity now go to every
  * subtype together, and naming them says so.
  */
 export function svgHasOpacity(_subtype: SVGSubtypeKind): boolean {
@@ -141,7 +142,7 @@ export function svgHasShape(subtype: SVGSubtypeKind): boolean {
  *  paths that don't.
  *
  *  The last three are the SHARED TAIL every kind of object ends on, vector
- *  or not — Shadow, Opacity, Copies — so the pages an image, a text and a
+ *  or not — Effects, Opacity, Copies — so the pages an image, a text and a
  *  line have in common sit in the same order wherever you are. */
 export function svgEditOptions(
   subtype: SVGSubtypeKind,
@@ -164,7 +165,7 @@ export function svgEditOptions(
     options.push({ action: 'pattern', label: 'Pattern', icon: 'view-grid-outline' });
   }
   if (svgHasEndpoints(subtype)) options.push({ action: 'endpoints', label: 'Ends', icon: 'ray-start-end' });
-  options.push({ action: 'shadow', label: 'Shadow', icon: 'box-shadow' });
+  options.push({ action: 'effects', label: 'Effects', icon: 'box-shadow' });
   if (svgHasOpacity(subtype)) options.push({ action: 'opacity', label: 'Opacity', icon: 'opacity' });
   options.push({ action: 'transform', label: 'Copies', icon: 'content-copy' });
   return options;

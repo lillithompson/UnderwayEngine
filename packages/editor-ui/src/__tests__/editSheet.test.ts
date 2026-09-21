@@ -21,7 +21,7 @@ const BAR = SRC('components', 'effectBar.tsx');
 
 const PAGE_FILES = [
   'BorderBar.tsx', 'CropBar.tsx', 'EndpointsBar.tsx', 'LayoutBar.tsx', 'OpacityBar.tsx',
-  'ShadowBar.tsx', 'TextBar.tsx', 'TintBar.tsx', 'TransformBar.tsx', 'RigPoseBar.tsx',
+  'EffectsBar.tsx', 'TextBar.tsx', 'TintBar.tsx', 'TransformBar.tsx', 'RigPoseBar.tsx',
   'PatternBars.tsx',
 ];
 
@@ -96,9 +96,13 @@ describe('the sheet: a tab row over the well', () => {
     expect(SHEET).toContain('{content != null && remove ? (');
     // …and the panel names it per page: the pages that can be removed or
     // reset, and no others.
-    for (const label of ['Remove fill', 'Remove drop shadow', 'Remove border', 'Remove stroke']) {
+    for (const label of ['Remove fill', 'Remove border', 'Remove stroke']) {
       expect(PANEL).toContain(`removeAction = { label: '${label}'`);
     }
+    // …and an effect's own page names whichever effect it is showing, one
+    // line for the shadow and the two glows alike. (The Effects page has
+    // none: each of its three buttons IS a Remove when it is lit.)
+    expect(PANEL).toContain('label: `Remove ${effectLabel(shownEffect).toLowerCase()}`,');
     // The Ends page has none: its markers are a shape each end wears, and
     // 'None' is one of the shapes the page already offers — the line said
     // twice what one of its own controls says once.
@@ -146,22 +150,23 @@ describe('the pages have no chrome of their own', () => {
     for (const file of PAGE_FILES.filter((f) => f !== 'TintBar.tsx')) {
       expect([file, SRC('components', file).includes('onPickColor')]).toEqual([file, false]);
     }
-    // The one aside left is the Shadow page's offset pad, with its sliders
-    // spread beside it.
-    const shadow = SRC('components', 'ShadowBar.tsx');
-    expect(shadow).toMatch(/<BarBody\s+spread\s+aside=\{\(\s*<XYPad/);
-    for (const file of PAGE_FILES.filter((f) => f !== 'ShadowBar.tsx')) {
+    // The one aside left is the Effects page's offset pad, with its sliders
+    // spread beside it — on the shadow face, the only one with somewhere to
+    // fall.
+    const effects = SRC('components', 'EffectsBar.tsx');
+    expect(effects).toMatch(/<BarBody\s+spread=\{directional\}\s+aside=\{directional \? \(\s*<XYPad/);
+    for (const file of PAGE_FILES.filter((f) => f !== 'EffectsBar.tsx')) {
       expect([file, SRC('components', file).includes('aside=')]).toEqual([file, false]);
     }
   });
 
-  // The Shadow page's three sliders are one run of "how much" — how far it
+  // The Effects page's three sliders are one run of "how much" — how far it
   // softens, how far it is dilated, how much of it shows — and the colour
   // used to stand between Spread and Opacity, breaking that run in half and
   // squeezing the column against the pad. It reads across the foot of the
   // page now, under the pad and the sliders alike.
-  it('the Shadow page runs Blur · Spread · Opacity, with the colour full width beneath', () => {
-    const shadow = SRC('components', 'ShadowBar.tsx');
+  it('the Effects page runs Blur · Spread · Opacity, with the colour full width beneath', () => {
+    const shadow = SRC('components', 'EffectsBar.tsx');
     const at = (needle: string) => {
       const i = shadow.indexOf(needle);
       expect([needle, i]).not.toEqual([needle, -1]);
@@ -182,13 +187,19 @@ describe('the pages have no chrome of their own', () => {
     // row's height in both places, so the sheet does not resize.
     const block = ROW_SLIDER * 3 + ROW_GAP * 2;
     expect(SHADOW_PAD_SIZE).toBe(block);
-    expect(submenuHeight('shadow', { shadowColor: true }))
+    expect(submenuHeight('shadow', { effectColor: true }))
       .toBe(CONTENT_PAD * 2 + block + ROW_GAP + ROW_SLIDER + BAR_CUSHION);
     // No colour to write: the block alone, as tall as the pad.
     expect(submenuHeight('shadow'))
       .toBe(CONTENT_PAD * 2 + block + BAR_CUSHION);
-    expect(submenuHeight('shadow', { shadowColor: true }) - submenuHeight('shadow'))
+    expect(submenuHeight('shadow', { effectColor: true }) - submenuHeight('shadow'))
       .toBe(ROW_GAP + ROW_SLIDER);
+    // A GLOW's page is that page with the pad gone — the same rows, so the
+    // same height, so the sheet never moves between the effect tabs.
+    for (const glow of ['glowOuter', 'glowInner'] as const) {
+      expect(submenuHeight(glow, { effectColor: true }))
+        .toBe(submenuHeight('shadow', { effectColor: true }));
+    }
   });
 
   it('a colour reads on the page of the thing it colours — there is no Color page', () => {
@@ -199,18 +210,21 @@ describe('the pages have no chrome of their own', () => {
     expect(fileExists('components', 'ColorBar.tsx')).toBe(false);
     expect(PANEL).not.toContain("label: 'Color', sub: 'color'");
     expect(PANEL).not.toContain('ColorRowSpec');
-    for (const [page, write, pick] of [
-      ['svgFill', 'model.onSvgFillColor', 'model.onPickSvgFillColor'],
-      ['shadow', 'model.onShadowColor', 'model.onPickShadowColor'],
-      ['border', 'model.onBorderColor', 'model.onPickBorderColor'],
-      ['stroke', 'model.onStrokeColor', 'model.onPickStrokeColor'],
+    for (const [branch, write, pick] of [
+      ["displaySub === 'svgFill'", 'model.onSvgFillColor', 'model.onPickSvgFillColor'],
+      ["displaySub === 'border'", 'model.onBorderColor', 'model.onPickBorderColor'],
+      ["displaySub === 'stroke'", 'model.onStrokeColor', 'model.onPickStrokeColor'],
+      // The three effect pages share one branch — they are the same rows —
+      // and its hue row forks on which effect is showing.
+      ['} else if (shownEffect) {', 'model.onGlowColor', 'model.onPickGlowColor'],
+      ['} else if (shownEffect) {', 'model.onShadowColor', 'model.onPickShadowColor'],
     ]) {
       // The LAST branch for the key: the first is the absent-effect Add page
       // (EmptyEffectBar), which has no controls to colour.
-      const bar = PANEL.slice(PANEL.lastIndexOf(`displaySub === '${page}'`));
+      const bar = PANEL.slice(PANEL.lastIndexOf(branch) + branch.length);
       const body = bar.slice(0, bar.indexOf('} else if ('));
-      expect([page, body.includes(write)]).toEqual([page, true]);
-      expect([page, body.includes(pick)]).toEqual([page, true]);
+      expect([branch, write, body.includes(write)]).toEqual([branch, write, true]);
+      expect([branch, pick, body.includes(pick)]).toEqual([branch, pick, true]);
     }
     // …and the two settings with no such page of their own get one: a
     // frame's Background (its boundary rect's fill) and a word sticker's
@@ -282,7 +296,7 @@ describe('the pages have no chrome of their own', () => {
     expect(SRC('adapter.ts')).not.toContain('imagePixelSize');
     // The page leads an image's tabs, and exists only where the host wired
     // Replace up.
-    expect(PANEL).toContain("[...(model.onReplaceImage ? (['image'] as const) : []), 'crop', 'shadow', 'border', 'opacity', 'transform'])");
+    expect(PANEL).toContain("[...(model.onReplaceImage ? (['image'] as const) : []), 'crop', ...effectPages, 'border', 'opacity', 'transform'])");
     expect(PANEL).toContain(".filter((opt) => opt.action !== 'image' || !!model.onReplaceImage)");
     // A multi-selection drops it with Crop: one photo, one frame.
     expect(PANEL).toContain('.filter((opt) => !multi || !isSingleImageAction(opt.action))');
@@ -323,6 +337,13 @@ describe('every page can be opened and shown', () => {
   /** The two families openSubmenu dispatches through a lookup rather than
    *  by name — their keys are covered by that call, not by a branch. */
   const viaLookup = (key: string) => key.startsWith('rig') || key.startsWith('pattern');
+  /** The EFFECTS family: the page that makes the tabs and the three it
+   *  makes. Like the text pages they ride ONE host flag with a page state
+   *  picking between them, and openSubmenu dispatches the three through
+   *  EFFECT_OF_PAGE rather than naming them. Exempted the same way — the
+   *  lookup itself is what these assert. */
+  const EFFECT_FAMILY = ['effects', 'shadow', 'glowOuter', 'glowInner'];
+  const inEffectFamily = (key: string) => EFFECT_FAMILY.includes(key);
   /** RETIRED pages: keys still in the union with nothing left to offer
    *  them. `tint` is the image Tint page, which came off the options row
    *  (images no longer tint) while its key and its height stayed for
@@ -341,7 +362,8 @@ describe('every page can be opened and shown', () => {
     const handled = RETIRED.includes(key)
       || localList.includes(`'${key}'`)
       || openBody.includes(`key === '${key}'`)
-      || viaLookup(key);
+      || viaLookup(key)
+      || (inEffectFamily(key) && openBody.includes('EFFECT_OF_PAGE[key]'));
     expect([key, handled]).toEqual([key, true]);
   });
 
@@ -353,7 +375,10 @@ describe('every page can be opened and shown', () => {
       || activeSubChain.includes(`'${key}'`)
       || viaLookup(key)
       // The text pages ride one host flag; `textPage` names which shows.
-      || (['text', 'font', 'spacing', 'align'].includes(key) && activeSubChain.includes('textPage'));
+      || (['text', 'font', 'spacing', 'align'].includes(key) && activeSubChain.includes('textPage'))
+      // …and the Effects family rides one flag the same way, with
+      // `effectsPage` naming which of its four shows.
+      || (inEffectFamily(key) && activeSubChain.includes('effectsPage'));
     expect([key, shown]).toEqual([key, true]);
   });
 
@@ -362,7 +387,10 @@ describe('every page can be opened and shown', () => {
     // named, and still leave the well empty.
     const rendered = RETIRED.includes(key)
       || PANEL.includes(`displaySub === '${key}'`)
-      || (viaLookup(key) && PANEL.includes('rigPartOfSubmenu(displaySub)'));
+      || (viaLookup(key) && PANEL.includes('rigPartOfSubmenu(displaySub)'))
+      // The three effect pages share one branch, picked by `shownEffect` —
+      // they are the same rows with and without the offset pad.
+      || (inEffectFamily(key) && PANEL.includes('} else if (shownEffect) {'));
     expect([key, rendered]).toEqual([key, true]);
   });
 
@@ -587,7 +615,7 @@ describe('the panel drives the sheet', () => {
     // Size came OFF the Type page, where it sat under the weight row.
     const font = text.slice(text.indexOf('isFont ? ('), text.indexOf("page === 'spacing' ? ("));
     expect(font).not.toContain('label="Size"');
-    expect(PANEL).toContain("model.showTextStyle ? ['text', 'font', 'spacing', 'align', 'shadow', 'opacity', 'transform']");
+    expect(PANEL).toContain("model.showTextStyle ? ['text', 'font', 'spacing', 'align', ...effectPages, 'opacity', 'transform']");
     // …and the panel opens it through the same one flag the other text
     // pages ride, landing on it by default.
     expect(PANEL).toContain("else if (key === 'text' || key === 'font' || key === 'spacing' || key === 'align') {");
@@ -627,7 +655,7 @@ describe('the panel drives the sheet', () => {
     expect(PANEL).toContain("{ key: 'spacing', label: 'Spacing', sub: 'spacing', onPress: () => openSubmenu('spacing') },");
   });
 
-  it('text offers Type · Spacing · Align · Shadow — no Edit tab; a tap on the text edits its content', () => {
+  it('text offers Type · Spacing · Align · Effects — no Edit tab; a tap on the text edits its content', () => {
     expect(PANEL).not.toContain("key: 'edit'");
     expect(PANEL).not.toContain('showEdit');
     // No tab fires an edit-the-content callback. (model.onEditOpenChange is
@@ -651,14 +679,14 @@ describe('the panel drives the sheet', () => {
     expect(PANEL).toContain('labelPosition={false}');
   });
 
-  it('a word sticker offers Word (its Invert button) first, then Shadow and Opacity', () => {
+  it('a word sticker offers Word (its Invert button) first, then Effects and Opacity', () => {
     // The tab is named for the OBJECT, as every other type's first tab
     // is (Image, Text, Stroke). "Card" named the white rectangle behind
     // the word — a part of the thing rather than the thing.
     expect(PANEL).toContain("{ key: 'card', label: 'Word', sub: 'card' as const, onPress: () => openSubmenu('card') }");
-    expect(PANEL).toContain("{ key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },");
+    expect(PANEL).toContain("{ key: 'effects', label: 'Effects', sub: 'effects', onPress: () => openSubmenu('effects') },");
     expect(PANEL).toContain("{ key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },");
-    expect(PANEL).toContain(": model.showInvert ? [...(cardable ? (['card'] as const) : []), 'shadow', 'opacity']");
+    expect(PANEL).toContain(": model.showInvert ? [...(cardable ? (['card'] as const) : []), ...effectPages, 'opacity']");
     // A sticker's opacity is its ink alpha, and its ink is its card
     // scheme's rather than a colour of its own — so its Opacity page is one
     // row: the host offers no fade picker for it, and the panel counts and
@@ -668,8 +696,8 @@ describe('the panel drives the sheet', () => {
     // the shared pages follow in the order every other type lists them.
     const sticker = PANEL.slice(PANEL.indexOf('} else if (model.showInvert) {'));
     expect(sticker.indexOf("label: 'Word'"))
-      .toBeLessThan(sticker.indexOf("label: 'Shadow'"));
-    expect(sticker.indexOf("label: 'Shadow'"))
+      .toBeLessThan(sticker.indexOf('...effectSpecs()'));
+    expect(sticker.indexOf('...effectSpecs()'))
       .toBeLessThan(sticker.indexOf("label: 'Opacity'"));
     // Invert is the page's one ACT, in the button the effect pages give
     // theirs — not a lit chip on a darkened row, which said "this is a
@@ -683,7 +711,7 @@ describe('the panel drives the sheet', () => {
     expect(PANEL).toContain('if (isLocalSubmenu(key)) return;');
     // …and folded by the ONE rule every page folds by: the tab row stops
     // listing 'card' (cardable goes false), so the page goes.
-    expect(PANEL).toContain("...(cardable ? (['card'] as const) : []), 'shadow', 'opacity']");
+    expect(PANEL).toContain("...(cardable ? (['card'] as const) : []), ...effectPages, 'opacity']");
     // Opacity: the page an image opens, kept open for a sticker. Its second
     // row is FADE now (the Soften it replaced was a mask; this moves the
     // colours the object draws with — engine/fade.ts), and it stands exactly
@@ -807,7 +835,7 @@ describe('the panel drives the sheet', () => {
     // The old options toggled their bar; a lit tab pressed again stays lit.
     expect(PANEL).not.toContain('toggleShadow');
     expect(PANEL).not.toContain('toggleCrop');
-    expect(PANEL).toContain("{ key: 'shadow', label: 'Shadow', sub: 'shadow', onPress: () => openSubmenu('shadow') },");
+    expect(PANEL).toContain("{ key: 'effects', label: 'Effects', sub: 'effects', onPress: () => openSubmenu('effects') },");
     expect(PANEL).toContain("onPress: () => openSubmenu(opt.action as SubmenuKey),");
   });
 });

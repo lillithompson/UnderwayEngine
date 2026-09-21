@@ -7,7 +7,9 @@ import {
 } from '../logic/submenuHeight';
 import { percentText, percentToValue } from '../logic/slider';
 import {
+  PANEL_BORDER,
   PANEL_CONTROL,
+  PANEL_CONTROL_ON,
   PANEL_GROUP_WELL,
   PANEL_INK,
   PANEL_INK_DIM,
@@ -63,6 +65,9 @@ export const SHEET_ROW_ACTIVE = PANEL_SHEET_ROW_ACTIVE;
 export const SHEET_TEXT = PANEL_INK;
 export const PILL_TRACK = PANEL_TRACK;
 export const PILL_CHEVRON = PANEL_INK_DIM;
+// Ink on a filled control — an EffectButton that is toggled ON. The same
+// white the Edit sheet writes a lit tab in.
+const BUTTON_ON_INK = '#ffffff';
 const SEG_TRACK = PANEL_TRACK;
 const SEG_ACTIVE = PANEL_CONTROL;
 const SEG_TEXT = PANEL_INK_DIM;
@@ -127,12 +132,28 @@ export function EmptyEffectBar({ addLabel, onAdd }: {
   return <EffectButton label={addLabel} onPress={onAdd} />;
 }
 
-/**
- * The full-width filled button an effect page uses for the one thing it
- * DOES rather than adjusts — "Add Drop Shadow" on an absent effect, and
- * "Replace" on the Image page, which swaps the pixels behind the node.
+/** How an {@link EffectButton} takes its width.
  *
- * One button for both because they are one kind of thing: a page of
+ *  - `block` (the default): its own one-row-tall line, spanning the page —
+ *    "Add Fill" on an absent effect, "Create" at the foot of the Copies page.
+ *  - `inline`: it hugs its own word and stands BESIDE something, for a page
+ *    that puts its one act at the end of a row it shares with a setting (the
+ *    pattern Tile page's Edit, right of the Repeat switch).
+ *  - `column`: an equal share of a row the CALLER lays out — the Effects
+ *    page's three, side by side (see {@link EffectButtonRow}).
+ *
+ *  Same ink, same height, same press in all three: only the width is
+ *  decided here, so the button reads as one button in several places rather
+ *  than as several buttons. */
+export type EffectButtonLayout = 'block' | 'inline' | 'column';
+
+/**
+ * The filled button an effect page uses for the one thing it DOES rather
+ * than adjusts — "Add Fill" on an absent effect, "Replace" on the Image
+ * page (which swaps the pixels behind the node), and each of the Effects
+ * page's three.
+ *
+ * One button for all of them because they are one kind of thing: a page of
  * sliders with a single act on it, and that act should look the same
  * wherever it appears. Replace wore a segmented ActionRow — the shape the
  * pages use for CHOOSING between states — which read as a setting with
@@ -142,37 +163,70 @@ export function EmptyEffectBar({ addLabel, onAdd }: {
  * page's host opens a file picker, and WebKit only shows the dialog while
  * the gesture's activation is live.
  */
-export function EffectButton({ label, icon = 'plus', inline = false, onPress }: {
+export function EffectButton({
+  label, icon = 'plus', layout = 'block', active = false, accessibilityLabel, onPress,
+}: {
   label: string;
   /** The glyph before the word. Defaults to the plus an "Add …" wears. */
   icon?: string;
-  /** Stand BESIDE something rather than filling the page's width: the
-   *  button hugs its own word and takes a row's height, for a page that
-   *  puts its one act at the end of a row it shares with a setting (the
-   *  pattern Tile page's Edit, right of the Repeat switch). Same ink, same
-   *  height, same press — only the width is given up, so the two read as
-   *  one button in two places rather than as two buttons. */
-  inline?: boolean;
+  /** How it takes its width — see {@link EffectButtonLayout}. */
+  layout?: EffectButtonLayout;
+  /** ON: the button is a TOGGLE and the thing it makes is there. It fills
+   *  in selection blue with white ink — the lit state the Edit sheet's own
+   *  tabs wear, since a lit button and a lit tab mean the same thing here
+   *  (the Effects page's buttons are what put those tabs on the row).
+   *
+   *  Off, the button is bare ink on the well. That is deliberate and it is
+   *  the whole reason this state can be read at all: a filled pill reads as
+   *  a control already set, which is exactly what "off" is not. */
+  active?: boolean;
+  /** Spoken name, when the visible word is not the whole of it — a toggle
+   *  says "Outer Glow" and means "Add Outer Glow" or "Remove Outer Glow"
+   *  depending on which way it is pointing. */
+  accessibilityLabel?: string;
   onPress: () => void;
 }) {
   const button = (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={active ? { selected: true } : undefined}
       style={({ pressed }) => [
         styles.addButton,
-        inline && styles.addButtonInline,
+        layout === 'inline' && styles.addButtonInline,
+        layout === 'column' && styles.addButtonColumn,
+        active && styles.addButtonActive,
         pressed && styles.addButtonPressed,
       ]}
     >
-      <MaterialCommunityIcons name={icon as MCIName} size={16} color={PANEL_INK} />
-      <Text style={styles.addLabel}>{label}</Text>
+      <MaterialCommunityIcons
+        name={icon as MCIName}
+        size={16}
+        color={active ? BUTTON_ON_INK : PANEL_INK}
+      />
+      <Text
+        style={[
+          styles.addLabel,
+          layout === 'column' && styles.addLabelColumn,
+          active && styles.addLabelActive,
+        ]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
-  // Full width: its own one-row-tall line. Inline: the row it joins owns
-  // the height, so the wrapper would only add a second one.
-  return inline ? button : <View style={styles.emptyControls}>{button}</View>;
+  // Block: its own one-row-tall line. Inline and column: the row it joins
+  // owns the height, so the wrapper would only add a second one.
+  return layout === 'block' ? <View style={styles.emptyControls}>{button}</View> : button;
+}
+
+/** A row of {@link EffectButton}s in `column` layout, sharing the row's
+ *  width equally — the Effects page's three, which are one control each and
+ *  belong on one line. One row's height, like every other page row. */
+export function EffectButtonRow({ children }: { children: React.ReactNode }) {
+  return <View style={styles.buttonRow}>{children}</View>;
 }
 
 /** The tap-to-type value box every slider row wears on its right: a white
@@ -740,6 +794,11 @@ const styles = StyleSheet.create({
   // The absent-effect page (EmptyEffectBar): one segmented-row-tall Add
   // button as its only control.
   emptyControls: { height: ROW_SEGMENTED, flexDirection: 'row' },
+  // …and the same row holding several of them, one gap apart. The gap is
+  // tighter than a page's other spacings for the reason the column style
+  // below is: three of these have a third of the sheet's width each, and
+  // every point spent between them is a point off the words.
+  buttonRow: { height: ROW_SEGMENTED, flexDirection: 'row', gap: 6 },
   // The Add button is bare ink on the well — no fill: a filled pill read as
   // a control already set, when the page's whole point is that nothing is.
   // The word is full-strength ink, not the white it wore while the pill was
@@ -752,6 +811,26 @@ const styles = StyleSheet.create({
   // it span the page and hugs its word, keeping a row's own height so it
   // lines up with whatever it stands next to.
   addButtonInline: { flex: 0, height: ROW_SEGMENTED, paddingHorizontal: 12 },
+  // Three across: the glyph tucks closer to its word, because a third of
+  // the well is about a hundred points and "Outer Glow" at the block
+  // button's own measure lands within a point or two of it.
+  //
+  // …and each is drawn round, because this row has no well behind it: the
+  // block button relies on the well's edge to say where it ends, and with
+  // that gone three bare words on the sheet read as a caption rather than
+  // as three things to press. The border stays whichever way the button
+  // points — it is inside the box, so toggling shifts nothing, and under
+  // the dark fill it simply stops being visible.
+  addButtonColumn: { gap: 4, borderWidth: 1, borderColor: PANEL_BORDER },
+  // ON: the fill the bare state deliberately goes without. Dark grey rather
+  // than the blue a lit tab wears — these buttons say "this effect is on
+  // the object", not "this is the page you're looking at", and in the same
+  // blue the row read as a second row of tabs.
+  addButtonActive: { backgroundColor: PANEL_CONTROL_ON },
   addButtonPressed: { opacity: 0.7 },
   addLabel: { color: PANEL_INK, fontSize: 14, fontWeight: '600' },
+  // …and the word itself drops to the slider captions' size for the same
+  // reason, which buys the rest of the room it needs.
+  addLabelColumn: { fontSize: 13 },
+  addLabelActive: { color: BUTTON_ON_INK },
 });

@@ -154,20 +154,40 @@ export interface TopBarModel {
 
 // ── Object properties ────────────────────────────────────────────────
 
-/** Editable drop-shadow, in the app's world-cell units (the panel maps these
- *  to slider positions; the app maps them to the engine's ShadowEffect). */
-export interface ShadowModel {
-  /** Offset (position) in cells. */
-  dx: number;
-  dy: number;
+/** Editable glow, in the app's world-cell units (the panel maps these to
+ *  slider positions; the app maps them to the engine's GlowEffect).
+ *
+ *  A glow is a shadow with no direction to it — same blur, same dilation,
+ *  same ink, cast in every direction at once — which is why it is the
+ *  SHAPE {@link ShadowModel} extends rather than a type of its own. The
+ *  Effects page renders one from the other: the shadow face adds the XY
+ *  offset pad, the two glow faces drop it, and the rows below are the
+ *  same rows. */
+export interface GlowModel {
   /** Gaussian blur radius in cells. */
   blur: number;
-  /** Dilation of the shape before blur, in cells. */
+  /** Dilation of the shape before blur, in cells. An OUTER glow reaches
+   *  that much further out; an inner one that much further in. */
   spread: number;
   color: RGBLike;
   /** 0–1. */
   opacity: number;
 }
+
+/** Editable drop-shadow: a glow with somewhere to fall. */
+export interface ShadowModel extends GlowModel {
+  /** Offset (position) in cells. */
+  dx: number;
+  dy: number;
+}
+
+/** Which of the two glows a page is editing — the halo OUTSIDE the
+ *  object's edge, or the band of light inside it. */
+export type GlowKind = 'outer' | 'inner';
+
+/** The three effects the Effects page holds, and the faces it shows: the
+ *  drop shadow, and a glow each way. */
+export type EffectKind = 'shadow' | GlowKind;
 
 /** Stroke alignment relative to the node bbox edge. */
 export type BorderPosition = 'inside' | 'center' | 'outside';
@@ -781,11 +801,13 @@ export interface ObjectPropertiesModel {
   // (The image Tint page was removed: images no longer offer a tint bar.
   // TintModel lives on as the Fill bar's model — see `svgFill` — and pages
   // saved with an image tint keep rendering it; only the UI is gone.)
-  /** Whether the Shadow controls are shown. App-owned so a tap-off dismisses
-   *  them before the panel (same as the Border bar). Offered by images, frames
-   *  AND text — the one effect bar all three share. */
-  shadowOpen?: boolean;
-  onShadowOpenChange?(open: boolean): void;
+  /** Whether the EFFECTS page is showing. App-owned so a tap-off dismisses
+   *  it before the panel (same as the Border bar). Offered by images, frames
+   *  AND text — the one page all three share. It holds three effects, one
+   *  face at a time (see {@link EffectKind}): the drop shadow below, and
+   *  the two glows. */
+  effectsOpen?: boolean;
+  onEffectsOpenChange?(open: boolean): void;
   /** The selected object's current shadow (defaults supplied by the app when
    *  none is set yet), seeding the Shadow controls. */
   shadow?: ShadowModel;
@@ -809,6 +831,28 @@ export interface ObjectPropertiesModel {
   /** Open the full-screen color picker for the shadow color (the same picker
    *  the top-toolbar color tool uses) — the hue row's trailing circle. */
   onPickShadowColor?(): void;
+  /** The selected object's current glows, each defaulted by the app when it
+   *  carries none yet, seeding the Effects page's two glow faces. Keyed
+   *  rather than spelled out as two props apiece for the reason the page is
+   *  one page: outer and inner differ in WHICH WAY the light goes and in
+   *  nothing else, so every call below takes the kind. */
+  glows?: Partial<Record<GlowKind, GlowModel>>;
+  /** Whether the selection actually CARRIES each glow — `false` (with
+   *  {@link onAddGlow}) renders that face's absent-effect Add button. See
+   *  {@link shadowPresent}. */
+  glowPresent?: Partial<Record<GlowKind, boolean>>;
+  /** Create that default glow — the Add button's one press, one undo step. */
+  onAddGlow?(kind: GlowKind): void;
+  /** Glow-controls callback: fires live while dragging (`committed=false`)
+   *  and once on release (`committed=true`, one undo step). `glow=null`
+   *  removes it. */
+  onGlow?(kind: GlowKind, glow: GlowModel | null, committed: boolean): void;
+  /** That glow's own colour, kept out of {@link onGlow} for the reason
+   *  {@link onShadowColor} is kept out of the shadow's. */
+  onGlowColor?(kind: GlowKind, color: RGBLike, committed: boolean): void;
+  /** Open the full-screen color picker for that glow's colour — the hue
+   *  row's trailing circle. */
+  onPickGlowColor?(kind: GlowKind): void;
   /** Whether the Border controls are shown. App-owned so a tap-off dismisses
    *  them before the panel (same as the Shadow bar). */
   borderOpen?: boolean;
