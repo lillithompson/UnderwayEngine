@@ -466,6 +466,26 @@ export function pointInClosedPath(
   return winding !== 0;
 }
 
+/**
+ * True when (px,py) lies on the shape's PAINTED INTERIOR — inside its own
+ * closed outline, or inside a filled subpath of it. In the object's own
+ * space, like {@link svgPathHitsPoint}.
+ *
+ * Whether there IS an interior is a separate question, and a different
+ * one from which paint draws it: ask `svgPaintsInterior` (svgPathBuilder),
+ * which counts a pattern fill's tiles as well as the three paint fields.
+ * This one only answers where that interior reaches.
+ */
+export function svgInteriorHitsPoint(
+  svg: Pick<SVGObject, 'segments' | 'subpaths'>, px: number, py: number,
+): boolean {
+  if (pointInClosedPath(svg.segments, px, py)) return true;
+  for (const sub of svg.subpaths ?? []) {
+    if (sub.fill && pointInClosedPath(sub.segments, px, py)) return true;
+  }
+  return false;
+}
+
 /** Screen pixels used as the hit radius for precise SVG path testing. */
 const SCREEN_HIT_RADIUS_PX = 24;
 

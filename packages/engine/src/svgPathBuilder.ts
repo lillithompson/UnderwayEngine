@@ -6,6 +6,7 @@ import {
 import { packKey, unpackKey, forEachVisibleTile } from './tileSegmentOverrides';
 import { borderDashPattern, innerGlowBandFilter, paintToSvg, scaleEffects } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
+import { shapePatternFillIsEmpty } from './shapePatternFill';
 import { PaintOverlaySlot, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import {
@@ -466,6 +467,25 @@ export function svgIsFilled(
 ): boolean {
   if (obj.isPatternFill) return false;
   return !!(obj.fill || obj.fillPaint || obj.fillColor);
+}
+
+/**
+ * Whether the shape draws ANYTHING inside its own outline — a paint of any
+ * kind, or a PATTERN fill's tiles (v67+), which repeat inside the outline
+ * and are clipped to it.
+ *
+ * The question a reader asks about the shape's interior: is there ink in
+ * there to see, to occlude with, or to tap. `svgIsFilled` is the narrower
+ * one — which of the three paint fields to draw — and says nothing about a
+ * pattern fill, whose tiles are a layer of their own.
+ *
+ * An EMPTY pattern tile draws nothing at all (a fill freshly added, before
+ * anything is painted into it), so it is not an interior either.
+ */
+export function svgPaintsInterior(
+  obj: Pick<SVGObject, 'fill' | 'fillPaint' | 'fillColor' | 'isPatternFill' | 'patternFill'>,
+): boolean {
+  return svgIsFilled(obj) || !shapePatternFillIsEmpty(obj.patternFill);
 }
 
 /**

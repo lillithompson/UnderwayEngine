@@ -24,7 +24,10 @@ import { paintObjectAlphaHitTest } from './paintObject';
 import { lineHitsCell as svgHitsCell } from './compositionLineHitTest';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { GEOMETRY_ADAPTERS } from './sceneNodeGeometry';
-import { svgPathHitsPoint, computeHitToleranceCells } from './compositionPathHitTest';
+import {
+  computeHitToleranceCells, svgInteriorHitsPoint, svgPathHitsPoint,
+} from './compositionPathHitTest';
+import { svgPaintsInterior } from './svgPathBuilder';
 import {
   buildActiveMaskMap, getAncestorMasks, getGroupMaskChain, pointPassesMasks,
   clipRectToNodeMasks,
@@ -528,6 +531,25 @@ export function findSceneObjectAtCell(
     // is as easy to grab as it looks.
     const tol = toleranceCells * frame.lengthScale;
     if (svgPathHitsPoint(svg, hx, hy, tol * tol)) return { kind, id };
+
+    // A shape that PAINTS ITS INTERIOR — a fill of any kind, or a pattern
+    // fill's tiles clipped to the outline — reaches only as far as that
+    // outline. Its fallback region is the inside of the path, never the
+    // corners of its box: those are page, and a tap there was landing on
+    // the shape because the box is all the fallback below knew how to
+    // name. A pattern-filled circle in a square box is where that shows
+    // most — three quarters of every corner selected an object the reader
+    // could see they had missed.
+    //
+    // An UNFILLED shape keeps the box: there is nothing inside it to have
+    // meant, so a tap near a hollow outline is still generously read as
+    // that outline (which is the whole reason the fallback exists).
+    if (svgPaintsInterior(svg)) {
+      if (!svgBboxFallback && svgInteriorHitsPoint(svg, hx, hy)) {
+        svgBboxFallback = { kind, id };
+      }
+      continue;
+    }
 
     // Bbox hit but path miss — record as fallback (first/topmost only).
     if (!svgBboxFallback) svgBboxFallback = { kind, id };
