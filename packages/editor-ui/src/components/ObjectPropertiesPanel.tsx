@@ -584,7 +584,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
           'stroke',
           ...(svgShapeable ? (['shape'] as const) : []),
           ...(svgFillable ? (['svgFill'] as const) : []),
-          ...(svgFillable && (model.onAddSvgPattern || model.onEditSvgPattern)
+          // …offered when there is anything the page can DO: add cloth,
+          // open its grid, or clear it. Remove counts — a multi-selection
+          // of patterned shapes has no one grid to open, so Edit stands
+          // down there while clearing all of them does not.
+          ...(svgFillable
+            && (model.onAddSvgPattern || model.onEditSvgPattern || model.onRemoveSvgPattern)
             ? (['svgPattern'] as const) : []),
           ...(svgEndable ? (['endpoints'] as const) : []),
           // …then the tail every kind shares — Effects (and the tabs its
@@ -1395,8 +1400,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
             {/* The one act that opens the tile. While it IS open there is
                 nothing for the button to do, so the page drops it rather
                 than parking an inert "Editing" in the well — the canvas
-                already shows the tile is open. */}
-            {editing ? null : (
+                already shows the tile is open. Dropped for a MULTI
+                selection too (the host then sends no callback): the tiles
+                are painted inside one shape, and there is one grid open at
+                a time. Every other row on the page, and the Remove line
+                under it, go over the whole selection. */}
+            {editing || !model.onEditSvgPattern ? null : (
               <EffectButton
                 label="Edit Pattern"
                 icon="pencil"
@@ -1530,7 +1539,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // …and only a CLOSED shape can lose its stroke: an open path IS its
     // stroke, so Remove there would leave an invisible object you can still
     // select and drag (svgStrokeRemovable).
-    if (svgStrokeRemovable(model.svgSubtype ?? 'stroke')) {
+    //
+    // The HOST answers for a selection (model.strokeRemovable — every
+    // member closed), because `svgSubtype` names the option menu rather
+    // than the members: a mixed multi-selection shares the base 'stroke'
+    // menu, and reading removability off that took the line away from a
+    // rectangle beside a circle. Unset falls back to the menu, which is
+    // the single selection this was written for.
+    if (model.strokeRemovable ?? svgStrokeRemovable(model.svgSubtype ?? 'stroke')) {
       removeAction = { label: 'Remove stroke', onPress: removeStroke };
     }
   } else if (displaySub === 'rigJoints') {

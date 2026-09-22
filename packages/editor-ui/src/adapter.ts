@@ -595,6 +595,23 @@ export interface ObjectPropertiesModel {
   /** Which vector subtype the selection is, choosing its option menu. Ignored
    *  unless `showSvgOptions`; defaults to 'stroke' when unset. */
   svgSubtype?: SVGSubtypeKind;
+  /**
+   * Whether the Stroke page offers its REMOVE line — whether every object
+   * the page would act on is one that can lose its outline and still be a
+   * shape (`svgStrokeRemovable`).
+   *
+   * Asked of the host rather than derived from `svgSubtype` here, because
+   * that field answers a different question: it names the OPTION MENU a
+   * selection shares, and a multi-selection of mixed subtypes collapses to
+   * the base 'stroke' menu — an open path, which cannot lose its line. A
+   * rectangle beside a circle would then lose the Remove line that either
+   * one offers alone, though clearing both outlines is exactly the bulk
+   * edit the page is for. The host knows the members; the menu does not.
+   *
+   * Unset falls back to the subtype reading, which is right for the single
+   * selection it was written for.
+   */
+  strokeRemovable?: boolean;
   /** Extra "Edit" action prepended to the vector option menu — for vector
    *  objects with an external source editor (e.g. a pattern object baked
    *  from a tile file, whose Edit reopens the tile editor and rebakes).

@@ -109,8 +109,15 @@ describe('the sheet: a tab row over the well', () => {
     // twice what one of its own controls says once.
     expect(PANEL).not.toContain('Remove endpoints');
     // …and the stroke's is gated: an open path IS its stroke, so a line
-    // cannot remove one (svgStrokeRemovable).
-    expect(PANEL).toContain("if (svgStrokeRemovable(model.svgSubtype ?? 'stroke')) {");
+    // cannot remove one (svgStrokeRemovable). The HOST answers first
+    // (model.strokeRemovable, asked of every member) because `svgSubtype`
+    // names the shared option MENU, which a mixed multi-selection collapses
+    // to the open-path one — a rectangle beside a circle lost the Remove
+    // line that either offers alone. The subtype reading stays as the
+    // fallback for the single selection it was written for.
+    expect(PANEL).toContain(
+      "if (model.strokeRemovable ?? svgStrokeRemovable(model.svgSubtype ?? 'stroke')) {",
+    );
     // Opacity is not a layer an object can be without, so it has no Remove.
     for (const key of ['opacity', 'transform', 'layout', 'crop', 'patternTiles', 'patternTools', 'patternSymmetry', 'font']) {
       const branch = PANEL.slice(PANEL.indexOf(`displaySub === '${key}'`), PANEL.indexOf('} else if', PANEL.indexOf(`displaySub === '${key}'`) + 1));
