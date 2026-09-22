@@ -338,6 +338,25 @@ export const PATTERN_GRID_ACTIONS: readonly { action: PatternGridAction; label: 
   { action: 'clear', label: 'Clear' },
 ];
 
+/** The whole-grid actions a grid actually offers.
+ *
+ *  A pattern painted INSIDE A SHAPE — a shape's `patternFill`, which is
+ *  opened by double-tapping the shape itself — leaves CLOSE out. Close
+ *  reconciles each tile's open ends into its NEIGHBOURS, and a fill's grid
+ *  is clipped to an outline: its edge cells' neighbours are the empty side
+ *  of the shape, so a whole-grid reconcile there spends most of its work
+ *  on cells that meet nothing. Flood and Clear both mean exactly what they
+ *  mean on a pattern object, so they stay.
+ *
+ *  A pattern OBJECT keeps all three. */
+export function patternGridActionsFor(
+  shapeFill: boolean,
+): readonly { action: PatternGridAction; label: string }[] {
+  return shapeFill
+    ? PATTERN_GRID_ACTIONS.filter(({ action }) => action !== 'reconcile')
+    : PATTERN_GRID_ACTIONS;
+}
+
 // ── The options row ─────────────────────────────────────────────────
 
 export type PatternEditAction = 'tile' | 'symmetry' | 'tiles' | 'tools';

@@ -5,6 +5,7 @@ import {
   PATTERN_DEFAULT_TILE_SETS,
   PATTERN_EDIT_OPTIONS,
   PATTERN_GRID_ACTIONS,
+  patternGridActionsFor,
   PATTERN_RECENT_TILES,
   PATTERN_SYMMETRY_ENTRIES,
   PATTERN_SYMMETRY_FLAGS_OFF,
@@ -75,6 +76,17 @@ describe('the pattern options row', () => {
     // The UI's word for reconciling is "Close" — closing a tile's open
     // ends into its neighbours; the 'reconcile' id stays the internal name.
     expect(PATTERN_GRID_ACTIONS.map((a) => a.label)).toEqual(['Flood', 'Close', 'Clear']);
+  });
+
+  it('drops Close for a grid painted inside a SHAPE', () => {
+    // Close reconciles each tile's open ends into its NEIGHBOURS. A
+    // shape's patternFill is clipped to the outline, so its edge cells
+    // meet the empty side of the shape and a whole-grid reconcile spends
+    // its work on cells that meet nothing. Flood and Clear mean exactly
+    // what they mean on a pattern object, so they stay — and a pattern
+    // object itself keeps the list untouched, identity included.
+    expect(patternGridActionsFor(true).map((a) => a.action)).toEqual(['flood', 'clear']);
+    expect(patternGridActionsFor(false)).toBe(PATTERN_GRID_ACTIONS);
   });
 
   it('maps each action to its submenu key and back', () => {
