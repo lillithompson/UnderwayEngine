@@ -107,6 +107,11 @@ export interface TopBarTool {
   active: boolean;
   /** When present the tool renders as a live color swatch (color tool). */
   swatchColor?: RGBLike;
+  /** Draw that swatch as the HUE WHEEL rather than as `swatchColor` — the
+   *  brush in hand is laying a colour that changes as the stroke goes
+   *  (a Random blend), so there is no one colour for the swatch to show.
+   *  The colour underneath is still what the picker opens on. */
+  swatchRainbow?: boolean;
   /** Bump to make the swatch BOUNCE — a small overshoot spring that draws
    *  the eye to it — when the colour was changed somewhere other than the
    *  swatch itself (a radial's swatch capsule): the swatch is where the

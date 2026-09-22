@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { RGBLike } from '../adapter';
-import { isTranslucent, rgbCss } from '../logic/hsv';
+import { hueRampColors, isTranslucent, rgbCss } from '../logic/hsv';
 
 // The shared fill for anything that previews a picked color — the color
 // picker's preview dot, every bar's header swatch, the tint stop handles, the
@@ -35,6 +36,24 @@ const CHECKER_SOURCE = { uri: CHECKER_TILE_URI };
  *  whose stops may each carry their own alpha. */
 export function CheckerboardFill() {
   return <Image source={CHECKER_SOURCE} resizeMode="repeat" style={StyleSheet.absoluteFill} />;
+}
+
+/** The fill for a swatch that stands for NO ONE COLOUR: the hue wheel laid
+ *  left to right, the same ramp a hue slider's track wears (hueRampColors).
+ *  Used where the thing the swatch names is "whatever colour comes next" —
+ *  a brush blending in Random, which deposits a colour that walks as the
+ *  stroke goes. A flat swatch there is a promise the stroke does not keep.
+ *  Fills its parent; the parent supplies the shape. */
+export function RainbowSwatchFill() {
+  const ramp = useMemo(() => hueRampColors(), []);
+  return (
+    <LinearGradient
+      colors={ramp as unknown as readonly [string, string, ...string[]]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={StyleSheet.absoluteFill}
+    />
+  );
 }
 
 /** A color swatch's fill: the color, over a checkerboard when it is

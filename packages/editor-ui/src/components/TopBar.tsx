@@ -3,7 +3,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { TopBarModel } from '../adapter';
 import { nextToolOnPress } from '../logic/toolbarBehavior';
-import { ColorSwatchFill } from './ColorSwatch';
+import { ColorSwatchFill, RainbowSwatchFill } from './ColorSwatch';
 import {
   HEADER_BG,
   HEADER_HEIGHT,
@@ -51,9 +51,15 @@ function useBounceScale(bounceKey: number | undefined): Animated.Value {
 /** The colour tool's live swatch, with the ring pair when armed. It bounces
  *  (useBounceScale) each time `bounceKey` changes: the radial's swatch
  *  capsule confirms a colour away from the toolbar, and the swatch — where
- *  the colour is read — answers so the change is seen. */
-function SwatchGlyph({ color, active, size, bounceKey }: {
+ *  the colour is read — answers so the change is seen.
+ *
+ *  `rainbow` replaces the colour with the hue wheel: the brush is blending
+ *  in Random and lays a colour that walks as the stroke goes, so the
+ *  swatch shows that there is no one colour rather than a colour the
+ *  stroke will not use. */
+function SwatchGlyph({ color, rainbow, active, size, bounceKey }: {
   color: NonNullable<TopBarModel['tools'][number]['swatchColor']>;
+  rainbow: boolean;
   active: boolean;
   size: number;
   bounceKey: number | undefined;
@@ -62,7 +68,7 @@ function SwatchGlyph({ color, active, size, bounceKey }: {
   return (
     <Animated.View style={[styles.swatchWrap, { transform: [{ scale }] }]}>
       <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden' }}>
-        <ColorSwatchFill color={color} />
+        {rainbow ? <RainbowSwatchFill /> : <ColorSwatchFill color={color} />}
       </View>
       {active ? (
         <>
@@ -84,6 +90,7 @@ function ToolGlyph({ tool, swatchSize }: { tool: TopBarModel['tools'][number]; s
       {tool.swatchColor ? (
         <SwatchGlyph
           color={tool.swatchColor}
+          rainbow={!!tool.swatchRainbow}
           active={tool.active}
           size={swatchSize}
           bounceKey={tool.swatchBounceKey}
