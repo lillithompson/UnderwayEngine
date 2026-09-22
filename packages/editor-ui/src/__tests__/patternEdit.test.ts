@@ -157,7 +157,7 @@ describe('the panel offers the pattern type page', () => {
     // the rule reads the TAB ROW, and the pattern branch lists 'stroke'.
     expect(SRC).toContain('const strokeable = !!model.showSvgOptions || !!model.showPatternOptions');
     const order = SRC.slice(
-      SRC.indexOf('const typeSubmenuOrder'),
+      SRC.indexOf('const kindSubmenuOrder'),
       SRC.indexOf('const submenuOrder'),
     );
     const pattern = order.slice(order.indexOf('model.showPatternOptions'), order.indexOf('model.showStrokeOptions'));
@@ -175,7 +175,7 @@ describe('the panel offers the pattern type page', () => {
     // The fold-away asks the row now, so the row and the rule cannot
     // disagree — about Opacity or about anything a row is taught later.
     const order = SRC.slice(
-      SRC.indexOf('const typeSubmenuOrder'),
+      SRC.indexOf('const kindSubmenuOrder'),
       SRC.indexOf('const submenuOrder'),
     );
     const pattern = order.slice(
@@ -192,7 +192,7 @@ describe('the panel offers the pattern type page', () => {
   it('builds the pattern typeSpecs branch, with the shared Stroke bar', () => {
     expect(SRC).toContain('else if (model.showPatternOptions) {');
     const order = SRC.slice(
-      SRC.indexOf('const typeSubmenuOrder'),
+      SRC.indexOf('const kindSubmenuOrder'),
       SRC.indexOf('const submenuOrder'),
     );
     // The pattern's pages plus the vectors' Stroke bar ride the carousel.

@@ -47,7 +47,7 @@ describe('the panel offers a Stroke-only type row for a mixed vector + pattern s
     expect(SRC).toContain('typeSpecs.push(strokeSpec());');
     expect(SRC).not.toContain("typeSpecs.push({ key: 'stroke', label: 'Stroke'");
     const order = SRC.slice(
-      SRC.indexOf('const typeSubmenuOrder'),
+      SRC.indexOf('const kindSubmenuOrder'),
       SRC.indexOf('const submenuOrder'),
     );
     expect(order).toContain("model.showStrokeOptions ? ['stroke']");

@@ -284,7 +284,7 @@ describe('the Copies page', () => {
   it('an image, a text and a vector all list Copies', () => {
     const panel = read('ObjectPropertiesPanel.tsx');
     const order = panel.slice(
-      panel.indexOf('  const typeSubmenuOrder: SubmenuKey[] ='),
+      panel.indexOf('  const kindSubmenuOrder: SubmenuKey[] ='),
       panel.indexOf('  const transformable ='),
     );
     const branch = (from: string, to: string) => order.slice(order.indexOf(from), order.indexOf(to));
@@ -293,6 +293,26 @@ describe('the Copies page', () => {
     expect(branch('model.showSvgOptions', '    : [];')).toContain("'transform'");
     // …and the kinds that do NOT: a word sticker and a paint island.
     expect(branch('model.showInvert ?', 'model.showPaintOptions')).not.toContain("'transform'");
+  });
+
+  // A GROUP's row carried the tab (its members share a kind, so it rode
+  // that kind's order) and the page stood down for a multi-selection: the
+  // tab lit nothing and copied nothing. A group is copied as a group now,
+  // so the tab is offered on the SELECTION's own account too — which is
+  // also what gives a mixed group, with no kind row at all, a Copies page.
+  it('offers Copies to a multi-selection, once, whatever its members are', () => {
+    const panel = read('ObjectPropertiesPanel.tsx');
+    expect(panel).toContain('const showCopies = multi && !!model.onTransformCopies;');
+    // Appended to the tab order only where the kind's own order has none,
+    // so a uniform selection's row shows it once and in its usual place.
+    expect(panel).toContain("const typeSubmenuOrder: SubmenuKey[] = showCopies && !kindSubmenuOrder.includes('transform')");
+    expect(panel).toContain("if (showCopies && !typeSpecs?.some((spec) => spec.key === 'transform')) {");
+    // …and it counts as a type option, so a mixed group's sheet opens at
+    // all rather than being a panel with nothing on it.
+    expect(panel).toContain('|| showUngroup || showCopies;');
+    // The signature the landing rule re-lands on knows about it: a
+    // selection that gains the tab re-seats the sheet.
+    expect(panel).toContain("${showCopies ? 'c' : ''}");
   });
 
   it('is wired into the panel like its sibling pages, and the model carries no rotation', () => {

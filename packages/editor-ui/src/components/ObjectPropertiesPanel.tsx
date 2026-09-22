@@ -389,13 +389,20 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // two never contradict each other.
   const showUngroup = multi && !!model.onUngroup;
   const showMerge = multi && !!model.onMerge;
+  // Copies, for a selection of SEVERAL objects. It is a type tab like any
+  // other where the members share a kind (it rides that kind's own order,
+  // below), but a mixed group has no kind row to ride and is copied just
+  // the same — the host copies the whole selection as one thing, group
+  // and all — so the tab is offered on the selection's own account and
+  // de-duplicated where the kind already named it.
+  const showCopies = multi && !!model.onTransformCopies;
 
   // Whether the selection has any option — a tab — at all. `type` is what the
   // selection's KIND offers (and a multi-selection's members must share a
   // kind to have one); `multi` is what the SELECTION offers, whatever it is
   // made of. Both render on the sheet's ONE tab row — kind options first,
   // then the selection's — which scrolls if it must.
-  const hasTypeOptions = !!model.showImageEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showStrokeOptions || !!model.showRigOptions || showUngroup;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showStrokeOptions || !!model.showRigOptions || showUngroup || showCopies;
   const hasMultiOptions = showLayout || showGroup || showMerge;
   const hasOptions = hasTypeOptions || hasMultiOptions;
   // Signature of the current selection's option set. It changes when the
@@ -404,7 +411,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // subtype is part of it so switching between two vector objects with
   // different menus (a line → a rectangle) re-lands the sheet.
   const typeSig = model.visible
-    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showPatternOptions ? 'P' : ''}${model.showStrokeOptions ? 'S' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
+    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showCopies ? 'c' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showPatternOptions ? 'P' : ''}${model.showStrokeOptions ? 'S' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
     : '';
   const prevTypeSig = useRef('');
   useEffect(() => {
@@ -543,7 +550,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // the host must track.
   const backgroundable = !!model.showFrameOptions && !!model.onPickFrameBackground;
   const cardable = !!model.showInvert;
-  const typeSubmenuOrder: SubmenuKey[] =
+  const kindSubmenuOrder: SubmenuKey[] =
     model.showImageEdit ? (multi
       ? [...effectPages, 'border', 'opacity', 'transform']
       : [...(model.onReplaceImage ? (['image'] as const) : []), 'crop', ...effectPages, 'border', 'opacity', 'transform'])
@@ -599,6 +606,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
           ...(svgTransformable ? (['transform'] as const) : []),
         ]
     : [];
+  // …and the Copies page a MULTI-selection has in its own right, where the
+  // kind's order did not already name it (a mixed group, a run of paint
+  // islands): appended, never doubled.
+  const typeSubmenuOrder: SubmenuKey[] = showCopies && !kindSubmenuOrder.includes('transform')
+    ? [...kindSubmenuOrder, 'transform']
+    : kindSubmenuOrder;
   // Does THIS selection offer the Copies page? Read off the tab order
   // itself — the reading the one fold-away rule below now makes for every
   // page, and the first place it was made.
@@ -2006,6 +2019,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       { key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },
       { key: 'transform', label: 'Copies', sub: 'transform', onPress: () => openSubmenu('transform') },
     ];
+  }
+  if (showCopies && !typeSpecs?.some((spec) => spec.key === 'transform')) {
+    // The same tab the kinds that repeat carry, for a selection whose
+    // members agree about nothing else. It goes before Ungroup, which
+    // closes the row.
+    typeSpecs = [...(typeSpecs ?? []),
+      { key: 'transform', label: 'Copies', sub: 'transform', onPress: () => openSubmenu('transform') }];
   }
   if (showUngroup) {
     // A GROUP is a type of selection, and Ungroup is the option that type has:
