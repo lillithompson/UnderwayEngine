@@ -53,15 +53,14 @@ export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, track
   trackWRef.current = trackW;
   // The value THIS GESTURE has reached — not the `value` prop.
   //
-  // Two things conspire otherwise. A release event's `locationX` is sometimes
-  // un-locatable (the same react-native-web quirk that made the first grab
-  // read NaN — see brushSliderValueFromX), which sends the release down the
-  // hold-current path; and the prop it would hold is a render behind, because
-  // a drag's live onChange and the finger lifting land in the same React
-  // batch. Committing the prop there wrote back the value the slider had
-  // BEFORE the drag — the release "snapping back" to where it started.
+  // The prop is a render behind: a drag's live onChange and the finger
+  // lifting land in the same React batch, so a release that read it wrote
+  // back the value the slider had BEFORE the drag — the release "snapping
+  // back" to where it started. So the gesture keeps its own value, and that
+  // is what an un-locatable event holds (brushSliderValueFromX's guard) and
+  // what a terminate commits.
   //
-  // So the gesture keeps its own value, and the release commits that.
+  // The release itself reads its OWN position, though — see the handler.
   const dragRef = useRef(value);
   const draggingRef = useRef(false);
   // Idle: follow the prop, so a tap (or a value changed from elsewhere)
@@ -94,13 +93,25 @@ export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, track
         cbRef.current.onChange(track(e.nativeEvent.locationX));
       },
       onPanResponderMove: (e) => cbRef.current.onChange(track(e.nativeEvent.locationX)),
-      // The release position is where the last move already put it, so the
-      // gesture's own value is both correct and always available.
-      onPanResponderRelease: () => {
+      // The release commits where the finger LIFTED, not where the last move
+      // left the value. The two differ on a phone: every live onChange
+      // re-renders the editor, and while that render runs WebKit coalesces
+      // the touchmoves behind it, so a quick drag reaches the page as the
+      // grant, a few sparse moves and the touchend — whose changedTouches
+      // carry the true final position. Committing the last processed move
+      // instead handed back a value the finger had passed long before, and
+      // for a flick that was the grant point: the thumb sprang back to
+      // where the drag began, the less the slower you dragged or the longer
+      // you lingered before lifting. An un-locatable release (the NaN
+      // react-native-web hands a first grant) still holds the gesture's
+      // value, through track's guard.
+      onPanResponderRelease: (e) => {
         draggingRef.current = false;
         endValueDrag();
-        cbRef.current.onCommit(dragRef.current);
+        cbRef.current.onCommit(track(e.nativeEvent.locationX));
       },
+      // A cancelled touch has no lift point worth reading: keep what the
+      // gesture reached.
       onPanResponderTerminate: () => {
         draggingRef.current = false;
         endValueDrag();

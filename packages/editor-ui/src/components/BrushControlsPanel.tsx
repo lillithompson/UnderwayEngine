@@ -201,10 +201,14 @@ export function FloatingSliderRow({ label, value, onChange, readout, onPreview }
         previewRef.current?.(next);
         cbRef.current(next);
       },
-      onPanResponderRelease: () => {
+      // The release commits the lift point, read before letGo drops the grab
+      // offset it is measured through — see the Slider's release handler for
+      // why the last processed move is not where the finger let go.
+      onPanResponderRelease: (e) => {
         const gave = abandonedRef.current || !grabsRef.current;
+        const lifted = gave ? null : track(e.nativeEvent.locationX);
         letGo();
-        if (!gave) cbRef.current(dragRef.current);
+        if (lifted !== null) cbRef.current(lifted);
       },
       onPanResponderTerminate: () => {
         const gave = abandonedRef.current || !grabsRef.current;

@@ -145,7 +145,10 @@ function XYPad({ dx, dy, onChange, onCommit }: {
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => { draggingRef.current = true; beginValueDrag(); const [x, y] = track(e); cbRef.current.onChange(x, y); },
       onPanResponderMove: (e) => { const [x, y] = track(e); cbRef.current.onChange(x, y); },
-      onPanResponderRelease: () => { draggingRef.current = false; endValueDrag(); cbRef.current.onCommit(...dragRef.current); },
+      // The release reads its own position (the lift point), the terminate
+      // keeps the gesture's — see the Slider's release handler for why the
+      // last processed move is not where the finger let go.
+      onPanResponderRelease: (e) => { draggingRef.current = false; endValueDrag(); const [x, y] = track(e); cbRef.current.onCommit(x, y); },
       onPanResponderTerminate: () => { draggingRef.current = false; endValueDrag(); cbRef.current.onCommit(...dragRef.current); },
     }),
   ).current;
