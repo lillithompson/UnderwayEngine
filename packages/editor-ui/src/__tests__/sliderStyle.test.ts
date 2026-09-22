@@ -63,6 +63,17 @@ describe('the slider row', () => {
     expect(bar).toContain('onDark ? styles.rowLabelDark : null');
   });
 
+  it('drops the caption line, and its height, when a host hides it', () => {
+    // A hue row floated as bare chrome (the brush's, under the toolbar)
+    // asks for the track and the circle alone — and is then exactly as
+    // tall as the control, not a caption's worth taller.
+    expect(bar).toContain('{hideLabel ? null : <Text style={styles.rowLabel}>{label}</Text>}');
+    expect(bar).toContain('style={hideLabel ? styles.rowBare : styles.row}');
+    expect(bar).toMatch(/rowBare:\s*\{\s*height:\s*SLIDER_CONTROL\s*\}/);
+    // The name still reaches a screen reader through the trailing circle.
+    expect(bar).toContain('accessibilityLabel={`${label} color, open picker`}');
+  });
+
   it('keeps the 50pt label column for the segmented rows only', () => {
     expect(bar).toMatch(/segLabel:\s*\{\s*width:\s*50/);
     expect(bar).not.toMatch(/rowLabel:\s*\{\s*width:\s*50/);

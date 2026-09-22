@@ -391,8 +391,14 @@ function ColorEndButton({ label, color, onPress }: {
  * the hue and leaves them as they are (logic/hsv withHue), which is what
  * makes it a quick reach rather than a second picker.
  */
-export function ColorSliderRow({ label, color, onColor, onOpenPicker }: {
+export function ColorSliderRow({ label, hideLabel, color, onColor, onOpenPicker }: {
   label: string;
+  /** Draw the row WITHOUT its caption line — the track and the circle
+   *  alone, on the control's own height. For a host that floats the row as
+   *  bare chrome rather than as a page row (the brush's hue row under the
+   *  toolbar), where the caption is the only thing naming a control the
+   *  tool already names. `label` still speaks the row to a screen reader. */
+  hideLabel?: boolean;
   color: RGBLike;
   /** The colour the hue landed on — live while dragging, once on release. */
   onColor: (color: RGBLike, committed: boolean) => void;
@@ -409,8 +415,8 @@ export function ColorSliderRow({ label, color, onColor, onOpenPicker }: {
   const apply = (t: number, committed: boolean) =>
     onColor(withHue(color, Math.max(0, Math.min(360, t * 360))), committed);
   return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
+    <View style={hideLabel ? styles.rowBare : styles.row}>
+      {hideLabel ? null : <Text style={styles.rowLabel}>{label}</Text>}
       <View style={styles.rowControl}>
         <View style={styles.rowSlider}>
           <Slider
@@ -775,6 +781,9 @@ const styles = StyleSheet.create({
   // box). The three metrics are submenuHeight's, so its arithmetic and this
   // layout are one number.
   row: { height: ROW_SLIDER, gap: SLIDER_LABEL_GAP },
+  // The same row with its caption dropped: the control line alone, so a
+  // captionless row is exactly as tall as what it draws.
+  rowBare: { height: SLIDER_CONTROL },
   rowLabel: {
     color: LABEL, fontSize: 11, lineHeight: SLIDER_LABEL, fontWeight: '600',
     letterSpacing: 0.6, textTransform: 'uppercase',
