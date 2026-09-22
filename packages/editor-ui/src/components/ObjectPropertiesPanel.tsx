@@ -1461,9 +1461,21 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       />
     );
   } else if (displaySub === 'effects') {
-    // Three buttons, one per effect: lit for the ones the object wears, and
-    // a press either way. No Remove line — every button IS one.
-    activeBarEl = <EffectsBar present={effectWorn} onToggle={toggleEffect} />;
+    // Three buttons, one per effect — four over an image, which can also
+    // carry a TINT — lit for the ones the object wears, and a press either
+    // way. No Remove line: every button IS one.
+    activeBarEl = (
+      <EffectsBar
+        present={effectWorn}
+        onToggle={toggleEffect}
+        tint={model.onToggleImageTint
+          ? {
+            present: model.imageTintPresent === true,
+            onToggle: (add) => model.onToggleImageTint?.(add),
+          }
+          : undefined}
+      />
+    );
   } else if (shownEffect) {
     const glowKind: GlowKind | null = shownEffect === 'shadow' ? null : shownEffect;
     activeBarEl = (

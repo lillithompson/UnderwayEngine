@@ -73,6 +73,12 @@ export const EFFECT_KINDS: readonly EffectKind[] = ['shadow', 'outer', 'inner'];
  *  the Remove line at the foot of that tab's page. ONE name for all three
  *  places, so the button you press and the tab you land on say the same
  *  word. */
+/** …and what the image TINT's button is called. Not an EffectKind: the
+ *  three above each open a page of controls, and a tint has none of its
+ *  own — the colour brush is what lays it on. One name here for the
+ *  button and for anything that speaks it. */
+export const TINT_EFFECT_LABEL = 'Tint';
+
 export function effectLabel(kind: EffectKind): string {
   return kind === 'shadow' ? 'Shadow' : kind === 'outer' ? 'Outer Glow' : 'Inner Glow';
 }
@@ -86,28 +92,42 @@ export function effectLabel(kind: EffectKind): string {
  * the tab row, which is what makes this page unlike every other one in the
  * sheet.
  */
-export function EffectsBar({ present, onToggle }: {
+export function EffectsBar({ present, onToggle, tint }: {
   present: (kind: EffectKind) => boolean;
   onToggle: (kind: EffectKind, add: boolean) => void;
+  /** An image's TINT, where the host has one to offer: the wash of colour
+   *  the colour brush lays over a photo (there being no smaller part of a
+   *  photo that owns a colour). It stands on this page as a fourth
+   *  button, because that is what it IS — something cast over the object's
+   *  own paint that can be taken off again, which is the whole of what
+   *  this page is for. A tint used to be visible only as a change to the
+   *  picture: nothing said it was there, and nothing took it away.
+   *
+   *  Unlike the three, it carries no page: the brush is what colours it,
+   *  and the button adds one in the colour in hand. */
+  tint?: { present: boolean; onToggle: (add: boolean) => void };
 }) {
+  const button = (key: string, label: string, on: boolean, press: () => void) => (
+    <EffectButton
+      key={key}
+      layout="column"
+      label={label}
+      // A plus to add; a check to say it is already there — the same
+      // glyph pair the pattern page's Edit / Editing button uses.
+      icon={on ? 'check' : 'plus'}
+      active={on}
+      accessibilityLabel={`${on ? 'Remove' : 'Add'} ${label}`}
+      onPress={press}
+    />
+  );
   return (
     <EffectButtonRow>
-      {EFFECT_KINDS.map((kind) => {
-        const on = present(kind);
-        return (
-          <EffectButton
-            key={kind}
-            layout="column"
-            label={effectLabel(kind)}
-            // A plus to add; a check to say it is already there — the same
-            // glyph pair the pattern page's Edit / Editing button uses.
-            icon={on ? 'check' : 'plus'}
-            active={on}
-            accessibilityLabel={`${on ? 'Remove' : 'Add'} ${effectLabel(kind)}`}
-            onPress={() => onToggle(kind, !on)}
-          />
-        );
-      })}
+      {EFFECT_KINDS.map((kind) => button(
+        kind, effectLabel(kind), present(kind), () => onToggle(kind, !present(kind)),
+      ))}
+      {tint ? button(
+        'tint', TINT_EFFECT_LABEL, tint.present, () => tint.onToggle(!tint.present),
+      ) : null}
     </EffectButtonRow>
   );
 }

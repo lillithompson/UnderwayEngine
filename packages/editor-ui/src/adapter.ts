@@ -900,6 +900,14 @@ export interface ObjectPropertiesModel {
   /** Open the full-screen color picker for that glow's colour — the hue
    *  row's trailing circle. */
   onPickGlowColor?(kind: GlowKind): void;
+  /** Whether the selection carries an image TINT — the wash of colour the
+   *  colour brush lays over a photo. Read by the Effects page's fourth
+   *  button, which is offered only when {@link onToggleImageTint} is. */
+  imageTintPresent?: boolean;
+  /** Add that tint (in the host's active colour) or take it off, one undo
+   *  step either way. Absent → the Effects page holds its three buttons,
+   *  which is every kind but an image. */
+  onToggleImageTint?(add: boolean): void;
   /** Whether the Border controls are shown. App-owned so a tap-off dismisses
    *  them before the panel (same as the Shadow bar). */
   borderOpen?: boolean;

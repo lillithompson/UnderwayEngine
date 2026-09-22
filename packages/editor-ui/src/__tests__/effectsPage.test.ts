@@ -61,13 +61,18 @@ describe('three buttons, and the tabs they make', () => {
   it('the page is one row of them, in the shape every page’s one act wears', () => {
     expect(BAR).toContain('<EffectButtonRow>');
     expect(BAR).toContain('layout="column"');
-    expect(BAR).toContain('label={effectLabel(kind)}');
+    // One button shape for the row, so the fourth (an image's Tint) is the
+    // same button as the three rather than a lookalike beside them.
+    expect(BAR).toContain(
+      'const button = (key: string, label: string, on: boolean, press: () => void) => (',
+    );
+    expect(BAR).toContain('label={label}');
     // A plus to add, a check to say it is already there.
     expect(BAR).toContain("icon={on ? 'check' : 'plus'}");
     expect(BAR).toContain('active={on}');
     // …and it reads as what a press will DO, whichever way it points.
-    expect(BAR).toContain("accessibilityLabel={`${on ? 'Remove' : 'Add'} ${effectLabel(kind)}`}");
-    expect(BAR).toContain('onPress={() => onToggle(kind, !on)}');
+    expect(BAR).toContain("accessibilityLabel={`${on ? 'Remove' : 'Add'} ${label}`}");
+    expect(BAR).toContain('present(kind), () => onToggle(kind, !present(kind)),');
     // One row, drawn BARE — no well behind it: three buttons are not a
     // field of controls for a grey slab to gather.
     expect(pageIsWelled('effects')).toBe(false);
@@ -98,7 +103,31 @@ describe('three buttons, and the tabs they make', () => {
     expect(PANEL).toContain('const wornEffects = EFFECT_KINDS.filter(effectWorn);');
     // The buttons light off that same answer, so a lit button and a standing
     // tab cannot disagree.
-    expect(PANEL).toContain('<EffectsBar present={effectWorn} onToggle={toggleEffect} />');
+    expect(PANEL).toContain('        present={effectWorn}\n        onToggle={toggleEffect}');
+  });
+
+  it('an image gets a fourth button: its TINT, which makes no tab', () => {
+    // The wash the colour brush lays over a photo is the same KIND of
+    // thing as the three — something cast over the object's paint that
+    // the reader may now want gone — and nothing on the panel used to say
+    // it was there, let alone take it off. It carries no page of its own:
+    // the brush is what colours it, so there is no tab and nothing to
+    // open, and the button adds one in the colour in hand.
+    expect(BAR).toContain("export const TINT_EFFECT_LABEL = 'Tint';");
+    expect(BAR).toContain(
+      "{tint ? button(\n        'tint', TINT_EFFECT_LABEL, tint.present, () => tint.onToggle(!tint.present),\n      ) : null}",
+    );
+    expect(BAR).toContain('tint?: { present: boolean; onToggle: (add: boolean) => void };');
+    // Offered only where the host has a tint to offer — an image — so
+    // every other kind's page is the three it always was.
+    expect(PANEL).toContain('tint={model.onToggleImageTint');
+    expect(PANEL).toContain('present: model.imageTintPresent === true,');
+    expect(ADAPTER).toContain('imageTintPresent?: boolean;');
+    expect(ADAPTER).toContain('onToggleImageTint?(add: boolean): void;');
+    // It is NOT an EffectKind: the kinds are what the tab run is built
+    // from, and a tint has no page to open.
+    expect(BAR).toContain("export const EFFECT_KINDS: readonly EffectKind[] = ['shadow', 'outer', 'inner'];");
+    expect(ADAPTER).toContain("export type EffectKind = 'shadow' | GlowKind;");
   });
 
   it('adding opens the new tab at once', () => {
