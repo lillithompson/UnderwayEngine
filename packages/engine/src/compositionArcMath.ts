@@ -206,6 +206,77 @@ export function computeOvalSegments(
     : computeEllipsePolyline(sx, sy, ex, ey);
 }
 
+/** How many line segments a QUARTER of an oval is drawn with — a quarter of
+ *  {@link ELLIPSE_POLYLINE_SEGMENTS}, so an elliptical arc is sampled at
+ *  exactly the density the closed ellipse and the flattener use and the
+ *  three cannot look like different curves. */
+export const QUARTER_ARC_POLYLINE_SEGMENTS = ELLIPSE_POLYLINE_SEGMENTS / 4;
+
+/**
+ * The arc tool's single quarter curve, from `start` round `center` to `end`:
+ * the exact arc segment when the box those corners describe is SQUARE, and a
+ * polyline quarter-ellipse when it is not.
+ *
+ * {@link computeOvalSegments}'s opening, one segment down, and split for the
+ * same reason: an arc segment IS a quarter circle with one radius (`A r,r`
+ * in the markup it becomes), so on a rectangular box its start and its end
+ * sit at different distances from its own centre and the renderer stretches
+ * the radius to reach — the "wrong arc" a non-square drag used to draw, and
+ * the reason such a drag used to be squared off before it ever got here. A
+ * polyline can be a quarter-ellipse exactly, and — unlike an arc — it also
+ * survives being stretched afterwards, since every point simply maps. Which
+ * is what lets the arc be drawn at whatever aspect the finger drew: a wide
+ * drag makes a wide arc, the way a wide drag has always made a wide oval.
+ *
+ * The square case keeps its arc, so a quarter circle is still exact at any
+ * zoom, still the shape {@link isCircularSegments} recognises, and still
+ * exports as one arc command rather than eight line ones.
+ *
+ * `center` is one of the box's other two corners ({@link pickCenter}, which
+ * decides which way the curve bulges), so `start` and `end` each lie on one
+ * of the ellipse's axes from it: the curve is `center + (end − center)·sin t
+ * + (start − center)·cos t` over a quarter turn, which begins exactly on
+ * `start` and ends exactly on `end` whatever the two radii are.
+ */
+export function computeQuarterArcSegments(
+  start: readonly [number, number],
+  end: readonly [number, number],
+  center: readonly [number, number],
+): PathSegment[] {
+  const ax = start[0] - center[0];
+  const ay = start[1] - center[1];
+  const bx = end[0] - center[0];
+  const by = end[1] - center[1];
+  // Square box ⇔ the two radii match ⇔ the exact arc is the true curve.
+  if (Math.hypot(ax, ay) === Math.hypot(bx, by)) {
+    return [{
+      kind: 'arc',
+      start: [start[0], start[1]],
+      end: [end[0], end[1]],
+      center: [center[0], center[1]],
+    }];
+  }
+  const at = (i: number): [number, number] => {
+    const t = (i / QUARTER_ARC_POLYLINE_SEGMENTS) * (Math.PI / 2);
+    return [
+      center[0] + bx * Math.sin(t) + ax * Math.cos(t),
+      center[1] + by * Math.sin(t) + ay * Math.cos(t),
+    ];
+  };
+  const out: PathSegment[] = [];
+  // The literal ends are reused rather than sampled, so the curve begins and
+  // ends exactly on the drag's own corners and its AABB is the drag's box.
+  let prev: [number, number] = [start[0], start[1]];
+  for (let i = 1; i <= QUARTER_ARC_POLYLINE_SEGMENTS; i++) {
+    const next: [number, number] = i === QUARTER_ARC_POLYLINE_SEGMENTS
+      ? [end[0], end[1]]
+      : at(i);
+    out.push({ kind: 'line', start: prev, end: next });
+    prev = next;
+  }
+  return out;
+}
+
 /**
  * The POLYLINE form of the oval, whatever the box's aspect — including a
  * square one, where it is a circle drawn as line segments.

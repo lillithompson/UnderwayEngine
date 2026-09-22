@@ -1,4 +1,4 @@
-import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout, warpSegments, computeOvalSegments, computeEllipsePolyline, flattenArcSegment, ELLIPSE_POLYLINE_SEGMENTS } from '../compositionArcMath';
+import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout, warpSegments, computeOvalSegments, computeEllipsePolyline, flattenArcSegment, ELLIPSE_POLYLINE_SEGMENTS, computeQuarterArcSegments, QUARTER_ARC_POLYLINE_SEGMENTS, isCircularSegments } from '../compositionArcMath';
 import { computeRectSegments } from '../compositionLineBboxMath';
 import { PathSegment, SVGObject } from '../types';
 
@@ -675,5 +675,65 @@ describe('flattenArcSegment', () => {
     const flat = flattenArcSegment(closed);
     expect(flat).toHaveLength(ELLIPSE_POLYLINE_SEGMENTS);
     for (const seg of flat) expect(Math.hypot(seg.start[0], seg.start[1])).toBeCloseTo(4, 9);
+  });
+});
+
+describe('computeQuarterArcSegments — the arc tool, at whatever aspect it was dragged', () => {
+  // The arc used to be the one shape whose creation box was forced SQUARE,
+  // because an arc segment holds ONE radius and a rectangular box would just
+  // be a wrong arc. It is answered here instead: the square box keeps its
+  // exact arc, and any other is the quarter-ellipse polyline it really is,
+  // so the drag can stay the drawer's.
+  const bboxOf = (segs: PathSegment[]) => {
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const seg of segs) {
+      for (const p of [seg.start, seg.end]) { xs.push(p[0]); ys.push(p[1]); }
+      if (seg.kind === 'arc') { xs.push(seg.center[0]); ys.push(seg.center[1]); }
+    }
+    return { w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+  };
+
+  it('keeps the exact arc segment on a square box', () => {
+    const segs = computeQuarterArcSegments([0, 8], [8, 0], [0, 0]);
+    expect(segs).toHaveLength(1);
+    expect(segs[0].kind).toBe('arc');
+    expect(isCircularSegments(segs)).toBe(true);
+  });
+
+  it('draws a skewed box as a quarter-ellipse polyline', () => {
+    const segs = computeQuarterArcSegments([0, 4], [16, 0], [0, 0]);
+    expect(segs).toHaveLength(QUARTER_ARC_POLYLINE_SEGMENTS);
+    expect(segs.every((seg) => seg.kind === 'line')).toBe(true);
+    expect(isCircularSegments(segs)).toBe(false);
+    // Every sampled point lies on the ellipse (x/16)² + (y/4)² = 1.
+    for (const seg of segs) {
+      const u = seg.end[0] / 16;
+      const v = seg.end[1] / 4;
+      expect(u * u + v * v).toBeCloseTo(1, 9);
+    }
+  });
+
+  it('spans exactly the box the drag described, either way', () => {
+    // What the square constraint used to throw away: a wide drag made a
+    // small quarter circle and the rest of the box went nowhere.
+    expect(bboxOf(computeQuarterArcSegments([0, 4], [16, 0], [0, 0])))
+      .toEqual({ w: 16, h: 4 });
+    expect(bboxOf(computeQuarterArcSegments([0, 8], [8, 0], [0, 0])))
+      .toEqual({ w: 8, h: 8 });
+  });
+
+  it('begins and ends exactly on the corners it was given', () => {
+    // Reused literally rather than sampled back out, so the curve meets the
+    // drag's own corners to the bit and its AABB is the drag's box.
+    const segs = computeQuarterArcSegments([1.5, 9.25], [13.75, 2], [1.5, 2]);
+    expect(segs[0].start).toEqual([1.5, 9.25]);
+    expect(segs[segs.length - 1].end).toEqual([13.75, 2]);
+  });
+
+  it('is sampled at the same density as the closed ellipse and the flattener', () => {
+    // A quarter of a full turn, so an arc, an oval and a flattened circle
+    // can never look like three different curves.
+    expect(QUARTER_ARC_POLYLINE_SEGMENTS).toBe(ELLIPSE_POLYLINE_SEGMENTS / 4);
   });
 });
