@@ -70,11 +70,31 @@ export function setAppEventHandler(handler: AppEventHandler | null): void {
   appEventHandler = handler;
 }
 
-function handleLog(payload: { level: 'log' | 'warn' | 'error'; tag: string; text: string }): void {
+/** A web LOG message as the listener sees it (see setLogListener). */
+export type LogPayload = { level: 'log' | 'warn' | 'error'; tag: string; text: string };
+
+// The consuming app may read the web side's LOG messages as they arrive
+// (module-level, like the app-event handler): a release build has no
+// console anyone reads, and the page's own uncaught errors — tagged
+// `window.error` / `unhandledrejection` by webBridge's global handlers —
+// are worth more than a line in a log nobody sees. The console line is
+// still written first, so a listener that throws changes nothing.
+let logListener: ((payload: LogPayload) => void) | null = null;
+
+export function setLogListener(listener: ((payload: LogPayload) => void) | null): void {
+  logListener = listener;
+}
+
+function handleLog(payload: LogPayload): void {
   const prefix = `[web:${payload.tag}]`;
   if (payload.level === 'error') console.error(prefix, payload.text);
   else if (payload.level === 'warn') console.warn(prefix, payload.text);
   else console.log(prefix, payload.text);
+  try {
+    logListener?.(payload);
+  } catch {
+    // The listener's fault is its own; the log line is already written.
+  }
 }
 
 async function handleShareFile(

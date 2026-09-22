@@ -74,7 +74,23 @@ export interface WebViewShellProps {
    * stable callback — it is an effect's dependency.
    */
   onWebViewRef?: (ref: React.RefObject<unknown> | null) => void;
+  /**
+   * Told when the shell has to recover the page, or cannot: the content
+   * process was terminated (`terminated`, and `gaveUp` once the guard
+   * stops reloading), the liveness watchdog reloaded a dead surface
+   * (`watchdog`), or the load itself failed (`loadError`, `httpError`,
+   * with the WebView's own description). None of these is an app crash
+   * — Apple never sees them — which is why a host that counts its
+   * failures needs to hear them here. `detail` is the shell's own words,
+   * never the page's URL parameters.
+   *
+   * Optional and unwired by default: a host that counts nothing passes
+   * nothing and the console lines below are all that happens.
+   */
+  onRecoveryEvent?: (kind: RecoveryEventKind, detail?: string) => void;
 }
+
+export type RecoveryEventKind = 'terminated' | 'gaveUp' | 'watchdog' | 'loadError' | 'httpError';
 
 // The native splash overlay (logo + spinner on dark) covers the WebView until
 // the web side posts READY. READY is sent from the first screen
@@ -86,8 +102,13 @@ export default function WebViewShell({
   onLoadStart,
   splash,
   onWebViewRef,
+  onRecoveryEvent,
   debuggable = DIAGNOSTICS,
 }: WebViewShellProps = {}) {
+  // Read through a ref so the callbacks below need not re-subscribe when
+  // the host passes a new function.
+  const onRecoveryEventRef = useRef(onRecoveryEvent);
+  onRecoveryEventRef.current = onRecoveryEvent;
   const { url, ready } = useLocalServer();
   const [webReady, setWebReady] = useState(false);
   // What the page was LOADED with. The WebView's source must not change
@@ -159,6 +180,7 @@ export default function WebViewShell({
         if (pendingNonceRef.current !== nonce) return;
         pendingNonceRef.current = null;
         console.warn('[webViewShell] liveness watchdog expired — reloading WebView to recover dead surface');
+        onRecoveryEventRef.current?.('watchdog');
         setWebReady(false);
         webViewRef.current?.reload();
       }, WATCHDOG_MS);
@@ -231,10 +253,12 @@ export default function WebViewShell({
     const { allowReload, attempt } = recordTermination();
     if (allowReload) {
       console.error('[webContentRecovery] terminated, reloading (attempt', attempt + ')');
+      onRecoveryEventRef.current?.('terminated', `attempt ${attempt}`);
       setWebReady(false);
       webViewRef.current?.reload();
     } else {
       console.error('[webContentRecovery] giving up after', attempt, 'terminations within 60s');
+      onRecoveryEventRef.current?.('gaveUp', `${attempt} terminations within 60s`);
       setRecoveryFailed(true);
       setWebReady(false);
     }
@@ -266,12 +290,16 @@ export default function WebViewShell({
                 description: ne.description, code: ne.code, domain: ne.domain,
                 url: ne.url, didFailProvisionalNavigation: ne.didFailProvisionalNavigation,
               }));
+              // The code and domain, not the URL: the URL carries the
+              // host's route parameters.
+              onRecoveryEventRef.current?.('loadError', `${String(ne.domain ?? '')} ${String(ne.code ?? '')} ${String(ne.description ?? '')}`.trim());
             }}
             onHttpError={(e) => {
               const ne = e.nativeEvent as unknown as Record<string, unknown>;
               console.error('[WebViewShell] HTTP Error:', JSON.stringify({
                 statusCode: ne.statusCode, url: ne.url, description: ne.description,
               }));
+              onRecoveryEventRef.current?.('httpError', `${String(ne.statusCode ?? '')} ${String(ne.description ?? '')}`.trim());
             }}
             onContentProcessDidTerminate={onContentProcessDidTerminate}
             webviewDebuggingEnabled={debuggable}
