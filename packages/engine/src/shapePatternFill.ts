@@ -182,11 +182,16 @@ export function setShapePatternSpan(
 }
 
 /**
- * The line the TILES are drawn in when the fill says nothing: HALF the
- * shape's own, so the pattern reads as the finer mark inside the outline
- * that frames it — and follows it, since it is derived at every draw
- * rather than seeded once. Move the shape's Stroke page Width and an
- * unset pattern thins with it.
+ * The line the TILES OPEN in: HALF the shape's own, so the pattern reads
+ * as the finer mark inside the outline that frames it.
+ *
+ * A STARTING POINT, not a tie. {@link buildShapePatternFill} writes this
+ * number down as the fill's own width the moment the pattern is added, so
+ * the shape's Stroke page and the Pattern page's Stroke tab go their
+ * separate ways from there: moving the shape's outline leaves the pattern
+ * inside it exactly as it was drawn. (It used to be derived at every draw
+ * instead of seeded once, which made the shape's Width row move both
+ * lines at the same time — the pattern had no width of its own to keep.)
  *
  * Half the composition's default for a shape drawing NO outline (its
  * stroke removed, width 0): half of nothing is nothing, and a pattern that
@@ -198,7 +203,10 @@ export function setShapePatternSpan(
  */
 export const SHAPE_PATTERN_STROKE_FRACTION = 0.5;
 
-function derivedTileStrokeWidth(svg: SVGObject, strokeScale: number): number {
+/** The seeding width itself — and the fallback for a fill from before it
+ *  was seeded, which has no width of its own to keep (see
+ *  {@link shapePatternStrokeWidthCells}). */
+export function derivedTileStrokeWidth(svg: SVGObject, strokeScale = 1): number {
   const u = SVG_UNITS_PER_L0_CELL;
   const scaled = strokeScaleForUnits(strokeScale, u);
   const own = svgStrokeWidthCells(svg, scaled, u);
@@ -207,15 +215,16 @@ function derivedTileStrokeWidth(svg: SVGObject, strokeScale: number): number {
 }
 
 /**
- * The width the tiles are ACTUALLY drawn at, in world cells: what the
- * fill's own Stroke page set, else half the shape's
- * ({@link derivedTileStrokeWidth}).
+ * The width the tiles are ACTUALLY drawn at, in world cells: the fill's
+ * own, which is seeded at half the shape's when the pattern is added
+ * ({@link derivedTileStrokeWidth}) and moved after that only by the
+ * Pattern page's Stroke tab.
  *
- * The derived width stays the default rather than being written down at
- * creation, so a pattern nobody has touched goes on following the outline
- * that frames it. Once the Pattern page's Stroke tab moves Width, the
- * stored number wins and the pattern stops tracking the shape — which is
- * what asking for a width means.
+ * The derived value is still the fallback, for a fill stored by a build
+ * that seeded no width. Such a pattern goes on following the outline that
+ * frames it until something writes a width down — which the editor does
+ * the first time the shape's own Width row moves, so an old page freezes
+ * at what it was already drawing rather than jumping.
  *
  * Also the number that page's Width slider seeds at, so an untouched
  * pattern opens the row at the width it is being drawn with rather than
@@ -355,9 +364,12 @@ export function shapePatternFillIsEmpty(fill: ShapePatternFill | undefined): boo
  * `symmetry`, in the ink `tint` — which is what makes an added pattern
  * arrive as a PATTERN rather than as an empty tile drawing nothing.
  *
- * No line weight is seeded: the tiles are drawn at half the SHAPE's,
- * derived at every draw ({@link tileStrokeWidth}), so there is nothing
- * here to go stale when the Stroke page moves.
+ * The line weight IS seeded, at half the shape's own
+ * ({@link derivedTileStrokeWidth}, `strokeScale` the composition-wide
+ * one): the pattern opens as the finer mark inside the outline that frames
+ * it, and then keeps that width whatever the shape's Stroke page does
+ * next. The two lines are two decisions and the Pattern page's Stroke tab
+ * is where the pattern's is made.
  */
 export function buildShapePatternFill(
   svg: SVGObject,
@@ -368,6 +380,7 @@ export function buildShapePatternFill(
     flood?: boolean;
     excludedFamilies?: Set<string>;
     tint?: RGBColor | null;
+    strokeScale?: number;
   },
 ): ShapePatternFill {
   const size = clampShapePatternSize(opts?.size ?? DEFAULT_SHAPE_PATTERN_SIZE);
@@ -375,6 +388,7 @@ export function buildShapePatternFill(
     size,
     cells: new Array(size * size).fill(null),
     tileL0: size * ((step > 0 ? step : 1) / SHAPE_PATTERN_CELLS_PER_GRID),
+    stroke: { width: derivedTileStrokeWidth(svg, opts?.strokeScale ?? 1) },
     ...(opts?.symmetry ? { symmetry: opts.symmetry } : null),
   };
   if (!opts?.flood) return fill;

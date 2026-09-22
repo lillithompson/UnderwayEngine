@@ -1321,11 +1321,16 @@ export interface ShapePatternFill {
   symmetry?: PatternSymmetry;
   /** Border-connection rule for connectivity. Undefined = true. */
   allowBorderConnections?: boolean;
-  /** Dash and the rest of the tiles' stroke block. NOT its width: the
-   *  tiles are drawn at HALF the shape's own line, derived at every draw
-   *  (engine/shapePatternFill's tileStrokeWidth), so the pattern follows
-   *  the outline that frames it rather than holding a copy of its width
-   *  that goes stale the moment the Stroke page moves. */
+  /** The tiles' own stroke block — the Pattern page's Stroke tab: its
+   *  colour, its dash, and its WIDTH.
+   *
+   *  The width is seeded when the pattern is added, at HALF the shape's
+   *  own line (engine/shapePatternFill's derivedTileStrokeWidth), and is
+   *  the pattern's from then on: the shape's Stroke page moves the
+   *  outline that frames the pattern and leaves the pattern itself alone.
+   *  Absent on a fill stored before it was seeded, which falls back to
+   *  that same half-the-shape's rule until something writes a width down
+   *  (shapePatternStrokeWidthCells). */
   stroke?: SVGStroke;
 }
 

@@ -20,6 +20,7 @@ import {
   MAX_SHAPE_PATTERN_SPAN,
   MIN_SHAPE_PATTERN_SIZE,
   MIN_SHAPE_PATTERN_SPAN,
+  SHAPE_PATTERN_STROKE_FRACTION,
   buildShapePatternFill,
   clampShapePatternSpan,
   resizeShapePatternFill,
@@ -185,6 +186,33 @@ describe('buildShapePatternFill', () => {
     const grid = shapePatternGrid({ ...shape, patternFill: fill })!;
     expect(grid.cellWidth / grid.tileWidthL0!).toBeCloseTo(2, 5);
     expect(grid.cellHeight / grid.tileHeightL0!).toBeCloseTo(2, 5);
+  });
+
+  it('seeds the tiles line at HALF the shape s, written down as the fill s own', () => {
+    // The pattern opens as the finer mark inside the outline that frames
+    // it — and keeps that number, so the shape's Stroke page cannot move
+    // both lines at once.
+    const shape = { ...rect('svg_1', 0, 0, 8, 4), stroke: { width: 0.6 } };
+    const fill = buildShapePatternFill(shape, 1);
+    expect(fill.stroke!.width).toBeCloseTo(0.6 * SHAPE_PATTERN_STROKE_FRACTION, 9);
+    // Re-weighting the shape afterwards leaves the tiles where they were.
+    const thick = { ...shape, stroke: { width: 2.4 }, patternFill: fill };
+    expect(shapePatternStrokeWidthCells(thick))
+      .toBeCloseTo(0.6 * SHAPE_PATTERN_STROKE_FRACTION, 9);
+  });
+
+  it('seeds from the composition s strokeScale where one is given', () => {
+    const shape = { ...rect('svg_1', 0, 0, 8, 4), stroke: { width: 0.6 } };
+    const plain = buildShapePatternFill(shape, 1);
+    const doubled = buildShapePatternFill(shape, 1, { strokeScale: 2 });
+    // The shape's own authored width does not move with the scale, so
+    // neither does the half of it the pattern opens at.
+    expect(doubled.stroke!.width).toBeCloseTo(plain.stroke!.width!, 9);
+    // A shape with NO width of its own rides the composition-wide line,
+    // and half of that does follow the scale.
+    const bare = rect('svg_2', 0, 0, 8, 4);
+    expect(buildShapePatternFill(bare, 1, { strokeScale: 2 }).stroke!.width)
+      .toBeCloseTo(2 * buildShapePatternFill(bare, 1).stroke!.width!, 9);
   });
 
   it('opens at the default size, and never outside the slider s range', () => {
