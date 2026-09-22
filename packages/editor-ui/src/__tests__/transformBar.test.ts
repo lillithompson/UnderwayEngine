@@ -7,7 +7,7 @@ import {
 } from '../logic/submenuHeight';
 import {
   COPIES_MAX, COPIES_MIN, DEFAULT_COPIES, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
-  copiesSeededFrom, copyInkStep,
+  copiesSeededFrom, copyInkStep, rememberedCopies,
 } from '../logic/transform';
 
 // The Copies page (the 'transform' page — its key predates the rename):
@@ -101,7 +101,7 @@ describe('the Copies page', () => {
     // sliders start under the values the object already carries and a press
     // with nothing touched lays copies that look like it.
     expect(SRC).toContain(
-      'const [copies, setCopies] = useState<TransformCopiesSpec>(() => copiesSeededFrom(ink));',
+      'const [copies, setCopies] = useState<TransformCopiesSpec>(() => copiesSeededFrom(ink, sticky));',
     );
     expect(SRC).not.toContain('label="Rotation"');
     expect(SRC).not.toContain('onRotate');
@@ -186,6 +186,56 @@ describe('the Copies page', () => {
     expect(bar).toContain('export function GroupedBody(');
     expect(bar).toMatch(/group: \{\s*padding: GROUP_PAD,[^}]*backgroundColor: PANEL_GROUP_WELL/s);
     expect(bar).toMatch(/groupedRows: \{ gap: GROUP_GAP \}/);
+  });
+
+  it('remembers every setting but the count, from one object to the next', () => {
+    // The ask: dial an offset and a turn once and the page opens on them
+    // again, whatever shape is selected next. The count does NOT travel —
+    // it says what THIS press lays down, and a page re-opening at six
+    // would mint six copies from a button that was never touched.
+    const sticky = rememberedCopies({}, { dx: 2.5, dAngleDeg: 90, count: 6 });
+    expect(sticky).toEqual({ dx: 2.5, dAngleDeg: 90 });
+    expect(sticky).not.toHaveProperty('count');
+    expect(copiesSeededFrom(undefined, sticky))
+      .toMatchObject({ dx: 2.5, dAngleDeg: 90, count: DEFAULT_COPIES.count });
+    // Later changes fold in beside the earlier ones rather than replacing
+    // them, so a scale set on one shape joins the offset set on another.
+    expect(rememberedCopies(sticky, { sx: 1.2, sy: 1.2 }))
+      .toEqual({ dx: 2.5, dAngleDeg: 90, sx: 1.2, sy: 1.2 });
+  });
+
+  it('lets the SELECTED object seat any ink slider that was never moved', () => {
+    // Fade and opacity are absolute values about the object in hand, not
+    // about copying: carrying the last object's across would quietly fade a
+    // run nobody asked to fade. So they stick only once MOVED — an
+    // untouched key isn't in the memory at all, and the seed wins.
+    const untouched = rememberedCopies({}, { dx: 3 });
+    expect(copiesSeededFrom({ opacity: 0.4, fade: 0.25 }, untouched))
+      .toMatchObject({ dx: 3, finalOpacity: 0.4, finalFade: 0.25 });
+    // …and once moved, it travels like everything else.
+    const touched = rememberedCopies(untouched, { finalFade: 0.8 });
+    expect(copiesSeededFrom({ opacity: 0.4, fade: 0.25 }, touched))
+      .toMatchObject({ finalFade: 0.8, finalOpacity: 0.4 });
+    // No memory at all is the page as it always opened.
+    expect(copiesSeededFrom()).toEqual(DEFAULT_COPIES);
+    expect(copiesSeededFrom(undefined, {})).toEqual(DEFAULT_COPIES);
+  });
+
+  it('remembers a level up, so the memory outlives the page and the selection', () => {
+    // The bar is seeded per mount and unmounts with the page, so the
+    // memory cannot live in it. The PANEL holds it, exactly where it
+    // already holds which face shows.
+    expect(SRC).toContain('sticky?: StickyCopies;');
+    expect(SRC).toContain('onSticky?: (patch: Partial<TransformCopiesSpec>) => void;');
+    // Reported as the patch the control wrote — that is what makes
+    // "touched" mean the keys a slider actually set.
+    expect(SRC).toContain('stickyRef.current?.(patch);');
+    const panel = read('ObjectPropertiesPanel.tsx');
+    expect(panel).toContain('const [copiesSticky, setCopiesSticky] = useState<StickyCopies>({});');
+    expect(panel).toContain('sticky={copiesSticky}');
+    expect(panel).toContain('onSticky={(patch) => setCopiesSticky((s) => rememberedCopies(s, patch))}');
+    // Next to the section it lives beside, not inside the bar.
+    expect(SRC).not.toContain('useState<StickyCopies>');
   });
 
   it('reports the copies draft live — on mount, on every change, and null as it unmounts', () => {

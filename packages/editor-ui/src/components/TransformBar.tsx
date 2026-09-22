@@ -8,6 +8,7 @@ import {
   COPIES_MAX, COPIES_MIN, OFFSET_MAX, ROTATE_MAX, ROTATE_MIN, SCALE_MAX, SCALE_MIN,
   copiesSeededFrom,
 } from '../logic/transform';
+import type { StickyCopies } from '../logic/transform';
 import { GROUP_PAD } from '../logic/submenuHeight';
 
 // The Copies page, on every vector shape and line (the 'transform' page —
@@ -19,6 +20,15 @@ import { GROUP_PAD } from '../logic/submenuHeight';
 // survive between presses: set 6 copies 2 cells apart at 15°, press, undo,
 // press again. Rotating the object itself is not here: that is the
 // two-finger twist and the selection tool's Rotate slider.
+//
+// They survive the page CLOSING too, and the object changing under it: the
+// bar's state is seeded per mount and the bar unmounts with the page, so
+// what was set is remembered a level up and handed back (`sticky` /
+// `onSticky` — the panel holds it, the way it already holds which face
+// shows). The settings describe a copy, and a copy of a rectangle is the
+// same kind of request as a copy of a line; re-dialling an offset and a turn
+// for every shape was the page asking the same question over and over. The
+// COUNT is the exception and never travels — see StickyCopies.
 //
 // The settings come in pairs — the count beside the turn, the offsets, the
 // scales — and ALL THREE share one GROUP: a shaded rounded box whose tabs
@@ -66,7 +76,8 @@ const SECTIONS = [
 ];
 
 export function TransformBar({
-  onCopies, onCopiesPreview, section, onSection, ink, fadeColor, fadeInk, onOpenFadePicker,
+  onCopies, onCopiesPreview, section, onSection, sticky, onSticky, ink, fadeColor, fadeInk,
+  onOpenFadePicker,
 }: {
   onCopies: (spec: TransformCopiesSpec) => void;
   /** The live draft: every change while the page is up, null on the way out. */
@@ -75,6 +86,15 @@ export function TransformBar({
    *  height is the same either way and known before the render. */
   section: CopiesSection;
   onSection: (section: CopiesSection) => void;
+  /** What the page remembers from the last object it was set on — laid over
+   *  the seed at the open, so an offset and a turn chosen once are still
+   *  there on the next shape. Held by the PANEL, like the section above: a
+   *  setting is how you are copying, not a property of the shape. */
+  sticky?: StickyCopies;
+  /** Every change a control makes, reported as the patch it wrote, so the
+   *  panel remembers exactly the keys that were touched. (The count is
+   *  dropped on the way in — see rememberedCopies.) */
+  onSticky?: (patch: Partial<TransformCopiesSpec>) => void;
   /** The object's OWN ink — where the run starts. The Color tab's two
    *  sliders open on it, so a press with nothing touched lays copies that
    *  look like the object. */
@@ -94,11 +114,20 @@ export function TransformBar({
   onOpenFadePicker?: () => void;
 }) {
   // Seeded ONCE, at the open: the ink sliders start under the object's own
-  // values. Re-seeding as the object changed would drag the thumb out from
-  // under the finger — the draft is the page's, and the page is opened per
-  // selection.
-  const [copies, setCopies] = useState<TransformCopiesSpec>(() => copiesSeededFrom(ink));
-  const set = (patch: Partial<TransformCopiesSpec>) => setCopies((c) => ({ ...c, ...patch }));
+  // values, with whatever was last set on the page over the top. Re-seeding
+  // as the object changed would drag the thumb out from under the finger —
+  // the draft is the page's, and the page is opened per selection.
+  const [copies, setCopies] = useState<TransformCopiesSpec>(() => copiesSeededFrom(ink, sticky));
+  // Read through a ref so the handed-back setter can't go stale on a host
+  // passing a fresh closure each render.
+  const stickyRef = useRef(onSticky);
+  stickyRef.current = onSticky;
+  const set = (patch: Partial<TransformCopiesSpec>) => {
+    // Remembered as the patch the control wrote, so only what was actually
+    // moved travels to the next object.
+    stickyRef.current?.(patch);
+    setCopies((c) => ({ ...c, ...patch }));
+  };
   // Read through a ref so a host passing a fresh closure each render doesn't
   // re-announce an unchanged draft — the effects key on the draft alone.
   const previewRef = useRef(onCopiesPreview);

@@ -41,6 +41,25 @@ export const rgbCss = (c: RGBLike): string => {
   return a < 1 ? `rgba(${r}, ${g}, ${b}, ${Math.round(a * 1000) / 1000})` : `rgb(${r}, ${g}, ${b})`;
 };
 
+/** The luma of the checkerboard's light squares (ColorSwatchFill's tile),
+ *  as what a translucent swatch is actually read against: the colour alone
+ *  is not what reaches the eye once it is see-through. */
+const CHECKER_LUMA = 235;
+
+/** Above this Rec. 601 luma a swatch is "light" and takes black ink. */
+const SWATCH_INK_THRESHOLD = 140;
+
+/** The ink for anything drawn ON a swatch of `c` — a hex title, a mode
+ *  badge — so it stays legible whatever colour is under it: black on a
+ *  light swatch, white on a dark one. A translucent colour is composited
+ *  over the checkerboard first, because that pale mix, not the colour, is
+ *  what the ink has to beat. */
+export function swatchInk(c: RGBLike): string {
+  const lum = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+  const a = colorAlpha(c);
+  return lum * a + CHECKER_LUMA * (1 - a) > SWATCH_INK_THRESHOLD ? '#000' : '#fff';
+}
+
 export function rgbToHsv({ r, g, b }: RGBLike): HSV {
   const rn = r / 255, gn = g / 255, bn = b / 255;
   const max = Math.max(rn, gn, bn);

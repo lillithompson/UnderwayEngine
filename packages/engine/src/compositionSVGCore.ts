@@ -37,7 +37,7 @@ import { paintToSvg, blurSigma, effectsFilterOutset, effectsToSvgFilter, scaleEf
 import { tintFillToPaint } from './imageTintFill';
 import { overlayPngDataUri, paintBlendCss, PaintInk, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { flattenPaintTiles } from './canvasPaint';
-import { textArcPaths, textBend, textBendRise } from './textArc';
+import { textArcPaths, textBend, textBendRise, textInkOutset } from './textArc';
 import { charColorRuns, contentBoxCells, DEFAULT_LINE_HEIGHT, layoutText } from './textLayout';
 import { STICKER_BORDER_CELLS, STICKER_SHADOW_CELLS, stickerColors } from './stickerStyle';
 import { effectiveFraming, coverImageRect, straightenCoverScale, tileGeometry, ResolvedFraming } from './imageFraming';
@@ -506,6 +506,10 @@ function applyNodeEffects(
   /** The caster's stroke width in world cells when its silhouette is an
    *  outline rather than a solid — see {@link outlineCastWidth}. */
   outlineWidth?: number,
+  /** The box the FILTER REGION is sized from, when that is not the box the
+   *  border is stroked around — the one caller whose markup paints outside
+   *  its own box (see {@link drawnTextWorldRect}). */
+  paintBox?: BorderBox,
 ): string {
   if (!effects) return markup;
   const scaled = scaleEffects(effects, u);
@@ -514,11 +518,17 @@ function applyNodeEffects(
   // world for svg/text, the local bitmap frame for images. Sizing the region
   // to it (rather than to a fixed ±50%) is what stops a shadow reaching past
   // a small node's own box from being cut off with a hard edge.
+  //
+  // A filter region CLIPS: anything the region misses is not drawn at all,
+  // not merely drawn without its shadow. So it is sized from the box the
+  // markup PAINTS into (`paintBox`) when that is wider than the one the
+  // border is stroked around.
+  const region = paintBox ?? node;
   const { defs, filterRef } = effectsToSvgFilter(scaled, `fx_${nodeId}`, {
-    x: node.cellX * u,
-    y: node.cellY * u,
-    width: node.cellWidth * u,
-    height: node.cellHeight * u,
+    x: region.cellX * u,
+    y: region.cellY * u,
+    width: region.cellWidth * u,
+    height: region.cellHeight * u,
   }, outlineWidth !== undefined ? outlineWidth * u : undefined);
   if (defs && filterRef) {
     out = `<defs>${defs}</defs><g filter="${filterRef}">${out}</g>`;
@@ -882,6 +892,43 @@ function spilledTextBounds(
   if (spill.lx === 0 && spill.ly === 0
     && spill.rx === content.width && spill.by === content.height) return null;
   return worldRectOf(world, spill);
+}
+
+/**
+ * The world rect a text node's glyphs are really DRAWN into.
+ *
+ * Three things the node's stored box is not, each one paint that lands
+ * outside it:
+ *
+ *  • the node's POSE. The box is the upright rectangle the type lays out
+ *    in; a turned text is drawn through its matrix, and a turned
+ *    rectangle's corners leave the rectangle.
+ *  • a bend's BOW. Bent glyphs ride arcs that leave the box by one rise
+ *    ({@link textInkOutset}) — measured in the node's own space, so it is
+ *    applied before the matrix, like the type it describes.
+ *  • a layout's SPILL. A block too tall for its box, or a word too wide to
+ *    break, hangs off it ({@link spilledTextBounds}), already in world.
+ *
+ * The page's own frame asks all three (the framing loop below). So must the
+ * effects filter region, which CLIPS — a bent haiku over a photo lost its
+ * lower lines to a hard straight edge where the region ran out.
+ */
+function drawnTextWorldRect(
+  text: TextObject, world: Mat2D, box: { width: number; height: number },
+): { minX: number; minY: number; maxX: number; maxY: number } {
+  const ink = textInkOutset(text);
+  const b = matApplyBbox(world, {
+    x: 0, y: -ink.top, width: box.width, height: box.height + ink.top + ink.bottom,
+  });
+  let minX = b.x, minY = b.y, maxX = b.x + b.width, maxY = b.y + b.height;
+  const spill = spilledTextBounds(text, world);
+  if (spill) {
+    minX = Math.min(minX, spill.minX);
+    minY = Math.min(minY, spill.minY);
+    maxX = Math.max(maxX, spill.maxX);
+    maxY = Math.max(maxY, spill.maxY);
+  }
+  return { minX, minY, maxX, maxY };
 }
 
 /**
@@ -1899,9 +1946,8 @@ export async function generateCompositionSVGCore(
     // and the matrix stretches the glyphs. Reading the view here instead
     // would lay out type sized for the grown box inside the local one.
     const pose = exportPose(graph, 'text', txt);
-    const content = buildTextSVGContent(
-      localHitObject(pose.node) as TextObject, U, input.textColorOverride,
-    );
+    const local = localHitObject(pose.node) as TextObject;
+    const content = buildTextSVGContent(local, U, input.textColorOverride);
     if (!content) continue;
     // The authored shadow goes with the page it was cast against — see
     // dropTextShadow. Only that one: a sticker's fixed card shadow is added
@@ -1913,8 +1959,20 @@ export async function generateCompositionSVGCore(
     // what keeps a text shadow a WORLD size — the one kind whose shadow the
     // screen deliberately does not scale with the node
     // (`effectsBoxShadow.worldOffsetInNodeFrame`).
+    //
+    // Which is also why the filter region is read in WORLD space, and why
+    // it cannot be the node's box: the pose is inside the filter, so the
+    // region has to cover the glyphs where they land (drawnTextWorldRect),
+    // not the upright box they were laid out in.
+    const painted = drawnTextWorldRect(local, pose.world, pose.box);
     elementsById.set(txt.id, wrapWithMaskClip(
-      applyNodeEffects(`<g transform="${pose.transform}">${content}</g>`, effects, txt.id, txt, U),
+      applyNodeEffects(
+        `<g transform="${pose.transform}">${content}</g>`, effects, txt.id, txt, U, undefined,
+        {
+          cellX: painted.minX, cellY: painted.minY,
+          cellWidth: painted.maxX - painted.minX, cellHeight: painted.maxY - painted.minY,
+        },
+      ),
       maskMap, groups, txt,
     ));
   }

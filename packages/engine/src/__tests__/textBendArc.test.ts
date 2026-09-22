@@ -14,6 +14,7 @@ import {
   serializeComposition,
 } from '../compositionBinaryFormat';
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
+import { effectsFilterOutset, scaleEffects } from '../paintSvg';
 import { CompositionState, TextObject, TextStyle, makeViewport } from '../types';
 
 const style = (extras: Partial<TextStyle> = {}): TextStyle => ({
@@ -481,5 +482,154 @@ describe('bend binary round-trip (v57)', () => {
     expect(out[0].angleDeg).toBeCloseTo(-7.25, 2);
     expect(out[1].style.bend).toBeUndefined();
     expect(out[2].style.bend).toBeCloseTo(-1, 5);
+  });
+});
+
+// ── The effects filter region ───────────────────────────────────────
+
+/**
+ * A `<filter>` region CLIPS — what it does not cover is not drawn at all,
+ * not merely drawn without its shadow. The text branch wraps the POSED
+ * group (a text shadow is a world size, so it must sit outside the node's
+ * matrix), which leaves the region reading world space while the node's own
+ * box says where the UPRIGHT, UNBENT block would be. A bent block bows out
+ * of that box and a turned one puts its corners outside it, and both were
+ * sliced off with a hard straight edge: a bent haiku over a photo lost its
+ * two lower lines in the exported page while the editor drew them.
+ */
+describe('a shadowed text’s filter region covers the glyphs it is cast from', () => {
+  const SHADOW = {
+    shadow: { dx: 0, dy: 0, blur: 0, color: { r: 0, g: 0, b: 0 }, alpha: 0.5 },
+  };
+
+  /** The region of the one text filter, in SVG units. */
+  function filterRegion(svg: string | null): { x: number; y: number; w: number; h: number } {
+    const m = /<filter id="fx_txt_1"[^>]*\sx="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="([\d.]+)"/
+      .exec(svg ?? '');
+    if (!m) throw new Error('no text filter in the export');
+    return { x: +m[1], y: +m[2], w: +m[3], h: +m[4] };
+  }
+
+  /** Every point the bent baselines are drawn through, in SVG units in the
+   *  node's own space: each arc's two endpoints and its apex (the midpoint
+   *  of the two, pushed out to the ring — `A` with equal radii, so the
+   *  drawn arc's extreme is the perpendicular bisector's crossing). */
+  function arcPoints(svg: string): { x: number; y: number }[] {
+    const pts: { x: number; y: number }[] = [];
+    const re = /<path id="tba_txt_1_\d+" d="M ([-\d.e]+) ([-\d.e]+) A ([\d.e]+) [\d.e]+ 0 \d (\d) ([-\d.e]+) ([-\d.e]+)"/g;
+    for (let m = re.exec(svg); m; m = re.exec(svg)) {
+      const [x0, y0, r, sweep, x1, y1] = [+m[1], +m[2], +m[3], +m[4], +m[5], +m[6]];
+      pts.push({ x: x0, y: y0 }, { x: x1, y: y1 });
+      // Centre: r from both ends, on the side the sweep flag picks.
+      const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+      const dx = x1 - x0, dy = y1 - y0;
+      const half = Math.hypot(dx, dy) / 2;
+      const off = Math.sqrt(Math.max(0, r * r - half * half)) / (half * 2);
+      const s = sweep === 1 ? 1 : -1;
+      const cx = mx + s * dy * off, cy = my - s * dx * off;
+      // Apex: on the ring, away from the centre, along the chord's normal.
+      const d = Math.hypot(mx - cx, my - cy) || 1;
+      pts.push({ x: cx + ((mx - cx) / d) * r, y: cy + ((my - cy) / d) * r });
+    }
+    return pts;
+  }
+
+  /** `matrix(a,b,c,d,e,f)` of the one text group, applied to a local point. */
+  function poseOf(svg: string): (p: { x: number; y: number }) => { x: number; y: number } {
+    const m = /<g transform="matrix\(([^)]*)\)"><g><defs><path id="tba_txt_1_0"/.exec(svg);
+    if (!m) throw new Error('no posed text group in the export');
+    const [a, b, c, d, e, f] = m[1].split(',').map(Number);
+    return (p) => ({ x: a * p.x + c * p.y + e, y: b * p.x + d * p.y + f });
+  }
+
+  test('a bent block’s arcs all land inside the region (they hung out of it)', async () => {
+    // Bowed DOWN and turned, the shape the report came in as.
+    const text = makeText({
+      content: 'one two\nthree four\nfive six',
+      cellX: 5, cellY: 6, cellWidth: 12, cellHeight: 6,
+      angleDeg: -21.48,
+      style: style({ bend: -0.59 }),
+      effects: SHADOW,
+    });
+    const svg = await generateCompositionSVGCore(
+      makeInputs({ texts: [text], sceneOrder: ['txt_1'] }),
+    );
+    const r = filterRegion(svg);
+    const pose = poseOf(svg!);
+    const points = arcPoints(svg!);
+    expect(points.length).toBe(9); // three lines × (two ends + an apex)
+    for (const p of points.map(pose)) {
+      expect(p.x).toBeGreaterThanOrEqual(r.x);
+      expect(p.x).toBeLessThanOrEqual(r.x + r.w);
+      expect(p.y).toBeGreaterThanOrEqual(r.y);
+      expect(p.y).toBeLessThanOrEqual(r.y + r.h);
+    }
+  });
+
+  test('a turned block’s corners land inside it too', async () => {
+    const base = {
+      cellX: 5, cellY: 6, cellWidth: 12, cellHeight: 3, effects: SHADOW,
+    };
+    const svg = await generateCompositionSVGCore(makeInputs({
+      texts: [makeText({ ...base, angleDeg: 45 })], sceneOrder: ['txt_1'],
+    }));
+    const r = filterRegion(svg);
+    // A 12×3 box turned 45° is 10.6 cells tall, not 3 — the region has to
+    // have grown past the stored box's height to hold it.
+    const U = 256;
+    expect(r.h).toBeGreaterThanOrEqual((12 + 3) / Math.SQRT2 * U - 1);
+    // …and it is centred on the box it turned about.
+    expect(r.y + r.h / 2).toBeCloseTo((6 + 3 / 2) * U, 3);
+  });
+
+  test('flat, unturned text keeps exactly the region it always had', async () => {
+    // The ordinary case must not move: the region is the node's box grown
+    // by the effect's own reach, to the unit. The blur is wide enough to
+    // clear the region's tenth-of-the-box floor on every side, so this
+    // reads the reach and nothing else.
+    const text = makeText({
+      cellX: 5, cellY: 6, cellWidth: 12, cellHeight: 3,
+      effects: { shadow: { ...SHADOW.shadow, dx: 0.2, dy: -0.3, blur: 1 } },
+    });
+    const svg = await generateCompositionSVGCore(
+      makeInputs({ texts: [text], sceneOrder: ['txt_1'] }),
+    );
+    const U = 256;
+    const out = effectsFilterOutset(scaleEffects(text.effects!, U));
+    const r = filterRegion(svg);
+    expect(r.x).toBeCloseTo(5 * U - out.left, 4);
+    expect(r.y).toBeCloseTo(6 * U - out.top, 4);
+    expect(r.w).toBeCloseTo(12 * U + out.left + out.right, 4);
+    expect(r.h).toBeCloseTo(3 * U + out.top + out.bottom, 4);
+  });
+
+  test('the bow is one-sided: a downward bend grows the bottom, not the top', async () => {
+    // Again a blur past the tenth-of-the-box floor, so what the three
+    // regions differ by is the bow alone.
+    const base = {
+      cellX: 5, cellY: 6, cellWidth: 12, cellHeight: 3,
+      effects: { shadow: { ...SHADOW.shadow, blur: 1 } },
+    };
+    const flat = filterRegion(await generateCompositionSVGCore(makeInputs({
+      texts: [makeText(base)], sceneOrder: ['txt_1'],
+    })));
+    const down = filterRegion(await generateCompositionSVGCore(makeInputs({
+      texts: [makeText({ ...base, style: style({ bend: -0.6 }) })], sceneOrder: ['txt_1'],
+    })));
+    const up = filterRegion(await generateCompositionSVGCore(makeInputs({
+      texts: [makeText({ ...base, style: style({ bend: 0.6 }) })], sceneOrder: ['txt_1'],
+    })));
+    const rise = textArcGeometry(12, 0.6).rise * 256;
+    expect(down.y).toBeCloseTo(flat.y, 4);
+    expect(down.h - flat.h).toBeCloseTo(rise, 4);
+    expect(flat.y - up.y).toBeCloseTo(rise, 4);
+    expect(up.h - flat.h).toBeCloseTo(rise, 4);
+  });
+
+  test('text with no effects still emits no filter at all', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      texts: [makeText({ style: style({ bend: -0.6 }) })], sceneOrder: ['txt_1'],
+    }));
+    expect(svg).not.toContain('<filter');
   });
 });
