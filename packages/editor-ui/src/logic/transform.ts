@@ -33,18 +33,61 @@ export const DEFAULT_COPIES: TransformCopiesSpec = {
 };
 
 /**
+ * What the Copies page REMEMBERS between openings: every setting the user has
+ * actually moved, on any object, minus the count.
+ *
+ * Partial on purpose — a key is here only once it has been touched. An
+ * untouched key falls back to the seed ({@link copiesSeededFrom}), which
+ * matters for the two ink values: those open under the SELECTED object's own
+ * opacity and fade, and carrying the last object's across would quietly fade
+ * a run the user never asked to fade. A key they moved is a decision and
+ * travels; a key they left alone is the object's.
+ *
+ * The count is never remembered. It is the one setting that says what THIS
+ * press lays down rather than what a copy looks like, and a page that
+ * re-opened at six would mint six copies on the next press of a button that
+ * was never touched. It re-opens at 0 (COPIES_MIN), so a fresh page still
+ * ghosts nothing.
+ */
+export type StickyCopies = Partial<Omit<TransformCopiesSpec, 'count'>>;
+
+/**
+ * Fold a change the user just made into what the page remembers — every key
+ * of the patch but `count`, which never sticks (see {@link StickyCopies}).
+ *
+ * Takes the patch the slider already produced rather than the whole draft, so
+ * "touched" means exactly the keys a control wrote.
+ */
+export function rememberedCopies(
+  sticky: StickyCopies,
+  patch: Partial<TransformCopiesSpec>,
+): StickyCopies {
+  const { count: _count, ...rest } = patch;
+  return { ...sticky, ...rest };
+}
+
+/**
  * The opening draft for an object whose ink is known: the defaults above,
  * with the run ENDING where the object already stands. Both ink sliders then
  * open under the object's own values, and moving one says "by the last copy,
  * be this" — the end of the run rather than a per-copy step.
+ *
+ * `sticky` — what the page remembers from the last time anything was set on
+ * it, on any object — is laid over the top: an offset and a turn chosen on
+ * one shape are still there when the page opens on the next one, so a run
+ * laid down over and over is set up once. It cannot carry a count (the type
+ * has no room for one), and it only holds keys that were actually moved, so
+ * the ink seeds above survive untouched.
  */
 export function copiesSeededFrom(
   ink?: { opacity?: number; fade?: number },
+  sticky?: StickyCopies,
 ): TransformCopiesSpec {
   return {
     ...DEFAULT_COPIES,
     finalFade: clamp01(ink?.fade ?? DEFAULT_COPIES.finalFade),
     finalOpacity: clamp01(ink?.opacity ?? DEFAULT_COPIES.finalOpacity),
+    ...sticky,
   };
 }
 

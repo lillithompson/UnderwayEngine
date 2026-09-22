@@ -34,6 +34,7 @@ import { TextBar, TextPage } from './TextBar';
 import { TintBar } from './TintBar';
 import { EndpointsBar } from './EndpointsBar';
 import { TransformBar, type CopiesSection } from './TransformBar';
+import { rememberedCopies, type StickyCopies } from '../logic/transform';
 import { LayoutBar } from './LayoutBar';
 import {
   PatternSymmetryBar, PatternSymmetryGrid, PatternTileBar, PatternTilesBar, PatternToolsBar,
@@ -324,6 +325,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // sheet's height is computed ahead of the render. (Every face stands the
   // same height, so the sheet never moves under a tab press.)
   const [copiesSection, setCopiesSection] = useState<CopiesSection>('copies');
+  // …and what that page was last SET to, minus the count — held here for the
+  // same reason, and outliving a selection the same way. The bar is seeded
+  // per mount and unmounts with the page, so this is what carries an offset
+  // and a turn from one shape to the next: the settings say what a copy is,
+  // and a copy of a rectangle is the same request as a copy of a line.
+  // (StickyCopies: only keys actually moved, never the count.)
+  const [copiesSticky, setCopiesSticky] = useState<StickyCopies>({});
   // …and the Joints page's own, held here for the same reason: the page's
   // height must be known before it renders, and it is the same either way.
   const [jointSection, setJointSection] = useState<RigJointSection>('elbows');
@@ -1409,6 +1417,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         onCopiesPreview={(spec) => model.onTransformCopiesPreview?.(spec)}
         section={copiesSection}
         onSection={setCopiesSection}
+        // Set an offset and a turn once and every later opening of the page
+        // is already dialled to them, on this shape or the next.
+        sticky={copiesSticky}
+        onSticky={(patch) => setCopiesSticky((s) => rememberedCopies(s, patch))}
         // The Color tab asks where the RUN ends, so it needs to know where
         // the object stands: its own opacity and fade seat both sliders, and
         // a press with neither touched lays copies that look like it.
