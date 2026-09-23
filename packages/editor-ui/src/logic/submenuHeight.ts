@@ -201,7 +201,7 @@ export type SubmenuKey =
   // sketch is drawn in — its opaque volumes and the outlines over them.
   | 'rigColor'
   // A pattern object's pages: the Tile page (its Repeat toggle and the
-  // Create patches button beside it), the tile menu, the grid tools, and
+  // Make Colorable button beside it), the tile menu, the grid tools, and
   // the painting-symmetry grid.
   | 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry';
 
@@ -453,8 +453,8 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return bareArea([tabbed, ROW_SEGMENTED], GROUP_GAP);
     }
     case 'patternTile':
-      // The Tile page: the Repeat switch, with Create patches hung at the
-      // right end of that same line — so still one row, not two.
+      // The Tile page: the Repeat switch, with Make Colorable on the other
+      // half of that same line — so still one row, not two.
       return contentArea([ROW_SWITCH]);
     case 'patternTiles':
       // The arming grid: two rows of square buttons.

@@ -4,7 +4,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { ObjectPropertiesModel } from '../adapter';
 import {
   PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_GRID_WIDTH,
-  PATTERN_TILE_BUTTON, PATTERN_TILE_GRID_GAP,
+  PATTERN_TILE_BUTTON, PATTERN_TILE_GRID_GAP, ROW_GAP,
 } from '../logic/submenuHeight';
 import {
   PATTERN_ARM_TOOLS,
@@ -162,19 +162,14 @@ export function PatternTilesBar({ model }: {
  * Repeat is one setting that is simply on or off, and a switch says so
  * without inventing a word for "not repeating".
  *
- * One definition, shown as the whole of the Tile page and as a row of the
- * Tools page, so the two can never offer the setting differently.
+ * One definition, shown as the whole of the Tile page's well and as a row
+ * of the Tools page, so the two can never offer the setting differently.
  */
-export function PatternRepeatRow({ model, trailing }: {
-  model: ObjectPropertiesModel;
-  /** Hung at the row's right end — the Tile page's Create patches button. */
-  trailing?: React.ReactNode;
-}) {
+export function PatternRepeatRow({ model }: { model: ObjectPropertiesModel }) {
   if (!model.onToggleRepeat) return null;
   return (
     <SwitchRow
       label="Repeat"
-      trailing={trailing}
       value={!!model.repeat}
       // Several patterns, set differently: the row says Multiple instead of
       // showing one side's value as everyone's, and flipping it FORCES the
@@ -188,15 +183,18 @@ export function PatternRepeatRow({ model, trailing }: {
 }
 
 /**
- * The Tile page: the object's Repeat toggle, and — at the far right of
- * that same line — the page's one ACT, Create patches.
+ * The Tile page: one row in the sheet's well — the object's Repeat toggle
+ * on the left half, and on the right half the page's one ACT, Make
+ * Colorable.
  *
- * Create patches cuts the pattern's drawing into the regions it divides
- * its own bounding box into — the Patchwork game's patches, of this
- * pattern instead of the day's line — and lays one closed shape per region
- * behind the pattern, in one undo step. It does not SET anything about the
- * pattern, which is why it is a button and not a row of controls: the
- * regions are a fact about the drawing, not a setting anyone picks.
+ * Make Colorable turns the pattern into a plain drawing over one blank
+ * closed shape per region its lines cut its own bounding box into — the
+ * Patchwork game's patches, of this pattern instead of the day's line —
+ * the lot grouped as "Colorable", in one undo step. The object is not a
+ * pattern afterwards: the grid, the tiles and the symmetry go with it, and
+ * what is left is a merged collection of lines the shape tools edit. That
+ * is why it is a button and not a row of controls — it does not SET
+ * anything about the pattern, it ends the pattern.
  *
  * It had a tab of its own for a day (Patchwork) and lost it: a whole page
  * holding a single button is a place to go for something that could simply
@@ -204,28 +202,35 @@ export function PatternRepeatRow({ model, trailing }: {
  * Edit button used to (2026-09-21) — the way into the grid is the canvas's
  * floating Edit capsule, which is where you are when you want it.
  *
- * It shares the switch's line rather than taking one of its own: a page
- * holding a single setting has the width to spare, and a second row for one
- * button would make the sheet taller for nothing. The style is the Add
- * pages' button (EffectButton — "Add Stroke", "Add Fill"), in its inline
- * form: this is the same kind of act those are, so it looks the same. A
- * host that offers no callback — a selection with nothing to cut — gets no
+ * It shares the switch's row rather than taking one of its own: a page
+ * holding a single setting has the width to spare, and a second row for
+ * one button would make the sheet taller for nothing. The style is the Add
+ * pages' button (EffectButton — "Add Stroke", "Add Fill") in its block
+ * form, filling its half of the row: this is the same kind of act those
+ * are, so it looks the same — minus their plus, because it adds no effect,
+ * and with a hairline round it, because beside a switch a bare word reads
+ * as the switch's caption rather than as a thing to press. A host that
+ * offers no callback — a selection with nothing to convert — gets no
  * button, and the row is the switch alone.
  */
 export function PatternTileBar({ model }: { model: ObjectPropertiesModel }) {
   return (
     <BarBody>
-      <PatternRepeatRow
-        model={model}
-        trailing={model.onPatternCreatePatches ? (
-          <EffectButton
-            label="Create patches"
-            icon="shape-plus"
-            layout="inline"
-            onPress={model.onPatternCreatePatches}
-          />
+      <View style={styles.tileRow}>
+        <View style={styles.tileHalf}>
+          <PatternRepeatRow model={model} />
+        </View>
+        {model.onPatternMakeColorable ? (
+          <View style={styles.tileHalf}>
+            <EffectButton
+              label="Make Colorable"
+              icon={null}
+              bordered
+              onPress={model.onPatternMakeColorable}
+            />
+          </View>
         ) : null}
-      />
+      </View>
     </BarBody>
   );
 }
@@ -363,6 +368,11 @@ const MIRRORED_GLYPH = { transform: [{ scaleX: -1 }] } as const;
 const TILE = PATTERN_TILE_BUTTON;
 
 const styles = StyleSheet.create({
+  // The Tile page's one row: the switch's half and the button's half, on
+  // the switch row's own height (the block button's line is the same
+  // height, ROW_SEGMENTED), so the page is still one row tall.
+  tileRow: { flexDirection: 'row', alignItems: 'center', gap: ROW_GAP },
+  tileHalf: { flex: 1, justifyContent: 'center' },
   // Fixed-size squares wrapping COLUMN-WISE inside the two-row height
   // submenuHeight reserves (Facet's sectionWrap): the first column is
   // Random over Erase, and six columns of twelve buttons fit a phone's page.

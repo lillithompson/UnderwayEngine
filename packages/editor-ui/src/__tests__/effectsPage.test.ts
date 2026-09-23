@@ -81,7 +81,11 @@ describe('three buttons, and the tabs they make', () => {
     // back the points the words need — "Outer Glow" at the block button's
     // own measure lands within a point or two of the space it has.
     const eb = read('components', 'effectBar.tsx');
-    expect(eb).toContain('addButtonColumn: { gap: 4, borderWidth: 1, borderColor: PANEL_BORDER },');
+    expect(eb).toContain('addButtonColumn: { gap: 4 },');
+    // …and the hairline the three wear, which any block button standing on
+    // the bare sheet can ask for (`bordered`) — one border, one definition.
+    expect(eb).toContain('addButtonBordered: { borderWidth: 1, borderColor: PANEL_BORDER },');
+    expect(eb).toContain("(layout === 'column' || bordered) && styles.addButtonBordered,");
     expect(eb).toContain('addLabelColumn: { fontSize: 13 },');
     expect(eb).toContain("buttonRow: { height: ROW_SEGMENTED, flexDirection: 'row', gap: 6 },");
     // …and a toggled one fills in DARK GREY, not the blue a lit tab wears:

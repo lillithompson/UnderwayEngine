@@ -27,7 +27,7 @@ describe('EmptyEffectBar (effectBar.tsx)', () => {
     expect(bar).toContain('return <EffectButton label={addLabel} onPress={onAdd} />;');
     expect(bar).toContain('export function EffectButton({');
     expect(bar).toContain(
-      "  label, icon = 'plus', layout = 'block', active = false, accessibilityLabel, onPress,",
+      "  label, icon = 'plus', layout = 'block', bordered = false, active = false, accessibilityLabel, onPress,",
     );
     expect(bar).toContain('accessibilityLabel={label}');
     expect(bar).toContain('onPress={onPress}');

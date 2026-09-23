@@ -164,13 +164,20 @@ export type EffectButtonLayout = 'block' | 'inline' | 'column';
  * the gesture's activation is live.
  */
 export function EffectButton({
-  label, icon = 'plus', layout = 'block', active = false, accessibilityLabel, onPress,
+  label, icon = 'plus', layout = 'block', bordered = false, active = false, accessibilityLabel, onPress,
 }: {
   label: string;
-  /** The glyph before the word. Defaults to the plus an "Add …" wears. */
-  icon?: string;
+  /** The glyph before the word. Defaults to the plus an "Add …" wears;
+   *  null is a button of the word alone (the pattern Tile page's Make
+   *  Colorable, which adds nothing and so has no plus to wear). */
+  icon?: string | null;
   /** How it takes its width — see {@link EffectButtonLayout}. */
   layout?: EffectButtonLayout;
+  /** Drawn with a hairline round it, as the Effects page's column buttons
+   *  are (which are bordered whatever this says): for a button that shares
+   *  its row with a setting, where a bare word beside a switch reads as the
+   *  switch's caption — the pattern Tile page's Make Colorable. */
+  bordered?: boolean;
   /** ON: the button is a TOGGLE and the thing it makes is there. It fills
    *  in selection blue with white ink — the lit state the Edit sheet's own
    *  tabs wear, since a lit button and a lit tab mean the same thing here
@@ -196,15 +203,18 @@ export function EffectButton({
         styles.addButton,
         layout === 'inline' && styles.addButtonInline,
         layout === 'column' && styles.addButtonColumn,
+        (layout === 'column' || bordered) && styles.addButtonBordered,
         active && styles.addButtonActive,
         pressed && styles.addButtonPressed,
       ]}
     >
-      <MaterialCommunityIcons
-        name={icon as MCIName}
-        size={16}
-        color={active ? BUTTON_ON_INK : PANEL_INK}
-      />
+      {icon ? (
+        <MaterialCommunityIcons
+          name={icon as MCIName}
+          size={16}
+          color={active ? BUTTON_ON_INK : PANEL_INK}
+        />
+      ) : null}
       <Text
         style={[
           styles.addLabel,
@@ -502,7 +512,7 @@ export function FadeSliderRow({ label, value, color, from, apply, onOpenPicker }
  * switch is set to, so the row can be read without reading the switch as a
  * picture.
  */
-export function SwitchRow({ label, value, mixed, onValueChange, trailing }: {
+export function SwitchRow({ label, value, mixed, onValueChange }: {
   label: string;
   value: boolean;
   /** The selection does not AGREE — several objects, set differently. The
@@ -511,10 +521,6 @@ export function SwitchRow({ label, value, mixed, onValueChange, trailing }: {
    *  value every member then shares. */
   mixed?: boolean;
   onValueChange: (next: boolean) => void;
-  /** Something to hang at the FAR END of the row — pushed hard right, clear
-   *  of the state word. For a page whose whole content is one switch, and
-   *  which would otherwise spend a second line on a single button. */
-  trailing?: React.ReactNode;
 }) {
   const on = !mixed && value;
   return (
@@ -528,7 +534,6 @@ export function SwitchRow({ label, value, mixed, onValueChange, trailing }: {
         accessibilityState={mixed ? { checked: 'mixed' } : undefined}
       />
       <Text style={styles.switchState}>{mixed ? 'MULTIPLE' : on ? 'ON' : 'OFF'}</Text>
-      {trailing ? <View style={styles.switchTrailing}>{trailing}</View> : null}
     </View>
   );
 }
@@ -814,9 +819,6 @@ const styles = StyleSheet.create({
   switchState: {
     color: LABEL, fontSize: 11, fontWeight: '600', letterSpacing: 0.6,
   },
-  // The row's far end: an auto margin, so whatever hangs here is flush with
-  // the page's right edge however wide the state word runs.
-  switchTrailing: { marginLeft: 'auto' },
   segmentedRow: { flexDirection: 'row', alignItems: 'center', height: ROW_SEGMENTED },
   // Two segmented controls in one row: the shared label column, then two
   // equal halves each with a compact label of its own.
@@ -904,13 +906,17 @@ const styles = StyleSheet.create({
   // the well is about a hundred points and "Outer Glow" at the block
   // button's own measure lands within a point or two of it.
   //
-  // …and each is drawn round, because this row has no well behind it: the
-  // block button relies on the well's edge to say where it ends, and with
-  // that gone three bare words on the sheet read as a caption rather than
-  // as three things to press. The border stays whichever way the button
-  // points — it is inside the box, so toggling shifts nothing, and under
-  // the dark fill it simply stops being visible.
-  addButtonColumn: { gap: 4, borderWidth: 1, borderColor: PANEL_BORDER },
+  addButtonColumn: { gap: 4 },
+  // A hairline round the button, for one with nothing else to say where it
+  // ends: the block button alone in a well relies on the well's edge, and
+  // without that a bare word reads as a caption rather than as a thing to
+  // press. The Effects page's three wear it always (no well behind them);
+  // a block button asks for it (`bordered`) when it shares its row with a
+  // setting — the pattern Tile page's Make Colorable, beside the Repeat
+  // switch. The border stays whichever way a toggle points — it is inside
+  // the box, so toggling shifts nothing, and under the dark fill it simply
+  // stops being visible.
+  addButtonBordered: { borderWidth: 1, borderColor: PANEL_BORDER },
   // ON: the fill the bare state deliberately goes without. Dark grey rather
   // than the blue a lit tab wears — these buttons say "this effect is on
   // the object", not "this is the page you're looking at", and in the same

@@ -31,8 +31,8 @@ import {
 import { patternModalTileSize } from '../logic/patternEdit';
 import {
   BAR_CUSHION, CONTENT_PAD, PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_GRID_WIDTH,
-  PATTERN_TILE_GRID_GAP, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, ROW_SWITCH, SECTION_TABS_ROW,
-  SHEET_PAD_HORIZONTAL, submenuHeight,
+  PATTERN_TILE_GRID_GAP, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, ROW_SWITCH,
+  SECTION_TABS_ROW, SHEET_PAD_HORIZONTAL, pageIsWelled, submenuHeight,
 } from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
@@ -56,15 +56,15 @@ describe('the pattern options row', () => {
   it('has no Patchwork page: its one button rides the Tile page instead', () => {
     // A whole tab holding a single button is a place to go for something
     // that could simply be pressed — so the tab came off the row, the key
-    // came off SubmenuKey, and Create patches took the Tile page's spare
-    // width (where Edit used to sit).
+    // came off SubmenuKey, and the button (Make Colorable) took the Tile
+    // page's spare width (where Edit used to sit).
     expect(PATTERN_EDIT_OPTIONS.map((o) => o.action)).not.toContain('patchwork');
     expect(patternActionOfSubmenu('patternPatchwork')).toBeNull();
     const SRC = readFileSync(
       resolve(__dirname, '../components/PatternBars.tsx'), 'utf8',
     );
     expect(SRC).not.toContain('PatternPatchworkBar');
-    expect(SRC).toContain('label="Create patches"');
+    expect(SRC).toContain('label="Make Colorable"');
     const PANEL_SRC = readFileSync(
       resolve(__dirname, '../components/ObjectPropertiesPanel.tsx'), 'utf8',
     );
@@ -681,31 +681,54 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     expect(PANEL).toContain('<PatternTileBar model={model} />');
   });
 
-  it('carries Create patches at the right end of that same line', () => {
-    // The page's one ACT, on the page that is already about this object.
-    // It shares the switch's line rather than taking one of its own: a page
-    // holding a single setting has the width, and a second row for one
-    // button would make the sheet taller for nothing — so the page's
-    // reserved height is still the switch row alone.
+  it('puts Repeat and Make Colorable on one row of the well, half each', () => {
+    // The page's one ACT, on the page that is already about this object,
+    // beside its one setting: the switch on the left half of the row, the
+    // button on the right, both inside the sheet's well, which runs the
+    // full width as it does on every other page.
     const tileBar = BARS.slice(
       BARS.indexOf('export function PatternTileBar'),
       BARS.indexOf('export function PatternToolsBar'),
     );
-    expect(tileBar).toContain('trailing={model.onPatternCreatePatches ? (');
-    expect(tileBar).toContain('label="Create patches"');
-    expect(tileBar).toContain("layout=\"inline\"");
-    expect(tileBar).toContain('onPress={model.onPatternCreatePatches}');
+    expect(tileBar).toContain('<BarBody>');
+    expect(tileBar).toContain('<View style={styles.tileRow}>');
+    expect(tileBar).toContain('<PatternRepeatRow model={model} />');
+    expect(tileBar).toContain('{model.onPatternMakeColorable ? (');
+    expect(tileBar).toContain('label="Make Colorable"');
+    expect(tileBar).toContain('onPress={model.onPatternMakeColorable}');
+    // No glyph: it is the word alone. The Add pages' plus says "this puts
+    // an effect on the object", and this puts nothing on — it ends it.
+    expect(tileBar).toContain('icon={null}');
+    expect(tileBar).not.toContain('layout="inline"');
+    // …and a hairline round it: beside a switch a bare word reads as the
+    // switch's caption — the Effects page's border.
+    expect(tileBar).toContain('bordered\n');
     // Edit is gone from the page — the way INTO the grid is the canvas's
     // floating Edit capsule, and the callback the page pressed went with it.
     expect(tileBar).not.toContain('onPatternEdit');
-    // …and the row hangs it hard right, clear of the ON / OFF word.
+    // Half each: the two are equal shares of the row, on the switch row's
+    // own height, so the page is still one row tall.
+    expect(BARS).toContain("tileRow: { flexDirection: 'row', alignItems: 'center', gap: ROW_GAP },");
+    expect(BARS).toContain("tileHalf: { flex: 1, justifyContent: 'center' },");
+    expect(BARS).not.toContain('CONTENT_WELL_DRESS');
+    // The sheet's own well, at full width — a welled single-row page.
+    expect(pageIsWelled('patternTile')).toBe(true);
+    expect(submenuHeight('patternTile')).toBe(CONTENT_PAD * 2 + ROW_SWITCH + BAR_CUSHION);
+    expect(submenuHeight('patternTile')).toBe(submenuHeight('card'));
+    // The switch row hangs nothing at its end any more: the button is not
+    // on the row, it is beside the row in a half of its own.
     const effects = readFileSync(resolve(__dirname, '..', 'components', 'effectBar.tsx'), 'utf8');
-    expect(effects).toContain('{trailing ? <View style={styles.switchTrailing}>{trailing}</View> : null}');
-    expect(effects).toContain("switchTrailing: { marginLeft: 'auto' }");
-    // It is the Add pages' button (Add Stroke / Add Fill) in its inline
+    const switchRow = effects.slice(
+      effects.indexOf('export function SwitchRow'), effects.indexOf('/** One segmented row:'),
+    );
+    expect(switchRow).not.toContain('trailing');
+    expect(effects).not.toContain('switchTrailing');
+    // It is the Add pages' button (Add Stroke / Add Fill) in its block
     // form — the page's one ACT, which is the same kind of thing those are
-    // — NOT a second button drawn to look like them.
-    expect(effects).toContain('addButtonInline: { flex: 0, height: ROW_SEGMENTED, paddingHorizontal: 12 }');
+    // — NOT a second button drawn to look like them. Its glyph is optional
+    // so it can go without the plus.
+    expect(effects).toContain('icon?: string | null;');
+    expect(effects).toContain('{icon ? (');
     expect(effects).toContain(
       "return layout === 'block' ? <View style={styles.emptyControls}>{button}</View> : button;",
     );
@@ -713,10 +736,12 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
   });
 
   it('takes the act as a host callback, so a host can withhold it', () => {
-    // Unset when there is nothing to cut (no single pattern selected), and
-    // the button goes with it — the Repeat row is then the whole page.
+    // Unset when there is nothing to convert (no pattern selected, or a
+    // locked one), and the button goes with it — the Repeat well is then
+    // the whole page.
     const adapter = readFileSync(resolve(__dirname, '..', 'adapter.ts'), 'utf8');
-    expect(adapter).toContain('onPatternCreatePatches?(): void;');
+    expect(adapter).toContain('onPatternMakeColorable?(): void;');
+    expect(adapter).not.toContain('onPatternCreatePatches');
     expect(adapter).not.toContain('onPatternEdit');
   });
 

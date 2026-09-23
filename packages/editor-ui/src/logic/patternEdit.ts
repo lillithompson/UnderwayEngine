@@ -367,7 +367,7 @@ export interface PatternEditOption {
 }
 
 /** The pattern type options, in display order: the Tile page, which holds
- *  the Repeat toggle and the Create patches button, and the Symmetry page —
+ *  the Repeat toggle and the Make Colorable button, and the Symmetry page —
  *  the panel adds the Stroke and Opacity bars beside them, so a pattern's
  *  page reads Tile · Symmetry · Stroke · Opacity.
  *
@@ -392,9 +392,11 @@ export interface PatternEditOption {
  *  PATCHWORK had a page of its own for a day (2026-09-21) and lost it the
  *  same week: cutting the drawing into one closed shape per region of its
  *  bounding box is a single ACT, and a whole tab that holds one button is a
- *  place to go for something that could simply be pressed. Create patches
+ *  place to go for something that could simply be pressed. The button
  *  moved onto the Tile page's spare width — where Edit used to sit — and
- *  the tab came off the row. */
+ *  the tab came off the row. It is Make Colorable now (2026-09-23): the
+ *  press no longer lays patches BESIDE a pattern that stays a pattern, it
+ *  turns the pattern into a drawing over its patches, grouped. */
 export const PATTERN_EDIT_OPTIONS: readonly PatternEditOption[] = [
   { action: 'tile', label: 'Tile' },
   { action: 'symmetry', label: 'Symmetry' },

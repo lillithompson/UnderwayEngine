@@ -525,15 +525,18 @@ export interface ObjectPropertiesModel {
     id: string,
     transform: import('./logic/patternEdit').PatternTileTransform,
   ): void;
-  /** CREATE PATCHES (the Tile page, at the right of its Repeat row): cut the
-   *  pattern's drawing into one closed shape per region of its own bounding
-   *  box and place them, in one undo step. The pattern itself is not changed
-   *  — this ADDS objects beside it, the only thing on the sheet that does,
-   *  which is why it is a button rather than a setting.
+  /** MAKE COLORABLE (the Tile page, beside its Repeat well): turn the
+   *  pattern into a plain drawing over one blank closed shape per region
+   *  its lines cut its bounding box into, the lot grouped as "Colorable",
+   *  in one undo step. The object is NOT a pattern afterwards — the grid
+   *  and its tools are gone, and what is left is a merged collection of
+   *  lines the shape tools edit — which is why it is a button rather than
+   *  a setting: it is the one press on the sheet that ends the page.
    *
-   *  Unset when there is nothing to cut (no single pattern selected), and
-   *  the button goes with it — the Repeat row is then the whole page. */
-  onPatternCreatePatches?(): void;
+   *  Unset when there is nothing to convert (no pattern selected, or a
+   *  locked one), and the button goes with it — the Repeat well is then
+   *  the whole page. */
+  onPatternMakeColorable?(): void;
   /** Arm the random brush / eraser as the painting sub-tool. */
   onPatternArmTool?(tool: 'random' | 'erase'): void;
   /** Run a grid action (flood replaces the whole grid with the armed tile —
