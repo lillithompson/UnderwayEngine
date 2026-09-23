@@ -547,12 +547,18 @@ export interface ObjectPropertiesModel {
    *  connect), and its toggle (one undo step). */
   patternAllowBorder?: boolean;
   onPatternToggleBorder?(): void;
-  /** The tile-set filter (the Tools bar's Sets page): one chip per sprite
-   *  family. Off sets are hidden from the Tiles menu and excluded from
-   *  Random's picks. App-owned session state, not part of the document. */
+  /** The tile-set filter — the SHAPES page (and the Tools bar's Sets
+   *  takeover, which reads the same rows): one chip per sprite family. Off
+   *  sets are hidden from the Tiles menu and excluded from Random's picks.
+   *
+   *  The selected PATTERN's own property (PatternObject.tileSets), not an
+   *  app setting: two patterns on a page can be made of different shapes.
+   *  Unset when nothing that has a filter is selected, and the page goes
+   *  with it. */
   patternTileSets?: import('./logic/patternEdit').PatternTileSetRow[];
-  /** Toggle one tile set on/off. The host keeps the LAST enabled set on —
-   *  an empty filter would leave Random with nothing to pick. */
+  /** Toggle one tile set on/off (one undo step). The host keeps the LAST
+   *  enabled set on — an empty filter would leave Random with nothing to
+   *  pick — so a press that would empty it simply does nothing. */
   onPatternToggleTileSet?(family: string): void;
   /** Selection is a POSEABLE RIG (a Figgie mannequin). Its type options are
    *  the parts a slider can shape — Rig · Hands · Feet · Spine · Head, plus
@@ -792,6 +798,13 @@ export interface ObjectPropertiesModel {
    *  under the new rule (the cells already down were laid under the old
    *  one), as one undo step. */
   onSvgPatternSymmetry?(key: string): void;
+  /** What the shape's tile is MADE OF — the Pattern page's Shapes section,
+   *  the same chips a pattern object's own Shapes page shows, reading the
+   *  same field (ShapePatternFill.tileSets). */
+  svgPatternTileSets?: import('./logic/patternEdit').PatternTileSetRow[];
+  /** Toggle one of those sets (one undo step). As on a pattern object, a
+   *  press that would turn the LAST set off does nothing. */
+  onSvgPatternToggleTileSet?(family: string): void;
   /** The line the TILES are drawn in — the Pattern page's Stroke section,
    *  which is the pattern's own line and not the outline the shape wears
    *  (that is the Stroke TAB, a row up). Width and dash come off the

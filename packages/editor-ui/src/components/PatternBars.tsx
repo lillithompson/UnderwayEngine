@@ -13,11 +13,15 @@ import {
   PATTERN_SYMMETRY_OFF_ICON,
   PATTERN_TILE_TRANSFORM_IDENTITY,
   isPatternTileDoubleTap,
+  patternTileSetLines,
   patternTileThumbTransforms,
   rotatePatternTileTransform,
 } from '../logic/patternEdit';
+import type { PatternTileSetRow } from '../logic/patternEdit';
 import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
-import { ActionRow, BarBody, EffectButton, SegmentedRow, SwitchRow } from './effectBar';
+import {
+  ActionRow, BarBody, EffectButton, MultiToggleRow, SegmentedRow, SwitchRow,
+} from './effectBar';
 import { PatternSetsModal } from './PatternSetsModal';
 import { PatternTileModal } from './PatternTileModal';
 import { PatternTileTransformModal } from './PatternTileTransformModal';
@@ -35,6 +39,11 @@ import { PatternTileTransformModal } from './PatternTileTransformModal';
 //                the grid edge, and the tile-set filter.
 //   • Symmetry — the painting-mirror grid (the old symmetry modal's modes),
 //                exclusive, with Off closing the set.
+//   • Shapes   — WHAT THE PATTERN IS MADE OF: one chip per sprite family,
+//                lit while that family's tiles are in the Tiles menu and
+//                in Random's pool. Not exclusive — a pattern is made of
+//                however many families are lit, and the page refuses the
+//                press that would put the last one out.
 
 export function PatternTilesBar({ model }: {
   model: ObjectPropertiesModel;
@@ -231,6 +240,58 @@ export function PatternTileBar({ model }: { model: ObjectPropertiesModel }) {
           </View>
         ) : null}
       </View>
+    </BarBody>
+  );
+}
+
+/**
+ * The tile-set filter as ROWS OF CHIPS: one per sprite family, lit while
+ * the pattern is made of it, three across
+ * (patternEdit's PATTERN_TILE_SET_COLUMNS) so a handful of families is a
+ * line or two rather than a column of full-width cells.
+ *
+ * Shared by the two places a pattern's families are set — a pattern
+ * OBJECT's Shapes page and the Shapes section of a shape's Pattern page —
+ * because the two ask exactly the same question of exactly the same
+ * field, and a second copy of this could drift in how it wraps (which is
+ * the arithmetic submenuHeight predicts the sheet's height from).
+ *
+ * The chips are a MultiToggleRow, not a segmented control: these are not
+ * exclusive choices but a set of switches, and the row already draws a lit
+ * one that way. Nothing here refuses a press — the HOST decides whether a
+ * toggle is legal, and simply does nothing when it is not
+ * (togglePatternTileSet returns null for the last set on).
+ */
+export function PatternTileSetLines({ sets, onToggle }: {
+  sets: readonly PatternTileSetRow[];
+  onToggle?: (family: string) => void;
+}) {
+  return (
+    <>
+      {patternTileSetLines(sets).map((line, i) => (
+        <MultiToggleRow
+          key={line.map((s) => s.family).join(',') || `empty-${i}`}
+          options={line.map((s) => ({
+            value: s.family, label: s.label, active: s.enabled,
+          }))}
+          onToggle={(family) => onToggle?.(family)}
+        />
+      ))}
+    </>
+  );
+}
+
+/**
+ * The pattern object's SHAPES page: the chips, and nothing else. What a
+ * pattern is made of is one question, and the page is the answer to it.
+ */
+export function PatternShapesBar({ model }: { model: ObjectPropertiesModel }) {
+  return (
+    <BarBody>
+      <PatternTileSetLines
+        sets={model.patternTileSets ?? []}
+        onToggle={(family) => model.onPatternToggleTileSet?.(family)}
+      />
     </BarBody>
   );
 }

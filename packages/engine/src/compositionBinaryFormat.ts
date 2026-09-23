@@ -590,7 +590,23 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //
 //      Both bits were always written 0 before, so every v67 file reads back
 //      byte for byte.
-const FORMAT_VERSION = 68;
+// v69: A PATTERN OWNS ITS TILE SETS. `PatternObject.tileSets` /
+//      `ShapePatternFill.tileSets` — the sprite FAMILIES a grid draws
+//      from, which used to be one switch for the whole install (Settings
+//      → Tile Sets) and is now the pattern's own Shapes page. A u8 count
+//      followed by that many string-table indices, so a family name is
+//      stored once however many patterns name it.
+//
+//      On a pattern OBJECT it rides flags3's last free bit (0x80) and sits
+//      LAST in the record, after the fade. On a shape's pattern FILL it
+//      rides that block's own flags bit 0x08 and sits after the cells, the
+//      same "append at the end" rule, written and read by the one pair of
+//      helpers both records share.
+//
+//      Both bits were always written 0 before, so every v68 file reads
+//      back byte for byte — and an absent list means the editor's default
+//      families, which is exactly what those files were drawn with.
+const FORMAT_VERSION = 69;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 const HEADER_SIZE = 8;
@@ -879,6 +895,8 @@ function buildStringTable(
       for (const cell of s.patternFill?.cells ?? []) {
         if (cell?.type === 'sprite') add(cell.spriteId);
       }
+      // …and v69 its tile-set families, on the same table.
+      for (const family of s.patternFill?.tileSets ?? []) add(family);
     }
   }
 
@@ -928,6 +946,9 @@ function buildStringTable(
       for (const cell of p.cells) {
         if (cell?.type === 'sprite') add(cell.spriteId);
       }
+      // v69: the pattern's own tile-set families ride the table too, so a
+      // family named by every pattern on a page is stored once.
+      for (const family of p.tileSets ?? []) add(family);
     }
   }
 
@@ -1447,6 +1468,9 @@ const PATTERN_FLAGS3_HAS_SHEAR = 0x20;
 /** v65+: the Fade row on a pattern — the same four bytes every other kind
  *  spells it in, LAST in the record, after the shear. */
 const PATTERN_FLAGS3_HAS_FADE = 0x40;
+/** v69+: the pattern's own tile-set filter — the last free bit of flags3,
+ *  LAST in the record, after the fade. */
+const PATTERN_FLAGS3_HAS_TILE_SETS = 0x80;
 /** v52 paint `flags2`. 0x01 and 0x08 are the retired local-bbox and edge-
  *  soften blocks an older file may still carry, and 0x30 is the rotation
  *  pair, so the first genuinely free bit is 0x40. */
@@ -3848,6 +3872,7 @@ function serializeCompositionAt(
     if (hasSVGStroke(p.stroke)) flags3 |= 0x10;
     if (hasShear(p)) flags3 |= PATTERN_FLAGS3_HAS_SHEAR;
     if (hasFade(p)) flags3 |= PATTERN_FLAGS3_HAS_FADE;
+    if (hasPatternTileSets(p.tileSets)) flags3 |= PATTERN_FLAGS3_HAS_TILE_SETS;
     out[pos++] = flags3;
     if (p.name != null) { view.setUint16(pos, indexOf.get(p.name) ?? 0, true); pos += 2; }
     if (p.groupId != null) { view.setUint16(pos, indexOf.get(p.groupId) ?? 0, true); pos += 2; }
@@ -3881,6 +3906,10 @@ function serializeCompositionAt(
     pos = writeShear(view, pos, p);
     // …and v65+ the fade after it.
     pos = writeFade(out, pos, p);
+    // …and v69+ the tile-set filter, last of all.
+    if (hasPatternTileSets(p.tileSets)) {
+      pos = writePatternTileSets(view, out, pos, p.tileSets!, indexOf);
+    }
   }
 
   return out;
@@ -3976,6 +4005,49 @@ function readPatternCells(
   return { cells, pos };
 }
 
+// ── The tile-set filter (v69) ───────────────────────────────────────
+// A grid's sprite FAMILIES: a u8 count then that many string-table
+// indices. One codec, two records — a pattern object's and a shape's
+// pattern fill's — for the same reason the cells have one
+// (writePatternCells): the two grids are the same grid, and two copies of
+// this could disagree about a family name.
+//
+// Absent (the flag clear) means the editor's default families, which is
+// what every grid written before v69 was drawn with. An EMPTY list is
+// never written: a pattern with no families has nothing to paint with, so
+// the Shapes page refuses the last toggle and the writer treats an empty
+// array as absent.
+
+function hasPatternTileSets(sets: string[] | undefined): boolean {
+  return !!sets && sets.length > 0;
+}
+
+function patternTileSetsBinarySize(sets: string[]): number {
+  return 1 + sets.length * 2;
+}
+
+function writePatternTileSets(
+  view: DataView, out: Uint8Array, pos: number,
+  sets: string[], indexOf: Map<string, number>,
+): number {
+  out[pos++] = Math.min(255, sets.length);
+  for (const family of sets.slice(0, 255)) {
+    view.setUint16(pos, indexOf.get(family) ?? 0, true); pos += 2;
+  }
+  return pos;
+}
+
+function readPatternTileSets(
+  view: DataView, data: Uint8Array, pos: number, strings: string[],
+): { tileSets: string[]; pos: number } {
+  const count = data[pos++];
+  const tileSets: string[] = [];
+  for (let i = 0; i < count; i++) {
+    tileSets.push(strings[view.getUint16(pos, true)]); pos += 2;
+  }
+  return { tileSets, pos };
+}
+
 // ── The pattern FILL block (v67) ────────────────────────────────────
 // A closed shape's pattern fill, LAST in the svg record: size u8 + flags
 // u8 + tileL0 f32, then the optional symmetry (u16) and stroke, then the
@@ -3985,6 +4057,8 @@ function readPatternCells(
 const FILL_HAS_SYMMETRY = 0x01;
 const FILL_NO_BORDER_CONNECTIONS = 0x02;
 const FILL_HAS_STROKE = 0x04;
+/** v69+: the fill's own tile-set filter, after the cells. */
+const FILL_HAS_TILE_SETS = 0x08;
 
 function writeShapePatternFill(
   view: DataView, out: Uint8Array, pos: number,
@@ -3995,19 +4069,26 @@ function writeShapePatternFill(
   if (fill.symmetry != null) flags |= FILL_HAS_SYMMETRY;
   if (fill.allowBorderConnections === false) flags |= FILL_NO_BORDER_CONNECTIONS;
   if (hasSVGStroke(fill.stroke)) flags |= FILL_HAS_STROKE;
+  if (hasPatternTileSets(fill.tileSets)) flags |= FILL_HAS_TILE_SETS;
   out[pos++] = flags;
   view.setFloat32(pos, fill.tileL0, true); pos += 4;
   if (fill.symmetry != null) {
     view.setUint16(pos, packPatternSymmetry(fill.symmetry), true); pos += 2;
   }
   if (hasSVGStroke(fill.stroke)) pos = writeSVGStroke(view, out, pos, fill.stroke!);
-  return writePatternCells(view, out, pos, fill.cells, indexOf);
+  pos = writePatternCells(view, out, pos, fill.cells, indexOf);
+  // v69+ the tile-set filter, last in the block, after the cells.
+  if (hasPatternTileSets(fill.tileSets)) {
+    pos = writePatternTileSets(view, out, pos, fill.tileSets!, indexOf);
+  }
+  return pos;
 }
 
 function shapePatternFillBinarySize(fill: ShapePatternFill): number {
   let size = 2 + 4; // size + flags + tileL0
   if (fill.symmetry != null) size += 2;
   if (hasSVGStroke(fill.stroke)) size += strokeBinarySize(fill.stroke!);
+  if (hasPatternTileSets(fill.tileSets)) size += patternTileSetsBinarySize(fill.tileSets!);
   return size + patternCellsBinarySize(fill.cells);
 }
 
@@ -4029,7 +4110,15 @@ function readShapePatternFill(
   }
   const read = readPatternCells(view, data, pos, tileCells * tileCells, strings);
   fill.cells = read.cells;
-  return { fill, pos: read.pos };
+  pos = read.pos;
+  // v69+ the tile-set filter. The bit was always written 0 before, so an
+  // older fill simply doesn't take this branch.
+  if (flags & FILL_HAS_TILE_SETS) {
+    const sets = readPatternTileSets(view, data, pos, strings);
+    fill.tileSets = sets.tileSets;
+    pos = sets.pos;
+  }
+  return { fill, pos };
 }
 
 
@@ -4079,6 +4168,7 @@ function patternObjectBinarySize(p: PatternObject): number {
   if (hasShear(p)) size += SHEAR_BYTES; // v63+
   if (hasFade(p)) size += FADE_BYTES; // v65+
   if (p.symmetry != null) size += 2;
+  if (hasPatternTileSets(p.tileSets)) size += patternTileSetsBinarySize(p.tileSets!); // v69+
   return size + patternCellsBinarySize(p.cells);
 }
 
@@ -4681,6 +4771,13 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       // before v65.
       if (version >= 65 && (flags3 & PATTERN_FLAGS3_HAS_FADE)) {
         pos = readFade(data, pos, p);
+      }
+      // v69+ the tile-set filter, after the fade. Bit 0x80 was always
+      // written 0 before v69, so an older record never takes this branch.
+      if (version >= 69 && (flags3 & PATTERN_FLAGS3_HAS_TILE_SETS)) {
+        const sets = readPatternTileSets(view, data, pos, strings);
+        p.tileSets = sets.tileSets;
+        pos = sets.pos;
       }
       patternObjects.push(p);
     }

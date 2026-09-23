@@ -480,6 +480,26 @@ describe('the ops', () => {
     expect(revertCompOps(set, ops).svgObjects[0].patternFill!.symmetry).toBeUndefined();
   });
 
+  it('setPatternSettings writes a fill s TILE SETS, and undo takes them back', () => {
+    // A fill's Shapes section (v69) reaches its grid through the very op a
+    // pattern object's page uses — one grid, one op — so the field must
+    // survive the trip out through shapePatternGrid and back through
+    // shapePatternFillOf.
+    const state = makeState([{ ...rect('svg_1', 0, 0, 4, 4), patternFill: filledFill() }]);
+    const ops: CompUndoOp[] = [{
+      op: 'setPatternSettings', patternId: 'svg_1',
+      oldSymmetry: undefined, newSymmetry: undefined,
+      oldAllowBorderConnections: undefined, newAllowBorderConnections: undefined,
+      oldTileSets: undefined, newTileSets: ['angular', 'craftsman'],
+    }];
+    const set = applyCompOps(state, ops);
+    expect(set.svgObjects[0].patternFill!.tileSets).toEqual(['angular', 'craftsman']);
+    // …and the cells the fill already had are untouched: turning a family
+    // off is a setting, not an erase.
+    expect(set.svgObjects[0].patternFill!.cells).toEqual(state.svgObjects[0].patternFill!.cells);
+    expect(revertCompOps(set, ops).svgObjects[0].patternFill!.tileSets).toBeUndefined();
+  });
+
   it('leaves the cells alone when the id names nothing patterned', () => {
     const state = makeState([rect('svg_1', 0, 0, 4, 4)]);
     expect(applyCompOps(state, [{

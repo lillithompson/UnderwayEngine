@@ -301,6 +301,7 @@ export function shapePatternGrid(
     tileOffsetYL0: (svg.cellHeight - tileHeightL0) / 2,
     ...(fill.symmetry ? { symmetry: fill.symmetry } : null),
     ...(fill.allowBorderConnections === false ? { allowBorderConnections: false } : null),
+    ...(fill.tileSets && fill.tileSets.length > 0 ? { tileSets: fill.tileSets } : null),
     // The fill's own block carries the dash and the rest; the WIDTH is
     // resolved — the fill's where its Stroke page set one, half the
     // shape's where it did not (shapePatternStrokeWidthCells).
@@ -331,6 +332,8 @@ export function shapePatternFillOf(
   if (grid.symmetry) next.symmetry = grid.symmetry; else delete next.symmetry;
   if (grid.allowBorderConnections === false) next.allowBorderConnections = false;
   else delete next.allowBorderConnections;
+  if (grid.tileSets && grid.tileSets.length > 0) next.tileSets = grid.tileSets;
+  else delete next.tileSets;
   const stroke = grid.stroke
     ? { ...grid.stroke, ...(fill.stroke?.width != null ? { width: fill.stroke.width } : null) }
     : undefined;

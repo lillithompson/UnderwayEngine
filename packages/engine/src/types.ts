@@ -1211,6 +1211,20 @@ export interface PatternObject {
   /** Border-connection rule for connectivity (the Tools bar switch).
    *  Undefined = true (borders may connect), matching the old editor. */
   allowBorderConnections?: boolean;
+  /** The sprite FAMILIES this pattern draws from — the Shapes page's
+   *  toggles. Every tile the Tiles menu offers for this pattern, and every
+   *  tile Random may pick for it, comes from one of these sets; a family
+   *  left out is invisible to this pattern (engine-side it becomes an
+   *  `excludedFamilies` set for connectivity).
+   *
+   *  A PROPERTY OF THE PATTERN, not of the app (v69). It used to be one
+   *  switch for the whole install — Settings → Tile Sets — so two patterns
+   *  on one page could not be made of different things. Undefined = the
+   *  editor's default set (editor-ui's PATTERN_DEFAULT_TILE_SETS), which
+   *  is what every pattern written before v69 reads as. Never empty: the
+   *  Shapes page refuses to turn the last set off, because a pattern with
+   *  no families has nothing to paint with. */
+  tileSets?: string[];
   /** When 'repeat', the cols×rows tile block repeats within the bbox
    *  region. Same fields + semantics as SVGObject's tile mode so toggle /
    *  resize / render logic is shared. */
@@ -1321,6 +1335,10 @@ export interface ShapePatternFill {
   symmetry?: PatternSymmetry;
   /** Border-connection rule for connectivity. Undefined = true. */
   allowBorderConnections?: boolean;
+  /** The sprite families this fill draws from — the Pattern page's Shapes
+   *  section. Same field, same meaning and same default as
+   *  {@link PatternObject.tileSets}; v69. */
+  tileSets?: string[];
   /** The tiles' own stroke block — the Pattern page's Stroke tab: its
    *  colour, its dash, and its WIDTH.
    *
@@ -2022,7 +2040,10 @@ export type CompUndoOp =
    *  allowBorderConnections = true. */
   | { op: 'setPatternSettings'; patternId: string;
       oldSymmetry: PatternSymmetry | undefined; newSymmetry: PatternSymmetry | undefined;
-      oldAllowBorderConnections: boolean | undefined; newAllowBorderConnections: boolean | undefined }
+      oldAllowBorderConnections: boolean | undefined; newAllowBorderConnections: boolean | undefined;
+      /** The tile-set filter, same before/after shape as the two above;
+       *  `undefined` = the editor's default families. */
+      oldTileSets?: string[] | undefined; newTileSets?: string[] | undefined }
   | { op: 'editSVGSegments'; svgId: string;
       oldSegments: PathSegment[]; newSegments: PathSegment[];
       /** null = clear localSegments; undefined = don't touch; array = set */

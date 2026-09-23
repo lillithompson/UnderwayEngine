@@ -541,7 +541,7 @@ describe('composition ops for patterns', () => {
     expect(state.patternObjects![0].cells[3]).toBeNull();
   });
 
-  test('setPatternSettings applies and reverts both fields', () => {
+  test('setPatternSettings applies and reverts all three fields', () => {
     const p = makePattern(2, 2);
     let state = makeCompState([p]);
     const sym = { ...PATTERN_SYMMETRY_OFF, mirrorV: true };
@@ -550,13 +550,20 @@ describe('composition ops for patterns', () => {
       patternId: p.id,
       oldSymmetry: undefined, newSymmetry: sym,
       oldAllowBorderConnections: undefined, newAllowBorderConnections: false,
+      // …and what the pattern is MADE of (v69, the Shapes page), which
+      // rides the same op for the same reason the mirror does: both are
+      // settings of the grid, snapshotted before and after so one undo
+      // step puts every one of them back.
+      oldTileSets: undefined, newTileSets: ['angular', 'petal'],
     }];
     state = applyCompOps(state, entry);
     expect(state.patternObjects![0].symmetry).toEqual(sym);
     expect(state.patternObjects![0].allowBorderConnections).toBe(false);
+    expect(state.patternObjects![0].tileSets).toEqual(['angular', 'petal']);
     state = revertCompOps(state, entry);
     expect(state.patternObjects![0].symmetry).toBeUndefined();
     expect(state.patternObjects![0].allowBorderConnections).toBeUndefined();
+    expect(state.patternObjects![0].tileSets).toBeUndefined();
   });
 
   test('toggleRepeat reaches pattern objects', () => {

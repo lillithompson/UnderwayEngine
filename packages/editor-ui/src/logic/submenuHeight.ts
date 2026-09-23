@@ -1,4 +1,5 @@
 import type { ImageFramingMode, TintType } from '../adapter';
+import { patternTileSetLineCount } from './patternEdit';
 
 // How tall each property page's CONTENT AREA is, and therefore how tall the
 // Edit sheet stands while that page is showing.
@@ -203,7 +204,10 @@ export type SubmenuKey =
   // A pattern object's pages: the Tile page (its Repeat toggle and the
   // Make Colorable button beside it), the tile menu, the grid tools, and
   // the painting-symmetry grid.
-  | 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry';
+  | 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry'
+  // …and the Shapes page: which sprite families the pattern is made of,
+  // as rows of chips (see patternEdit's PATTERN_TILE_SET_COLUMNS).
+  | 'patternShapes';
 
 /** The current state of everything that changes a page's row count. Values are
  *  optional so a caller can describe only the pages its selection can open; a
@@ -225,7 +229,7 @@ export interface SubmenuHeightContext {
    *  stands two rows of square buttons tall where the Tile section is a
    *  slider and a button, so the page is measured by the section the way
    *  the Crop page is measured by its mode. */
-  svgPatternSection?: 'tile' | 'symmetry' | 'stroke';
+  svgPatternSection?: 'tile' | 'symmetry' | 'stroke' | 'shapes';
   /** An effect's controls page: whether it shows the hue row under the
    *  block, on the same rule. */
   effectColor?: boolean;
@@ -243,8 +247,9 @@ export interface SubmenuHeightContext {
   /** FIGURE page: whether the host wired up Reset, which is the whole of
    *  that page. A locked rig offers none, and the page stands empty. */
   rigCanReset?: boolean;
-  /** Pattern Tools page: how many tile sets the filter offers. Nonzero adds
-   *  the Sets row. */
+  /** How many tile sets the host offers. On the Tools page a nonzero count
+   *  adds the Sets row; on the SHAPES page it is what the page is, chunked
+   *  into lines of PATTERN_TILE_SET_COLUMNS. */
   patternTileSetCount?: number;
   /** Pattern Tools page: whether the host wired up the Repeat toggle, which
    *  adds its row. A grouped pattern can't repeat, so it doesn't. */
@@ -382,6 +387,13 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       if (ctx.svgPatternSection === 'stroke') {
         return contentArea([SECTION_TABS_ROW, ...borderRows({ position: false, color: true })]);
       }
+      // SHAPES is the tile-set filter, the same chips the pattern object's
+      // own Shapes page lays out, so it is counted by the same arithmetic.
+      if (ctx.svgPatternSection === 'shapes') {
+        return contentArea([SECTION_TABS_ROW, ...new Array(
+          patternTileSetLineCount(ctx.patternTileSetCount ?? 0),
+        ).fill(ROW_SEGMENTED)]);
+      }
       return contentArea([SECTION_TABS_ROW, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
     case 'crop':
       return contentArea(cropRows(ctx.cropMode));
@@ -469,6 +481,14 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       const mainRows = 2 + (ctx.patternCanRepeat ? 1 : 0) + (setCount > 0 ? 1 : 0);
       return contentArea(new Array(mainRows).fill(ROW_SEGMENTED));
     }
+    case 'patternShapes':
+      // The tile-set filter: one chip per sprite family, three across
+      // (PATTERN_TILE_SET_COLUMNS), so five families is two lines. The
+      // page reserves a line even with nothing to show, which is what an
+      // unopened page of this kind renders.
+      return contentArea(new Array(
+        patternTileSetLineCount(ctx.patternTileSetCount ?? 0),
+      ).fill(ROW_SEGMENTED));
     case 'patternSymmetry':
       // The mode grid: twelve SQUARE buttons (the eleven modes and Off),
       // six across, two rows — at every sheet width, because the grid is

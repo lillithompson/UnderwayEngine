@@ -292,8 +292,10 @@ const IDENTITY: CellTransform = DEFAULT_TRANSFORM;
  * caller applies each batch to a working copy and hands the updated
  * object to the next call, so later picks see earlier stamps.
  *
- * `excludedFamilies` narrows what the random brush may pick (the app's
- * tile-set filter); stamping a specific tile ignores it.
+ * `excludedFamilies` narrows what the random brush may pick — the
+ * complement of the PATTERN's own tile-set list ({@link
+ * PatternObject.tileSets}, its Shapes page); stamping a specific tile
+ * ignores it.
  *
  * `tint` is the ink the laid tile draws in — the editor's active colour,
  * so a tile arrives in the colour the user is working in rather than

@@ -37,7 +37,8 @@ import { TransformBar, type CopiesSection } from './TransformBar';
 import { rememberedCopies, type StickyCopies } from '../logic/transform';
 import { LayoutBar } from './LayoutBar';
 import {
-  PatternSymmetryBar, PatternSymmetryGrid, PatternTileBar, PatternTilesBar, PatternToolsBar,
+  PatternShapesBar, PatternSymmetryBar, PatternSymmetryGrid, PatternTileBar,
+  PatternTileSetLines, PatternTilesBar, PatternToolsBar,
 } from './PatternBars';
 import {
   BarBody,
@@ -186,6 +187,7 @@ const spanText = (span: number): string => String(Number(span.toFixed(2)));
 const SVG_PATTERN_SECTIONS = [
   { value: 'tile' as const, label: 'Tile' },
   { value: 'symmetry' as const, label: 'Symmetry' },
+  { value: 'shapes' as const, label: 'Shapes' },
   { value: 'stroke' as const, label: 'Stroke' },
 ];
 
@@ -470,7 +472,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // own the same way). It outlives a selection, like that one: a section
   // is where you were working, not a property of the shape.
   const [svgPatternSection, setSvgPatternSection] =
-    useState<'tile' | 'symmetry' | 'stroke'>('tile');
+    useState<'tile' | 'symmetry' | 'shapes' | 'stroke'>('tile');
   const [svgPatternStrokeDraft, setSvgPatternStrokeDraft] = useState<BorderModel | null>(null);
   const prevSvgFillOpen = useRef(false);
   // The Text pages own their tracked params too (color still comes from the
@@ -1339,6 +1341,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
             value={model.svgPatternSymmetry ?? 'off'}
             onPick={(key) => model.onSvgPatternSymmetry?.(key)}
           />
+        ) : svgPatternSection === 'shapes' ? (
+          // What the FILL is made of — the same chips, reading the same
+          // field, as a pattern object's own Shapes page.
+          <PatternTileSetLines
+            sets={model.svgPatternTileSets ?? []}
+            onToggle={(family) => model.onSvgPatternToggleTileSet?.(family)}
+          />
         ) : svgPatternSection === 'stroke' ? (
           // The tiles' OWN line: Width, Dash, and the ink they are drawn
           // in — the shape's Stroke page pointed inward. The same
@@ -1666,6 +1675,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     activeBarEl = <PatternTileBar model={model} />;
   } else if (displaySub === 'patternTiles') {
     activeBarEl = <PatternTilesBar model={model} />;
+  } else if (displaySub === 'patternShapes') {
+    activeBarEl = <PatternShapesBar model={model} />;
   } else if (displaySub === 'patternTools') {
     activeBarEl = <PatternToolsBar model={model} />;
   } else if (displaySub === 'patternSymmetry') {
@@ -1721,7 +1732,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     rigCanReset: !!model.onResetRig,
     // The pattern Tools page grows its Sets row when the host offers a
     // tile-set filter, and its Repeat row on the same rule.
-    patternTileSetCount: model.patternTileSets?.length ?? 0,
+    // …and the SHAPES page is those sets, wherever they are being set —
+    // a pattern object's own page, or the Shapes section of a shape's
+    // Pattern page.
+    patternTileSetCount: model.patternTileSets?.length
+      ?? model.svgPatternTileSets?.length ?? 0,
     patternCanRepeat: !!model.onToggleRepeat,
   });
   const sheetHeight = editSheetHeight(contentHeight, { removable: !!removeAction, safeBottom });

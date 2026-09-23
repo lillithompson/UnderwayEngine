@@ -270,18 +270,102 @@ export function patternTileThumbTransforms(
 
 // ── Tile sets (the family filter) ───────────────────────────────────
 
-/** One toggleable tile set of the Tools bar's Sets page: a sprite family,
- *  the capitalized word the chip shows, and whether it is currently on.
- *  Off sets vanish from the Tiles menu and from what Random may pick. */
+/** One toggleable tile set of the Shapes page: a sprite family, the
+ *  capitalized word the chip shows, and whether it is currently on. Off
+ *  sets vanish from the Tiles menu and from what Random may pick.
+ *
+ *  The filter is the PATTERN's (PatternObject.tileSets), not the app's: two
+ *  patterns on one page can be made of different shapes, and the page says
+ *  so per pattern rather than per install. */
 export interface PatternTileSetRow {
   family: string;
   label: string;
   enabled: boolean;
 }
 
-/** The sets a fresh editor starts with — Angular and Curved on, every
- *  other family off. */
+/** The sets a pattern that has never said otherwise is made of — Angular
+ *  and Curved on, every other family off. What `tileSets: undefined`
+ *  means, on a fresh pattern and on every one drawn before the filter
+ *  became the pattern's own. */
 export const PATTERN_DEFAULT_TILE_SETS: readonly string[] = ['angular', 'curved'];
+
+/** How many set chips sit across one row of the Shapes page. Three, so
+ *  the longest family word there is ("Craftsman") still reads on an
+ *  SE-width sheet, and so a handful of families is one or two rows rather
+ *  than a column of full-width cells. */
+export const PATTERN_TILE_SET_COLUMNS = 3;
+
+/** The Shapes page's rows, chunked into lines of at most
+ *  {@link PATTERN_TILE_SET_COLUMNS}. The page and {@link submenuHeight}
+ *  both count lines through this, so the height reserved and the height
+ *  laid out cannot drift. */
+export function patternTileSetLines<T>(
+  rows: readonly T[],
+  columns: number = PATTERN_TILE_SET_COLUMNS,
+): T[][] {
+  const lines: T[][] = [];
+  for (let i = 0; i < rows.length; i += columns) lines.push(rows.slice(i, i + columns));
+  return lines;
+}
+
+/** How many lines {@link patternTileSetLines} would make of `count` sets —
+ *  the page reserves at least one, so an empty filter still has a row to
+ *  say so in. */
+export function patternTileSetLineCount(
+  count: number,
+  columns: number = PATTERN_TILE_SET_COLUMNS,
+): number {
+  return Math.max(1, Math.ceil(count / columns));
+}
+
+/** The families a pattern is actually made of: its own list where it has
+ *  one, the default set where it does not. Never empty. */
+export function patternEnabledTileSets(
+  tileSets: readonly string[] | undefined,
+): ReadonlySet<string> {
+  return new Set(tileSets && tileSets.length > 0 ? tileSets : PATTERN_DEFAULT_TILE_SETS);
+}
+
+/** The families a pattern is NOT made of, in the engine's terms —
+ *  connectivity filters by EXCLUSION, so this is the complement of
+ *  {@link patternEnabledTileSets} over every family the host offers.
+ *  Undefined when nothing is excluded, which is what the engine reads as
+ *  "no filter at all". */
+export function patternExcludedTileFamilies(
+  families: Iterable<string>,
+  tileSets: readonly string[] | undefined,
+): Set<string> | undefined {
+  const on = patternEnabledTileSets(tileSets);
+  const off = new Set<string>();
+  for (const family of families) if (!on.has(family)) off.add(family);
+  return off.size > 0 ? off : undefined;
+}
+
+/** One Shapes toggle pressed: the pattern's new family list, in the host's
+ *  own family order so the field is stable however the chips were
+ *  pressed.
+ *
+ *  Returns null when the press must be refused — turning the LAST set off
+ *  would leave the pattern with nothing to paint with, and the page would
+ *  rather do nothing than silently fall back to a set the user cannot
+ *  see. The result is always explicit, never `undefined`: once someone has
+ *  said what a pattern is made of, the pattern says it too, even when what
+ *  they said happens to match the default. */
+export function togglePatternTileSet(
+  families: readonly string[],
+  tileSets: readonly string[] | undefined,
+  family: string,
+): string[] | null {
+  const on = new Set(patternEnabledTileSets(tileSets));
+  if (on.has(family)) {
+    if (on.size <= 1) return null;
+    on.delete(family);
+  } else {
+    on.add(family);
+  }
+  const next = families.filter((f) => on.has(f));
+  return next.length > 0 ? next : null;
+}
 
 /** The chip word for a family: its name, capitalized. */
 export function patternTileSetLabel(family: string): string {
@@ -359,7 +443,7 @@ export function patternGridActionsFor(
 
 // ── The options row ─────────────────────────────────────────────────
 
-export type PatternEditAction = 'tile' | 'symmetry' | 'tiles' | 'tools';
+export type PatternEditAction = 'tile' | 'symmetry' | 'shapes' | 'tiles' | 'tools';
 
 export interface PatternEditOption {
   action: PatternEditAction;
@@ -367,9 +451,16 @@ export interface PatternEditOption {
 }
 
 /** The pattern type options, in display order: the Tile page, which holds
- *  the Repeat toggle and the Make Colorable button, and the Symmetry page —
- *  the panel adds the Stroke and Opacity bars beside them, so a pattern's
- *  page reads Tile · Symmetry · Stroke · Opacity.
+ *  the Repeat toggle and the Make Colorable button, the Symmetry page, and
+ *  the Shapes page — the panel adds the Stroke and Opacity bars beside
+ *  them, so a pattern's page reads Tile · Symmetry · Shapes · Stroke ·
+ *  Opacity.
+ *
+ *  SHAPES (2026-09-23) is the tile-set filter: which sprite families this
+ *  pattern is made of. It was an app-wide switch in Settings until then —
+ *  one answer for every pattern in every file — and it is a page here for
+ *  the same reason Symmetry is: what a pattern is made of is the
+ *  pattern's own property, so it is set where the rest of them are.
  *
  *  The row emptied out first: Tiles and Symmetry came off (2026-09-10 —
  *  the canvas paints from the Tile tool's own choice and mirrors by the
@@ -400,16 +491,18 @@ export interface PatternEditOption {
 export const PATTERN_EDIT_OPTIONS: readonly PatternEditOption[] = [
   { action: 'tile', label: 'Tile' },
   { action: 'symmetry', label: 'Symmetry' },
+  { action: 'shapes', label: 'Shapes' },
 ];
 
 /** The submenu key an action's bar rides under (see submenuHeight's
  *  SubmenuKey), and its inverse — the same pairing rigEdit keeps. */
 export function patternActionSubmenu(
   action: PatternEditAction,
-): 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry' {
+): 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry' | 'patternShapes' {
   return action === 'tile' ? 'patternTile'
     : action === 'tiles' ? 'patternTiles'
     : action === 'tools' ? 'patternTools'
+    : action === 'shapes' ? 'patternShapes'
     : 'patternSymmetry';
 }
 
@@ -417,6 +510,7 @@ export function patternActionOfSubmenu(key: string): PatternEditAction | null {
   return key === 'patternTile' ? 'tile'
     : key === 'patternTiles' ? 'tiles'
     : key === 'patternTools' ? 'tools'
+    : key === 'patternShapes' ? 'shapes'
     : key === 'patternSymmetry' ? 'symmetry'
     : null;
 }

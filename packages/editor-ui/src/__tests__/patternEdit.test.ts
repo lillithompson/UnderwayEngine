@@ -25,8 +25,14 @@ import {
   patternActionSubmenu,
   patternSymmetryForKey,
   patternSymmetryKey,
+  patternEnabledTileSets,
+  patternExcludedTileFamilies,
   patternTileSetLabel,
+  patternTileSetLineCount,
+  patternTileSetLines,
   patternTileSetRows,
+  togglePatternTileSet,
+  PATTERN_TILE_SET_COLUMNS,
 } from '../logic/patternEdit';
 import { patternModalTileSize } from '../logic/patternEdit';
 import {
@@ -36,17 +42,19 @@ import {
 } from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
-  it('offers Tile and Symmetry — the panel adds Stroke and Opacity beside them', () => {
+  it('offers Tile, Symmetry and Shapes — the panel adds Stroke and Opacity beside them', () => {
     // Tiles and Tools stay off the row (their work is the canvas's tools
     // and the host's floating capsule). Repeat came BACK on it as the Tile
-    // page, and Symmetry came back beside it: both are properties of the
-    // object, which is what this panel is for. The mirror in particular is
-    // the pattern's OWN now, not the mode the canvas toolbar is in.
+    // page, Symmetry came back beside it, and Shapes joined them: all
+    // three are properties of the object, which is what this panel is for.
+    // The mirror in particular is the pattern's OWN now, not the mode the
+    // canvas toolbar is in — and so, since 2026-09-23, is the tile-set
+    // filter, which used to be one switch for the whole install.
     expect(PATTERN_EDIT_OPTIONS.map((o) => [o.action, o.label]))
-      .toEqual([['tile', 'Tile'], ['symmetry', 'Symmetry']]);
+      .toEqual([['tile', 'Tile'], ['symmetry', 'Symmetry'], ['shapes', 'Shapes']]);
     // The bars all stand, keyed and sized — the two off the row for a
-    // host that opens them itself, the two pages for this one.
-    for (const action of ['tile', 'tiles', 'tools', 'symmetry'] as const) {
+    // host that opens them itself, the three pages for this one.
+    for (const action of ['tile', 'tiles', 'tools', 'symmetry', 'shapes'] as const) {
       const sub = patternActionSubmenu(action);
       expect(patternActionOfSubmenu(sub)).toBe(action);
       expect(submenuHeight(sub)).toBeGreaterThan(0);
@@ -229,6 +237,108 @@ describe('the tile-set filter', () => {
     // The filter itself opens as a full-screen takeover (PatternSetsModal),
     // so MORE sets never grow the bar.
     expect(submenuHeight('patternTools', { patternTileSetCount: 10 })).toBe(withSets);
+  });
+
+  it('is the PATTERN s own list, defaulting to the pair when it has said nothing', () => {
+    // The filter used to be one switch for the whole install; it is a
+    // field on the grid now, and `undefined` — every pattern drawn before
+    // the field existed, and every fresh one — reads as the default pair.
+    expect([...patternEnabledTileSets(undefined)]).toEqual(['angular', 'curved']);
+    expect([...patternEnabledTileSets([])]).toEqual(['angular', 'curved']);
+    expect([...patternEnabledTileSets(['petal'])]).toEqual(['petal']);
+  });
+
+  it('hands the engine the COMPLEMENT, and nothing at all when every set is on', () => {
+    // Connectivity filters by exclusion, so what a builder wants is the
+    // families the pattern is NOT made of — and undefined when there are
+    // none, which the engine reads as "no filter".
+    const all = ['angular', 'cloud', 'craftsman', 'curved', 'petal'];
+    expect([...patternExcludedTileFamilies(all, ['angular'])!].sort())
+      .toEqual(['cloud', 'craftsman', 'curved', 'petal']);
+    expect(patternExcludedTileFamilies(all, all)).toBeUndefined();
+    // …and a pattern that has said nothing excludes everything but the pair.
+    expect([...patternExcludedTileFamilies(all, undefined)!].sort())
+      .toEqual(['cloud', 'craftsman', 'petal']);
+  });
+
+  it('toggles in the host s family order, and refuses to turn the last set off', () => {
+    const all = ['angular', 'cloud', 'craftsman', 'curved', 'petal'];
+    // Turning one ON lands it in the registry's order, not at the end —
+    // the field is compared by value, so the order has to be the list's.
+    expect(togglePatternTileSet(all, ['curved'], 'angular')).toEqual(['angular', 'curved']);
+    expect(togglePatternTileSet(all, ['angular', 'curved'], 'curved')).toEqual(['angular']);
+    // A pattern with no families has nothing to paint with, so the last
+    // press is refused rather than silently falling back to the default.
+    expect(togglePatternTileSet(all, ['angular'], 'angular')).toBeNull();
+    // A pattern that has said NOTHING toggles off its default pair, not
+    // off an empty list.
+    expect(togglePatternTileSet(all, undefined, 'angular')).toEqual(['curved']);
+    expect(togglePatternTileSet(all, undefined, 'petal'))
+      .toEqual(['angular', 'curved', 'petal']);
+  });
+
+  it('the Shapes page is those chips, three across, and grows a line at a time', () => {
+    expect(PATTERN_TILE_SET_COLUMNS).toBe(3);
+    expect(patternTileSetLines(['a', 'b', 'c', 'd', 'e'])).toEqual([['a', 'b', 'c'], ['d', 'e']]);
+    // The page reserves a line even with nothing to show — an unopened
+    // page of this kind renders one.
+    expect(patternTileSetLineCount(0)).toBe(1);
+    expect(patternTileSetLineCount(3)).toBe(1);
+    expect(patternTileSetLineCount(4)).toBe(2);
+    // …and the height follows the same count, so what is reserved and what
+    // is laid out cannot drift.
+    const oneLine = submenuHeight('patternShapes', { patternTileSetCount: 3 });
+    const twoLines = submenuHeight('patternShapes', { patternTileSetCount: 5 });
+    expect(oneLine).toBe(CONTENT_PAD * 2 + ROW_SEGMENTED + BAR_CUSHION);
+    expect(twoLines).toBe(oneLine + ROW_SEGMENTED + ROW_GAP);
+    expect(submenuHeight('patternShapes')).toBe(oneLine);
+    // The fill's Shapes SECTION is the same chips under the section strip.
+    expect(submenuHeight('svgPattern', { svgPatternSection: 'shapes', patternTileSetCount: 5 }))
+      .toBe(twoLines + SECTION_TABS_ROW + ROW_GAP);
+  });
+});
+
+// The Shapes page itself: the chips, and the one component both places
+// that set a pattern's families draw them with.
+describe('the Shapes page', () => {
+  const BARS = readFileSync(resolve(__dirname, '..', 'components', 'PatternBars.tsx'), 'utf8');
+  const PANEL = readFileSync(
+    resolve(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'), 'utf8',
+  );
+
+  it('is the chips and nothing else, laid out by the shared component', () => {
+    const shapesBar = BARS.slice(
+      BARS.indexOf('export function PatternShapesBar'),
+      BARS.indexOf('export function PatternToolsBar'),
+    );
+    expect(shapesBar).toContain('<BarBody>');
+    expect(shapesBar).toContain('<PatternTileSetLines');
+    expect(shapesBar).toContain('sets={model.patternTileSets ?? []}');
+    expect(shapesBar).toContain('onToggle={(family) => model.onPatternToggleTileSet?.(family)}');
+  });
+
+  it('wraps through patternTileSetLines — the very count the height is reserved on', () => {
+    const lines = BARS.slice(
+      BARS.indexOf('export function PatternTileSetLines'),
+      BARS.indexOf('export function PatternShapesBar'),
+    );
+    expect(lines).toContain('patternTileSetLines(sets).map');
+    // A set of switches, not exclusive choices, so the row that already
+    // draws several lit at once.
+    expect(lines).toContain('<MultiToggleRow');
+    expect(lines).toContain('active: s.enabled');
+  });
+
+  it('serves the pattern OBJECT s page and the shape fill s section from one component', () => {
+    // Two places set the same field; one component draws them, so they
+    // cannot drift in how they wrap.
+    expect(PANEL).toContain("displaySub === 'patternShapes'");
+    expect(PANEL).toContain('<PatternShapesBar model={model} />');
+    expect(PANEL).toContain("svgPatternSection === 'shapes' ? (");
+    expect(PANEL).toContain('sets={model.svgPatternTileSets ?? []}');
+    expect(PANEL).toContain(
+      'onToggle={(family) => model.onSvgPatternToggleTileSet?.(family)}',
+    );
   });
 });
 
@@ -732,7 +842,7 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     expect(effects).toContain(
       "return layout === 'block' ? <View style={styles.emptyControls}>{button}</View> : button;",
     );
-    expect(BARS).toContain("import { ActionRow, BarBody, EffectButton, SegmentedRow, SwitchRow } from './effectBar';");
+    expect(BARS).toContain('  ActionRow, BarBody, EffectButton, MultiToggleRow, SegmentedRow, SwitchRow,\n');
   });
 
   it('takes the act as a host callback, so a host can withhold it', () => {
@@ -778,12 +888,13 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
     // them as tabs, having no other property pages to share a row with.)
     expect(PANEL).toContain("{ value: 'tile' as const, label: 'Tile' },");
     expect(PANEL).toContain("{ value: 'symmetry' as const, label: 'Symmetry' },");
+    expect(PANEL).toContain("{ value: 'shapes' as const, label: 'Shapes' },");
     expect(PANEL).toContain("{ value: 'stroke' as const, label: 'Stroke' },");
     // They head the well as one solid line, edge to edge — SectionTabs,
     // not the inset SegmentedRow a property would use.
     expect(PANEL).toContain('<SectionTabs');
     expect(PANEL).toContain('options={SVG_PATTERN_SECTIONS}');
-    expect(PANEL).toContain("useState<'tile' | 'symmetry' | 'stroke'>('tile')");
+    expect(PANEL).toContain("useState<'tile' | 'symmetry' | 'shapes' | 'stroke'>('tile')");
   });
 
   it('gives the TILES their own line — width, dash and ink', () => {

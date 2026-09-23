@@ -1503,6 +1503,7 @@ function applyOpInner(state: CompositionState, op: CompUndoOp): CompositionState
     case 'setPatternSettings': {
       const settings = {
         symmetry: op.newSymmetry, allowBorderConnections: op.newAllowBorderConnections,
+        tileSets: op.newTileSets,
       };
       if (shapeHoldingPatternGrid(state, op.patternId)) {
         return mapShapePatternGrid(state, op.patternId, (grid) => ({ ...grid, ...settings }));
@@ -2193,6 +2194,7 @@ function revertOpInner(state: CompositionState, op: CompUndoOp): CompositionStat
         oldSymmetry: op.newSymmetry, newSymmetry: op.oldSymmetry,
         oldAllowBorderConnections: op.newAllowBorderConnections,
         newAllowBorderConnections: op.oldAllowBorderConnections,
+        oldTileSets: op.newTileSets, newTileSets: op.oldTileSets,
       });
     case 'groupFigures': {
       // Undo group: clear groupId, identity and locals (names were never
