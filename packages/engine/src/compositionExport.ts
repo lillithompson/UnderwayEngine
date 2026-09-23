@@ -183,6 +183,10 @@ export interface CompositionExportOptions {
    *  For content-framed exports, where the bare geometry slices boundary
    *  strokes in half. */
   frameInkExtents?: boolean;
+  /** Frame on `overlaySvgObjects` alone, cropping whatever is drawn outside
+   *  them — for an export that has to register against another picture of
+   *  the same rect. See {@link CompositionSVGInputs.frameOnOverlay}. */
+  frameOnOverlay?: boolean;
   /**
    * A composition ALREADY LOADED, used instead of reading the record by id.
    *
@@ -622,6 +626,7 @@ export async function exportCompositionSVGFromState(
     viewBoxPadFraction: options?.viewBoxPadFraction,
     frameCrop: options?.frameCrop,
     frameInkExtents: options?.frameInkExtents,
+    frameOnOverlay: options?.frameOnOverlay,
     groups: partial.groups ?? [],
     sceneOrder: partial.sceneOrder,
     // The state's own graph, when it has one and still describes these

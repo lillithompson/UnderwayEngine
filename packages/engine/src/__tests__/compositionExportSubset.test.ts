@@ -484,6 +484,50 @@ describe('strokeColorOverride', () => {
     expect(nothing).toBeNull();
   });
 
+  it('frameOnOverlay pins the frame to the overlay and crops what is drawn past it', async () => {
+    // The redline's ink sheet (web/editor/redlineRaster): the marks alone,
+    // on a transparent sheet that must be the PAGE's rectangle and no other,
+    // because the card lays it back over its own picture of that page. A
+    // stroke dragged off the page must not grow the sheet — the sheet would
+    // stop registering, and every mark on it would land somewhere it was not
+    // made.
+    const page: SVGObject = {
+      id: 'page', color: { r: 0, g: 0, b: 0 }, stroke: { width: 0 },
+      cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 20,
+      segments: [
+        { kind: 'line', start: [0, 0], end: [10, 0] },
+        { kind: 'line', start: [10, 0], end: [10, 20] },
+        { kind: 'line', start: [10, 20], end: [0, 20] },
+        { kind: 'line', start: [0, 20], end: [0, 0] },
+      ],
+    };
+    // A mark inside the page, and one dragged well below its bottom edge.
+    const marks = [
+      makeSvg({ id: 'in', stroke: { width: 0 }, cellX: 2, cellY: 4, cellWidth: 4, cellHeight: 4,
+        segments: [{ kind: 'line', start: [2, 4], end: [6, 8] }] }),
+      makeSvg({ id: 'over', stroke: { width: 0 }, cellX: 2, cellY: 18, cellWidth: 4, cellHeight: 8,
+        segments: [{ kind: 'line', start: [2, 18], end: [6, 26] }] }),
+    ];
+    const inputs = (extra: Partial<CompositionSVGInputs>) => makeInputs({
+      svgObjects: marks,
+      subset: () => new Set(['in', 'over']),
+      overlaySvgObjects: [page],
+      drawOverlay: false,
+      ...extra,
+    });
+    const pinned = await generateCompositionSVGCore(inputs({ frameOnOverlay: true }));
+    expect(viewBoxOf(pinned!)).toEqual([0, 0, 10 * U, 20 * U]);
+    // Both marks are still DRAWN — the viewBox is what crops the overhang,
+    // so nothing inside the page moves to make room for it.
+    expect(pinned!.match(/<path /g)).toHaveLength(2);
+    // Without the pin the frame is the union, and the page is no longer the
+    // sheet: it is taller, which is the bug this option exists for.
+    const union = await generateCompositionSVGCore(inputs({}));
+    expect(viewBoxOf(union!)[3]).toBe(26 * U);
+    // The overlay is still never painted, pinned or not.
+    expect(pinned).not.toContain('rgb(0,0,0)');
+  });
+
   it('repaints a joined object’s stroked subpaths too', async () => {
     // A joined object draws its subpaths INSTEAD of its own segments, each in
     // the ink of the object it came from — recoloring `color` alone would

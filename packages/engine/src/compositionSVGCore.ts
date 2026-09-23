@@ -292,6 +292,24 @@ export interface CompositionSVGInputs {
    */
   drawOverlay?: boolean;
   /**
+   * Frame on `overlaySvgObjects` ALONE — the overlay is the export's
+   * rectangle, and everything drawn outside it is cropped away by the
+   * viewBox. Meaningless without `overlaySvgObjects`, and it takes the
+   * breathing margin with it, exactly as a Figma frame does: the rect IS
+   * the frame the caller asked for.
+   *
+   * The plain overlay rule above is a UNION — the frame grows to hold the
+   * anchor AND the content — which is right for a board, where a stroke
+   * dragged off the edge should still land in the picture whole. It is
+   * wrong for an export that has to REGISTER against another picture of
+   * the same rect: there a stroke over the edge redefines the rectangle,
+   * and the sheet no longer lies over the page it was drawn on. That is
+   * what this is for (web/editor/redlineRaster): the marks are cropped at
+   * the page's edge — where the page they are laid over ends anyway —
+   * and the sheet is the page, whatever was drawn past it.
+   */
+  frameOnOverlay?: boolean;
+  /**
    * With `subset`: draw only the selected objects, but FRAME as the plain
    * export of the whole page would — the full scene (and any overlay), with
    * the same ink padding rule — so the cutout lines up pixel for pixel over
@@ -1327,6 +1345,12 @@ export async function generateCompositionSVGCore(
   // where every drawn object is clipped away (e.g. a hidden mask leaves no
   // drawn content) — we must never emit an empty/degenerate frame.
   let uMinCX = Infinity, uMinCY = Infinity, uMaxCX = -Infinity, uMaxCY = -Infinity;
+  // …and the OVERLAY's own, kept apart from the union so an export can be
+  // pinned to it (see frameOnOverlay).
+  let oMinCX = Infinity, oMinCY = Infinity, oMaxCX = -Infinity, oMaxCY = -Infinity;
+  const overlayIds = input.frameOnOverlay === true && overlay.length > 0
+    ? new Set(overlay.map((o) => o.id))
+    : null;
 
   const accept = (
     node: { id: string; groupId?: string },
@@ -1403,6 +1427,12 @@ export async function generateCompositionSVGCore(
       (raw.maxX - raw.minX) + 2 * pad, (raw.maxY - raw.minY) + 2 * pad,
     );
     accept(entry, r.minX, r.minY, r.maxX, r.maxY);
+    if (overlayIds?.has(entry.id)) {
+      if (r.minX < oMinCX) oMinCX = r.minX;
+      if (r.minY < oMinCY) oMinCY = r.minY;
+      if (r.maxX > oMaxCX) oMaxCX = r.maxX;
+      if (r.maxY > oMaxCY) oMaxCY = r.maxY;
+    }
   }
   for (const img of framed.images) {
     // The node's own box through its matrix — the quad the markup draws.
@@ -1488,6 +1518,14 @@ export async function generateCompositionSVGCore(
     minCX = fMinCX; minCY = fMinCY; maxCX = fMaxCX; maxCY = fMaxCY;
   }
 
+  // …and the OVERLAY pin (see frameOnOverlay), last of the two because the
+  // caller asked for it by name: the export's rectangle is the overlay's,
+  // and the viewBox crops whatever was drawn outside it.
+  const overlayPinned = input.frameOnOverlay === true && oMinCX !== Infinity;
+  if (overlayPinned) {
+    minCX = oMinCX; minCY = oMinCY; maxCX = oMaxCX; maxCY = oMaxCY;
+  }
+
   if (maxCX === minCX) { minCX -= 0.5; maxCX += 0.5; }
   if (maxCY === minCY) { minCY -= 0.5; maxCY += 0.5; }
 
@@ -1497,7 +1535,7 @@ export async function generateCompositionSVGCore(
   // ignores it: the frame IS the page the user (or the format) framed, and
   // padding it would only add page background outside that board — so hosts
   // can pass the pad unconditionally and framed pages keep their exact edge.
-  const padFraction = framePinned ? 0 : (input.viewBoxPadFraction ?? 0);
+  const padFraction = framePinned || overlayPinned ? 0 : (input.viewBoxPadFraction ?? 0);
   if (padFraction > 0) {
     const pad = Math.max(maxCX - minCX, maxCY - minCY) * padFraction;
     minCX -= pad; minCY -= pad; maxCX += pad; maxCY += pad;
