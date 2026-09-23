@@ -6,7 +6,7 @@
 /** Ring radius in px (the visible loupe outline). */
 export const EYEDROPPER_RING_RADIUS = 32;
 /** Ring stroke width in px — drawn in the currently sampled color. */
-export const EYEDROPPER_RING_BORDER = 4;
+export const EYEDROPPER_RING_BORDER = 10;
 /** Extra touch slop outside the ring so it stays grabbable on a phone. */
 export const EYEDROPPER_TOUCH_PADDING = 16;
 /** Diameter of the centre crosshair dot in px. */
