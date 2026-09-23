@@ -169,8 +169,58 @@ describe('three buttons, and the tabs they make', () => {
   it('…and a tab that goes any OTHER way lands there too', () => {
     // The shared landing rule would drop the sheet on the row's first tab —
     // for an image, Crop, nowhere near what was being worked on.
-    expect(PANEL).toContain('const target = last && EFFECT_OF_PAGE[last] && !submenuOrder.includes(last)');
+    expect(PANEL).toContain("const target = last && (EFFECT_OF_PAGE[last] || last === 'svgPattern')");
+    expect(PANEL).toContain('      && !submenuOrder.includes(last)');
     expect(PANEL).toContain("? ('effects' as SubmenuKey)");
+  });
+});
+
+describe('a closed shape gets a fourth button: its PATTERN, which DOES make a tab', () => {
+  it('the button is the same button, in the same row', () => {
+    expect(BAR).toContain("export const PATTERN_EFFECT_LABEL = 'Pattern';");
+    expect(BAR).toContain(
+      "{pattern ? button(\n        'pattern', PATTERN_EFFECT_LABEL, pattern.present,"
+      + ' () => pattern.onToggle(!pattern.present),\n      ) : null}',
+    );
+    expect(BAR).toContain('pattern?: { present: boolean; onToggle: (add: boolean) => void };');
+    // Like the tint, it is NOT an EffectKind: the kinds are the three that
+    // share one set of controls, and a pattern's page is its own.
+    expect(BAR).toContain("export const EFFECT_KINDS: readonly EffectKind[] = ['shadow', 'outer', 'inner'];");
+  });
+
+  it('offered only where the host can lay cloth — and on a shape that encloses one', () => {
+    expect(PANEL).toContain(
+      'const patternEffect = svgFillable && (!!model.onAddSvgPattern || !!model.onRemoveSvgPattern);',
+    );
+    expect(PANEL).toContain(
+      'pattern={patternEffect ? { present: patternWorn, onToggle: togglePattern } : undefined}',
+    );
+  });
+
+  it('the Pattern TAB exists exactly while the shape wears cloth', () => {
+    // Read strictly, as `effectWorn` is: a tab is a place to go.
+    expect(PANEL).toContain('const patternWorn = model.svgPatternPresent === true;');
+    // …and ONE answer feeds both the sheet's page list and the tab row, so
+    // the two can't disagree (the fold-away/landing loop this panel has
+    // one scar from).
+    expect(PANEL).toContain("...(patternEffect && patternWorn ? (['svgPattern'] as const) : []),");
+    expect(PANEL).toContain(
+      "      .filter((opt) => opt.action !== 'pattern' || (patternEffect && patternWorn))",
+    );
+    // The vector option menu still NAMES the tab — the filter is what holds
+    // it back, so the row keeps its place in the order once it appears.
+    expect(svgEditOptions('rectangle', { encloses: true }).find((o) => o.action === 'pattern')?.label)
+      .toBe('Pattern');
+  });
+
+  it('adding opens the new tab; removing leaves the page that made it', () => {
+    const fn = PANEL.slice(
+      PANEL.indexOf('const togglePattern = (add: boolean) => {'),
+      PANEL.indexOf('\n  // Border controls'),
+    );
+    expect(fn).toContain('if (!add) { model.onRemoveSvgPattern?.(); return; }');
+    expect(fn).toContain('model.onAddSvgPattern?.();');
+    expect(fn).toContain("openSubmenu('svgPattern');");
   });
 });
 

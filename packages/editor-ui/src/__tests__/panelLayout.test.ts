@@ -96,7 +96,7 @@ describe('the panel’s two pages', () => {
     // whose tab has gone (its effect was removed, or this selection doesn't
     // wear it) lands on Effects, the page that makes those tabs, rather
     // than on the row's first.
-    expect(PANEL).toContain("const target = last && EFFECT_OF_PAGE[last] && !submenuOrder.includes(last)");
+    expect(PANEL).toContain("const target = last && (EFFECT_OF_PAGE[last] || last === 'svgPattern')");
     // …both when the sheet is popped and when it is already up with nothing
     // showing (the selection changed under it).
     expect(PANEL).toContain('if (sheetOpen && !submenuOpen) landingRef.current();');

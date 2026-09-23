@@ -11,13 +11,18 @@ import { rgbCss, withAlpha } from '../logic/hsv';
 // The three effects an object can cast over its own paint — a drop shadow,
 // and a glow each way — and the two pages they take.
 //
-// THE EFFECTS PAGE ({@link EffectsBar}) is three buttons side by side, one
-// per effect, in the shape every page's one act wears ("Add Fill"). Off,
+// THE EFFECTS PAGE ({@link EffectsBar}) is those three buttons side by side,
+// one per effect, in the shape every page's one act wears ("Add Fill"). Off,
 // a button is bare ink and its press ADDS that effect; on, it is filled in
 // selection blue and its press takes it away again. It is the only page in
 // the sheet that changes how many tabs there are: adding an effect puts a
 // tab of its own on the row (and the panel opens it at once), removing it
 // takes that tab away.
+//
+// Two more things a host may hang on the same row, because they are the same
+// KIND of thing — laid over the object's own paint, and removable: a closed
+// shape's PATTERN fill, which makes a tab the way the three do, and an
+// image's TINT, which has no page at all.
 //
 // AN EFFECT'S OWN PAGE ({@link EffectBar}) is the controls — design "2a":
 // the XY offset pad on the left and Blur / Spread / Opacity beside it, the
@@ -79,6 +84,15 @@ export const EFFECT_KINDS: readonly EffectKind[] = ['shadow', 'outer', 'inner'];
  *  button and for anything that speaks it. */
 export const TINT_EFFECT_LABEL = 'Tint';
 
+/** …and what a closed shape's PATTERN FILL is called on this page. Not an
+ *  EffectKind either — the kinds are the three that share one set of
+ *  controls (EffectBar), and a pattern's page is nothing like them — but it
+ *  is the same KIND of thing as they are: cloth cast over the shape's own
+ *  paint, added here and taken off here. Its tab, unlike a tint's absent
+ *  one, appears only once the button has been pressed, exactly as the three
+ *  effects' tabs do. */
+export const PATTERN_EFFECT_LABEL = 'Pattern';
+
 export function effectLabel(kind: EffectKind): string {
   return kind === 'shadow' ? 'Shadow' : kind === 'outer' ? 'Outer Glow' : 'Inner Glow';
 }
@@ -92,9 +106,21 @@ export function effectLabel(kind: EffectKind): string {
  * the tab row, which is what makes this page unlike every other one in the
  * sheet.
  */
-export function EffectsBar({ present, onToggle, tint }: {
+export function EffectsBar({ present, onToggle, pattern, tint }: {
   present: (kind: EffectKind) => boolean;
   onToggle: (kind: EffectKind, add: boolean) => void;
+  /** A closed shape's PATTERN FILL, where the host offers one: the tile
+   *  cloth that fills the outline. It stands on this page as a fourth
+   *  button because that is what it is — something laid over the object's
+   *  own paint that can be taken off again — and because a Pattern tab
+   *  standing there from the start, on every shape that had never been
+   *  given one, was a page whose only content was the button that made it.
+   *
+   *  Unlike a tint it DOES carry a page: pressing it adds the cloth, and
+   *  the tab it makes is where the tile, its resolution and its line are
+   *  edited. So the host opens that page on the way, as it does for the
+   *  three effects' own tabs. */
+  pattern?: { present: boolean; onToggle: (add: boolean) => void };
   /** An image's TINT, where the host has one to offer: the wash of colour
    *  the colour brush lays over a photo (there being no smaller part of a
    *  photo that owns a colour). It stands on this page as a fourth
@@ -125,6 +151,9 @@ export function EffectsBar({ present, onToggle, tint }: {
       {EFFECT_KINDS.map((kind) => button(
         kind, effectLabel(kind), present(kind), () => onToggle(kind, !present(kind)),
       ))}
+      {pattern ? button(
+        'pattern', PATTERN_EFFECT_LABEL, pattern.present, () => pattern.onToggle(!pattern.present),
+      ) : null}
       {tint ? button(
         'tint', TINT_EFFECT_LABEL, tint.present, () => tint.onToggle(!tint.present),
       ) : null}

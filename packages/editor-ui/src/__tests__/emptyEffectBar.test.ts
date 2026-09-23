@@ -50,7 +50,6 @@ describe('the panel swaps the Add page in for an absent effect', () => {
 
   it.each([
     ['svgFill', 'Add Fill'],
-    ['svgPattern', 'Add Pattern'],
     ['border', 'Add Border'],
   ])('%s: absent + onAdd renders EmptyEffectBar labelled %s', (key, label) => {
     expect(panel).toContain(
@@ -71,7 +70,9 @@ describe('the panel swaps the Add page in for an absent effect', () => {
     // canvas), so there is nothing for its Add page to stand in for.
     expect(emptyEffectHeight()).toBeLessThanOrEqual(submenuHeight('svgPattern'));
     // Every Add branch flags the page, and the height reads the flag.
-    expect(panel.match(/addPage = true;/g)).toHaveLength(4);
+    // Three of them: Stroke, Fill, Border. The PATTERN tab has no Add page
+    // — see below.
+    expect(panel.match(/addPage = true;/g)).toHaveLength(3);
     expect(panel).toContain('addPage ? emptyEffectHeight() : submenuHeight(displaySub, {');
   });
 
@@ -94,6 +95,16 @@ describe('the panel swaps the Add page in for an absent effect', () => {
     // …and it never flags itself as an Add page: there is nothing absent
     // about it.
     expect(panel).not.toContain("displaySub === 'effects' && ");
+  });
+
+  it('the Pattern tab has no Add page: it does not exist while absent', () => {
+    // A pattern fill is added on the EFFECTS page (its fourth button), and
+    // the tab is what that press makes — so the page is never reached with
+    // no cloth in the shape, and an "Add Pattern" page would be a tab whose
+    // only content was the button that creates it.
+    expect(panel).not.toContain('addLabel="Add Pattern"');
+    expect(panel).not.toContain("displaySub === 'svgPattern' && model.svgPatternPresent === false");
+    expect(panel).toContain("...(patternEffect && patternWorn ? (['svgPattern'] as const) : []),");
   });
 
   it('offers nothing to remove while the effect is absent', () => {

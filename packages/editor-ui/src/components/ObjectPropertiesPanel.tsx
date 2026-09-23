@@ -527,6 +527,23 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     ? model.shadowPresent === true
     : model.glowPresent?.[kind] === true);
   const wornEffects = EFFECT_KINDS.filter(effectWorn);
+  /** …and the same reading for a closed shape's PATTERN FILL, which is put
+   *  on and taken off on that same page (the Effects row's fourth button)
+   *  and so owns its tab the same way: the Pattern tab exists exactly while
+   *  there is cloth in the shape. It used to stand there from the start on
+   *  every shape that encloses an area, and a shape that had never been
+   *  given a pattern opened it on one button — the button that made one,
+   *  which is what the Effects page is for.
+   *
+   *  Read strictly for the same reason `effectWorn` is: a tab is a place to
+   *  GO, and a host that reports nothing has none to offer. */
+  const patternWorn = model.svgPatternPresent === true;
+  /** Can a pattern be put on or taken off here at all? The host says so by
+   *  passing the callbacks: a format with no tile tool paints no cloth and
+   *  passes neither, so its Effects page is the three buttons it always
+   *  was. (Add is offered only while there is none and Remove only while
+   *  there is, so ONE of the two answers for both faces of the button.) */
+  const patternEffect = svgFillable && (!!model.onAddSvgPattern || !!model.onRemoveSvgPattern);
   /** The Effects tab, then one tab per effect worn — the run of pages that
    *  goes wherever a kind's tab order names `effects`. */
   const effectPages: SubmenuKey[] = ['effects', ...wornEffects.map((k) => EFFECT_PAGE[k])];
@@ -593,13 +610,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
           'stroke',
           ...(svgShapeable ? (['shape'] as const) : []),
           ...(svgFillable ? (['svgFill'] as const) : []),
-          // …offered when there is anything the page can DO: add cloth,
-          // open its grid, or clear it. Remove counts — a multi-selection
-          // of patterned shapes has no one grid to open, so Edit stands
-          // down there while clearing all of them does not.
-          ...(svgFillable
-            && (model.onAddSvgPattern || model.onEditSvgPattern || model.onRemoveSvgPattern)
-            ? (['svgPattern'] as const) : []),
+          // …offered once the shape WEARS cloth, and not before: adding it
+          // is a button on the Effects page (patternWorn), so this tab is
+          // the one the press makes rather than a page standing empty on
+          // every shape that has never been patterned.
+          ...(patternEffect && patternWorn ? (['svgPattern'] as const) : []),
           ...(svgEndable ? (['endpoints'] as const) : []),
           // …then the tail every kind shares — Effects (and the tabs its
           // buttons have made), Opacity, Copies.
@@ -810,7 +825,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // those tabs, and the one place the effect can be brought back. The
     // shared rule would drop it on the row's FIRST tab instead, which for
     // an image is Crop, nowhere near what was being worked on.
-    const target = last && EFFECT_OF_PAGE[last] && !submenuOrder.includes(last)
+    // The PATTERN page goes the same way and for the same reason: its cloth
+    // is added on the Effects page too, so when it is cleared that is the
+    // page to fall back to, not the row's first tab.
+    const target = last && (EFFECT_OF_PAGE[last] || last === 'svgPattern')
+      && !submenuOrder.includes(last)
       && submenuOrder.includes('effects')
       ? ('effects' as SubmenuKey)
       : landingSubmenu(submenuOrder, last);
@@ -1031,6 +1050,19 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       model.onAddGlow?.(kind);
     }
     openSubmenu(EFFECT_PAGE[kind]);
+  };
+
+  /** …and the PATTERN button on that same page: a closed shape's cloth,
+   *  added and taken off exactly as an effect is. Adding OPENS the Pattern
+   *  tab the press just made — the tile, its resolution and its line are
+   *  there, and for a single shape the host has put the grid up on the
+   *  canvas to paint into. Removing leaves the page that made it showing,
+   *  the tab being about to go (the fold-away rule takes it, and the
+   *  landing rule lands back here). */
+  const togglePattern = (add: boolean) => {
+    if (!add) { model.onRemoveSvgPattern?.(); return; }
+    model.onAddSvgPattern?.();
+    openSubmenu('svgPattern');
   };
 
   // Border controls → live preview / commit through the model; same pattern.
@@ -1273,9 +1305,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   } else if (displaySub === 'svgFill' && model.svgFillPresent === false && model.onAddSvgFill) {
     addPage = true;
     activeBarEl = <EmptyEffectBar addLabel="Add Fill" onAdd={() => model.onAddSvgFill?.()} />;
-  } else if (displaySub === 'svgPattern' && model.svgPatternPresent === false && model.onAddSvgPattern) {
-    addPage = true;
-    activeBarEl = <EmptyEffectBar addLabel="Add Pattern" onAdd={() => model.onAddSvgPattern?.()} />;
+  // (No Add page for the Pattern tab: the tab exists only while the shape
+  // wears cloth, so the page is never reached empty. Adding is the Effects
+  // page's Pattern button — the same press that makes this tab.)
   } else if (displaySub === 'border' && model.borderPresent === false && model.onAddBorder) {
     addPage = true;
     activeBarEl = <EmptyEffectBar addLabel="Add Border" onAdd={() => model.onAddBorder?.()} />;
@@ -1496,6 +1528,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       <EffectsBar
         present={effectWorn}
         onToggle={toggleEffect}
+        pattern={patternEffect ? { present: patternWorn, onToggle: togglePattern } : undefined}
         tint={model.onToggleImageTint
           ? {
             present: model.imageTintPresent === true,
@@ -1937,13 +1970,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // Vector selection: the subtype's own option menu (svgEdit.ts). Every
     // subtype offers Stroke — a path IS its stroke; the closed shapes add Fill.
     typeSpecs = svgEditOptions(model.svgSubtype ?? 'stroke', { encloses: svgFillable })
-      // …less the Pattern tab on a host that cannot paint one. A pattern
-      // fill is painted with the TILE tool, on the canvas, so a format
-      // whose toolbar has no tile tool offers no pattern either — and
-      // says so by leaving the tab out rather than by standing it there
-      // inert. (The host reports that by passing neither callback.)
-      .filter((opt) => opt.action !== 'pattern'
-        || !!model.onAddSvgPattern || !!model.onEditSvgPattern)
+      // …less the Pattern tab until the shape actually wears cloth. A
+      // pattern is ADDED on the Effects page, like the three effects, so
+      // its tab comes and goes with the fill itself — and a host that
+      // cannot paint one (no tile tool in the format's toolbar, so neither
+      // callback passed) never grows it at all. Same answer the sheet's
+      // page list reads, so the row and the pages cannot disagree.
+      .filter((opt) => opt.action !== 'pattern' || (patternEffect && patternWorn))
       .flatMap((opt): OptionSpec[] => (opt.action === 'effects' ? effectSpecs() : [{
         key: opt.action,
         label: opt.label,
