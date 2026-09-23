@@ -151,6 +151,9 @@ export interface CompositionExportOptions {
    *  only of fills (a baked rig), which the line override would otherwise
    *  slide straight off. See {@link CompositionSVGInputs.silhouette}. */
   silhouette?: CompositionSubsetSelector;
+  /** Objects that draw only their strokes — the fill comes off and the
+   *  outline is left. See {@link CompositionSVGInputs.strokesOnly}. */
+  strokesOnly?: CompositionSubsetSelector;
   /** Repaint every paint island in this color — or through this per-texel
    *  tone — texel alphas kept; the same intent as `strokeColorOverride` for
    *  the raster brush's marks. See
@@ -613,6 +616,7 @@ export async function exportCompositionSVGFromState(
     frameOnScene: options?.frameOnScene,
     backdrop: options?.backdrop,
     silhouette: options?.silhouette,
+    strokesOnly: options?.strokesOnly,
     paintColorOverride: options?.paintColorOverride,
     dropTextShadow: options?.dropTextShadow,
     viewBoxPadFraction: options?.viewBoxPadFraction,

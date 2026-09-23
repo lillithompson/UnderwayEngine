@@ -622,6 +622,104 @@ describe('strokeColorOverride', () => {
   });
 });
 
+describe('strokesOnly', () => {
+  const WHITE = { r: 255, g: 255, b: 255 };
+
+  const openL: PathSegment[] = [
+    { kind: 'line', start: [4, 4], end: [12, 4] },
+    { kind: 'line', start: [12, 4], end: [12, 14] },
+  ];
+
+  function makeSvg(overrides: Partial<SVGObject> & { id: string }): SVGObject {
+    return {
+      segments: openL,
+      color: { r: 10, g: 20, b: 30 },
+      cellX: 4, cellY: 4, cellWidth: 8, cellHeight: 10,
+      ...overrides,
+    } as SVGObject;
+  }
+
+  const filledAndStroked = makeSvg({
+    id: 'svg_1',
+    segments: closedSquare,
+    cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+    fillColor: { r: 120, g: 160, b: 200 },
+    color: { r: 40, g: 40, b: 40 },
+  });
+
+  it('takes the fill off and leaves the outline', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [filledAndStroked],
+      strokesOnly: () => new Set(['svg_1']),
+    }));
+    expect(svg).not.toContain('fill="rgb(120,160,200)"');
+    expect(svg).toContain('stroke="rgb(40,40,40)"');
+  });
+
+  it('hollows only the objects it names', async () => {
+    const other = makeSvg({
+      id: 'svg_2',
+      segments: closedSquare,
+      cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+      fillColor: { r: 10, g: 20, b: 30 },
+    });
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [filledAndStroked, other],
+      strokesOnly: () => new Set(['svg_1']),
+    }));
+    expect(svg).not.toContain('fill="rgb(120,160,200)"');
+    expect(svg).toContain('fill="rgb(10,20,30)"');
+  });
+
+  it('drops a filled SUBPATH and keeps the stroked ones', async () => {
+    const mixed = makeSvg({
+      id: 'svg_1',
+      subpaths: [
+        { segments: closedSquare, color: { r: 214, g: 176, b: 130 }, fill: true },
+        { segments: openL, color: { r: 0, g: 90, b: 0 } },
+      ],
+      cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+    });
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [mixed],
+      strokesOnly: () => new Set(['svg_1']),
+    }));
+    expect(svg).not.toContain('fill="rgb(214,176,130)"');
+    expect(svg).toContain('stroke="rgb(0,90,0)"');
+  });
+
+  it('runs BEFORE the ink override, so there is no fill left to flood', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [filledAndStroked],
+      strokesOnly: () => new Set(['svg_1']),
+      strokeColorOverride: WHITE,
+      silhouette: () => new Set(['svg_1']),
+    }));
+    expect(svg).not.toContain('fill="rgb(120,160,200)"');
+    expect(svg).not.toContain('fill="rgb(255,255,255)"');
+    expect(svg).toContain('stroke="rgb(255,255,255)"');
+  });
+
+  it('changes paint only — the frame is where it was', async () => {
+    const plain = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [filledAndStroked], subset: () => new Set(['svg_1']),
+    }));
+    const hollow = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [filledAndStroked], subset: () => new Set(['svg_1']),
+      strokesOnly: () => new Set(['svg_1']),
+    }));
+    expect(viewBoxOf(hollow!)).toEqual(viewBoxOf(plain!));
+  });
+
+  it('is nothing at all when it names nobody', async () => {
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [filledAndStroked],
+      strokesOnly: () => new Set<string>(),
+    }));
+    expect(svg).toContain('fill="rgb(120,160,200)"');
+  });
+});
+
 describe('subset text framing', () => {
   const all = (scene: { texts: readonly TextObject[] }) => new Set(scene.texts.map((t) => t.id));
 

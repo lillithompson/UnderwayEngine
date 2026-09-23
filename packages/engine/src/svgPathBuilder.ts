@@ -470,6 +470,50 @@ export function svgIsFilled(
 }
 
 /**
+ * Whether the shape draws a LINE of its own — the other half of the question
+ * {@link svgIsFilled} asks about the interior.
+ *
+ * A width of exactly 0 is how "no outline" is authored (the Fill bar hands a
+ * filled shape `stroke: { width: 0 }`); an absent width means the
+ * composition's own, which is always drawn. A shape with SUBPATHS draws those
+ * instead of its own chain, so it strokes only if one of them is a stroke —
+ * a baked rig, which is filled subpaths and nothing else, strokes nothing.
+ */
+export function svgIsStroked(
+  obj: Pick<SVGObject, 'stroke' | 'segments' | 'subpaths'>,
+): boolean {
+  if (obj.stroke?.width === 0) return false;
+  if (obj.subpaths && obj.subpaths.length > 0) return obj.subpaths.some((sub) => !sub.fill);
+  return obj.segments.length > 0;
+}
+
+/**
+ * The shape with its FILL taken off, so it draws as the outline it was drawn
+ * with — a wireframe of itself. Every field that paints the interior goes:
+ * the editable `fill` block, the flattened `fillPaint`, the legacy
+ * `fillColor`/`fillOpacity`, and any filled subpath. The geometry, the
+ * stroke and the object's id are untouched, so it poses, masks, clips and
+ * casts exactly as it did.
+ *
+ * For a small picture of a page where a filled shape would read as a blob:
+ * see {@link CompositionSVGInputs.strokesOnly}, which names the objects this
+ * is applied to. A shape that has no stroke to fall back on is NOT one to
+ * hand this — it would draw nothing at all — which is the caller's rule to
+ * keep ({@link svgIsStroked}).
+ */
+export function svgObjectStrokesOnly(obj: SVGObject): SVGObject {
+  const out: SVGObject = { ...obj };
+  delete out.fill;
+  delete out.fillPaint;
+  delete out.fillColor;
+  delete out.fillOpacity;
+  if (obj.subpaths && obj.subpaths.length > 0) {
+    out.subpaths = obj.subpaths.filter((sub) => !sub.fill);
+  }
+  return out;
+}
+
+/**
  * Whether the shape draws ANYTHING inside its own outline — a paint of any
  * kind, or a PATTERN fill's tiles (v67+), which repeat inside the outline
  * and are clipped to it.

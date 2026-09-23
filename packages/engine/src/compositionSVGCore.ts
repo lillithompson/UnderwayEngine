@@ -22,7 +22,7 @@ import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgDrawsOwnInnerGlow, svgFillPresentation, svgInnerGlowBandMarkup, svgIsFilled, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
+import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgDrawsOwnInnerGlow, svgFillPresentation, svgInnerGlowBandMarkup, svgIsFilled, svgObjectStrokesOnly, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
 import { roundPathCorners, strokeScaleForUnits, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import { arcBoundingBox } from './compositionArcHitTest';
@@ -328,6 +328,22 @@ export interface CompositionSVGInputs {
    * how far that ink reaches, not what it is.
    */
   silhouette?: CompositionSubsetSelector;
+  /**
+   * Objects that draw only their STROKES: the fill comes off and the outline
+   * is all that is left, so the shape reads as a wireframe of itself.
+   *
+   * For a picture of a page seen very small — the Today card's 62pt tile —
+   * where a filled shape is a blob that says nothing about what was drawn,
+   * while its outline still says the shape. A shape that has no stroke keeps
+   * its fill: there would be nothing left of it otherwise, and a page made of
+   * filled shapes alone would come out blank. The engine does not decide
+   * which those are; the host names them, as it names {@link silhouette}'s
+   * (`svgIsFilled` and `svgIsStroked` are exported for the asking).
+   *
+   * Applied BEFORE `strokeColorOverride`, so a hollowed shape's outline takes
+   * the cutout's ink like any other line and there is no fill left to flood.
+   */
+  strokesOnly?: CompositionSubsetSelector;
   /**
    * Repaint every PAINT ISLAND in this color, whatever colors were brushed
    * into it, keeping each texel's alpha — so the brushwork keeps its shape,
@@ -1166,6 +1182,21 @@ export async function generateCompositionSVGCore(
   // notion of the override.
   const strokeInk = input.strokeColorOverride;
   let inkOverride: (s: SVGObject) => SVGObject = (s) => s;
+  // The fill comes off FIRST, so what follows sees the shape as it will be
+  // drawn: the ink override finds a line and no area to flood, and the cast
+  // effects below read an outline rather than a silhouette. Asked of the
+  // UNFILTERED scene, as every selector here is.
+  const hollow = input.strokesOnly?.({
+    figures: input.figures,
+    svgObjects: input.svgObjects,
+    images: input.images,
+    texts: input.texts ?? [],
+    paints: input.paintObjects ?? [],
+    groups,
+  });
+  if (hollow && hollow.size > 0) {
+    inkOverride = (s: SVGObject): SVGObject => (hollow.has(s.id) ? svgObjectStrokesOnly(s) : s);
+  }
   if (strokeInk) {
     // …and the objects that are nothing BUT fills take it on those too, or
     // they'd sit out the override entirely (see `silhouette`).
@@ -1204,15 +1235,17 @@ export async function generateCompositionSVGCore(
     // masks, the frame union and `patternFillBackground` go on reading) and
     // again to the LOCAL twin each is drawn from below. A pure function of
     // the object, so asking it twice cannot give two answers.
+    const hollowed = inkOverride;
     inkOverride = (s: SVGObject): SVGObject => {
-      if (only && !only.has(s.id)) return s;
+      const obj = hollowed(s);
+      if (only && !only.has(s.id)) return obj;
       return withSVGObjectStrokeColor(
-        s, strokeInk,
+        obj, strokeInk,
         flooded?.has(s.id) || patternViewIds.has(s.id) ? { floodFills: true } : undefined,
       );
     };
-    svgObjects = svgObjects.map(inkOverride);
   }
+  if (strokeInk || (hollow && hollow.size > 0)) svgObjects = svgObjects.map(inkOverride);
 
   const maskMap = buildActiveMaskMap({
     groups,
