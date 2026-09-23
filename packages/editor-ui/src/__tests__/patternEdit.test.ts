@@ -826,7 +826,10 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
     expect(PANEL).toContain('const MAX_SVG_PATTERN_SPAN = 10;');
     expect(PANEL).toContain('const SVG_PATTERN_SPAN_STEP = 1;');
     expect(PANEL).toContain('label="Size"');
-    expect(PANEL).toContain('model.onSvgPatternSpan?.(next);');
+    // Set as the handle moves, and again on release: the shape under the
+    // finger is the one the release will leave.
+    expect(PANEL).toContain('model.onSvgPatternSpan?.(next, committed);');
+    expect(PANEL).toContain('model.onSvgPatternSize?.(next, committed);');
     // …under Resolution, not over it.
     expect(PANEL.indexOf('label="Resolution"')).toBeLessThan(PANEL.indexOf('label="Size"'));
     // Its own draft handle, reset on its own quantity: the two rows are

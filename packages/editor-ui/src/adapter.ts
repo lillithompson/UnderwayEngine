@@ -759,11 +759,19 @@ export interface ObjectPropertiesModel {
   /** The tile's edge in CELLS — the page's RESOLUTION slider, 1–8. A
    *  pattern is square: 2 is a 2×2 tile, repeating across the shape. */
   svgPatternSize?: number;
-  /** Commit a new tile resolution. Called on RELEASE only (the page holds
-   *  the handle's own draft while it moves): the change re-rolls the tile
-   *  at that resolution, which is one undo step and not something to do
-   *  sixty times a second. */
-  onSvgPatternSize?(size: number): void;
+  /**
+   * Set the tile resolution. Called as the handle MOVES, once per whole
+   * step it crosses (`committed` false), and once more on release with the
+   * value that stands (`committed` true).
+   *
+   * The host previews each step from the state the drag began in and
+   * commits ONE entry from it, so a sweep is one undo step however many
+   * resolutions it passed through — and every step it does pass through is
+   * drawn, because a pattern you cannot see change is a pattern you are
+   * setting blind. It is also where the haptic bump lives: the host knows
+   * which step was last applied.
+   */
+  onSvgPatternSize?(size: number, committed: boolean): void;
   /** How big one repeat draws, in TENTHS of the width of the shape being
    *  filled — the page's SIZE slider, 1 to 10 in whole steps: 10 puts one
    *  repeat across the whole shape, 1 steps ten of them across it. The
@@ -771,10 +779,11 @@ export interface ObjectPropertiesModel {
    *  cut, Size says how big it draws, and moving one leaves the other
    *  alone. */
   svgPatternSpan?: number;
-  /** Commit a new repeat size. Called on RELEASE only, like the row above
-   *  — but this one does NOT re-roll: the same motif at a new scale is
-   *  still that motif, so a sweep back to where it started is a no-op. */
-  onSvgPatternSpan?(span: number): void;
+  /** Set the repeat size. Called per whole step as the handle moves and
+   *  again on release, exactly like the row above — and this one does NOT
+   *  re-roll: the same motif at a new scale is still that motif, so a
+   *  sweep back to where it started lands where it started. */
+  onSvgPatternSpan?(span: number, committed: boolean): void;
   /** The painting mirror the shape's tile is under, as a grid key ('h',
    *  'quad', …) or 'off' — the Pattern page's Symmetry section, which is
    *  the same twelve-cell grid a pattern OBJECT picks its mode from. */

@@ -1308,9 +1308,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // not a bigger one. (Size is how big the repeat draws, which is the
     // row below.)
     //
-    // The slider keeps its own handle (svgPatternSizeDraft) and commits on
-    // release: a change re-rolls the cells the finer tile exposes, which
-    // is one undo step, not sixty a second.
+    // The slider keeps its own handle (svgPatternSizeDraft) AND sets the
+    // tile as it moves — once per whole step it crosses, so the shape
+    // under the finger is the one the release will leave. The host
+    // previews each step from the state the drag began in and commits one
+    // entry from it, so a sweep is still one undo step (and it bumps the
+    // finger on each step it crosses).
     const editing = !!model.svgPatternEditing;
     const size = svgPatternSizeDraft
       ?? model.svgPatternSize ?? DEFAULT_SVG_PATTERN_SIZE;
@@ -1369,7 +1372,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
                   MIN_SVG_PATTERN_SIZE + t * (MAX_SVG_PATTERN_SIZE - MIN_SVG_PATTERN_SIZE),
                 );
                 setSvgPatternSizeDraft(committed ? null : next);
-                if (committed) model.onSvgPatternSize?.(next);
+                // Every frame of the drag asks; the host draws (and bumps)
+                // only where the whole step actually moved.
+                model.onSvgPatternSize?.(next, committed);
               }}
               readout={{
                 text: `${size}×${size}`,
@@ -1377,7 +1382,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
                   setSvgPatternSizeDraft(null);
                   model.onSvgPatternSize?.(Math.round(
                     Math.min(MAX_SVG_PATTERN_SIZE, Math.max(MIN_SVG_PATTERN_SIZE, n)),
-                  ));
+                  ), true);
                 },
               }}
             />
@@ -1388,8 +1393,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
                 without moving it, Size scales the whole motif without
                 re-cutting it, and neither handle moves the other.
                 Unlike Resolution this one never re-rolls — the same
-                pattern larger is the same pattern — so its handle can be
-                swept without spending the cells. */}
+                pattern larger is the same pattern — so a sweep back to
+                where it started lands where it started. */}
             <SliderRow
               label="Size"
               value={(span - MIN_SVG_PATTERN_SPAN) / (MAX_SVG_PATTERN_SPAN - MIN_SVG_PATTERN_SPAN)}
@@ -1398,7 +1403,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
                   + t * (MAX_SVG_PATTERN_SPAN - MIN_SVG_PATTERN_SPAN);
                 const next = Math.round(raw / SVG_PATTERN_SPAN_STEP) * SVG_PATTERN_SPAN_STEP;
                 setSvgPatternSpanDraft(committed ? null : next);
-                if (committed) model.onSvgPatternSpan?.(next);
+                model.onSvgPatternSpan?.(next, committed);
               }}
               readout={{
                 text: spanText(span),
@@ -1406,6 +1411,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
                   setSvgPatternSpanDraft(null);
                   model.onSvgPatternSpan?.(
                     Math.min(MAX_SVG_PATTERN_SPAN, Math.max(MIN_SVG_PATTERN_SPAN, n)),
+                    true,
                   );
                 },
               }}
