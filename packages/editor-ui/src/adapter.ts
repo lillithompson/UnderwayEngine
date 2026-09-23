@@ -99,6 +99,10 @@ export interface SceneOutlineModel {
  *  MCI glyph would have got. */
 export type ToolIconComponent = React.ComponentType<{ color: string; size: number }>;
 
+/** Which rainbow a colour swatch wears in place of its colour — see
+ *  {@link TopBarTool.swatchRainbow}. */
+export type SwatchRainbow = 'wheel' | 'ring';
+
 export interface TopBarTool {
   id: string;
   /** MaterialCommunityIcons glyph name (ignored when swatchColor or
@@ -107,11 +111,15 @@ export interface TopBarTool {
   active: boolean;
   /** When present the tool renders as a live color swatch (color tool). */
   swatchColor?: RGBLike;
-  /** Draw that swatch as the HUE WHEEL rather than as `swatchColor` — the
-   *  brush in hand is laying a colour that changes as the stroke goes
-   *  (a Random blend), so there is no one colour for the swatch to show.
-   *  The colour underneath is still what the picker opens on. */
-  swatchRainbow?: boolean;
+  /** Draw that swatch as the HUE WHEEL rather than as `swatchColor`, in
+   *  one of two shapes — the brush in hand is not laying the armed colour,
+   *  so there is no one colour for the swatch to show. `'wheel'` is the
+   *  solid wheel: a Random blend, which lays a colour that changes as the
+   *  stroke goes. `'ring'` is the wheel with its middle out: a Rotate
+   *  blend, which lays no colour of its own at all — it spins the hue of
+   *  what is already under it. The colour underneath is still what the
+   *  picker opens on, and any other blend brings it straight back. */
+  swatchRainbow?: SwatchRainbow;
   /** Bump to make the swatch BOUNCE — a small overshoot spring that draws
    *  the eye to it — when the colour was changed somewhere other than the
    *  swatch itself (a radial's swatch capsule): the swatch is where the

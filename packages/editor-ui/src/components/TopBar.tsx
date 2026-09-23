@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { TopBarModel } from '../adapter';
+import type { SwatchRainbow, TopBarModel } from '../adapter';
 import { nextToolOnPress } from '../logic/toolbarBehavior';
-import { ColorSwatchFill, RainbowSwatchFill } from './ColorSwatch';
+import { ColorSwatchFill, RainbowRingFill, RainbowSwatchFill } from './ColorSwatch';
 import {
   HEADER_BG,
   HEADER_HEIGHT,
@@ -54,12 +54,14 @@ function useBounceScale(bounceKey: number | undefined): Animated.Value {
  *  the colour is read — answers so the change is seen.
  *
  *  `rainbow` replaces the colour with the hue wheel: the brush is blending
- *  in Random and lays a colour that walks as the stroke goes, so the
- *  swatch shows that there is no one colour rather than a colour the
- *  stroke will not use. */
+ *  in a mode that does not lay the armed colour, so the swatch shows that
+ *  there is no one colour rather than a colour the stroke will not use —
+ *  solid for Random, which lays a colour that walks as the stroke goes,
+ *  and a RING for Rotate, which lays none of its own and spins the hue
+ *  already under it. */
 function SwatchGlyph({ color, rainbow, active, size, bounceKey }: {
   color: NonNullable<TopBarModel['tools'][number]['swatchColor']>;
-  rainbow: boolean;
+  rainbow: SwatchRainbow | undefined;
   active: boolean;
   size: number;
   bounceKey: number | undefined;
@@ -68,7 +70,9 @@ function SwatchGlyph({ color, rainbow, active, size, bounceKey }: {
   return (
     <Animated.View style={[styles.swatchWrap, { transform: [{ scale }] }]}>
       <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden' }}>
-        {rainbow ? <RainbowSwatchFill /> : <ColorSwatchFill color={color} />}
+        {rainbow === 'ring' ? <RainbowRingFill size={size} />
+          : rainbow === 'wheel' ? <RainbowSwatchFill />
+            : <ColorSwatchFill color={color} />}
       </View>
       {active ? (
         <>
@@ -90,7 +94,7 @@ function ToolGlyph({ tool, swatchSize }: { tool: TopBarModel['tools'][number]; s
       {tool.swatchColor ? (
         <SwatchGlyph
           color={tool.swatchColor}
-          rainbow={!!tool.swatchRainbow}
+          rainbow={tool.swatchRainbow}
           active={tool.active}
           size={swatchSize}
           bounceKey={tool.swatchBounceKey}
