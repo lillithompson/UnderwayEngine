@@ -260,7 +260,8 @@ export function EffectButtonRow({ children }: { children: React.ReactNode }) {
   return (
     <View style={styles.buttonGrid}>
       {lines.map((line, i) => (
-        // eslint-disable-next-line react/no-array-index-key
+        // The line's INDEX is its identity — a line is a position in the
+        // grid, and the buttons inside it carry the caller's own keys.
         <View key={i} style={styles.buttonRow}>{line}</View>
       ))}
     </View>

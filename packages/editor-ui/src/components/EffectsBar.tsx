@@ -101,6 +101,12 @@ export function effectLabel(kind: EffectKind): string {
  *  given ARE the list of buttons, so the sheet's height and the page's grid
  *  count the same thing (see {@link effectButtonCount}). */
 export interface EffectsBarProps {
+  /** Which of the three the selection is offered, in the order their buttons
+   *  stand and their tabs follow. Defaults to all of them
+   *  ({@link EFFECT_KINDS}); a host drops the ones its selection has no use
+   *  for — an INNER glow off an open path, which has no inside for light to
+   *  gather in (see the panel's `innerGlowable`). */
+  kinds?: readonly EffectKind[];
   present: (kind: EffectKind) => boolean;
   onToggle: (kind: EffectKind, add: boolean) => void;
   /** A closed shape's PATTERN FILL, where the host offers one: the tile
@@ -128,14 +134,14 @@ export interface EffectsBarProps {
   tint?: { present: boolean; onToggle: (add: boolean) => void };
 }
 
-/** How many buttons the Effects page will draw for these props — the three
- *  effects it offers plus whichever of Pattern and Tint the host wired up.
+/** How many buttons the Effects page will draw for these props — the effects
+ *  it offers plus whichever of Pattern and Tint the host wired up.
  *
  *  The sheet's height is counted from THIS rather than from a number the host
  *  keeps beside its props: the grid wraps at EFFECT_BUTTON_COLUMNS, so a
  *  count one out is a sheet a whole line too short or too tall. */
 export function effectButtonCount(props: EffectsBarProps): number {
-  return EFFECT_KINDS.length + (props.pattern ? 1 : 0) + (props.tint ? 1 : 0);
+  return (props.kinds ?? EFFECT_KINDS).length + (props.pattern ? 1 : 0) + (props.tint ? 1 : 0);
 }
 
 /**
@@ -147,7 +153,9 @@ export function effectButtonCount(props: EffectsBarProps): number {
  * the tab row, which is what makes this page unlike every other one in the
  * sheet.
  */
-export function EffectsBar({ present, onToggle, pattern, tint }: EffectsBarProps) {
+export function EffectsBar({
+  kinds = EFFECT_KINDS, present, onToggle, pattern, tint,
+}: EffectsBarProps) {
   const button = (key: string, label: string, on: boolean, press: () => void) => (
     <EffectButton
       key={key}
@@ -163,7 +171,7 @@ export function EffectsBar({ present, onToggle, pattern, tint }: EffectsBarProps
   );
   return (
     <EffectButtonRow>
-      {EFFECT_KINDS.map((kind) => button(
+      {kinds.map((kind) => button(
         kind, effectLabel(kind), present(kind), () => onToggle(kind, !present(kind)),
       ))}
       {pattern ? button(

@@ -131,7 +131,8 @@ describe('three buttons, and the tabs they make', () => {
     // props object is what the page renders AND what the height counts.
     expect(BAR).toContain('export function effectButtonCount(props: EffectsBarProps): number {');
     expect(BAR).toContain(
-      '  return EFFECT_KINDS.length + (props.pattern ? 1 : 0) + (props.tint ? 1 : 0);',
+      '  return (props.kinds ?? EFFECT_KINDS).length'
+      + ' + (props.pattern ? 1 : 0) + (props.tint ? 1 : 0);',
     );
     expect(PANEL).toContain('const effectsBarProps: EffectsBarProps = {');
     expect(PANEL).toContain('activeBarEl = <EffectsBar {...effectsBarProps} />;');
@@ -146,10 +147,39 @@ describe('three buttons, and the tabs they make', () => {
     expect(PANEL).toContain("const effectWorn = (kind: EffectKind): boolean => (kind === 'shadow'");
     expect(PANEL).toContain('? model.shadowPresent === true');
     expect(PANEL).toContain(': model.glowPresent?.[kind] === true);');
-    expect(PANEL).toContain('const wornEffects = EFFECT_KINDS.filter(effectWorn);');
+    expect(PANEL).toContain('const wornEffects = effectKinds.filter(effectWorn);');
     // The buttons light off that same answer, so a lit button and a standing
     // tab cannot disagree.
     expect(PANEL).toContain('    present: effectWorn,\n    onToggle: toggleEffect,');
+  });
+
+  // An INNER glow is light gathered inside the object's own area. An open
+  // path has no inside: the engine will still cast one, by gathering the band
+  // inside a WIDENED silhouette of the line, but what that draws is a tube
+  // down the stroke rather than light in a shape. So a line is not offered
+  // the choice — its page is the shadow and the outer glow.
+  it('an unfilled shape is not offered an inner glow', () => {
+    expect(PANEL).toContain('const innerGlowable = !model.showSvgOptions || svgFillable;');
+    expect(PANEL).toContain('const effectKinds = EFFECT_KINDS.filter(');
+    expect(PANEL).toContain(
+      "    (kind) => kind !== 'inner' || innerGlowable || effectWorn('inner'),",
+    );
+    // The buttons, the TABS and the height all read that one list, so a
+    // shape cannot be shown a button for a page it has no tab to, or
+    // measured for a line it doesn't draw.
+    expect(PANEL).toContain('const wornEffects = effectKinds.filter(effectWorn);');
+    expect(PANEL).toContain('    kinds: effectKinds,');
+    expect(BAR).toContain('  kinds?: readonly EffectKind[];');
+    expect(BAR).toContain('  kinds = EFFECT_KINDS, present, onToggle, pattern, tint,');
+    expect(BAR).toContain('{kinds.map((kind) => button(');
+    // …and it stays offered on anything already WEARING one, whatever the
+    // shape: the lit button and its tab are the only way off, and a glow
+    // whose button has gone is stranded on the object for good.
+    expect(PANEL).toContain("|| effectWorn('inner')");
+    // Two fewer buttons is a line fewer on a line's page: shadow + outer
+    // glow is one line, and the three effects are two.
+    expect(effectButtonGridHeight(2)).toBe(ROW_SEGMENTED);
+    expect(effectButtonGridHeight(3)).toBe(ROW_SEGMENTED * 2 + EFFECT_BUTTON_GAP);
   });
 
   it('an image gets a fourth button: its TINT, which makes no tab', () => {

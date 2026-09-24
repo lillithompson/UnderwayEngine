@@ -529,7 +529,29 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   const effectWorn = (kind: EffectKind): boolean => (kind === 'shadow'
     ? model.shadowPresent === true
     : model.glowPresent?.[kind] === true);
-  const wornEffects = EFFECT_KINDS.filter(effectWorn);
+  /** Which of the three the page OFFERS.
+   *
+   *  An inner glow is light gathered inside the object's own area, and an
+   *  open path — a line, an arc, a pencil stroke — has no inside. The engine
+   *  will still cast one, by gathering the band inside a WIDENED silhouette
+   *  of the line (paintSvg's innerGlowPrims takes an `outlineWidth` for
+   *  exactly this), but what that draws is a tube down the stroke, not light
+   *  in a shape: it is the last resort for a caster that is only a line, and
+   *  nothing worth offering as a choice. So a selection with no interior is
+   *  offered the shadow and the outer glow, and that is the page.
+   *
+   *  It IS offered on anything already wearing one — a page from before this
+   *  rule, or a shape reopened after its fill came off — because what is on
+   *  must stay removable: the button (lit) and its tab are the only way off,
+   *  and hiding them would strand the glow on the object for good.
+   *
+   *  Every other kind has an interior by construction (a photo, a frame, a
+   *  word, a pattern's cloth), so only a VECTOR is ever asked. */
+  const innerGlowable = !model.showSvgOptions || svgFillable;
+  const effectKinds = EFFECT_KINDS.filter(
+    (kind) => kind !== 'inner' || innerGlowable || effectWorn('inner'),
+  );
+  const wornEffects = effectKinds.filter(effectWorn);
   /** …and the same reading for a closed shape's PATTERN FILL, which is put
    *  on and taken off on that same page (the Effects row's fourth button)
    *  and so owns its tab the same way: the Pattern tab exists exactly while
@@ -1073,6 +1095,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // two to a line, so a count taken separately from the render is a sheet a
   // whole line out — the grid measured for a number it isn't drawing.
   const effectsBarProps: EffectsBarProps = {
+    kinds: effectKinds,
     present: effectWorn,
     onToggle: toggleEffect,
     pattern: patternEffect ? { present: patternWorn, onToggle: togglePattern } : undefined,
