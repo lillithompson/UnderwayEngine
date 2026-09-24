@@ -176,6 +176,32 @@ export const PATTERN_SYMMETRY_COLUMNS = 6;
 export const PATTERN_SYMMETRY_GRID =
   PATTERN_SYMMETRY_BUTTON * 2 + PATTERN_TILE_GRID_GAP;
 
+/** The EFFECTS page's Add / Remove buttons: how many stand on one line.
+ *
+ *  TWO, not however many there are. The page carries up to four buttons — the
+ *  shadow, the two glows, and whichever of a shape's Pattern or a photo's
+ *  Tint the selection can wear — and four across a phone-width sheet is
+ *  about fifty points each, which "Outer Glow" cannot be written in. Two
+ *  across is half the sheet apiece at any count, so every word fits and the
+ *  buttons read the same width on every kind of selection.
+ *
+ *  A lone last button (an odd count — the three effects with no fourth) takes
+ *  the whole line it is on, the way the block "Add …" button does: there is
+ *  nothing beside it to line up with. */
+export const EFFECT_BUTTON_COLUMNS = 2;
+/** The space between those buttons, across and down — one gap for the grid,
+ *  tighter than the page's other spacings so the points go to the words. */
+export const EFFECT_BUTTON_GAP = 6;
+
+/** How tall a grid of `count` Effects-page buttons stands: its lines of
+ *  {@link EFFECT_BUTTON_COLUMNS}, a segmented row each, one
+ *  {@link EFFECT_BUTTON_GAP} between. A page with nothing to show still
+ *  stands a line tall, which is what an unopened page of this kind renders. */
+export function effectButtonGridHeight(count: number): number {
+  const lines = Math.max(1, Math.ceil(count / EFFECT_BUTTON_COLUMNS));
+  return lines * ROW_SEGMENTED + (lines - 1) * EFFECT_BUTTON_GAP;
+}
+
 /** The property pages. An image selection offers crop / effects / border /
  *  opacity; text font / spacing / align (three pages of the Text controls)
  *  and effects (the image page, reused); a vector stroke plus whichever of svgFill /
@@ -275,6 +301,11 @@ export interface SubmenuHeightContext {
   /** Pattern Tools page: whether the host wired up the Repeat toggle, which
    *  adds its row. A grouped pattern can't repeat, so it doesn't. */
   patternCanRepeat?: boolean;
+  /** EFFECTS page: how many Add / Remove buttons the selection offers —
+   *  chunked into lines of {@link EFFECT_BUTTON_COLUMNS}, so a shape that can
+   *  wear a pattern stands a line taller than a line can hold. Counted from
+   *  the same list the page renders (EffectsBar's effectButtonCount). */
+  effectButtonCount?: number;
 }
 
 /** Total height of a stack of rows, including the gaps between them. */
@@ -308,7 +339,7 @@ function bareArea(rows: readonly number[], gap = ROW_GAP): number {
  * Joints page brings one box of the same kind, for the same reason.
  *
  * The EFFECTS page is not, for the opposite reason: it brings no box at
- * all. It is three buttons, and a button already reads as a thing you can
+ * all. It is a grid of buttons, and a button already reads as a thing you can
  * press — the well behind them added a grey slab whose only job elsewhere
  * is to gather CONTROLS into a field, with nothing here to gather.
  *
@@ -540,10 +571,13 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // The horizontal and the vertical alignment rows.
       return contentArea([ROW_SEGMENTED, ROW_SEGMENTED]);
     case 'effects':
-      // The three Add / Remove buttons, side by side on one row — and no
-      // well around them (pageIsWelled), so no padding of the well's
-      // either: the row and its cushion are the whole page.
-      return bareArea([ROW_SEGMENTED]);
+      // The Add / Remove buttons, TWO to a line (EFFECT_BUTTON_COLUMNS), so
+      // the page is a line taller once the selection offers more than two —
+      // and no well around them (pageIsWelled), so no padding of the well's
+      // either: the grid and its cushion are the whole page.
+      return bareArea([effectButtonGridHeight(
+        ctx.effectButtonCount ?? EFFECT_BUTTON_COLUMNS,
+      )]);
     case 'shadow':
     case 'glowOuter':
     case 'glowInner': {

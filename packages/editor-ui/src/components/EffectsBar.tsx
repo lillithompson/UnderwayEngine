@@ -11,8 +11,8 @@ import { rgbCss, withAlpha } from '../logic/hsv';
 // The three effects an object can cast over its own paint — a drop shadow,
 // and a glow each way — and the two pages they take.
 //
-// THE EFFECTS PAGE ({@link EffectsBar}) is those three buttons side by side,
-// one per effect, in the shape every page's one act wears ("Add Fill"). Off,
+// THE EFFECTS PAGE ({@link EffectsBar}) is those buttons, one per effect, two
+// to a line, in the shape every page's one act wears ("Add Fill"). Off,
 // a button is bare ink and its press ADDS that effect; on, it is filled in
 // selection blue and its press takes it away again. It is the only page in
 // the sheet that changes how many tabs there are: adding an effect puts a
@@ -97,16 +97,10 @@ export function effectLabel(kind: EffectKind): string {
   return kind === 'shadow' ? 'Shadow' : kind === 'outer' ? 'Outer Glow' : 'Inner Glow';
 }
 
-/**
- * The Effects page: one button per effect, side by side.
- *
- * `present` says which the selection already wears — those read as toggled
- * ON — and a press hands the kind back either way: the host adds what is
- * absent and removes what is there. Both are one undo step, and both change
- * the tab row, which is what makes this page unlike every other one in the
- * sheet.
- */
-export function EffectsBar({ present, onToggle, pattern, tint }: {
+/** What the Effects page holds, whoever is asking: the props the page is
+ *  given ARE the list of buttons, so the sheet's height and the page's grid
+ *  count the same thing (see {@link effectButtonCount}). */
+export interface EffectsBarProps {
   present: (kind: EffectKind) => boolean;
   onToggle: (kind: EffectKind, add: boolean) => void;
   /** A closed shape's PATTERN FILL, where the host offers one: the tile
@@ -132,7 +126,28 @@ export function EffectsBar({ present, onToggle, pattern, tint }: {
    *  Unlike the three, it carries no page: the brush is what colours it,
    *  and the button adds one in the colour in hand. */
   tint?: { present: boolean; onToggle: (add: boolean) => void };
-}) {
+}
+
+/** How many buttons the Effects page will draw for these props — the three
+ *  effects it offers plus whichever of Pattern and Tint the host wired up.
+ *
+ *  The sheet's height is counted from THIS rather than from a number the host
+ *  keeps beside its props: the grid wraps at EFFECT_BUTTON_COLUMNS, so a
+ *  count one out is a sheet a whole line too short or too tall. */
+export function effectButtonCount(props: EffectsBarProps): number {
+  return EFFECT_KINDS.length + (props.pattern ? 1 : 0) + (props.tint ? 1 : 0);
+}
+
+/**
+ * The Effects page: one button per effect, two to a line.
+ *
+ * `present` says which the selection already wears — those read as toggled
+ * ON — and a press hands the kind back either way: the host adds what is
+ * absent and removes what is there. Both are one undo step, and both change
+ * the tab row, which is what makes this page unlike every other one in the
+ * sheet.
+ */
+export function EffectsBar({ present, onToggle, pattern, tint }: EffectsBarProps) {
   const button = (key: string, label: string, on: boolean, press: () => void) => (
     <EffectButton
       key={key}

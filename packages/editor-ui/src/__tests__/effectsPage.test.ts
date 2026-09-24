@@ -20,7 +20,8 @@ import { join } from 'path';
 import { IMAGE_EDIT_OPTIONS } from '../logic/imageEdit';
 import { svgEditOptions } from '../logic/svgEdit';
 import {
-  BAR_CUSHION, ROW_SEGMENTED, pageIsWelled, submenuHeight,
+  BAR_CUSHION, EFFECT_BUTTON_COLUMNS, EFFECT_BUTTON_GAP, ROW_SEGMENTED,
+  effectButtonGridHeight, pageIsWelled, submenuHeight,
 } from '../logic/submenuHeight';
 
 const SRC = join(__dirname, '..');
@@ -58,7 +59,7 @@ describe('the tab is Effects, on every kind that can cast one', () => {
 });
 
 describe('three buttons, and the tabs they make', () => {
-  it('the page is one row of them, in the shape every page’s one act wears', () => {
+  it('the page is a grid of them, in the shape every page’s one act wears', () => {
     expect(BAR).toContain('<EffectButtonRow>');
     expect(BAR).toContain('layout="column"');
     // One button shape for the row, so the fourth (an image's Tint) is the
@@ -73,13 +74,12 @@ describe('three buttons, and the tabs they make', () => {
     // …and it reads as what a press will DO, whichever way it points.
     expect(BAR).toContain("accessibilityLabel={`${on ? 'Remove' : 'Add'} ${label}`}");
     expect(BAR).toContain('present(kind), () => onToggle(kind, !present(kind)),');
-    // One row, drawn BARE — no well behind it: three buttons are not a
-    // field of controls for a grey slab to gather.
+    // Drawn BARE — no well behind it: buttons are not a field of controls
+    // for a grey slab to gather.
     expect(pageIsWelled('effects')).toBe(false);
     expect(submenuHeight('effects')).toBe(ROW_SEGMENTED + BAR_CUSHION);
-    // Three across is a third of the well each, so the column style buys
-    // back the points the words need — "Outer Glow" at the block button's
-    // own measure lands within a point or two of the space it has.
+    // The column style buys back the points the words need — "Outer Glow"
+    // at the block button's own measure did not fit when four stood across.
     const eb = read('components', 'effectBar.tsx');
     expect(eb).toContain('addButtonColumn: { gap: 4 },');
     // …and the hairline the three wear, which any block button standing on
@@ -87,13 +87,55 @@ describe('three buttons, and the tabs they make', () => {
     expect(eb).toContain('addButtonBordered: { borderWidth: 1, borderColor: PANEL_BORDER },');
     expect(eb).toContain("(layout === 'column' || bordered) && styles.addButtonBordered,");
     expect(eb).toContain('addLabelColumn: { fontSize: 13 },');
-    expect(eb).toContain("buttonRow: { height: ROW_SEGMENTED, flexDirection: 'row', gap: 6 },");
+    expect(eb).toContain(
+      "buttonRow: { height: ROW_SEGMENTED, flexDirection: 'row', gap: EFFECT_BUTTON_GAP },",
+    );
+    // …stacked, the same gap down as across.
+    expect(eb).toContain("buttonGrid: { flexDirection: 'column', gap: EFFECT_BUTTON_GAP },");
     // …and a toggled one fills in DARK GREY, not the blue a lit tab wears:
     // these say "this effect is on the object", not "this is the page
     // you're looking at", and in the same blue the row read as a second row
     // of tabs.
     expect(eb).toContain('addButtonActive: { backgroundColor: PANEL_CONTROL_ON },');
     expect(eb).not.toContain('addButtonActive: { backgroundColor: STATE_ACTIVE },');
+  });
+
+  it('two to a line, and the sheet is measured from the list the page draws', () => {
+    // Four buttons across one line left about fifty points each, which
+    // "Outer Glow" cannot be written in. The grid wraps instead, so a button
+    // is half the sheet wide however many there are.
+    expect(EFFECT_BUTTON_COLUMNS).toBe(2);
+    const eb = read('components', 'effectBar.tsx');
+    expect(eb).toContain('const buttons = React.Children.toArray(children);');
+    expect(eb).toContain('for (let i = 0; i < buttons.length; i += EFFECT_BUTTON_COLUMNS) {');
+    expect(eb).toContain('lines.push(buttons.slice(i, i + EFFECT_BUTTON_COLUMNS));');
+
+    // …and the height follows the COUNT, a line at a time: the three effects
+    // are two lines, a fourth button (a shape's Pattern, a photo's Tint)
+    // fills the second, and a fifth would start a third.
+    const line = ROW_SEGMENTED;
+    const lines2 = line * 2 + EFFECT_BUTTON_GAP;
+    expect(effectButtonGridHeight(1)).toBe(line);
+    expect(effectButtonGridHeight(2)).toBe(line);
+    expect(effectButtonGridHeight(3)).toBe(lines2);
+    expect(effectButtonGridHeight(4)).toBe(lines2);
+    expect(effectButtonGridHeight(5)).toBe(line * 3 + EFFECT_BUTTON_GAP * 2);
+    // An empty page still stands a line tall rather than collapsing.
+    expect(effectButtonGridHeight(0)).toBe(line);
+    // The page grows by exactly that line, in the sheet's own arithmetic.
+    expect(submenuHeight('effects', { effectButtonCount: 4 })
+      - submenuHeight('effects', { effectButtonCount: 2 })).toBe(line + EFFECT_BUTTON_GAP);
+
+    // The count is taken from the page's OWN props, never kept beside them:
+    // the grid wraps, so a count one out is a sheet a whole line out. ONE
+    // props object is what the page renders AND what the height counts.
+    expect(BAR).toContain('export function effectButtonCount(props: EffectsBarProps): number {');
+    expect(BAR).toContain(
+      '  return EFFECT_KINDS.length + (props.pattern ? 1 : 0) + (props.tint ? 1 : 0);',
+    );
+    expect(PANEL).toContain('const effectsBarProps: EffectsBarProps = {');
+    expect(PANEL).toContain('activeBarEl = <EffectsBar {...effectsBarProps} />;');
+    expect(PANEL).toContain('effectButtonCount: effectButtonCount(effectsBarProps),');
   });
 
   it('a tab exists exactly while its effect is worn — read STRICTLY', () => {
@@ -107,7 +149,7 @@ describe('three buttons, and the tabs they make', () => {
     expect(PANEL).toContain('const wornEffects = EFFECT_KINDS.filter(effectWorn);');
     // The buttons light off that same answer, so a lit button and a standing
     // tab cannot disagree.
-    expect(PANEL).toContain('        present={effectWorn}\n        onToggle={toggleEffect}');
+    expect(PANEL).toContain('    present: effectWorn,\n    onToggle: toggleEffect,');
   });
 
   it('an image gets a fourth button: its TINT, which makes no tab', () => {
@@ -124,7 +166,7 @@ describe('three buttons, and the tabs they make', () => {
     expect(BAR).toContain('tint?: { present: boolean; onToggle: (add: boolean) => void };');
     // Offered only where the host has a tint to offer — an image — so
     // every other kind's page is the three it always was.
-    expect(PANEL).toContain('tint={model.onToggleImageTint');
+    expect(PANEL).toContain('    tint: model.onToggleImageTint');
     expect(PANEL).toContain('present: model.imageTintPresent === true,');
     expect(ADAPTER).toContain('imageTintPresent?: boolean;');
     expect(ADAPTER).toContain('onToggleImageTint?(add: boolean): void;');
@@ -193,7 +235,7 @@ describe('a closed shape gets a fourth button: its PATTERN, which DOES make a ta
       'const patternEffect = svgFillable && (!!model.onAddSvgPattern || !!model.onRemoveSvgPattern);',
     );
     expect(PANEL).toContain(
-      'pattern={patternEffect ? { present: patternWorn, onToggle: togglePattern } : undefined}',
+      'pattern: patternEffect ? { present: patternWorn, onToggle: togglePattern } : undefined,',
     );
   });
 

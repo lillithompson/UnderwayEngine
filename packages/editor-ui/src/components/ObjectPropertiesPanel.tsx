@@ -18,7 +18,10 @@ import {
   objectPanelLayout,
   objectPanelPages,
 } from '../logic/panelLayout';
-import { EffectBar, EffectsBar, EFFECT_KINDS, effectLabel } from './EffectsBar';
+import type { EffectsBarProps } from './EffectsBar';
+import {
+  EffectBar, EffectsBar, effectButtonCount, EFFECT_KINDS, effectLabel,
+} from './EffectsBar';
 import { BorderBar } from './BorderBar';
 import { OpacityBar } from './OpacityBar';
 import { RigJointsBar } from './RigJointsBar';
@@ -1065,6 +1068,22 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     openSubmenu('svgPattern');
   };
 
+  // What the Effects page holds, in ONE place: the page renders these props
+  // and the sheet's height counts them (effectButtonCount). The buttons wrap
+  // two to a line, so a count taken separately from the render is a sheet a
+  // whole line out — the grid measured for a number it isn't drawing.
+  const effectsBarProps: EffectsBarProps = {
+    present: effectWorn,
+    onToggle: toggleEffect,
+    pattern: patternEffect ? { present: patternWorn, onToggle: togglePattern } : undefined,
+    tint: model.onToggleImageTint
+      ? {
+        present: model.imageTintPresent === true,
+        onToggle: (add) => model.onToggleImageTint?.(add),
+      }
+      : undefined,
+  };
+
   // Border controls → live preview / commit through the model; same pattern.
   const applyBorder = (b: BorderModel, committed: boolean) => {
     setBorderDraft(b);
@@ -1522,21 +1541,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     );
   } else if (displaySub === 'effects') {
     // Three buttons, one per effect — four over an image, which can also
-    // carry a TINT — lit for the ones the object wears, and a press either
-    // way. No Remove line: every button IS one.
-    activeBarEl = (
-      <EffectsBar
-        present={effectWorn}
-        onToggle={toggleEffect}
-        pattern={patternEffect ? { present: patternWorn, onToggle: togglePattern } : undefined}
-        tint={model.onToggleImageTint
-          ? {
-            present: model.imageTintPresent === true,
-            onToggle: (add) => model.onToggleImageTint?.(add),
-          }
-          : undefined}
-      />
-    );
+    // carry a TINT, or a shape that can wear a PATTERN — lit for the ones the
+    // object wears, and a press either way. No Remove line: every button IS
+    // one. Two to a line, and the sheet was measured from this same list.
+    activeBarEl = <EffectsBar {...effectsBarProps} />;
   } else if (shownEffect) {
     const glowKind: GlowKind | null = shownEffect === 'shadow' ? null : shownEffect;
     activeBarEl = (
@@ -1771,6 +1779,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     patternTileSetCount: model.patternTileSets?.length
       ?? model.svgPatternTileSets?.length ?? 0,
     patternCanRepeat: !!model.onToggleRepeat,
+    // …and the Effects page by how many buttons it offers, counted from the
+    // very props it renders: they wrap two to a line.
+    effectButtonCount: effectButtonCount(effectsBarProps),
   });
   const sheetHeight = editSheetHeight(contentHeight, { removable: !!removeAction, safeBottom });
 

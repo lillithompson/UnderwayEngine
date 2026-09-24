@@ -2,7 +2,8 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import {
-  ASIDE_GAP, CONTENT_PAD, GROUP_GAP, GROUP_PAD, ROW_GAP, ROW_SECTION_TABS, ROW_SEGMENTED, ROW_SLIDER,
+  ASIDE_GAP, CONTENT_PAD, EFFECT_BUTTON_COLUMNS, EFFECT_BUTTON_GAP, GROUP_GAP, GROUP_PAD, ROW_GAP,
+  ROW_SECTION_TABS, ROW_SEGMENTED, ROW_SLIDER,
   ROW_SWITCH, SLIDER_CONTROL, SLIDER_LABEL, SLIDER_LABEL_GAP,
 } from '../logic/submenuHeight';
 import { percentText, percentToValue } from '../logic/slider';
@@ -232,11 +233,38 @@ export function EffectButton({
   return layout === 'block' ? <View style={styles.emptyControls}>{button}</View> : button;
 }
 
-/** A row of {@link EffectButton}s in `column` layout, sharing the row's
- *  width equally — the Effects page's three, which are one control each and
- *  belong on one line. One row's height, like every other page row. */
+/** A grid of {@link EffectButton}s in `column` layout — the Effects page's
+ *  Add / Remove buttons, which are one control each.
+ *
+ *  TWO to a line ({@link EFFECT_BUTTON_COLUMNS}), the buttons on a line
+ *  sharing its width equally. Four across one line, which is what a shape
+ *  that can wear a pattern used to give, left about fifty points a button:
+ *  "Outer Glow" does not fit in that and every word on the page was cut
+ *  short. Two across is half the sheet apiece however many there are, so the
+ *  buttons read the same width on every kind of selection.
+ *
+ *  An odd count leaves the last button alone on its line, where it takes the
+ *  whole width — there being nothing beside it to line up with, exactly as
+ *  the block "Add …" button spans its own line. The caller's `null`s (the
+ *  buttons this selection does not offer) are not lines: they are dropped
+ *  before the chunking, so the grid counts what it draws — the same count
+ *  {@link effectButtonGridHeight} measures. */
 export function EffectButtonRow({ children }: { children: React.ReactNode }) {
-  return <View style={styles.buttonRow}>{children}</View>;
+  // toArray drops the nulls and flattens the caller's mapped run, so what is
+  // left is exactly the buttons being drawn.
+  const buttons = React.Children.toArray(children);
+  const lines: React.ReactNode[][] = [];
+  for (let i = 0; i < buttons.length; i += EFFECT_BUTTON_COLUMNS) {
+    lines.push(buttons.slice(i, i + EFFECT_BUTTON_COLUMNS));
+  }
+  return (
+    <View style={styles.buttonGrid}>
+      {lines.map((line, i) => (
+        // eslint-disable-next-line react/no-array-index-key
+        <View key={i} style={styles.buttonRow}>{line}</View>
+      ))}
+    </View>
+  );
 }
 
 /** The tap-to-type value box every slider row wears on its right: a white
@@ -887,9 +915,14 @@ const styles = StyleSheet.create({
   emptyControls: { height: ROW_SEGMENTED, flexDirection: 'row' },
   // …and the same row holding several of them, one gap apart. The gap is
   // tighter than a page's other spacings for the reason the column style
-  // below is: three of these have a third of the sheet's width each, and
-  // every point spent between them is a point off the words.
-  buttonRow: { height: ROW_SEGMENTED, flexDirection: 'row', gap: 6 },
+  // below is: every point spent between two buttons is a point off their
+  // words.
+  buttonRow: { height: ROW_SEGMENTED, flexDirection: 'row', gap: EFFECT_BUTTON_GAP },
+  // The Effects page's grid: those rows stacked, the same gap down as across,
+  // two buttons to a row (EFFECT_BUTTON_COLUMNS). No height of its own — it
+  // is as tall as the rows it holds, which is what effectButtonGridHeight
+  // predicts from their count.
+  buttonGrid: { flexDirection: 'column', gap: EFFECT_BUTTON_GAP },
   // The Add button is bare ink on the well — no fill: a filled pill read as
   // a control already set, when the page's whole point is that nothing is.
   // The word is full-strength ink, not the white it wore while the pill was
@@ -902,10 +935,11 @@ const styles = StyleSheet.create({
   // it span the page and hugs its word, keeping a row's own height so it
   // lines up with whatever it stands next to.
   addButtonInline: { flex: 0, height: ROW_SEGMENTED, paddingHorizontal: 12 },
-  // Three across: the glyph tucks closer to its word, because a third of
-  // the well is about a hundred points and "Outer Glow" at the block
-  // button's own measure lands within a point or two of it.
-  //
+  // Sharing a line: the glyph tucks closer to its word and the word itself
+  // drops a point (addLabelColumn), so the longest of them — "Outer Glow" —
+  // is written in full on the narrowest sheet there is. Two to a line buys
+  // that comfortably now; it was measured when there were four, where it was
+  // the difference between the word and an ellipsis.
   addButtonColumn: { gap: 4 },
   // A hairline round the button, for one with nothing else to say where it
   // ends: the block button alone in a well relies on the well's edge, and
