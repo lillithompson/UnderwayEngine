@@ -37,8 +37,9 @@ import {
 import { patternModalTileSize } from '../logic/patternEdit';
 import {
   BAR_CUSHION, CONTENT_PAD, PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_COLUMNS,
-  PATTERN_TILE_GRID_GAP, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, ROW_SWITCH,
-  SECTION_TABS_ROW, SHEET_PAD_HORIZONTAL, pageIsWelled, submenuHeight,
+  PATTERN_TILE_GRID_GAP, PATTERN_TILE_SET_BUTTON, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER,
+  ROW_SWITCH, SECTION_TABS_ROW, SHEET_PAD_HORIZONTAL, pageIsWelled,
+  patternTileSetGridHeight, submenuHeight,
 } from '../logic/submenuHeight';
 
 describe('the pattern options row', () => {
@@ -277,23 +278,36 @@ describe('the tile-set filter', () => {
       .toEqual(['angular', 'curved', 'petal']);
   });
 
-  it('the Shapes page is those chips, three across, and grows a line at a time', () => {
-    expect(PATTERN_TILE_SET_COLUMNS).toBe(3);
-    expect(patternTileSetLines(['a', 'b', 'c', 'd', 'e'])).toEqual([['a', 'b', 'c'], ['d', 'e']]);
+  it('the Shapes page is those squares, five across, and grows a line at a time', () => {
+    // Five, which is as many of the fixed square as fit the narrowest sheet
+    // there is — so today's five families are ONE line.
+    expect(PATTERN_TILE_SET_COLUMNS).toBe(5);
+    expect(
+      PATTERN_TILE_SET_BUTTON * PATTERN_TILE_SET_COLUMNS
+      + PATTERN_TILE_GRID_GAP * (PATTERN_TILE_SET_COLUMNS - 1),
+    ).toBeLessThanOrEqual(375 - 2 * SHEET_PAD_HORIZONTAL - 2 * CONTENT_PAD);
+    expect(patternTileSetLines(['a', 'b', 'c', 'd', 'e']))
+      .toEqual([['a', 'b', 'c', 'd', 'e']]);
+    expect(patternTileSetLines(['a', 'b', 'c', 'd', 'e', 'f']))
+      .toEqual([['a', 'b', 'c', 'd', 'e'], ['f']]);
     // The page reserves a line even with nothing to show — an unopened
     // page of this kind renders one.
     expect(patternTileSetLineCount(0)).toBe(1);
-    expect(patternTileSetLineCount(3)).toBe(1);
-    expect(patternTileSetLineCount(4)).toBe(2);
-    // …and the height follows the same count, so what is reserved and what
-    // is laid out cannot drift.
-    const oneLine = submenuHeight('patternShapes', { patternTileSetCount: 3 });
-    const twoLines = submenuHeight('patternShapes', { patternTileSetCount: 5 });
-    expect(oneLine).toBe(CONTENT_PAD * 2 + ROW_SEGMENTED + BAR_CUSHION);
-    expect(twoLines).toBe(oneLine + ROW_SEGMENTED + ROW_GAP);
+    expect(patternTileSetLineCount(5)).toBe(1);
+    expect(patternTileSetLineCount(6)).toBe(2);
+    // …and the height follows the same count, through the one helper both
+    // the page and the reserve read, so what is reserved and what is laid
+    // out cannot drift.
+    expect(patternTileSetGridHeight(5)).toBe(PATTERN_TILE_SET_BUTTON);
+    expect(patternTileSetGridHeight(6))
+      .toBe(PATTERN_TILE_SET_BUTTON * 2 + PATTERN_TILE_GRID_GAP);
+    const oneLine = submenuHeight('patternShapes', { patternTileSetCount: 5 });
+    const twoLines = submenuHeight('patternShapes', { patternTileSetCount: 6 });
+    expect(oneLine).toBe(CONTENT_PAD * 2 + PATTERN_TILE_SET_BUTTON + BAR_CUSHION);
+    expect(twoLines).toBe(oneLine + PATTERN_TILE_SET_BUTTON + PATTERN_TILE_GRID_GAP);
     expect(submenuHeight('patternShapes')).toBe(oneLine);
-    // The fill's Shapes SECTION is the same chips under the section strip.
-    expect(submenuHeight('svgPattern', { svgPatternSection: 'shapes', patternTileSetCount: 5 }))
+    // The fill's Shapes SECTION is the same squares under the section strip.
+    expect(submenuHeight('svgPattern', { svgPatternSection: 'shapes', patternTileSetCount: 6 }))
       .toBe(twoLines + SECTION_TABS_ROW + ROW_GAP);
   });
 });
@@ -323,10 +337,26 @@ describe('the Shapes page', () => {
       BARS.indexOf('export function PatternShapesBar'),
     );
     expect(lines).toContain('patternTileSetLines(sets).map');
-    // A set of switches, not exclusive choices, so the row that already
-    // draws several lit at once.
-    expect(lines).toContain('<MultiToggleRow');
-    expect(lines).toContain('active: s.enabled');
+    // A set of switches, not exclusive choices: every square lights on its
+    // own, so several are lit at once.
+    expect(lines).toContain('s.enabled && styles.setCellActive');
+    expect(lines).toContain('accessibilityState={{ selected: s.enabled }}');
+  });
+
+  it('draws each family as a FIXED square, not a cell that divides its row', () => {
+    // The chips were a MultiToggleRow, whose segments share the row's width:
+    // a last line of two came out half again as wide as the five above it.
+    // Fixed squares are the same button wherever they land — the dress the
+    // arming and symmetry grids beside them wear.
+    expect(BARS).not.toContain('MultiToggleRow');
+    expect(BARS).toMatch(
+      /setCell:\s*\{\s*width: PATTERN_TILE_SET_BUTTON,\s*height: PATTERN_TILE_SET_BUTTON,/,
+    );
+    // Rows left-aligned in a column of them, one grid gap apart — no wrap,
+    // no stretch.
+    expect(BARS).toContain('setGrid: { gap: PATTERN_TILE_GRID_GAP },');
+    expect(BARS).toContain("setRow: { flexDirection: 'row', gap: PATTERN_TILE_GRID_GAP },");
+    expect(PATTERN_TILE_SET_BUTTON).toBeGreaterThan(0);
   });
 
   it('serves the pattern OBJECT s page and the shape fill s section from one component', () => {
@@ -860,7 +890,7 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     expect(effects).toContain(
       "return layout === 'block' ? <View style={styles.emptyControls}>{button}</View> : button;",
     );
-    expect(BARS).toContain('  ActionRow, BarBody, EffectButton, MultiToggleRow, SegmentedRow, SwitchRow,\n');
+    expect(BARS).toContain('  ActionRow, BarBody, EffectButton, SegmentedRow, SwitchRow,\n');
   });
 
   it('takes the act as a host callback, so a host can withhold it', () => {

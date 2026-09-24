@@ -4,7 +4,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { ObjectPropertiesModel } from '../adapter';
 import {
   PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_COLUMNS,
-  PATTERN_TILE_BUTTON, PATTERN_TILE_GRID_GAP, ROW_GAP,
+  PATTERN_TILE_BUTTON, PATTERN_TILE_GRID_GAP, PATTERN_TILE_SET_BUTTON, ROW_GAP,
 } from '../logic/submenuHeight';
 import {
   PATTERN_ARM_TOOLS,
@@ -20,7 +20,7 @@ import {
 import type { PatternTileSetRow } from '../logic/patternEdit';
 import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
 import {
-  ActionRow, BarBody, EffectButton, MultiToggleRow, SegmentedRow, SwitchRow,
+  ActionRow, BarBody, EffectButton, SegmentedRow, SwitchRow,
 } from './effectBar';
 import { PatternSetsModal } from './PatternSetsModal';
 import { PatternTileModal } from './PatternTileModal';
@@ -39,7 +39,7 @@ import { PatternTileTransformModal } from './PatternTileTransformModal';
 //                the grid edge, and the tile-set filter.
 //   • Symmetry — the painting-mirror grid (the old symmetry modal's modes),
 //                exclusive, with Off closing the set.
-//   • Shapes   — WHAT THE PATTERN IS MADE OF: one chip per sprite family,
+//   • Shapes   — WHAT THE PATTERN IS MADE OF: one square per sprite family,
 //                lit while that family's tiles are in the Tiles menu and
 //                in Random's pool. Not exclusive — a pattern is made of
 //                however many families are lit, and the page refuses the
@@ -245,10 +245,18 @@ export function PatternTileBar({ model }: { model: ObjectPropertiesModel }) {
 }
 
 /**
- * The tile-set filter as ROWS OF CHIPS: one per sprite family, lit while
- * the pattern is made of it, three across
- * (patternEdit's PATTERN_TILE_SET_COLUMNS) so a handful of families is a
- * line or two rather than a column of full-width cells.
+ * The tile-set filter as ROWS OF SQUARE BUTTONS: one per sprite family, lit
+ * while the pattern is made of it, five across (patternEdit's
+ * PATTERN_TILE_SET_COLUMNS — as many as fit the narrowest sheet there is),
+ * so today's five families are one line and a longer list grows a line at a
+ * time.
+ *
+ * FIXED squares, on the arming grid's own scale (PATTERN_TILE_SET_BUTTON),
+ * rather than cells that divide their row: every family is the same size
+ * whichever line it lands on, where stretched chips made a short last row's
+ * two buttons half the width of the row above them. A family is a thing the
+ * pattern is made of, not a share of a control, so it reads as a button of
+ * its own — the dress the Tiles and Symmetry grids beside it wear.
  *
  * Shared by the two places a pattern's families are set — a pattern
  * OBJECT's Shapes page and the Shapes section of a shape's Pattern page —
@@ -256,28 +264,42 @@ export function PatternTileBar({ model }: { model: ObjectPropertiesModel }) {
  * field, and a second copy of this could drift in how it wraps (which is
  * the arithmetic submenuHeight predicts the sheet's height from).
  *
- * The chips are a MultiToggleRow, not a segmented control: these are not
- * exclusive choices but a set of switches, and the row already draws a lit
- * one that way. Nothing here refuses a press — the HOST decides whether a
- * toggle is legal, and simply does nothing when it is not
- * (togglePatternTileSet returns null for the last set on).
+ * Not a segmented control: these are not exclusive choices but a set of
+ * switches, so several light at once. Nothing here refuses a press — the
+ * HOST decides whether a toggle is legal, and simply does nothing when it is
+ * not (togglePatternTileSet returns null for the last set on).
  */
 export function PatternTileSetLines({ sets, onToggle }: {
   sets: readonly PatternTileSetRow[];
   onToggle?: (family: string) => void;
 }) {
   return (
-    <>
+    <View style={styles.setGrid}>
       {patternTileSetLines(sets).map((line, i) => (
-        <MultiToggleRow
+        <View
           key={line.map((s) => s.family).join(',') || `empty-${i}`}
-          options={line.map((s) => ({
-            value: s.family, label: s.label, active: s.enabled,
-          }))}
-          onToggle={(family) => onToggle?.(family)}
-        />
+          style={styles.setRow}
+        >
+          {line.map((s) => (
+            <Pressable
+              key={s.family}
+              onPress={() => onToggle?.(s.family)}
+              style={[styles.setCell, s.enabled && styles.setCellActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: s.enabled }}
+              accessibilityLabel={s.label}
+            >
+              <Text
+                style={[styles.setWord, s.enabled && styles.setWordActive]}
+                numberOfLines={1}
+              >
+                {s.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
       ))}
-    </>
+    </View>
   );
 }
 
@@ -485,6 +507,28 @@ const styles = StyleSheet.create({
   // Facet Tile Palette's Random/Erase dress: a 22pt glyph over a 9pt word.
   tileCaption: { color: PANEL_INK_DIM, fontSize: 9, fontWeight: '600', marginTop: 2 },
   tileWordActive: { color: PANEL_INK },
+  // The Shapes page's family grid: rows of FIXED squares, left-aligned, so
+  // a short last row's buttons are the width of a full row's rather than
+  // stretching to fill it. Same column of rows as the symmetry grid below,
+  // on the same gap — the two pattern grids read as one kind of thing.
+  setGrid: { gap: PATTERN_TILE_GRID_GAP },
+  setRow: { flexDirection: 'row', gap: PATTERN_TILE_GRID_GAP },
+  setCell: {
+    width: PATTERN_TILE_SET_BUTTON,
+    height: PATTERN_TILE_SET_BUTTON,
+    borderRadius: 8,
+    backgroundColor: PANEL_TRACK,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  setCellActive: { borderColor: STATE_ACTIVE },
+  // The grid's 9pt caption, as the arming and symmetry cells wear it — here
+  // it is the whole cell, a family having no glyph of its own.
+  setWord: { color: PANEL_INK_DIM, fontSize: 9, fontWeight: '600', textAlign: 'center' },
+  setWordActive: { color: PANEL_INK },
   // The symmetry grid: twelve buttons in two SLICED rows of six, which is
   // the two rows submenuHeight reserves (PATTERN_SYMMETRY_GRID). Sliced
   // rather than wrapped because the cells STRETCH: six of them share the

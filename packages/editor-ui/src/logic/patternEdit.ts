@@ -289,11 +289,13 @@ export interface PatternTileSetRow {
  *  became the pattern's own. */
 export const PATTERN_DEFAULT_TILE_SETS: readonly string[] = ['angular', 'curved'];
 
-/** How many set chips sit across one row of the Shapes page. Three, so
- *  the longest family word there is ("Craftsman") still reads on an
- *  SE-width sheet, and so a handful of families is one or two rows rather
- *  than a column of full-width cells. */
-export const PATTERN_TILE_SET_COLUMNS = 3;
+/** How many family buttons sit across one row of the Shapes page. Five: as
+ *  many of its fixed squares (submenuHeight's PATTERN_TILE_SET_BUTTON, wide
+ *  enough for the longest family word there is, "Craftsman") as fit an
+ *  SE-width sheet, which makes today's five families one line. It was three
+ *  while the cells stretched to fill their row, when a fourth would have
+ *  squeezed the word. */
+export const PATTERN_TILE_SET_COLUMNS = 5;
 
 /** The Shapes page's rows, chunked into lines of at most
  *  {@link PATTERN_TILE_SET_COLUMNS}. The page and {@link submenuHeight}

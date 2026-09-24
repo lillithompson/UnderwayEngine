@@ -135,6 +135,28 @@ export const PATTERN_TILE_GRID_GAP = 6;
 export const PATTERN_TILE_GRID =
   PATTERN_TILE_BUTTON * 2 + PATTERN_TILE_GRID_GAP;
 
+/** One square button of the Shapes page's family grid. A shade wider than
+ *  the arming square beside it because it carries a WORD rather than
+ *  artwork, and the longest family word there is ("Craftsman") needs the
+ *  room at the grid's 9pt caption. Five fit across the narrowest sheet there
+ *  is (5×56 + 4×6 = 304 inside an SE-width 375 − 2×16 sheet padding − 2×14
+ *  content padding = 315), which is what PATTERN_TILE_SET_COLUMNS is.
+ *
+ *  Fixed, unlike the Symmetry grid's stretching cell: a family is one of
+ *  several things a pattern is made of, and they read as the same button
+ *  whichever line each lands on — a stretched last row of two was two
+ *  buttons half again the width of the five above them. */
+export const PATTERN_TILE_SET_BUTTON = 56;
+
+/** The whole family grid: a row of buttons per line of families, one grid
+ *  gap apart. What both the Shapes PAGE and the Shapes SECTION of a shape's
+ *  Pattern page reserve, so the height predicted and the height laid out
+ *  cannot drift. */
+export function patternTileSetGridHeight(count: number): number {
+  const lines = patternTileSetLineCount(count);
+  return lines * PATTERN_TILE_SET_BUTTON + (lines - 1) * PATTERN_TILE_GRID_GAP;
+}
+
 /** How TALL one button of the pattern Symmetry page's mode grid stands, and
  *  how many sit across it. Shorter than the arming button beside it, because
  *  it has a smaller job: an arming cell shows a tile's ARTWORK, where these
@@ -205,7 +227,7 @@ export type SubmenuKey =
   // the painting-symmetry grid.
   | 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry'
   // …and the Shapes page: which sprite families the pattern is made of,
-  // as rows of chips (see patternEdit's PATTERN_TILE_SET_COLUMNS).
+  // as rows of square buttons (see patternEdit's PATTERN_TILE_SET_COLUMNS).
   | 'patternShapes';
 
 /** The current state of everything that changes a page's row count. Values are
@@ -386,12 +408,14 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       if (ctx.svgPatternSection === 'stroke') {
         return contentArea([SECTION_TABS_ROW, ...borderRows({ position: false, color: true })]);
       }
-      // SHAPES is the tile-set filter, the same chips the pattern object's
-      // own Shapes page lays out, so it is counted by the same arithmetic.
+      // SHAPES is the tile-set filter, the same square family buttons the
+      // pattern object's own Shapes page lays out, so it is counted by the
+      // same arithmetic.
       if (ctx.svgPatternSection === 'shapes') {
-        return contentArea([SECTION_TABS_ROW, ...new Array(
-          patternTileSetLineCount(ctx.patternTileSetCount ?? 0),
-        ).fill(ROW_SEGMENTED)]);
+        return contentArea([
+          SECTION_TABS_ROW,
+          patternTileSetGridHeight(ctx.patternTileSetCount ?? 0),
+        ]);
       }
       return contentArea([SECTION_TABS_ROW, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
     case 'crop':
@@ -481,13 +505,12 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return contentArea(new Array(mainRows).fill(ROW_SEGMENTED));
     }
     case 'patternShapes':
-      // The tile-set filter: one chip per sprite family, three across
-      // (PATTERN_TILE_SET_COLUMNS), so five families is two lines. The
-      // page reserves a line even with nothing to show, which is what an
-      // unopened page of this kind renders.
-      return contentArea(new Array(
-        patternTileSetLineCount(ctx.patternTileSetCount ?? 0),
-      ).fill(ROW_SEGMENTED));
+      // The tile-set filter: one SQUARE per sprite family, five across
+      // (PATTERN_TILE_SET_COLUMNS), so today's five families are one line
+      // and a sixth family would start a second. The page reserves a line
+      // even with nothing to show, which is what an unopened page of this
+      // kind renders.
+      return contentArea([patternTileSetGridHeight(ctx.patternTileSetCount ?? 0)]);
     case 'patternSymmetry':
       // The mode grid: twelve buttons (the eleven modes and Off), six
       // across, two rows — at every sheet width, because the rows are
