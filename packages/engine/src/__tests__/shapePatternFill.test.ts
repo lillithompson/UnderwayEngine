@@ -283,9 +283,40 @@ describe('resizeShapePatternFill', () => {
     expect(smaller.cells.every((c) => c != null)).toBe(true);
   });
 
+  it('re-lays with the TILE in hand, not a fresh roll', () => {
+    // The Resolution slider is a way of trying SIZES. A fill somebody
+    // deliberately laid in one tile used to come back as somebody else's
+    // pattern the moment they asked for more cells, because the resize
+    // floods — and the flood always rolled random.
+    const fill = seeded();
+    const tool = { kind: 'tile' as const, spriteId: 'test/tile_00000000' };
+    for (const size of [1, 3, 4]) {
+      const at = resizeShapePatternFill(fill, size, { tool });
+      expect(at.cells).toHaveLength(size * size);
+      expect(at.cells.every((c) => c != null)).toBe(true);
+      for (const cell of at.cells) expect(cell).toMatchObject({ spriteId: 'test/tile_00000000' });
+    }
+  });
+
+  it('rolls for the random brush, for the eraser, and for no brush at all', () => {
+    // Anything that is not a specific tile is the roll — patternFloodEdits'
+    // own rule, which this must not restate differently. An eraser resize
+    // that erased would hand back an empty fill.
+    const fill = seeded();
+    for (const tool of [{ kind: 'random' as const }, { kind: 'erase' as const }, undefined]) {
+      const at = resizeShapePatternFill(fill, 3, tool ? { tool } : undefined);
+      expect(at.cells).toHaveLength(9);
+      expect(at.cells.every((c) => c != null)).toBe(true);
+    }
+  });
+
   it('hands the same block back for no change, and clamps the range', () => {
     const fill = seeded();
+    // …the armed tile included: a slider that lands where it started
+    // commits nothing, whatever is in hand.
     expect(resizeShapePatternFill(fill, 2)).toBe(fill);
+    expect(resizeShapePatternFill(fill, 2, { tool: { kind: 'tile', spriteId: 'test/tile_00000000' } }))
+      .toBe(fill);
     expect(resizeShapePatternFill(fill, 99).size).toBe(MAX_SHAPE_PATTERN_SIZE);
   });
 });

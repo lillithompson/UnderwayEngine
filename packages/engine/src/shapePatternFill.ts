@@ -51,7 +51,7 @@ import {
   ShapePatternFill,
   SVGObject,
 } from './types';
-import { patternFloodEdits } from './patternObject';
+import { patternFloodEdits, type PatternSubTool } from './patternObject';
 import { SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { strokeScaleForUnits, svgStrokeWidthCells } from './svgStroke';
 
@@ -418,7 +418,7 @@ export function buildShapePatternFill(
  * the repeat with the count, which walked the Size slider up the moment
  * Resolution was touched.)
  *
- * The tile is RE-ROLLED at its new size — a fresh connectivity-respecting
+ * The tile is RE-LAID at its new size — a fresh connectivity-respecting
  * flood under the fill's own mirror, in `tint`. A size change is a change
  * of motif, not a crop: carrying the old cells into a bigger tile left
  * their pattern sitting in one corner of it (and into a smaller one, a
@@ -426,11 +426,26 @@ export function buildShapePatternFill(
  * so each one hands back a finished pattern. Returns the same object when
  * the size is unchanged, so a slider that lands where it started commits
  * nothing.
+ *
+ * WHAT it is re-laid WITH is `tool` — the brush in hand, exactly as a
+ * flood of the grid would use it ({@link patternFloodEdits}, which reads
+ * anything that is not a specific tile as the random roll). A chosen tile
+ * therefore survives the Resolution slider: the same motif, cut finer or
+ * coarser. It used to roll random regardless, which meant a pattern a
+ * person had deliberately filled with one tile came back as somebody
+ * else's pattern the moment they asked for more cells — and the slider is
+ * a way of trying SIZES, not a way of trying pictures. Absent: the roll,
+ * which is what an untouched fill already is.
  */
 export function resizeShapePatternFill(
   fill: ShapePatternFill,
   size: number,
-  opts?: { excludedFamilies?: Set<string>; tint?: RGBColor | null },
+  opts?: {
+    excludedFamilies?: Set<string>;
+    tint?: RGBColor | null;
+    /** The armed brush the new cells are laid with. Default: the roll. */
+    tool?: PatternSubTool;
+  },
 ): ShapePatternFill {
   const next = clampShapePatternSize(size);
   if (next === fill.size) return fill;
@@ -447,7 +462,9 @@ export function resizeShapePatternFill(
   const box = { id: 'fill', cellX: 0, cellY: 0, cellWidth: next, cellHeight: next } as SVGObject;
   const grid = shapePatternGrid({ ...box, patternFill: resized });
   if (!grid) return resized;
-  const edits = patternFloodEdits(grid, { kind: 'random' }, opts?.excludedFamilies, opts?.tint);
+  const edits = patternFloodEdits(
+    grid, opts?.tool ?? { kind: 'random' }, opts?.excludedFamilies, opts?.tint,
+  );
   if (edits.length === 0) return resized;
   const cells = resized.cells.slice();
   for (const e of edits) cells[e.index] = e.newState;
