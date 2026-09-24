@@ -135,21 +135,20 @@ export const PATTERN_TILE_GRID_GAP = 6;
 export const PATTERN_TILE_GRID =
   PATTERN_TILE_BUTTON * 2 + PATTERN_TILE_GRID_GAP;
 
-/** One square button of the pattern Symmetry page's mode grid, and how many
- *  sit across it. Smaller than the arming button beside it, because it has
- *  a smaller job: an arming cell shows a tile's ARTWORK, where these carry
- *  a glyph and a word, which read fine at 46. The size is what makes the
- *  twelve modes two rows on the narrowest sheet there is — 6×46 + 5×6 = 306
- *  inside an SE-width 375 − 2×16 sheet padding − 2×14 content padding = 315
- *  — and the grid is capped at exactly that width
- *  ({@link PATTERN_SYMMETRY_GRID_WIDTH}) so a WIDE sheet wraps at six too,
- *  rather than stretching the twelve into one row under a page that
- *  reserved two. */
+/** How TALL one button of the pattern Symmetry page's mode grid stands, and
+ *  how many sit across it. Shorter than the arming button beside it, because
+ *  it has a smaller job: an arming cell shows a tile's ARTWORK, where these
+ *  carry a glyph and a word, which read fine at 46.
+ *
+ *  The width is not fixed: the six cells of a row DIVIDE the well between
+ *  them, so the grid fills the sheet it is in — 46 apiece is roughly what
+ *  that comes to on the narrowest sheet there is (6×46 + 5×6 = 306 inside an
+ *  SE-width 375 − 2×16 sheet padding − 2×14 content padding = 315) and more
+ *  on anything wider. The COLUMN COUNT is what makes the twelve modes two
+ *  rows at every width; before the cells stretched, the square's size did it
+ *  on a phone and a hard cap had to do it on a desktop sheet. */
 export const PATTERN_SYMMETRY_BUTTON = 46;
 export const PATTERN_SYMMETRY_COLUMNS = 6;
-export const PATTERN_SYMMETRY_GRID_WIDTH =
-  PATTERN_SYMMETRY_BUTTON * PATTERN_SYMMETRY_COLUMNS
-  + PATTERN_TILE_GRID_GAP * (PATTERN_SYMMETRY_COLUMNS - 1);
 
 /** The whole mode grid: two rows of buttons with one gap between. */
 export const PATTERN_SYMMETRY_GRID =
@@ -490,9 +489,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
         patternTileSetLineCount(ctx.patternTileSetCount ?? 0),
       ).fill(ROW_SEGMENTED));
     case 'patternSymmetry':
-      // The mode grid: twelve SQUARE buttons (the eleven modes and Off),
-      // six across, two rows — at every sheet width, because the grid is
-      // capped at six buttons wide (PATTERN_SYMMETRY_GRID_WIDTH).
+      // The mode grid: twelve buttons (the eleven modes and Off), six
+      // across, two rows — at every sheet width, because the rows are
+      // sliced at six (PATTERN_SYMMETRY_COLUMNS) and the cells divide
+      // whatever width they are given rather than each keeping a square's.
       return contentArea([PATTERN_SYMMETRY_GRID]);
     case 'layout':
       // Horizontal and Vertical, plus Arrange when the host offers Grid.

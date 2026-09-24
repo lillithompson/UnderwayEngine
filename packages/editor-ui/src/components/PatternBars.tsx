@@ -3,7 +3,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { ObjectPropertiesModel } from '../adapter';
 import {
-  PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_GRID_WIDTH,
+  PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_COLUMNS,
   PATTERN_TILE_BUTTON, PATTERN_TILE_GRID_GAP, ROW_GAP,
 } from '../logic/submenuHeight';
 import {
@@ -348,12 +348,20 @@ export function PatternToolsBar({ model }: {
 
 /**
  * The painting-mirror grid: the eleven modes and Off, as the canvas
- * Symmetry takeover's SQUARE buttons — glyph over a small word — but on
- * the pattern pages' own tile-button scale (PATTERN_TILE_BUTTON, six
- * across), so the whole set is two rows inside the sheet instead of a
- * screen of its own. The takeover leads with None and this closes with
- * Off: the word differs because the cell does — there it is a first-class
- * pick among modes, here it is the way out of the one in force.
+ * Symmetry takeover's buttons — glyph over a small word — laid out six to a
+ * row on the pattern pages' own button height, so the whole set is two rows
+ * inside the sheet instead of a screen of its own. The takeover leads with
+ * None and this closes with Off: the word differs because the cell does —
+ * there it is a first-class pick among modes, here it is the way out of the
+ * one in force.
+ *
+ * The cells SHARE THE ROW's width rather than each holding a fixed square:
+ * six stretching cells one gap apart, so the grid ends at the well's edge on
+ * a wide sheet instead of leaving half of it empty. Six to a row is still
+ * what makes it two rows (PATTERN_SYMMETRY_COLUMNS), so the height
+ * submenuHeight reserves is unchanged — only the width each cell takes of it
+ * is; the rows are hand-sliced for that reason, since a wrapping run cannot
+ * stretch its cells.
  *
  * Same twelve cells, same glyphs (PATTERN_SYMMETRY_ENTRIES carries them),
  * so a mode looks the same wherever it is picked — which is the point of
@@ -374,34 +382,48 @@ export function PatternSymmetryGrid({ value, onPick }: {
     })),
     { value: 'off', label: 'Off', icon: PATTERN_SYMMETRY_OFF_ICON, mirrored: undefined },
   ];
+  // The same chunker the Shapes chips line up with, asked for six columns
+  // instead of three — one line-slicer for both pattern grids.
+  const rows = patternTileSetLines(cells, PATTERN_SYMMETRY_COLUMNS);
   return (
     <View style={styles.symGrid}>
-      {cells.map((o) => {
-        const active = o.value === value;
-        return (
-          <Pressable
-            key={o.value}
-            onPress={() => onPick(active ? 'off' : o.value)}
-            style={[styles.symCell, active && styles.symCellActive]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-            accessibilityLabel={`Symmetry: ${o.label}`}
-          >
-            <MaterialCommunityIcons
-              name={o.icon as never}
-              size={20}
-              color={active ? PANEL_INK : PANEL_INK_DIM}
-              style={o.mirrored ? MIRRORED_GLYPH : undefined}
-            />
-            <Text
-              style={[styles.symWord, active && styles.symWordActive]}
-              numberOfLines={1}
-            >
-              {o.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {rows.map((row) => (
+        <View key={row.map((o) => o.value).join(',')} style={styles.symRow}>
+          {row.map((o) => {
+            const active = o.value === value;
+            return (
+              <Pressable
+                key={o.value}
+                onPress={() => onPick(active ? 'off' : o.value)}
+                style={[styles.symCell, active && styles.symCellActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Symmetry: ${o.label}`}
+              >
+                <MaterialCommunityIcons
+                  name={o.icon as never}
+                  size={20}
+                  color={active ? PANEL_INK : PANEL_INK_DIM}
+                  style={o.mirrored ? MIRRORED_GLYPH : undefined}
+                />
+                <Text
+                  style={[styles.symWord, active && styles.symWordActive]}
+                  numberOfLines={1}
+                >
+                  {o.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {/* A short row (never with today's twelve cells, but the entries
+              are a table anyone may add to) keeps its cells the width of the
+              rows above rather than stretching them across the gap. */}
+          {Array.from(
+            { length: PATTERN_SYMMETRY_COLUMNS - row.length },
+            (_, i) => <View key={`pad-${i}`} style={styles.symCellPad} />,
+          )}
+        </View>
+      ))}
     </View>
   );
 }
@@ -463,22 +485,22 @@ const styles = StyleSheet.create({
   // Facet Tile Palette's Random/Erase dress: a 22pt glyph over a 9pt word.
   tileCaption: { color: PANEL_INK_DIM, fontSize: 9, fontWeight: '600', marginTop: 2 },
   tileWordActive: { color: PANEL_INK },
-  // The symmetry grid: twelve square buttons wrapping six to a row, which
-  // is the two rows submenuHeight reserves (PATTERN_SYMMETRY_GRID). The
-  // CAP is what guarantees it: at exactly six buttons wide the grid wraps
-  // the same way on a phone and on a desktop sheet, where an uncapped row
-  // stretched all twelve across a wide one and left the page's second row
-  // empty. Row-wise, unlike the Tiles grid's column flow: these cells are a
-  // LIST of modes read left to right, where that one is two stacked columns
-  // of arming choices.
-  symGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: PATTERN_TILE_GRID_GAP,
-    maxWidth: PATTERN_SYMMETRY_GRID_WIDTH,
-  },
+  // The symmetry grid: twelve buttons in two SLICED rows of six, which is
+  // the two rows submenuHeight reserves (PATTERN_SYMMETRY_GRID). Sliced
+  // rather than wrapped because the cells STRETCH: six of them share the
+  // well's width, so the grid fills a desktop sheet edge to edge instead of
+  // stopping at a phone's worth of squares, and a narrow sheet still breaks
+  // at six rather than at however many happen to fit. (A wrapping run could
+  // do neither — flex-wrapped children cannot flex.) Row-wise, unlike the
+  // Tiles grid's column flow: these cells are a LIST of modes read left to
+  // right, where that one is two stacked columns of arming choices.
+  symGrid: { gap: PATTERN_TILE_GRID_GAP },
+  symRow: { flexDirection: 'row', gap: PATTERN_TILE_GRID_GAP },
   symCell: {
-    width: PATTERN_SYMMETRY_BUTTON,
+    // Width is the row's to divide; the HEIGHT is the fixed one the page's
+    // two rows are measured from.
+    flex: 1,
+    minWidth: 0,
     height: PATTERN_SYMMETRY_BUTTON,
     borderRadius: 8,
     backgroundColor: PANEL_TRACK,
@@ -487,6 +509,9 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: 'transparent',
   },
+  // An unfilled place in a short row: it takes a cell's share of the width
+  // and draws nothing.
+  symCellPad: { flex: 1 },
   symCellActive: { borderColor: STATE_ACTIVE },
   // A 9pt caption under a 20pt glyph — Facet's Random/Erase dress, which
   // the arming buttons beside these already wear.

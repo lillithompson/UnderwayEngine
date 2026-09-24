@@ -36,7 +36,7 @@ import {
 } from '../logic/patternEdit';
 import { patternModalTileSize } from '../logic/patternEdit';
 import {
-  BAR_CUSHION, CONTENT_PAD, PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_GRID_WIDTH,
+  BAR_CUSHION, CONTENT_PAD, PATTERN_SYMMETRY_BUTTON, PATTERN_SYMMETRY_COLUMNS,
   PATTERN_TILE_GRID_GAP, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, ROW_SWITCH,
   SECTION_TABS_ROW, SHEET_PAD_HORIZONTAL, pageIsWelled, submenuHeight,
 } from '../logic/submenuHeight';
@@ -487,26 +487,44 @@ describe('the Symmetry page is a compact grid of square glyph buttons', () => {
     expect(symBar).not.toContain('<SegmentedRow');
   });
 
-  it('lays the 11 modes + Off out as one wrapping run of squares', () => {
-    // One flat list that WRAPS, where it was three hand-sliced rows of
-    // four: the cell is a fixed square now, so the row breaks itself.
-    expect(symBar).not.toContain('cells.slice(');
+  it('lays the 11 modes + Off out as two stretched rows of six', () => {
+    // Two rows SLICED at six, and the cells inside a row divide its width
+    // between them: the grid ends at the well's edge on a wide sheet, where
+    // a run of fixed squares stopped at a phone's worth and left the rest of
+    // the row empty. Wrapping can't do that — a wrapped child cannot flex —
+    // so the rows are sliced, by the chunker the Shapes chips already use.
+    expect(symBar).toContain('patternTileSetLines(cells, PATTERN_SYMMETRY_COLUMNS)');
     expect(symBar).toContain('styles.symGrid');
-    expect(SRC).toMatch(/symGrid:\s*\{\s*flexDirection: 'row',\s*flexWrap: 'wrap'/);
-    // …CAPPED at six buttons wide, which is what makes it two rows at every
-    // sheet width: uncapped, a wide desktop sheet stretched all twelve into
-    // one row under a page that had reserved two.
-    expect(SRC).toContain('maxWidth: PATTERN_SYMMETRY_GRID_WIDTH,');
-    expect(PATTERN_SYMMETRY_GRID_WIDTH)
-      .toBe(PATTERN_SYMMETRY_BUTTON * 6 + PATTERN_TILE_GRID_GAP * 5);
-    // …and it fits the narrowest sheet there is: an SE's 375, less the
-    // sheet's own padding and the content area's.
-    expect(PATTERN_SYMMETRY_GRID_WIDTH)
-      .toBeLessThanOrEqual(375 - 2 * SHEET_PAD_HORIZONTAL - 2 * CONTENT_PAD);
-    // Square, and the page's height is exactly the two rows of them.
-    expect(SRC).toMatch(/symCell:\s*\{\s*width: PATTERN_SYMMETRY_BUTTON,\s*height: PATTERN_SYMMETRY_BUTTON/);
+    expect(symBar).toContain('styles.symRow');
+    expect(SRC).toMatch(/symRow:\s*\{\s*flexDirection: 'row'/);
+    // The grid itself is a COLUMN of those rows now — neither wrapping nor
+    // capped, the two things a fixed-square run needed.
+    expect(SRC).toMatch(/symGrid:\s*\{\s*gap: PATTERN_TILE_GRID_GAP\s*\}/);
+    expect(SRC).not.toContain('PATTERN_SYMMETRY_GRID_WIDTH');
+    // The cell takes its share of the width and keeps the page's height —
+    // which is what leaves submenuHeight's two-row reserve untouched.
+    expect(SRC).toMatch(
+      /symCell:\s*\{[^}]*flex: 1,\s*minWidth: 0,\s*height: PATTERN_SYMMETRY_BUTTON,/,
+    );
     expect(submenuHeight('patternSymmetry'))
       .toBe(CONTENT_PAD * 2 + PATTERN_SYMMETRY_BUTTON * 2 + PATTERN_TILE_GRID_GAP + BAR_CUSHION);
+    // Six across, so the twelve cells are the two rows the page reserves —
+    // and a full row still fits the narrowest sheet there is (an SE's 375,
+    // less the sheet's own padding and the content area's) at the button's
+    // own height, so the cells never have to shrink below square.
+    expect(12 / PATTERN_SYMMETRY_COLUMNS).toBe(2);
+    expect(
+      PATTERN_SYMMETRY_BUTTON * PATTERN_SYMMETRY_COLUMNS
+      + PATTERN_TILE_GRID_GAP * (PATTERN_SYMMETRY_COLUMNS - 1),
+    ).toBeLessThanOrEqual(375 - 2 * SHEET_PAD_HORIZONTAL - 2 * CONTENT_PAD);
+  });
+
+  it('pads a short row so its cells stay the width of a full one', () => {
+    // Twelve cells divide evenly today, but the modes are a table anyone may
+    // add to: a row of four must not stretch four cells across six's worth.
+    expect(symBar).toContain('PATTERN_SYMMETRY_COLUMNS - row.length');
+    expect(symBar).toContain('styles.symCellPad');
+    expect(SRC).toContain('symCellPad: { flex: 1 },');
   });
 
   it('wears each mode’s glyph over its word, the canvas modal’s dress', () => {
