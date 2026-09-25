@@ -159,6 +159,11 @@ export interface TopBarModel {
    *  done-marked title band) instead of wearing the default HEADER_BG grey. */
   background?: string;
   tools: TopBarTool[];
+  /** Every tool button greyed out and inert — the back button and the
+   *  label stay as they are. CozyJournal sets it while a finished page
+   *  shows its picture in place of the canvas: there is nothing on screen
+   *  a tool could act on, so no tool may look (or be) pressable. */
+  toolsDisabled?: boolean;
   onBack(): void;
   /** The tool the press resolves to, or `null` when the press untoggled the
    *  active tool and the app is left with none (see nextToolOnPress). */

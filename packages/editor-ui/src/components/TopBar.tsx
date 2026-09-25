@@ -145,12 +145,18 @@ export function TopBar({ model }: { model: TopBarModel }) {
       >
         <Text style={styles.label} numberOfLines={1}>{model.label}</Text>
       </Pressable>
-      <View style={styles.tools}>
+      {/* toolsDisabled: the whole row dims as one and every button goes
+          inert — each Pressable disabled rather than the row made
+          press-transparent, so a tap on a dimmed tool does not fall
+          through to whatever is under the bar. */}
+      <View style={[styles.tools, model.toolsDisabled ? styles.toolsDisabled : null]}>
         {model.tools.map((tool) => (
           <Pressable
             key={tool.id}
             accessibilityRole="button"
             accessibilityLabel={tool.id}
+            accessibilityState={model.toolsDisabled ? { disabled: true } : undefined}
+            disabled={model.toolsDisabled}
             style={styles.toolButton}
             onPress={() => model.onSelectTool(nextToolOnPress(activeId, tool.id))}
             // Facet's ToolbarButton: a hold runs the tool's own long-press
@@ -225,6 +231,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     height: HEADER_HEIGHT,
   },
+  // The inactive-tool dim the symmetry button wears when off (0.3 of the
+  // ink), applied to the row as a whole so the swatch dims with the icons.
+  toolsDisabled: { opacity: 0.3 },
   toolButton: {
     width: TOOLBAR_BUTTON_SIZE,
     height: TOOLBAR_BUTTON_SIZE,
