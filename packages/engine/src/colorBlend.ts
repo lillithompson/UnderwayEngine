@@ -7,6 +7,12 @@ const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 const clamp255 = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : v);
 
 const HUE_ROTATE_STEP_DEG = 30;
+/** How much harder Rotate turns than its base step: a full-strength dab
+ *  turns the hue HUE_ROTATE_STEP_DEG × this (75°). The 30° step alone read
+ *  as almost nothing under a soft brush — the dab's falloff scales the
+ *  angle, so most of a stroke turned a few degrees — and the mode has to
+ *  be SEEN to be picked. Opacity still scales the angle the same way. */
+const HUE_ROTATE_GAIN = 2.5;
 
 /**
  * Modes whose `opacity` argument drives the EFFECT itself rather than a lerp
@@ -32,7 +38,7 @@ export function blendFoldsOpacity(mode: BlendMode): boolean {
  * Rotate is special: opacity scales the hue-rotation angle in HSV space
  * rather than RGB-lerping the rotated result back toward base (which
  * desaturates toward gray). At opacity 1 the rotation is the full
- * HUE_ROTATE_STEP_DEG; at opacity 0 the hue is unchanged.
+ * HUE_ROTATE_STEP_DEG × HUE_ROTATE_GAIN; at opacity 0 the hue is unchanged.
  *
  * Used by the Composer's drag-paint Color tool to decide what color a
  * painted SVG segment (or figure tint) ends up at, given the segment's
@@ -96,7 +102,7 @@ function applyBlend(base: RGBColor, brush: RGBColor, mode: BlendMode, opacity: n
       return { r: 255 - base.r, g: 255 - base.g, b: 255 - base.b };
     case 'rotate': {
       const [h, s, v] = rgbToHsv(base.r, base.g, base.b);
-      const rotation = HUE_ROTATE_STEP_DEG * opacity;
+      const rotation = HUE_ROTATE_STEP_DEG * HUE_ROTATE_GAIN * opacity;
       const [r, g, b] = hsvToRgb((h + rotation) % 360, s, v);
       return { r, g, b };
     }

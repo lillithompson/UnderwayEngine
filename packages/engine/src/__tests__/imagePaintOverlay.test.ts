@@ -114,13 +114,13 @@ describe('stampImagePaintOverlay rotate', () => {
     const o = redTexel();
     // Dab centred on the texel so the falloff is 1 and strength alone counts.
     stampImagePaintOverlay(o, 4, 4, 0.125, 0.125, 1, RED, 1, undefined, { mode: 'rotate' });
-    expect(hueOf(o)).toBeCloseTo(30, 0); // red (0°) → orange
+    expect(hueOf(o)).toBeCloseTo(75, 0); // red (0°) → yellow-green: the 30° step × 2.5
   });
 
   test('half the strength turns it half as far', () => {
     const o = redTexel();
     stampImagePaintOverlay(o, 4, 4, 0.125, 0.125, 1, RED, 0.5, undefined, { mode: 'rotate' });
-    expect(hueOf(o)).toBeCloseTo(15, 0);
+    expect(hueOf(o)).toBeCloseTo(37.5, 0);
   });
 
   test('keeps the colour saturated instead of greying it out', () => {

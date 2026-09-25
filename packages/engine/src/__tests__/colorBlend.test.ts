@@ -164,15 +164,15 @@ describe('blendColor', () => {
   });
 
   describe('rotate mode', () => {
-    it('rotates hue by +30 degrees; brush color is ignored', () => {
-      // Pure red (h=0) → h=30 (orange). hsvToRgb(30, 1, 1) = (255, 128, 0) (rounded).
-      expect(blendColor(red, blue, 'rotate', 1)).toEqual(rgb(255, 128, 0));
+    it('rotates hue by +75 degrees (the 30° step × 2.5 gain); brush color is ignored', () => {
+      // Pure red (h=0) → h=75 (yellow-green). hsvToRgb(75, 1, 1) = (191, 255, 0) (rounded).
+      expect(blendColor(red, blue, 'rotate', 1)).toEqual(rgb(191, 255, 0));
     });
 
     it('preserves saturation and value', () => {
       const base = rgb(128, 64, 64); // muted red
       const out = blendColor(base, white, 'rotate', 1);
-      // Roundtripping through HSV at 30° step shouldn't change brightness/sat much.
+      // Roundtripping through HSV at the 75° step shouldn't change brightness/sat much.
       const maxIn = Math.max(base.r, base.g, base.b);
       const maxOut = Math.max(out.r, out.g, out.b);
       expect(Math.abs(maxOut - maxIn)).toBeLessThanOrEqual(1);
@@ -188,19 +188,19 @@ describe('blendColor', () => {
       expect(blendColor(rgb(200, 100, 50), white, 'rotate', 0)).toEqual(rgb(200, 100, 50));
     });
 
-    it('opacity scales the rotation angle (15° at opacity 0.5)', () => {
-      // Pure red (h=0) at opacity 0.5 → h=15. hsvToRgb(15, 1, 1) = (255, 64, 0) (rounded).
-      expect(blendColor(red, blue, 'rotate', 0.5)).toEqual(rgb(255, 64, 0));
+    it('opacity scales the rotation angle (37.5° at opacity 0.5)', () => {
+      // Pure red (h=0) at opacity 0.5 → h=37.5. hsvToRgb(37.5, 1, 1) = (255, 159, 0) (rounded).
+      expect(blendColor(red, blue, 'rotate', 0.5)).toEqual(rgb(255, 159, 0));
     });
 
-    it('twelve rotations cycle back near the starting hue', () => {
+    it('twenty-four rotations (five full turns) cycle back near the starting hue', () => {
       let cur: RGBColor = red;
-      for (let i = 0; i < 12; i++) cur = blendColor(cur, white, 'rotate', 1);
+      for (let i = 0; i < 24; i++) cur = blendColor(cur, white, 'rotate', 1);
       // Each HSV roundtrip can drift by ~1/channel from rounding; allow
-      // cumulative drift across 12 steps.
-      expect(Math.abs(cur.r - red.r)).toBeLessThanOrEqual(8);
-      expect(Math.abs(cur.g - red.g)).toBeLessThanOrEqual(8);
-      expect(Math.abs(cur.b - red.b)).toBeLessThanOrEqual(8);
+      // cumulative drift across 24 steps.
+      expect(Math.abs(cur.r - red.r)).toBeLessThanOrEqual(12);
+      expect(Math.abs(cur.g - red.g)).toBeLessThanOrEqual(12);
+      expect(Math.abs(cur.b - red.b)).toBeLessThanOrEqual(12);
     });
   });
 
