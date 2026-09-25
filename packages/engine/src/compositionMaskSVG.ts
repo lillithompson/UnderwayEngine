@@ -1,5 +1,5 @@
 import { GroupNode, SVGObject } from './types';
-import { buildClosedFillPathD } from './svgPathBuilder';
+import { buildClosedFillPathD, wearOrWrap } from './svgPathBuilder';
 import { SVG_UNITS_PER_L0_CELL } from './svgExport';
 
 /**
@@ -94,8 +94,9 @@ export function buildMaskClipDefs(
 }
 
 /**
- * Wrap a node's SVG markup in a `<g clip-path>` when it falls inside a
- * masked group; returns `content` unchanged otherwise.
+ * Clip a node's SVG markup to its group's mask when it falls inside a
+ * masked group — a lone element wears the `clip-path` itself, several
+ * share a `<g>` (see `wearOrWrap`); returns `content` unchanged otherwise.
  */
 export function wrapWithMaskClip(
   content: string,
@@ -104,5 +105,5 @@ export function wrapWithMaskClip(
   node: { id: string; groupId?: string },
 ): string {
   const clipId = maskClipIdForNode(maskMap, groups, node);
-  return clipId ? `<g clip-path="url(#${clipId})">${content}</g>` : content;
+  return clipId ? wearOrWrap(content, `clip-path="url(#${clipId})"`) : content;
 }

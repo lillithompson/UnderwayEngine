@@ -45,9 +45,11 @@ describe('wrapSVGObjectOpacity', () => {
       .toBe('<path />');
   });
 
-  it('wraps the content in a group opacity for the Opacity row', () => {
+  it('puts the Opacity row on the content: a lone element wears it, several share a group', () => {
     const out = wrapSVGObjectOpacity(rect('svg_1', { opacity: 0.5 }), '<path />', STROKE_SCALE);
-    expect(out).toBe('<g opacity="0.5"><path /></g>');
+    expect(out).toBe('<path opacity="0.5" />');
+    const two = wrapSVGObjectOpacity(rect('svg_1', { opacity: 0.5 }), '<path /><path />', STROKE_SCALE);
+    expect(two).toBe('<g opacity="0.5"><path /><path /></g>');
   });
 
   it('emits no mask and no filter for a FADED shape — fade is not a mask', () => {
@@ -63,7 +65,7 @@ describe('wrapSVGObjectOpacity', () => {
 
   it('clamps out-of-range values', () => {
     const out = wrapSVGObjectOpacity(rect('svg_1', { opacity: -1 }), '<path />', STROKE_SCALE);
-    expect(out).toContain('<g opacity="0">');
+    expect(out).toContain('opacity="0"');
   });
 
   it('passes empty content through', () => {

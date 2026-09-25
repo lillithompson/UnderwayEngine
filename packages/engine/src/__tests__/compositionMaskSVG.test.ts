@@ -139,8 +139,12 @@ describe('wrapWithMaskClip', () => {
     const member = makeSvg('svg_member', { groupId: 'g1' });
     const groups = [makeGroup('g1')];
     const map = buildActiveMaskMap(scene([mask, member], groups));
+    // A lone element wears the clip itself…
     expect(wrapWithMaskClip('<path/>', map, groups, member))
-      .toBe(`<g clip-path="url(#${MASK_CLIP_ID_PREFIX}g1)"><path/></g>`);
+      .toBe(`<path clip-path="url(#${MASK_CLIP_ID_PREFIX}g1)"/>`);
+    // …and only several share a `<g>` to carry it.
+    expect(wrapWithMaskClip('<path/><path/>', map, groups, member))
+      .toBe(`<g clip-path="url(#${MASK_CLIP_ID_PREFIX}g1)"><path/><path/></g>`);
   });
 
   test('leaves an unclipped node untouched', () => {

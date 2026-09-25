@@ -191,11 +191,12 @@ describe('a figure drawn through its matrix lands where its fields always put it
       loadFigure: async () => null,
       loadBakedFigurePng: async () => 'data:image/png;base64,AA==',
     })))!;
-    const [, iw, ih] = svg.match(/<image x="0" y="0" width="([-\d.]+)" height="([-\d.]+)"/)!;
+    const [, iw, ih] = svg.match(/<image[^>]* x="0" y="0" width="([-\d.]+)" height="([-\d.]+)"/)!;
     // The raster is emitted in the figure's CONTENT frame, and the quarter
     // the frame divides out the matrix puts back — so it covers the stored
     // rect at its stored orientation, exactly as the world emission did.
-    const m = parseSvgTransform(svg.match(/<g transform="([^"]*)"/)![1]);
+    // Being one element, the <image> wears the matrix itself.
+    const m = parseSvgTransform(svg.match(/\stransform="([^"]*)"/)![1]);
     const quad = ([[0, 0], [Number(iw), 0], [Number(iw), Number(ih)], [0, Number(ih)]] as
       [number, number][]).map(([x, y]) => matApplyPoint(m, x, y));
     const xs = quad.map(([x]) => x), ys = quad.map(([, y]) => y);

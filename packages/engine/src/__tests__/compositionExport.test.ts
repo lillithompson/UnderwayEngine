@@ -78,10 +78,12 @@ describe('exportCompositionSVG — lines', () => {
     const svg = await exportCompositionSVG('lines1');
     expect(svg).not.toBeNull();
     // SVG_UNITS_PER_L0_CELL = 256, so segment endpoints map to 0,0 / 8192,0
-    // / 8192,8192. The path is emitted in the node's OWN space now and
-    // carried out by the group's matrix, so the world reading is the `d`
-    // through that matrix (P5 of docs/transform-refactor.md).
+    // / 8192,8192. The path is emitted in WORLD space — its rigid pose is
+    // folded into the vertices — so it is one `<path>` with no `<g>` round
+    // it, and the world reading is the `d` itself.
     expect(worldPathD(svg!)).toBe('M 0,0 L 8192,0 L 8192,8192');
+    expect(svg).toContain('<path d="M 0,0 L 8192,0 L 8192,8192"');
+    expect(svg).not.toContain('<g');
     expect(svg).toContain('stroke="rgb(200,100,50)"');
     // strokeScale (0.04) × STROKE_SCALE_CELLS (5/16) = 0.0125 cells, which at
     // SVG_UNITS_PER_L0_CELL (256) is 3.2 SVG units — the same world width the
@@ -319,14 +321,18 @@ describe('exportCompositionSVG — lines', () => {
     expect(svg).not.toBeNull();
     // A clipPath def for the masked group, in user space.
     expect(svg).toContain('<clipPath id="groupmask-g1" clipPathUnits="userSpaceOnUse">');
-    // The member's stroke is wrapped in the clip group — OUTSIDE the group
-    // that poses the node, so the clip is applied in world space whatever
-    // the node's own pose is (P5 of docs/transform-refactor.md).
-    expect(svg).toMatch(/<g clip-path="url\(#groupmask-g1\)"><g transform="[^"]*"><path d="[^"]*" fill="none"[^>]*stroke="rgb\(200,100,50\)"/);
-    // The mask object renders its own stroke but is NOT wrapped by its
-    // own group's clip.
+    // The member's stroke wears the clip itself: the path is in world
+    // space (its rigid pose folded into its vertices), so the clip applies
+    // in world space whatever the node's own pose was, and a lone path
+    // needs no `<g>` to carry the attribute.
+    expect(svg).toMatch(/<path clip-path="url\(#groupmask-g1\)" d="[^"]*" fill="none"[^>]*stroke="rgb\(200,100,50\)"/);
+    // The mask object renders its own stroke but is NOT clipped by its
+    // own group's mask.
     expect(svg).toContain('stroke="rgb(10,20,30)"');
-    expect(svg).not.toMatch(/<g clip-path="url\(#groupmask-g1\)"><g transform="[^"]*"><path d="[^"]*" fill="none"[^>]*stroke="rgb\(10,20,30\)"/);
+    expect(svg).not.toMatch(/clip-path="url\(#groupmask-g1\)"[^>]*stroke="rgb\(10,20,30\)"/);
+    // …and the only `<g>` in the file is the user's group itself.
+    expect(svg!.match(/<g\b/g)).toHaveLength(1);
+    expect(svg).toContain('<g id="g1">');
   });
 
   it('paints a pattern-fill background rect under the pattern, clipped to the mask, outline-only mask', async () => {

@@ -478,9 +478,10 @@ describe('generateCompositionSVGCore — node effects', () => {
         effects: { border: { width: 0.5, color: { r: 0, g: 255, b: 0 }, radius: 1 } },
       })],
     }));
-    // 32-cell bbox × 256, stroke width 0.5 × 256, radius 1 × 256. The rect
-    // is emitted in the node's OWN frame — its corner at the box's corner,
-    // which the group's matrix carries to the world origin.
+    // 32-cell bbox × 256, stroke width 0.5 × 256, radius 1 × 256. An
+    // upright node is emitted in WORLD space (its move folded into the box
+    // and the vertices alike), so the rect's corner is the box's corner at
+    // the world origin, with no matrix to carry it there.
     const tail = ` width="${32 * U}" height="${32 * U}" rx="${U}" ry="${U}"`
       + ` fill="none" stroke="#00FF00" stroke-width="${0.5 * U}"/>`;
     expect(svg).toContain(tail);

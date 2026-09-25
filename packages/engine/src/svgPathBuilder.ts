@@ -676,7 +676,44 @@ export function wrapSVGObjectOpacity(
   if (!content) return content;
   const alpha = obj.opacity == null ? 1 : clamp01(obj.opacity);
   if (alpha >= 1) return content;
-  return `<g opacity="${roundOpacity(alpha)}">${content}</g>`;
+  return wearOrWrap(content, `opacity="${roundOpacity(alpha)}"`);
+}
+
+/** One self-closing element and nothing else: `<path … />`, `<image … />`,
+ *  `<rect … />`. No `<` or `>` can sit inside an attribute the builders
+ *  write (path data, colours, ids, base64), so the tag runs to its own end. */
+const SOLE_ELEMENT = /^<([a-zA-Z][\w:-]*)\b([^<>]*)\/>$/;
+
+/**
+ * Hand `attrs` — `opacity="0.5"`, `clip-path="url(#…)"`, `filter="url(#…)"`,
+ * `transform="matrix(…)"` — to the markup: a lone element WEARS them, and
+ * only several elements share a `<g>` to carry them.
+ *
+ * The two are the same picture. Every attribute this is used for applies
+ * to an element and to a group alike, and a group of one element paints
+ * exactly as that element would with the attribute on it — a lone path at
+ * half opacity, a lone path clipped, a lone path posed. What the group
+ * bought was nothing but a wrapper round every stroke in the file, which
+ * is how an exported drawing came to be a nest of `<g>`s with one `<path>`
+ * at the bottom of each. So the wrapper is kept for the markup that needs
+ * it (a fill path and a stroke path, a defs block and its user), for an
+ * element that already carries one of the attributes, which cannot take a
+ * second — and for an element that already wears a `transform`. That one
+ * is not a nicety: an element's transform is the space its other
+ * attributes are read in, so a world-space clip put on a posed element
+ * would clip against a posed copy of the mask. Wrapping keeps the clip
+ * outside the pose, which is the order the callers nest them in.
+ */
+export function wearOrWrap(markup: string, attrs: string): string {
+  const m = SOLE_ELEMENT.exec(markup);
+  if (m) {
+    const names = attrs.match(/[\w-]+(?==")/g) ?? [];
+    const worn = m[2];
+    if (!worn.includes(' transform=') && !names.some((n) => worn.includes(` ${n}=`))) {
+      return `<${m[1]} ${attrs}${worn}/>`;
+    }
+  }
+  return `<g ${attrs}>${markup}</g>`;
 }
 
 /**

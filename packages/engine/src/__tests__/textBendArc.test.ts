@@ -536,7 +536,7 @@ describe('a shadowed text’s filter region covers the glyphs it is cast from', 
 
   /** `matrix(a,b,c,d,e,f)` of the one text group, applied to a local point. */
   function poseOf(svg: string): (p: { x: number; y: number }) => { x: number; y: number } {
-    const m = /<g transform="matrix\(([^)]*)\)"><g><defs><path id="tba_txt_1_0"/.exec(svg);
+    const m = /<g transform="matrix\(([^)]*)\)"><defs><path id="tba_txt_1_0"/.exec(svg);
     if (!m) throw new Error('no posed text group in the export');
     const [a, b, c, d, e, f] = m[1].split(',').map(Number);
     return (p) => ({ x: a * p.x + c * p.y + e, y: b * p.x + d * p.y + f });

@@ -11,7 +11,8 @@ import { patternSVGView, shapePatternFillTiles } from './patternObjectRender';
 import { patternLocalGeometry, patternLocalObject, svgLocalGeometry } from './sceneDrawnContent';
 import { fadedImageObject, fadedTextStyle } from './fade';
 import {
-  LegacyLeaf, SceneGraph, SceneNode, fromLegacy, graphDescribes, leafNodeFromLegacy, worldMatrix,
+  LegacyLeaf, SceneGraph, SceneNode, fromLegacy, graphDescribes, leafNodeFromLegacy, mapSegments,
+  worldMatrix,
 } from './sceneGraph';
 import { leafHitFrame, localContentBox, localHitObject } from './sceneHitFrame';
 import {
@@ -22,7 +23,7 @@ import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgDrawsOwnInnerGlow, svgFillPresentation, svgInnerGlowBandMarkup, svgIsFilled, svgObjectStrokesOnly, svgStrokePresentation, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
+import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgDrawsOwnInnerGlow, svgFillPresentation, svgInnerGlowBandMarkup, svgIsFilled, svgObjectStrokesOnly, svgStrokePresentation, wearOrWrap, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
 import { roundPathCorners, strokeScaleForUnits, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import { arcBoundingBox } from './compositionArcHitTest';
@@ -522,8 +523,132 @@ function outlineCastWidth(svg: SVGObject, strokeScale: number): number | undefin
 }
 
 /**
+ * Whether any of an svg's paint is laid out against its BOX rather than its
+ * path: a gradient (objectBoundingBox, so a turned shape's gradient must
+ * turn with it), a pattern fill's tile grid, the colour tool's paint layer,
+ * a border rect, a filter region. Such an object cannot be said in world
+ * space once turned — a turned box is not a box — and keeps its transform
+ * (see {@link worldPosedSVGObject}).
+ */
+function svgPaintsFromBox(svg: SVGObject): boolean {
+  if (svg.effects || svg.paintOverlay || svg.patternFill || svg.isPatternFill) return true;
+  if (svg.fillPaint && svg.fillPaint.kind !== 'solid') return true;
+  if (svg.fill && tintFillToPaint(svg.fill).kind !== 'solid') return true;
+  return false;
+}
+
+/**
+ * An svg's content in WORLD space where it can be said there, and the
+ * `transform` it must still wear where it cannot.
+ *
+ * The matrix `svgLocalGeometry` leaves an svg is rigid — its turn and its
+ * place; the scale and the lean are already in the vertices
+ * (sceneDrawnContent) — and a rigid map moves points without changing a
+ * length, so folding it into the segments leaves the stroke exactly the
+ * authored width. That is what lets a stroke export as one `<path>` in the
+ * page's own coordinates rather than a `<g transform>` round a path drawn
+ * at the origin, which is what every stroke in the file used to be.
+ *
+ * A pure move folds into everything the object owns — segments, subpaths,
+ * and the box every box-bound paint is laid out against — so nothing reads
+ * differently. A TURN folds in only when nothing reads the box
+ * ({@link svgPaintsFromBox}); the box is then re-read as the turned
+ * corners' bounds, which only the stroke-position mask region looks at,
+ * and that is sized to be generous. The turn stays a transform otherwise.
+ */
+function worldPosedSVGObject(
+  svg: SVGObject, m: Mat2D,
+): { object: SVGObject; transform?: string } {
+  const turned = Math.abs(m.a - 1) > 1e-9 || Math.abs(m.b) > 1e-9
+    || Math.abs(m.c) > 1e-9 || Math.abs(m.d - 1) > 1e-9;
+  if (turned && svgPaintsFromBox(svg)) {
+    return { object: svg, transform: matrixString(m, SVG_UNITS_PER_L0_CELL) };
+  }
+  const box = matApplyBbox(m, {
+    x: svg.cellX, y: svg.cellY, width: svg.cellWidth, height: svg.cellHeight,
+  });
+  const object: SVGObject = {
+    ...svg,
+    segments: mapSegments(svg.segments, m),
+    cellX: box.x, cellY: box.y, cellWidth: box.width, cellHeight: box.height,
+  };
+  if (svg.subpaths) {
+    object.subpaths = svg.subpaths.map((sp) => ({ ...sp, segments: mapSegments(sp.segments, m) }));
+  }
+  return { object };
+}
+
+/**
+ * The scene outline's groups, kept in the file: each emitted node goes
+ * inside one `<g>` per group above it, opened when the first member of a
+ * run arrives and closed when the next node is not in it. A group's
+ * members are contiguous in `sceneOrder`, so a group opens once; one whose
+ * members a legacy order scattered simply opens again, still well nested.
+ *
+ * The `<g>` is structure, not pose: every member is already drawn in world
+ * space, so the group carries no transform — only its name, as `id`, which
+ * is where Illustrator, Figma and Inkscape read a layer's name from. Names
+ * are made XML ids (letters, digits, `_` and `-`; unique in the document,
+ * `takenIds` being the ones already spent) and an unnamed group is `group`.
+ *
+ * These are the ONLY groups a node is wrapped in for where it sits in the
+ * outline; the `<g>`s left in a node's own markup are the ones a single
+ * element cannot stand in for (see `wearOrWrap`).
+ */
+function groupEmitter(groups: readonly GroupNode[], takenIds: readonly string[]): {
+  elements: string[];
+  node: (groupId: string | undefined, markup: string) => void;
+  close: () => void;
+} {
+  const byId = new Map<string, GroupNode>();
+  for (const g of groups) byId.set(g.id, g);
+  const chainOf = (groupId: string | undefined): string[] => {
+    const chain: string[] = [];
+    let gid = groupId;
+    for (let hops = 0; gid && hops < 100; hops++) {
+      const g = byId.get(gid);
+      if (!g) break;
+      chain.unshift(gid);
+      gid = g.parentGroupId;
+    }
+    return chain;
+  };
+  const taken = new Set(takenIds);
+  const svgIdOf = new Map<string, string>();
+  const idFor = (gid: string): string => {
+    const known = svgIdOf.get(gid);
+    if (known) return known;
+    const base = (byId.get(gid)?.name ?? '').trim().replace(/[^a-zA-Z0-9_-]/g, '_') || 'group';
+    const stem = /^[a-zA-Z_]/.test(base) ? base : `group_${base}`;
+    let id = stem;
+    for (let n = 2; taken.has(id); n++) id = `${stem}_${n}`;
+    taken.add(id);
+    svgIdOf.set(gid, id);
+    return id;
+  };
+  const elements: string[] = [];
+  const open: string[] = [];
+  const node = (groupId: string | undefined, markup: string): void => {
+    const chain = chainOf(groupId);
+    let k = 0;
+    while (k < open.length && k < chain.length && open[k] === chain[k]) k++;
+    while (open.length > k) { open.pop(); elements.push('</g>'); }
+    for (; k < chain.length; k++) {
+      open.push(chain[k]);
+      elements.push(`<g id="${idFor(chain[k])}">`);
+    }
+    elements.push(markup);
+  };
+  const close = (): void => {
+    while (open.length > 0) { open.pop(); elements.push('</g>'); }
+  };
+  return { elements, node, close };
+}
+
+/**
  * Wrap node markup with its NodeEffects: shadow/glow become a `<filter>`
- * def referenced by a wrapping `<g>`; a border becomes a stroked rect drawn
+ * def the markup references (a lone element wears the `filter` itself,
+ * several share a `<g>` — `wearOrWrap`); a border becomes a stroked rect drawn
  * OVER the content at the `node` bbox passed in. The caller picks that frame:
  * svg/text pass their world bbox (effects sit in world space, then any node
  * rotation wraps the whole result); images pass a LOCAL frame [0,0,iw,ih] and
@@ -565,7 +690,7 @@ function applyNodeEffects(
     height: region.cellHeight * u,
   }, outlineWidth !== undefined ? outlineWidth * u : undefined);
   if (defs && filterRef) {
-    out = `<defs>${defs}</defs><g filter="${filterRef}">${out}</g>`;
+    out = `<defs>${defs}</defs>${wearOrWrap(out, `filter="${filterRef}"`)}`;
   }
   if (effects.border) out += borderRectForBox(effects.border, node, u);
   return out;
@@ -745,7 +870,8 @@ function buildTextSVGContent(text: TextObject, u: number, colorOverride?: RGBCol
     }
   }
   if (!inner) return '';
-  return `<g${stickerOpacity}>${inner}</g>`;
+  // The lines share a group only when there is something for it to carry.
+  return stickerOpacity ? `<g${stickerOpacity}>${inner}</g>` : inner;
 }
 
 /**
@@ -1313,7 +1439,7 @@ export async function generateCompositionSVGCore(
       cellWidth: pose.box.width * sx, cellHeight: pose.box.height * sy,
     }, SVG_UNITS_PER_L0_CELL);
     frameBorders.set(g.id,
-      `<g transform="${matrixString(matrix, SVG_UNITS_PER_L0_CELL)}">${borderRect}</g>`);
+      wearOrWrap(borderRect, `transform="${matrixString(matrix, SVG_UNITS_PER_L0_CELL)}"`));
     frameBorderBoundaryIds.add(boundary.id);
   }
 
@@ -1714,7 +1840,7 @@ export async function generateCompositionSVGCore(
       { cellX: 0, cellY: 0, cellWidth: pose.box.width, cellHeight: pose.box.height, cornerRadius: img.cornerRadius },
       U,
     );
-    const imgMarkup = tintDefs + `<g transform="${pose.transform}">${effected}</g>`;
+    const imgMarkup = tintDefs + wearOrWrap(effected, `transform="${pose.transform}"`);
     elementsById.set(img.id, wrapWithMaskClip(imgMarkup, maskMap, groups, img));
   }
 
@@ -1747,7 +1873,7 @@ export async function generateCompositionSVGCore(
     // border or stroke, so it is the one kind with nothing for the Fade row
     // that replaced Soften to fade (engine/fade.ts).
     const localContent = opacityAttr ? `<g${opacityAttr}>${tileImages}</g>` : tileImages;
-    const paintMarkup = `<g transform="${pose.transform}">${localContent}</g>`;
+    const paintMarkup = wearOrWrap(localContent, `transform="${pose.transform}"`);
     elementsById.set(p.id, wrapWithMaskClip(paintMarkup, maskMap, groups, p));
   }
 
@@ -1828,7 +1954,7 @@ export async function generateCompositionSVGCore(
     }
 
     if (content || bgRect) {
-      const figMarkup = `<g transform="${figTransform}">${bgRect}${content ?? ''}</g>`;
+      const figMarkup = wearOrWrap(`${bgRect}${content ?? ''}`, `transform="${figTransform}"`);
       elementsById.set(fig.id, wrapWithMaskClip(figMarkup, maskMap, groups, fig));
     }
   }
@@ -1852,7 +1978,7 @@ export async function generateCompositionSVGCore(
    * keeps its new colours while taking the node's exact geometry.
    */
   const svgDrawnContent = (entry: SVGObject): {
-    object: SVGObject; transform: string; grow: { gx: number; gy: number };
+    object: SVGObject; matrix: Mat2D; transform: string; grow: { gx: number; gy: number };
   } => {
     const pattern = localPatternViews.get(entry.id);
     // The grown geometry's matrix, not the pose's full one — the same
@@ -1861,6 +1987,7 @@ export async function generateCompositionSVGCore(
     if (pattern) {
       return {
         object: inkOverride(pattern.object),
+        matrix: pattern.matrix,
         transform: matrixString(pattern.matrix, U),
         grow: { gx: 1, gy: 1 },
       };
@@ -1869,6 +1996,7 @@ export async function generateCompositionSVGCore(
     const geo = svgLocalGeometry(pose.node, pose.world, entry);
     return {
       object: geo.object,
+      matrix: geo.matrix,
       transform: matrixString(geo.matrix, U),
       // …and what the vertices took out of that matrix, which a PATTERN
       // FILL's tile has to be grown by too (shapePatternGrid).
@@ -1882,12 +2010,17 @@ export async function generateCompositionSVGCore(
    * wrapped the rotation OUTSIDE the clip, which clipped a turned node
    * against a turned copy of the mask; the image path has always nested
    * them this way round.
+   *
+   * No `transform` means the markup is already in world space (see
+   * {@link worldPosedSVGObject}) and needs nothing round it; a lone element
+   * that still has a pose to wear wears it (`wearOrWrap`).
    */
   const posedAndClipped = (
-    id: string, node: { id: string; groupId?: string }, transform: string, markup: string,
+    id: string, node: { id: string; groupId?: string }, transform: string | undefined,
+    markup: string,
   ): void => {
     elementsById.set(id, wrapWithMaskClip(
-      `<g transform="${transform}">${markup}</g>`, maskMap, groups, node,
+      transform ? wearOrWrap(markup, `transform="${transform}"`) : markup, maskMap, groups, node,
     ));
   };
 
@@ -1895,8 +2028,8 @@ export async function generateCompositionSVGCore(
     if (cancelled?.()) return null;
     if (entry.segments.length === 0) continue;
     const drawn = svgDrawnContent(entry);
-    const svg = drawn.object;
-    if (svg.tileMode === 'repeat') {
+    if (drawn.object.tileMode === 'repeat') {
+      const svg = drawn.object;
       // Pattern mode: the shared region builder (also the live DOM layer's
       // path via buildSVGObjectContent) emits the repeating markup — the
       // sparse-override <g>-per-copy expansion or the <pattern> + rect.
@@ -1906,6 +2039,11 @@ export async function generateCompositionSVGCore(
       ));
       continue;
     }
+    // In world space wherever the object can be said there — which is every
+    // plain stroke — so the path below stands in the page's own coordinates
+    // with nothing round it.
+    const posed = worldPosedSVGObject(drawn.object, drawn.matrix);
+    const svg = posed.object;
     // Per-object stroke (width / radius / position / dash) comes from the same
     // helper the live DOM layer uses, so an authored stroke can't render one
     // way on the canvas and another in the export. Export draws in SVG units,
@@ -2003,7 +2141,7 @@ export async function generateCompositionSVGCore(
       // The band above IS the inner glow for a shape that has no interior of
       // its own; the node filter must not light it a second time.
       if (svgDrawsOwnInnerGlow(svg)) effects = { ...effects, innerGlow: undefined };
-      posedAndClipped(entry.id, entry, drawn.transform,
+      posedAndClipped(entry.id, entry, posed.transform,
         applyNodeEffects(paths, effects, entry.id, svg, U, outlineCastWidth(svg, svgStrokeScale)));
     }
   }
@@ -2048,56 +2186,65 @@ export async function generateCompositionSVGCore(
     ));
   }
 
+  const compName = (input.name ?? 'composition').replace(/[^a-zA-Z0-9_-]/g, '_');
+
   // Emit in scene order (back→front). Ids missing from `sceneOrder` (or the
   // whole map when `sceneOrder` is absent) fall back to insertion order, which
   // is the legacy images→figures→svgs paint order.
-  const allElements: string[] = [];
+  //
+  // Each node goes inside a `<g>` per scene-outline group above it
+  // (groupEmitter) — the user's groups are the only groups the file has for
+  // structure's sake. Membership is read from the UNFILTERED nodes so a
+  // hidden member still ends a frame's run at the same place the canvas does.
+  const groupIdByNode = new Map<string, string | undefined>();
+  for (const n of input.figures) groupIdByNode.set(n.id, n.groupId);
+  for (const n of input.svgObjects) groupIdByNode.set(n.id, n.groupId);
+  for (const n of input.images) groupIdByNode.set(n.id, n.groupId);
+  for (const n of input.texts ?? []) groupIdByNode.set(n.id, n.groupId);
+  for (const n of input.paintObjects ?? []) groupIdByNode.set(n.id, n.groupId);
+  for (const n of input.patternObjects ?? []) groupIdByNode.set(n.id, n.groupId);
+  const emit = groupEmitter(groups, [compName]);
+  const allElements = emit.elements;
   const order = input.sceneOrder;
   if (order && order.length > 0) {
     // Frame borders go in right after the frame's last member. A group's
     // members are contiguous in `sceneOrder`, so that lands the border over the
     // frame's own content and under anything painted after it — exactly where
-    // the canvas puts its overlay. Membership is read from the UNFILTERED nodes
-    // so a hidden member still ends the run at the same place the canvas does.
+    // the canvas puts its overlay; inside the frame's own `<g>`, being the
+    // frame's.
     const borderAfterIndex = new Map<number, string>();
     const placedFrames = new Set<string>();
     if (frameBorders.size > 0) {
-      const groupIdByNode = new Map<string, string | undefined>();
-      for (const n of input.figures) groupIdByNode.set(n.id, n.groupId);
-      for (const n of input.svgObjects) groupIdByNode.set(n.id, n.groupId);
-      for (const n of input.images) groupIdByNode.set(n.id, n.groupId);
-      for (const n of input.texts ?? []) groupIdByNode.set(n.id, n.groupId);
       const lastIndexByFrame = new Map<string, number>();
       order.forEach((id, i) => {
         const fid = frameGroupIdForNode(groups, groupIdByNode.get(id));
         if (fid !== undefined && frameBorders.has(fid)) lastIndexByFrame.set(fid, i);
       });
       for (const [fid, i] of lastIndexByFrame) {
-        borderAfterIndex.set(i, frameBorders.get(fid)!);
+        borderAfterIndex.set(i, fid);
         placedFrames.add(fid);
       }
     }
     const emitted = new Set<string>();
     order.forEach((id, i) => {
       const el = elementsById.get(id);
-      if (el !== undefined) { allElements.push(el); emitted.add(id); }
-      const border = borderAfterIndex.get(i);
-      if (border) allElements.push(border);
+      if (el !== undefined) { emit.node(groupIdByNode.get(id), el); emitted.add(id); }
+      const fid = borderAfterIndex.get(i);
+      if (fid !== undefined) emit.node(fid, frameBorders.get(fid)!);
     });
     for (const [id, el] of elementsById) {
-      if (!emitted.has(id)) allElements.push(el);
+      if (!emitted.has(id)) emit.node(groupIdByNode.get(id), el);
     }
     // A frame with no member in `sceneOrder` (a bare board, or a legacy record
     // whose order is incomplete) still gets its border, on top.
     for (const [fid, border] of frameBorders) {
-      if (!placedFrames.has(fid)) allElements.push(border);
+      if (!placedFrames.has(fid)) emit.node(fid, border);
     }
   } else {
-    for (const el of elementsById.values()) allElements.push(el);
-    for (const border of frameBorders.values()) allElements.push(border);
+    for (const [id, el] of elementsById) emit.node(groupIdByNode.get(id), el);
+    for (const [fid, border] of frameBorders) emit.node(fid, border);
   }
-
-  const compName = (input.name ?? 'composition').replace(/[^a-zA-Z0-9_-]/g, '_');
+  emit.close();
 
   // Font embedding: when a resolver is provided and yields WOFF2 bytes
   // for a used font, emit an @font-face <style> block so text renders

@@ -12,7 +12,7 @@
  */
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
 import { BorderEffect, GroupNode, ImageObject, PathSegment, SVGObject } from '../types';
-import { Mat2D, matApplyPoint } from '../sceneTransform';
+import { MAT_IDENTITY, Mat2D, matApplyPoint } from '../sceneTransform';
 import { parseSvgTransform } from './exportPose.test-utils';
 
 /** SVG_UNITS_PER_L0_CELL — world cells scale into SVG units by this. */
@@ -108,15 +108,15 @@ function whiteRects(svg: string): { at: number; x: number; y: number; w: number;
 }
 
 
-/** The matrix of the `<g transform>` the white border rect sits in. The
- *  border is emitted in the boundary rect's OWN space now (P5 of
- *  docs/transform-refactor.md), so its world position is that rect through
- *  this. */
+/** The matrix the white border rect wears. The border is emitted in the
+ *  boundary rect's OWN space (P5 of docs/transform-refactor.md) and, being
+ *  one element, carries its `transform` itself rather than in a `<g>`, so
+ *  its world position is that rect through this. */
 function borderGroupMatrix(svg: string): Mat2D {
   const at = svg.search(/stroke="#ffffff"/i);
-  const before = svg.slice(0, at);
-  const open = before.lastIndexOf('<g transform="');
-  return parseSvgTransform(before.slice(open + '<g transform="'.length, before.indexOf('"', open + 14)));
+  const element = svg.slice(svg.lastIndexOf('<', at), svg.indexOf('>', at));
+  const worn = element.match(/\stransform="([^"]*)"/);
+  return worn ? parseSvgTransform(worn[1]) : MAT_IDENTITY;
 }
 
 describe('frame border export', () => {

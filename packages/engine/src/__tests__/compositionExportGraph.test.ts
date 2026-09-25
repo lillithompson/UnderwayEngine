@@ -141,7 +141,8 @@ const BLOB = { blob: new Uint8Array([137, 80, 78, 71]) };
 /** The first `<image>`'s x/y/width/height, in SVG units — the rect the BITMAP
  *  is drawn into, which for a cover framing overflows the frame. */
 function imageRect(svg: string): { x: number; y: number; width: number; height: number } {
-  const m = svg.match(/<image x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/);
+  // A lone <image> wears its own transform ahead of these, hence the gap.
+  const m = svg.match(/<image[^>]* x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/);
   if (!m) throw new Error('no <image> in the export');
   return { x: +m[1], y: +m[2], width: +m[3], height: +m[4] };
 }
@@ -475,31 +476,38 @@ describe('the svg kind draws its path in its own space', () => {
 });
 
 describe('the pattern kind bakes its cells in the frame it is drawn in', () => {
-  test('a turned pattern bakes upright and the matrix turns it', async () => {
+  test('a turned pattern bakes upright and then turns with its vertices', async () => {
     // `patternSVGView` bakes a pattern's cells into the box it is given, so
     // the view the export emits has to be baked in the LOCAL box its matrix
     // carries. Baking the world view instead puts the cells at the world
     // box — the nearest rectangle around a turned pattern — and then draws
-    // them there.
+    // them there. The turn is then folded into the baked vertices, the way
+    // every svg's rigid pose is, so the file holds the cells in WORLD
+    // coordinates with no transform round them.
     const p = patternObject({ cellX: 4, cellY: 4, angleDeg: 40 });
     const svg = (await generateCompositionSVGCore(inputsFor(
       makeState({ patternObjects: [p], sceneOrder: ['pat'] }),
     )))!;
-    const m = transformsIn(svg)[0];
-    expect(Math.atan2(m.b, m.a) * 180 / Math.PI).toBeCloseTo(40);
-    // The cells are baked at the origin: the whole picture lies inside the
-    // local 4×4 box, which is only true in the node's own space.
-    const coords = [...svg.matchAll(/([-\d.]+),([-\d.]+)/g)]
+    expect(transformsIn(svg)).toHaveLength(0);
+    // Carried back through the pose the legacy fields spell, every vertex
+    // lies inside the local 4×4 box — which is only true of cells baked in
+    // the node's own space and then turned as one.
+    const [c0, c1, , c3] = legacyQuad({ x: 4, y: 4, width: 4, height: 4, angleDeg: 40 });
+    const ex = [(c1[0] - c0[0]) / (4 * U), (c1[1] - c0[1]) / (4 * U)];
+    const ey = [(c3[0] - c0[0]) / (4 * U), (c3[1] - c0[1]) / (4 * U)];
+    const coords = [...svg.matchAll(/ d="([^"]*)"/g)]
+      .flatMap(([, d]) => [...d.matchAll(/([-\d.]+),([-\d.]+)/g)])
       .map(([, x, y]) => [Number(x), Number(y)] as const);
     expect(coords.length).toBeGreaterThan(0);
     for (const [x, y] of coords) {
-      expect(Math.abs(x)).toBeLessThanOrEqual(4 * U + 1);
-      expect(Math.abs(y)).toBeLessThanOrEqual(4 * U + 1);
+      const dx = x - c0[0], dy = y - c0[1];
+      const lx = dx * ex[0] + dy * ex[1];
+      const ly = dx * ey[0] + dy * ey[1];
+      expect(lx).toBeGreaterThanOrEqual(-1);
+      expect(lx).toBeLessThanOrEqual(4 * U + 1);
+      expect(ly).toBeGreaterThanOrEqual(-1);
+      expect(ly).toBeLessThanOrEqual(4 * U + 1);
     }
-    // …and it is drawn where the legacy pose always put it.
-    expectQuadsClose(drawnQuad(m, 4, 4), legacyQuad({
-      x: 4, y: 4, width: 4, height: 4, angleDeg: 40,
-    }));
   });
 });
 

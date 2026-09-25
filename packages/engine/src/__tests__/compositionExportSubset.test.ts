@@ -1032,8 +1032,10 @@ describe('paint islands in a cutout', () => {
     const svg = await generateCompositionSVGCore(paintPage(p));
     expect(svg!.match(/<image/g)).toHaveLength(1);
     const flat = flattenPaintTiles(p)!;
+    // The lone <image> wears its pose itself, ahead of its own attributes.
+    expect(svg).toMatch(/<image transform="[^"]*" x="0" y="0" /);
     expect(svg).toContain(
-      `<image x="0" y="0" width="${p.cellWidth * U}" height="${p.cellHeight * U}"` +
+      ` x="0" y="0" width="${p.cellWidth * U}" height="${p.cellHeight * U}"` +
       ` href="${overlayPngDataUri(flat)}" preserveAspectRatio="none"/>`,
     );
   });

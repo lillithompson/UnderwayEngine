@@ -188,17 +188,24 @@ describe('generateCompositionSVGCore — free rotation', () => {
     const withRot = (await generateCompositionSVGCore(makeInputs({
       svgObjects: [rotated], sceneOrder: ['svg_1'],
     })))!;
-    // The path is drawn about the node's own origin now and the group's
-    // matrix spins it, where it used to be drawn in world coordinates under
-    // a `rotate(22 cx cy)` wrapper. Same picture, one spelling.
-    const m = transformsIn(withRot)[0];
-    expect(Math.atan2(m.b, m.a) * 180 / Math.PI).toBeCloseTo(22);
+    // The path is drawn in WORLD coordinates: the turn is a rigid pose, so
+    // it folds into the vertices without touching the stroke's width, and
+    // the file holds one `<path>` with nothing round it — where it used to
+    // be a path at the origin inside a `<g>` that spun it, and before that
+    // a `rotate(22 cx cy)` wrapper. Same picture, no wrapper.
+    expect(transformsIn(withRot)).toHaveLength(0);
+    expect(withRot).not.toContain('<g');
+    const corners = [...withRot.match(/<path[^>]* d="([^"]*)"/)![1].matchAll(/([-\d.]+),([-\d.]+)/g)]
+      .map(([, x, y]) => [Number(x), Number(y)] as [number, number]);
+    expectQuadsClose(corners.slice(0, 4), legacyQuad({
+      x: 0, y: 0, width: 4, height: 4, angleDeg: 22,
+    }));
 
     const upright = sb({ id: 'svg_1', segments: closedSquare, color: { r: 9, g: 9, b: 9 } });
     const noRot = (await generateCompositionSVGCore(makeInputs({
       svgObjects: [upright], sceneOrder: ['svg_1'],
     })))!;
-    const u = transformsIn(noRot)[0];
-    expect([u.a, u.b, u.c, u.d]).toEqual([1, 0, 0, 1]);
+    expect(transformsIn(noRot)).toHaveLength(0);
+    expect(noRot).toContain('<path d="M 0,0 L 1024,0 L 1024,1024 L 0,1024 L 0,0"');
   });
 });
