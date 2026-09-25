@@ -164,7 +164,11 @@ export interface TopBarModel {
    *  shows its picture in place of the canvas: there is nothing on screen
    *  a tool could act on, so no tool may look (or be) pressable. */
   toolsDisabled?: boolean;
-  onBack(): void;
+  /** The back chevron's press. ABSENT, the bar draws no chevron and the
+   *  label starts the row: the app has put the way back somewhere else
+   *  (CozyJournal's title band carries it on the game's name line while
+   *  the band is showing, and hands it back to the bar once dismissed). */
+  onBack?(): void;
   /** The tool the press resolves to, or `null` when the press untoggled the
    *  active tool and the app is left with none (see nextToolOnPress). */
   onSelectTool(id: string | null): void;

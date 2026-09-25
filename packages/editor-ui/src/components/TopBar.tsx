@@ -15,7 +15,9 @@ import {
 } from '../theme';
 
 // Facet's CompositionEditor header: light strip, "<" back square + bold
-// label on the left (tap the label to open the scene outline), the format's
+// label on the left (tap the label to open the scene outline; the back
+// square only where the model gives it a press — see TopBarModel.onBack),
+// the format's
 // tools right-aligned as 40px icon buttons (blue when active). The color
 // tool renders as a live swatch with Facet's double selection ring. Toggle
 // semantics (nextToolOnPress) are applied here so the app's onSelectTool
@@ -134,9 +136,13 @@ export function TopBar({ model }: { model: TopBarModel }) {
           <Text style={styles.centerInfo} numberOfLines={1}>{model.centerInfo}</Text>
         </View>
       ) : null}
-      <Pressable accessibilityRole="button" accessibilityLabel="Back" style={styles.back} onPress={model.onBack}>
-        <MaterialCommunityIcons name="chevron-left" size={24} color={HEADER_INK} />
-      </Pressable>
+      {/* No `onBack`, no chevron: the app has put the way back on a row of
+          its own above the bar, and the label takes the row's left edge. */}
+      {model.onBack ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Back" style={styles.back} onPress={model.onBack}>
+          <MaterialCommunityIcons name="chevron-left" size={24} color={HEADER_INK} />
+        </Pressable>
+      ) : null}
       <Pressable
         style={styles.labelWrap}
         onPress={model.onLabelPress}
