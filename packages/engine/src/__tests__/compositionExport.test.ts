@@ -250,6 +250,46 @@ describe('exportCompositionSVG — lines', () => {
     expect(pathMatches).toHaveLength(2);
   });
 
+  it('exports a MERGE of same-colored shapes as one compound path, not its sources', async () => {
+    const sq = (x: number, y: number) => [
+      { kind: 'line', start: [x, y], end: [x + 4, y] },
+      { kind: 'line', start: [x + 4, y], end: [x + 4, y + 4] },
+      { kind: 'line', start: [x + 4, y + 4], end: [x, y + 4] },
+      { kind: 'line', start: [x, y + 4], end: [x, y] },
+    ];
+    const a = sq(0, 0);
+    const b = sq(8, 0);
+    const red = { r: 255, g: 0, b: 0 };
+    storage['comp_meta_mergedexp'] = JSON.stringify({
+      name: 'Merged',
+      figures: [],
+      svgObjects: [
+        {
+          id: 'svg_merged',
+          segments: [...a, ...b],
+          color: red,
+          // What mergedSVGObject writes for two filled red squares.
+          subpaths: [
+            { segments: a, color: red, fill: true },
+            { segments: a, color: red },
+            { segments: b, color: red, fill: true },
+            { segments: b, color: red },
+          ],
+          cellX: 0, cellY: 0, cellWidth: 12, cellHeight: 4,
+        },
+      ],
+      camera: { offsetX: 0, offsetY: 0, zoom: 1 },
+      strokeScale: 8, gridIntensity: 0.5,
+    });
+
+    const svg = await exportCompositionSVG('mergedexp');
+    expect(svg).not.toBeNull();
+    // One fill and one stroke — each holding both squares.
+    const paths = svg!.match(/<path [^>]*>/g) ?? [];
+    expect(paths).toHaveLength(2);
+    for (const p of paths) expect((p.match(/M /g) ?? []).length).toBe(2);
+  });
+
   it('renders per-subpath colors for a tiled SVG object with subpaths', async () => {
     storage['comp_meta_tilesp'] = JSON.stringify({
       name: 'TiledSubpaths',

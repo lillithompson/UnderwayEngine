@@ -544,7 +544,10 @@ describe('strokeColorOverride', () => {
     );
     expect(svg).not.toContain('stroke="rgb(90,0,0)"');
     expect(svg).not.toContain('stroke="rgb(0,90,0)"');
-    expect(svg!.match(/stroke="rgb\(255,255,255\)"/g)).toHaveLength(2);
+    // Both subpaths, now one ink, draw as ONE path holding the two.
+    const strokes = svg!.match(/<path [^>]*stroke="rgb\(255,255,255\)"[^>]*>/g);
+    expect(strokes).toHaveLength(1);
+    expect(strokes![0]!.match(/M /g)).toHaveLength(2);
   });
 
   it('leaves a fill alone — an area is not a line', async () => {
@@ -583,7 +586,10 @@ describe('strokeColorOverride', () => {
     }));
     expect(svg).not.toContain('fill="rgb(214,176,130)"');
     expect(svg).not.toContain('fill="rgb(190,150,110)"');
-    expect(svg!.match(/fill="rgb\(255,255,255\)"/g)).toHaveLength(2);
+    // Both fills, now one ink, flood as ONE path holding the two.
+    const fills = svg!.match(/<path [^>]*fill="rgb\(255,255,255\)"[^>]*>/g);
+    expect(fills).toHaveLength(1);
+    expect(fills![0]!.match(/M /g)).toHaveLength(2);
   });
 
   it('floods only the objects it names — a drawing keeps its colored-in areas', async () => {

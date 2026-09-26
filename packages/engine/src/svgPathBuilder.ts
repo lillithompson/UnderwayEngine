@@ -1,7 +1,7 @@
-import { PathSegment, RGBColor, SVGObject } from './types';
+import { PathSegment, RGBColor, SVGObject, SVGSubpath } from './types';
 import { SVG_UNITS_PER_L0_CELL, SVG_STROKE_WIDTH } from './svgExport';
 import {
-  computeSweepFlag, arcRadius, chainSegments, closedSegmentLoops,
+  computeSweepFlag, arcRadius, chainSegments, closedSegmentLoops, computeSignedArea, reverseSegment,
 } from './compositionArcMath';
 import { packKey, unpackKey, forEachVisibleTile } from './tileSegmentOverrides';
 import { borderDashPattern, innerGlowBandFilter, paintToSvg, scaleEffects } from './paintSvg';
@@ -147,24 +147,7 @@ export function buildSVGObjectTileContent(obj: SVGObject, strokeScale: number): 
   }
 
   if (Array.isArray(obj.subpaths) && obj.subpaths.length > 0) {
-    // Fill subpaths first so stroke subpaths draw on top of them.
-    for (const sub of obj.subpaths) {
-      if (!sub.fill) continue;
-      const fd = buildTileFillPathD(sub.segments, minX, minY);
-      if (fd) {
-        const { r, g, b } = sub.color;
-        result += `<path d="${fd}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`;
-      }
-    }
-    for (const sub of obj.subpaths) {
-      if (sub.fill) continue;
-      const d = buildTilePathD(sub.segments, minX, minY);
-      if (d) {
-        const { r, g, b } = sub.color;
-        result += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
-      }
-    }
-    return result;
+    return result + buildSubpathsMarkup(obj.subpaths, attrs, (segs) => buildTilePathD(segs, minX, minY));
   }
 
   const d = buildTilePathD(obj.segments, minX, minY);
@@ -367,24 +350,7 @@ export function buildTiledSVGObjectRegionMarkup(
     }
   }
   if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
-    // Fill subpaths first so stroke subpaths draw on top (matches
-    // buildSVGObjectTileContent above).
-    for (const sub of svg.subpaths) {
-      if (!sub.fill) continue;
-      const fd = buildTileFillPathD(sub.segments, sMinX, sMinY);
-      if (fd) {
-        const { r, g, b } = sub.color;
-        tileContent += `<path d="${fd}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`;
-      }
-    }
-    for (const sub of svg.subpaths) {
-      if (sub.fill) continue;
-      const d = buildTilePathD(sub.segments, sMinX, sMinY);
-      if (d) {
-        const { r, g, b } = sub.color;
-        tileContent += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
-      }
-    }
+    tileContent += buildSubpathsMarkup(svg.subpaths, attrs, (segs) => buildTilePathD(segs, sMinX, sMinY));
   } else {
     const d = buildTilePathD(svg.segments, sMinX, sMinY);
     const { r, g, b } = svg.color;
@@ -435,6 +401,74 @@ export function buildClosedFillPathD(segments: ReadonlyArray<PathSegment>): stri
 export function buildTileFillPathD(segments: ReadonlyArray<PathSegment>, minX: number, minY: number): string {
   return closedSegmentLoops(segments)
     .map(loop => buildTilePathD(loop, minX, minY) + ' Z').join(' ');
+}
+
+function sameColor(a: RGBColor, b: RGBColor): boolean {
+  return a.r === b.r && a.g === b.g && a.b === b.b;
+}
+
+/** One fill subpath's closed loops, wound so the subpath as a whole turns
+ *  positively. Only the WHOLE subpath is ever flipped, so its own holes stay
+ *  counter-wound to its outline; what the flip buys is that two subpaths
+ *  sharing one `d` under `fill-rule="nonzero"` add where they overlap
+ *  instead of cancelling into a hole. */
+function positivelyWoundLoops(segments: readonly PathSegment[]): PathSegment[][] {
+  const loops = closedSegmentLoops(segments);
+  let area = 0;
+  for (const loop of loops) area += computeSignedArea(loop);
+  if (area >= 0) return loops;
+  return loops.map((loop) => loop.map(reverseSegment).reverse());
+}
+
+/**
+ * The markup for an object's colored SUBPATHS — fills first, strokes on top.
+ *
+ * A RUN of consecutive subpaths of one color and kind is ONE `<path>`: a
+ * merge of five same-colored shapes is one object, and it exports as one
+ * compound path rather than five, so a vector editor opens it as the single
+ * shape it is on the canvas. Only consecutive runs combine — pulling a
+ * same-colored subpath past a different-colored one would change which
+ * draws on top.
+ *
+ * Shared by the export and every live/tile markup builder, which differ only
+ * in how a segment list becomes a `d` (`pathD`: world or tile-local units)
+ * and whether stroke corners round (`strokeSegments`).
+ */
+export function buildSubpathsMarkup(
+  subpaths: readonly SVGSubpath[],
+  strokeAttrs: string,
+  pathD: (segments: readonly PathSegment[]) => string,
+  strokeSegments: (segments: readonly PathSegment[]) => readonly PathSegment[] = (s) => s,
+): string {
+  let out = '';
+  for (const fill of [true, false]) {
+    let runColor: RGBColor | null = null;
+    let runD: string[] = [];
+    const flush = () => {
+      if (runColor && runD.length > 0) {
+        const { r, g, b } = runColor;
+        out += fill
+          ? `<path d="${runD.join(' ')}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`
+          : `<path d="${runD.join(' ')}" ${strokeAttrs} stroke="rgb(${r},${g},${b})" />`;
+      }
+      runD = [];
+    };
+    for (const sub of subpaths) {
+      if (!!sub.fill !== fill) continue;
+      if (!runColor || !sameColor(runColor, sub.color)) {
+        flush();
+        runColor = sub.color;
+      }
+      if (fill) {
+        for (const loop of positivelyWoundLoops(sub.segments)) runD.push(pathD(loop) + ' Z');
+      } else {
+        const d = pathD(strokeSegments(sub.segments));
+        if (d) runD.push(d);
+      }
+    }
+    flush();
+  }
+  return out;
 }
 
 /**
@@ -957,24 +991,8 @@ export function buildSVGObjectContent(
   result += shapePatternFillMarkup(obj, patternTiles, closedD);
 
   if (Array.isArray(obj.subpaths) && obj.subpaths.length > 0) {
-    // Fill subpaths first so stroke subpaths draw on top of them.
-    for (const sub of obj.subpaths) {
-      if (!sub.fill) continue;
-      const fd = buildClosedFillPathD(sub.segments);
-      if (fd) {
-        const { r, g, b } = sub.color;
-        result += `<path d="${fd}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`;
-      }
-    }
-    for (const sub of obj.subpaths) {
-      if (sub.fill) continue;
-      const rounded = radius > 0 ? roundPathCorners(sub.segments, radius) : sub.segments;
-      const d = buildPathD(rounded);
-      if (d) {
-        const { r, g, b } = sub.color;
-        result += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
-      }
-    }
+    result += buildSubpathsMarkup(obj.subpaths, attrs, (segs) => buildPathD(segs),
+      radius > 0 ? (segs) => roundPathCorners(segs, radius) : undefined);
     return wrapSVGObjectOpacity(obj, result, strokeScale);
   }
 

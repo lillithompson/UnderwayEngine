@@ -23,7 +23,7 @@ import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgDrawsOwnInnerGlow, svgFillPresentation, svgInnerGlowBandMarkup, svgIsFilled, svgObjectStrokesOnly, svgStrokePresentation, wearOrWrap, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
+import { buildPathD, buildClosedFillPathD, buildSubpathsMarkup, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgDrawsOwnInnerGlow, svgFillPresentation, svgInnerGlowBandMarkup, svgIsFilled, svgObjectStrokesOnly, svgStrokePresentation, wearOrWrap, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
 import { roundPathCorners, strokeScaleForUnits, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import { arcBoundingBox } from './compositionArcHitTest';
@@ -2094,24 +2094,11 @@ export async function generateCompositionSVGCore(
     let paths = strokeDefs + fillElement;
     if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
       const radius = svgStrokeRadiusCells(svg);
-      // Fill subpaths first so stroke subpaths draw on top (matches
-      // buildSVGObjectContent in svgPathBuilder.ts).
-      for (const sub of svg.subpaths) {
-        if (!sub.fill) continue;
-        const fd = buildClosedFillPathD(sub.segments);
-        if (fd) {
-          const { r, g, b } = sub.color;
-          paths += `<path d="${fd}" fill="rgb(${r},${g},${b})" stroke="none" fill-rule="nonzero" />`;
-        }
-      }
-      for (const sub of svg.subpaths) {
-        if (sub.fill) continue;
-        const d = buildPathD(radius > 0 ? roundPathCorners(sub.segments, radius) : sub.segments);
-        if (d) {
-          const { r, g, b } = sub.color;
-          paths += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
-        }
-      }
+      // Same markup as the live DOM layer (buildSVGObjectContent): fills
+      // under strokes, and each same-colored run ONE compound path — a
+      // merged object exports as the one shape it is, not its sources.
+      paths += buildSubpathsMarkup(svg.subpaths, attrs, (segs) => buildPathD(segs),
+        radius > 0 ? (segs) => roundPathCorners(segs, radius) : undefined);
     } else {
       const d = buildPathD(strokeSegments);
       if (d) {
