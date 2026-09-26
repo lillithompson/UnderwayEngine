@@ -1,28 +1,6 @@
-import { constrainToSquare, pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout, warpSegments, computeOvalSegments, computeEllipsePolyline, flattenArcSegment, ELLIPSE_POLYLINE_SEGMENTS, computeQuarterArcSegments, QUARTER_ARC_POLYLINE_SEGMENTS, isCircularSegments } from '../compositionArcMath';
+import { pickCenter, computeSweepFlag, arcRadius, arcEndpoints, translateSegments, computeCircleSegments, isClosedPath, chainSegments, reverseSegment, computeSignedArea, normalizeClosedSegments, rotatePointAboutCW, rotateSegmentsAbout, warpSegments, computeOvalSegments, computeEllipsePolyline, flattenArcSegment, ELLIPSE_POLYLINE_SEGMENTS, computeQuarterArcSegments, QUARTER_ARC_POLYLINE_SEGMENTS, isCircularSegments } from '../compositionArcMath';
 import { computeRectSegments } from '../compositionLineBboxMath';
 import { PathSegment, SVGObject } from '../types';
-
-describe('constrainToSquare', () => {
-  it('clamps to square using min(|dx|,|dy|), snapped to grid', () => {
-    // Drag from (0,0) to (5,3) with gridStep=1 → side=3
-    expect(constrainToSquare(0, 0, 5, 3, 1)).toEqual([3, 3]);
-  });
-
-  it('preserves drag direction signs', () => {
-    expect(constrainToSquare(4, 4, 1, 1, 1)).toEqual([1, 1]);
-    expect(constrainToSquare(0, 0, -3, -5, 1)).toEqual([-3, -3]);
-    expect(constrainToSquare(0, 0, 4, -6, 2)).toEqual([4, -4]);
-  });
-
-  it('snaps side length to grid step', () => {
-    // gridStep=4, drag (0,0)→(5,7) → min(5,7)=5, round(5/4)*4 = 4
-    expect(constrainToSquare(0, 0, 5, 7, 4)).toEqual([4, 4]);
-  });
-
-  it('returns start when side would be zero', () => {
-    expect(constrainToSquare(0, 0, 0.4, 0.4, 1)).toEqual([0, 0]);
-  });
-});
 
 describe('pickCenter', () => {
   it('picks center that bulges upward for drag down-right', () => {

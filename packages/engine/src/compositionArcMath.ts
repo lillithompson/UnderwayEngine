@@ -3,31 +3,6 @@ import { PathSegment, SVGObject } from './types';
 const INV_SQRT2 = 1 / Math.SQRT2;
 
 /**
- * Constrain a drag endpoint to form a square bounding box with the start
- * point. Returns the constrained endpoint in L0-cell space.
- *
- * `gridStep > 0` snaps the side length to that step; pass `0` (or any
- * non-positive value) for a FREEFORM square that follows the cursor exactly —
- * which is how CozyJournal's arc / circle tools create off-grid shapes.
- */
-export function constrainToSquare(
-  sx: number, sy: number,
-  rawEndX: number, rawEndY: number,
-  gridStep: number,
-): [number, number] {
-  const dx = rawEndX - sx;
-  const dy = rawEndY - sy;
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
-  const raw = Math.min(absDx, absDy);
-  const side = gridStep > 0 ? Math.round(raw / gridStep) * gridStep : raw;
-  // A perfectly axis-aligned drag has min extent 0, so it yields no square —
-  // and past this guard both deltas are non-zero, so neither sign is 0.
-  if (side === 0) return [sx, sy];
-  return [sx + side * Math.sign(dx), sy + side * Math.sign(dy)];
-}
-
-/**
  * Does this segment chain lie on ONE circle — every piece an arc sharing a
  * single center and a single radius? True for the arc tool's lone quarter
  * circle as well as for a closed circle (see {@link isCircleSegments}, which
