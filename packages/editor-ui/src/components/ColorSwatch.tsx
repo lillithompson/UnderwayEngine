@@ -1,9 +1,8 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Image, StyleSheet, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import type { RGBLike } from '../adapter';
-import { hueRampColors, isTranslucent, rgbCss } from '../logic/hsv';
-import { HEADER_BG } from '../theme';
+import type { RGBLike, SwatchRainbow } from '../adapter';
+import { isTranslucent, rgbCss } from '../logic/hsv';
+import { RANDOM_SWATCH_SVG, ROTATE_SWATCH_SVG } from './rainbowSwatchSvg';
 
 // The shared fill for anything that previews a picked color — the color
 // picker's preview dot, every bar's header swatch, the tint stop handles, the
@@ -39,67 +38,27 @@ export function CheckerboardFill() {
   return <Image source={CHECKER_SOURCE} resizeMode="repeat" style={StyleSheet.absoluteFill} />;
 }
 
-/** The hue wheel laid corner to corner — the same ramp a hue slider's
- *  track wears (hueRampColors) — filling its parent. The one rainbow the
- *  two fills below are both made of, so a swatch and a ring can never
- *  wear two different wheels. */
-function HueRampFill() {
-  const ramp = useMemo(() => hueRampColors(), []);
-  return (
-    <LinearGradient
-      colors={ramp as unknown as readonly [string, string, ...string[]]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={StyleSheet.absoluteFill}
-    />
-  );
+function svgSource(svg: string) {
+  return { uri: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` };
 }
 
-/** The fill for a swatch that stands for NO ONE COLOUR: the hue wheel,
- *  solid. Used where the thing the swatch names is "whatever colour comes
- *  next" — a brush blending in Random, which deposits a colour that walks
- *  as the stroke goes. A flat swatch there is a promise the stroke does
- *  not keep. Fills its parent; the parent supplies the shape. */
-export function RainbowSwatchFill() {
-  return <HueRampFill />;
-}
+// Encoded once and hoisted, like CHECKER_SOURCE: a stable source is
+// decoded once, not re-resolved on every render of the bar.
+const RAINBOW_SWATCH_SOURCES: Record<SwatchRainbow, { uri: string }> = {
+  random: svgSource(RANDOM_SWATCH_SVG),
+  rotate: svgSource(ROTATE_SWATCH_SVG),
+};
 
-/** How much of the swatch the ring's band takes, per side. Thick enough
- *  for the ramp to read as colour, thin enough that the hole reads as a
- *  hole and not as a swatch of its own. */
-const RING_BAND = 0.3;
-
-/** The fill for a swatch that stands for NO COLOUR AT ALL: the hue wheel
- *  with its middle punched out. Used for a brush blending in ROTATE,
- *  which lays none of the armed colour down — it spins the hue of what is
- *  already under it (engine colorBlend `rotate`). Random still shows the
- *  solid wheel: it DOES deposit a colour, just not a fixed one, and the
- *  hollow middle is what says "nothing of mine goes down here".
- *
- *  The hole is painted rather than cut, because a gradient cannot be
- *  masked with the primitives this package draws in — so it wears the
- *  surface it sits on (the toolbar's `HEADER_BG`), and a caller that puts
- *  the ring on any other surface passes that surface's colour.
- *
- *  Fills its parent, and needs the parent's `size` to centre the hole. */
-export function RainbowRingFill({ size, hole = HEADER_BG }: { size: number; hole?: string }) {
-  const band = Math.max(2, Math.round(size * RING_BAND));
-  return (
-    <>
-      <HueRampFill />
-      <View
-        style={{
-          position: 'absolute',
-          top: band,
-          left: band,
-          right: band,
-          bottom: band,
-          borderRadius: Math.max(0, size - band * 2) / 2,
-          backgroundColor: hole,
-        }}
-      />
-    </>
-  );
+/** The fill for a swatch whose brush does not lay the armed colour: a
+ *  rainbow ring round a grey disc carrying the mode's blend-picker glyph
+ *  (rainbowSwatchSvg) — a die for Random, which deposits a colour that
+ *  walks as the stroke goes, and the rotate arrow for Rotate, which lays
+ *  none of its own and spins the hue already under the dab (engine
+ *  colorBlend `rotate`). A flat swatch there is a promise the stroke does
+ *  not keep. One image node, so it costs the bar nothing per frame. Fills
+ *  its parent; the parent supplies the shape. */
+export function RainbowSwatchFill({ mode }: { mode: SwatchRainbow }) {
+  return <Image source={RAINBOW_SWATCH_SOURCES[mode]} resizeMode="contain" style={StyleSheet.absoluteFill} />;
 }
 
 /** A color swatch's fill: the color, over a checkerboard when it is

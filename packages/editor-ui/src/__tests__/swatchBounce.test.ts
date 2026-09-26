@@ -28,7 +28,7 @@ describe('the toolbar swatch bounce', () => {
     const glyph = TOPBAR.slice(TOPBAR.indexOf('function SwatchGlyph('), TOPBAR.indexOf('function ToolGlyph('));
     expect(glyph).toContain('<Animated.View style={[styles.swatchWrap, { transform: [{ scale }] }]}>');
     // One black ring rides the swatch when the tool it stands for is armed.
-    expect(glyph).toContain('{active ? <View style={ring(size + 8, SWATCH_ACTIVE_RING)} /> : null}');
+    expect(glyph).toContain('{active && !rainbow ? <View style={ring(size + SWATCH_RING_GROWTH, SWATCH_ACTIVE_RING)} /> : null}');
     expect(TOPBAR).toContain("const SWATCH_ACTIVE_RING = '#000000';");
   });
 });

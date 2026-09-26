@@ -3,7 +3,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { SwatchRainbow, TopBarModel } from '../adapter';
 import { nextToolOnPress } from '../logic/toolbarBehavior';
-import { ColorSwatchFill, RainbowRingFill, RainbowSwatchFill } from './ColorSwatch';
+import { ColorSwatchFill, RainbowSwatchFill } from './ColorSwatch';
 import {
   HEADER_BG,
   HEADER_HEIGHT,
@@ -55,12 +55,12 @@ function useBounceScale(bounceKey: number | undefined): Animated.Value {
  *  capsule confirms a colour away from the toolbar, and the swatch — where
  *  the colour is read — answers so the change is seen.
  *
- *  `rainbow` replaces the colour with the hue wheel: the brush is blending
- *  in a mode that does not lay the armed colour, so the swatch shows that
- *  there is no one colour rather than a colour the stroke will not use —
- *  solid for Random, which lays a colour that walks as the stroke goes,
- *  and a RING for Rotate, which lays none of its own and spins the hue
- *  already under it. */
+ *  `rainbow` replaces the colour with a rainbow ring round the mode's
+ *  glyph (RainbowSwatchFill): the brush is blending in a mode that does
+ *  not lay the armed colour — Random, which lays a colour that walks as
+ *  the stroke goes, or Rotate, which lays none of its own and spins the
+ *  hue already under it — so the swatch shows that rather than a colour
+ *  the stroke will not use. */
 function SwatchGlyph({ color, rainbow, active, size, bounceKey }: {
   color: NonNullable<TopBarModel['tools'][number]['swatchColor']>;
   rainbow: SwatchRainbow | undefined;
@@ -69,17 +69,20 @@ function SwatchGlyph({ color, rainbow, active, size, bounceKey }: {
   bounceKey: number | undefined;
 }) {
   const scale = useBounceScale(bounceKey);
+  // A rainbow swatch carries its own ring, so it takes no black lit ring —
+  // it fills the lit ring's footprint instead, overhanging the swatch's
+  // slot by the same margin so the bar's layout does not move.
+  const disc = rainbow ? size + SWATCH_RING_GROWTH : size;
+  const overhang = rainbow ? -SWATCH_RING_GROWTH / 2 : 0;
   return (
     <Animated.View style={[styles.swatchWrap, { transform: [{ scale }] }]}>
-      <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden' }}>
-        {rainbow === 'ring' ? <RainbowRingFill size={size} />
-          : rainbow === 'wheel' ? <RainbowSwatchFill />
-            : <ColorSwatchFill color={color} />}
+      <View style={{ width: disc, height: disc, margin: overhang, borderRadius: disc / 2, overflow: 'hidden' }}>
+        {rainbow ? <RainbowSwatchFill mode={rainbow} /> : <ColorSwatchFill color={color} />}
       </View>
       {/* Lit (the app's tool the swatch stands for is in hand): one black
           ring around the disc, clear of it by a hair so a dark colour still
           reads as its own edge. */}
-      {active ? <View style={ring(size + 8, SWATCH_ACTIVE_RING)} /> : null}
+      {active && !rainbow ? <View style={ring(size + SWATCH_RING_GROWTH, SWATCH_ACTIVE_RING)} /> : null}
     </Animated.View>
   );
 }
@@ -177,6 +180,9 @@ export function TopBar({ model }: { model: TopBarModel }) {
 }
 
 const SWATCH_ACTIVE_RING = '#000000';
+/** How much wider than the swatch its lit ring is drawn — and so how big
+ *  a rainbow swatch, which takes the lit ring's place, is drawn. */
+const SWATCH_RING_GROWTH = 8;
 
 function ring(size: number, color: string) {
   return {

@@ -101,7 +101,7 @@ export type ToolIconComponent = React.ComponentType<{ color: string; size: numbe
 
 /** Which rainbow a colour swatch wears in place of its colour — see
  *  {@link TopBarTool.swatchRainbow}. */
-export type SwatchRainbow = 'wheel' | 'ring';
+export type SwatchRainbow = 'random' | 'rotate';
 
 export interface TopBarTool {
   id: string;
@@ -111,14 +111,15 @@ export interface TopBarTool {
   active: boolean;
   /** When present the tool renders as a live color swatch (color tool). */
   swatchColor?: RGBLike;
-  /** Draw that swatch as the HUE WHEEL rather than as `swatchColor`, in
-   *  one of two shapes — the brush in hand is not laying the armed colour,
-   *  so there is no one colour for the swatch to show. `'wheel'` is the
-   *  solid wheel: a Random blend, which lays a colour that changes as the
-   *  stroke goes. `'ring'` is the wheel with its middle out: a Rotate
-   *  blend, which lays no colour of its own at all — it spins the hue of
-   *  what is already under it. The colour underneath is still what the
-   *  picker opens on, and any other blend brings it straight back. */
+  /** Draw that swatch as a rainbow ring round the blend mode's
+   *  blend-picker glyph rather than as `swatchColor` — the brush in hand
+   *  is not laying the armed colour, so there is no one colour for the
+   *  swatch to show. `'random'`: a Random blend, which lays a colour that
+   *  changes as the stroke goes (a die). `'rotate'`: a Rotate blend, which
+   *  lays no colour of its own at all — it spins the hue of what is
+   *  already under it (the rotate arrow). The colour underneath is still
+   *  what the picker opens on, and any other blend brings it straight
+   *  back. */
   swatchRainbow?: SwatchRainbow;
   /** Bump to make the swatch BOUNCE — a small overshoot spring that draws
    *  the eye to it — when the colour was changed somewhere other than the
