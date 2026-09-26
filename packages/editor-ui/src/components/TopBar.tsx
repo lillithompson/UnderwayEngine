@@ -76,12 +76,10 @@ function SwatchGlyph({ color, rainbow, active, size, bounceKey }: {
           : rainbow === 'wheel' ? <RainbowSwatchFill />
             : <ColorSwatchFill color={color} />}
       </View>
-      {active ? (
-        <>
-          <View style={ring(size, STATE_INACTIVE)} />
-          <View style={ring(size + 8, STATE_ACTIVE)} />
-        </>
-      ) : null}
+      {/* Lit (the app's tool the swatch stands for is in hand): one black
+          ring around the disc, clear of it by a hair so a dark colour still
+          reads as its own edge. */}
+      {active ? <View style={ring(size + 8, SWATCH_ACTIVE_RING)} /> : null}
     </Animated.View>
   );
 }
@@ -177,6 +175,8 @@ export function TopBar({ model }: { model: TopBarModel }) {
     </View>
   );
 }
+
+const SWATCH_ACTIVE_RING = '#000000';
 
 function ring(size: number, color: string) {
   return {

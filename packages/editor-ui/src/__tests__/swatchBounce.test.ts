@@ -27,8 +27,9 @@ describe('the toolbar swatch bounce', () => {
     expect(hook).toContain('useNativeDriver: true,');
     const glyph = TOPBAR.slice(TOPBAR.indexOf('function SwatchGlyph('), TOPBAR.indexOf('function ToolGlyph('));
     expect(glyph).toContain('<Animated.View style={[styles.swatchWrap, { transform: [{ scale }] }]}>');
-    // The ring pair still rides the swatch when the tool is armed.
-    expect(glyph).toContain('<View style={ring(size + 8, STATE_ACTIVE)} />');
+    // One black ring rides the swatch when the tool it stands for is armed.
+    expect(glyph).toContain('{active ? <View style={ring(size + 8, SWATCH_ACTIVE_RING)} /> : null}');
+    expect(TOPBAR).toContain("const SWATCH_ACTIVE_RING = '#000000';");
   });
 });
 
