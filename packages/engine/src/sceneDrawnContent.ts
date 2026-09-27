@@ -25,6 +25,7 @@ import {
 } from './sceneTransform';
 import { localContentBox } from './sceneHitFrame';
 import { fadedSVGObject } from './fade';
+import { unposedPatternTile } from './patternObject';
 import type { PatternObject, SVGObject } from './types';
 
 export interface SvgLocalGeometry {
@@ -186,10 +187,13 @@ export function patternLocalObject(node: SceneNode): PatternObject {
   const hit = patternObjects.get(node);
   if (hit) return hit;
   const lb = localContentBox(node);
+  const content = node.content as PatternObject;
   const local: PatternObject = {
-    ...(node.content as PatternObject),
+    ...content,
     id: node.id,
     cellX: 0, cellY: 0, cellWidth: lb.width, cellHeight: lb.height,
+    // The stored tile box is posed with the record; this box is not.
+    ...unposedPatternTile(content, lb.width, lb.height),
   };
   delete local.rotation;
   delete local.mirrorH;

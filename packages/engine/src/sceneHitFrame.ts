@@ -31,8 +31,9 @@ import {
 import {
   LegacyLeaf, SceneGraph, SceneNode, fromLegacy, getNode, segmentsBbox, worldMatrix,
 } from './sceneGraph';
-import type { CompositionFigure, CompositionState, SVGObject } from './types';
+import type { CompositionFigure, CompositionState, PatternObject, SVGObject } from './types';
 import { dropLocalCaches } from './legacyLocalCaches';
+import { unposedPatternTile } from './patternObject';
 
 /**
  * A composition's graph: the one it carries, else built on the spot.
@@ -202,6 +203,11 @@ export function nodeHitFrame(graph: SceneGraph, id: string): NodeHitFrame | null
  */
 export function localHitObject(node: SceneNode, box: Bbox = localContentBox(node)): LegacyLeaf {
   const out = { ...(node.content ?? { id: node.id }) } as LegacyLeaf & Record<string, unknown>;
+  // A repeat pattern's tile box is posed with the record; the frame this
+  // object lives in is not (patternLocalObject reads it the same way).
+  if (node.kind === 'pattern' && node.content) {
+    Object.assign(out, unposedPatternTile(node.content as PatternObject, box.width, box.height));
+  }
   out.id = node.id;
   out.groupId = node.parentId;
   out.cellX = box.x;

@@ -210,6 +210,70 @@ export function bakePatternPose(p: PatternObject): PatternObject {
   };
 }
 
+/** A repeat pattern's tile box, as the four fields a PatternObject spells it
+ *  with (an offset of 0 is spelled absent, as the adapters store it). */
+export interface PatternTileFields {
+  tileWidthL0: number;
+  tileHeightL0: number;
+  tileOffsetXL0: number | undefined;
+  tileOffsetYL0: number | undefined;
+}
+
+/**
+ * A REPEAT pattern's tile box carried out of the stored record's frame and
+ * into the un-posed local box `localW × localH` — the frame the scene graph
+ * draws and hit-tests a pattern in, with the discrete turn and flip left to
+ * the node's matrix. Null when the pattern is not tiling.
+ *
+ * The record's tile box is posed: the geometry adapter swings it with the
+ * region on a quarter turn (dims swapped, anchor moved) and reflects it on a
+ * flip, so it sits under the artwork as the record draws it. A reader that
+ * strips the pose flags to work in the local box has to take the tile box
+ * back through the same pose, or it frames an un-turned grid with a turned
+ * tile — a tall region wearing a wide tile at a far offset, whose one drawn
+ * copy falls outside the region, so the pattern vanished after a turn.
+ *
+ * The pose is R∘M about the box (mirrors innermost, as bakePatternPose and
+ * the render have it), so the inverse un-turns first and un-mirrors last.
+ * The result is then scaled from the record's un-posed dims to the local
+ * box, which a grouped leaf may hold at another scale.
+ */
+export function unposedPatternTile(
+  p: PatternObject, localW: number, localH: number,
+): PatternTileFields | null {
+  if (p.tileMode !== 'repeat' || p.tileWidthL0 == null || p.tileHeightL0 == null) return null;
+  const rot = p.rotation ?? 0;
+  const swap = rot === 90 || rot === 270;
+  // The record's box un-posed: the quarter turn swapped its dims.
+  const w0 = swap ? p.cellHeight : p.cellWidth;
+  const h0 = swap ? p.cellWidth : p.cellHeight;
+  const rx = p.tileOffsetXL0 ?? 0;
+  const ry = p.tileOffsetYL0 ?? 0;
+  const tw = p.tileWidthL0;
+  const th = p.tileHeightL0;
+  // Un-turn the rect. Forward (box-relative, clockwise):
+  //   90: (x, y) → (h0 − y, x)   180: (w0 − x, h0 − y)   270: (y, w0 − x)
+  let x: number, y: number, w: number, h: number;
+  switch (rot) {
+    case 90: x = ry; y = h0 - rx - tw; w = th; h = tw; break;
+    case 180: x = w0 - rx - tw; y = h0 - ry - th; w = tw; h = th; break;
+    case 270: x = w0 - ry - th; y = rx; w = th; h = tw; break;
+    default: x = rx; y = ry; w = tw; h = th; break;
+  }
+  if (p.mirrorH) x = w0 - x - w;
+  if (p.mirrorV) y = h0 - y - h;
+  const kx = w0 > 0 ? localW / w0 : 1;
+  const ky = h0 > 0 ? localH / h0 : 1;
+  const ox = x * kx;
+  const oy = y * ky;
+  return {
+    tileWidthL0: w * kx,
+    tileHeightL0: h * ky,
+    tileOffsetXL0: ox === 0 ? undefined : ox,
+    tileOffsetYL0: oy === 0 ? undefined : oy,
+  };
+}
+
 // ── Layer view ──────────────────────────────────────────────────────
 // connectivity.ts / paintMirror.ts / svgExport.ts all operate on Layer +
 // CanvasConfig. A pattern presents itself as one full 16×16 layer at

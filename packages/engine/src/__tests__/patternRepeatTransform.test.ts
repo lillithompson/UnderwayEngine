@@ -1,5 +1,9 @@
 import { GEOMETRY_ADAPTERS } from '../sceneNodeGeometry';
-import { PatternObject } from '../types';
+import { CompositionState, PatternObject, makeViewport } from '../types';
+import { fromLegacy, worldMatrix } from '../sceneGraph';
+import { matApplyPoint } from '../sceneTransform';
+import { patternLocalObject } from '../sceneDrawnContent';
+import { localHitObject } from '../sceneHitFrame';
 
 // Turning a REPEATING pattern turns the whole thing — region and tiling
 // together, rigidly. The bug this pins: the bbox adapter swung the region
@@ -288,5 +292,83 @@ describe('scaling a group that holds a repeating pattern', () => {
     const q = A.rescale(pat(), { cellX: 2, cellY: 3, cellWidth: 0, cellHeight: 4 },
       { cellX: 2, cellY: 3, cellWidth: 8, cellHeight: 8 }, { scaleContent: true }) as PatternObject;
     expect(q.tileWidthL0).toBe(2);
+  });
+});
+
+// The scene graph draws (and hit-tests) a pattern in its UN-POSED local box
+// and lets the node's matrix supply the quarter turn and flip. The record's
+// tile box, though, is posed with the region by the adapters above. The
+// reported bug: a repeat region duplicated and turned drew nothing at all —
+// the local bake framed the un-turned grid with the TURNED tile (a 2×30
+// region wearing a 6×2 tile at offset 24), so its one drawn copy fell
+// outside the region. Pinned here as: the local tile box, carried back out
+// through the node's world matrix, is exactly the record's.
+describe('the local frame a posed repeat pattern is drawn in', () => {
+  function stateWith(p: PatternObject): CompositionState {
+    return {
+      id: 'test', name: 'test',
+      figures: [], svgObjects: [], images: [], texts: [],
+      paintObjects: [], patternObjects: [p],
+      imageBlobs: {},
+      lineDraft: null, arcDraft: null,
+      editingLineId: null, selectedVertexIndex: null,
+      lastChosenColor: { r: 255, g: 255, b: 255 },
+      customColors: [],
+      groups: [], sceneOrder: [p.id],
+      gridLevel: 0, strokeScale: 8, gridIntensity: 0.5,
+      camera: { offsetX: 0, offsetY: 0, zoom: 1 },
+      viewport: makeViewport(800, 600),
+      selectedFigureIds: new Set(),
+      activeFigureKey: null,
+      compTool: 'select',
+      createRegion: null,
+      renderGeneration: 0,
+    };
+  }
+
+  /** A local tile box's image in world space, as an axis-aligned box. */
+  function worldTileOf(p: PatternObject, local: Partial<PatternObject>) {
+    const graph = fromLegacy(stateWith(p));
+    const m = worldMatrix(graph, p.id);
+    const x0 = local.tileOffsetXL0 ?? 0;
+    const y0 = local.tileOffsetYL0 ?? 0;
+    const pts = [[x0, y0], [x0 + local.tileWidthL0!, y0 + local.tileHeightL0!]]
+      .map(([x, y]) => matApplyPoint(m, x, y));
+    const round = (v: number) => Math.round(v * 1e6) / 1e6;
+    return {
+      x: round(Math.min(pts[0][0], pts[1][0])), y: round(Math.min(pts[0][1], pts[1][1])),
+      w: round(Math.abs(pts[1][0] - pts[0][0])), h: round(Math.abs(pts[1][1] - pts[0][1])),
+    };
+  }
+
+  const poses: Array<[string, (p: PatternObject) => PatternObject]> = [
+    ['turned once', (p) => A.rotate90CW(p) as PatternObject],
+    ['turned twice', (p) => A.rotate90CW(A.rotate90CW(p)) as PatternObject],
+    ['turned three times', (p) => A.rotate90CW(A.rotate90CW(A.rotate90CW(p))) as PatternObject],
+    ['flipped H', (p) => A.mirror(p, 'h') as PatternObject],
+    ['flipped V', (p) => A.mirror(p, 'v') as PatternObject],
+    ['turned then flipped H', (p) => A.mirror(A.rotate90CW(p), 'h') as PatternObject],
+    ['flipped V then turned', (p) => A.rotate90CW(A.mirror(p, 'v')) as PatternObject],
+  ];
+
+  it.each(poses)('%s: the drawn tile lands on the record\'s', (_label, pose) => {
+    const q = pose(pat());
+    const node = fromLegacy(stateWith(q)).nodes.get(q.id)!;
+    const expected = tileBox(q);
+    expect(worldTileOf(q, patternLocalObject(node))).toEqual(expected);
+    expect(worldTileOf(q, localHitObject(node) as PatternObject)).toEqual(expected);
+  });
+
+  it('the reported case: a tall region turned once keeps its tile upright in its own box', () => {
+    // A 1×3 grid in a 2×30 region, tile 2×6 — duplicated and turned.
+    const tall = pat({ cellX: 12, cellY: 26, cellWidth: 2, cellHeight: 30,
+      tileWidthL0: 2, tileHeightL0: 6, tileOffsetXL0: undefined, tileOffsetYL0: undefined });
+    const q = A.rotate90CW(tall) as PatternObject;
+    const local = patternLocalObject(fromLegacy(stateWith(q)).nodes.get(q.id)!);
+    expect(local.rotation).toBeUndefined();
+    expect([local.cellWidth, local.cellHeight]).toEqual([2, 30]);
+    expect([local.tileWidthL0, local.tileHeightL0]).toEqual([2, 6]);
+    expect(local.tileOffsetXL0).toBeUndefined();
+    expect(local.tileOffsetYL0).toBeUndefined();
   });
 });
