@@ -160,7 +160,17 @@ export function fadedNodeBorder(
  */
 export function fadedSVGObject(obj: SVGObject): SVGObject {
   const f = fader(obj);
-  if (!f) return obj;
+  return f ? mapSVGObjectColors(obj, f) : obj;
+}
+
+/**
+ * Every colour an SVG object draws in, each put through `f`: its stroke,
+ * each subpath's, each tile copy's override, its fill in all three of its
+ * spellings and its border ring. The one list of them — the fade walks it,
+ * and so does anything that has to ASK what colours an object draws in
+ * (pass an `f` that records and hands the colour back).
+ */
+export function mapSVGObjectColors(obj: SVGObject, f: (c: RGBColor) => RGBColor): SVGObject {
   const out: SVGObject = { ...obj, color: f(obj.color) };
   if (obj.subpaths) out.subpaths = obj.subpaths.map((s) => ({ ...s, color: f(s.color) }));
   if (obj.segmentOverrides && obj.segmentOverrides.size > 0) {
@@ -210,7 +220,13 @@ export function fadedImageObject(img: ImageObject): ImageObject {
  */
 export function fadedTextStyle(style: TextStyle): TextStyle {
   const f = fader(style);
-  if (!f) return style;
+  return f ? mapTextStyleColors(style, f) : style;
+}
+
+/** Every colour a text style draws in — its ink, each per-character brush
+ *  colour, its outline — each put through `f` ({@link mapSVGObjectColors}'
+ *  counterpart). */
+export function mapTextStyleColors(style: TextStyle, f: (c: RGBColor) => RGBColor): TextStyle {
   const out: TextStyle = { ...style, color: f(style.color) };
   if (style.charColors) {
     out.charColors = style.charColors.map((c) => (c ? f(c) : c));

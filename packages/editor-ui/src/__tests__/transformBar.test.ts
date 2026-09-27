@@ -232,8 +232,12 @@ describe('the Copies page', () => {
     expect(SRC).toContain('stickyRef.current?.(patch);');
     const panel = read('ObjectPropertiesPanel.tsx');
     expect(panel).toContain('const [copiesSticky, setCopiesSticky] = useState<StickyCopies>({});');
-    expect(panel).toContain('sticky={copiesSticky}');
-    expect(panel).toContain('onSticky={(patch) => setCopiesSticky((s) => rememberedCopies(s, patch))}');
+    // …unless the HOST keeps it (model.onCopiesSticky), which is how it
+    // outlives the file too: the page then opens on the host's record and
+    // reports each patch for the host to fold.
+    expect(panel).toContain('sticky={model.onCopiesSticky ? (model.copiesSticky ?? {}) : copiesSticky}');
+    expect(panel).toContain('? model.onCopiesSticky(patch)');
+    expect(panel).toContain(': setCopiesSticky((s) => rememberedCopies(s, patch)))}');
     // Next to the section it lives beside, not inside the bar.
     expect(SRC).not.toContain('useState<StickyCopies>');
   });
@@ -305,14 +309,31 @@ describe('the Copies page', () => {
     expect(panel).toContain('const showCopies = multi && !!model.onTransformCopies;');
     // Appended to the tab order only where the kind's own order has none,
     // so a uniform selection's row shows it once and in its usual place.
-    expect(panel).toContain("const typeSubmenuOrder: SubmenuKey[] = showCopies && !kindSubmenuOrder.includes('transform')");
+    expect(panel).toContain("const typeSubmenuOrder: SubmenuKey[] = showCopies && !withOpacity.includes('transform')");
     expect(panel).toContain("if (showCopies && !typeSpecs?.some((spec) => spec.key === 'transform')) {");
     // …and it counts as a type option, so a mixed group's sheet opens at
     // all rather than being a panel with nothing on it.
-    expect(panel).toContain('|| showUngroup || showCopies;');
+    expect(panel).toContain('|| showUngroup || showCopies || showMultiOpacity;');
     // The signature the landing rule re-lands on knows about it: a
     // selection that gains the tab re-seats the sheet.
     expect(panel).toContain("${showCopies ? 'c' : ''}");
+  });
+
+  it('offers Opacity to every multi-selection, once, before Copies', () => {
+    // Every kind draws with an opacity, so a selection whose kinds share
+    // nothing else — strokes beside patterns — can still be faded together.
+    const panel = read('ObjectPropertiesPanel.tsx');
+    expect(panel).toContain('const showMultiOpacity = multi && !!model.onObjectOpacity;');
+    // The page order: added only where the kind's own order lacks it, and
+    // seated before Copies.
+    expect(panel).toContain("const withOpacity: SubmenuKey[] = showMultiOpacity && !kindSubmenuOrder.includes('opacity')");
+    expect(panel).toContain("kindSubmenuOrder.flatMap((k) => (k === 'transform' ? ['opacity', k] as SubmenuKey[] : [k]))");
+    // The tab row the same way, and before the Copies block appends its tab.
+    const opacityAt = panel.indexOf("if (showMultiOpacity && !typeSpecs?.some((spec) => spec.key === 'opacity')) {");
+    expect(opacityAt).toBeGreaterThan(0);
+    expect(opacityAt).toBeLessThan(panel.indexOf("if (showCopies && !typeSpecs?.some((spec) => spec.key === 'transform')) {"));
+    // …and it counts as a type option, so a mixed selection's sheet opens.
+    expect(panel).toContain('|| showUngroup || showCopies || showMultiOpacity;');
   });
 
   it('is wired into the panel like its sibling pages, and the model carries no rotation', () => {

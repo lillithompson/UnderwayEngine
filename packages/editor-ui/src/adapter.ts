@@ -866,6 +866,17 @@ export interface ObjectPropertiesModel {
    *  with the page. Never fires for the press itself; that is
    *  {@link onTransformCopies}. */
   onTransformCopiesPreview?(spec: TransformCopiesSpec | null): void;
+  /** What the Copies page remembers — every setting the user has moved,
+   *  minus the count (logic/transform StickyCopies) — when the HOST keeps
+   *  it, so it outlives the file: every later opening of the page, on any
+   *  object in any file, starts from it. Unset, the panel keeps its own
+   *  for as long as it is mounted. */
+  copiesSticky?: Partial<Omit<TransformCopiesSpec, 'count'>>;
+  /** A control on the Copies page moved: the patch it wrote, for the host
+   *  to fold into what it remembers (logic/transform rememberedCopies —
+   *  the count is dropped there). Passing this hands the memory to the
+   *  host; {@link copiesSticky} is then what the page opens on. */
+  onCopiesSticky?(patch: Partial<TransformCopiesSpec>): void;
   /** Selection is a Figma-style frame: the panel's second row shows the frame
    *  options (background / shadow / border / ungroup), with Shadow / Border
    *  reusing the image effect bars (frame submenu carousel = shadow, border).
