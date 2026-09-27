@@ -245,6 +245,9 @@ export type SubmenuKey =
   // …and the bends BETWEEN the ends: a page of pole sliders, elbows on one
   // face and knees on the other.
   | 'rigJoints'
+  // …and the whole limbs, swung forward out of the screen at the shoulder
+  // or the hip: the same tabbed box, arms on one face and legs on the other.
+  | 'rigLimbs'
   // …and the one page of a rig that is not a posture: the two colours the
   // sketch is drawn in — its opaque volumes and the outlines over them.
   | 'rigColor'
@@ -347,7 +350,7 @@ function bareArea(rows: readonly number[], gap = ROW_GAP): number {
  * cannot be measured one way and drawn the other.
  */
 export function pageIsWelled(key: SubmenuKey): boolean {
-  return key !== 'transform' && key !== 'rigJoints' && key !== 'effects';
+  return key !== 'transform' && key !== 'rigJoints' && key !== 'rigLimbs' && key !== 'effects';
 }
 
 /** A GROUP of rows (effectBar's RowGroup): a shaded rounded box around rows
@@ -493,9 +496,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'rigHead':
       // Nod / Shake / Tilt.
       return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
-    case 'rigJoints': {
-      // The Joints page: Left and Right in ONE tabbed box, its tabs
-      // switching elbows for knees — the Copies page's own shape, for the
+    case 'rigJoints':
+    case 'rigLimbs': {
+      // The Joints page (and the Limbs page, the same box): Left and Right
+      // in ONE tabbed box, its tabs switching elbows for knees (arms for legs) — the Copies page's own shape, for the
       // same reason. Both faces are the same height (the tab row and two
       // sliders), so the page never resizes under a tab press, and the box
       // IS the page, so it is drawn with no well around it (pageIsWelled).

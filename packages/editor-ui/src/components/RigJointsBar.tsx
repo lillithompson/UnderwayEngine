@@ -1,6 +1,6 @@
 import React from 'react';
-import type { RigJointSection, RigSliderKey } from '../logic/rigEdit';
-import { RIG_JOINT_SECTIONS, rigJointSliders, rigPartSliders } from '../logic/rigEdit';
+import type { RigSection, RigSliderKey, RigTabbedPart } from '../logic/rigEdit';
+import { rigPartSections, rigPartSliders, rigSectionSliders } from '../logic/rigEdit';
 import { GroupedBody, RowGroup, SegmentedRow, SliderRow } from './effectBar';
 
 // The rig's JOINTS page: the bend between the two ends of a limb — an
@@ -29,22 +29,29 @@ import { GroupedBody, RowGroup, SegmentedRow, SliderRow } from './effectBar';
 // changes the figure once a bar moves. Their two ends are the SAME place —
 // a pole angle goes all the way round — which is what lets one bar reach
 // every position the joint can take.
+//
+// The LIMBS page is the same box asking a different question — how far the
+// whole arm or leg is swung forward out of the screen at its top joint —
+// so it is this bar with `part="limbs"`: Arms and Legs for tabs, Left and
+// Right under them (rigEdit's RIG_LIMB_SECTIONS).
 
-export function RigJointsBar({ section, onSection, values, onChange, onCommit }: {
+export function RigJointsBar({ part = 'joints', section, onSection, values, onChange, onCommit }: {
+  /** Which tabbed page: the elbows-and-knees Joints, or the Limbs. */
+  part?: RigTabbedPart;
   /** Which pair of chains is showing. The PANEL holds it, so the page's
    *  height is the same either way and known before the render. */
-  section: RigJointSection;
-  onSection: (section: RigJointSection) => void;
+  section: RigSection;
+  onSection: (section: RigSection) => void;
   values: Record<RigSliderKey, number>;
   onChange: (key: RigSliderKey, value: number) => void;
   onCommit: (key: RigSliderKey, value: number) => void;
 }) {
-  const specs = rigPartSliders('joints');
-  const keys = rigJointSliders(section);
+  const specs = rigPartSliders(part);
+  const keys = rigSectionSliders(section);
   return (
     <GroupedBody>
       <RowGroup>
-        <SegmentedRow options={RIG_JOINT_SECTIONS} value={section} onChange={onSection} />
+        <SegmentedRow options={rigPartSections(part)} value={section} onChange={onSection} />
         {keys.map((key) => (
           <SliderRow
             key={key}

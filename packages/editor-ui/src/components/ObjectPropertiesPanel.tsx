@@ -29,7 +29,7 @@ import { RigPoseBar } from './RigPoseBar';
 import { RigColorBar } from './RigColorBar';
 import {
   RIG_OUTLINES_DEFAULT, RIG_PAGES, RIG_VOLUMES_DEFAULT, restRigSliders, rigPartOfSubmenu,
-  rigPartSubmenu, type RigJointSection,
+  rigPartSubmenu, type RigSection,
 } from '../logic/rigEdit';
 import { CropBar } from './CropBar';
 import { ImageBar } from './ImageBar';
@@ -339,7 +339,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   const [copiesSticky, setCopiesSticky] = useState<StickyCopies>({});
   // …and the Joints page's own, held here for the same reason: the page's
   // height must be known before it renders, and it is the same either way.
-  const [jointSection, setJointSection] = useState<RigJointSection>('elbows');
+  const [jointSection, setJointSection] = useState<RigSection>('elbows');
+  const [limbSection, setLimbSection] = useState<RigSection>('arms');
   const [localSheetWanted, setLocalSheetWanted] = useState(false);
   const sheetWanted = model.editOpen ?? localSheetWanted;
   const onEditOpenChange = model.onEditOpenChange;
@@ -620,7 +621,8 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         ]
     // Vectors and patterns together: the one page they share.
     : model.showStrokeOptions ? ['stroke']
-    // A rig's pages, in RIG_PAGES' order: Figure, Joints, Color, Transform.
+    // A rig's pages, in RIG_PAGES' order: Figure, Joints, Limbs, Color,
+    // Transform.
     // (The part pages Hands/Feet/Spine/Head came off the row, their
     // sliders living on as the host's floating slider modes.) Opacity
     // stood beside it and is gone: a figure is a POSE, and fading one is
@@ -1653,15 +1655,18 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     if (model.strokeRemovable ?? svgStrokeRemovable(model.svgSubtype ?? 'stroke')) {
       removeAction = { label: 'Remove stroke', onPress: removeStroke };
     }
-  } else if (displaySub === 'rigJoints') {
-    // The rig page whose two faces are one box with tabs — the Copies
+  } else if (displaySub === 'rigJoints' || displaySub === 'rigLimbs') {
+    // The rig pages whose two faces are one box with tabs — the Copies
     // page's shape, because Left and Right are one setting asked twice and
-    // elbows and knees are the same question about a different pair of
-    // chains. Same slider plumbing as every other rig page beneath it.
+    // elbows and knees (arms and legs) are the same question about a
+    // different pair of chains. Same slider plumbing as every other rig
+    // page beneath it.
+    const limbs = displaySub === 'rigLimbs';
     activeBarEl = (
       <RigJointsBar
-        section={jointSection}
-        onSection={setJointSection}
+        part={limbs ? 'limbs' : 'joints'}
+        section={limbs ? limbSection : jointSection}
+        onSection={limbs ? setLimbSection : setJointSection}
         values={model.rigSliders ?? restRigSliders()}
         onChange={(key, v) => model.onRigSlider?.(key, v, false)}
         onCommit={(key, v) => model.onRigSlider?.(key, v, true)}

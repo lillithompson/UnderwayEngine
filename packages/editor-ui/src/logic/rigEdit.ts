@@ -10,7 +10,7 @@ import type { SubmenuKey } from './submenuHeight';
 // Each part opens a bar of sliders (RigPoseBar). The first of them, RIG,
 // is the whole mannequin: the three axes it can be stood on.
 
-export type RigPart = 'rig' | 'hands' | 'feet' | 'spine' | 'head' | 'joints';
+export type RigPart = 'rig' | 'hands' | 'feet' | 'spine' | 'head' | 'joints' | 'limbs';
 
 export interface RigPartOption {
   part: RigPart;
@@ -29,6 +29,10 @@ export const RIG_PART_OPTIONS: readonly RigPartOption[] = [
   // The bends BETWEEN the ends: an elbow or a knee swung round the line
   // its own two ends make. See RIG_JOINT_SECTIONS.
   { part: 'joints', label: 'Joints', sub: 'rigJoints' },
+  // …and the limb WHOLE, from its top joint: an arm swung about its
+  // shoulder, a leg about its hip, forward out of the screen or back into
+  // it. See RIG_LIMB_SECTIONS.
+  { part: 'limbs', label: 'Limbs', sub: 'rigLimbs' },
 ];
 
 /** One tab of a rig's option row. Two of them open a page of POSTURE
@@ -64,9 +68,9 @@ function rigPartPage(part: RigPart): RigPageOption {
 }
 
 /** The tabs a rig selection OFFERS, in the order the row lists them:
- *  Figure, then the JOINTS page, then Color — the two colours the sketch is
- *  drawn in, which is the one thing about a rig that is not a pose — and
- *  Transform, the three axes the whole figure stands on, last.
+ *  Figure, then the JOINTS and LIMBS pages, then Color — the two colours
+ *  the sketch is drawn in, which is the one thing about a rig that is not a
+ *  pose — and Transform, the three axes the whole figure stands on, last.
  *
  *  Figure leads and Transform trails because the row then runs from what
  *  the figure IS to how it is turned: the page you reach for to start over
@@ -76,6 +80,7 @@ function rigPartPage(part: RigPart): RigPageOption {
 export const RIG_PAGES: readonly RigPageOption[] = [
   RIG_FIGURE_PAGE,
   rigPartPage('joints'),
+  rigPartPage('limbs'),
   { key: 'color', label: 'Color', sub: 'rigColor' as SubmenuKey },
   rigPartPage('rig'),
 ];
@@ -122,7 +127,8 @@ export type RigSliderKey =
   | 'footL' | 'footR' | 'ankleTwistL' | 'ankleTwistR' | 'ballBendL' | 'ballBendR'
   | 'bend' | 'twist' | 'lean'
   | 'nod' | 'shake' | 'tilt'
-  | 'poleElbowL' | 'poleElbowR' | 'poleKneeL' | 'poleKneeR';
+  | 'poleElbowL' | 'poleElbowR' | 'poleKneeL' | 'poleKneeR'
+  | 'swingArmL' | 'swingArmR' | 'swingLegL' | 'swingLegR';
 
 const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
   // The root joint's own rotation — every other bone hangs off it, so
@@ -184,6 +190,17 @@ const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
     { key: 'poleKneeL', label: 'Left', ends: ['round', 'round'], centered: true },
     { key: 'poleKneeR', label: 'Right', ends: ['round', 'round'], centered: true },
   ],
+  // The whole limb, turned at its TOP joint about a line lying in the
+  // screen: the one direction no drag can carry a limb, since every drag
+  // moves a joint within the page. Toward the viewer is forward — a hand
+  // reaching out of the picture, a knee raised at the reader — and the
+  // middle of the bar is the limb as it was left.
+  limbs: [
+    { key: 'swingArmL', label: 'Left', ends: ['back', 'forward'], centered: true },
+    { key: 'swingArmR', label: 'Right', ends: ['back', 'forward'], centered: true },
+    { key: 'swingLegL', label: 'Left', ends: ['back', 'forward'], centered: true },
+    { key: 'swingLegR', label: 'Right', ends: ['back', 'forward'], centered: true },
+  ],
   head: [
     { key: 'nod', label: 'Nod', ends: ['up', 'down'], centered: true },
     { key: 'shake', label: 'Shake', ends: ['left', 'right'], centered: true },
@@ -234,24 +251,65 @@ export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
   poleElbowR: 0.5,
   poleKneeL: 0.5,
   poleKneeR: 0.5,
+  // The limb as the drags left it, likewise: forward and back are both a
+  // turn AWAY from wherever it stood.
+  swingArmL: 0.5,
+  swingArmR: 0.5,
+  swingLegL: 0.5,
+  swingLegR: 0.5,
 };
 
-// ── The Joints page's two faces ─────────────────────────────────────
+// ── The tabbed pages: Joints and Limbs ──────────────────────────────
 
-/** Which pair of chains the Joints page is showing. Its inner tabs, in the
- *  Copies page's own style: one shaded box whose tabs switch the two
- *  sliders under them, because Left and Right are one setting asked twice
- *  and elbows and knees are the same question about different chains. */
+/** The rig pages that are ONE box with tabs rather than a list of rows —
+ *  the Copies page's own shape. Joints and Limbs ask one question each
+ *  about four chains: Left and Right are that question asked twice, and
+ *  the arms and the legs are the same question about a different pair, so
+ *  a tab row switches the pair and the two sliders under it are the sides. */
+export type RigTabbedPart = 'joints' | 'limbs';
+
+/** Which pair of chains the Joints page is showing. */
 export type RigJointSection = 'elbows' | 'knees';
+/** …and the Limbs page. */
+export type RigLimbSection = 'arms' | 'legs';
+export type RigSection = RigJointSection | RigLimbSection;
 
-export const RIG_JOINT_SECTIONS: readonly { value: RigJointSection; label: string }[] = [
-  { value: 'elbows', label: 'Elbows' },
-  { value: 'knees', label: 'Knees' },
+interface RigSectionSpec<S extends RigSection> {
+  value: S;
+  label: string;
+  /** The two sliders the face shows, left then right. */
+  keys: readonly [RigSliderKey, RigSliderKey];
+}
+
+const JOINT_SECTIONS: readonly RigSectionSpec<RigJointSection>[] = [
+  { value: 'elbows', label: 'Elbows', keys: ['poleElbowL', 'poleElbowR'] },
+  { value: 'knees', label: 'Knees', keys: ['poleKneeL', 'poleKneeR'] },
+];
+const LIMB_SECTIONS: readonly RigSectionSpec<RigLimbSection>[] = [
+  { value: 'arms', label: 'Arms', keys: ['swingArmL', 'swingArmR'] },
+  { value: 'legs', label: 'Legs', keys: ['swingLegL', 'swingLegR'] },
 ];
 
+const toOption = <S extends RigSection>({ value, label }: RigSectionSpec<S>) => ({ value, label });
+
+export const RIG_JOINT_SECTIONS: readonly { value: RigJointSection; label: string }[] =
+  JOINT_SECTIONS.map(toOption);
+export const RIG_LIMB_SECTIONS: readonly { value: RigLimbSection; label: string }[] =
+  LIMB_SECTIONS.map(toOption);
+
+/** A tabbed page's tabs, in order. */
+export function rigPartSections(part: RigTabbedPart): readonly { value: RigSection; label: string }[] {
+  return part === 'joints' ? RIG_JOINT_SECTIONS : RIG_LIMB_SECTIONS;
+}
+
 /** The two sliders one face shows, left then right. */
+export function rigSectionSliders(section: RigSection): readonly RigSliderKey[] {
+  return [...JOINT_SECTIONS, ...LIMB_SECTIONS].find((s) => s.value === section)!.keys;
+}
+
+/** The Joints page's face — {@link rigSectionSliders} under its old name. */
 export function rigJointSliders(section: RigJointSection): readonly RigSliderKey[] {
-  return section === 'elbows' ? ['poleElbowL', 'poleElbowR'] : ['poleKneeL', 'poleKneeR'];
+  return rigSectionSliders(section);
 }
 
 /** The part a slider belongs to — read off the same table the bars render
