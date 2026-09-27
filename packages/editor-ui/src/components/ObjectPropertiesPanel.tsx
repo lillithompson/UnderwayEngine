@@ -402,13 +402,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // and all — so the tab is offered on the selection's own account and
   // de-duplicated where the kind already named it.
   const showCopies = multi && !!model.onTransformCopies;
+  // …and Opacity likewise: every kind draws with one, so a multi-selection
+  // offers the page on its own account too, whatever it is made of.
+  const showMultiOpacity = multi && !!model.onObjectOpacity;
 
   // Whether the selection has any option — a tab — at all. `type` is what the
   // selection's KIND offers (and a multi-selection's members must share a
   // kind to have one); `multi` is what the SELECTION offers, whatever it is
   // made of. Both render on the sheet's ONE tab row — kind options first,
   // then the selection's — which scrolls if it must.
-  const hasTypeOptions = !!model.showImageEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showStrokeOptions || !!model.showRigOptions || showUngroup || showCopies;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showStrokeOptions || !!model.showRigOptions || showUngroup || showCopies || showMultiOpacity;
   const hasMultiOptions = showLayout || showGroup || showMerge;
   const hasOptions = hasTypeOptions || hasMultiOptions;
   // Signature of the current selection's option set. It changes when the
@@ -650,12 +653,23 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
           ...(svgTransformable ? (['transform'] as const) : []),
         ]
     : [];
+  // …and Opacity on EVERY multi-selection. Every kind draws with an
+  // opacity and the host sets it on each member (a figure, which has none
+  // to set, sits it out), so a selection whose kinds share nothing else —
+  // strokes beside patterns, a photo beside a word — can still be faded
+  // together. Where the kind's order already names it, it stays where it
+  // stands; otherwise it goes before Copies, where every kind lists it.
+  const withOpacity: SubmenuKey[] = showMultiOpacity && !kindSubmenuOrder.includes('opacity')
+    ? (kindSubmenuOrder.includes('transform')
+      ? kindSubmenuOrder.flatMap((k) => (k === 'transform' ? ['opacity', k] as SubmenuKey[] : [k]))
+      : [...kindSubmenuOrder, 'opacity'])
+    : kindSubmenuOrder;
   // …and the Copies page a MULTI-selection has in its own right, where the
   // kind's order did not already name it (a mixed group, a run of paint
   // islands): appended, never doubled.
-  const typeSubmenuOrder: SubmenuKey[] = showCopies && !kindSubmenuOrder.includes('transform')
-    ? [...kindSubmenuOrder, 'transform']
-    : kindSubmenuOrder;
+  const typeSubmenuOrder: SubmenuKey[] = showCopies && !withOpacity.includes('transform')
+    ? [...withOpacity, 'transform']
+    : withOpacity;
   // Does THIS selection offer the Copies page? Read off the tab order
   // itself — the reading the one fold-away rule below now makes for every
   // page, and the first place it was made.
@@ -2112,6 +2126,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       { key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') },
       { key: 'transform', label: 'Copies', sub: 'transform', onPress: () => openSubmenu('transform') },
     ];
+  }
+  if (showMultiOpacity && !typeSpecs?.some((spec) => spec.key === 'opacity')) {
+    // Opacity for a selection whose kinds did not already offer it (strokes
+    // beside patterns, a photo beside a word): before Copies, where every
+    // kind that has both lists it.
+    const opacity: OptionSpec = { key: 'opacity', label: 'Opacity', sub: 'opacity', onPress: () => openSubmenu('opacity') };
+    const specs = typeSpecs ?? [];
+    const at = specs.findIndex((spec) => spec.key === 'transform');
+    typeSpecs = at >= 0 ? [...specs.slice(0, at), opacity, ...specs.slice(at)] : [...specs, opacity];
   }
   if (showCopies && !typeSpecs?.some((spec) => spec.key === 'transform')) {
     // The same tab the kinds that repeat carry, for a selection whose
