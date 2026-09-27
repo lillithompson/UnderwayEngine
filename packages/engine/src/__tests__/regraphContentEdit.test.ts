@@ -252,3 +252,40 @@ describe('a pose the arrays DO carry still reads back', () => {
     expect(quad(moved, 'svg_1')).toEqual(quad(before, 'svg_1'));
   });
 });
+
+describe('a recolour keeps the leaf the graph\'s own', () => {
+  // The Color brush's drop on a ring of shapes in turned groups. The
+  // commit's arrays carry the recoloured leaf; if the node kept an equal
+  // COPY of it as its content instead, nothing the graph hands back was
+  // that object any more, and a reader asking "is this the graph's leaf?"
+  // by identity (the app's drawnLeafFor) read it as a groupless ghost — a
+  // member of a quarter-turned group drawn on its un-turned box, which is
+  // the skew the next stroke's drop left on screen.
+  const recolour = (state: CompositionState, id: string, r: number): CompositionState =>
+    applyCompOps(state, [{
+      op: 'replaceScene',
+      oldFigures: state.figures, newFigures: state.figures,
+      oldSVGObjects: state.svgObjects,
+      newSVGObjects: state.svgObjects.map((o) => (o.id === id ? { ...o, color: { r, g: 0, b: 0 } } : o)),
+      oldImages: state.images!, newImages: state.images!,
+      oldGroups: state.groups, newGroups: state.groups,
+      oldSceneOrder: state.sceneOrder, newSceneOrder: state.sceneOrder,
+      oldTexts: state.texts!, newTexts: state.texts!,
+    }]);
+
+  for (const [label, rotationDeg] of [['upright', 0], ['a quarter turn', 270], ['a quarter turn and a twist', 279]] as const) {
+    test(`in a group at ${label}`, () => {
+      const g = applyCompOps(scene(), groupOp);
+      const from = getNode(g.graph!, 'g1')!.transform;
+      let s = applyCompOps(g, [{ op: 'setTransform', nodeId: 'g1', from, to: { ...from, rotationDeg } }]);
+      const q0 = quads(s);
+      for (const r of [10, 20, 30]) {
+        s = recolour(s, 'svg_1', r);
+        const leaf = s.svgObjects.find((o) => o.id === 'svg_1')!;
+        expect(leaf.color.r).toBe(r);
+        expect(getNode(s.graph!, 'svg_1')!.content).toBe(leaf);
+      }
+      expect(quads(s)).toEqual(q0);
+    });
+  }
+});

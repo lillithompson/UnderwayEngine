@@ -740,7 +740,13 @@ function contentOnlyNode(
     const { name: _name, locked: _locked, ...rest } = node;
     const next: SceneNode = {
       ...rest,
-      content: content as unknown as LegacyLeaf,
+      // Read off the VIEW, the content is the incoming leaf field for field
+      // — so it IS the leaf, and the node keeps it by identity. A copy here
+      // left the arrays holding an object the graph never hands back, and
+      // every reader that asks "is this the graph's own leaf?" by identity
+      // (drawnLeafFor) took it for a ghost and drew it without its group:
+      // a member of a quarter-turned group came out on its un-turned box.
+      content: (base === view ? leaf : content) as unknown as LegacyLeaf,
       ...(content.name !== undefined ? { name: content.name as string } : {}),
       ...(content.locked ? { locked: true } : {}),
     };
