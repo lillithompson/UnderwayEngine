@@ -1546,8 +1546,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         onSection={setCopiesSection}
         // Set an offset and a turn once and every later opening of the page
         // is already dialled to them, on this shape or the next.
-        sticky={copiesSticky}
-        onSticky={(patch) => setCopiesSticky((s) => rememberedCopies(s, patch))}
+        // Kept by the HOST where it keeps it (model.onCopiesSticky), so the
+        // settings follow the user to the next file; else held here.
+        sticky={model.onCopiesSticky ? (model.copiesSticky ?? {}) : copiesSticky}
+        onSticky={(patch) => (model.onCopiesSticky
+          ? model.onCopiesSticky(patch)
+          : setCopiesSticky((s) => rememberedCopies(s, patch)))}
         // The Color tab asks where the RUN ends, so it needs to know where
         // the object stands: its own opacity and fade seat both sliders, and
         // a press with neither touched lays copies that look like it.

@@ -232,8 +232,12 @@ describe('the Copies page', () => {
     expect(SRC).toContain('stickyRef.current?.(patch);');
     const panel = read('ObjectPropertiesPanel.tsx');
     expect(panel).toContain('const [copiesSticky, setCopiesSticky] = useState<StickyCopies>({});');
-    expect(panel).toContain('sticky={copiesSticky}');
-    expect(panel).toContain('onSticky={(patch) => setCopiesSticky((s) => rememberedCopies(s, patch))}');
+    // …unless the HOST keeps it (model.onCopiesSticky), which is how it
+    // outlives the file too: the page then opens on the host's record and
+    // reports each patch for the host to fold.
+    expect(panel).toContain('sticky={model.onCopiesSticky ? (model.copiesSticky ?? {}) : copiesSticky}');
+    expect(panel).toContain('? model.onCopiesSticky(patch)');
+    expect(panel).toContain(': setCopiesSticky((s) => rememberedCopies(s, patch)))}');
     // Next to the section it lives beside, not inside the bar.
     expect(SRC).not.toContain('useState<StickyCopies>');
   });

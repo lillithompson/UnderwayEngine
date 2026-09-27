@@ -66,6 +66,25 @@ export function rememberedCopies(
   return { ...sticky, ...rest };
 }
 
+/** The keys a remembered Copies page may hold — every setting but the count. */
+const STICKY_COPIES_KEYS = ['dx', 'dy', 'dAngleDeg', 'sx', 'sy', 'finalFade', 'finalOpacity'] as const;
+
+/**
+ * A remembered Copies page read back from storage (a host that keeps it
+ * across files and launches), or null when it is not one. Only the known
+ * keys with finite numbers survive — a count, a key an older build wrote,
+ * or junk is dropped rather than seeded into a slider.
+ */
+export function parseStickyCopies(raw: unknown): StickyCopies | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const out: StickyCopies = {};
+  for (const key of STICKY_COPIES_KEYS) {
+    const v = (raw as Record<string, unknown>)[key];
+    if (typeof v === 'number' && Number.isFinite(v)) out[key] = v;
+  }
+  return out;
+}
+
 /**
  * The opening draft for an object whose ink is known: the defaults above,
  * with the run ENDING where the object already stands. Both ink sliders then
