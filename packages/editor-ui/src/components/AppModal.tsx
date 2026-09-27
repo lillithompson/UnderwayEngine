@@ -1,5 +1,7 @@
-import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated, Easing, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View,
+} from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { HEADER_HEIGHT, PANEL_BG, PANEL_BORDER, PANEL_INK, STATE_ACTIVE } from '../theme';
 
@@ -26,12 +28,27 @@ import { HEADER_HEIGHT, PANEL_BG, PANEL_BORDER, PANEL_INK, STATE_ACTIVE } from '
 // for a takeover whose content is the whole page: the Tiles grid draws its
 // own title at the head of its scroll, so the title scrolls away with the
 // tiles instead of holding a fixed strip of a phone screen to say one word.
+//
+// `page` is the third shape, and a different KIND of thing: a screen
+// PUSHED over the editor rather than a sheet laid on top of it. It slides
+// in from the right and is taken back by a chevron in the top left — the
+// app's own pushed-page pattern (Settings and Profile, whose routes ask
+// for slide_from_right over a PeerHeader "< Title" row). A takeover whose
+// picks take effect AS THEY ARE MADE has nothing left to confirm, so it
+// wants no Done button and no X standing in for one: going back is the
+// confirmation, which is what a chevron says and what a Done button —
+// sitting there like a decision still to be taken — does not.
 
 /** The status-bar clearance a takeover header wears when the host names
  *  none: Facet's webview constant, kept as the fallback so a modal outside
  *  the editor still clears a notch. Editor hosts pass `safeTop` (the
  *  toolbar's own top edge) instead — see the prop. */
 const DEFAULT_SAFE_TOP = 48;
+
+/** How long the pushed page takes to come in from the right, and to go
+ *  back out. Longer than the panels' PANEL_ANIM_MS: this is a whole
+ *  screen's width of travel, and at 150ms it reads as a jump. */
+export const PAGE_SLIDE_MS = 240;
 
 export function AppModal({
   visible,
@@ -44,6 +61,7 @@ export function AppModal({
   headerBackground,
   background,
   floatingClose = false,
+  page = false,
   children,
 }: {
   visible: boolean;
@@ -77,17 +95,89 @@ export function AppModal({
    *  page (the Tiles grid), where a fixed band spent a title's height of
    *  a phone screen saying one word. */
   floatingClose?: boolean;
+  /** A PUSHED PAGE rather than a sheet: in from the right, out by a
+   *  chevron in the top left, no X and no Done (see the note up top).
+   *  Takes precedence over `floatingClose` — a pushed page is headed by
+   *  the "< Title" row the chevron hangs in. */
+  page?: boolean;
   children: React.ReactNode;
 }) {
+  // The pushed page's travel. The Modal has to OUTLIVE `visible` for the
+  // way out to be seen at all — one unmounted the frame the flag drops
+  // takes its own exit animation with it — so the slide drives a
+  // `mounted` flag of its own and the Modal reads that.
+  const { width } = useWindowDimensions();
+  const slide = useRef(new Animated.Value(1)).current;
+  const [mounted, setMounted] = useState(visible);
+  useEffect(() => {
+    if (!page) { setMounted(visible); return undefined; }
+    if (visible) setMounted(true);
+    const anim = Animated.timing(slide, {
+      toValue: visible ? 0 : 1,
+      duration: PAGE_SLIDE_MS,
+      // Decelerating in, accelerating out: the page arrives under the
+      // finger that asked for it and leaves the way it came.
+      easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+      // A transform alone, so the whole travel runs off the JS thread —
+      // the canvas underneath is still drawing.
+      useNativeDriver: true,
+    });
+    anim.start(({ finished }) => { if (finished && !visible) setMounted(false); });
+    return () => anim.stop();
+  }, [page, visible, slide]);
+
+  // Held against the two things it is built from: a fresh animated node
+  // every render would be attached and torn down mid-slide.
+  const pageX = useMemo(() => Animated.multiply(slide, width), [slide, width]);
+
+  const Screen = page ? Animated.View : View;
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View
-        style={[styles.screen, background ? { backgroundColor: background } : null]}
+    <Modal
+      visible={page ? mounted : visible}
+      transparent
+      // The pushed page animates itself, edge to edge; a fade over the
+      // top of that would be two entrances at once.
+      animationType={page ? 'none' : 'fade'}
+      onRequestClose={onClose}
+    >
+      <Screen
+        style={[
+          styles.screen,
+          background ? { backgroundColor: background } : null,
+          page ? { transform: [{ translateX: pageX }] } : null,
+        ]}
         // Headerless, there is no <Text> carrying the title — the screen
         // takes it, so the takeover still announces itself.
-        accessibilityLabel={floatingClose ? title : undefined}
+        accessibilityLabel={floatingClose && !page ? title : undefined}
       >
-        {floatingClose ? null : (
+        {page ? (
+          // The app's own pushed-page header: the chevron in the gutter
+          // on the left, the title beside it. No X and no Done — going
+          // back is the way out and the confirmation both.
+          <View
+            style={[
+              styles.header,
+              styles.headerBack,
+              { paddingTop: safeTop, height: safeTop + HEADER_HEIGHT },
+              headerStyle,
+            ]}
+          >
+            {headerBackground}
+            <Pressable
+              style={styles.backIcon}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel={'Back from ' + title}
+            >
+              <MaterialCommunityIcons name="chevron-left" size={32} color={headerForeground} />
+            </Pressable>
+            <Text style={[styles.title, { color: headerForeground }]} numberOfLines={1}>
+              {title}
+            </Text>
+            {headerRight}
+          </View>
+        ) : null}
+        {page || floatingClose ? null : (
           <View
             style={[
               styles.header,
@@ -118,13 +208,13 @@ export function AppModal({
         {/* With no band above it the body takes the status-bar clearance
             itself, so the takeover's own first line starts where the
             header's title would have. */}
-        <View style={[styles.body, floatingClose ? { paddingTop: safeTop } : null]}>
+        <View style={[styles.body, floatingClose && !page ? { paddingTop: safeTop } : null]}>
           {children}
         </View>
         {/* …and the X rides OVER that body rather than in a band above it:
             a panel-colored chip, so it stays legible over whatever scrolls
             beneath it. */}
-        {floatingClose ? (
+        {floatingClose && !page ? (
           <Pressable
             style={[styles.floatingClose, { top: safeTop + 4 }]}
             onPress={onClose}
@@ -134,7 +224,7 @@ export function AppModal({
             <MaterialCommunityIcons name="close" size={26} color={PANEL_INK} />
           </Pressable>
         ) : null}
-      </View>
+      </Screen>
     </Modal>
   );
 }
@@ -184,7 +274,12 @@ const styles = StyleSheet.create({
     borderBottomColor: PANEL_BORDER,
     overflow: 'hidden',
   },
+  // The pushed page's row: the chevron leads, so the title follows it
+  // rather than being pushed off the far side by a trailing action.
+  headerBack: { justifyContent: 'flex-start', paddingHorizontal: 2, gap: 2 },
   title: { fontSize: 18, fontWeight: '700', flex: 1, paddingLeft: 4 },
+  // The same 40pt target the close X wears, in the left gutter.
+  backIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   closeIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   // The headerless variant's X: the same 40pt target, rounded and filled

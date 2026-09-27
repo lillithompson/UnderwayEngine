@@ -12,26 +12,30 @@ import {
   type PatternTileRow,
   type PatternTileTransform,
 } from '../logic/patternEdit';
-import { PANEL_BORDER, PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
-import { AppModal, AppModalDoneButton } from './AppModal';
+import { PANEL_BORDER, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
+import { AppModal } from './AppModal';
 import { PatternTileTransformModal } from './PatternTileTransformModal';
 
-// The Tiles bar's takeover: every tile the menu offers, laid out as a grid
-// of square buttons. Tapping one arms it and the sheet STAYS — the standard
-// AppModal rule: a pick is not a dismissal, so tiles can be browsed and
-// re-picked freely, and a tile keeps the same pose gestures as the bar's
-// recent grid (a second tap inside the double-tap window turns it a quarter
-// clockwise; a long press opens the transform modal over this one — the
-// hint under the title says so). The way out is the floating Done capsule
-// riding over the scroll's foot — the selection blue, the standard
-// AppModalDoneButton in its floating form — or the X floating at the top
-// right. There is still no confirm — the arming already happened on the
-// first tap.
+// The Tiles chooser: every tile the menu offers, laid out as a grid of
+// square buttons. Tapping one arms it and the page STAYS — a pick is not
+// a dismissal, so tiles can be browsed and re-picked freely, and a tile
+// keeps the same pose gestures as the bar's recent grid (a second tap
+// inside the double-tap window turns it a quarter clockwise; a long press
+// opens the transform modal over this one — the hint under the title says
+// so).
 //
-// The sheet is ALL grid: the title and the hint are the first thing in the
-// scroll rather than a fixed band above it (AppModal's floatingClose), so
-// they scroll away with the tiles and a phone screen spends none of its
-// height holding one word still. Nothing rules them off from the grid
+// It is a PUSHED PAGE (AppModal's `page`), not a takeover: in from the
+// right, out by the chevron in the top left, the shape Settings and
+// Profile have. It had a floating Done capsule over the foot of the
+// scroll and an X in the corner — two ways out of a page that has nothing
+// to confirm, since every tap has already armed what it picked. Going
+// back IS the confirmation; a Done button sat there looking like a
+// decision still to be taken, and the capsule spent the bottom of the
+// grid saying so.
+//
+// The title and the hint head the scroll rather than standing in a fixed
+// band, so they go up with the tiles and a phone screen spends none of
+// its height holding one word still. Nothing rules them off from the grid
 // either — the break in the content says where the reading stops.
 //
 // This sheet wears the unified takeover chrome (AppModal — the PANEL
@@ -49,13 +53,11 @@ import { PatternTileTransformModal } from './PatternTileTransformModal';
 
 export { PATTERN_MODAL_TILE } from '../logic/patternEdit';
 
-/** How far the floating Done capsule stands off the sheet's bottom edge —
- *  clear of a phone screen's bottom curve and home indicator. */
-const DONE_BOTTOM = 32;
-
-/** The capsule's own height — AppModalDoneButton's 44pt, named here so the
- *  scroll's foot can pad past it. */
-const DONE_HEIGHT = 44;
+/** What the last row of the grid keeps clear of the screen's bottom curve
+ *  and home indicator. It used to be the floating Done capsule's height
+ *  and standoff; with the capsule gone the grid still wants a foot, and
+ *  a shorter one. */
+const GRID_FOOT = 32;
 
 export function PatternTileModal({ visible, tiles, activeId, transforms, onPick, onSetTransform, onClose }: {
   visible: boolean;
@@ -86,32 +88,22 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
     : null;
 
   const tile = patternModalTileSize(sheetWidth);
-  // The capsule spans the grid it closes — the same width the rows have, so
-  // it reads as the foot of this content rather than a pill dropped on it.
-  const doneWidth = sheetWidth > 0
-    ? Math.max(tile, sheetWidth - PATTERN_MODAL_PAD * 2) : undefined;
 
   return (
-    // No header band at all (floatingClose): the title rides in the scroll
-    // below and the X floats over the grid. The band it replaces was the
-    // chrome's DEFAULT header — never seated on the toolbar — and this
-    // sheet still takes no clearance prop, so no host can hand it a taller
-    // one.
-    <AppModal visible={visible} title="Tiles" onClose={onClose} floatingClose>
+    // A pushed page (AppModal's `page`): in from the right under a "<
+    // Tiles" row, back out by the chevron. This page takes no clearance
+    // prop, so no host can hand it a taller header than the app's own.
+    <AppModal visible={visible} title="Tiles" onClose={onClose} page>
       <View style={styles.sheet} onLayout={(e) => setSheetWidth(e.nativeEvent.layout.width)}>
         <ScrollView
-          // The foot pads past the floating Done capsule, so the last row
-          // can always scroll up from under it.
-          contentContainerStyle={[styles.body, { paddingBottom: DONE_HEIGHT + DONE_BOTTOM + 24 }]}
+          // A foot under the last row, clear of the screen's bottom curve.
+          contentContainerStyle={[styles.body, { paddingBottom: GRID_FOOT + 24 }]}
         >
-          {/* The sheet's own title and hint — inside the scroll, so they go
-              up with the tiles. The title is bigger than a header band's
-              because it is a page heading now, not chrome, and it has the
-              room. The close X floats clear of it, on the right. */}
-          <View style={styles.head}>
-            <Text style={styles.title}>Tiles</Text>
-            <Text style={styles.hint}>double tap to rotate, long press to mirror</Text>
-          </View>
+          {/* The page's own hint — inside the scroll, so it goes up with
+              the tiles. The page's NAME is the header row's now, beside
+              the chevron: a second, larger "Tiles" two lines under it was
+              the word said twice. */}
+          <Text style={styles.hint}>double tap to rotate, long press to mirror</Text>
           {groups.map((g, i) => (
             <View key={g.connections} style={styles.section}>
               {/* A light rule where one connection-count family ends and
@@ -164,18 +156,10 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
             </View>
           ))}
         </ScrollView>
-        {/* Done: picks don't dismiss (see the note up top), so the sheet
-            still needs a way out — the STANDARD takeover Done button in its
-            floating form (a wide capsule), riding over the scroll. It
-            carries the word alone now: the armed tile it used to wear named
-            what closing keeps, but the grid says the same thing right there
-            in the selected cell, and a picture inside a button reads as a
-            second thing to press. No footer strip behind it: the grid
-            scrolls underneath, and it stands DONE_BOTTOM clear of the
-            screen's bottom curve. */}
-        <View style={styles.doneWrap} pointerEvents="box-none">
-          <AppModalDoneButton floating width={doneWidth} onPress={onClose} />
-        </View>
+        {/* No Done button. Every tap has already armed the tile it
+            landed on, so there is nothing here left to confirm — the
+            chevron in the header takes the page back, and what is armed
+            is what the grid is showing selected. */}
       </View>
       <PatternTileTransformModal
         visible={transformId != null}
@@ -192,10 +176,8 @@ export function PatternTileModal({ visible, tiles, activeId, transforms, onPick,
 
 const styles = StyleSheet.create({
   sheet: { flex: 1 },
-  // Title + hint as one block at the head of the scroll. The gap between
-  // them is the pair's own; the body's gap holds it off the first section.
-  head: { gap: 6 },
-  title: { fontSize: 30, fontWeight: '700', color: PANEL_INK },
+  // The hint at the head of the scroll; the body's gap holds it off the
+  // first section.
   hint: {
     fontStyle: 'italic',
     fontSize: 15,
@@ -215,11 +197,4 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   tileActive: { backgroundColor: STATE_ACTIVE, borderColor: STATE_ACTIVE },
-  doneWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: DONE_BOTTOM,
-    alignItems: 'center',
-  },
 });

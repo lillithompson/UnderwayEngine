@@ -686,14 +686,14 @@ describe('the tile pose gestures (double-tap turn, long-press transform)', () =>
     expect(MODAL).toContain('transform: patternTileThumbTransforms(poseOf(t.id))');
   });
 
-  it('a pick keeps the takeover up; Done (or the X) is the way out', () => {
-    // The sheet used to excuse itself after the double-tap window
+  it('a pick keeps the page up; the chevron is the way out', () => {
+    // The page used to excuse itself after the double-tap window
     // (setTimeout(onClose, …)); a pick is not a dismissal any more, so
-    // tiles can be browsed, re-picked and posed freely, and the floating
-    // Done square closes the sheet (its shape is pinned below).
+    // tiles can be browsed, re-picked and posed freely, and the header's
+    // chevron takes the page back (AppModal's `page`).
     expect(MODAL).not.toContain('setTimeout(onClose');
     expect(MODAL).not.toContain('closeTimerRef');
-    expect(MODAL).toContain('onPress={onClose}');
+    expect(MODAL).toContain('onClose={onClose} page>');
     // The double-tap rotate still lands as before.
     const doubleTapBranch = MODAL.slice(
       MODAL.indexOf('if (isPatternTileDoubleTap(lastTapRef.current, t.id, now)) {'),
@@ -717,33 +717,31 @@ describe('the tile pose gestures (double-tap turn, long-press transform)', () =>
     expect(MODAL).not.toContain("'1 connection'");
     expect(MODAL).not.toContain('connections`');
     expect(MODAL).toContain('backgroundColor: PANEL_BORDER');
-    // …the title and the hint are the head of the SCROLL, not a band over
-    // it: they go up with the tiles, with no rule between them and the
-    // grid. The title is a page heading's size, well past the 18 a header
-    // band wears; the hint is readable rather than fine print.
-    expect(MODAL).toContain('<View style={styles.head}>');
-    expect(MODAL).toContain('<Text style={styles.title}>Tiles</Text>');
+    // …the hint heads the SCROLL, not a band over it: it goes up with the
+    // tiles, with no rule between it and the grid, and reads rather than
+    // being fine print. The page's NAME is the header row's, beside the
+    // chevron — a second, larger "Tiles" under it was the word twice.
     expect(MODAL).toContain('double tap to rotate, long press to mirror');
-    expect(MODAL).toContain("title: { fontSize: 30, fontWeight: '700', color: PANEL_INK }");
+    expect(MODAL).not.toContain('styles.head');
+    expect(MODAL).not.toContain('<Text style={styles.title}>Tiles</Text>');
     expect(MODAL).toMatch(/hint:\s*\{\s*fontStyle:\s*'italic',\s*fontSize:\s*15,\s*lineHeight:\s*20,/);
-    // …the head block sits INSIDE the ScrollView's content, ahead of the
+    // …the hint sits INSIDE the ScrollView's content, ahead of the
     // sections, so nothing about it is pinned to the screen.
-    expect(MODAL.indexOf('<ScrollView')).toBeLessThan(MODAL.indexOf('<View style={styles.head}>'));
-    expect(MODAL.indexOf('<View style={styles.head}>')).toBeLessThan(MODAL.indexOf('{groups.map('));
-    // …and Done floats over the scroll as a WIDE CAPSULE — the shared
-    // AppModalDoneButton in its floating form, spanning the grid it
-    // closes, no footer strip behind it, standing clear of the screen's
-    // bottom curve, and carrying the word alone (the armed tile it used to
-    // wear is gone; the selected cell already says which tile is armed).
-    expect(MODAL).toContain('<AppModalDoneButton floating width={doneWidth} onPress={onClose} />');
-    expect(MODAL).toContain('const DONE_BOTTOM = 32;');
-    expect(MODAL).toContain("position: 'absolute'");
+    expect(MODAL.indexOf('<ScrollView')).toBeLessThan(MODAL.indexOf('styles.hint'));
+    expect(MODAL.indexOf('styles.hint')).toBeLessThan(MODAL.indexOf('{groups.map('));
+    // …and there is no Done at all: every tap has already armed the tile
+    // it landed on, so the page has nothing to confirm, and the floating
+    // capsule that used to say otherwise spent the foot of the grid on a
+    // decision that had already been taken.
+    expect(MODAL).not.toContain('AppModalDoneButton');
+    expect(MODAL).not.toContain('DONE_BOTTOM');
+    expect(MODAL).not.toContain('doneWidth');
+    expect(MODAL).not.toContain("position: 'absolute'");
     expect(MODAL).not.toContain('styles.footer');
     expect(MODAL).not.toContain('activeRow');
     expect(MODAL).not.toContain('doneSize');
-    // The scroll's foot pads past the capsule so the last row can always
-    // escape from under it.
-    expect(MODAL).toContain('paddingBottom: DONE_HEIGHT + DONE_BOTTOM + 24');
+    // The scroll still keeps a foot clear of the screen's bottom curve.
+    expect(MODAL).toContain('paddingBottom: GRID_FOOT + 24');
   });
 
   it('the transform modal offers rotate and the two flips, previewed in the pose', () => {
