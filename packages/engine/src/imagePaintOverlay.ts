@@ -113,6 +113,12 @@ function isUnaryMode(mode: BlendMode): boolean {
  *  mode is MUTATE-ONLY — see the section header above. */
 export interface StampBlend {
   mode: BlendMode;
+  /** Mutate-only in `normal` mode too: the RECOLOUR brush's rule. Its dab
+   *  lays no paint of its own — it restains what is already there, so the
+   *  texel's RGB drifts toward the brush colour while its alpha holds and
+   *  bare texels take nothing, exactly as a non-normal dab behaves. Other
+   *  modes are mutate-only already; the flag changes nothing for them. */
+  recolor?: boolean;
   /** One byte per texel, marking those a unary mode has already rewritten
    *  this stroke. Owned by the stroke, not the layer. */
   unaryDone?: Uint8Array;
@@ -156,7 +162,7 @@ export function stampImagePaintOverlay(
   if (alpha <= 0) return false;
   const { rgba } = overlay;
   const radiusSq = radiusCells * radiusCells;
-  const blending = blend && blend.mode !== 'normal' ? blend : undefined;
+  const blending = blend && (blend.mode !== 'normal' || blend.recolor) ? blend : undefined;
   const unary = blending ? isUnaryMode(blending.mode) : false;
   let changed = false;
   forEachTexelInDisc(overlay, iwCells, ihCells, lx, ly, radiusCells, (i, distSq, cx, cy) => {

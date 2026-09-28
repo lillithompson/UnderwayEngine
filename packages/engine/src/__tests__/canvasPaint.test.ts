@@ -561,6 +561,44 @@ describe('non-normal blends mutate existing paint only', () => {
   });
 });
 
+/** The recolour brush's raster half: `recolor` makes a NORMAL dab
+ *  mutate-only — the colour under the brush is restained, its alpha holds,
+ *  and bare canvas takes nothing. */
+describe('recolor: a normal dab that restains without depositing', () => {
+  const BLUE = { r: 0, g: 0, b: 255 };
+
+  it('recolours existing paint to the brush colour and keeps its alpha', () => {
+    const working = createCanvasPaintWorking();
+    stampCanvasPaint(working, 8 + C, 8 + C, 2, BLUE, 0.5);
+    const isl = islandAt(composeCanvasPaint(working), 8 + C, 8 + C)!;
+    const i = texelOffset(isl, 8 + C, 8 + C);
+    const alphaBefore = isl.overlay.rgba[i + 3];
+    expect(alphaBefore).toBeLessThan(255);
+
+    expect(stampCanvasPaint(
+      working, 8 + C, 8 + C, 2, RED, 1, { mode: 'normal', recolor: true },
+    ).length).toBeGreaterThan(0);
+    const after = islandAt(composeCanvasPaint(working), 8 + C, 8 + C)!;
+    // Full strength at the centre texel: the colour lands outright.
+    expect([...after.overlay.rgba.subarray(i, i + 3)]).toEqual([255, 0, 0]);
+    expect(after.overlay.rgba[i + 3]).toBe(alphaBefore);
+  });
+
+  it('deposits nothing on bare canvas and allocates no tile', () => {
+    const working = createCanvasPaintWorking();
+    expect(stampCanvasPaint(working, 8 + C, 8 + C, 2, RED, 1, { mode: 'normal', recolor: true }))
+      .toEqual([]);
+    expect(working.touched.size).toBe(0);
+  });
+
+  it('stops at the ink edge', () => {
+    const working = createCanvasPaintWorking();
+    stampCanvasPaint(working, 8 + C, 8 + C, 1, BLUE, 1);
+    stampCanvasPaint(working, 8 + C, 8 + C, 6, RED, 1, { mode: 'normal', recolor: true });
+    expect(alphaAt(composeCanvasPaint(working), 8 + C + 4, 8 + C)).toBe(0);
+  });
+});
+
 /**
  * {@link flattenPaintTiles}: the island's tiles as ONE bitmap over its
  * content rect. The exporter draws this as a single <image> because

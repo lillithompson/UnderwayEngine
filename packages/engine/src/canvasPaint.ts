@@ -417,6 +417,10 @@ function effectiveRadius(radiusCells: number): number {
  *  scratch is managed by the working set. */
 export interface CanvasStampBlend {
   mode: BlendMode;
+  /** Mutate-only in `normal` mode too — the recolour brush, which restains
+   *  paint already on the canvas and never deposits or allocates (see
+   *  StampBlend.recolor). */
+  recolor?: boolean;
 }
 
 /**
@@ -556,7 +560,7 @@ export function stampCanvasPaint(
   mask?: CanvasPaintStampMask,
 ): string[] {
   const radius = effectiveRadius(radiusCells);
-  const mutateOnly = !!blend && blend.mode !== 'normal';
+  const mutateOnly = !!blend && (blend.mode !== 'normal' || !!blend.recolor);
   const changed: string[] = [];
   forEachIslandUnderDab(working, cellX, cellY, radius, !mutateOnly, (island, key) => {
     const { cols, rows } = island.overlay;
@@ -578,7 +582,7 @@ export function stampCanvasPaint(
       color,
       alpha,
       mask?.forIsland(key, cols * rows, island.x, island.y),
-      blend ? { mode: blend.mode, unaryDone } : undefined,
+      blend ? { mode: blend.mode, recolor: blend.recolor, unaryDone } : undefined,
     )) {
       changed.push(key);
     }
