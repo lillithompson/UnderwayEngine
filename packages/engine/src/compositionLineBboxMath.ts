@@ -262,6 +262,42 @@ function chainPoints(pts: readonly [number, number][], closed: boolean): PathSeg
 const HEART_STEPS = 64;
 const SPIRAL_TURNS = 3;
 const SPIRAL_STEPS_PER_TURN = 36;
+/** Line segments a HALF circle is sampled into — the closed ellipse's 32
+ *  per turn (compositionArcMath ELLIPSE_POLYLINE_SEGMENTS), so the
+ *  semicircle and the half-ring are drawn at the density every other
+ *  sampled curve on the page is, and the crown at 12 o'clock is a sampled
+ *  vertex (an even count) so the chain's bounds meet the box exactly. */
+const SEMICIRCLE_STEPS = 16;
+/** The semi-torus's inner radius as a fraction of its outer: a ring whose
+ *  hole is half its width. */
+const SEMI_TORUS_INNER_RATIO = 0.5;
+
+/** Map raw sample points onto the box with corners (sx, sy) and (ex, ey)
+ *  so the figure's OWN bounds meet the box exactly — the polygon rule: a
+ *  square drag gives the canonical proportions, a freeform one stretches
+ *  the figure to fill. Shared by every parametric closed shape below, so
+ *  they all fit their box the same way. */
+function fitPointsToBox(
+  raw: readonly [number, number][],
+  sx: number, sy: number,
+  ex: number, ey: number,
+): [number, number][] {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of raw) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const bx = Math.min(sx, ex);
+  const by = Math.min(sy, ey);
+  const bw = Math.abs(ex - sx);
+  const bh = Math.abs(ey - sy);
+  return raw.map(([x, y]): [number, number] => [
+    bx + ((x - minX) / (maxX - minX)) * bw,
+    by + ((y - minY) / (maxY - minY)) * bh,
+  ]);
+}
 
 /**
  * A CLOSED heart filling the drag's box, point-down: the classic
@@ -275,27 +311,14 @@ export function computeHeartSegments(
   ex: number, ey: number,
 ): PathSegment[] {
   const raw: [number, number][] = [];
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (let i = 0; i < HEART_STEPS; i++) {
     const t = (i * 2 * Math.PI) / HEART_STEPS;
     const x = 16 * Math.sin(t) ** 3;
     // The parametric heart is y-up; the page is y-down, so negate.
     const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
     raw.push([x, y]);
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
   }
-  const bx = Math.min(sx, ex);
-  const by = Math.min(sy, ey);
-  const bw = Math.abs(ex - sx);
-  const bh = Math.abs(ey - sy);
-  const pts = raw.map(([x, y]): [number, number] => [
-    bx + ((x - minX) / (maxX - minX)) * bw,
-    by + ((y - minY) / (maxY - minY)) * bh,
-  ]);
-  return chainPoints(pts, true);
+  return chainPoints(fitPointsToBox(raw, sx, sy, ex, ey), true);
 }
 
 /** A five-pointed star's inner radius as a fraction of its outer one: the
@@ -321,28 +344,61 @@ export function computeStarSegments(
 ): PathSegment[] {
   const n = Math.max(3, Math.round(points));
   const raw: [number, number][] = [];
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (let i = 0; i < n * 2; i++) {
     // Point-up, like the N-gon builder: the first vertex sits straight up.
     const a = -Math.PI / 2 + (i * Math.PI) / n;
     const r = i % 2 === 0 ? 1 : STAR_INNER_RATIO;
-    const x = r * Math.cos(a);
-    const y = r * Math.sin(a);
-    raw.push([x, y]);
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
+    raw.push([r * Math.cos(a), r * Math.sin(a)]);
   }
-  const bx = Math.min(sx, ex);
-  const by = Math.min(sy, ey);
-  const bw = Math.abs(ex - sx);
-  const bh = Math.abs(ey - sy);
-  const pts = raw.map(([x, y]): [number, number] => [
-    bx + ((x - minX) / (maxX - minX)) * bw,
-    by + ((y - minY) / (maxY - minY)) * bh,
-  ]);
-  return chainPoints(pts, true);
+  return chainPoints(fitPointsToBox(raw, sx, sy, ex, ey), true);
+}
+
+/** The upper half of the unit circle, sampled left to right over the
+ *  crown: (−1, 0) round through (0, −1) to (1, 0), y-down. `radius` scales
+ *  it about the origin, so the semi-torus's inner arc is the same curve a
+ *  step in. {@link SEMICIRCLE_STEPS} chords, so SEMICIRCLE_STEPS + 1
+ *  points, the crown among them. */
+function upperHalfCirclePoints(radius: number): [number, number][] {
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= SEMICIRCLE_STEPS; i++) {
+    const a = Math.PI - (i * Math.PI) / SEMICIRCLE_STEPS;
+    pts.push([radius * Math.cos(a), -radius * Math.sin(a)]);
+  }
+  return pts;
+}
+
+/**
+ * A CLOSED semicircle filling the drag's box, dome UP: the flat side runs
+ * along the box's bottom edge and the crown touches its top, so a box twice
+ * as wide as it is tall gives a true half circle and any other box the
+ * half-ellipse that fills it — the polygon rule. Sampled to a polyline like
+ * the heart and the star (an arc segment is a quarter circle with ONE
+ * radius, which a freeform box cannot be), and closed along the flat.
+ */
+export function computeSemicircleSegments(
+  sx: number, sy: number,
+  ex: number, ey: number,
+): PathSegment[] {
+  return chainPoints(fitPointsToBox(upperHalfCirclePoints(1), sx, sy, ex, ey), true);
+}
+
+/**
+ * A CLOSED semi-torus — half a ring, an arch — filling the drag's box, dome
+ * UP: the outer half circle left to right over the crown, then the inner
+ * one back right to left at {@link SEMI_TORUS_INNER_RATIO} of its radius,
+ * the two flat ends closing the figure along the box's bottom edge. The
+ * hole is half the width, so the band is a quarter of it on each side.
+ * Sampled and box-fitted the way the semicircle is; the inner arc is the
+ * same curve at half the radius, so under a freeform stretch it stays
+ * exactly half along each axis.
+ */
+export function computeSemiTorusSegments(
+  sx: number, sy: number,
+  ex: number, ey: number,
+): PathSegment[] {
+  const outer = upperHalfCirclePoints(1);
+  const inner = upperHalfCirclePoints(SEMI_TORUS_INNER_RATIO).reverse();
+  return chainPoints(fitPointsToBox([...outer, ...inner], sx, sy, ex, ey), true);
 }
 
 /**

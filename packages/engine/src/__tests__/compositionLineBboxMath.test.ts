@@ -7,6 +7,8 @@ import {
   computeHeartSegments,
   computeRectSegments,
   computeSpiralSegments,
+  computeSemiTorusSegments,
+  computeSemicircleSegments,
   computeStarSegments,
   recenterLineBoxOnGrid,
 } from '../compositionLineBboxMath';
@@ -434,5 +436,103 @@ describe('computeSpiralSegments', () => {
     for (let i = 0; i < s.length - 1; i++) {
       expect(s[i].end).toEqual(s[i + 1].start);
     }
+  });
+});
+
+describe('computeSemicircleSegments', () => {
+  const segs = () => computeSemicircleSegments(2, 4, 10, 8);
+
+  it('is a CLOSED chain filling the drag box exactly', () => {
+    const s = segs();
+    // 16 chords over the crown, plus the flat closing them.
+    expect(s).toHaveLength(17);
+    for (let i = 0; i < s.length; i++) {
+      expect(s[i].end).toEqual(s[(i + 1) % s.length].start);
+    }
+    const xs = s.map((seg) => seg.start[0]);
+    const ys = s.map((seg) => seg.start[1]);
+    expect(Math.min(...xs)).toBeCloseTo(2, 9);
+    expect(Math.max(...xs)).toBeCloseTo(10, 9);
+    expect(Math.min(...ys)).toBeCloseTo(4, 9);
+    expect(Math.max(...ys)).toBeCloseTo(8, 9);
+  });
+
+  it('dome UP: the flat runs along the box’s bottom edge, the crown touches its top', () => {
+    const s = segs();
+    // The chain opens at the flat's left end and ends at its right; the
+    // closing segment is the flat itself, on the box's bottom edge.
+    const flat = s[s.length - 1];
+    expect(flat.start).toEqual([10, 8]);
+    expect(flat.end).toEqual([2, 8]);
+    // The crown is a sampled vertex, on the box's top edge at its middle.
+    const crown = s.map((seg) => seg.start).find(([, y]) => Math.abs(y - 4) < 1e-9)!;
+    expect(crown[0]).toBeCloseTo(6, 9);
+  });
+
+  it('is a TRUE half circle on a 2:1 box, and left-right symmetric on any', () => {
+    const s = computeSemicircleSegments(-1, -1, 1, 0);
+    const pts = s.map((seg) => seg.start);
+    // Every vertex is a unit from the flat's midpoint (0, 0).
+    for (const [x, y] of pts) expect(Math.hypot(x, y)).toBeCloseTo(1, 9);
+    // Symmetric about the box's vertical middle.
+    const xs = pts.map(([x]) => x).sort((a, b) => a - b);
+    for (let i = 0; i < xs.length; i++) expect(xs[i] + xs[xs.length - 1 - i]).toBeCloseTo(0, 9);
+  });
+});
+
+describe('computeSemiTorusSegments', () => {
+  const segs = () => computeSemiTorusSegments(2, 4, 10, 8);
+
+  it('is a CLOSED chain filling the drag box exactly', () => {
+    const s = segs();
+    // Two half circles of 16 chords, two flats joining their ends.
+    expect(s).toHaveLength(34);
+    for (let i = 0; i < s.length; i++) {
+      expect(s[i].end).toEqual(s[(i + 1) % s.length].start);
+    }
+    const xs = s.map((seg) => seg.start[0]);
+    const ys = s.map((seg) => seg.start[1]);
+    expect(Math.min(...xs)).toBeCloseTo(2, 9);
+    expect(Math.max(...xs)).toBeCloseTo(10, 9);
+    expect(Math.min(...ys)).toBeCloseTo(4, 9);
+    expect(Math.max(...ys)).toBeCloseTo(8, 9);
+  });
+
+  it('the inner radius is HALF the outer, on a true half ring and under a stretch alike', () => {
+    // A 2:1 box: a true half ring about the flat's midpoint.
+    const ring = computeSemiTorusSegments(-1, -1, 1, 0);
+    const r = ring.map((seg) => Math.hypot(seg.start[0], seg.start[1]));
+    const outer = r.slice(0, 17);
+    const inner = r.slice(17, 34);
+    for (const v of outer) expect(v).toBeCloseTo(1, 9);
+    for (const v of inner) expect(v).toBeCloseTo(0.5, 9);
+    // Stretched to a freeform box the ratio holds along each axis: the
+    // inner crown sits halfway from the flat to the outer crown, and the
+    // inner ends halfway from the middle to the outer ends.
+    const s = segs();
+    const pts = s.map((seg) => seg.start);
+    const outerCrown = pts[8];
+    const innerCrown = pts[17 + 8];
+    expect(outerCrown[0]).toBeCloseTo(6, 9);
+    expect(outerCrown[1]).toBeCloseTo(4, 9);
+    expect(innerCrown[0]).toBeCloseTo(6, 9);
+    expect(innerCrown[1]).toBeCloseTo(6, 9); // 8 − (8 − 4) / 2
+    expect(pts[17][0]).toBeCloseTo(8, 9); // inner right end: 6 + 4 / 2
+    expect(pts[33][0]).toBeCloseTo(4, 9); // inner left end
+  });
+
+  it('runs the outer arc left to right and the inner back right to left, dome UP', () => {
+    const s = segs();
+    expect(s[0].start).toEqual([2, 8]); // outer left end, on the flat
+    expect(s[15].end).toEqual([10, 8]); // outer right end
+    // The right flat steps in to the inner arc's right end…
+    expect(s[16].start).toEqual([10, 8]);
+    expect(s[16].end[0]).toBeCloseTo(8, 9);
+    expect(s[16].end[1]).toBeCloseTo(8, 9);
+    // …and the last segment is the left flat, back out to the start.
+    expect(s[33].start[0]).toBeCloseTo(4, 9);
+    expect(s[33].end).toEqual([2, 8]);
+    // Everything sits at or above the flat: dome up.
+    for (const seg of s) expect(seg.start[1]).toBeLessThanOrEqual(8 + 1e-9);
   });
 });
