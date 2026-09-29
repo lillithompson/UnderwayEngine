@@ -323,7 +323,9 @@ describe('the Copies page', () => {
     // Every kind draws with an opacity, so a selection whose kinds share
     // nothing else — strokes beside patterns — can still be faded together.
     const panel = read('ObjectPropertiesPanel.tsx');
-    expect(panel).toContain('const showMultiOpacity = multi && !!model.onObjectOpacity;');
+    // …unless the host withheld Opacity from the vectors on the page
+    // (svgHiddenActions): the fallback is one more door to the same page.
+    expect(panel).toContain("const showMultiOpacity = multi && !!model.onObjectOpacity && !svgHidden.has('opacity');");
     // The page order: added only where the kind's own order lacks it, and
     // seated before Copies.
     expect(panel).toContain("const withOpacity: SubmenuKey[] = showMultiOpacity && !kindSubmenuOrder.includes('opacity')");

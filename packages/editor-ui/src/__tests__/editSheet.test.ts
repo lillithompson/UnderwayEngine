@@ -795,7 +795,7 @@ describe('the panel drives the sheet', () => {
 
   it('a polygonal shape rounds its corners on a Shape page; its Stroke page has no Radius row and an unlabelled Position row', () => {
     expect(PANEL).toContain("...(svgShapeable ? (['shape'] as const) : []),");
-    expect(PANEL).toContain("const svgShapeable = !!model.showSvgOptions && svgHasShape(model.svgSubtype ?? 'stroke');");
+    expect(PANEL).toContain("const svgShapeable = !!model.showSvgOptions && !svgHidden.has('shape')\n    && svgHasShape(model.svgSubtype ?? 'stroke');");
     expect(PANEL).toContain(": action === 'shape' ? 'shape'");
     // The Shape page is the panel's own (like Color) and folds when the
     // subtype stops offering it — by the one rule, which reads the very

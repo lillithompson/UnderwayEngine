@@ -12,6 +12,7 @@ import { composeFade, fadeMix } from '../logic/opacityEdit';
 import { isValueDragging } from '../logic/slider';
 import { SubmenuKey, editSheetHeight, emptyEffectHeight, pageIsWelled, submenuHeight } from '../logic/submenuHeight';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
+import type { SVGEditAction } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import {
   landingSubmenu,
@@ -260,6 +261,21 @@ interface OptionSpec extends Omit<EditTabSpec, 'selected'> {
   sub?: SubmenuKey;
 }
 
+/** The page a vector option opens. svgEdit's action names match the page
+ *  keys except where the panel has to disambiguate — a shape's `fill` is the
+ *  svgFill page, not an image's Tint. Named because the press handler, the
+ *  lit state and the page list all need it, and they must agree. */
+function svgActionSubmenu(action: string): SubmenuKey {
+  return action === 'fill' ? 'svgFill'
+    : action === 'pattern' ? 'svgPattern'
+    : action === 'shape' ? 'shape'
+    : action === 'effects' ? 'effects'
+    : action === 'endpoints' ? 'endpoints'
+    : action === 'opacity' ? 'opacity'
+    : action === 'transform' ? 'transform'
+    : 'stroke';
+}
+
 export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0, onOccludedHeight }: {
   model: ObjectPropertiesModel;
   /** Bottom safe-area inset (home indicator). Padded under the panel's row
@@ -402,9 +418,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // and all — so the tab is offered on the selection's own account and
   // de-duplicated where the kind already named it.
   const showCopies = multi && !!model.onTransformCopies;
+  // The vector actions the host withholds on this page (model.svgHiddenActions):
+  // a tab that leaves the row, and a page that cannot open by any other door
+  // — read wherever a page is offered, so no fallback below hands one back.
+  const svgHidden = new Set<SVGEditAction>(model.showSvgOptions ? model.svgHiddenActions ?? [] : []);
+  const svgHiddenPages = new Set<SubmenuKey>([...svgHidden].map(svgActionSubmenu));
   // …and Opacity likewise: every kind draws with one, so a multi-selection
   // offers the page on its own account too, whatever it is made of.
-  const showMultiOpacity = multi && !!model.onObjectOpacity;
+  // …unless the host has withheld Opacity from the vectors on this page:
+  // the selection-level fallback is one more door to the same page.
+  const showMultiOpacity = multi && !!model.onObjectOpacity && !svgHidden.has('opacity');
 
   // Whether the selection has any option — a tab — at all. `type` is what the
   // selection's KIND offers (and a multi-selection's members must share a
@@ -420,7 +443,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // subtype is part of it so switching between two vector objects with
   // different menus (a line → a rectangle) re-lands the sheet.
   const typeSig = model.visible
-    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showCopies ? 'c' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showPatternOptions ? 'P' : ''}${model.showStrokeOptions ? 'S' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}` : ''}`
+    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showCopies ? 'c' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showPatternOptions ? 'P' : ''}${model.showStrokeOptions ? 'S' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}${[...svgHidden].join(',')}` : ''}`
     : '';
   const prevTypeSig = useRef('');
   useEffect(() => {
@@ -509,16 +532,21 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // The INTERIOR pages (Fill, Pattern) go by what the selection encloses,
   // which the host answers from its geometry; the subtype is the fallback
   // for a host that doesn't (and the right answer for anything a tool drew).
-  const svgFillable = !!model.showSvgOptions
+  // …each less the actions the host withheld (svgHidden), which take the
+  // page with the tab.
+  const svgFillable = !!model.showSvgOptions && !svgHidden.has('fill')
     && (model.svgEncloses ?? svgHasFill(model.svgSubtype ?? 'stroke'));
-  const svgEndable = !!model.showSvgOptions && svgHasEndpoints(model.svgSubtype ?? 'stroke');
-  const svgOpacityable = !!model.showSvgOptions && svgHasOpacity(model.svgSubtype ?? 'stroke');
+  const svgEndable = !!model.showSvgOptions && !svgHidden.has('endpoints')
+    && svgHasEndpoints(model.svgSubtype ?? 'stroke');
+  const svgOpacityable = !!model.showSvgOptions && !svgHidden.has('opacity')
+    && svgHasOpacity(model.svgSubtype ?? 'stroke');
   // Every vector subtype repeats (svgEditOptions' Copies).
-  const svgTransformable = !!model.showSvgOptions;
+  const svgTransformable = !!model.showSvgOptions && !svgHidden.has('transform');
   // A polygonal shape rounds its corners on the Shape page.
-  const svgShapeable = !!model.showSvgOptions && svgHasShape(model.svgSubtype ?? 'stroke');
+  const svgShapeable = !!model.showSvgOptions && !svgHidden.has('shape')
+    && svgHasShape(model.svgSubtype ?? 'stroke');
   // Vectors and patterns share the Stroke page (and its colour).
-  const strokeable = !!model.showSvgOptions || !!model.showPatternOptions || !!model.showStrokeOptions;
+  const strokeable = (!!model.showSvgOptions && !svgHidden.has('stroke')) || !!model.showPatternOptions || !!model.showStrokeOptions;
 
   // ── Which effects the selection WEARS ─────────────────────────────────
   // This is the one reading in the panel that decides how many TABS there
@@ -636,7 +664,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // other vector pages have nothing to act on for a baked silhouette.
     : model.showRigOptions ? RIG_PAGES.map((o) => o.sub)
     : model.showSvgOptions
-      ? [
+      ? ([
           'stroke',
           ...(svgShapeable ? (['shape'] as const) : []),
           ...(svgFillable ? (['svgFill'] as const) : []),
@@ -651,7 +679,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
           ...effectPages,
           ...(svgOpacityable ? (['opacity'] as const) : []),
           ...(svgTransformable ? (['transform'] as const) : []),
-        ]
+        // …less every page the host withheld, whichever line above offered
+        // it — and, when Effects is withheld, the tabs its buttons made
+        // too, each being a door onto that page.
+        ] as SubmenuKey[]).filter((k) =>
+          !svgHiddenPages.has(k) && !(svgHidden.has('effects') && effectPages.includes(k)))
     : [];
   // …and Opacity on EVERY multi-selection. Every kind draws with an
   // opacity and the host sets it on each member (a figure, which has none
@@ -718,20 +750,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
 
   /** True while `key`'s page is the one showing — lights that tab. */
   const subOpen = (key: SubmenuKey) => activeSub === key;
-
-  /** The page a vector option opens. svgEdit's action names match the page
-   *  keys except where the panel has to disambiguate — a shape's `fill` is the
-   *  svgFill page, not an image's Tint. Named because both the press handler
-   *  and the lit state need it, and they must agree. */
-  const svgActionSubmenu = (action: string): SubmenuKey =>
-    action === 'fill' ? 'svgFill'
-    : action === 'pattern' ? 'svgPattern'
-    : action === 'shape' ? 'shape'
-    : action === 'effects' ? 'effects'
-    : action === 'endpoints' ? 'endpoints'
-    : action === 'opacity' ? 'opacity'
-    : action === 'transform' ? 'transform'
-    : 'stroke';
 
   /** Pages a HOST opens with chrome of its own, which no tab row ever
    *  offers: a rig's part sliders (Hands / Feet / Spine / Head — the row
@@ -2026,7 +2044,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   } else if (model.showSvgOptions) {
     // Vector selection: the subtype's own option menu (svgEdit.ts). Every
     // subtype offers Stroke — a path IS its stroke; the closed shapes add Fill.
-    typeSpecs = svgEditOptions(model.svgSubtype ?? 'stroke', { encloses: svgFillable })
+    typeSpecs = svgEditOptions(model.svgSubtype ?? 'stroke', {
+      encloses: svgFillable,
+      // …less the actions the host withheld — the same set the page list
+      // above reads, so the row and the pages cannot disagree.
+      hidden: model.svgHiddenActions,
+    })
       // …less the Pattern tab until the shape actually wears cloth. A
       // pattern is ADDED on the Effects page, like the three effects, so
       // its tab comes and goes with the fill itself — and a host that

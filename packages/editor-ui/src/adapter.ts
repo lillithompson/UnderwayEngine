@@ -628,6 +628,19 @@ export interface ObjectPropertiesModel {
    *  unless `showSvgOptions`; defaults to 'stroke' when unset. */
   svgSubtype?: SVGSubtypeKind;
   /**
+   * Vector option-menu actions the host WITHHOLDS on this page: the tab
+   * leaves the row and its page cannot open — not by the tab, not by the
+   * multi-selection's own Opacity fallback, not by the host's open flag
+   * (the fold-away rule reads the row, and the page is not on it).
+   *
+   * For a format that fixes what a shape may look like: a page of solid
+   * black cut-outs takes Stroke, Fill, Effects and Opacity off, since each
+   * is a door to a shape that looks some other way, and leaves Shape,
+   * Copies and the arranging. Ignored unless `showSvgOptions`; absent
+   * withholds nothing.
+   */
+  svgHiddenActions?: readonly import('./logic/svgEdit').SVGEditAction[];
+  /**
    * Whether the Stroke page offers its REMOVE line — whether every object
    * the page would act on is one that can lose its outline and still be a
    * shape (`svgStrokeRemovable`).

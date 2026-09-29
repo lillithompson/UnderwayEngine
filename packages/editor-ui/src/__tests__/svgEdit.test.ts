@@ -317,3 +317,38 @@ describe('svgHasEndpoints', () => {
     }
   });
 });
+
+describe('svgEditOptions with actions the host withholds', () => {
+  // A format that fixes what a shape may look like (CozyJournal's Shadows:
+  // solid black cut-outs) takes the pages that would change that off the
+  // row. The filter is applied LAST, over the subtype's and the geometry's
+  // own offers, so nothing withheld comes back through either.
+  const WITHHELD = ['stroke', 'fill', 'effects', 'opacity'] as const;
+
+  it('takes the named actions off every subtype, and leaves the rest in order', () => {
+    for (const subtype of SUBTYPES) {
+      const actions = svgEditOptions(subtype, { hidden: WITHHELD }).map((o) => o.action);
+      for (const a of WITHHELD) expect(actions).not.toContain(a);
+      // What is left is the full menu with those struck out — same order.
+      expect(actions).toEqual(
+        svgEditOptions(subtype).map((o) => o.action).filter((a) => !(WITHHELD as readonly string[]).includes(a)),
+      );
+    }
+    // A closed shape keeps Shape, Pattern and Copies.
+    expect(svgEditOptions('polygon', { hidden: WITHHELD }).map((o) => o.action))
+      .toEqual(['shape', 'pattern', 'transform']);
+  });
+
+  it('wins over the geometry’s own offer of the interior pages', () => {
+    const actions = svgEditOptions('stroke', { encloses: true, hidden: ['fill'] }).map((o) => o.action);
+    expect(actions).not.toContain('fill');
+    expect(actions).toContain('pattern');
+  });
+
+  it('withholds nothing when the list is absent or empty', () => {
+    for (const subtype of SUBTYPES) {
+      expect(svgEditOptions(subtype, { hidden: [] })).toEqual(svgEditOptions(subtype));
+      expect(svgEditOptions(subtype, {})).toEqual(svgEditOptions(subtype));
+    }
+  });
+});

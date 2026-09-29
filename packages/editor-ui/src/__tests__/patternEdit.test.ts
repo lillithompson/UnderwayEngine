@@ -164,7 +164,7 @@ describe('the panel offers the pattern type page', () => {
     // was immediately folded away and the previously open pattern bar
     // snapped back. There is no separate guard to keep honest any more:
     // the rule reads the TAB ROW, and the pattern branch lists 'stroke'.
-    expect(SRC).toContain('const strokeable = !!model.showSvgOptions || !!model.showPatternOptions');
+    expect(SRC).toContain("const strokeable = (!!model.showSvgOptions && !svgHidden.has('stroke')) || !!model.showPatternOptions");
     const order = SRC.slice(
       SRC.indexOf('const kindSubmenuOrder'),
       SRC.indexOf('const submenuOrder'),

@@ -154,6 +154,14 @@ export function svgEditOptions(
      *  gets the interior pages on the strength of the loop it holds —
      *  keeping its Ends, which are just as real. */
     encloses?: boolean;
+    /** Actions the HOST withholds from every vector on this page, tab and
+     *  page alike — a format that fixes what a shape may look like (a
+     *  solid black cut-out, say) takes the Stroke, Fill, Effects and
+     *  Opacity pages off the row, since each is a door to a shape that
+     *  looks some other way. Applied last, over whatever the subtype and
+     *  the geometry offered, so a withheld action never comes back through
+     *  either of them. Omitted → nothing withheld. */
+    hidden?: readonly SVGEditAction[];
   },
 ): readonly SVGEditOption[] {
   const options: SVGEditOption[] = [
@@ -168,7 +176,8 @@ export function svgEditOptions(
   options.push({ action: 'effects', label: 'Effects', icon: 'box-shadow' });
   if (svgHasOpacity(subtype)) options.push({ action: 'opacity', label: 'Opacity', icon: 'opacity' });
   options.push({ action: 'transform', label: 'Copies', icon: 'content-copy' });
-  return options;
+  const hidden = opts?.hidden;
+  return hidden && hidden.length > 0 ? options.filter((o) => !hidden.includes(o.action)) : options;
 }
 
 /** Which of the Stroke page's optional rows a subtype offers. Width and Dash
