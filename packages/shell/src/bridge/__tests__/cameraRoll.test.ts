@@ -15,7 +15,7 @@ jest.mock('expo-file-system', () => ({
 }));
 
 jest.mock('expo-media-library', () => ({
-  requestPermissionsAsync: () => mockRequestPermissions(),
+  requestPermissionsAsync: (...args: unknown[]) => mockRequestPermissions(...args),
   saveToLibraryAsync: (uri: string) => mockSaveToLibrary(uri),
 }));
 
@@ -42,6 +42,17 @@ describe('saveBase64ToCameraRoll', () => {
     expect(mockCreate).toHaveBeenCalledWith({ overwrite: true });
     expect(mockWrite).toHaveBeenCalledWith('dGVzdA==', { encoding: 'base64' });
     expect(mockSaveToLibrary).toHaveBeenCalledWith('file:///mock-cache/page.jpg');
+  });
+
+  test('asks for ADD-ONLY library access, never the full read/write prompt', async () => {
+    // A save only ever adds an asset. Asking with no argument requests full
+    // library access on iOS (NSPhotoLibraryUsageDescription), which is more
+    // than the save needs and was flagged under App Store guideline 5.1.1.
+    // `true` is expo-media-library's writeOnly flag → PHAccessLevel.addOnly,
+    // worded by NSPhotoLibraryAddUsageDescription.
+    await saveBase64ToCameraRoll('dGVzdA==', 'page.jpg');
+    expect(mockRequestPermissions).toHaveBeenCalledTimes(1);
+    expect(mockRequestPermissions).toHaveBeenCalledWith(true);
   });
 
   test('overwrites a same-named cache file rather than failing the second save', async () => {

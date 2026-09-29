@@ -35,7 +35,7 @@ export function writeCacheFile(base64Data: string, filename: string): string {
 
 /**
  * Write raw base64 image bytes to a cache file and add it to the photo
- * library, prompting for permission first. Never throws — every failure
+ * library, prompting for ADD-ONLY permission first. Never throws — every failure
  * comes back as `{ success: false, error }` so callers can decide whether to
  * toast, retry, or ignore.
  *
@@ -49,7 +49,14 @@ export async function saveBase64ToCameraRoll(
   try {
     const MediaLibrary = require('expo-media-library');
 
-    const { status } = await MediaLibrary.requestPermissionsAsync();
+    // writeOnly: this function only ever ADDS an asset, so ask for add-only
+    // access (iOS PHAccessLevel.addOnly, worded by
+    // NSPhotoLibraryAddUsageDescription) rather than the full read/write
+    // library prompt, which asks for far more than a save needs and reads
+    // as an over-broad purpose string in App Store review (guideline 5.1.1).
+    // Picking a photo goes through the system picker and needs no permission
+    // at all, so nothing in the app should ever raise the full prompt.
+    const { status } = await MediaLibrary.requestPermissionsAsync(true);
     if (status !== 'granted') {
       return { success: false, error: 'permission_denied' };
     }
