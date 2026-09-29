@@ -7,7 +7,7 @@ import { packKey, unpackKey, forEachVisibleTile } from './tileSegmentOverrides';
 import { borderDashPattern, innerGlowBandFilter, paintToSvg, scaleEffects } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
 import { shapePatternFillIsEmpty } from './shapePatternFill';
-import { PaintOverlaySlot, shapePaintOverlaySVG } from './imagePaintOverlay';
+import { PaintOverlaySlot, shapePaintClipId, shapePaintClipMarkup, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import {
   roundPathCorners,
@@ -951,10 +951,129 @@ export function buildSVGObjectContent(
   // this caller's units into the tile's SVG-unit space — see
   // buildTiledSVGObjectRegionMarkup.
   if (obj.tileMode === 'repeat') return buildTiledSVGObjectRegionMarkup(obj, strokeScale, unitsPerCell);
+  const p = svgObjectParts(obj, strokeScale, unitsPerCell, opts);
+
+  // Color-tool paint layer (v49): the low-res bitmap stretched over the bbox
+  // and clipped to the same closed outline the fill paints, blended with its
+  // one mode. Isolated together with the fill so the blend composites
+  // against the shape's own interior, not the canvas behind it — the same
+  // confinement the image node's overlay gets. Sits under the strokes (and
+  // any recolored fill subpaths), so painted outlines stay legible.
+  let fillMarkup = p.fillMarkup;
+  if (obj.paintOverlay && p.closedD) {
+    const u = SVG_UNITS_PER_L0_CELL;
+    const overlay = shapePaintOverlaySVG(
+      obj.paintOverlay, obj.id, p.closedD,
+      obj.cellX * u, obj.cellY * u, obj.cellWidth * u, obj.cellHeight * u,
+      opts?.paintOverlaySlot,
+    );
+    fillMarkup = `<g style="isolation:isolate">${fillMarkup}${overlay}</g>`;
+  }
+  const result = p.strokeDefs + fillMarkup + p.patternMarkup + p.strokes;
+  // The whole-object Opacity bar (opacity + edge soften) wraps everything the
+  // object drew, so fill, stroke and decorations fade as one layer — and the
+  // inner-glow band goes OUTSIDE it, where the node's effects filter sits,
+  // so the two inner glows (filtered and painted) land in the same place in
+  // the stack.
+  return wrapSVGObjectOpacity(obj, result, strokeScale) + p.glowBand;
+}
+
+/**
+ * A shape's markup in TWO halves, for a host that draws the paint layer
+ * itself between them: the live DOM node layer, which lays an HTML
+ * `<canvas>` over the shape's box rather than a `<foreignObject>` inside
+ * its svg (see {@link shapePaintClipMarkup} for why). The canvas sits
+ * between the halves, so it composites over the fill and under the
+ * outline — the order {@link buildSVGObjectContent} draws the in-svg
+ * overlay in, and the order the export writes.
+ *
+ *  - `fill`: the fill (defs and closed path), the paint clip the canvas is
+ *    cut with (`objectBoundingBox`, id {@link shapePaintClipId}) and the
+ *    pattern fill's clipped tiles. The clip is emitted whenever the shape
+ *    has a closed outline, painted or not — a stroke's first dab on a
+ *    fresh shape needs it before any paint is committed.
+ *  - `strokes`: the stroke's defs, then the subpaths or the path with its
+ *    endpoint decorations, then the painted inner-glow band.
+ *  - `opacity`: the whole-object Opacity row, NOT applied — two svgs cannot
+ *    share one `<g opacity>`, so the host wears it as CSS opacity on the
+ *    element that holds both halves and the canvas, which fades the three
+ *    as one layer exactly as the wrapper did.
+ *  - `paintClipId`: the clip's id, or null when there is no outline to cut
+ *    with (a canvas then goes unclipped).
+ *
+ * A REPEAT-mode shape takes no paint (the brush skips it), so it comes back
+ * whole in `strokes`, opacity already applied inside, as the flat builder
+ * hands it out.
+ */
+export interface SVGObjectLayers {
+  fill: string;
+  strokes: string;
+  opacity: number;
+  paintClipId: string | null;
+}
+
+export function buildSVGObjectLayers(
+  obj: SVGObject,
+  strokeScale: number,
+  unitsPerCell: number,
+  opts?: { nonScaling?: boolean; patternFillMarkup?: string },
+): SVGObjectLayers {
+  if (obj.segments.length === 0) return { fill: '', strokes: '', opacity: 1, paintClipId: null };
+  if (obj.tileMode === 'repeat') {
+    return {
+      fill: '',
+      strokes: buildTiledSVGObjectRegionMarkup(obj, strokeScale, unitsPerCell),
+      opacity: 1,
+      paintClipId: null,
+    };
+  }
+  const p = svgObjectParts(obj, strokeScale, unitsPerCell, { ...opts, closedOutline: true });
+  const u = SVG_UNITS_PER_L0_CELL;
+  const clip = shapePaintClipMarkup(
+    obj.id, p.closedD, obj.cellX * u, obj.cellY * u, obj.cellWidth * u, obj.cellHeight * u,
+  );
+  return {
+    fill: p.fillMarkup + clip + p.patternMarkup,
+    strokes: p.strokeDefs + p.strokes + p.glowBand,
+    opacity: svgObjectOpacity(obj),
+    paintClipId: clip ? shapePaintClipId(obj.id) : null,
+  };
+}
+
+/** The whole-object Opacity row's value, clamped — what
+ *  {@link wrapSVGObjectOpacity} wraps and {@link buildSVGObjectLayers}
+ *  hands to its host. */
+export function svgObjectOpacity(obj: Pick<SVGObject, 'opacity'>): number {
+  return obj.opacity == null ? 1 : clamp01(obj.opacity);
+}
+
+/** The pieces a flat (non-repeat) shape's markup is put together from —
+ *  built once here so the one-svg and the two-svg readers cannot draw a
+ *  fill or a stroke two ways. */
+interface SVGObjectParts {
+  /** The stroke presentation's `<defs>` (a gradient stroke's), or ''. */
+  strokeDefs: string;
+  /** Fill defs + the closed fill path, or '' when the shape is unfilled. */
+  fillMarkup: string;
+  /** The closed outline the fill, the paint layer and the pattern tiles
+   *  share, or '' when nothing asked for one. */
+  closedD: string;
+  /** The pattern fill's tiles clipped to that outline, or ''. */
+  patternMarkup: string;
+  /** The subpaths, or the stroke path with its endpoint decorations. */
+  strokes: string;
+  /** The painted inner-glow band — only on the single-path form. */
+  glowBand: string;
+}
+
+function svgObjectParts(
+  obj: SVGObject,
+  strokeScale: number,
+  unitsPerCell: number,
+  opts?: { nonScaling?: boolean; patternFillMarkup?: string; closedOutline?: boolean },
+): SVGObjectParts {
   const radius = svgStrokeRadiusCells(obj);
   const { defs, attrs, segments } = svgStrokePresentation(obj, strokeScale, unitsPerCell, { nonScaling: opts?.nonScaling ?? true });
-
-  let result = defs;
 
   // Fill path — rendered before strokes so the outline sits on top, and
   // following the same (possibly corner-rounded) outline the stroke does.
@@ -962,53 +1081,35 @@ export function buildSVGObjectContent(
   // whose fill belongs to the tiled figure beneath it).
   const fill = svgFillPresentation(obj, `grad_${obj.id}`);
   const patternTiles = opts?.patternFillMarkup ?? '';
-  const closedD = fill || obj.paintOverlay || patternTiles ? buildClosedFillPathD(segments) : '';
-  let fillMarkup = '';
-  if (fill && closedD) {
-    fillMarkup = `${fill.defs}<path d="${closedD}" ${fill.attrs} stroke="none" fill-rule="nonzero" />`;
-  }
-  // Color-tool paint layer (v49): the low-res bitmap stretched over the bbox
-  // and clipped to the same closed outline the fill paints, blended with its
-  // one mode. Isolated together with the fill so the blend composites
-  // against the shape's own interior, not the canvas behind it — the same
-  // confinement the image node's overlay gets. Sits under the strokes (and
-  // any recolored fill subpaths), so painted outlines stay legible.
-  if (obj.paintOverlay && closedD) {
-    const u = SVG_UNITS_PER_L0_CELL;
-    const overlay = shapePaintOverlaySVG(
-      obj.paintOverlay, obj.id, closedD,
-      obj.cellX * u, obj.cellY * u, obj.cellWidth * u, obj.cellHeight * u,
-      opts?.paintOverlaySlot,
-    );
-    fillMarkup = `<g style="isolation:isolate">${fillMarkup}${overlay}</g>`;
-  }
-  result += fillMarkup;
+  const closedD = fill || obj.paintOverlay || patternTiles || opts?.closedOutline
+    ? buildClosedFillPathD(segments)
+    : '';
+  const fillMarkup = fill && closedD
+    ? `${fill.defs}<path d="${closedD}" ${fill.attrs} stroke="none" fill-rule="nonzero" />`
+    : '';
   // The PATTERN fill (v67), over the solid fill and under the strokes: a
   // shape carrying both shows its colour through the gaps in the tiles,
   // and its own outline on top of them either way. Clipped to the fill's
   // own closed outline — the tiles are baked across the shape's whole box
   // and it is the clip that makes them a FILL.
-  result += shapePatternFillMarkup(obj, patternTiles, closedD);
+  const patternMarkup = shapePatternFillMarkup(obj, patternTiles, closedD);
 
   if (Array.isArray(obj.subpaths) && obj.subpaths.length > 0) {
-    result += buildSubpathsMarkup(obj.subpaths, attrs, (segs) => buildPathD(segs),
+    const strokes = buildSubpathsMarkup(obj.subpaths, attrs, (segs) => buildPathD(segs),
       radius > 0 ? (segs) => roundPathCorners(segs, radius) : undefined);
-    return wrapSVGObjectOpacity(obj, result, strokeScale);
+    return { strokeDefs: defs, fillMarkup, closedD, patternMarkup, strokes, glowBand: '' };
   }
 
   const d = buildPathD(segments);
-  if (!d) return wrapSVGObjectOpacity(obj, result, strokeScale);
+  if (!d) return { strokeDefs: defs, fillMarkup, closedD, patternMarkup, strokes: '', glowBand: '' };
   const { r: cr, g: cg, b: cb } = obj.color;
-  result += `<path d="${d}" ${attrs} stroke="rgb(${cr},${cg},${cb})" />`;
+  let strokes = `<path d="${d}" ${attrs} stroke="rgb(${cr},${cg},${cb})" />`;
   // Endpoint decorations last, so they sit on top of the stroke they cap. They
   // are sized off the stroke's width in CELLS, which is what makes them match
   // the line in whichever space this markup lands in.
-  result += svgEndpointsMarkup(obj, segments, svgStrokeWidthCells(obj, strokeScale, unitsPerCell));
-  // The whole-object Opacity bar (opacity + edge soften) wraps everything the
-  // object drew, so fill, stroke and decorations fade as one layer — and the
-  // inner-glow band goes OUTSIDE it, where the node's effects filter sits,
-  // so the two inner glows (filtered and painted) land in the same place in
-  // the stack.
-  return wrapSVGObjectOpacity(obj, result, strokeScale)
-    + svgInnerGlowBandMarkup(obj, segments, unitsPerCell);
+  strokes += svgEndpointsMarkup(obj, segments, svgStrokeWidthCells(obj, strokeScale, unitsPerCell));
+  return {
+    strokeDefs: defs, fillMarkup, closedD, patternMarkup, strokes,
+    glowBand: svgInnerGlowBandMarkup(obj, segments, unitsPerCell),
+  };
 }

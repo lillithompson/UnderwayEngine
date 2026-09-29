@@ -430,6 +430,50 @@ export function overlayPngDataUri(overlay: ImagePaintOverlay, ink?: PaintInk): s
  *  for the document's lifetime (see overlayCanvas.ts). */
 export type PaintOverlaySlot = 'image' | 'canvas';
 
+/** The id of a shape's paint clip — the one name both carriers of its paint
+ *  layer clip through: the in-svg overlay ({@link shapePaintOverlaySVG})
+ *  and a host-drawn canvas outside the svg ({@link shapePaintClipMarkup}),
+ *  whose `clip-path: url(#…)` resolves against the document. Unique per
+ *  document because the object id is. */
+export function shapePaintClipId(id: string): string {
+  return `paintclip_${id}`;
+}
+
+/**
+ * The shape's closed outline as a clip for a paint canvas that lives OUTSIDE
+ * its svg — an HTML `<canvas>` the live DOM layer lays over the shape's box
+ * and CSS-clips with `clip-path: url(#id)`. The canvas is an HTML element, so
+ * the clip is spelled in `objectBoundingBox` units: the outline (`fillD`, in
+ * the caller's geometry units, the same `d` the fill paints with) is moved
+ * off the box's corner and scaled onto the unit square, and the browser
+ * stretches it back over whatever box the canvas is given — which is the
+ * same box the fill was drawn in, so paint can't bleed past the fill.
+ *
+ * Why the canvas lives outside the svg at all: a `<canvas>` inside a
+ * `<foreignObject>` is a composited layer inside SVG, and WebKit places and
+ * scales that layer on its own terms — sized by the foreignObject's user
+ * units (hundreds of px per cell) rather than the viewBox the svg is drawn
+ * through. On iOS a painted shape showed its stroke enormous and out of
+ * place, and on every WebKit the layer was scaled unsmoothed. An HTML canvas
+ * in the node's own box has neither problem, which is how image paint has
+ * always been carried.
+ *
+ * '' for a box with no area — there is nothing to scale onto.
+ */
+export function shapePaintClipMarkup(
+  id: string,
+  fillD: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): string {
+  if (!(width > 0) || !(height > 0) || !fillD) return '';
+  return `<clipPath id="${shapePaintClipId(id)}" clipPathUnits="objectBoundingBox">` +
+    `<path d="${fillD}" fill-rule="nonzero"` +
+    ` transform="scale(${1 / width} ${1 / height}) translate(${-x} ${-y})"/></clipPath>`;
+}
+
 /**
  * A solid shape's paint layer as SVG markup: the overlay stretched over the
  * bbox and clipped to the shape's own closed outline (`fillD`, in the
@@ -454,7 +498,7 @@ export function shapePaintOverlaySVG(
   height: number,
   slot: PaintOverlaySlot = 'image',
 ): string {
-  const clipId = `paintclip_${id}`;
+  const clipId = shapePaintClipId(id);
   const blend = `mix-blend-mode:${paintBlendCss(overlay.blend) ?? 'normal'}`;
   const clip = `<clipPath id="${clipId}"><path d="${fillD}" fill-rule="nonzero"/></clipPath>`;
   if (slot === 'canvas') {
