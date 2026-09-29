@@ -112,4 +112,35 @@ describe('withSVGObjectStrokeColor', () => {
     expect(out.fillColor).toEqual({ r: 10, g: 20, b: 30 });
     expect(out.fillOpacity).toBe(0.5);
   });
+
+  it('floods a PATTERN fill’s cells with the rest of the fills, and only then (bug 3141ad4d)', () => {
+    // The tiles are baked from the cells' own inks, so nothing else on the
+    // object says what they draw in: a Patchwork patch under the Today
+    // cutout's white came out as a white outline round coloured strokes.
+    const transform = { rotation: 0, mirrorH: false, mirrorV: false } as never;
+    const cells = [
+      { type: 'sprite', spriteId: 'angular/tile_00000001', transform, tintR: 200, tintG: 40, tintB: 40 },
+      { type: 'sprite', spriteId: 'angular/tile_00000001', transform },
+      { type: 'color', r: 9, g: 9, b: 9, transform },
+      null,
+    ] as never;
+    const src = shape({ patternFill: { size: 2, cells, tileL0: 2 } });
+    const flooded = withSVGObjectStrokeColor(src, WHITE, { floodFills: true });
+    // A tinted sprite loses its tint (white IS the base ink, stored as no
+    // tint), an untinted one stays untinted, a colour cell goes white, an
+    // empty cell stays empty — and the tile's shape is untouched.
+    expect(flooded.patternFill!.cells).toEqual([
+      { type: 'sprite', spriteId: 'angular/tile_00000001', transform },
+      { type: 'sprite', spriteId: 'angular/tile_00000001', transform },
+      { type: 'color', r: 255, g: 255, b: 255, transform },
+      null,
+    ]);
+    expect(flooded.patternFill!.size).toBe(2);
+    expect(flooded.patternFill!.tileL0).toBe(2);
+    // The line-art override alone leaves the fill's tiles as authored: a
+    // fill is an area, and the plain rule spares areas.
+    expect(withSVGObjectStrokeColor(src, WHITE).patternFill).toBe(src.patternFill);
+    // …and the source is untouched either way.
+    expect(src.patternFill!.cells[0]).toMatchObject({ tintR: 200 });
+  });
 });

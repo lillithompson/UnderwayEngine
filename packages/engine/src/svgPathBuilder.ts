@@ -7,6 +7,7 @@ import { packKey, unpackKey, forEachVisibleTile } from './tileSegmentOverrides';
 import { borderDashPattern, innerGlowBandFilter, paintToSvg, scaleEffects } from './paintSvg';
 import { tintFillToPaint } from './imageTintFill';
 import { shapePatternFillIsEmpty } from './shapePatternFill';
+import { inkedPatternCell } from './patternObject';
 import { PaintOverlaySlot, shapePaintClipId, shapePaintClipMarkup, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import {
@@ -861,6 +862,16 @@ export function svgStrokePresentation(
  * otherwise white cutout. Callers name those objects one at a time (see
  * `CompositionSVGInputs.silhouette`) rather than flipping the rule for
  * everything, because for ordinary line art the rule is right.
+ *
+ * A flood reaches the shape's PATTERN fill too (v67+, `patternFill`): its
+ * tiles are baked from the fill's own cells, each carrying its own ink, so
+ * neither the object's `color` nor its subpaths say what they draw in —
+ * and a Patchwork patch under the Today cutout's "every object white" came
+ * out as a white outline round pattern strokes still in their authored
+ * colours (CozyJournal bug 3141ad4d). Every cell is re-inked
+ * ({@link inkedPatternCell}) so the bake that follows draws white; the
+ * cells array is new, so the bake cache (patternObjectRender) misses once
+ * per flooded export — a cutout is made on save, never per frame.
  */
 export function withSVGObjectStrokeColor(
   obj: SVGObject,
@@ -872,6 +883,12 @@ export function withSVGObjectStrokeColor(
     out.subpaths = obj.subpaths.map((sub) => (
       sub.fill && !opts?.floodFills ? sub : { ...sub, color }
     ));
+  }
+  if (opts?.floodFills && obj.patternFill) {
+    out.patternFill = {
+      ...obj.patternFill,
+      cells: obj.patternFill.cells.map((cell) => inkedPatternCell(cell, color)),
+    };
   }
   if (obj.segmentOverrides && obj.segmentOverrides.size > 0) {
     const overrides = new Map<number, RGBColor>();

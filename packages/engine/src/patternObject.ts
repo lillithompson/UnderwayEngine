@@ -833,6 +833,20 @@ export function tintedPatternCell(cell: CellState, color: RGBColor): CellState {
   return { ...cell, tintR: color.r, tintG: color.g, tintB: color.b };
 }
 
+/** The cell drawn in `color`, WHATEVER it is — a sprite tinted to it
+ *  ({@link tintedPatternCell}), a colour cell made that colour — for a
+ *  picture that is being flooded in one ink rather than recoloured: an
+ *  export landing on a ground the page never had, where every mark goes
+ *  white (svgPathBuilder.withSVGObjectStrokeColor's `floodFills`). A
+ *  recolour spares colour cells because one IS a colour; a flood does not,
+ *  because the flood is about what the object draws, not what it means.
+ *  An empty cell stays empty. */
+export function inkedPatternCell(cell: CellState, color: RGBColor): CellState {
+  if (!cell) return cell;
+  if (cell.type === 'color') return { ...cell, r: color.r, g: color.g, b: color.b };
+  return tintedPatternCell(cell, color);
+}
+
 /** The colour a cell currently draws in, or null when it draws in the
  *  object's own ink (an untinted sprite). */
 export function patternCellTint(cell: CellState): RGBColor | null {

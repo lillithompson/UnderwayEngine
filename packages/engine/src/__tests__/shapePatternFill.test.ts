@@ -12,7 +12,7 @@
  */
 
 import { applyCompOps, revertCompOps } from '../compositionOps';
-import { patternApplyToolAt } from '../patternObject';
+import { patternApplyToolAt, tintedPatternCell } from '../patternObject';
 import { patternGridThumbnailUri, shapePatternFillTiles } from '../patternObjectRender';
 import {
   DEFAULT_SHAPE_PATTERN_SIZE,
@@ -33,7 +33,7 @@ import {
   shapePatternGrid,
   withShapePatternFill,
 } from '../shapePatternFill';
-import { buildClosedFillPathD, buildSVGObjectContent, svgEnclosesArea } from '../svgPathBuilder';
+import { buildClosedFillPathD, buildSVGObjectContent, svgEnclosesArea, withSVGObjectStrokeColor } from '../svgPathBuilder';
 import {
   CellState,
   CompositionState,
@@ -560,6 +560,23 @@ describe('the markup', () => {
       { ...svg, patternFill: { size: 2, cells: new Array(4).fill(null), tileL0: 2 } }, 1,
     )).toBe('');
     expect(shapePatternFillTiles(rect('svg_1', 0, 0, 4, 4), 1)).toBe('');
+  });
+
+  it('bakes the tiles in the flood ink once the shape is flooded (bug 3141ad4d)', () => {
+    // The Today cutout floods every object white; the tiles are drawn
+    // from the cells, so the flood has to reach them or the patch's
+    // pattern strokes come out in their authored colour.
+    const red = { r: 200, g: 40, b: 40 };
+    const tinted = {
+      ...svg,
+      patternFill: { ...svg.patternFill, cells: svg.patternFill.cells.map((c) => tintedPatternCell(c, red)) },
+    };
+    expect(shapePatternFillTiles(tinted, 1)).toContain('rgb(200,40,40)');
+    const white = withSVGObjectStrokeColor(tinted, { r: 255, g: 255, b: 255 }, { floodFills: true });
+    const tiles = shapePatternFillTiles(white, 1);
+    expect(tiles).not.toBe('');
+    expect(tiles).not.toContain('rgb(200,40,40)');
+    expect(tiles).toContain('rgb(255,255,255)');
   });
 
   it('clips the tiles to the shape s own outline, over the fill and under the stroke', () => {
