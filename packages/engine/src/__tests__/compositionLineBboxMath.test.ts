@@ -6,6 +6,7 @@ import {
   computeCreationBox,
   computeHeartSegments,
   computeRectSegments,
+  computeRightTriangleSegments,
   computeSpiralSegments,
   computeSemiTorusSegments,
   computeSemicircleSegments,
@@ -477,6 +478,38 @@ describe('computeSemicircleSegments', () => {
     // Symmetric about the box's vertical middle.
     const xs = pts.map(([x]) => x).sort((a, b) => a - b);
     for (let i = 0; i < xs.length; i++) expect(xs[i] + xs[xs.length - 1 - i]).toBeCloseTo(0, 9);
+  });
+});
+
+describe('computeRightTriangleSegments', () => {
+  it('is a CLOSED three-segment chain filling the drag box exactly', () => {
+    const s = computeRightTriangleSegments(2, 4, 10, 8);
+    expect(s).toHaveLength(3);
+    for (let i = 0; i < s.length; i++) {
+      expect(s[i].end).toEqual(s[(i + 1) % s.length].start);
+    }
+    const xs = s.map((seg) => seg.start[0]);
+    const ys = s.map((seg) => seg.start[1]);
+    expect(Math.min(...xs)).toBeCloseTo(2, 9);
+    expect(Math.max(...xs)).toBeCloseTo(10, 9);
+    expect(Math.min(...ys)).toBeCloseTo(4, 9);
+    expect(Math.max(...ys)).toBeCloseTo(8, 9);
+  });
+
+  it('puts the right angle at the box’s bottom-left corner whichever way the drag ran', () => {
+    for (const [sx, sy, ex, ey] of [[2, 4, 10, 8], [10, 8, 2, 4], [10, 4, 2, 8]]) {
+      const pts = computeRightTriangleSegments(sx, sy, ex, ey).map((seg) => seg.start);
+      // Top-left, bottom-left, bottom-right: the legs meet at (2, 8).
+      expect(pts).toEqual([[2, 4], [2, 8], [10, 8]]);
+    }
+  });
+
+  it('is the isosceles right triangle on a square box', () => {
+    const [a, b, c] = computeRightTriangleSegments(0, 0, 6, 6).map((seg) => seg.start);
+    expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeCloseTo(6, 9);
+    expect(Math.hypot(c[0] - b[0], c[1] - b[1])).toBeCloseTo(6, 9);
+    // The hypotenuse is the diagonal.
+    expect(Math.hypot(a[0] - c[0], a[1] - c[1])).toBeCloseTo(6 * Math.SQRT2, 9);
   });
 });
 

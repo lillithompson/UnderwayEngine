@@ -383,6 +383,24 @@ export function computeSemicircleSegments(
 }
 
 /**
+ * A CLOSED right triangle filling the drag's box: the right angle at the
+ * box's bottom-left corner, one leg up its left edge, the other along its
+ * bottom, the hypotenuse falling from top-left to bottom-right. Three
+ * vertices, so a square drag gives the isosceles right triangle and any
+ * other box the one that fills it — the polygon rule, and the same fixed
+ * orientation the semicircle keeps (dome up) rather than the drag's
+ * direction; a mirrored one is a flip away. Point-up like the regular
+ * 3-gon is NOT what this is: that one is equilateral and never right.
+ */
+export function computeRightTriangleSegments(
+  sx: number, sy: number,
+  ex: number, ey: number,
+): PathSegment[] {
+  const raw: [number, number][] = [[0, 0], [0, 1], [1, 1]];
+  return chainPoints(fitPointsToBox(raw, sx, sy, ex, ey), true);
+}
+
+/**
  * A CLOSED semi-torus — half a ring, an arch — filling the drag's box, dome
  * UP: the outer half circle left to right over the crown, then the inner
  * one back right to left at {@link SEMI_TORUS_INNER_RATIO} of its radius,
