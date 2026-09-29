@@ -23,7 +23,7 @@ import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildClosedFillPathD, buildSubpathsMarkup, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgDrawsOwnInnerGlow, svgFillPresentation, svgInnerGlowBandMarkup, svgIsFilled, svgObjectStrokesOnly, svgStrokePresentation, wearOrWrap, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
+import { buildPathD, buildClosedFillPathD, buildSubpathsMarkup, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgDrawsOwnInnerGlow, svgFillPresentation, svgInnerGlowBandMarkup, svgIsFilled, svgObjectFillFlooded, svgObjectStrokesOnly, svgStrokePresentation, wearOrWrap, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
 import { roundPathCorners, strokeScaleForUnits, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
 import { svgEndpointsMarkup } from './svgEndpoints';
 import { arcBoundingBox } from './compositionArcHitTest';
@@ -363,6 +363,22 @@ export interface CompositionSVGInputs {
    * the cutout's ink like any other line and there is no fill left to flood.
    */
   strokesOnly?: CompositionSubsetSelector;
+  /**
+   * Objects whose OWN fill — the solid or gradient they were filled with —
+   * is repainted flat in `strokeColorOverride` ({@link svgObjectFillFlooded}).
+   *
+   * `silhouette` floods what an object's SUBPATHS and pattern cells fill; the
+   * shape's own fill block is left alone by both, on the rule that an area
+   * is not a line. For a page whose shapes ARE their fills — a page of solid
+   * cut-outs with no outline at all — that rule leaves every one of them in
+   * its authored colour on a ground the page never had: black holes in a
+   * whited tile. Naming those objects here (rather than flooding every
+   * fill) keeps a coloured-in drawing's areas from collapsing into blocks in
+   * the same pass. Applied after `strokesOnly` and before the line override,
+   * so a hollowed shape (no fill left) is unaffected and a flooded one's
+   * outline still takes the ink. No-op without `strokeColorOverride`.
+   */
+  solidFills?: CompositionSubsetSelector;
   /**
    * Repaint every PAINT ISLAND in this color, whatever colors were brushed
    * into it, keeping each texel's alpha — so the brushwork keeps its shape,
@@ -1375,14 +1391,25 @@ export async function generateCompositionSVGCore(
       paints: input.paintObjects ?? [],
       groups,
     });
+    // …and the objects whose OWN fill takes the ink flat (see `solidFills`),
+    // asked of the unfiltered scene like the rest.
+    const solid = input.solidFills?.({
+      figures: input.figures,
+      svgObjects: input.svgObjects,
+      images: input.images,
+      texts: input.texts ?? [],
+      paints: input.paintObjects ?? [],
+      groups,
+    });
     // One decision, applied twice: to the WORLD objects here (what the
     // masks, the frame union and `patternFillBackground` go on reading) and
     // again to the LOCAL twin each is drawn from below. A pure function of
     // the object, so asking it twice cannot give two answers.
     const hollowed = inkOverride;
     inkOverride = (s: SVGObject): SVGObject => {
-      const obj = hollowed(s);
-      if (only && !only.has(s.id)) return obj;
+      const shaped = hollowed(s);
+      if (only && !only.has(s.id)) return shaped;
+      const obj = solid?.has(s.id) ? svgObjectFillFlooded(shaped, strokeInk) : shaped;
       return withSVGObjectStrokeColor(
         obj, strokeInk,
         flooded?.has(s.id) || patternViewIds.has(s.id) ? { floodFills: true } : undefined,

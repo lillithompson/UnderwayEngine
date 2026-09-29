@@ -549,6 +549,28 @@ export function svgObjectStrokesOnly(obj: SVGObject): SVGObject {
 }
 
 /**
+ * The shape with its own interior repainted FLAT in `color`, at full
+ * opacity — whatever it was filled with: the editable `fill` block (a solid
+ * or a gradient), the flattened `fillPaint`, or the legacy `fillColor`. The
+ * geometry, the stroke, the subpaths, any pattern fill and the object's id
+ * are untouched; a shape with no fill of its own gets none.
+ *
+ * For a small picture of a page whose shapes ARE their fills — a page of
+ * solid black cut-outs — landing on a ground the page never had, where the
+ * fill has to take the cutout's ink or the picture is a black hole in a
+ * whited tile. See {@link CompositionSVGInputs.solidFills}, which names the
+ * objects this is applied to; the ordinary rule leaves an area alone.
+ */
+export function svgObjectFillFlooded(obj: SVGObject, color: RGBColor): SVGObject {
+  if (!svgIsFilled(obj)) return obj;
+  const out: SVGObject = { ...obj, fillColor: { r: color.r, g: color.g, b: color.b } };
+  delete out.fill;
+  delete out.fillPaint;
+  delete out.fillOpacity;
+  return out;
+}
+
+/**
  * Whether the shape draws ANYTHING inside its own outline — a paint of any
  * kind, or a PATTERN fill's tiles (v67+), which repeat inside the outline
  * and are clipped to it.

@@ -1293,3 +1293,73 @@ describe('overlaySvgObjects', () => {
     expect(cut).toContain('stroke="rgb(220,38,38)"');
   });
 });
+
+describe('solidFills — the objects whose own fill takes the override ink', () => {
+  const WHITE = { r: 255, g: 255, b: 255 };
+  function makeSvg(overrides: Partial<SVGObject> & { id: string }): SVGObject {
+    return {
+      segments: closedSquare,
+      color: { r: 10, g: 20, b: 30 },
+      cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+      ...overrides,
+    } as SVGObject;
+  }
+  const flat = () => makeSvg({
+    id: 'svg_cutout',
+    segments: closedSquare,
+    cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+    color: { r: 0, g: 0, b: 0 },
+    fillColor: { r: 0, g: 0, b: 0 },
+    stroke: { width: 0 },
+  });
+
+  it('repaints a named shape’s own fill flat in the ink — a black cut-out reads white', async () => {
+    // A page of solid, unoutlined shapes (CozyJournal's Shadows): under the
+    // line override alone every one of them kept its black, a hole in a
+    // whited tile, because an area is not a line. Named here, the fill takes
+    // the ink.
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [flat()],
+      strokeColorOverride: WHITE,
+      silhouette: () => new Set(['svg_cutout']),
+      solidFills: () => new Set(['svg_cutout']),
+    }));
+    expect(svg).toContain('fill="rgb(255,255,255)"');
+    expect(svg).not.toContain('fill="rgb(0,0,0)"');
+  });
+
+  it('is a no-op for a shape it does not name, and without the override', async () => {
+    const unnamed = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [flat()],
+      strokeColorOverride: WHITE,
+      silhouette: () => new Set(['svg_cutout']),
+      solidFills: () => new Set<string>(),
+    }));
+    expect(unnamed).toContain('fill="rgb(0,0,0)"');
+    const noInk = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [flat()],
+      solidFills: () => new Set(['svg_cutout']),
+    }));
+    expect(noInk).toContain('fill="rgb(0,0,0)"');
+  });
+
+  it('repaints the editable fill block too — a gradient goes flat', async () => {
+    const graded = makeSvg({
+      id: 'svg_cutout',
+      segments: closedSquare,
+      cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32,
+      fill: {
+        type: 'gradient', solid: { r: 0, g: 0, b: 0 }, opacity: 1, blend: 'normal', angle: 90,
+        stops: [{ color: { r: 0, g: 0, b: 0 }, offset: 0 }, { color: { r: 80, g: 80, b: 80 }, offset: 1 }],
+      } as never,
+      stroke: { width: 0 },
+    });
+    const svg = await generateCompositionSVGCore(makeInputs({
+      svgObjects: [graded],
+      strokeColorOverride: WHITE,
+      solidFills: () => new Set(['svg_cutout']),
+    }));
+    expect(svg).toContain('fill="rgb(255,255,255)"');
+    expect(svg).not.toContain('linearGradient');
+  });
+});

@@ -1,5 +1,5 @@
 import { PathSegment, RGBColor, SVGObject } from '../types';
-import { buildClosedFillPathD, withSVGObjectStrokeColor } from '../svgPathBuilder';
+import { buildClosedFillPathD, svgObjectFillFlooded, withSVGObjectStrokeColor } from '../svgPathBuilder';
 import { computeCircleSegments } from '../compositionArcMath';
 import { unionRegionContours } from '../outlineUnion';
 
@@ -142,5 +142,54 @@ describe('withSVGObjectStrokeColor', () => {
     expect(withSVGObjectStrokeColor(src, WHITE).patternFill).toBe(src.patternFill);
     // …and the source is untouched either way.
     expect(src.patternFill!.cells[0]).toMatchObject({ tintR: 200 });
+  });
+});
+
+describe('svgObjectFillFlooded', () => {
+  const WHITE: RGBColor = { r: 255, g: 255, b: 255 };
+  const square: PathSegment[] = [
+    { kind: 'line', start: [0, 0], end: [4, 0] },
+    { kind: 'line', start: [4, 0], end: [4, 4] },
+    { kind: 'line', start: [4, 4], end: [0, 4] },
+    { kind: 'line', start: [0, 4], end: [0, 0] },
+  ];
+  const base: SVGObject = {
+    id: 'svg_1', name: 'square', segments: square, color: { r: 0, g: 0, b: 0 },
+    cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4,
+  };
+
+  it('repaints the editable fill block flat — a solid and a gradient alike', () => {
+    const solid = { ...base, fill: { type: 'solid', solid: { r: 0, g: 0, b: 0 }, opacity: 1, blend: 'normal', angle: 90, stops: [] } as never };
+    const out = svgObjectFillFlooded(solid, WHITE);
+    expect(out.fill).toBeUndefined();
+    expect(out.fillColor).toEqual(WHITE);
+    expect(out.fillOpacity).toBeUndefined();
+    // Geometry, ink, id untouched.
+    expect(out.segments).toBe(base.segments);
+    expect(out.color).toEqual(base.color);
+    expect(out.id).toBe('svg_1');
+  });
+
+  it('repaints the legacy fillColor and drops its opacity — full white, not a wash', () => {
+    const legacy = { ...base, fillColor: { r: 10, g: 20, b: 30 }, fillOpacity: 0.4 };
+    const out = svgObjectFillFlooded(legacy, WHITE);
+    expect(out.fillColor).toEqual(WHITE);
+    expect(out.fillOpacity).toBeUndefined();
+  });
+
+  it('leaves an unfilled shape exactly as it is — nothing to repaint', () => {
+    expect(svgObjectFillFlooded(base, WHITE)).toBe(base);
+  });
+
+  it('touches neither the stroke nor the subpaths nor a pattern fill', () => {
+    const rich = {
+      ...base,
+      fillColor: { r: 1, g: 2, b: 3 },
+      stroke: { width: 0 },
+      subpaths: [{ segments: square, color: { r: 9, g: 9, b: 9 }, fill: true }],
+    };
+    const out = svgObjectFillFlooded(rich, WHITE);
+    expect(out.stroke).toEqual({ width: 0 });
+    expect(out.subpaths).toBe(rich.subpaths);
   });
 });

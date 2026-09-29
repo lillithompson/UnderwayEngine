@@ -154,6 +154,10 @@ export interface CompositionExportOptions {
   /** Objects that draw only their strokes — the fill comes off and the
    *  outline is left. See {@link CompositionSVGInputs.strokesOnly}. */
   strokesOnly?: CompositionSubsetSelector;
+  /** Objects whose OWN fill is repainted flat in `strokeColorOverride` — a
+   *  page of solid cut-outs on a ground it never had. See
+   *  {@link CompositionSVGInputs.solidFills}. */
+  solidFills?: CompositionSubsetSelector;
   /** Repaint every paint island in this color — or through this per-texel
    *  tone — texel alphas kept; the same intent as `strokeColorOverride` for
    *  the raster brush's marks. See
@@ -621,6 +625,7 @@ export async function exportCompositionSVGFromState(
     backdrop: options?.backdrop,
     silhouette: options?.silhouette,
     strokesOnly: options?.strokesOnly,
+    solidFills: options?.solidFills,
     paintColorOverride: options?.paintColorOverride,
     dropTextShadow: options?.dropTextShadow,
     viewBoxPadFraction: options?.viewBoxPadFraction,
