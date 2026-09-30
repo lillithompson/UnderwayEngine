@@ -303,6 +303,27 @@ describe('group and ungroup', () => {
     expect(toLegacyView(grouped).sceneOrder).toEqual(['img_1', 'img_2', 'txt_1']);
   });
 
+  test('members join in paint order, whatever order they are listed in', () => {
+    // A group behind, a loose text in the middle, a group in front — listed
+    // loose-first, the way `groupFigures` hands them over. Stacked in list
+    // order the text sank beneath the back group.
+    const g = fromLegacy(makeState({
+      images: [
+        image({ id: 'img_1', groupId: 'g1' }), image({ id: 'img_2', groupId: 'g1' }),
+        image({ id: 'img_3', groupId: 'g3' }), image({ id: 'img_4', groupId: 'g3' }),
+      ],
+      texts: [text({ id: 'txt_1' })],
+      groups: [group({ id: 'g1' }), group({ id: 'g3' })],
+      sceneOrder: ['img_1', 'img_2', 'txt_1', 'img_3', 'img_4'],
+    }));
+    const grouped = applySceneOps(g, buildGroup(g, ['txt_1', 'g3', 'g1'], 'g2', 'G2'));
+    expect(getNode(grouped, 'g2')!.children).toEqual(['g1', 'txt_1', 'g3']);
+    expect(toLegacyView(grouped).sceneOrder).toEqual(['img_1', 'img_2', 'txt_1', 'img_3', 'img_4']);
+    // …and dissolving the wrapper hands the same order back.
+    const back = applySceneOps(grouped, buildUngroup(grouped, 'g2'));
+    expect(toLegacyView(back).sceneOrder).toEqual(['img_1', 'img_2', 'txt_1', 'img_3', 'img_4']);
+  });
+
   test('both undo exactly', () => {
     const g = scene();
     expectRoundTrips(g, buildGroup(g, ['img_1', 'txt_1'], 'g2', 'G2'));

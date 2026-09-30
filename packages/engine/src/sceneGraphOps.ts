@@ -26,7 +26,7 @@ import {
   matMul, respellMirror,
 } from './sceneTransform';
 import {
-  SceneGraph, SceneNode, ancestors, descendants, leafThroughMatrix, worldMatrix,
+  SceneGraph, SceneNode, ancestors, descendants, leafThroughMatrix, paintOrderRanks, worldMatrix,
 } from './sceneGraph';
 
 // ── Ops ────────────────────────────────────────────────────────────────
@@ -248,7 +248,14 @@ export function buildGroup(
   graph: SceneGraph, nodeIds: readonly string[], groupId: string, groupName: string,
   opts?: { isFrame?: boolean; transform?: LocalTransform },
 ): SceneEntry {
-  const members = nodeIds.filter((id) => graph.nodes.get(id));
+  // Members join in the order they are DRAWN, never the order they were
+  // listed: a caller hands loose objects and whole child groups as two
+  // lists (`groupFigures`), and stacking them in that order sank every loose
+  // object beneath the first child group. Grouping never changes z-order.
+  const ranks = paintOrderRanks(graph);
+  const members = nodeIds
+    .filter((id) => graph.nodes.get(id))
+    .sort((a, b) => (ranks.get(a) ?? 0) - (ranks.get(b) ?? 0));
   // An EMPTY group is normally nothing to make. The exception is a group
   // being reproduced ahead of its members — what duplicating a group does,
   // so that each member is read into the graph in its group's frame rather

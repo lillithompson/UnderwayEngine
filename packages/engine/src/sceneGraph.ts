@@ -153,6 +153,26 @@ export function descendants(graph: SceneGraph, id: string): SceneNode[] {
 }
 
 /**
+ * Every node's place in paint order, back to front: a depth-first walk from
+ * the roots in which a group ranks just before its own children. Sorting any
+ * set of nodes by it — leaves, groups, or a mix at different depths — puts
+ * them in the order they are drawn.
+ */
+export function paintOrderRanks(graph: SceneGraph): Map<string, number> {
+  const ranks = new Map<string, number>();
+  const walk = (ids: readonly string[]) => {
+    for (const id of ids) {
+      const node = graph.nodes.get(id);
+      if (!node) continue;
+      ranks.set(id, ranks.size);
+      if (node.children) walk(node.children);
+    }
+  };
+  walk(graph.roots);
+  return ranks;
+}
+
+/**
  * Every leaf in the graph, back to front — the derived replacement for
  * `sceneOrder`. Groups are skipped; their children appear in place, which
  * is what made group members contiguous in the legacy array and is now
