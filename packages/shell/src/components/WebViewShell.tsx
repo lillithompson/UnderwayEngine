@@ -310,6 +310,18 @@ export default function WebViewShell({
             bounces={false}
             scalesPageToFit={false}
             scrollEnabled={false}
+            // The page is a phone-shaped editor on every device it runs
+            // on, so say so. An iPad's WKWebView otherwise defaults to
+            // DESKTOP content mode and a user agent that reads
+            // "Macintosh" — no "iPad", no "Safari" — and every library
+            // that branches on the user agent then takes its desktop
+            // path on a tablet. One of them cost twelve seconds per
+            // editor open: expo-font's web loader waits on a font
+            // observer WebKit breaks, with a 12 000 ms timeout, unless
+            // the agent names an iPhone, iPad or Safari. `mobile` gives
+            // the iPad the same agent shape as the phone, and the same
+            // viewport and touch behaviour with it.
+            contentMode="mobile"
             allowsBackForwardNavigationGestures={false}
             keyboardDisplayRequiresUserAction={false}
             // Suppress iOS's native keyboard accessory bar (the ‹ › + Done
