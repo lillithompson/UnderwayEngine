@@ -268,8 +268,12 @@ const SPIRAL_STEPS_PER_TURN = 36;
  *  sampled curve on the page is, and the crown at 12 o'clock is a sampled
  *  vertex (an even count) so the chain's bounds meet the box exactly. */
 const SEMICIRCLE_STEPS = 16;
-/** The semi-torus's inner radius as a fraction of its outer: a ring whose
- *  hole is half its width. */
+/** Line segments a QUARTER circle is sampled into — half the half's, so
+ *  the quarter circle and the quarter ring are drawn at the same density
+ *  as the semicircle, and the arc's two ends are sampled vertices. */
+const QUARTER_CIRCLE_STEPS = SEMICIRCLE_STEPS / 2;
+/** The semi-torus's (and the quarter torus's) inner radius as a fraction
+ *  of its outer: a ring whose hole is half its width. */
 const SEMI_TORUS_INNER_RATIO = 0.5;
 
 /** Map raw sample points onto the box with corners (sx, sy) and (ex, ey)
@@ -359,9 +363,24 @@ export function computeStarSegments(
  *  step in. {@link SEMICIRCLE_STEPS} chords, so SEMICIRCLE_STEPS + 1
  *  points, the crown among them. */
 function upperHalfCirclePoints(radius: number): [number, number][] {
+  return circleArcPoints(radius, Math.PI, 0, SEMICIRCLE_STEPS);
+}
+
+/** The upper-right quarter of the circle, sampled from the top down to
+ *  the right: (0, −1) round to (1, 0), y-down — the arc the quarter circle
+ *  and the quarter torus share, at the semicircle's density. */
+function upperRightQuarterCirclePoints(radius: number): [number, number][] {
+  return circleArcPoints(radius, Math.PI / 2, 0, QUARTER_CIRCLE_STEPS);
+}
+
+/** An arc of the circle of `radius` about the origin, sampled into `steps`
+ *  chords from `fromAngle` to `toAngle` (standard position, y-UP angles
+ *  mapped onto the y-down page, so π/2 is the crown at 12 o'clock and 0 is
+ *  3 o'clock). `steps` + 1 points, both ends among them. */
+function circleArcPoints(radius: number, fromAngle: number, toAngle: number, steps: number): [number, number][] {
   const pts: [number, number][] = [];
-  for (let i = 0; i <= SEMICIRCLE_STEPS; i++) {
-    const a = Math.PI - (i * Math.PI) / SEMICIRCLE_STEPS;
+  for (let i = 0; i <= steps; i++) {
+    const a = fromAngle + ((toAngle - fromAngle) * i) / steps;
     pts.push([radius * Math.cos(a), -radius * Math.sin(a)]);
   }
   return pts;
@@ -416,6 +435,41 @@ export function computeSemiTorusSegments(
 ): PathSegment[] {
   const outer = upperHalfCirclePoints(1);
   const inner = upperHalfCirclePoints(SEMI_TORUS_INNER_RATIO).reverse();
+  return chainPoints(fitPointsToBox([...outer, ...inner], sx, sy, ex, ey), true);
+}
+
+/**
+ * A CLOSED quarter circle filling the drag's box: the right angle at the
+ * box's bottom-left corner — the right triangle's corner — one radius up
+ * its left edge, the other along its bottom, and the arc bulging from
+ * top-left round to bottom-right where the hypotenuse would fall. A square
+ * drag gives the true quarter disc and any other box the quarter ellipse
+ * that fills it — the polygon rule. Sampled like the semicircle, at half
+ * its chord count for half its arc, and closed along the two radii.
+ */
+export function computeQuarterCircleSegments(
+  sx: number, sy: number,
+  ex: number, ey: number,
+): PathSegment[] {
+  const raw: [number, number][] = [[0, 0], ...upperRightQuarterCirclePoints(1)];
+  return chainPoints(fitPointsToBox(raw, sx, sy, ex, ey), true);
+}
+
+/**
+ * A CLOSED quarter torus — a quarter of a ring, a bracket — filling the
+ * drag's box, the corner at bottom-left: the outer quarter arc from the
+ * box's top-left round to its bottom-right, then the inner one back at
+ * {@link SEMI_TORUS_INNER_RATIO} of its radius, the two flat ends closing
+ * the figure along the box's bottom and left edges. The same inner ratio
+ * as the semi-torus, so the band is a quarter of the box on each side and
+ * under a freeform stretch stays so along each axis.
+ */
+export function computeQuarterTorusSegments(
+  sx: number, sy: number,
+  ex: number, ey: number,
+): PathSegment[] {
+  const outer = upperRightQuarterCirclePoints(1);
+  const inner = upperRightQuarterCirclePoints(SEMI_TORUS_INNER_RATIO).reverse();
   return chainPoints(fitPointsToBox([...outer, ...inner], sx, sy, ex, ey), true);
 }
 

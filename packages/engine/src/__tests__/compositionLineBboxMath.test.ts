@@ -5,6 +5,8 @@ import {
   computeLineVertices,
   computeCreationBox,
   computeHeartSegments,
+  computeQuarterCircleSegments,
+  computeQuarterTorusSegments,
   computeRectSegments,
   computeRightTriangleSegments,
   computeSpiralSegments,
@@ -567,5 +569,113 @@ describe('computeSemiTorusSegments', () => {
     expect(s[33].end).toEqual([2, 8]);
     // Everything sits at or above the flat: dome up.
     for (const seg of s) expect(seg.start[1]).toBeLessThanOrEqual(8 + 1e-9);
+  });
+});
+
+describe('computeQuarterCircleSegments', () => {
+  const segs = () => computeQuarterCircleSegments(2, 4, 10, 8);
+
+  it('is a CLOSED chain filling the drag box exactly', () => {
+    const s = segs();
+    // The corner, then 8 chords over the arc (9 points), closed back to
+    // the corner: 10 segments.
+    expect(s).toHaveLength(10);
+    for (let i = 0; i < s.length; i++) {
+      expect(s[i].end).toEqual(s[(i + 1) % s.length].start);
+    }
+    const xs = s.map((seg) => seg.start[0]);
+    const ys = s.map((seg) => seg.start[1]);
+    expect(Math.min(...xs)).toBeCloseTo(2, 9);
+    expect(Math.max(...xs)).toBeCloseTo(10, 9);
+    expect(Math.min(...ys)).toBeCloseTo(4, 9);
+    expect(Math.max(...ys)).toBeCloseTo(8, 9);
+  });
+
+  it('puts the right angle at the box’s bottom-left corner whichever way the drag ran, the arc top-left to bottom-right', () => {
+    for (const [sx, sy, ex, ey] of [[2, 4, 10, 8], [10, 8, 2, 4], [10, 4, 2, 8]]) {
+      const s = computeQuarterCircleSegments(sx, sy, ex, ey);
+      // The corner leads, where the right triangle's legs meet.
+      expect(s[0].start).toEqual([2, 8]);
+      // The arc opens on the box's top edge above the corner…
+      expect(s[1].start[0]).toBeCloseTo(2, 9);
+      expect(s[1].start[1]).toBeCloseTo(4, 9);
+      // …and ends on its bottom edge at the far right, the closing segment
+      // running back along the bottom to the corner.
+      const flat = s[s.length - 1];
+      expect(flat.start[0]).toBeCloseTo(10, 9);
+      expect(flat.start[1]).toBeCloseTo(8, 9);
+      expect(flat.end).toEqual([2, 8]);
+    }
+  });
+
+  it('is a TRUE quarter circle on a square box', () => {
+    const s = computeQuarterCircleSegments(-1, -1, 0, 0);
+    // Every arc vertex is a unit from the corner (−1, 0), in the
+    // upper-right quadrant about it.
+    for (const seg of s.slice(1)) {
+      const [x, y] = seg.start;
+      expect(Math.hypot(x + 1, y)).toBeCloseTo(1, 9);
+      expect(x).toBeGreaterThanOrEqual(-1 - 1e-9);
+      expect(y).toBeLessThanOrEqual(1e-9);
+    }
+  });
+});
+
+describe('computeQuarterTorusSegments', () => {
+  const segs = () => computeQuarterTorusSegments(2, 4, 10, 8);
+
+  it('is a CLOSED chain filling the drag box exactly', () => {
+    const s = segs();
+    // Two quarter arcs of 8 chords, two flats joining their ends.
+    expect(s).toHaveLength(18);
+    for (let i = 0; i < s.length; i++) {
+      expect(s[i].end).toEqual(s[(i + 1) % s.length].start);
+    }
+    const xs = s.map((seg) => seg.start[0]);
+    const ys = s.map((seg) => seg.start[1]);
+    expect(Math.min(...xs)).toBeCloseTo(2, 9);
+    expect(Math.max(...xs)).toBeCloseTo(10, 9);
+    expect(Math.min(...ys)).toBeCloseTo(4, 9);
+    expect(Math.max(...ys)).toBeCloseTo(8, 9);
+  });
+
+  it('the inner radius is HALF the outer, on a true quarter ring and under a stretch alike', () => {
+    // A square box: a true quarter ring about the bottom-left corner.
+    const ring = computeQuarterTorusSegments(-1, -1, 0, 0);
+    const r = ring.map((seg) => Math.hypot(seg.start[0] + 1, seg.start[1]));
+    const outer = r.slice(0, 9);
+    const inner = r.slice(9, 18);
+    for (const v of outer) expect(v).toBeCloseTo(1, 9);
+    for (const v of inner) expect(v).toBeCloseTo(0.5, 9);
+    // Stretched to a freeform box the ratio holds along each axis: the
+    // inner arc's ends sit halfway along each leg.
+    const s = segs();
+    const pts = s.map((seg) => seg.start);
+    expect(pts[0][0]).toBeCloseTo(2, 9); // outer top end, on the left edge
+    expect(pts[0][1]).toBeCloseTo(4, 9);
+    expect(pts[8][0]).toBeCloseTo(10, 9); // outer right end, on the bottom
+    expect(pts[8][1]).toBeCloseTo(8, 9);
+    expect(pts[9][0]).toBeCloseTo(6, 9); // inner right end: 2 + 8 / 2
+    expect(pts[9][1]).toBeCloseTo(8, 9);
+    expect(pts[17][0]).toBeCloseTo(2, 9); // inner top end: 8 − 4 / 2
+    expect(pts[17][1]).toBeCloseTo(6, 9);
+  });
+
+  it('runs the outer arc top to right and the inner back right to top, the corner bottom-left', () => {
+    const s = segs();
+    expect(s[0].start[0]).toBeCloseTo(2, 9); // outer top end, on the left edge
+    expect(s[0].start[1]).toBeCloseTo(4, 9);
+    expect(s[7].end[0]).toBeCloseTo(10, 9); // outer right end
+    expect(s[7].end[1]).toBeCloseTo(8, 9);
+    // The bottom flat steps in to the inner arc's right end…
+    expect(s[8].end[0]).toBeCloseTo(6, 9);
+    expect(s[8].end[1]).toBeCloseTo(8, 9);
+    // …and the last segment is the left flat, back up to the start.
+    expect(s[17].start[0]).toBeCloseTo(2, 9);
+    expect(s[17].start[1]).toBeCloseTo(6, 9);
+    expect(s[17].end[0]).toBeCloseTo(2, 9);
+    expect(s[17].end[1]).toBeCloseTo(4, 9);
+    // The corner itself is empty: nothing sits on it.
+    for (const seg of s) expect(Math.hypot(seg.start[0] - 2, seg.start[1] - 8)).toBeGreaterThan(1);
   });
 });
