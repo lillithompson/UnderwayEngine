@@ -17,7 +17,7 @@ import {
 import { leafHitFrame, localContentBox, localHitObject } from './sceneHitFrame';
 import {
   Bbox, Mat2D, axisScaleSplit, localMatrix, matApplyBbox, matApplyPoint, matMul, matTranslate,
-  matrixString,
+  matrixString, unstretchedBoxPose,
 } from './sceneTransform';
 import { effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
@@ -1753,8 +1753,13 @@ export async function generateCompositionSVGCore(
     // `tileGap`, the offsets) come along for free instead of staying at
     // their authored size inside a grown box.
     const pose = exportPose(graph, 'image', raw);
-    const iw = pose.box.width * U;
-    const ih = pose.box.height * U;
+    // Framed in a box of the proportions it is DRAWN at, so a per-axis scale
+    // on the matrix (a corner drag off the picture's ratio, a group pulled
+    // off square) never stretches the bitmap — the canvas's
+    // drawnPose.imageDrawnGeometry makes the same split.
+    const drawn = unstretchedBoxPose(pose.box, pose.world);
+    const iw = drawn.box.width * U;
+    const ih = drawn.box.height * U;
     // Real exports prefer the higher-res original; thumbnails/previews keep
     // the small display blob. Fall back to the display blob whenever the
     // original is absent (old saves, or a source that already fit the cap) —
@@ -1864,10 +1869,11 @@ export async function generateCompositionSVGCore(
     const localContent = opacityAttr ? `<g${opacityAttr}>${tintedContent}</g>` : tintedContent;
     const effected = applyNodeEffects(
       localContent, img.effects, img.id,
-      { cellX: 0, cellY: 0, cellWidth: pose.box.width, cellHeight: pose.box.height, cornerRadius: img.cornerRadius },
+      { cellX: 0, cellY: 0, cellWidth: drawn.box.width, cellHeight: drawn.box.height, cornerRadius: img.cornerRadius },
       U,
     );
-    const imgMarkup = tintDefs + wearOrWrap(effected, `transform="${pose.transform}"`);
+    const imgTransform = matrixString(matMul(drawn.matrix, matTranslate(drawn.box.x, drawn.box.y)), U);
+    const imgMarkup = tintDefs + wearOrWrap(effected, `transform="${imgTransform}"`);
     elementsById.set(img.id, wrapWithMaskClip(imgMarkup, maskMap, groups, img));
   }
 

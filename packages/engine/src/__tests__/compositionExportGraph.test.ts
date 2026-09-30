@@ -228,6 +228,32 @@ describe('the image kind draws its local frame through one matrix', () => {
     expect(transformsIn(fromArrays)[0].a).toBeCloseTo(1);
     expect(imageRect(fromArrays).x / U).toBeCloseTo(0.5);
   });
+
+  test('a node stretched off its ratio frames the bitmap at the drawn proportions, never stretching it', async () => {
+    // A corner drag off the picture's ratio lands on the graph as a per-axis
+    // scale. Drawn through it, the bitmap was cover-fitted into the old box
+    // and then stretched three to one.
+    const start = withSceneGraph(makeState({
+      images: [{ ...image(), cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 2 } as ImageObject],
+      sceneOrder: ['img'],
+    }));
+    const from = start.graph!.nodes.get('img')!.transform;
+    const stretched = applyCompOps(start, [{
+      op: 'setTransform', nodeId: 'img', from, to: { ...from, sx: 3, sy: 1 },
+    }]);
+    const svg = (await generateCompositionSVGCore(inputsFor(stretched, { imageBlobs: BLOB })))!;
+    const t = transformsIn(svg)[0];
+    // What is left on the matrix scales both axes alike…
+    expect(matIsSimilarity(t)).toBe(true);
+    // …so the frame carries the 12 × 2 the node is drawn at…
+    const frame = frameRect(svg);
+    expect(frame.width / frame.height).toBeCloseTo(6);
+    expect(frame.width * t.a / U).toBeCloseTo(12);
+    // …and the 40 × 20 bitmap covers it at its own 2 : 1.
+    const rect = imageRect(svg);
+    expect(rect.width / rect.height).toBeCloseTo(2);
+    expect(rect.width).toBeCloseTo(frame.width);
+  });
 });
 
 // ── The text kind ─────────────────────────────────────────────────────
