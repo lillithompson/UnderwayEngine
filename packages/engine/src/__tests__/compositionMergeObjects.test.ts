@@ -160,6 +160,34 @@ describe('mergedSVGObject', () => {
     expect(buildSVGObjectContent(merged, 8, 16)).toContain('fill="#0000C8"');
   });
 
+  it('two filled shapes with no outline merge into one filled shape with no outline, in the front-most fill', () => {
+    // The rule in one line: the result is never a shape with neither fill nor
+    // stroke, and its style is the first row of the Scene Outline's (the
+    // front-most source, last in the back-to-front `sources`).
+    const solid = (c: RGBColor) => ({
+      type: 'solid' as const, solid: c, stops: [], angle: 90, opacity: 1, blend: 'normal' as const,
+    });
+    const back = makeSVG('a', square(0, 0, 10), { fill: solid(RED), stroke: { width: 0 } });
+    const front = makeSVG('b', square(20, 0, 10), { fill: solid(BLUE), stroke: { width: 0 } });
+    const merged = mergedSVGObject([back, front], 'm');
+    expect(svgIsFilled(merged)).toBe(true);
+    expect(svgIsStroked(merged)).toBe(false);
+    expect(merged.fill?.type).toBe('solid');
+    expect(merged.fill?.solid).toEqual(BLUE);
+    expect(merged.stroke).toEqual({ width: 0 });
+    expect(merged.subpaths).toBeUndefined();
+    // The other way round, the other fill.
+    expect(mergedSVGObject([front, back], 'm2').fill?.solid).toEqual(RED);
+
+    // The same through the legacy `fillColor`, which older saves still carry.
+    const oldBack = makeSVG('c', square(0, 0, 10), { fillColor: RED, stroke: { width: 0 } });
+    const oldFront = makeSVG('d', square(20, 0, 10), { fillColor: BLUE, stroke: { width: 0 } });
+    const oldMerged = mergedSVGObject([oldBack, oldFront], 'm3');
+    expect(svgIsFilled(oldMerged)).toBe(true);
+    expect(svgIsStroked(oldMerged)).toBe(false);
+    expect(oldMerged.fillColor).toEqual(BLUE);
+  });
+
   it('takes its fill (or its lack of one) from the front-most source alone', () => {
     const filled = makeSVG('a', square(0, 0, 10), { color: RED, fillColor: BLUE });
     const outline = makeSVG('b', square(5, 5, 10), { color: RED });
