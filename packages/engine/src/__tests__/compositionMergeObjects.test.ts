@@ -17,6 +17,8 @@ import {
   deriveSceneOrderFromKindArrays,
 } from '../compositionOps';
 import { canMergeObjects, canMergeSelection, buildMergeEntry, mergedSVGObject } from '../compositionMergeObjects';
+import { buildSVGObjectContent, svgIsFilled, svgIsStroked } from '../svgPathBuilder';
+import { closedSegmentLoops, computeSignedArea } from '../compositionArcMath';
 
 const WHITE: RGBColor = { r: 255, g: 255, b: 255 };
 const RED: RGBColor = { r: 200, g: 0, b: 0 };
@@ -129,40 +131,83 @@ describe('mergedSVGObject', () => {
     expect(mergedSVGObject([b, a], 'm2').patternFill).toBeUndefined();
   });
 
-  it('keeps each source its own color, as a sub-path', () => {
+  it('wears the front-most source\'s stroke color, not one per source', () => {
     const a = makeSVG('a', square(0, 0, 10), { color: RED });
     const b = makeSVG('b', square(5, 5, 10), { color: BLUE });
     const merged = mergedSVGObject([a, b], 'm');
-    expect(merged.subpaths?.map((s) => s.color)).toEqual([RED, BLUE]);
-    // The object's own color is the front-most source's, as its name is.
+    // One style: the front-most source's — the first row of the Scene
+    // Outline, which lists front to back.
     expect(merged.color).toEqual(BLUE);
+    expect(merged.subpaths).toBeUndefined();
   });
 
-  it('carries a solid fill across as a fill sub-path', () => {
-    const a = makeSVG('a', square(0, 0, 10), { color: RED, fillColor: BLUE });
-    const b = makeSVG('b', square(5, 5, 10), { color: BLUE });
+  it('keeps a Fill-bar fill with no outline — two such shapes merge into one, still visible', () => {
+    // The report: two filled, outline-less shapes merged into a shape with
+    // neither, i.e. nothing on screen.
+    const fill = {
+      type: 'solid' as const, solid: RED, stops: [{ offset: 0, color: RED }, { offset: 1, color: BLUE }],
+      angle: 90, opacity: 1, blend: 'normal' as const,
+    };
+    const a = makeSVG('a', square(0, 0, 10), { fill, stroke: { width: 0 } });
+    const b = makeSVG('b', square(5, 5, 10), { fill: { ...fill, solid: BLUE }, stroke: { width: 0 } });
     const merged = mergedSVGObject([a, b], 'm');
-    const fills = merged.subpaths!.filter((s) => s.fill);
-    expect(fills).toHaveLength(1);
-    expect(fills[0].color).toEqual(BLUE);
-    // The merged object has no fill of its OWN: its outline is several shapes,
-    // so a single fill over it would paint a region nobody drew.
-    expect(merged.fillColor).toBeUndefined();
+    expect(svgIsFilled(merged)).toBe(true);
+    expect(svgIsStroked(merged)).toBe(false);
+    expect(merged.fill?.solid).toEqual(BLUE);
+    // Every source's loop is filled by that one fill.
+    expect(closedSegmentLoops(merged.segments)).toHaveLength(2);
+    // …and the markup actually paints it.
+    expect(buildSVGObjectContent(merged, 8, 16)).toContain('fill="#0000C8"');
   });
 
-  it('flattens a source that was carrying sub-paths already', () => {
-    const a = makeSVG('a', square(0, 0, 10), {
+  it('takes its fill (or its lack of one) from the front-most source alone', () => {
+    const filled = makeSVG('a', square(0, 0, 10), { color: RED, fillColor: BLUE });
+    const outline = makeSVG('b', square(5, 5, 10), { color: RED });
+    const onTop = mergedSVGObject([outline, filled], 'm');
+    expect(onTop.fillColor).toEqual(BLUE);
+    expect(svgIsStroked(onTop)).toBe(true);
+    const underneath = mergedSVGObject([filled, outline], 'm2');
+    expect(svgIsFilled(underneath)).toBe(false);
+    expect(underneath.color).toEqual(RED);
+  });
+
+  it('winds every source the same way, so an overlap fills rather than cancelling', () => {
+    const cw = makeSVG('a', square(0, 0, 10), { fillColor: RED, stroke: { width: 0 } });
+    // The same square traced the other way round (a mirrored copy).
+    const ccw = makeSVG('b', square(5, 5, 10).map((sg) => ({ ...sg, start: sg.end, end: sg.start })).reverse(),
+      { fillColor: RED, stroke: { width: 0 } });
+    const merged = mergedSVGObject([cw, ccw], 'm');
+    const areas = closedSegmentLoops(merged.segments).map(computeSignedArea);
+    expect(areas).toHaveLength(2);
+    expect(Math.sign(areas[0])).toBe(Math.sign(areas[1]));
+  });
+
+  it('keeps per-source colors when the front-most source already draws in several', () => {
+    const multi = makeSVG('b', square(5, 5, 10), {
       color: RED,
       subpaths: [
         { segments: [line([0, 0], [1, 0])], color: RED },
         { segments: [line([1, 0], [2, 0])], color: BLUE },
       ],
     });
-    const b = makeSVG('b', square(5, 5, 10), { color: BLUE });
-    const merged = mergedSVGObject([a, b], 'm');
-    // a's two sub-paths, then b's one — not a's own segments a second time.
-    expect(merged.subpaths).toHaveLength(3);
-    expect(merged.subpaths!.map((s) => s.color)).toEqual([RED, BLUE, BLUE]);
+    const plain = makeSVG('a', square(0, 0, 10), { color: BLUE, fillColor: RED });
+    const merged = mergedSVGObject([plain, multi], 'm');
+    // plain's fill + stroke, then multi's two sub-paths — not its own segments a second time.
+    expect(merged.subpaths!.map((s) => [s.color, !!s.fill])).toEqual([
+      [RED, true], [BLUE, false], [RED, false], [BLUE, false],
+    ]);
+  });
+
+  it('per-source colors carry a Fill-bar fill and honor "no outline"', () => {
+    const multi = makeSVG('b', square(5, 5, 10), {
+      subpaths: [{ segments: [line([0, 0], [1, 0])], color: RED }],
+    });
+    const fillOnly = makeSVG('a', square(0, 0, 10), {
+      fill: { type: 'solid', solid: BLUE, stops: [], angle: 90, opacity: 1, blend: 'normal' },
+      stroke: { width: 0 },
+    });
+    const merged = mergedSVGObject([fillOnly, multi], 'm');
+    expect(merged.subpaths!.map((s) => [s.color, !!s.fill])).toEqual([[BLUE, true], [RED, false]]);
   });
 
   it('bakes a free rotation, so a twisted source stays twisted', () => {

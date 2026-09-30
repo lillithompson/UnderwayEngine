@@ -25,11 +25,15 @@ function line(start: [number, number], end: [number, number]): PathSegment {
 }
 
 /** A circle (arcs) merged with a square (lines) — the reported case. */
-function mergedCircleAndSquare(): SVGObject {
+function mergedCircleAndSquare(opts?: { perSourceColors?: boolean }): SVGObject {
   const circle = makeSVG('c', computeCircleSegments(0, 0, 8, 8));
-  const box = makeSVG('s', [
+  const boxSegs = [
     line([0, 0], [8, 0]), line([8, 0], [8, 8]), line([8, 8], [0, 8]), line([0, 8], [0, 0]),
-  ]);
+  ];
+  const box = makeSVG('s', boxSegs);
+  // A front-most source already drawing in sub-paths makes the merge keep
+  // one sub-path per source rather than wearing a single style.
+  if (opts?.perSourceColors) box.subpaths = [{ segments: boxSegs, color: WHITE }];
   return mergedSVGObject([circle, box], 'merged');
 }
 
@@ -45,7 +49,7 @@ describe('stretching a merged object', () => {
     expect(merged.segments.some((s) => s.kind === 'arc')).toBe(true);
     // Not circular as a whole — so nothing forces this to scale uniformly.
     expect(isCircularSegments(merged.segments)).toBe(false);
-    expect(merged.subpaths?.length).toBe(2);
+    expect(mergedCircleAndSquare({ perSourceColors: true }).subpaths?.length).toBe(2);
   });
 
   test('a stretch maps the circle into a TRUE ellipse, not a kinked arc', () => {
@@ -76,7 +80,7 @@ describe('stretching a merged object', () => {
   });
 
   test('subpaths are stretched the same way, so they stay parallel to segments', () => {
-    const merged = mergedCircleAndSquare();
+    const merged = mergedCircleAndSquare({ perSourceColors: true });
     const out = svgAdapter.rescale(
       merged, bboxOf(merged), { cellX: 0, cellY: 0, cellWidth: 16, cellHeight: 4 },
     ) as SVGObject;

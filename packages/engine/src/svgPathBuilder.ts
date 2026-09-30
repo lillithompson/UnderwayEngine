@@ -415,10 +415,25 @@ function sameColor(a: RGBColor, b: RGBColor): boolean {
  *  instead of cancelling into a hole. */
 function positivelyWoundLoops(segments: readonly PathSegment[]): PathSegment[][] {
   const loops = closedSegmentLoops(segments);
+  if (loopsSignedArea(loops) >= 0) return loops;
+  return loops.map((loop) => loop.map(reverseSegment).reverse());
+}
+
+function loopsSignedArea(loops: readonly PathSegment[][]): number {
   let area = 0;
   for (const loop of loops) area += computeSignedArea(loop);
-  if (area >= 0) return loops;
-  return loops.map((loop) => loop.map(reverseSegment).reverse());
+  return area;
+}
+
+/** The same whole-list flip as {@link positivelyWoundLoops}, for geometry
+ *  that is about to share ONE object-level fill with other geometry (a merge
+ *  that pours several shapes into one outline): the segments come back
+ *  reversed end to end when their closed loops turn negatively, and as given
+ *  otherwise. Open chains ride along untouched in shape — only their
+ *  direction flips with the rest. */
+export function positivelyWoundSegments(segments: readonly PathSegment[]): PathSegment[] {
+  if (loopsSignedArea(closedSegmentLoops(segments)) >= 0) return [...segments];
+  return segments.map(reverseSegment).reverse();
 }
 
 /**

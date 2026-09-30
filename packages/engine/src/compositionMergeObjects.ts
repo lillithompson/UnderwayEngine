@@ -16,6 +16,8 @@ import {
 } from './compositionOps';
 import { canMergePaintObjects, mergePaintObjects, mintPaintObjectId } from './paintObject';
 import { patternSVGView } from './patternObjectRender';
+import { positivelyWoundSegments, svgIsFilled, svgIsStroked } from './svgPathBuilder';
+import { tintFillToPaint } from './imageTintFill';
 
 /**
  * Merge (flatten): make ONE svg object out of several. A structural operation
@@ -30,12 +32,22 @@ import { patternSVGView } from './patternObjectRender';
  * closed, overlapping or scattered. Two crossing lines merge into one object
  * holding two crossing lines; a boolean union of them is meaningless.
  *
- * What survives: every source's geometry, and its stroke color and solid fill
- * via `subpaths` (the same per-color mechanism join uses). What collapses onto
- * the front-most source's values: the object-level settings a single object
- * can only have one of — stroke width/dash, effects, opacity, name. Gradient
- * fills and paint overlays are object-level too, so a source carrying one
- * keeps its geometry and loses that paint.
+ * What survives: every source's geometry. What it wears: the FRONT-MOST
+ * source's style — the first row of the Scene Outline, which lists front to
+ * back. Its stroke color and width/dash (a width of 0, the Fill bar's "no
+ * outline", included), its fill in whichever field carries it (the Fill bar's
+ * `fill`, a flattened `fillPaint`, the legacy `fillColor`), its pattern fill,
+ * effects, opacity and name. Merge two filled, outline-less shapes and you get
+ * one filled, outline-less shape; the fill paints every loop the merged
+ * geometry closes (`buildClosedFillPathD`), and a loose line simply has no
+ * interior to paint. Paint overlays are dropped: they are laid over one box
+ * and have no meaning stretched across a new one.
+ *
+ * The exception is a front-most source that already draws in SEVERAL colors
+ * through `subpaths` (a previous merge from before the style rule, a join of
+ * differently colored objects, a baked rig or pattern). It has no one style
+ * to hand on, so each source keeps its own stroke color and solid fill as
+ * sub-paths, the per-color mechanism join uses.
  *
  * What CAN merge besides svg objects: a pattern object, which joins as the
  * svg view it already bakes to (see resolveMergeSelection). The result is an
@@ -72,8 +84,9 @@ function drawnSegments(svg: SVGObject, segments: readonly PathSegment[]): PathSe
  *  different-colored objects). */
 function subpathsForSource(svg: SVGObject): SVGSubpath[] {
   const out: SVGSubpath[] = [];
-  if (svg.fillColor) {
-    out.push({ segments: drawnSegments(svg, svg.segments), color: { ...svg.fillColor }, fill: true });
+  const fillColor = svgSolidFillColor(svg);
+  if (fillColor) {
+    out.push({ segments: drawnSegments(svg, svg.segments), color: fillColor, fill: true });
   }
   if (svg.subpaths && svg.subpaths.length > 0) {
     for (const sub of svg.subpaths) {
@@ -85,8 +98,25 @@ function subpathsForSource(svg: SVGObject): SVGSubpath[] {
     }
     return out;
   }
-  out.push({ segments: drawnSegments(svg, svg.segments), color: { ...svg.color } });
+  // "No outline" (the Fill bar's width 0) contributes no stroke: as a
+  // sub-path under a stroked front-most source it would suddenly draw one.
+  if (svgIsStroked(svg)) {
+    out.push({ segments: drawnSegments(svg, svg.segments), color: { ...svg.color } });
+  }
   return out;
+}
+
+/** The one color a source's interior is painted, for a fill SUB-PATH (which
+ *  holds a color, not a paint): the Fill bar's solid, or a gradient's first
+ *  stop; a flattened solid `fillPaint`; the legacy `fillColor`. Null when the
+ *  source paints no interior. */
+function svgSolidFillColor(svg: SVGObject): SVGSubpath['color'] | null {
+  if (!svgIsFilled(svg)) return null;
+  const paint = svg.fill ? tintFillToPaint(svg.fill) : svg.fillPaint;
+  const c = paint
+    ? (paint.kind === 'solid' ? paint.color : paint.stops[0]?.color)
+    : svg.fillColor;
+  return c ? { r: c.r, g: c.g, b: c.b } : null;
 }
 
 /** True when these objects can be flattened into one: ≥2 of them, each with
@@ -114,11 +144,19 @@ export function mergedSVGObject(
   groupSurvives = true,
 ): SVGObject {
   const top = sources[sources.length - 1];
+  // A front-most source drawing in several colors has no one style to hand
+  // on; every other front-most source's style is the merged object's.
+  const perSourceColors = !!(top.subpaths && top.subpaths.length > 0);
+  const filled = !perSourceColors && svgIsFilled(top);
   const segments: PathSegment[] = [];
   const subpaths: SVGSubpath[] = [];
   for (const src of sources) {
-    segments.push(...drawnSegments(src, src.segments));
-    subpaths.push(...subpathsForSource(src));
+    const drawn = drawnSegments(src, src.segments);
+    // One fill now paints every source's loops under `fill-rule="nonzero"`,
+    // so each source turns the same way: a mirrored shape overlapping an
+    // unmirrored one would otherwise cancel into a hole where they meet.
+    segments.push(...(filled ? positivelyWoundSegments(drawn) : drawn));
+    if (perSourceColors) subpaths.push(...subpathsForSource(src));
   }
   // The merged object keeps its group ONLY when every source was in the same
   // one and each has the local geometry that group transforms re-derive from:
@@ -136,9 +174,13 @@ export function mergedSVGObject(
   return {
     id,
     segments,
-    subpaths,
+    ...(perSourceColors ? { subpaths } : null),
     color: { ...top.color },
     ...(top.name ? { name: top.name } : null),
+    ...(filled && top.fill ? { fill: { ...top.fill, stops: top.fill.stops.map((st) => ({ ...st })) } } : null),
+    ...(filled && top.fillPaint ? { fillPaint: top.fillPaint } : null),
+    ...(filled && top.fillColor ? { fillColor: { ...top.fillColor } } : null),
+    ...(filled && top.fillOpacity != null ? { fillOpacity: top.fillOpacity } : null),
     ...(top.stroke ? { stroke: { ...top.stroke } } : null),
     ...(top.effects ? { effects: { ...top.effects } } : null),
     ...(top.opacity != null ? { opacity: top.opacity } : null),
