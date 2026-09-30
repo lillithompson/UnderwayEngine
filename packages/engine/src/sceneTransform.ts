@@ -236,6 +236,36 @@ export function axisScaleSplit(m: Mat2D): { sx: number; sy: number; matrix: Mat2
 }
 
 /**
+ * A box and the matrix that places it, respelled so the matrix carries no
+ * per-axis stretch: the box grown to the proportions it is DRAWN at, the
+ * matrix left with a turn and one uniform scale.
+ *
+ * Content laid out INSIDE a box by its proportions — a bitmap framed
+ * (cover, contain, tiles) into an image node — is deformed by a matrix
+ * that scales one axis more than the other: the picture is framed into
+ * the old box and then stretched. Moving the anisotropy into the box
+ * frames it at the aspect it is drawn at; what stays on the matrix is the
+ * {@link matUniformScale}, so a border, a shadow and the framing lengths
+ * still grow with the node as they always have. Box times matrix is the
+ * same quad either way ({@link axisScaleSplit}); a sheared matrix keeps
+ * its lean, as that split does.
+ *
+ * A similarity is handed back untouched, box and matrix both, so the
+ * ordinary node is bit-for-bit unchanged.
+ */
+export function unstretchedBoxPose(box: Bbox, m: Mat2D): { box: Bbox; matrix: Mat2D } {
+  if (matIsSimilarity(m)) return { box, matrix: m };
+  const { sx, sy, matrix } = axisScaleSplit(m);
+  const u = matUniformScale(m) || 1;
+  const kx = sx / u;
+  const ky = sy / u;
+  return {
+    box: { x: box.x * kx, y: box.y * ky, width: box.width * kx, height: box.height * ky },
+    matrix: { a: matrix.a * u, b: matrix.b * u, c: matrix.c * u, d: matrix.d * u, e: m.e, f: m.f },
+  };
+}
+
+/**
  * The orthogonal frame a matrix turns its own x-axis into: the turn it
  * carries (with a reflection in it, for a mirrored pose) and nothing
  * else — no scale, no anisotropy, no shear.

@@ -12,7 +12,7 @@ import {
   LOCAL_IDENTITY, LocalTransform, MAT_IDENTITY, Mat2D,
   composeLocal, decomposeMatrix, fromTransform2D, localEquals, localMatrix,
   localTranslate, matApplyBbox, matApplyCorners, matApplyDelta, matApplyPoint,
-  matAbout, matDet, matInvert, matIsSimilarity, matMul, matShear, normalizeDeg,
+  matAbout, matDet, matInvert, matIsSimilarity, matMul, matShear, normalizeDeg, unstretchedBoxPose,
   respellMirror, transformAboutPivot,
 } from '../sceneTransform';
 import { applyToBbox, Transform2D } from '../transform2d';
@@ -445,5 +445,46 @@ describe('respellMirror', () => {
     expect(turned.sx).toBeGreaterThan(0);
     expect(turned.sy).toBeGreaterThan(0);
     expect(turned.rotationDeg).toBeCloseTo(45, 9);
+  });
+});
+
+describe('unstretchedBoxPose', () => {
+  const box = { x: 1, y: 2, width: 10, height: 10 };
+
+  test('a similarity is handed back untouched', () => {
+    const m = localMatrix({ ...LOCAL_IDENTITY, tx: 3, ty: 4, sx: 2, sy: 2, rotationDeg: 30 });
+    const r = unstretchedBoxPose(box, m);
+    expect(r.box).toBe(box);
+    expect(r.matrix).toBe(m);
+  });
+
+  test('a per-axis scale moves into the box and leaves a uniform matrix', () => {
+    const m = localMatrix({ ...LOCAL_IDENTITY, tx: 5, ty: 7, sx: 3, sy: 1, rotationDeg: 20 });
+    const r = unstretchedBoxPose(box, m);
+    expect(matIsSimilarity(r.matrix)).toBe(true);
+    expect(r.box.width / r.box.height).toBeCloseTo(3);
+    // The uniform scale that remains is the geometric mean of the two.
+    expect(Math.hypot(r.matrix.a, r.matrix.b)).toBeCloseTo(Math.sqrt(3));
+    expect(r.matrix.e).toBe(5);
+    expect(r.matrix.f).toBe(7);
+  });
+
+  test('the same quad is drawn either way', () => {
+    const m = localMatrix({ ...LOCAL_IDENTITY, tx: -3, ty: 4, sx: 0.5, sy: 2.5, rotationDeg: -35 });
+    const r = unstretchedBoxPose(box, m);
+    const before = matApplyCorners(m, box);
+    const after = matApplyCorners(r.matrix, r.box);
+    before.forEach((p, i) => {
+      expect(after[i][0]).toBeCloseTo(p[0], 9);
+      expect(after[i][1]).toBeCloseTo(p[1], 9);
+    });
+  });
+
+  test('a mirrored stretch keeps its reflection on the matrix', () => {
+    const m: Mat2D = { a: -2, b: 0, c: 0, d: 1, e: 0, f: 0 };
+    const r = unstretchedBoxPose(box, m);
+    expect(matDet(r.matrix)).toBeLessThan(0);
+    expect(matIsSimilarity(r.matrix)).toBe(true);
+    expect(r.box.width / r.box.height).toBeCloseTo(2);
   });
 });
