@@ -352,11 +352,22 @@ describe('the Shapes page', () => {
     expect(BARS).toMatch(
       /setCell:\s*\{\s*width: PATTERN_TILE_SET_BUTTON,\s*height: PATTERN_TILE_SET_BUTTON,/,
     );
-    // Rows left-aligned in a column of them, one grid gap apart — no wrap,
-    // no stretch.
+    // Rows in a column of them, one grid gap apart — no wrap, no stretch —
+    // and the squares spread EVENLY across each row: centred, the spacing
+    // grown to fill the width, rather than huddled at the left (CozyJournal
+    // bug report ec9cb483).
     expect(BARS).toContain('setGrid: { gap: PATTERN_TILE_GRID_GAP },');
-    expect(BARS).toContain("setRow: { flexDirection: 'row', gap: PATTERN_TILE_GRID_GAP },");
+    expect(BARS).toContain("setRow: { flexDirection: 'row', justifyContent: 'space-evenly', gap: PATTERN_TILE_GRID_GAP },");
     expect(PATTERN_TILE_SET_BUTTON).toBeGreaterThan(0);
+  });
+
+  it('outlines a square at rest and fills the one that is on (bug report ec9cb483)', () => {
+    // At rest: no ground, a grey ring — the pages' own outlined button's
+    // hairline. On: the grey ground and the lit blue border.
+    const setCell = BARS.slice(BARS.indexOf('  setCell: {'), BARS.indexOf('  setCellActive:'));
+    expect(setCell).not.toContain('backgroundColor');
+    expect(setCell).toContain('borderColor: PANEL_BORDER,');
+    expect(BARS).toContain('setCellActive: { backgroundColor: PANEL_TRACK, borderColor: STATE_ACTIVE },');
   });
 
   it('serves the pattern OBJECT s page and the shape fill s section from one component', () => {

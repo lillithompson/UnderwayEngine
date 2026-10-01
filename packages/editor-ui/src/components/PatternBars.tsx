@@ -18,7 +18,7 @@ import {
   rotatePatternTileTransform,
 } from '../logic/patternEdit';
 import type { PatternTileSetRow } from '../logic/patternEdit';
-import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
+import { PANEL_BORDER, PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
 import {
   ActionRow, BarBody, EffectButton, SegmentedRow, SwitchRow,
 } from './effectBar';
@@ -256,7 +256,12 @@ export function PatternTileBar({ model }: { model: ObjectPropertiesModel }) {
  * whichever line it lands on, where stretched chips made a short last row's
  * two buttons half the width of the row above them. A family is a thing the
  * pattern is made of, not a share of a control, so it reads as a button of
- * its own — the dress the Tiles and Symmetry grids beside it wear.
+ * its own. The squares are spread EVENLY across the row rather than packed
+ * to its left: five squares left-justified on a wide sheet were a huddle
+ * in one corner of a page with the width to spare (CozyJournal bug report
+ * ec9cb483). A square at rest is outlined and unfilled; one that is ON is
+ * filled, with the lit border — a set of switches reads by which are
+ * filled, where the arming and symmetry grids beside it fill every cell.
  *
  * Shared by the two places a pattern's families are set — a pattern
  * OBJECT's Shapes page and the Shapes section of a shape's Pattern page —
@@ -507,24 +512,28 @@ const styles = StyleSheet.create({
   // Facet Tile Palette's Random/Erase dress: a 22pt glyph over a 9pt word.
   tileCaption: { color: PANEL_INK_DIM, fontSize: 9, fontWeight: '600', marginTop: 2 },
   tileWordActive: { color: PANEL_INK },
-  // The Shapes page's family grid: rows of FIXED squares, left-aligned, so
-  // a short last row's buttons are the width of a full row's rather than
-  // stretching to fill it. Same column of rows as the symmetry grid below,
-  // on the same gap — the two pattern grids read as one kind of thing.
+  // The Shapes page's family grid: rows of FIXED squares spread evenly
+  // across the row — centred, the spacing grown to fill the width — so a
+  // short last row's buttons are the width of a full row's rather than
+  // stretching to fill it, and a full row reaches the well's edges rather
+  // than huddling at its left (bug report ec9cb483). Same column of rows
+  // as the symmetry grid below, on the same gap.
   setGrid: { gap: PATTERN_TILE_GRID_GAP },
-  setRow: { flexDirection: 'row', gap: PATTERN_TILE_GRID_GAP },
+  setRow: { flexDirection: 'row', justifyContent: 'space-evenly', gap: PATTERN_TILE_GRID_GAP },
   setCell: {
     width: PATTERN_TILE_SET_BUTTON,
     height: PATTERN_TILE_SET_BUTTON,
     borderRadius: 8,
-    backgroundColor: PANEL_TRACK,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 3,
     borderWidth: 1.5,
-    borderColor: 'transparent',
+    // At rest: no ground, a grey ring — the hairline the pages' own
+    // outlined button wears (effectBar addButtonBordered).
+    borderColor: PANEL_BORDER,
   },
-  setCellActive: { borderColor: STATE_ACTIVE },
+  // On: the grey ground and the lit border.
+  setCellActive: { backgroundColor: PANEL_TRACK, borderColor: STATE_ACTIVE },
   // The grid's 9pt caption, as the arming and symmetry cells wear it — here
   // it is the whole cell, a family having no glyph of its own.
   setWord: { color: PANEL_INK_DIM, fontSize: 9, fontWeight: '600', textAlign: 'center' },
