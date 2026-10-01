@@ -34,7 +34,17 @@ function postToNative(message: object): void {
 
 /**
  * Wait for a SHARE_RESULT message from native after posting a SHARE_FILE.
- * Mirrors the handler-swap pattern used by savePngToCameraRoll.
+ * Mirrors the handler-swap pattern used by savePngToCameraRoll — without
+ * its clock. The share sheet is the user's for as long as they hold it:
+ * picking a Google Drive folder and uploading a page of photos over
+ * cellular runs well past the 30 s this used to allow, and when the clock
+ * won it reported `timeout` (a failure) for an export that then landed,
+ * and the real SHARE_RESULT, arriving later, went to a handler that no
+ * longer knew about it (CozyJournal bug report 943b3694). Native answers
+ * every SHARE_FILE exactly once, success or failure, when the sheet is
+ * dismissed (nativeBridge handleShareFile wraps the whole act in one
+ * try/catch), so the sheet's dismissal is the only honest end — there is
+ * nothing a clock could add except a wrong answer.
  */
 function awaitShareResult(): Promise<{ success: boolean; error?: string }> {
   return new Promise((resolve) => {
@@ -47,13 +57,6 @@ function awaitShareResult(): Promise<{ success: boolean; error?: string }> {
         if (prevHandler) prevHandler(msg);
       }
     };
-
-    setTimeout(() => {
-      if (window.__facetBridgeHandler !== prevHandler) {
-        window.__facetBridgeHandler = prevHandler;
-        resolve({ success: false, error: 'timeout' });
-      }
-    }, 30000);
   });
 }
 

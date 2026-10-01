@@ -352,11 +352,22 @@ describe('the Shapes page', () => {
     expect(BARS).toMatch(
       /setCell:\s*\{\s*width: PATTERN_TILE_SET_BUTTON,\s*height: PATTERN_TILE_SET_BUTTON,/,
     );
-    // Rows left-aligned in a column of them, one grid gap apart — no wrap,
-    // no stretch.
+    // Rows in a column of them, one grid gap apart — no wrap, no stretch —
+    // and the squares spread EVENLY across each row: centred, the spacing
+    // grown to fill the width, rather than huddled at the left (CozyJournal
+    // bug report ec9cb483).
     expect(BARS).toContain('setGrid: { gap: PATTERN_TILE_GRID_GAP },');
-    expect(BARS).toContain("setRow: { flexDirection: 'row', gap: PATTERN_TILE_GRID_GAP },");
+    expect(BARS).toContain("setRow: { flexDirection: 'row', justifyContent: 'space-evenly', gap: PATTERN_TILE_GRID_GAP },");
     expect(PATTERN_TILE_SET_BUTTON).toBeGreaterThan(0);
+  });
+
+  it('outlines a square at rest and fills the one that is on (bug report ec9cb483)', () => {
+    // At rest: no ground, a grey ring — the pages' own outlined button's
+    // hairline. On: the grey ground and the lit blue border.
+    const setCell = BARS.slice(BARS.indexOf('  setCell: {'), BARS.indexOf('  setCellActive:'));
+    expect(setCell).not.toContain('backgroundColor');
+    expect(setCell).toContain('borderColor: PANEL_BORDER,');
+    expect(BARS).toContain('setCellActive: { backgroundColor: PANEL_TRACK, borderColor: STATE_ACTIVE },');
   });
 
   it('serves the pattern OBJECT s page and the shape fill s section from one component', () => {
@@ -536,6 +547,12 @@ describe('the Symmetry page is a compact grid of square glyph buttons', () => {
     expect(SRC).toMatch(
       /symCell:\s*\{[^}]*flex: 1,\s*minWidth: 0,\s*height: PATTERN_SYMMETRY_BUTTON,/,
     );
+    // Only the cell in force is filled: a cell at rest has no ground of its
+    // own, and the grey is the picked cell's, with the lit border (CozyJournal
+    // bug report c9fbc0dc — twelve grey tiles read as a keypad).
+    const symCell = SRC.slice(SRC.indexOf('  symCell: {'), SRC.indexOf('  symCellPad:'));
+    expect(symCell).not.toContain('backgroundColor');
+    expect(SRC).toContain('symCellActive: { backgroundColor: PANEL_TRACK, borderColor: STATE_ACTIVE },');
     expect(submenuHeight('patternSymmetry'))
       .toBe(CONTENT_PAD * 2 + PATTERN_SYMMETRY_BUTTON * 2 + PATTERN_TILE_GRID_GAP + BAR_CUSHION);
     // Six across, so the twelve cells are the two rows the page reserves —
