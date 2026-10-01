@@ -124,8 +124,11 @@ describe('exportCompositionsAsZip', () => {
       'a', 8, 1, { preferOriginalImages: true, normalize: false });
 
     await exportCompositionsAsZip([{ id: 'a', name: 'A' }], 'svg', { pngMaxDimension: 8, io });
+    // …and the SVG member is a FILE: its patterns go out as real paths
+    // (`expandTiles` — Figma reads no `<pattern>`), which the PNG member
+    // above, a raster, does not ask for.
     expect(mockExportCompositionSVG).toHaveBeenCalledWith(
-      'a', undefined, 1, { preferOriginalImages: true, normalize: false });
+      'a', undefined, 1, { preferOriginalImages: true, expandTiles: true, normalize: false });
   });
 
   test('SVG: bundles UTF-8 SVG payloads with per-comp strokeScale', async () => {
@@ -142,7 +145,8 @@ describe('exportCompositionsAsZip', () => {
 
     expect(zip).not.toBeNull();
     expect(readCentralDirectoryNames(zip!)).toEqual(['Alpha.svg']);
-    expect(mockExportCompositionSVG).toHaveBeenCalledWith('a', undefined, 0.75, { preferOriginalImages: true });
+    expect(mockExportCompositionSVG).toHaveBeenCalledWith(
+      'a', undefined, 0.75, { preferOriginalImages: true, expandTiles: true });
 
     const payloads = localEntryPayloads(zip!);
     expect(new TextDecoder().decode(payloads.get('Alpha.svg')!)).toBe('<svg id="a"/>');

@@ -171,6 +171,16 @@ export function buildSVGObjectTileContent(obj: SVGObject, strokeScale: number): 
  * partial edge copies. Shared by SVG export and the live DOM overlay so the
  * two can't drift. Returns '' when the object has no geometry.
  *
+ * An object with NO overrides expands too — every copy is then the same
+ * tile, and it is drawn exactly as the `<pattern>` draws it
+ * ({@link tiledSVGObjectUnit}: the object's own stroke block, its fill
+ * paint, its filled subpaths), so a region written out as real paths is the
+ * picture the repeating paint server made. That is the FILE export's form
+ * ({@link buildTiledSVGObjectRegionMarkup}'s `expandTiles`): an importer
+ * with no `<pattern>` support — Figma's — drops the region otherwise. Any
+ * gradient `<defs>` the tile's fill needs lead the result once, ahead of
+ * the copies that reference them.
+ *
  * Options:
  *  - `onlyPainted`: emit a `<g>` only for copies that have ≥1 override. The
  *    live overlay uses this — the repeating bitmap already draws every copy at
@@ -195,6 +205,12 @@ export function buildExpandedTileSVGObjectContent(
   const sw = SVG_STROKE_WIDTH * strokeScale;
   const attrs = `fill="none" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"`;
   const overrides = obj.segmentOverrides;
+  // Nothing painted per copy: every copy is the one tile, drawn as the
+  // `<pattern>` draws it. (`onlyPainted` with nothing painted emits nothing,
+  // below, so the unit is not built for it.)
+  const uniform = !opts?.onlyPainted && !(overrides && overrides.size > 0)
+    ? tiledSVGObjectUnit(obj, strokeScale)
+    : null;
 
   // Set of (col,row) that carry ≥1 override (only needed for onlyPainted).
   // Built whenever onlyPainted is set — an empty set (no overrides) correctly
@@ -238,7 +254,7 @@ export function buildExpandedTileSVGObjectContent(
   const out: string[] = [];
   forEachVisibleTile(obj, (col, row) => {
     if (paintedCells && !paintedCells.has((col << 16) ^ (row & 0xffff))) return;
-    let copy = bgRect + fillMarkup;
+    let copy = bgRect + (uniform ? uniform.content : fillMarkup);
     // Group contiguous same-color runs to minimize path count.
     let runColor: RGBColor | null = null;
     let runSegs: PathSegment[] = [];
@@ -248,7 +264,7 @@ export function buildExpandedTileSVGObjectContent(
       if (d) copy += `<path d="${d}" ${attrs} stroke="rgb(${runColor.r},${runColor.g},${runColor.b})" />`;
       runSegs = [];
     };
-    for (let i = 0; i < flat.length; i++) {
+    for (let i = 0; !uniform && i < flat.length; i++) {
       const k = overrides ? packKey(col, row, i) : null;
       const ov = k != null && overrides ? overrides.get(k) : undefined;
       const color = ov ?? flat[i].base;
@@ -271,7 +287,71 @@ export function buildExpandedTileSVGObjectContent(
       out.push(tx === 0 && ty === 0 ? `<g>${copy}</g>` : `<g transform="translate(${tx},${ty})">${copy}</g>`);
     }
   });
-  return out.join('');
+  return (uniform && out.length > 0 ? uniform.defs : '') + out.join('');
+}
+
+/**
+ * ONE tile of a `tileMode: 'repeat'` object in tile-local SVG units (the
+ * tile-grid anchor at 0,0): the picture a `<pattern>` repeats, and the one
+ * a full expansion places once per copy
+ * ({@link buildExpandedTileSVGObjectContent}). One builder for both, so a
+ * region cannot draw one tile as a paint server and another as paths.
+ *
+ * `defs` is whatever the fill's paint needs defined (a gradient), kept
+ * apart from `content` so an expansion states it once rather than once per
+ * copy; the `<pattern>` simply leads its tile with it.
+ *
+ * `tileStrokeScale` is already in SVG units (see
+ * {@link buildTiledSVGObjectRegionMarkup}).
+ */
+function tiledSVGObjectUnit(
+  svg: SVGObject, tileStrokeScale: number,
+): { defs: string; content: string } {
+  const U = SVG_UNITS_PER_L0_CELL;
+  // Per-object stroke attrs in SVG units, no non-scaling vector-effect: the
+  // pattern content scales with the region's viewBox transform like the
+  // figure-tile rasterizer's output (see buildSVGObjectTileContent's note).
+  const attrs = svgStrokePresentation(svg, tileStrokeScale, U).attrs;
+  // Tile-grid anchor (cellX + tileOffset) — fixed in the pattern tile
+  // regardless of region expansion (the double-shift bug guard).
+  const sMinX = svg.cellX + (svg.tileOffsetXL0 ?? 0);
+  const sMinY = svg.cellY + (svg.tileOffsetYL0 ?? 0);
+  // Fill path — rendered before strokes, anchored to the tile grid. The paint
+  // comes from the same helper the non-tiled markup uses.
+  let defs = '';
+  let content = '';
+  const fillPres = svgFillPresentation(svg, `grad_${svg.id}`);
+  if (fillPres) {
+    const chained = chainSegments(svg.segments);
+    if (chained) {
+      const fd = buildTilePathD(chained, sMinX, sMinY) + ' Z';
+      defs = fillPres.defs;
+      content += `<path d="${fd}" ${fillPres.attrs} stroke="none" fill-rule="nonzero" />`;
+    }
+  }
+  if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
+    content += buildSubpathsMarkup(svg.subpaths, attrs, (segs) => buildTilePathD(segs, sMinX, sMinY));
+  } else {
+    const d = buildTilePathD(svg.segments, sMinX, sMinY);
+    const { r, g, b } = svg.color;
+    content += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
+  }
+  return { defs, content };
+}
+
+/**
+ * How a `tileMode: 'repeat'` region is written out — carried from the file
+ * export down to {@link buildTiledSVGObjectRegionMarkup} through every
+ * builder that hands repeat mode off to it.
+ */
+export interface TileExpansion {
+  /** Write every visible copy as real paths, clipped to the region, and no
+   *  `<pattern>` at all. For a `.svg` FILE: Figma's importer has no
+   *  `<pattern>` support and drops the region (and with it every pattern
+   *  on the page). Off everywhere else — the live canvas and every raster
+   *  keep the paint server, which costs one tile however many copies the
+   *  region shows, where this costs one tile PER copy. */
+  expandTiles?: boolean;
 }
 
 /**
@@ -288,6 +368,10 @@ export function buildExpandedTileSVGObjectContent(
  *    copy with overrides baked in, clipped by a nested region `<svg>`.
  *  - otherwise: a `<defs><pattern>` of the single tile + a region `<rect>`
  *    filled with it — the browser does the repetition.
+ *
+ * …and a third the caller asks for by name, `opts.expandTiles` (see
+ * {@link TileExpansion}): the same expansion for EVERY region, painted or
+ * not, clipped by a `<clipPath>` — the form a `.svg` file is written in.
  *
  * Shared by the composition exporter (which wraps it in effects/mask clips)
  * and the live DOM node layer via {@link buildSVGObjectContent}, so pattern
@@ -308,6 +392,7 @@ export function buildTiledSVGObjectRegionMarkup(
   svg: SVGObject,
   strokeScale: number,
   unitsPerCell: number = SVG_UNITS_PER_L0_CELL,
+  opts?: TileExpansion,
 ): string {
   if (svg.segments.length === 0) return '';
   const U = SVG_UNITS_PER_L0_CELL;
@@ -323,6 +408,22 @@ export function buildTiledSVGObjectRegionMarkup(
   // passed below, never by strokeScale).
   const tileStrokeScale = strokeScale * (U / unitsPerCell);
 
+  if (opts?.expandTiles) {
+    // The FILE's form: every visible copy as real paths, clipped to the
+    // region by a `<clipPath>` rect — the clip a vector editor's own files
+    // are written with, where the live overlay's nested `<svg>` viewport
+    // below is one more thing an importer may not read. Painted or not: the
+    // expander draws per-copy overrides and the plain tile alike.
+    const instances = buildExpandedTileSVGObjectContent(svg, tileStrokeScale);
+    if (!instances) return '';
+    const clipId = `tileclip_${svgDefIdSafe(svg.id)}`;
+    return wrapSVGObjectOpacity(svg,
+      `<defs><clipPath id="${clipId}" clipPathUnits="userSpaceOnUse">`
+      + `<rect x="${regionX}" y="${regionY}" width="${regionW}" height="${regionH}" /></clipPath></defs>`
+      + `<g clip-path="url(#${clipId})">${instances}</g>`,
+      tileStrokeScale);
+  }
+
   if (svg.segmentOverrides && svg.segmentOverrides.size > 0) {
     const instances = buildExpandedTileSVGObjectContent(svg, tileStrokeScale);
     return wrapSVGObjectOpacity(svg,
@@ -331,32 +432,8 @@ export function buildTiledSVGObjectRegionMarkup(
       tileStrokeScale);
   }
 
-  // Per-object stroke attrs in SVG units, no non-scaling vector-effect: the
-  // pattern content scales with the region's viewBox transform like the
-  // figure-tile rasterizer's output (see buildSVGObjectTileContent's note).
-  const attrs = svgStrokePresentation(svg, tileStrokeScale, U).attrs;
-  // Tile-grid anchor (cellX + tileOffset) — fixed in the pattern tile
-  // regardless of region expansion (the double-shift bug guard).
-  const sMinX = svg.cellX + (svg.tileOffsetXL0 ?? 0);
-  const sMinY = svg.cellY + (svg.tileOffsetYL0 ?? 0);
-  // Fill path — rendered before strokes, anchored to the tile grid. The paint
-  // comes from the same helper the non-tiled markup uses.
-  let tileContent = '';
-  const fillPres = svgFillPresentation(svg, `grad_${svg.id}`);
-  if (fillPres) {
-    const chained = chainSegments(svg.segments);
-    if (chained) {
-      const fd = buildTilePathD(chained, sMinX, sMinY) + ' Z';
-      tileContent += `${fillPres.defs}<path d="${fd}" ${fillPres.attrs} stroke="none" fill-rule="nonzero" />`;
-    }
-  }
-  if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
-    tileContent += buildSubpathsMarkup(svg.subpaths, attrs, (segs) => buildTilePathD(segs, sMinX, sMinY));
-  } else {
-    const d = buildTilePathD(svg.segments, sMinX, sMinY);
-    const { r, g, b } = svg.color;
-    tileContent += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
-  }
+  const unit = tiledSVGObjectUnit(svg, tileStrokeScale);
+  const tileContent = unit.defs + unit.content;
   const tileW = (svg.tileWidthL0 ?? svg.cellWidth) * U;
   const tileH = (svg.tileHeightL0 ?? svg.cellHeight) * U;
   const patOrgX = regionX + (svg.tileOffsetXL0 ?? 0) * U;
@@ -997,6 +1074,8 @@ export function buildSVGObjectContent(
      *  fill's own outline, corner rounding and all, and neither renderer
      *  should be building a second copy of it. */
     patternFillMarkup?: string;
+    /** Repeat mode written out as real paths — see {@link TileExpansion}. */
+    expandTiles?: boolean;
   },
 ): string {
   if (obj.segments.length === 0) return '';
@@ -1004,7 +1083,9 @@ export function buildSVGObjectContent(
   // region instead of the single unit, with the stroke widths converted from
   // this caller's units into the tile's SVG-unit space — see
   // buildTiledSVGObjectRegionMarkup.
-  if (obj.tileMode === 'repeat') return buildTiledSVGObjectRegionMarkup(obj, strokeScale, unitsPerCell);
+  if (obj.tileMode === 'repeat') {
+    return buildTiledSVGObjectRegionMarkup(obj, strokeScale, unitsPerCell, { expandTiles: opts?.expandTiles });
+  }
   const p = svgObjectParts(obj, strokeScale, unitsPerCell, opts);
 
   // Color-tool paint layer (v49): the low-res bitmap stretched over the bbox

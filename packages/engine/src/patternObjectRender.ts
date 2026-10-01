@@ -39,7 +39,7 @@ import {
 } from './figureToPaths';
 import type { CachedFigureSVG } from './svgFigureBuilders';
 import { normalizeClosedSegments } from './compositionArcMath';
-import { buildSVGObjectContent, withSVGObjectStrokeColor } from './svgPathBuilder';
+import { buildSVGObjectContent, withSVGObjectStrokeColor, type TileExpansion } from './svgPathBuilder';
 import { strokeScaleForUnits } from './svgStroke';
 
 const svgViewCache = new WeakMap<PatternObject, SVGObject | null>();
@@ -108,13 +108,19 @@ function withPatternPresentation(base: SVGObject, p: PatternObject): SVGObject {
  * the device CTM — so under camera zoom the DOM layer's usual non-scaling
  * flat strokes sat at a different width than the tiled ones, and toggling
  * repeat visibly changed the line weight. One convention, no jump.
+ *
+ * `expansion` is the `.svg` file export's (svgPathBuilder's
+ * {@link TileExpansion}): a repeating view written out as real paths. No
+ * live render site passes it.
  */
-export function patternViewNodeMarkup(view: SVGObject, strokeScale: number): string {
+export function patternViewNodeMarkup(
+  view: SVGObject, strokeScale: number, expansion?: TileExpansion,
+): string {
   return buildSVGObjectContent(
     view,
     strokeScaleForUnits(strokeScale, SVG_UNITS_PER_L0_CELL),
     SVG_UNITS_PER_L0_CELL,
-    { nonScaling: false, paintOverlaySlot: 'canvas' },
+    { nonScaling: false, paintOverlaySlot: 'canvas', expandTiles: expansion?.expandTiles },
   );
 }
 
@@ -254,15 +260,18 @@ function buildPatternSVGView(p: PatternObject): SVGObject | null {
  * which the TILE has to be grown by for the same reason a stroke width is
  * — see {@link shapePatternGrid}, which also derives the tiles' own line
  * from the shape's out of the `strokeScale` this passes on.
+ * `expansion` is {@link patternViewNodeMarkup}'s: the file export's tiles
+ * as real paths.
  */
 export function shapePatternFillTiles(
   svg: SVGObject, strokeScale: number, grow?: { gx: number; gy: number },
+  expansion?: TileExpansion,
 ): string {
   const grid = shapePatternGrid(svg, { ...grow, strokeScale });
   if (!grid) return '';
   const view = patternSVGView(grid);
   if (!view) return '';
-  return patternViewNodeMarkup(view, strokeScale);
+  return patternViewNodeMarkup(view, strokeScale, expansion);
 }
 
 /**

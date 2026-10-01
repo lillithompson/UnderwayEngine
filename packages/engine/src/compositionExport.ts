@@ -111,6 +111,11 @@ export interface CompositionExportOptions {
    *  raster that genuinely draws the photo larger than its display copy pays
    *  for the master. */
   preferOriginalImages?: boolean;
+  /** Write repeating regions of paths as real, clipped paths rather than a
+   *  `<pattern>` — for a `.svg` FILE, which other tools (Figma) must be
+   *  able to open. See {@link CompositionSVGInputs.expandTiles}; leave off
+   *  for anything that is drawn or rasterized. */
+  expandTiles?: boolean;
   /** The raster's long edge in pixels — see
    *  {@link CompositionSVGInputs.rasterLongEdgePx}. Set by the raster
    *  exporters from their own `maxDimension`; a caller generating SVG for a
@@ -614,6 +619,7 @@ export async function exportCompositionSVGFromState(
     patternObjects: partial.patternObjects,
     fontResolver: options?.fontResolver ?? defaultFontResolver,
     preferOriginalImages: options?.preferOriginalImages,
+    expandTiles: options?.expandTiles,
     rasterLongEdgePx: options?.rasterLongEdgePx,
     subset: options?.subset,
     textColorOverride: options?.textColorOverride,

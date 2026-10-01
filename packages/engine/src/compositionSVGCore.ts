@@ -428,6 +428,25 @@ export interface CompositionSVGInputs {
    *  "always the master". */
   preferOriginalImages?: boolean;
   /**
+   * Write every repeating region of PATHS — a pattern object, a shape's
+   * pattern fill, a tiled vector object — as its visible copies, real
+   * paths clipped to the region, with no `<pattern>` paint server
+   * (svgPathBuilder's {@link TileExpansion}).
+   *
+   * For a `.svg` FILE, and only that. A browser draws `<pattern>` and so
+   * does every raster this generator feeds, at the cost of one tile
+   * however many copies show; Figma's importer does not read it, and a
+   * page of patterns arrived there with every one of them gone. Written
+   * out, the file grows by one tile per visible copy — which is the cost
+   * of being a document other tools can open, and why thumbnails and
+   * rasters leave this off.
+   *
+   * A tiled FIGURE is already written this way by every export
+   * (buildBlockSVGContent's `expandTiles`); a tiled PHOTO still fills a
+   * `<pattern>` (framedImageSVG), since it repeats pixels, not paths.
+   */
+  expandTiles?: boolean;
+  /**
    * The long edge, in pixels, of the raster this SVG is about to be drawn
    * into — which turns {@link preferOriginalImages} from a boolean into a
    * BUDGET: a node whose drawn size in that raster is no bigger than its own
@@ -1483,6 +1502,8 @@ export async function generateCompositionSVGCore(
   // canvas's 0.3125, which is why every exported drawing read as a fat marker
   // beside the page it was drawn on.
   const svgStrokeScale = strokeScaleForUnits(storedStrokeScale, SVG_UNITS_PER_L0_CELL);
+  // A file's repeating regions as real paths — see `expandTiles`.
+  const tileExpansion = input.expandTiles ? { expandTiles: true } : undefined;
   // Figures keep the legacy ×200: their strokes are baked layer geometry, not
   // the node layer's markup, so they were never on the DOM side of the
   // mismatch above and nothing here re-weights them.
@@ -2065,9 +2086,10 @@ export async function generateCompositionSVGCore(
       const svg = drawn.object;
       // Pattern mode: the shared region builder (also the live DOM layer's
       // path via buildSVGObjectContent) emits the repeating markup — the
-      // sparse-override <g>-per-copy expansion or the <pattern> + rect.
+      // sparse-override <g>-per-copy expansion or the <pattern> + rect, or
+      // (a file's `expandTiles`) every copy as real paths.
       posedAndClipped(entry.id, entry, drawn.transform, applyNodeEffects(
-        buildTiledSVGObjectRegionMarkup(svg, svgStrokeScale),
+        buildTiledSVGObjectRegionMarkup(svg, svgStrokeScale, undefined, tileExpansion),
         svg.effects, entry.id, svg, U,
       ));
       continue;
@@ -2102,7 +2124,7 @@ export async function generateCompositionSVGCore(
     // they have no single chain, so the export dropped a fill the canvas drew.
     // …and a PATTERN fill needs the same outline to be clipped to, so it
     // joins the two that ask for one.
-    const patternTiles = shapePatternFillTiles(svg, storedStrokeScale, drawn.grow);
+    const patternTiles = shapePatternFillTiles(svg, storedStrokeScale, drawn.grow, tileExpansion);
     const closedD = fillPres || svg.paintOverlay || patternTiles
       ? buildClosedFillPathD(strokeSegments) : '';
     if (fillPres && closedD) {

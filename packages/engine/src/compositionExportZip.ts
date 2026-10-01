@@ -67,6 +67,9 @@ async function payloadFor(
     const strokeScale = compState?.strokeScale ?? DEFAULT_STROKE_SCALE;
     const svg = await exportCompositionSVG(id, undefined, strokeScale, {
       preferOriginalImages: true,
+      // A file other tools open: patterns as real paths (Figma reads no
+      // `<pattern>`). The PNG member above keeps the paint server.
+      expandTiles: true,
       ...opts.io,
     });
     if (!svg) return null;
