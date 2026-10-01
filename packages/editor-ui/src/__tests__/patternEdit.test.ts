@@ -1005,6 +1005,45 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
     );
   });
 
+  it('ends the Tile section at Size when there is no Edit Pattern button', () => {
+    // A pattern just added is already open for painting, so the page draws
+    // no button — and the sheet used to keep the button's row anyway: a
+    // line of dead space between Size and Remove on exactly the page a new
+    // pattern opens on (CozyJournal bug report 8ea9ec86). The other three
+    // sections never counted it.
+    const withButton = submenuHeight('svgPattern', { svgPatternSection: 'tile' });
+    const open = submenuHeight('svgPattern', {
+      svgPatternSection: 'tile', svgPatternEditButton: false,
+    });
+    expect(open).toBe(
+      CONTENT_PAD * 2 + SECTION_TABS_ROW + ROW_GAP + ROW_SLIDER + ROW_GAP
+      + ROW_SLIDER + BAR_CUSHION,
+    );
+    // Shorter by exactly the button and the gap above it.
+    expect(withButton - open).toBe(ROW_SEGMENTED + ROW_GAP);
+    // Said or unsaid, a page that DOES draw the button keeps its row.
+    expect(submenuHeight('svgPattern', {
+      svgPatternSection: 'tile', svgPatternEditButton: true,
+    })).toBe(withButton);
+    // …and the flag is the Tile section's alone.
+    for (const section of ['symmetry', 'shapes', 'stroke'] as const) {
+      expect(submenuHeight('svgPattern', { svgPatternSection: section, svgPatternEditButton: false }))
+        .toBe(submenuHeight('svgPattern', { svgPatternSection: section }));
+    }
+  });
+
+  it('draws the button and counts its row on ONE rule', () => {
+    // The page and the height read the same constant, so a row cannot be
+    // reserved for a button that is not drawn (or drawn into a sheet that
+    // made no room for it).
+    expect(PANEL).toContain(
+      'const svgPatternEditButton = !model.svgPatternEditing && !!model.onEditSvgPattern;');
+    expect(PANEL).toContain('{!svgPatternEditButton ? null : (');
+    expect(PANEL).toMatch(/submenuHeight\(displaySub, \{[\s\S]*?\n    svgPatternEditButton,\n/);
+    // The old spelling, which only the page knew, is gone.
+    expect(PANEL).not.toContain('editing || !model.onEditSvgPattern');
+  });
+
   it('draws the very grid the pattern object draws, bound to the shape', () => {
     expect(PANEL).toContain('<PatternSymmetryGrid');
     expect(PANEL).toContain("value={model.svgPatternSymmetry ?? 'off'}");

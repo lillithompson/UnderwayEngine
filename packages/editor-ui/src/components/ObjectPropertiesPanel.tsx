@@ -504,6 +504,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   const [svgPatternSection, setSvgPatternSection] =
     useState<'tile' | 'symmetry' | 'shapes' | 'stroke'>('tile');
   const [svgPatternStrokeDraft, setSvgPatternStrokeDraft] = useState<BorderModel | null>(null);
+  // Whether the Tile section ends in its Edit Pattern button. While the
+  // tile IS open there is nothing for the button to do, and a MULTI
+  // selection is sent no callback (the tiles are painted inside one shape,
+  // and one grid is open at a time). Said ONCE, here, because two things
+  // read it — the page that draws the button and the height that makes
+  // room for it — and when only the page knew, the sheet kept the button's
+  // row for a pattern that had just been added (and so was already open):
+  // a line of dead space between Size and Remove.
+  const svgPatternEditButton = !model.svgPatternEditing && !!model.onEditSvgPattern;
   const prevSvgFillOpen = useRef(false);
   // The Text pages own their tracked params too (color still comes from the
   // model — it's changed externally via the full-screen picker).
@@ -1412,7 +1421,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // How FINELY one repeat is cut — the tile is square, so the row reads
     // "2×2" — over the one act that opens it: the tiles themselves are
     // painted ON THE CANVAS, inside the shape. While that tile IS open the
-    // button has nothing left to do and goes away.
+    // button has nothing left to do and goes away (svgPatternEditButton).
     //
     // Called RESOLUTION, not Size: more cells per edge is a denser tile,
     // not a bigger one. (Size is how big the repeat draws, which is the
@@ -1424,7 +1433,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // previews each step from the state the drag began in and commits one
     // entry from it, so a sweep is still one undo step (and it bumps the
     // finger on each step it crosses).
-    const editing = !!model.svgPatternEditing;
     const size = svgPatternSizeDraft
       ?? model.svgPatternSize ?? DEFAULT_SVG_PATTERN_SIZE;
     const span = svgPatternSpanDraft
@@ -1541,7 +1549,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
                 are painted inside one shape, and there is one grid open at
                 a time. Every other row on the page, and the Remove line
                 under it, go over the whole selection. */}
-            {editing || !model.onEditSvgPattern ? null : (
+            {!svgPatternEditButton ? null : (
               <EffectButton
                 label="Edit Pattern"
                 icon="pencil"
@@ -1819,6 +1827,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // two rows of square buttons where the tile's own section is a slider
     // and a button.
     svgPatternSection,
+    // …and its Tile section by whether the Edit Pattern button is drawn,
+    // on the same rule the page draws it by.
+    svgPatternEditButton,
     effectColor: effectColorWritable,
     textColor: !!model.onTextColor && !!model.onPickTextColor,
     // The image / frame border offers every row; a vector's stroke drops the

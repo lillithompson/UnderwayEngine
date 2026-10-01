@@ -280,6 +280,12 @@ export interface SubmenuHeightContext {
    *  slider and a button, so the page is measured by the section the way
    *  the Crop page is measured by its mode. */
   svgPatternSection?: 'tile' | 'symmetry' | 'stroke' | 'shapes';
+  /** Pattern page, Tile section: whether it shows the Edit Pattern button
+   *  under its two sliders (default true). The page drops the button while
+   *  the tile is already open — which it is the moment a pattern is added —
+   *  and for a multi-selection, and a row counted for a button that is not
+   *  drawn is a row of dead space above the Remove line. */
+  svgPatternEditButton?: boolean;
   /** An effect's controls page: whether it shows the hue row under the
    *  block, on the same rule. */
   effectColor?: boolean;
@@ -429,7 +435,9 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // TILE is the tile's two questions — Resolution (how finely one
       // repeat is cut) over
       // Size (how big it draws) — and then the way into painting it: the
-      // tiles themselves are laid ON THE CANVAS, inside the shape.
+      // tiles themselves are laid ON THE CANVAS, inside the shape. That
+      // button is counted only where the page draws it (svgPatternEditButton):
+      // an open tile has no Edit to press, and its page ends at Size.
       // SYMMETRY is the mode grid, two rows of square buttons. STROKE is
       // the Border page's own rows pointed at the tiles' line — Width,
       // Dash and the ink, with no Position (a mark inside a clip has no
@@ -451,7 +459,10 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
           patternTileSetGridHeight(ctx.patternTileSetCount ?? 0),
         ]);
       }
-      return contentArea([SECTION_TABS_ROW, ROW_SLIDER, ROW_SLIDER, ROW_SEGMENTED]);
+      return contentArea([
+        SECTION_TABS_ROW, ROW_SLIDER, ROW_SLIDER,
+        ...(ctx.svgPatternEditButton === false ? [] : [ROW_SEGMENTED]),
+      ]);
     case 'crop':
       return contentArea(cropRows(ctx.cropMode));
     case 'image':
