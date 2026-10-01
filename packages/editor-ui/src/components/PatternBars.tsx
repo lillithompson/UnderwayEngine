@@ -547,7 +547,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
     height: PATTERN_SYMMETRY_BUTTON,
     borderRadius: 8,
-    backgroundColor: PANEL_TRACK,
+    // No ground of its own: twelve grey tiles read as a keypad, and the
+    // one in force was told apart from the eleven at rest by a hairline
+    // alone. The grey is the PICKED cell's (symCellActive), so the mode in
+    // force is the one cell that is filled, as the Tiles grid's lit cell
+    // is the one that is bordered (CozyJournal bug report c9fbc0dc).
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
@@ -556,7 +560,7 @@ const styles = StyleSheet.create({
   // An unfilled place in a short row: it takes a cell's share of the width
   // and draws nothing.
   symCellPad: { flex: 1 },
-  symCellActive: { borderColor: STATE_ACTIVE },
+  symCellActive: { backgroundColor: PANEL_TRACK, borderColor: STATE_ACTIVE },
   // A 9pt caption under a 20pt glyph — Facet's Random/Erase dress, which
   // the arming buttons beside these already wear.
   symWord: { color: PANEL_INK_DIM, fontSize: 9, fontWeight: '600', marginTop: 2 },

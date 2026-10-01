@@ -536,6 +536,12 @@ describe('the Symmetry page is a compact grid of square glyph buttons', () => {
     expect(SRC).toMatch(
       /symCell:\s*\{[^}]*flex: 1,\s*minWidth: 0,\s*height: PATTERN_SYMMETRY_BUTTON,/,
     );
+    // Only the cell in force is filled: a cell at rest has no ground of its
+    // own, and the grey is the picked cell's, with the lit border (CozyJournal
+    // bug report c9fbc0dc — twelve grey tiles read as a keypad).
+    const symCell = SRC.slice(SRC.indexOf('  symCell: {'), SRC.indexOf('  symCellPad:'));
+    expect(symCell).not.toContain('backgroundColor');
+    expect(SRC).toContain('symCellActive: { backgroundColor: PANEL_TRACK, borderColor: STATE_ACTIVE },');
     expect(submenuHeight('patternSymmetry'))
       .toBe(CONTENT_PAD * 2 + PATTERN_SYMMETRY_BUTTON * 2 + PATTERN_TILE_GRID_GAP + BAR_CUSHION);
     // Six across, so the twelve cells are the two rows the page reserves —
