@@ -114,10 +114,12 @@ describe('the sheet: a tab row over the well', () => {
     // names the shared option MENU, which a mixed multi-selection collapses
     // to the open-path one — a rectangle beside a circle lost the Remove
     // line that either offers alone. The subtype reading stays as the
-    // fallback for the single selection it was written for.
-    expect(PANEL).toContain(
-      "if (model.strokeRemovable ?? svgStrokeRemovable(model.svgSubtype ?? 'stroke')) {",
-    );
+    // fallback for the single selection it was written for. All of it, and
+    // "never over a pattern", is one function now (strokePageRemovable —
+    // svgEdit.test.ts holds its cases).
+    expect(PANEL).toContain('if (strokePageRemovable({');
+    expect(PANEL).toContain('removable: model.strokeRemovable,');
+    expect(PANEL).toContain('subtype: model.svgSubtype,');
     // Opacity is not a layer an object can be without, so it has no Remove.
     for (const key of ['opacity', 'transform', 'layout', 'crop', 'patternTiles', 'patternTools', 'patternSymmetry', 'font']) {
       const branch = PANEL.slice(PANEL.indexOf(`displaySub === '${key}'`), PANEL.indexOf('} else if', PANEL.indexOf(`displaySub === '${key}'`) + 1));

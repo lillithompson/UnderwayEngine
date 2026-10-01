@@ -4,12 +4,14 @@
  * images.
  */
 
-import { SVG_EDIT_OPTIONS, svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
+import { SVG_EDIT_OPTIONS, strokePageRemovable, svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgPatternSectionRemovable, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
 import type { SVGSubtypeKind } from '../adapter';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 const SRC_LOGIC = readFileSync(resolve(__dirname, '..', 'logic', 'svgEdit.ts'), 'utf8');
+const PANEL_SRC = readFileSync(
+  resolve(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'), 'utf8');
 
 const SUBTYPES: SVGSubtypeKind[] = ['line', 'arc', 'rectangle', 'circle', 'polygon', 'shape', 'stroke'];
 
@@ -278,6 +280,59 @@ describe('svgStrokeRows', () => {
     for (const subtype of SUBTYPES) {
       expect(svgStrokeRemovable(subtype)).toBe(!svgHasEndpoints(subtype));
     }
+  });
+
+  it('the Stroke page takes the host s answer over the menu s, and the menu s when it has none', () => {
+    // Unset: the single selection's subtype decides…
+    for (const subtype of SUBTYPES) {
+      expect(strokePageRemovable({ subtype })).toBe(svgStrokeRemovable(subtype));
+    }
+    // …and with nothing said at all it is the base menu, an open path.
+    expect(strokePageRemovable({})).toBe(false);
+    // The host's answer wins either way (a rectangle beside a circle shares
+    // the open-path MENU, and both can lose their outline).
+    expect(strokePageRemovable({ removable: true, subtype: 'stroke' })).toBe(true);
+    expect(strokePageRemovable({ removable: false, subtype: 'rectangle' })).toBe(false);
+  });
+
+  it('never offers Remove over a PATTERN, whatever else says it could (CozyJournal bug report 6b05acd0)', () => {
+    // A pattern's tiles are stroked paths and nothing else: there is no
+    // pattern left without its line. Neither the host's answer nor a closed
+    // subtype brings the line back.
+    expect(strokePageRemovable({ pattern: true })).toBe(false);
+    expect(strokePageRemovable({ pattern: true, removable: true })).toBe(false);
+    for (const subtype of SUBTYPES) {
+      expect(strokePageRemovable({ pattern: true, removable: true, subtype })).toBe(false);
+    }
+    // The panel asks with BOTH ways a pattern can be in hand: alone
+    // (showPatternOptions) and among vectors (showStrokeOptions).
+    expect(PANEL_SRC).toContain(
+      'pattern: !!model.showPatternOptions || !!model.showStrokeOptions,');
+    expect(PANEL_SRC).toContain('removable: model.strokeRemovable,');
+    expect(PANEL_SRC).toContain('subtype: model.svgSubtype,');
+  });
+});
+
+describe('a shape s Pattern page and its Remove line', () => {
+  it('shows it under every section but Stroke (CozyJournal bug report 6b05acd0)', () => {
+    // The line removes the PATTERN. Under Stroke it stood beneath Width,
+    // Dash and the ink — where every other page's Remove takes away what
+    // the rows above it set — so it read as "remove this stroke", which a
+    // pattern cannot do, and pressing it took the whole pattern.
+    expect(svgPatternSectionRemovable('tile')).toBe(true);
+    expect(svgPatternSectionRemovable('symmetry')).toBe(true);
+    expect(svgPatternSectionRemovable('shapes')).toBe(true);
+    expect(svgPatternSectionRemovable('stroke')).toBe(false);
+  });
+
+  it('the panel gates the line on the section showing', () => {
+    expect(PANEL_SRC).toContain(
+      'if (model.onRemoveSvgPattern && svgPatternSectionRemovable(svgPatternSection)) {');
+    // The sheet is measured from the line actually set, so the Stroke
+    // section stands shorter by the line it no longer draws rather than
+    // keeping its row empty.
+    expect(PANEL_SRC).toContain(
+      'const sheetHeight = editSheetHeight(contentHeight, { removable: !!removeAction, safeBottom });');
   });
 
   it('never offers Shape without Position — a roundable corner implies a closed path', () => {

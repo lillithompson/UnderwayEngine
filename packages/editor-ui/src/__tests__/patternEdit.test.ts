@@ -940,7 +940,7 @@ describe("a shape's pattern fill picks its mirror from the same grid", () => {
     // not the inset SegmentedRow a property would use.
     expect(PANEL).toContain('<SectionTabs');
     expect(PANEL).toContain('options={SVG_PATTERN_SECTIONS}');
-    expect(PANEL).toContain("useState<'tile' | 'symmetry' | 'shapes' | 'stroke'>('tile')");
+    expect(PANEL).toContain("useState<SvgPatternSection>('tile')");
   });
 
   it('gives the TILES their own line — width, dash and ink', () => {

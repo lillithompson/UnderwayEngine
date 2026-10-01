@@ -11,8 +11,8 @@ import { multiSelectionOptions } from '../logic/multiOptions';
 import { composeFade, fadeMix } from '../logic/opacityEdit';
 import { isValueDragging } from '../logic/slider';
 import { SubmenuKey, editSheetHeight, emptyEffectHeight, pageIsWelled, submenuHeight } from '../logic/submenuHeight';
-import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, svgStrokeRemovable, svgStrokeRows } from '../logic/svgEdit';
-import type { SVGEditAction } from '../logic/svgEdit';
+import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, strokePageRemovable, svgPatternSectionRemovable, svgStrokeRows } from '../logic/svgEdit';
+import type { SVGEditAction, SvgPatternSection } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import {
   landingSubmenu,
@@ -502,7 +502,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // own the same way). It outlives a selection, like that one: a section
   // is where you were working, not a property of the shape.
   const [svgPatternSection, setSvgPatternSection] =
-    useState<'tile' | 'symmetry' | 'shapes' | 'stroke'>('tile');
+    useState<SvgPatternSection>('tile');
   const [svgPatternStrokeDraft, setSvgPatternStrokeDraft] = useState<BorderModel | null>(null);
   // Whether the Tile section ends in its Edit Pattern button. While the
   // tile IS open there is nothing for the button to do, and a MULTI
@@ -1472,8 +1472,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
           //
           // No Position row: alignment asks which side of a path to keep,
           // and the tiles are a mark inside a clip, not an outline around
-          // an area. The Remove line stays the PAGE's (it removes the
-          // pattern) — a line is not something a pattern can be without.
+          // an area. And no Remove line under this section (below): a line
+          // is not something a pattern can be without, and the page's own
+          // Remove, standing under these rows, read as taking the line away
+          // — and took the pattern.
           <BorderBar
             border={svgPatternStrokeForBar}
             showPosition={false}
@@ -1560,7 +1562,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         )}
       </BarBody>
     );
-    if (model.onRemoveSvgPattern) {
+    // The page's Remove takes the PATTERN away — offered under every
+    // section but Stroke, where it read as removing the tiles' line
+    // (svgPatternSectionRemovable).
+    if (model.onRemoveSvgPattern && svgPatternSectionRemovable(svgPatternSection)) {
       removeAction = { label: 'Remove pattern', onPress: () => model.onRemoveSvgPattern?.() };
     }
   } else if (displaySub === 'transform') {
@@ -1696,7 +1701,14 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // menu, and reading removability off that took the line away from a
     // rectangle beside a circle. Unset falls back to the menu, which is
     // the single selection this was written for.
-    if (model.strokeRemovable ?? svgStrokeRemovable(model.svgSubtype ?? 'stroke')) {
+    //
+    // …and never over a PATTERN, alone or among vectors: its tiles are
+    // nothing but their line (strokePageRemovable, which holds all three).
+    if (strokePageRemovable({
+      pattern: !!model.showPatternOptions || !!model.showStrokeOptions,
+      removable: model.strokeRemovable,
+      subtype: model.svgSubtype,
+    })) {
       removeAction = { label: 'Remove stroke', onPress: removeStroke };
     }
   } else if (displaySub === 'rigJoints' || displaySub === 'rigLimbs') {

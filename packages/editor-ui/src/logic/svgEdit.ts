@@ -125,6 +125,53 @@ export function svgStrokeRemovable(subtype: SVGSubtypeKind): boolean {
 }
 
 /**
+ * Whether the STROKE PAGE shows its Remove line, for what it is editing.
+ *
+ * Never over a PATTERN — a pattern object alone, or one among the vectors
+ * of a mixed selection. A pattern's tiles are stroked paths and nothing
+ * else: there is no pattern left without its line, the way there is no
+ * open path left without one, so the line is not offered rather than
+ * offered and inert. It used to hold only by accident (a pattern names no
+ * subtype, and the fallback subtype happened to be the open path), which
+ * the first host to answer `removable` for a pattern would have undone.
+ *
+ * Otherwise the HOST's answer for the selection when it gave one (asked of
+ * every member — see ObjectPropertiesModel.strokeRemovable), else the
+ * single selection's subtype ({@link svgStrokeRemovable}).
+ */
+export function strokePageRemovable(page: {
+  /** A pattern object is among what the page edits. */
+  pattern?: boolean;
+  /** The host's answer for the selection, when it has one. */
+  removable?: boolean;
+  /** The option menu the selection shares. */
+  subtype?: SVGSubtypeKind;
+}): boolean {
+  if (page.pattern) return false;
+  return page.removable ?? svgStrokeRemovable(page.subtype ?? 'stroke');
+}
+
+/** A shape's Pattern page, by section: Tile, Symmetry, Shapes and — the
+ *  tiles' own line — Stroke. */
+export type SvgPatternSection = 'tile' | 'symmetry' | 'shapes' | 'stroke';
+
+/**
+ * Whether a shape's PATTERN PAGE shows its Remove line under `section`.
+ *
+ * Everywhere but STROKE. The line removes the PATTERN, and under Tile,
+ * Symmetry and Shapes that is what it reads as. Under Stroke it stands
+ * directly beneath Width, Dash and the ink, where every other page's
+ * Remove takes away the thing the rows above it set — so there it reads as
+ * "remove this stroke", which a pattern cannot do (see
+ * {@link strokePageRemovable}), and pressing it took the whole pattern
+ * instead. The pattern is still removed from any of the other three
+ * sections, a tab away.
+ */
+export function svgPatternSectionRemovable(section: SvgPatternSection): boolean {
+  return section !== 'stroke';
+}
+
+/**
  * Whether a subtype offers the Shape page — the Radius slider that rounds the
  * path's own corners. A control for the subtypes whose corners are LINE→LINE
  * joins (`roundPathCorners` only rounds those): the rectangle and the
