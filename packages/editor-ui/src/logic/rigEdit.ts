@@ -157,8 +157,12 @@ const PART_SLIDERS: Record<RigPart, readonly RigSliderSpec[]> = {
     { key: 'wristBendR', label: 'Right Bend', ends: ['back', 'forward'], centered: true },
   ],
   feet: [
-    { key: 'footL', label: 'Left', ends: ['flat', 'pointed'] },
-    { key: 'footR', label: 'Right', ends: ['flat', 'pointed'] },
+    // Not centered: the foot lies flat a quarter of the way up (Figgie's
+    // FOOT_FLAT_AT, the rest below), points toward the top, and below the
+    // rest bends BACK, toes up — a shorter travel than the point's, as an
+    // ankle's is, so the bar is not split at its middle.
+    { key: 'footL', label: 'Left', ends: ['back', 'pointed'] },
+    { key: 'footR', label: 'Right', ends: ['back', 'pointed'] },
     { key: 'ankleTwistL', label: 'Left Twist', ends: ['in', 'out'], centered: true },
     { key: 'ankleTwistR', label: 'Right Twist', ends: ['in', 'out'], centered: true },
     // The BALL's bend: the toe segment creased at the ball — the same
@@ -233,8 +237,12 @@ export const RIG_SLIDER_REST: Record<RigSliderKey, number> = {
   spreadR: 0.5,
   wristBendL: 0.5, // straight, in line with the forearm
   wristBendR: 0.5,
-  footL: 0, // flat — the slider travels TOWARD the point
-  footR: 0,
+  // Flat — a quarter up the track, not at its floor: below it the foot
+  // bends BACK, toes up (Figgie's FOOT_FLAT_AT, which this must equal or
+  // an untouched bar would misreport the figure; the app's rigParts test
+  // pins the two together). The slider travels TOWARD the point.
+  footL: 0.25,
+  footR: 0.25,
   ankleTwistL: 0.5,
   ankleTwistR: 0.5,
   ballBendL: 0.5, // flat — centered between toes-back and tiptoe
