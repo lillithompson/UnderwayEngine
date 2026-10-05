@@ -33,30 +33,25 @@ function postToNative(message: object): void {
 }
 
 /**
- * Wait for a SHARE_RESULT message from native after posting a SHARE_FILE.
- * Mirrors the handler-swap pattern used by savePngToCameraRoll — without
- * its clock. The share sheet is the user's for as long as they hold it:
+ * Wait for a SHARE_RESULT message from native after posting a SHARE_FILE —
+ * with no clock. The share sheet is the user's for as long as they hold it:
  * picking a Google Drive folder and uploading a page of photos over
  * cellular runs well past the 30 s this used to allow, and when the clock
- * won it reported `timeout` (a failure) for an export that then landed,
- * and the real SHARE_RESULT, arriving later, went to a handler that no
- * longer knew about it (CozyJournal bug report 943b3694). Native answers
- * every SHARE_FILE exactly once, success or failure, when the sheet is
- * dismissed (nativeBridge handleShareFile wraps the whole act in one
- * try/catch), so the sheet's dismissal is the only honest end — there is
- * nothing a clock could add except a wrong answer.
+ * won it reported `timeout` (a failure) for an export that then landed
+ * (CozyJournal bug report 943b3694). Native answers every SHARE_FILE
+ * exactly once, success or failure, when the sheet is dismissed
+ * (nativeBridge handleShareFile wraps the whole act in one try/catch, and
+ * expo-sharing is patched to settle on every completion — patches/ in the
+ * app, bug report e3825177), so the sheet's dismissal is the only honest
+ * end.
  */
 function awaitShareResult(): Promise<{ success: boolean; error?: string }> {
   return new Promise((resolve) => {
-    const prevHandler = window.__facetBridgeHandler;
-    window.__facetBridgeHandler = (msg: NativeToWebMessage) => {
-      if (msg.type === 'SHARE_RESULT') {
-        window.__facetBridgeHandler = prevHandler;
-        resolve(msg.payload);
-      } else {
-        if (prevHandler) prevHandler(msg);
-      }
-    };
+    const off = onNativeMessage((msg) => {
+      if (msg.type !== 'SHARE_RESULT') return;
+      off();
+      resolve(msg.payload);
+    });
   });
 }
 
@@ -118,27 +113,23 @@ export function savePngToCameraRoll(
 ): Promise<{ success: boolean; error?: string }> {
   if (isInWebView()) {
     return new Promise((resolve) => {
-      const prevHandler = window.__facetBridgeHandler;
-      window.__facetBridgeHandler = (msg: NativeToWebMessage) => {
-        if (msg.type === 'CAMERA_ROLL_RESULT') {
-          window.__facetBridgeHandler = prevHandler;
-          resolve(msg.payload);
-        } else {
-          if (prevHandler) prevHandler(msg);
-        }
+      let done = false;
+      const finish = (result: { success: boolean; error?: string }) => {
+        if (done) return;
+        done = true;
+        off();
+        resolve(result);
       };
+      const off = onNativeMessage((msg) => {
+        if (msg.type === 'CAMERA_ROLL_RESULT') finish(msg.payload);
+      });
 
       postToNative({
         type: 'SAVE_TO_CAMERA_ROLL',
         payload: { data: base64Data, filename },
       });
 
-      setTimeout(() => {
-        if (window.__facetBridgeHandler !== prevHandler) {
-          window.__facetBridgeHandler = prevHandler;
-          resolve({ success: false, error: 'timeout' });
-        }
-      }, 30000);
+      setTimeout(() => finish({ success: false, error: 'timeout' }), 30000);
     });
   } else {
     return (async () => {
@@ -180,30 +171,26 @@ export function savePngToCameraRoll(
 export function importFile(accept: string): Promise<{ name: string; content: string } | null> {
   if (isInWebView()) {
     return new Promise((resolve) => {
-      // Set up one-time listener for the FILE_IMPORTED response
-      const prevHandler = window.__facetBridgeHandler;
-      window.__facetBridgeHandler = (msg: NativeToWebMessage) => {
-        if (msg.type === 'FILE_IMPORTED') {
-          window.__facetBridgeHandler = prevHandler;
-          resolve({ name: msg.payload.name, content: msg.payload.content });
-        } else {
-          // Pass through other messages
-          if (prevHandler) prevHandler(msg);
-        }
+      let done = false;
+      const finish = (result: { name: string; content: string } | null) => {
+        if (done) return;
+        done = true;
+        off();
+        resolve(result);
       };
+      const off = onNativeMessage((msg) => {
+        if (msg.type === 'FILE_IMPORTED') {
+          finish({ name: msg.payload.name, content: msg.payload.content });
+        }
+      });
 
       postToNative({
         type: 'IMPORT_FILE',
         payload: { accept },
       });
 
-      // Timeout: if no response in 60s, restore handler and resolve null
-      setTimeout(() => {
-        if (window.__facetBridgeHandler !== prevHandler) {
-          window.__facetBridgeHandler = prevHandler;
-          resolve(null);
-        }
-      }, 60000);
+      // Timeout: if no response in 60s, resolve null.
+      setTimeout(() => finish(null), 60000);
     });
   } else {
     // Browser fallback: use file input
@@ -275,12 +262,14 @@ export type ImportBinaryFileResult =
 export function importBinaryFile(accept: string): Promise<ImportBinaryFileResult> {
   if (isInWebView()) {
     return new Promise((resolve) => {
-      const prevHandler = window.__facetBridgeHandler;
+      let done = false;
       const finish = (result: ImportBinaryFileResult) => {
-        window.__facetBridgeHandler = prevHandler;
+        if (done) return;
+        done = true;
+        off();
         resolve(result);
       };
-      window.__facetBridgeHandler = (msg: NativeToWebMessage) => {
+      const off = onNativeMessage((msg) => {
         if (msg.type === 'BINARY_FILE_IMPORTED') {
           const b64 = msg.payload.data;
           const binary = atob(b64);
@@ -290,10 +279,8 @@ export function importBinaryFile(accept: string): Promise<ImportBinaryFileResult
         } else if (msg.type === 'BINARY_FILE_IMPORT_FAILED') {
           logToNative('warn', 'importBinaryFile', `received FAIL stage=${msg.payload.stage} error=${msg.payload.error}`);
           finish({ status: 'error', error: msg.payload.error, stage: msg.payload.stage });
-        } else {
-          if (prevHandler) prevHandler(msg);
         }
-      };
+      });
 
       postToNative({
         type: 'IMPORT_BINARY_FILE',
@@ -305,11 +292,7 @@ export function importBinaryFile(accept: string): Promise<ImportBinaryFileResult
       // fires when the user cancels (no native message at all on cancel)
       // or takes a long time browsing photos. Treating it as cancel
       // matches the prior silent UX for both cases.
-      setTimeout(() => {
-        if (window.__facetBridgeHandler !== prevHandler) {
-          finish({ status: 'cancelled' });
-        }
-      }, 60000);
+      setTimeout(() => finish({ status: 'cancelled' }), 60000);
     });
   } else {
     return new Promise((resolve) => {
@@ -482,15 +465,66 @@ export function onAppEvent(kind: string, handler: (data: unknown) => void): () =
   });
 }
 
-/** Register a handler for messages from native. */
-export function onNativeMessage(handler: (msg: NativeToWebMessage) => void): () => void {
-  const prev = window.__facetBridgeHandler;
-  window.__facetBridgeHandler = (msg) => {
-    handler(msg);
-    if (prev) prev(msg);
-  };
+type NativeListener = (msg: NativeToWebMessage) => void;
+
+/** One window's listeners, and the single function the native side calls
+ *  (`window.__facetBridgeHandler`) that hands each message to all of them.
+ *  `foreign` is a handler someone else had installed before the first
+ *  listener here; it keeps receiving every message, and is put back when
+ *  the last listener goes. */
+interface BridgeRegistry {
+  listeners: Set<NativeListener>;
+  dispatch: NativeListener;
+  foreign?: NativeListener;
+}
+
+/** Per window object, so a fresh window (a test's, a reloaded page's)
+ *  starts with no listeners. */
+const registries = new WeakMap<object, BridgeRegistry>();
+
+/**
+ * Register a handler for messages from native. Returns the unsubscribe,
+ * which removes THIS handler and nothing else, however many were added
+ * or removed since.
+ *
+ * It used to CHAIN: each registration wrapped the handler it found, and
+ * its unsubscribe put that handler back. Any two waits that overlapped
+ * out of order broke it — a reply listener registered before a share and
+ * removed while the share sheet was open restored the handler from
+ * before the share, unlinking the share's wait, and the SHARE_RESULT
+ * that arrived later reached nobody: the export screen sat on
+ * "Packing this page…" until the app was killed (CozyJournal bug report
+ * e3825177). A set has no order to get wrong.
+ */
+export function onNativeMessage(handler: NativeListener): () => void {
+  let reg = registries.get(window);
+  if (!reg || window.__facetBridgeHandler !== reg.dispatch) {
+    const listeners = new Set<NativeListener>();
+    const created: BridgeRegistry = {
+      listeners,
+      foreign: window.__facetBridgeHandler,
+      dispatch: (msg) => {
+        // A snapshot: a listener may unsubscribe (or subscribe another)
+        // while it handles this message.
+        for (const l of [...listeners]) l(msg);
+        created.foreign?.(msg);
+      },
+    };
+    reg = created;
+    registries.set(window, reg);
+    window.__facetBridgeHandler = reg.dispatch;
+  }
+  const own = reg;
+  // A wrapper per registration, so the same function registered twice is
+  // two entries and each unsubscribe removes its own.
+  const entry: NativeListener = (msg) => handler(msg);
+  own.listeners.add(entry);
   return () => {
-    window.__facetBridgeHandler = prev;
+    if (!own.listeners.delete(entry) || own.listeners.size > 0) return;
+    if (window.__facetBridgeHandler === own.dispatch) {
+      window.__facetBridgeHandler = own.foreign;
+      registries.delete(window);
+    }
   };
 }
 
@@ -585,8 +619,9 @@ let bridgeInitialized = false;
  *    the AsyncRequireError recovery path could not run and no uncaught
  *    error reached the native log.
  *
- * Idempotency matters because onNativeMessage CHAINS handlers: a second
- * call would pong twice and dispatch every app-state event twice.
+ * Idempotency matters because every onNativeMessage registration hears
+ * every message: a second call would pong twice and dispatch every
+ * app-state event twice.
  */
 export function initBridge(): void {
   if (!isInWebView() || bridgeInitialized) return;
