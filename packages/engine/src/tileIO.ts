@@ -28,20 +28,43 @@ async function streamToBytes(readable: ReadableStream<Uint8Array>): Promise<Uint
   return out;
 }
 
-export async function compressTile(payload: Uint8Array): Promise<Uint8Array> {
-  const cs = new CompressionStream('deflate');
-  const writer = cs.writable.getWriter();
-  const result = streamToBytes(cs.readable as ReadableStream<Uint8Array>);
-  await writer.write(payload as unknown as BufferSource);
-  await writer.close();
-  return result;
+/**
+ * Push `payload` through a transform and collect what comes out the other
+ * side. Both legs are started before either is awaited (see the note above)
+ * and both are then OBSERVED, which is what `Promise.allSettled` is here
+ * for: a stream the transform refuses — a corrupt or truncated deflate
+ * stream reaching `decompressTile` — errors the readable AND the writer, and
+ * awaiting one leg after the other left the loser's rejection with no
+ * handler. The caller saw its error and the runtime ALSO saw an
+ * `unhandledRejection`, which on React Native is a red box and in node a
+ * process-level warning (a fatal, on a future default).
+ *
+ * The READER's error is thrown in preference to the writer's: on a bad
+ * stream the writer usually fails with "the stream is errored" while the
+ * reader carries what was actually wrong with the bytes.
+ */
+interface ByteTransform {
+  readable: ReadableStream<Uint8Array>;
+  writable: WritableStream<Uint8Array>;
 }
 
-export async function decompressTile(compressed: Uint8Array): Promise<Uint8Array> {
-  const ds = new DecompressionStream('deflate');
-  const writer = ds.writable.getWriter();
-  const result = streamToBytes(ds.readable as ReadableStream<Uint8Array>);
-  await writer.write(compressed as unknown as BufferSource);
-  await writer.close();
-  return result;
+async function through(transform: ByteTransform, payload: Uint8Array): Promise<Uint8Array> {
+  const writer = transform.writable.getWriter();
+  const read = streamToBytes(transform.readable);
+  const write = (async () => {
+    await writer.write(payload);
+    await writer.close();
+  })();
+  const [wrote, bytes] = await Promise.allSettled([write, read]);
+  if (bytes.status === 'rejected') throw bytes.reason;
+  if (wrote.status === 'rejected') throw wrote.reason;
+  return bytes.value;
+}
+
+export function compressTile(payload: Uint8Array): Promise<Uint8Array> {
+  return through(new CompressionStream('deflate') as unknown as ByteTransform, payload);
+}
+
+export function decompressTile(compressed: Uint8Array): Promise<Uint8Array> {
+  return through(new DecompressionStream('deflate') as unknown as ByteTransform, compressed);
 }

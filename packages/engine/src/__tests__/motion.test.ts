@@ -2,6 +2,7 @@ import {
   Ticker,
   TickerDriver,
   createManualDriver,
+  rafDriver,
   linear,
   quadOut,
   cubicOut,
@@ -151,5 +152,65 @@ describe('Ticker', () => {
     step(50);
     expect(b).toEqual([0, 0.5, 1]);
     expect(tk.size).toBe(0);
+  });
+});
+
+describe('rafDriver', () => {
+  // Exported so a frame loop of its own (DrawBots' web/simRender/frameLoop)
+  // need not carry a second copy of these ten lines. There is no rAF under
+  // jest, so the timeout fallback is the path exercised here.
+  const realSetTimeout = globalThis.setTimeout;
+
+  afterEach(() => {
+    jest.useRealTimers();
+    globalThis.setTimeout = realSetTimeout;
+  });
+
+  it("runs the first frame synchronously by default — the Ticker's behaviour", () => {
+    jest.useFakeTimers();
+    const frames: number[] = [];
+    const d = rafDriver();
+    d.start((now) => frames.push(now));
+    expect(frames).toHaveLength(1);
+    jest.advanceTimersByTime(16);
+    expect(frames).toHaveLength(2);
+    d.stop();
+    jest.advanceTimersByTime(100);
+    expect(frames).toHaveLength(2);
+  });
+
+  it('with immediate: false the first frame is scheduled like every other, so start() cannot re-enter its caller', () => {
+    jest.useFakeTimers();
+    const frames: number[] = [];
+    const d = rafDriver({ immediate: false });
+    d.start((now) => frames.push(now));
+    expect(frames).toEqual([]);
+    jest.advanceTimersByTime(16);
+    expect(frames).toHaveLength(1);
+    d.stop();
+    jest.advanceTimersByTime(100);
+    expect(frames).toHaveLength(1);
+  });
+
+  it('a driver stopped from inside onFrame schedules nothing more', () => {
+    jest.useFakeTimers();
+    let count = 0;
+    const d = rafDriver();
+    d.start(() => { count += 1; d.stop(); });
+    expect(count).toBe(1);
+    jest.advanceTimersByTime(200);
+    expect(count).toBe(1);
+  });
+
+  it('start() works again after stop()', () => {
+    jest.useFakeTimers();
+    let count = 0;
+    const d = rafDriver();
+    d.start(() => { count += 1; });
+    d.stop();
+    expect(count).toBe(1);
+    d.start(() => { count += 1; });
+    expect(count).toBe(2);
+    d.stop();
   });
 });

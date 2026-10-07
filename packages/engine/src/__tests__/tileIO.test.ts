@@ -66,3 +66,42 @@ describe('tileIO compression round-trip', () => {
     expect(result.meta.figures).toHaveLength(0);
   });
 });
+
+describe('a stream the transform refuses', () => {
+  // Both legs of the transform are started before either is awaited (the
+  // note at the top of tileIO.ts says why), so both have to be OBSERVED:
+  // garbage reaching decompressTile errors the readable AND the writer, and
+  // awaiting one after the other left the loser's rejection with no handler
+  // — the caller's error PLUS an unhandledRejection the caller never caused.
+  const garbage = new Uint8Array(64).map((_, i) => (i * 37 + 11) & 0xff);
+
+  test('rejects, ONCE — nothing is left unhandled', async () => {
+    const stray: unknown[] = [];
+    const onStray = (reason: unknown): void => { stray.push(reason); };
+    process.on('unhandledRejection', onStray);
+    try {
+      await expect(decompressTile(garbage)).rejects.toBeDefined();
+      // An unhandled rejection is reported at the end of the microtask
+      // queue, so give the loop a turn before looking.
+      await new Promise((r) => setImmediate(r));
+      expect(stray).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onStray);
+    }
+  });
+
+  test('a truncated deflate stream is refused rather than silently short', async () => {
+    const full = await compressTile(new Uint8Array(4096).fill(0x5a));
+    const cut = full.subarray(0, full.length - 4);
+    const stray: unknown[] = [];
+    const onStray = (reason: unknown): void => { stray.push(reason); };
+    process.on('unhandledRejection', onStray);
+    try {
+      await expect(decompressTile(cut)).rejects.toBeDefined();
+      await new Promise((r) => setImmediate(r));
+      expect(stray).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onStray);
+    }
+  });
+});

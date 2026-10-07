@@ -26,6 +26,22 @@ export interface ZipExportOpts {
    * the very same page exported on its own came back exact.
    */
   io?: CompositionIOOptions;
+  /**
+   * Supplies a member's BYTES, in place of this module's own export for the
+   * format. The archive is still built here — the member names, the `safe`
+   * sanitizing, the `_<id>` de-dupe and the serial one-page-at-a-time loop
+   * are the same for every member however its bytes were made.
+   *
+   * For a consumer whose file is the engine's export plus something of its
+   * own: DrawBots' `.tile` carries its simulation document as a trailer on
+   * the engine's bundle (`web/editor/exportAll.ts`), and packed its own zip
+   * for that reason — a second copy of the naming rules, which a backup
+   * written either way has to agree on, since the importer reads both.
+   *
+   * Return null for an item with nothing to write; it is left out of the
+   * archive, exactly as an empty composition is.
+   */
+  payload?: (item: ZipExportItem, format: ZipExportFormat) => Promise<Uint8Array | null>;
 }
 
 // Default stroke scale when an entry has none stored — keep in sync with the
@@ -87,6 +103,10 @@ async function payloadFor(
  * can show an "Export failed" message). Per-composition export errors are
  * surfaced by throwing — the caller wraps this in try/catch already.
  *
+ * {@link ZipExportOpts.payload} replaces how a member's bytes are made while
+ * keeping everything about the archive — names, sanitizing, de-duping, the
+ * serial loop — here.
+ *
  * Runs serially: each per-format export allocates significant transient memory
  * (PNG rasterization in particular), so we avoid spiking by running them one at
  * a time.
@@ -101,7 +121,9 @@ export async function exportCompositionsAsZip(
   const entries: ZipEntry[] = [];
 
   for (const item of items) {
-    const payload = await payloadFor(item.id, format, opts);
+    const payload = opts.payload
+      ? await opts.payload(item, format)
+      : await payloadFor(item.id, format, opts);
     if (!payload) continue;
 
     let stem = safe(item.name);

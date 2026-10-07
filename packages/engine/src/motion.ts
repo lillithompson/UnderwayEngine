@@ -48,10 +48,33 @@ export interface TickerDriver {
   stop(): void;
 }
 
-function rafDriver(): TickerDriver {
+export interface RafDriverOpts {
+  /**
+   * Run the FIRST frame synchronously inside `start()`, so a tween added
+   * this tick updates before the caller returns. The default, and what
+   * {@link Ticker} has always done.
+   *
+   * `false` schedules the first frame like every other one. A loop whose
+   * frame can do more than move a tween — step a simulation, draw, end a
+   * session — must not re-enter the caller that woke it, which is typically
+   * an input handler (DrawBots' web/simRender/frameLoop.ts).
+   */
+  immediate?: boolean;
+}
+
+/**
+ * The `requestAnimationFrame` driver {@link Ticker} runs on, falling back to
+ * a 16 ms timeout where there is no rAF (node, a hidden document that never
+ * paints). Exported so a loop of its own does not need a second copy of
+ * these ten lines.
+ */
+export function rafDriver({ immediate = true }: RafDriverOpts = {}): TickerDriver {
   const hasRaf = typeof requestAnimationFrame === 'function';
   let live = false;
   let handle = 0;
+  const schedule = (loop: () => void): number => (hasRaf
+    ? requestAnimationFrame(loop)
+    : (setTimeout(loop, 16) as unknown as number));
   return {
     start(onFrame) {
       live = true;
@@ -59,11 +82,10 @@ function rafDriver(): TickerDriver {
         if (!live) return;
         onFrame(globalThis.performance?.now() ?? Date.now());
         if (!live) return; // the ticker went idle inside onFrame
-        handle = hasRaf
-          ? requestAnimationFrame(loop)
-          : (setTimeout(loop, 16) as unknown as number);
+        handle = schedule(loop);
       };
-      loop();
+      if (immediate) loop();
+      else handle = schedule(loop);
     },
     stop() {
       live = false;
