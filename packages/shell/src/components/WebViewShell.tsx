@@ -109,7 +109,7 @@ export default function WebViewShell({
   // the host passes a new function.
   const onRecoveryEventRef = useRef(onRecoveryEvent);
   onRecoveryEventRef.current = onRecoveryEvent;
-  const { url, ready } = useLocalServer();
+  const { url, ready, failed: serverFailed, retry: retryServer } = useLocalServer();
   const [webReady, setWebReady] = useState(false);
   // What the page was LOADED with. The WebView's source must not change
   // after that: a new source is a fresh load, which is the cost this is
@@ -342,18 +342,32 @@ export default function WebViewShell({
           />
         </View>
       )}
-      {!webReady && splash !== undefined && !recoveryFailed && (
+      {!webReady && splash !== undefined && !recoveryFailed && !serverFailed && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">{splash}</View>
       )}
-      {!webReady && (splash === undefined || recoveryFailed) && (
-        <View style={styles.splashOverlay} pointerEvents={recoveryFailed ? 'auto' : 'none'}>
+      {!webReady && (splash === undefined || recoveryFailed || serverFailed) && (
+        <View style={styles.splashOverlay} pointerEvents={recoveryFailed || serverFailed ? 'auto' : 'none'}>
           <Image
             source={require('../../assets/images/splash-icon.png')}
             style={styles.splashLogo}
             resizeMode="contain"
             fadeDuration={0}
           />
-          {recoveryFailed ? (
+          {serverFailed ? (
+            // The local server could not take its port, and there is no
+            // other port that holds this app's data (useLocalServer).
+            <View style={styles.failurePanel}>
+              <Text style={styles.failureText}>
+                Couldn't open your saved work.
+              </Text>
+              <Text style={styles.failureText}>
+                Another app may be using its connection. Close other apps and try again.
+              </Text>
+              <TouchableOpacity onPress={retryServer} style={styles.retryButton}>
+                <Text style={styles.retryButtonText}>Try again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : recoveryFailed ? (
             <View style={styles.failurePanel}>
               <Text style={styles.failureText}>
                 Facet ran out of memory and couldn't recover.

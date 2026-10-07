@@ -15,8 +15,34 @@ public class StaticServerModule: Module {
   // Remembered so we can restart on foreground without JS re-passing it.
   private var documentRoot: String?
   private var foregroundObserver: NSObjectProtocol?
-  // Fixed port keeps the origin stable across launches so IndexedDB data persists.
-  private let preferredPorts: [UInt] = [18730, 18731, 18732]
+  // ONE fixed port, never a fallback. The port is part of the page's origin
+  // (http://localhost:<port>), and the origin is the key to everything the
+  // web side stores — IndexedDB, localStorage. A launch that came up on a
+  // second port opened an EMPTY journal: pages made there were saved where
+  // the next launch on the usual port never looks, and the editor, finding
+  // nothing, wiped them from the native lists too (2026-10-06: a Facets page
+  // drawn on 18731 vanished when the app came back on 18730). So a busy
+  // port is retried, and when it stays busy the start FAILS and the shell
+  // says so — an app that cannot open its journal must not open another.
+  //
+  // An app on this shell may name its own port (Info.plist
+  // `UnderwayStaticServerPort`) so two such apps on one device never fight
+  // over it; changing it for an app that has shipped strands that app's
+  // data, exactly as a fallback would.
+  private let port: UInt = {
+    if let n = Bundle.main.object(forInfoDictionaryKey: "UnderwayStaticServerPort") as? NSNumber, n.uintValue > 0 {
+      return n.uintValue
+    }
+    return 18730
+  }()
+  // How long a busy port is retried before the start gives up: a listener
+  // that is going away (a restart's old socket, a dying instance) lets go
+  // well inside this.
+  private let bindAttempts = 15
+  private let bindRetryDelay: TimeInterval = 0.2
+  // Every start/stop runs here, one at a time: the foreground restart and
+  // a JS startServer must never interleave on `server`.
+  private let serverQueue = DispatchQueue(label: "underway.static-server")
 
   // iOS defaults URLCache.shared to ~20 MB disk, shared across the WebView,
   // system networking, and every other URLSession. That's too small to keep
@@ -61,12 +87,16 @@ public class StaticServerModule: Module {
     }
 
     AsyncFunction("startServer") { (documentRoot: String) -> String in
-      return try self.startServerInternal(documentRoot: documentRoot)
+      return try self.serverQueue.sync {
+        try self.startServerInternal(documentRoot: documentRoot)
+      }
     }
 
     AsyncFunction("stopServer") { () -> Void in
-      self.server?.stop()
-      self.server = nil
+      self.serverQueue.sync {
+        self.server?.stop()
+        self.server = nil
+      }
     }
 
     Function("getPort") { () -> Int in
@@ -94,15 +124,15 @@ public class StaticServerModule: Module {
   }
 
   private func handleForegroundTransition() {
-    guard let documentRoot = self.documentRoot else {
-      // Server was never started by JS — nothing to do.
-      return
-    }
     // Always rebind on foreground. `isRunning` cannot be trusted here: it
     // tracks GCDWebServer's own start/stop calls, not the actual liveness
     // of the kernel-owned listening socket.
-    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+    serverQueue.async { [weak self] in
       guard let self = self else { return }
+      guard let documentRoot = self.documentRoot else {
+        // Server was never started by JS — nothing to do.
+        return
+      }
       staticServerLog.log("[server] foreground transition — restarting socket")
       self.server?.stop()
       self.server = nil
@@ -127,8 +157,8 @@ public class StaticServerModule: Module {
     //   1. cacheAge: 0 — the web bundle lives on-disk in the app, so there is
     //      no bandwidth cost to re-serving it. A non-zero cacheAge made
     //      WKWebView keep old JS/HTML across app reinstalls, because the
-    //      origin is a stable fixed-port localhost URL (see preferredPorts
-    //      below, which we keep fixed for IndexedDB persistence) and
+    //      origin is a stable fixed-port localhost URL (see `port`
+    //      above, which we keep fixed for IndexedDB persistence) and
     //      WKWebView's HTTP cache survives between launches keyed on that
     //      origin.
     //   2. gzip — GCDWebServer's gzipContentEncodingEnabled is per-response,
@@ -188,33 +218,34 @@ public class StaticServerModule: Module {
       return response
     }
 
-    // Try preferred fixed ports first to keep a stable origin for IndexedDB persistence.
-    for port in self.preferredPorts {
+    // The one port, retried while it is busy — never another (see `port`).
+    var lastError: Error?
+    for attempt in 1...self.bindAttempts {
       do {
         try server.start(options: [
-          GCDWebServerOption_Port: port,
+          GCDWebServerOption_Port: self.port,
           GCDWebServerOption_BindToLocalhost: true,
           GCDWebServerOption_AutomaticallySuspendInBackground: false,
         ])
         self.server = server
         // COLD-START diag — pin the moment the loopback socket is bound.
-        staticServerLog.log("[server] listening on port \(server.port, privacy: .public) (preferred)")
+        staticServerLog.log("[server] listening on port \(server.port, privacy: .public) (attempt \(attempt, privacy: .public))")
         return server.serverURL!.absoluteString
       } catch {
         server.stop()
+        lastError = error
+        if attempt < self.bindAttempts { Thread.sleep(forTimeInterval: self.bindRetryDelay) }
       }
     }
-
-    // Last resort: random port (app works but data won't persist across launches)
-    try server.start(options: [
-      GCDWebServerOption_Port: 0,
-      GCDWebServerOption_BindToLocalhost: true,
-      GCDWebServerOption_AutomaticallySuspendInBackground: false,
-    ])
-
-    self.server = server
-    // COLD-START diag — random-port fallback also logs.
-    staticServerLog.log("[server] listening on port \(server.port, privacy: .public) (random fallback)")
-    return server.serverURL!.absoluteString
+    staticServerLog.error("[server] port \(self.port, privacy: .public) unavailable after \(self.bindAttempts, privacy: .public) attempts: \(String(describing: lastError), privacy: .public)")
+    throw StaticServerPortUnavailable(port: self.port)
   }
+}
+
+/// The start's failure when the app's port stays busy. The message reaches
+/// JS as the rejection's text; useLocalServer turns it into the shell's
+/// "can't open" panel rather than a page on some other origin.
+struct StaticServerPortUnavailable: Error, CustomStringConvertible {
+  let port: UInt
+  var description: String { "static server port \(port) is in use" }
 }
