@@ -428,3 +428,36 @@ describe('findSceneObjectAtCell — sticky selection (bbox re-grabs the selected
     expect(findSceneObjectAtCell(state, 5, 5)).toEqual({ kind: 'image', id: 'back' });
   });
 });
+
+describe('findSceneObjectAtCell — pixelsOnly', () => {
+  // A tool that must tell "on an object" from "inside its box" (placing a
+  // bot) asks for the drawn pixels alone.
+  function makeDiagonalLine(id: string): SVGObject {
+    const segments: PathSegment[] = [{ kind: 'line', start: [0, 0], end: [10, 10] }];
+    return { id, segments, color: WHITE, ...computeSVGBbox(segments) };
+  }
+
+  test('a lone line: on the stroke hits, in its box off the stroke is empty', () => {
+    const state = makeState({ svgObjects: [makeDiagonalLine('l')], sceneOrder: ['l'] });
+    expect(findSceneObjectAtCell(state, 5, 5, { pixelsOnly: true })).toEqual({ kind: 'svg', id: 'l' });
+    expect(findSceneObjectAtCell(state, 1, 9, { pixelsOnly: true })).toBeNull();
+    // The default walk still falls back to the box.
+    expect(findSceneObjectAtCell(state, 1, 9)).toEqual({ kind: 'svg', id: 'l' });
+  });
+
+  test('a selected line does not claim its box', () => {
+    const state = makeState({
+      svgObjects: [makeDiagonalLine('l')], sceneOrder: ['l'], selectedFigureIds: new Set(['l']),
+    });
+    expect(findSceneObjectAtCell(state, 1, 9, { pixelsOnly: true })).toBeNull();
+    expect(findSceneObjectAtCell(state, 1, 9)).toEqual({ kind: 'svg', id: 'l' });
+  });
+
+  test('off the stroke, an object behind still answers', () => {
+    const fig = makeFigure('fig', { cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 10 });
+    const state = makeState({
+      figures: [fig], svgObjects: [makeDiagonalLine('l')], sceneOrder: ['fig', 'l'],
+    });
+    expect(findSceneObjectAtCell(state, 1, 9, { pixelsOnly: true })).toEqual({ kind: 'figure', id: 'fig' });
+  });
+});
