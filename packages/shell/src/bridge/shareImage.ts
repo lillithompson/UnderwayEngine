@@ -23,6 +23,10 @@ import { writeCacheFile, type CameraRollResult } from './cameraRoll';
  * the link. Android's ACTION_SEND can carry both too, but expo-sharing exposes
  * no text field — there the message is offered as the dialog title and the
  * recipient gets the image alone.
+ *
+ * An empty `message` sends the file ALONE on iOS. A file-saving destination
+ * (Google Drive, Files) takes every item it is handed, so a line of text
+ * riding along lands beside the picture as a second, stray file.
  */
 export async function shareImageFile(
   base64Data: string,
@@ -34,7 +38,7 @@ export async function shareImageFile(
     const uri = writeCacheFile(base64Data, filename);
 
     if (Platform.OS === 'ios') {
-      const result = await Share.share({ message, url: uri });
+      const result = await Share.share(message ? { message, url: uri } : { url: uri });
       return result.action === Share.dismissedAction
         ? { success: false, error: 'cancelled' }
         : { success: true };
