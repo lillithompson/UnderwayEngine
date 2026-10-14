@@ -41,12 +41,21 @@ export interface RasterLruCache<V> {
   entryCount(): number;
 }
 
+/**
+ * @param maxEntries An entry cap beside the byte budget: whichever is
+ *   reached first evicts, oldest first. For a cache whose entries are
+ *   counted as well as weighed — a host's composite rasters, each a
+ *   decoded image the browser holds beside the bytes this cache counts.
+ *   Omitted (or 0): bytes alone, as before.
+ */
 export function createRasterLruCache<V>(
   budgetBytes: number,
   onEvict?: (key: string, value: V) => void,
+  maxEntries?: number,
 ): RasterLruCache<V> {
   const map = new Map<string, LruSlot<V>>();
   let bytes = 0;
+  const entryCap = maxEntries && maxEntries > 0 ? maxEntries : Infinity;
 
   function drop(key: string, slot: LruSlot<V>): void {
     map.delete(key);
@@ -54,10 +63,14 @@ export function createRasterLruCache<V>(
     onEvict?.(key, slot.value);
   }
 
+  function fits(): boolean {
+    return bytes <= budgetBytes && map.size <= entryCap;
+  }
+
   function evictToFit(protectedKey: string): void {
-    if (bytes <= budgetBytes) return;
+    if (fits()) return;
     for (const [key, slot] of map) {
-      if (bytes <= budgetBytes) break;
+      if (fits()) break;
       if (key === protectedKey) continue;
       drop(key, slot);
     }

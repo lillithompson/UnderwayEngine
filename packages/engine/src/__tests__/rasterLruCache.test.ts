@@ -105,6 +105,33 @@ describe('createRasterLruCache eviction', () => {
     expect(lru.peek('small')).toBe('S');
   });
 
+  test('an entry cap evicts the oldest entry while the bytes still fit', () => {
+    const evicted: string[] = [];
+    const lru = createRasterLruCache<string>(1000, (key) => evicted.push(key), 2);
+    lru.set('a', 'n', 1, 'A');
+    lru.set('b', 'n', 1, 'B');
+    lru.get('a'); // b is now the LRU candidate
+    lru.set('c', 'n', 1, 'C'); // 3 > 2 entries: evict b
+    expect(evicted).toEqual(['b']);
+    expect(lru.entryCount()).toBe(2);
+    expect(lru.peek('a')).toBe('A');
+    expect(lru.peek('c')).toBe('C');
+    expect(lru.totalBytes()).toBe(2);
+  });
+
+  test('the byte budget and the entry cap each evict on their own', () => {
+    const lru = createRasterLruCache<string>(8, undefined, 10);
+    lru.set('a', 'n', 4, 'A');
+    lru.set('b', 'n', 4, 'B');
+    lru.set('c', 'n', 4, 'C'); // under the cap, over the bytes: evict a
+    expect(lru.peek('a')).toBeUndefined();
+    expect(lru.entryCount()).toBe(2);
+    // A zero cap means no cap.
+    const uncapped = createRasterLruCache<string>(1000, undefined, 0);
+    for (let i = 0; i < 50; i++) uncapped.set(`k${i}`, 'n', 1, 'v');
+    expect(uncapped.entryCount()).toBe(50);
+  });
+
   test('eviction drops multiple entries until the budget is met', () => {
     const lru = createRasterLruCache<string>(10);
     lru.set('a', 'n', 4, 'A');
