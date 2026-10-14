@@ -41,7 +41,9 @@ import { signedDeg } from './sceneTransform';
 //   flags:       u8            (v60+; bit 0x01 = the image-bytes section
 //                               carries LENGTHS ONLY, not pixels — see the
 //                               v60 note. Spends the one byte of slack the
-//                               allocation has always had.)
+//                               allocation has always had. v70+: bit 0x02 =
+//                               the file ends in a host-data chunk section —
+//                               see the v70 note.)
 //
 // NORMALIZATION (v23+)
 //   Every save scales the content's AABB by a power-of-2 factor s = 2^k,
@@ -606,9 +608,27 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      Both bits were always written 0 before, so every v68 file reads
 //      back byte for byte — and an absent list means the editor's default
 //      families, which is exactly what those files were drawn with.
-const FORMAT_VERSION = 69;
+// v70: THE FILE CAN CARRY A HOST'S OWN DATA. A generic, namespaced chunk
+//      section at the END of the file, after everything v69 writes (the
+//      pattern objects): `u16 chunkCount`, then per chunk `u16 keyLen`, the
+//      key as UTF-8, `u32 byteLen`, the bytes. The engine neither reads nor
+//      interprets a chunk — `CompositionBundle.hostChunks` goes in and comes
+//      out as it was — so a host (Sol's document today) rides inside a
+//      `.tile` without another format bump, and a host that knows nothing
+//      of a key preserves it (persistence keeps the map in the comp_meta
+//      record, as base64). Metadata flags bit 0x02 says the section is
+//      there; it is written only when the map has an entry, so a v70 file
+//      with no chunks differs from its v69 form in the version field alone,
+//      and a reader that stops after the pattern objects still reads every
+//      v70 file correctly. Keys are written in sorted order, so the bytes do
+//      not depend on how the map was built. The u16 count guard every
+//      section has applies to the count and to a key's length; a chunk's
+//      bytes are capped by the u32.
+const FORMAT_VERSION = 70;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
+/** v70+: the file ends in a host-data chunk section. */
+const FILE_FLAG_HAS_HOST_CHUNKS = 0x02;
 const HEADER_SIZE = 8;
 const METADATA_SIZE = 45;
 // Base group record: idIdx(u16) + nameIdx(u16) + flags(u8) + flags2(u8, v39+)
@@ -713,6 +733,13 @@ export interface CompositionBundle {
   /** Inline tile-pattern scene nodes (v54+). Undefined/empty for older
    *  bundles. */
   patternObjects?: PatternObject[];
+  /**
+   * Host data the engine carries but never reads (v70+): opaque bytes per
+   * namespaced key, written at the end of the file and handed back exactly
+   * as they went in. Absent or empty, no section is written. See the v70
+   * note.
+   */
+  hostChunks?: Record<string, Uint8Array>;
 }
 
 /** One asset a split document names — see
@@ -3544,10 +3571,18 @@ function serializeCompositionAt(
   totalSize += 2; // paintCount
   for (const p of paints) totalSize += paintObjectBinarySize(p);
 
-  // Pattern objects (v54+). Final section of the file.
+  // Pattern objects (v54+). The last of the sections every file has.
   const patterns = bundle.patternObjects ?? [];
   totalSize += 2; // patternCount
   for (const p of patterns) totalSize += patternObjectBinarySize(p);
+
+  // Host-data chunks (v70+): after everything else, and only when there
+  // are any — an empty map is the v69 layout with a v70 version field.
+  const hostChunks = hostChunkEntries(bundle.hostChunks, encoder);
+  if (hostChunks.length > 0) {
+    totalSize += 2; // chunkCount
+    for (const c of hostChunks) totalSize += 2 + c.key.length + 4 + c.bytes.length;
+  }
 
   // â”€â”€ Pass 2: write â”€â”€
 
@@ -3570,8 +3605,9 @@ function serializeCompositionAt(
   view.setFloat64(pos, bundle.strokeScale, true); pos += 8;
   view.setFloat64(pos, bundle.gridIntensity, true); pos += 8;
   out[pos++] = coordScaleLog2; // v58+
-  // v60+ flags, always written (bit clear for an ordinary bundle).
-  out[pos++] = omitImageBytes ? FILE_FLAG_IMAGE_BYTES_OMITTED : 0;
+  // v60+ flags, always written (both bits clear for an ordinary bundle).
+  out[pos++] = (omitImageBytes ? FILE_FLAG_IMAGE_BYTES_OMITTED : 0)
+    | (hostChunks.length > 0 ? FILE_FLAG_HAS_HOST_CHUNKS : 0);
 
   // String table
   view.setUint16(pos, strings.length, true); pos += 2;
@@ -3912,7 +3948,33 @@ function serializeCompositionAt(
     }
   }
 
+  // Host-data chunks (v70+): the last section, present only when the flag
+  // above says so. Opaque: the bytes go in as they are.
+  if (hostChunks.length > 0) {
+    pos = writeCount16(view, pos, hostChunks.length, 'host chunk');
+    for (const c of hostChunks) {
+      pos = writeCount16(view, pos, c.key.length, 'host chunk key byte');
+      out.set(c.key, pos); pos += c.key.length;
+      if (c.bytes.length > 0xffffffff) {
+        throw new Error(`Composition serialization: host chunk of ${c.bytes.length} bytes exceeds u32 max. Refusing to write a corrupt .tile.`);
+      }
+      view.setUint32(pos, c.bytes.length, true); pos += 4;
+      out.set(c.bytes, pos); pos += c.bytes.length;
+    }
+  }
+
   return out;
+}
+
+interface HostChunkEntry { key: Uint8Array; bytes: Uint8Array }
+
+/** The chunks a bundle carries, keys encoded, in key order — so the file's
+ *  bytes are the same whatever order the map was built in. */
+function hostChunkEntries(
+  chunks: Record<string, Uint8Array> | undefined, encoder: TextEncoder,
+): HostChunkEntry[] {
+  if (!chunks) return [];
+  return Object.keys(chunks).sort().map((k) => ({ key: encoder.encode(k), bytes: chunks[k] }));
 }
 
 // ── Pattern object encoding helpers ─────────────────────────────────
@@ -4783,6 +4845,27 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
     }
   }
 
+  // Host-data chunks (v70+): the last section, there only when the flag
+  // says so. Opaque to the engine — carried, never read.
+  const hostChunks: Record<string, Uint8Array> = {};
+  let hostChunkCount = 0;
+  if (version >= 70 && (fileFlags & FILE_FLAG_HAS_HOST_CHUNKS) !== 0) {
+    hostChunkCount = view.getUint16(pos, true); pos += 2;
+    for (let i = 0; i < hostChunkCount; i++) {
+      const keyLen = view.getUint16(pos, true); pos += 2;
+      const key = decoder.decode(data.subarray(pos, pos + keyLen)); pos += keyLen;
+      const byteLen = view.getUint32(pos, true); pos += 4;
+      if (pos + byteLen > data.byteLength) {
+        throw new Error(
+          `Composition payload truncated: host chunk "${key}" claims ${byteLen} bytes, ${data.byteLength - pos} remain`,
+        );
+      }
+      // A copy, as the image blobs are: the chunk outlives the payload it
+      // was read from, and must not pin the whole file in memory.
+      hostChunks[key] = data.slice(pos, pos + byteLen); pos += byteLen;
+    }
+  }
+
   // Up to v58 grouping stashed a member's own name in `preGroupName` and
   // cleared `name`; fold it back so every reader asks `name` alone. The
   // layout is unchanged — v59 marks only that its writer never stashes.
@@ -4837,6 +4920,7 @@ export function deserializeComposition(data: Uint8Array): DeserializedCompositio
       background,
       paintObjects: paintObjects.length > 0 ? paintObjects : undefined,
       patternObjects: faded.patternObjects.length > 0 ? faded.patternObjects : undefined,
+      ...(hostChunkCount > 0 ? { hostChunks } : {}),
     },
     embeddedFiles,
   };

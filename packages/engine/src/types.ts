@@ -1816,6 +1816,14 @@ export interface CompositionState {
    * again picks a fresh box.
    */
   symmetryFrame?: { cellX: number; cellY: number; cellWidth: number; cellHeight: number };
+  /**
+   * Host data riding with the composition (format v70+): opaque bytes per
+   * namespaced key, from a `.tile` another host wrote. Kept through save
+   * and load and written back on export, never read — so a file that
+   * passes through this editor keeps what its author's app put in it. See
+   * `CompositionBundle.hostChunks`.
+   */
+  hostChunks?: Record<string, Uint8Array>;
   strokeScale: number;
   gridIntensity: number;
   camera: Camera;

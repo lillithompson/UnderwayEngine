@@ -301,6 +301,11 @@ interface CompMeta {
    *  cells). Absent on older saves and while symmetry is off. */
   symmetry?: PatternSymmetry;
   symmetryFrame?: { cellX: number; cellY: number; cellWidth: number; cellHeight: number };
+  /** Host-data chunks (format v70+), the bytes as base64 per key. Carried
+   *  as they are, so a composition that comes in from another host's
+   *  `.tile` and goes out again keeps what that host put in it. Absent
+   *  when there are none. */
+  hostChunks?: Record<string, string>;
 }
 
 /**
@@ -519,6 +524,34 @@ function serializePaintOverlayForMeta(po: ImagePaintOverlay): unknown {
   return { cols: po.cols, rows: po.rows, blend: po.blend, rgba: toBase64(po.rgba) };
 }
 
+/** JSON-safe host chunks: base64 per key, or undefined when there are none
+ *  so an ordinary record gains no field. */
+function serializeHostChunksForMeta(
+  chunks: Record<string, Uint8Array> | undefined,
+): Record<string, string> | undefined {
+  if (!chunks) return undefined;
+  const keys = Object.keys(chunks);
+  if (keys.length === 0) return undefined;
+  const out: Record<string, string> = {};
+  for (const k of keys) out[k] = toBase64(chunks[k]);
+  return out;
+}
+
+/** The host chunks a record holds, or undefined when it has none worth the
+ *  field. Anything that is not a base64 string under a key is dropped,
+ *  never thrown on: the record is still a composition without it. */
+function migrateHostChunks(v: unknown): Record<string, Uint8Array> | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const out: Record<string, Uint8Array> = {};
+  let any = false;
+  for (const [k, s] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof s !== 'string') continue;
+    out[k] = fromBase64(s);
+    any = true;
+  }
+  return any ? out : undefined;
+}
+
 /** Revive a paint overlay from its JSON form. New saves store base64 texels;
  *  saves from the window before this converter existed stored the Uint8Array
  *  flattened to an index→byte object — those revive too, rather than
@@ -729,6 +762,7 @@ async function writeCompositionState(
     // geometry does (a normalization rescale would strand it).
     symmetry: state.symmetry,
     symmetryFrame: normalized.scale === 1 && normalized.k === 0 ? state.symmetryFrame : undefined,
+    hostChunks: serializeHostChunksForMeta(state.hostChunks),
   };
   const json = JSON.stringify(meta);
   _getCompMetaCache().set(compMetaKey(state.id), json);
@@ -914,6 +948,7 @@ export async function loadCompositionState(
     // idempotent loads (same guard as the camera above).
     symmetry: parsed.symmetry,
     symmetryFrame: r.scale === 1 && r.k === 0 ? parsed.symmetryFrame : undefined,
+    hostChunks: migrateHostChunks(parsed.hostChunks),
   };
 }
 
@@ -1295,9 +1330,18 @@ export interface SplitCompositionBundle {
  * self-contained thing they can save, mail, or open on a machine that has
  * never seen the account. For SYNC, where the document and its pixels
  * travel separately, see {@link exportCompositionBundleSplit}.
+ *
+ * `hostChunks` are the caller's own host-data chunks (format v70+), laid
+ * over the ones the composition already carries: a host that keeps its
+ * record outside the composition hands it in here, and a key it writes
+ * replaces a stale copy of the same key.
  */
-export async function exportCompositionBundle(compId: string, opts?: CompositionIOOptions): Promise<Uint8Array | null> {
-  return (await packCompositionBundle(compId, opts, false))?.bytes ?? null;
+export async function exportCompositionBundle(
+  compId: string,
+  opts?: CompositionIOOptions,
+  hostChunks?: Record<string, Uint8Array>,
+): Promise<Uint8Array | null> {
+  return (await packCompositionBundle(compId, opts, false, hostChunks))?.bytes ?? null;
 }
 
 /**
@@ -1317,14 +1361,16 @@ export async function exportCompositionBundle(compId: string, opts?: Composition
 export async function exportCompositionBundleSplit(
   compId: string,
   opts?: CompositionIOOptions,
+  hostChunks?: Record<string, Uint8Array>,
 ): Promise<SplitCompositionBundle | null> {
-  return packCompositionBundle(compId, opts, true);
+  return packCompositionBundle(compId, opts, true, hostChunks);
 }
 
 async function packCompositionBundle(
   compId: string,
   opts: CompositionIOOptions | undefined,
   omitImageBytes: boolean,
+  hostChunks?: Record<string, Uint8Array>,
 ): Promise<SplitCompositionBundle | null> {
   const { serializeComposition } = await import('./compositionBinaryFormat');
   const { compressTile } = await import('./tileIO');
@@ -1390,6 +1436,8 @@ async function packCompositionBundle(
       patternObjects: partial.patternObjects ?? [],
       sceneOrder: partial.sceneOrder,
       customColors: partial.customColors ?? [],
+      // The stored chunks, with the caller's laid over them (v70+).
+      hostChunks: { ...partial.hostChunks, ...hostChunks },
     },
     embeddedFiles,
     { omitImageBytes },
@@ -1466,12 +1514,25 @@ async function resolveBundleAssets(
  * page is filed, everything else on it draws, and the picture the page
  * shares still shows it.
  */
+/**
+ * A host's look at the chunks a bundle carries (format v70+) before the
+ * composition is saved. It takes what it recognises — the bytes are its
+ * own to keep wherever its records live — and returns what should stay on
+ * the composition: the chunks of hosts it knows nothing about, which the
+ * store then carries so they survive a trip through it. Returning nothing
+ * keeps them all.
+ */
+export type HostChunkTaker = (
+  chunks: Record<string, Uint8Array>,
+) => Record<string, Uint8Array> | undefined | void;
+
 export async function importCompositionBundle(
   data: Uint8Array,
   fileName?: string,
   entryFields?: Partial<CompositionEntry>,
   opts?: CompositionIOOptions,
   fetchAsset?: (assetId: string) => Promise<Uint8Array | null>,
+  takeHostChunks?: HostChunkTaker,
 ): Promise<string> {
   const { deserializeComposition } = await import('./compositionBinaryFormat');
   const { decompressTile } = await import('./tileIO');
@@ -1511,6 +1572,10 @@ export async function importCompositionBundle(
   const importedPaints = (meta.paintObjects ?? []).map((p) => ({ ...p, id: mintPaintObjectId() }));
   const paintIdRemap = new Map((meta.paintObjects ?? []).map((p, i) => [p.id, importedPaints[i].id]));
   const patternObjects = meta.patternObjects ?? [];
+  // Host-data chunks (v70+): the host takes its own, the rest stay with
+  // the composition.
+  let hostChunks = meta.hostChunks;
+  if (hostChunks && takeHostChunks) hostChunks = takeHostChunks(hostChunks) ?? hostChunks;
   const compState: CompositionState = {
     id: compId,
     name: compName,
@@ -1522,6 +1587,7 @@ export async function importCompositionBundle(
     paintObjects: importedPaints,
     patternObjects,
     background: meta.background,
+    hostChunks: hostChunks && Object.keys(hostChunks).length > 0 ? hostChunks : undefined,
     lineDraft: null,
     arcDraft: null,
     editingLineId: null,

@@ -225,3 +225,77 @@ describe('importCompositionBundle memory behavior', () => {
     expect(meta.svgObjects[1].locked).toBe(true);
   });
 });
+
+// ── Host-data chunks (format v70) through the store ──────────────────
+//
+// The engine carries a host's chunks and never reads them: in with an
+// import, kept in the comp_meta record as base64 across every save and
+// load, out again with an export. A host that keeps its own record outside
+// the composition takes its chunk at import and hands it back at export.
+
+import { deserializeComposition } from '../compositionBinaryFormat';
+import { decompressTile } from '../tileIO';
+import { exportCompositionBundle, loadCompositionState } from '../persistence';
+
+describe('host-data chunks through the store', () => {
+  const sol = new Uint8Array([1, 2, 3]);
+  const other = new Uint8Array([9]);
+
+  async function chunkyBundle(hostChunks?: Record<string, Uint8Array>): Promise<Uint8Array> {
+    return compressTile(serializeComposition({
+      name: 'Chunky',
+      gridLevel: 1,
+      strokeScale: 8, gridIntensity: 0.5,
+      camera: { offsetX: 0, offsetY: 0, zoom: 1 },
+      figures: [],
+      hostChunks,
+    }, []));
+  }
+
+  async function exported(id: string, hostChunks?: Record<string, Uint8Array>) {
+    const bytes = await exportCompositionBundle(id, undefined, hostChunks);
+    return deserializeComposition(await decompressTile(bytes!)).meta.hostChunks;
+  }
+
+  test('come in with an import, sit in the record as base64, and go out with an export', async () => {
+    const id = await importCompositionBundle(await chunkyBundle({ sol, other }), 'Chunky.tile');
+    expect((await loadCompositionState(id))?.hostChunks).toEqual({ sol, other });
+    const record = JSON.parse(storage[`comp_meta_${id}`] as string);
+    expect(record.hostChunks).toEqual({ sol: 'AQID', other: 'CQ==' });
+    expect(await exported(id)).toEqual({ sol, other });
+  });
+
+  test('a host takes its own chunk at import, and the rest stay with the composition', async () => {
+    const taken: number[] = [];
+    const id = await importCompositionBundle(
+      await chunkyBundle({ sol, other }), 'Chunky.tile', undefined, undefined, undefined,
+      (chunks) => {
+        const { sol: mine, ...rest } = chunks;
+        taken.push(...Array.from(mine));
+        return rest;
+      },
+    );
+    expect(taken).toEqual([1, 2, 3]);
+    expect((await loadCompositionState(id))?.hostChunks).toEqual({ other });
+    expect(JSON.parse(storage[`comp_meta_${id}`] as string).hostChunks).toEqual({ other: 'CQ==' });
+  });
+
+  test('the export lays the caller’s chunks over the stored ones', async () => {
+    const id = await importCompositionBundle(await chunkyBundle({ sol, other }), 'Chunky.tile');
+    const fresh = new Uint8Array([7, 7]);
+    expect(await exported(id, { sol: fresh })).toEqual({ sol: fresh, other });
+  });
+
+  test('a composition with no chunks has no field in its record and no section in its file', async () => {
+    const id = await importCompositionBundle(await chunkyBundle(), 'Plain.tile');
+    expect((await loadCompositionState(id))?.hostChunks).toBeUndefined();
+    expect(JSON.parse(storage[`comp_meta_${id}`] as string)).not.toHaveProperty('hostChunks');
+    expect(await exported(id)).toBeUndefined();
+    // A taker that takes everything leaves no field either.
+    const id2 = await importCompositionBundle(
+      await chunkyBundle({ sol }), 'Chunky.tile', undefined, undefined, undefined, () => ({}),
+    );
+    expect((await loadCompositionState(id2))?.hostChunks).toBeUndefined();
+    expect(JSON.parse(storage[`comp_meta_${id2}`] as string)).not.toHaveProperty('hostChunks');
+  });
+});
