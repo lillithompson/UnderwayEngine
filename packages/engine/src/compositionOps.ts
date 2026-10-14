@@ -900,7 +900,11 @@ export function buildDuplicateOps(
       const memberIds = newGroupMembers.get(newGroupId)!;
       if (memberIds.length === 0 && children.length === 0) { emitted.add(newGroupId); progress = true; continue; }
       const origGroup = state.groups.find(g => g.id === origGroupId);
-      const groupName = origGroup?.name ? origGroup.name + ' copy' : nextGroupName(state.figures);
+      // The copy's name follows the leaves' rule (duplicateName): a
+      // user's name gets " copy", a functional tag (`seed:<id>`) is kept
+      // verbatim, because what the tag marks the copy is too and " copy"
+      // would make it another tag.
+      const groupName = (origGroup && duplicateName(origGroup)) ?? nextGroupName(state.figures);
       ops.push({
         op: 'groupFigures',
         figureIds: memberIds,

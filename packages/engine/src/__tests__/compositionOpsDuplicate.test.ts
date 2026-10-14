@@ -702,6 +702,29 @@ describe('a duplicate is named from the node’s own name; a tag is kept as it i
     expect(originals.map((s) => s.name)).toEqual(['slot:squiggle', 'arc copy', undefined]);
   });
 
+  test('a TAGGED group is copied with its tag verbatim, as a tagged leaf is', () => {
+    // A host marks a group with a functional tag (Sol's `seed:<id>`,
+    // sol_architecture.md §6.1) and reconciles copies by it afterwards; a
+    // copy named "seed:<id> copy" would be a different tag and lose the link.
+    const marker = makeSVGLine('svg_mark', {
+      name: 'seedmark:abc', groupId: 'g1',
+      localSegments: [{ kind: 'line', start: [0, 0], end: [0, 1] }],
+    });
+    const group: GroupNode = {
+      id: 'g1', name: 'seed:abc', translateX: 3, translateY: 4, scaleX: 1, scaleY: 1,
+      rotation: 0, mirrorH: false, mirrorV: false,
+    };
+    const state = makeState({ svgObjects: [marker], groups: [group] });
+    const { ops, newIds, groupIdMap } = buildDuplicateOps(state, ['svg_mark']);
+    const after = applyCompOps(state, ops);
+    expect(after.groups.find((g) => g.id === groupIdMap.get('g1'))!.name).toBe('seed:abc');
+    expect(after.svgObjects.find((s) => s.id === newIds[0])!.name).toBe('seedmark:abc');
+    // A nameless group still takes the next free name.
+    const bare = makeState({ svgObjects: [{ ...marker, name: undefined }], groups: [{ ...group, name: undefined as unknown as string }] });
+    const dup2 = applyCompOps(bare, buildDuplicateOps(bare, ['svg_mark']).ops);
+    expect(dup2.groups.map((g) => g.name)).toEqual([undefined, 'Group 1']);
+  });
+
   test('an ungrouped copy of a tagged node carries the tag', () => {
     const seed = makeSVGLine('svg_seed', { name: 'slot:squiggle' });
     const arc = makeSVGLine('svg_arc', { name: 'arc' });
