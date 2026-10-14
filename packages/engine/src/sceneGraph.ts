@@ -285,7 +285,8 @@ export function worldSegments(graph: SceneGraph, id: string): PathSegment[] {
   return mapSegments(node.localSegments, worldMatrix(graph, id));
 }
 
-function unionBbox(boxes: readonly Bbox[]): Bbox {
+/** The box around every box in `boxes`; the empty box for none. */
+export function unionBbox(boxes: readonly Bbox[]): Bbox {
   if (boxes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const b of boxes) {
