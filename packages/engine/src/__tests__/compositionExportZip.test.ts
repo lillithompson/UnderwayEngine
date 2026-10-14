@@ -131,6 +131,34 @@ describe('exportCompositionsAsZip', () => {
       'a', undefined, 1, { preferOriginalImages: true, expandTiles: true, normalize: false });
   });
 
+  test('tile: an item’s host chunks ride in its member, asked for as it is packed', async () => {
+    const io = { normalize: false };
+    mockExportCompositionBundle.mockImplementation((id: string) => Promise.resolve(new Uint8Array([id === 'a' ? 1 : 2])));
+    const chunks = { sol: new Uint8Array([7, 7]) };
+    const provider = jest.fn().mockResolvedValue(chunks);
+    const none = jest.fn().mockResolvedValue(undefined);
+
+    const zip = await exportCompositionsAsZip(
+      [{ id: 'a', name: 'A', hostChunks: provider }, { id: 'b', name: 'B', hostChunks: none }, { id: 'c', name: 'C' }],
+      'tile',
+      { pngMaxDimension: 8, io },
+    );
+
+    expect(zip).not.toBeNull();
+    expect(readCentralDirectoryNames(zip!)).toEqual(['A.tile', 'B.tile', 'C.tile']);
+    // The provider is asked once, for its own member, and its chunks go in as the bundle's third argument;
+    // an item with no chunks packs the stored ones alone, exactly as before.
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(mockExportCompositionBundle).toHaveBeenNthCalledWith(1, 'a', io, chunks);
+    expect(mockExportCompositionBundle).toHaveBeenNthCalledWith(2, 'b', io);
+    expect(mockExportCompositionBundle).toHaveBeenNthCalledWith(3, 'c', io);
+    // PNG and SVG members never ask.
+    mockLoadCompositionState.mockResolvedValue({ strokeScale: 1 });
+    mockExportCompositionPNG.mockResolvedValue('data:image/png;base64,AA==');
+    await exportCompositionsAsZip([{ id: 'a', name: 'A', hostChunks: provider }], 'png', { pngMaxDimension: 8, io });
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
   test('SVG: bundles UTF-8 SVG payloads with per-comp strokeScale', async () => {
     mockExportCompositionSVG.mockImplementation((id: string) =>
       Promise.resolve(`<svg id="${id}"/>`),

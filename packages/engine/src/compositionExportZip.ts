@@ -7,6 +7,17 @@ export type ZipExportFormat = 'png' | 'svg' | 'tile';
 export interface ZipExportItem {
   id: string;
   name: string;
+  /**
+   * The host-data chunks (format v70+, `CompositionBundle.hostChunks`) a
+   * `.tile` member carries for this composition, laid over the stored
+   * ones exactly as `exportCompositionBundle`'s third argument is — the
+   * host's own record riding in the file (Sol's `sol` chunk). Asked for
+   * when the member is packed, one item at a time, so a host that keeps
+   * its record beside the composition reads it then and holds one at a
+   * time. Undefined, or a provider answering undefined, packs the stored
+   * chunks alone. PNG and SVG members have no chunks and never ask.
+   */
+  hostChunks?: () => Promise<Record<string, Uint8Array> | undefined>;
 }
 
 export interface ZipExportOpts {
@@ -63,10 +74,11 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 async function payloadFor(
-  id: string,
+  item: ZipExportItem,
   format: ZipExportFormat,
   opts: ZipExportOpts,
 ): Promise<Uint8Array | null> {
+  const id = item.id;
   if (format === 'png') {
     const compState = await loadCompositionState(id, opts.io);
     const strokeScale = compState?.strokeScale ?? DEFAULT_STROKE_SCALE;
@@ -91,8 +103,11 @@ async function payloadFor(
     if (!svg) return null;
     return utf8.encode(svg);
   }
-  // tile
-  const bundle = await exportCompositionBundle(id, opts.io);
+  // tile — with the host's chunks when the item names them.
+  const chunks = item.hostChunks ? await item.hostChunks() : undefined;
+  const bundle = chunks
+    ? await exportCompositionBundle(id, opts.io, chunks)
+    : await exportCompositionBundle(id, opts.io);
   return bundle ?? null;
 }
 
@@ -123,7 +138,7 @@ export async function exportCompositionsAsZip(
   for (const item of items) {
     const payload = opts.payload
       ? await opts.payload(item, format)
-      : await payloadFor(item.id, format, opts);
+      : await payloadFor(item, format, opts);
     if (!payload) continue;
 
     let stem = safe(item.name);
