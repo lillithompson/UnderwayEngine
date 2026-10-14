@@ -56,6 +56,34 @@ function awaitShareResult(): Promise<{ success: boolean; error?: string }> {
 }
 
 /**
+ * How long a browser download's object URL outlives the click. Safari on
+ * iPad/iPhone does not fetch the URL when the anchor is clicked: it first
+ * asks "Do you want to download …?", and reads the blob only once that is
+ * answered. Revoking straight after the click — which every desktop browser
+ * tolerates, having already started the fetch — left iOS a dead URL, so a
+ * `.tile` export from the web build there saved nothing (DrawBots bug
+ * report 21e7214d). A minute covers the prompt; the blob is one file's
+ * bytes, freed when the timer fires (or the page goes).
+ */
+export const DOWNLOAD_URL_LIFETIME_MS = 60_000;
+
+/** Save `blob` as `filename` through a synthetic download anchor — the
+ *  plain-browser half of every share/save below. */
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  // Attached for the click: older WebKit ignores a click on a detached anchor.
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), DOWNLOAD_URL_LIFETIME_MS);
+}
+
+/**
  * Share/export a file. In WebView, sends to native for share sheet and waits
  * for the SHARE_RESULT round-trip so callers can surface failures.
  * In browser, triggers a download.
@@ -86,12 +114,7 @@ export function shareFile(
     } else {
       blob = new Blob([data], { type: mimeType });
     }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, filename);
     return { success: true };
   })();
 }
@@ -152,12 +175,7 @@ export function savePngToCameraRoll(
         }
       }
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, filename);
       return { success: true };
     })();
   }
@@ -235,12 +253,7 @@ export function shareBinaryFile(
   }
   return (async () => {
     const blob = new Blob([data as BlobPart], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, filename);
     return { success: true };
   })();
 }

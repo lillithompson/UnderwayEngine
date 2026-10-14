@@ -29,6 +29,23 @@ describe('static server port', () => {
     expect(SWIFT).toContain('forInfoDictionaryKey: "UnderwayStaticServerPort"');
   });
 
+  // Every app on this shell defaults to the same device-wide port; one that
+  // held it while suspended locked the others out (Mmoment vs DrawBots).
+  it('releases the port in the background and takes it back on foreground', () => {
+    expect(SWIFT).toContain('forName: UIApplication.didEnterBackgroundNotification,');
+    expect(SWIFT).toContain('self?.handleBackgroundTransition()');
+    expect(SWIFT).toContain('forName: UIApplication.willEnterForegroundNotification,');
+    expect(SWIFT).toContain('self?.handleForegroundTransition()');
+    // Stopped on the same queue as every start, under a background task so
+    // the app is not suspended with the socket still open.
+    const release = SWIFT.slice(SWIFT.indexOf('private func handleBackgroundTransition()'), SWIFT.indexOf('private func handleForegroundTransition()'));
+    expect(release).toContain('beginBackgroundTask(withName: "static-server-release"');
+    expect(release).toContain('serverQueue.async { [weak self] in');
+    expect(release).toContain('server.stop()');
+    // documentRoot survives, or the foreground restart has nothing to serve.
+    expect(release).not.toContain('documentRoot = nil');
+  });
+
   it('serializes the foreground restart with JS starts', () => {
     expect(SWIFT).toContain('try self.serverQueue.sync {');
     expect(SWIFT).toContain('serverQueue.async { [weak self] in');

@@ -410,11 +410,17 @@ export function findTextAtCell(
  *
  *  Figures use AABB or quad-list testing (matches the legacy figure
  *  hit-test in handleTap). Images use bbox-only. Returns the kind so
- *  callers can run kind-specific post-processing (e.g. group expansion). */
+ *  callers can run kind-specific post-processing (e.g. group expansion).
+ *
+ *  `pixelsOnly` answers only for what is DRAWN under the point: no sticky
+ *  selection box, no selected-SVG box, no bbox-miss fallback — a tap in
+ *  the empty space of a wiggly line's box reads as empty canvas. For a
+ *  tool that must tell "on an object" from "near one" (placing a bot). */
 export function findSceneObjectAtCell(
   state: CompositionState, cellX: number, cellY: number,
-  options?: { ignoreLock?: boolean },
+  options?: { ignoreLock?: boolean; pixelsOnly?: boolean },
 ): { kind: CompItemKind; id: string } | null {
+  const pixelsOnly = options?.pixelsOnly === true;
   // The SCENE GRAPH is what this walk reads. Every leaf is tested in its
   // OWN frame — the query point carried through the inverse of the leaf's
   // world matrix, against the leaf's local content (sceneHitFrame) — so a
@@ -483,7 +489,7 @@ export function findSceneObjectAtCell(
   // front-to-back so the topmost selected object wins when several overlap.
   // Skipped for the eyedropper / long-press sampler (ignoreLock), which
   // sample the literal stack and must not honor the current selection.
-  if (!options?.ignoreLock && state.selectedFigureIds.size > 0) {
+  if (!options?.ignoreLock && !pixelsOnly && state.selectedFigureIds.size > 0) {
     for (let i = state.sceneOrder.length - 1; i >= 0; i--) {
       const id = state.sceneOrder[i];
       if (!state.selectedFigureIds.has(id)) continue;
@@ -506,7 +512,7 @@ export function findSceneObjectAtCell(
       // this fires on the ignoreLock path). Otherwise only inked texels
       // take the hit, so the blank space of a sparse island falls through
       // to whatever sits behind it.
-      if (state.selectedFigureIds.has(id)) return { kind, id };
+      if (!pixelsOnly && state.selectedFigureIds.has(id)) return { kind, id };
       if (paintObjectAlphaHitTest(
         frame.object as PaintObject, hx, hy, toleranceCells * frame.lengthScale,
       )) return { kind, id };
@@ -524,7 +530,7 @@ export function findSceneObjectAtCell(
     // pre-pass above already covers this for normal selection; this branch
     // now only fires on the ignoreLock (eyedropper/long-press) path, where
     // the pre-pass is skipped but a selected SVG should still win its bbox.
-    if (state.selectedFigureIds.has(id)) return { kind, id };
+    if (!pixelsOnly && state.selectedFigureIds.has(id)) return { kind, id };
 
     // SVG: precise path-distance test, in the node's own frame — so the
     // tolerance comes in through `lengthScale` and a path drawn half size
@@ -545,6 +551,8 @@ export function findSceneObjectAtCell(
     // meant, so a tap near a hollow outline is still generously read as
     // that outline (which is the whole reason the fallback exists).
     if (svgPaintsInterior(svg)) {
+      // The painted interior IS pixels: a pixels-only walk takes it outright.
+      if (pixelsOnly && svgInteriorHitsPoint(svg, hx, hy)) return { kind, id };
       if (!svgBboxFallback && svgInteriorHitsPoint(svg, hx, hy)) {
         svgBboxFallback = { kind, id };
       }
@@ -552,7 +560,7 @@ export function findSceneObjectAtCell(
     }
 
     // Bbox hit but path miss — record as fallback (first/topmost only).
-    if (!svgBboxFallback) svgBboxFallback = { kind, id };
+    if (!svgBboxFallback && !pixelsOnly) svgBboxFallback = { kind, id };
   }
 
   return svgBboxFallback;

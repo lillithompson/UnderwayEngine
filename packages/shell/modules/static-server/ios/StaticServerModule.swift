@@ -15,6 +15,7 @@ public class StaticServerModule: Module {
   // Remembered so we can restart on foreground without JS re-passing it.
   private var documentRoot: String?
   private var foregroundObserver: NSObjectProtocol?
+  private var backgroundObserver: NSObjectProtocol?
   // ONE fixed port, never a fallback. The port is part of the page's origin
   // (http://localhost:<port>), and the origin is the key to everything the
   // web side stores — IndexedDB, localStorage. A launch that came up on a
@@ -25,10 +26,15 @@ public class StaticServerModule: Module {
   // port is retried, and when it stays busy the start FAILS and the shell
   // says so — an app that cannot open its journal must not open another.
   //
-  // An app on this shell may name its own port (Info.plist
-  // `UnderwayStaticServerPort`) so two such apps on one device never fight
-  // over it; changing it for an app that has shipped strands that app's
-  // data, exactly as a fallback would.
+  // Every app on this shell shares the default, and the loopback port is
+  // device-wide — so the server lets go of it whenever the app goes to the
+  // background and takes it back on foreground (`handleBackgroundTransition`).
+  // Holding it while suspended made two of these apps mutually exclusive:
+  // a backgrounded Mmoment kept 18730 and DrawBots could not open
+  // (2026-10-09). Only two apps on screen at once (iPad split view) still
+  // contend. An app may also name its own port (Info.plist
+  // `UnderwayStaticServerPort`); changing it for an app that has shipped
+  // strands that app's data, exactly as a fallback would.
   private let port: UInt = {
     if let n = Bundle.main.object(forInfoDictionaryKey: "UnderwayStaticServerPort") as? NSNumber, n.uintValue > 0 {
       return n.uintValue
@@ -77,12 +83,23 @@ public class StaticServerModule: Module {
       ) { [weak self] _ in
         self?.handleForegroundTransition()
       }
+      self.backgroundObserver = NotificationCenter.default.addObserver(
+        forName: UIApplication.didEnterBackgroundNotification,
+        object: nil,
+        queue: nil
+      ) { [weak self] _ in
+        self?.handleBackgroundTransition()
+      }
     }
 
     OnDestroy {
       if let observer = self.foregroundObserver {
         NotificationCenter.default.removeObserver(observer)
         self.foregroundObserver = nil
+      }
+      if let observer = self.backgroundObserver {
+        NotificationCenter.default.removeObserver(observer)
+        self.backgroundObserver = nil
       }
     }
 
@@ -120,6 +137,28 @@ public class StaticServerModule: Module {
       #else
       return nil
       #endif
+    }
+  }
+
+  // Release the port while backgrounded so another app on this shell can
+  // bind it (see `port`). `documentRoot` is kept, so the foreground
+  // restart below brings the same server back on the same port. A
+  // background task holds off suspension until the socket is closed.
+  private func handleBackgroundTransition() {
+    // Posted on main; `task` is only ever touched there, and ended once.
+    var task: UIBackgroundTaskIdentifier = .invalid
+    let endTask = {
+      guard task != .invalid else { return }
+      UIApplication.shared.endBackgroundTask(task)
+      task = .invalid
+    }
+    task = UIApplication.shared.beginBackgroundTask(withName: "static-server-release", expirationHandler: endTask)
+    serverQueue.async { [weak self] in
+      defer { DispatchQueue.main.async(execute: endTask) }
+      guard let self = self, let server = self.server else { return }
+      staticServerLog.log("[server] background transition — releasing port \(self.port, privacy: .public)")
+      server.stop()
+      self.server = nil
     }
   }
 

@@ -57,6 +57,11 @@ describe('shareImageFile on iOS', () => {
     });
   });
 
+  test('an empty message shares the file alone, so Drive saves one file', async () => {
+    await shareImageFile('dGVzdA==', 'page.png', 'image/png', '');
+    expect(mockShare).toHaveBeenCalledWith({ url: 'file:///mock-cache/page.png' });
+  });
+
   test('a dismissed sheet is cancelled, not a failure', async () => {
     mockShare.mockResolvedValue({ action: 'dismissedAction' });
     expect(await shareImageFile('dGVzdA==', 'page.png', 'image/png', 'hi')).toEqual({
