@@ -2,7 +2,7 @@
   "name": "@underway/editor",
   "version": "0.1.0",
   "private": true,
-  "description": "No entry point: consumed file by file through the @/editor/* path alias, as editor-ui is. The shared web editor's engine-bound pieces — the long-press radial menu, the tool sheet and popover, grid snap, the resize and rotate maths, the keyboard shortcuts — for Sol, DrawBot and CozyJournal. Unlike @underway/editor-ui it imports the engine freely; what it never imports is an app.",
+  "description": "No entry point: consumed file by file through the @/editor/* path alias, as editor-ui is. The shared web editor's engine-bound pieces — the long-press radial menu, the tool sheet and popover, grid snap, the resize and rotate maths, the keyboard shortcuts, the toolbar's metadata and mode tables with the host-tool registry an app puts its own tools on, the shape glyphs, the mode capsule and the floating actions pill — for Sol, DrawBot and CozyJournal. Unlike @underway/editor-ui it imports the engine freely; what it never imports is an app.",
   "peerDependencies": {
     "@expo/vector-icons": "*",
     "react": "*",
