@@ -1,4 +1,4 @@
-import type { ImageFramingMode, TintType } from '../adapter';
+import type { HostRowModel, ImageFramingMode, TintType } from '../adapter';
 import { patternTileSetLineCount } from './patternEdit';
 
 // How tall each property page's CONTENT AREA is, and therefore how tall the
@@ -41,6 +41,9 @@ export const ROW_PILL = 36;
 export const ROW_SWITCH = ROW_SEGMENTED;
 /** Space between rows inside a page's `controls` stack. */
 export const ROW_GAP = 2;
+/** A label + a row of card-slot chips (a host page's program of cards):
+ *  the caption line, then chips a touch target tall. */
+export const ROW_CARDS = 20 + 48;
 /** A flush section-tab strip (effectBar's SectionTabs — the Pattern page's
  *  Tile / Symmetry / Stroke, the Copies page's four faces). It is one solid
  *  line of buttons across the TOP of the box that holds it, so it stands as
@@ -61,6 +64,50 @@ export const SECTION_TABS_ROW = ROW_SECTION_TABS - ROW_GAP;
 /** A dim hint line under a control (effectBar's Hint): 2 above + an 11pt line
  *  + 2 below. */
 export const HINT_HEIGHT = 17;
+/** A swatch-state row (SwatchStateRow — a host page's row of swatches
+ *  with states): the caption line, a line of swatches, then a two-line
+ *  sentence under them. The swatch metrics are the component's, read from here so
+ *  the layout and this arithmetic are one number. */
+export const SWATCH_STATE_LABEL = 20;
+export const SWATCH_STATE_SIZE = 32;
+/** Between two swatches. Two, not four: a host's row can be ten swatches
+ *  wide (a palette and black), and at an iPhone SE's width every point of
+ *  gap is a point off each swatch. Two still separates them — each wears
+ *  a ring of its own. */
+export const SWATCH_STATE_GAP = 2;
+/** A swatch never grows past this, however wide the sheet: a row of ten
+ *  stamps across a tablet is not a nicer row, it is a longer reach. */
+export const SWATCH_MAX_WIDTH = 44;
+/** The ring around a swatch, which the glyph has to clear. */
+export const SWATCH_RING_WIDTH = 2;
+/**
+ * The state glyph inside a swatch. Thirteen, not sixteen: a row ten
+ * swatches wide on an iPhone SE's sheet is about 25 pt a swatch — at 16
+ * the glyph covered the colour almost edge to edge, and which colour the
+ * state is on is the one thing a swatch is there to say. 13 leaves
+ * about 4 pt of colour showing each side there, inside the ring, and is
+ * still a legible mark in a 44 pt swatch on a tablet. A constant, not a
+ * measurement: the row holds no state and reads no layout
+ * (swatchStateRow.test.ts pins that), so it has to work at both ends.
+ */
+export const SWATCH_GLYPH_SIZE = 13;
+/** Colour left showing each side of the glyph at the narrowest the row
+ *  gets — the number {@link SWATCH_GLYPH_SIZE} was chosen against. */
+export const SWATCH_GLYPH_COLOUR_MARGIN = 4;
+
+/** A label-line preset chip (SwatchStateRow's All / None, owner
+ *  2026-10-08). It has to fit INSIDE {@link SWATCH_STATE_LABEL} so the
+ *  presets cost the row no height; the 2 pt left over centres it on the
+ *  label's line. Its own `hitSlop` is {@link SWATCH_PRESET_PAD}, which
+ *  brings the touch target back to a comfortable 30 pt. */
+export const SWATCH_PRESET_HEIGHT = 18;
+/** Side padding inside a preset chip, the gap between two, and the
+ *  `hitSlop` around each — one number, so the pair reads as a pair. */
+export const SWATCH_PRESET_PAD = 6;
+
+export const SWATCH_STATE_CAPTION_LINE = 14;
+export const SWATCH_STATE_CAPTION = 4 + SWATCH_STATE_CAPTION_LINE * 2;
+export const ROW_SWATCH_STATES = SWATCH_STATE_LABEL + SWATCH_STATE_SIZE + SWATCH_STATE_CAPTION;
 /** The Image page's source-resolution line: 8 above + an 11pt line. */
 
 // ── The content area (every page's container) ───────────────────────
@@ -257,15 +304,55 @@ export type SubmenuKey =
   | 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry'
   // …and the Shapes page: which sprite families the pattern is made of,
   // as rows of square buttons (see patternEdit's PATTERN_TILE_SET_COLUMNS).
-  | 'patternShapes';
+  | 'patternShapes'
+  // A HOST page (adapter's HostPage): a page of the host's own kind of
+  // thing — a simulation's bot, its arena, a document's rules — routed
+  // under the page's key.
+  | HostSubmenuKey;
+
+/** The submenu key a host page is routed under: its own key, prefixed so
+ *  it can never collide with the panel's. */
+export type HostSubmenuKey = `host:${string}`;
+const HOST_PREFIX = 'host:';
+export function hostSubmenu(pageKey: string): HostSubmenuKey {
+  return `${HOST_PREFIX}${pageKey}`;
+}
+/** The host page's key a submenu key names, or null for one of the
+ *  panel's own pages. */
+export function hostPageOfSubmenu(key: SubmenuKey): string | null {
+  return key.startsWith(HOST_PREFIX) ? key.slice(HOST_PREFIX.length) : null;
+}
 
 /** The current state of everything that changes a page's row count. Values are
  *  optional so a caller can describe only the pages its selection can open; a
  *  missing one falls back to the shortest reading, which is what an unopened
  *  page of that kind would render. */
+/** A host page's row as its height counts it: its kind, and for a stroke
+ *  row whether it carries the hue row under Dash. */
+export interface HostRowShape {
+  kind: HostRowModel['kind'];
+  colored?: boolean;
+}
+
+/** `row`'s shape for its height, counted from the very model it renders. */
+export function hostRowShape(row: HostRowModel): HostRowShape {
+  return { kind: row.kind, colored: row.kind === 'stroke' && !!row.color };
+}
+
+/** A host page as its height counts it: the shapes of its rows, or the
+ *  height the host's own element stands (HostPage.element.height). */
+export interface HostPageShape {
+  rows?: readonly HostRowShape[];
+  elementHeight?: number;
+}
+
 export interface SubmenuHeightContext {
   /** Tint page: gradients add a stop editor, linear adds an angle slider. */
   tintType?: TintType;
+  /** A HOST page (a `host:` key): what the host put on it — its rows'
+   *  shapes, or its element's height. Absent, the page stands one row
+   *  tall. */
+  hostPage?: HostPageShape;
   /** Crop page: each framing mode brings its own rows. */
   cropMode?: ImageFramingMode;
   /** Opacity page: whether it shows the Fade row under Opacity (default
@@ -412,7 +499,11 @@ function cropRows(mode: ImageFramingMode = 'fill'): number[] {
 /** How tall one page's content area stands, given the state it will render
  *  from. The sheet around it is {@link editSheetHeight}. */
 export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): number {
-  switch (key) {
+  // A host page first: its key is a pattern, not a name the switch below
+  // can be exhaustive over.
+  if (hostPageOfSubmenu(key) !== null) return hostPageHeight(ctx.hostPage);
+  const own = key as Exclude<SubmenuKey, HostSubmenuKey>;
+  switch (own) {
     case 'tint':
       return contentArea(tintRows(ctx.tintType));
     case 'svgFill':
@@ -615,10 +706,41 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     default: {
       // Exhaustiveness guard: adding a SubmenuKey without giving it rows here
       // is a compile error, not a silently stunted page.
-      const unhandled: never = key;
+      const unhandled: never = own;
       return unhandled;
     }
   }
+}
+
+/** A host page's height: the host's element at the height it declares, or
+ *  its rows each by its kind — a page with no rows still stands one
+ *  segmented row tall so the sheet is never empty. */
+export function hostPageHeight(page: HostPageShape | undefined): number {
+  if (page?.elementHeight !== undefined) return contentArea([page.elementHeight]);
+  if (!page?.rows || page.rows.length === 0) return contentArea([ROW_SEGMENTED]);
+  return contentArea(hostRowHeights(page.rows));
+}
+
+/** Each host row's height by its kind: a stroke row is the Border page's
+ *  Width and Dash sliders, and its hue row when it carries a colour; a
+ *  hue row and a slider stand alike; an actions row is a segmented row. */
+export function hostRowHeights(rows: readonly HostRowShape[]): number[] {
+  const out: number[] = [];
+  for (const row of rows) {
+    switch (row.kind) {
+      case 'slider': case 'color': out.push(ROW_SLIDER); break;
+      case 'stroke': out.push(ROW_SLIDER, ROW_SLIDER, ...(row.colored ? [ROW_SLIDER] : [])); break;
+      case 'switch': out.push(ROW_SWITCH); break;
+      case 'cards': out.push(ROW_CARDS); break;
+      case 'swatchStates': out.push(ROW_SWATCH_STATES); break;
+      case 'segmented': case 'actions': out.push(ROW_SEGMENTED); break;
+      default: {
+        const unhandled: never = row.kind;
+        return unhandled;
+      }
+    }
+  }
+  return out;
 }
 
 /** How tall an ABSENT effect's page stands: the one Add button

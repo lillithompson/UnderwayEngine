@@ -577,7 +577,7 @@ describe('the panel drives the sheet', () => {
     // Claims only a clearly-downward drag…
     expect(pan).toContain('g.dy > 10 && g.dy > Math.abs(g.dx) * 1.5,');
     // …never while a slider is taking a value or a popover list is open…
-    expect(pan).toContain('!fontSheetOpenRef.current && !isValueDragging() &&');
+    expect(pan).toContain('!fontSheetOpenRef.current && !pageScrollsRef.current && !isValueDragging() &&');
     // …follows the finger down and drops past the threshold, else springs back.
     expect(pan).toContain('sheetY.setValue(Math.max(0, g.dy));');
     expect(pan).toContain('if (swipeDismissDirection(g.dy) === 1) closeSheetRef.current();');

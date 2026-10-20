@@ -11,6 +11,141 @@ import type { RigPart, RigSliderKey } from './logic/rigEdit';
 // kinds need no change here — `kind` is a free-form string the components
 // only use to pick a drag-handle icon (via iconForKind, overridable).
 
+// ── Host pages ───────────────────────────────────────────────────────
+//
+// An object of the HOST's own kind — a thing the engine's scene graph does
+// not know (DrawBots' bots and instruction tiles, its arena, a document's
+// own rules page) — gets its Edit sheet the same way every engine object
+// does: pages the panel draws from a description. The host says what each
+// page is called and what it holds, in rows of the panel's own grammar
+// (the effect pages' rows: a slider, a segmented control, a switch, a hue
+// row, a stroke's width and dash, a line of actions, a program of cards, a
+// row of swatches with states) — or hands over an element it draws itself,
+// with the height it stands. The panel knows nothing of what the rows
+// mean: every value is the host's reading, and every edit goes back to the
+// host by page key and row key, live while a handle drags and once on
+// release, which is the contract every other row in the panel keeps.
+
+/** One row of a host page, by its kind. */
+export type HostRowModel =
+  /** A slider on the page's own range: `value` is the handle's position
+   *  0..1 and `readout` the words beside it. A typed number comes back
+   *  through `typedRowPosition`. */
+  | { kind: 'slider'; key: string; label: string; value: number; readout: string }
+  | { kind: 'segmented'; key: string; label: string;
+      options: readonly { value: string; label: string; icon?: string }[]; value: string }
+  /** An on/off setting. */
+  | { kind: 'switch'; key: string; label: string; value: boolean }
+  /** A hue row (the effect pages' colour row): the colour, live while the
+   *  handle moves, and a trailing circle that opens the host's picker
+   *  (`onColor`, `onPickColor`). */
+  | { kind: 'color'; key: string; label: string; color: RGBLike }
+  /** A line's Width and Dash — the Border page's rows pointed at a line of
+   *  the host's own (a bot's pen), with no Position (a pen has no inside
+   *  to align to) and, given a colour, the hue row under Dash. Reports
+   *  through `onStroke`, and the colour through `onColor` / `onPickColor`
+   *  under this row's key. */
+  | { kind: 'stroke'; key: string; width: number; dash: number; color?: RGBLike }
+  /** A line of ACTIONS, each a press the host answers (`onAction`) —
+   *  Redraw, New from this one, Match design. Words, not icons, unless an
+   *  option names one. */
+  | { kind: 'actions'; key: string; label?: string;
+      options: readonly { value: string; label: string; icon?: string }[] }
+  /** A program of any length: a chip per slot, each opening the picker, in
+   *  a strip that scrolls sideways and ends in a + chip whose pick arrives
+   *  as `onCardSlot(page, key, slots.length, card)`. The picker's `null`
+   *  option removes a slot (the + chip's leaves it off). `addLabel` is the
+   *  + chip's word. An option's `group` is the heading it sits under;
+   *  options arrive grouped, and one with none (Remove) has no heading.
+   *  Disabled while the host says so (a run is live). */
+  | { kind: 'cards'; key: string; label: string;
+      slots: readonly { icon: string; label: string; current: boolean }[];
+      disabled: boolean;
+      addLabel: string;
+      picker: readonly { card: string | null; icon: string; label: string; group?: string }[] }
+  /** A row of colour swatches each in one of a few states (SwatchStateRow),
+   *  with a one-sentence caption under them; a tap asks the host for the
+   *  next state (`onSwatchState`). */
+  | { kind: 'swatchStates'; key: string; label: string;
+      swatches: readonly SwatchStateItem[];
+      states: Readonly<Record<string, SwatchStateStyle>>;
+      caption: string;
+      disabled: boolean;
+      presets?: readonly SwatchPresetItem[] };
+
+/** One swatch of a SwatchStateRow — its colour, the state it is in (a key
+ *  into the row's `states`) and its accessibility label. */
+export interface SwatchStateItem { id: string; color: RGBLike; state: string; label: string }
+
+/** A one-tap preset on a SwatchStateRow's label line (All, None). It sets
+ *  the whole row rather than carrying a state of its own, and it reports
+ *  through the row's one `onSwatchState`, so its id must not be one of the
+ *  swatches'. */
+export interface SwatchPresetItem { id: string; label: string }
+
+/** How a SwatchStateRow draws one state — the ring round the swatch, and
+ *  a MaterialCommunityIcons glyph over it, if any. */
+export interface SwatchStateStyle { ring: 'grey' | 'solid' | 'dashed'; glyph?: string }
+
+/** One page of the host's Edit sheet: its tab's word, and either rows the
+ *  panel draws or an element the host draws itself. */
+export interface HostPage {
+  /** Routes the page: unique among the model's pages. The panel keeps
+   *  which page is open under it, as it does its own pages'. */
+  key: string;
+  /** The tab's word. */
+  label: string;
+  /** Rows, drawn by the panel in the effect pages' grammar. A page with
+   *  none still stands one row tall, so the sheet is never empty. */
+  rows?: readonly HostRowModel[];
+  /** …or the host's own element in the page's well. `height` is what the
+   *  sheet stands tall for it (the host counts what it draws, as the panel
+   *  counts its own rows); `scrolls` says the element scrolls in place —
+   *  it is taller than it shows — so the sheet's downward dismiss drag
+   *  stands down over it. Outranks `rows`. */
+  element?: { node: React.ReactNode; height: number; scrolls?: boolean };
+}
+
+/**
+ * The host's pages for the selection, and where their edits go. Every
+ * value is the host's reading of its own document; every callback writes
+ * one undo step (sliders preview live with `committed=false` and commit
+ * once on release, like every other row in the panel). Callbacks are
+ * keyed by the page's key and the row's, so one model serves every page.
+ */
+export interface HostPagesModel {
+  /** What the sheet is keyed off (the panel re-lands the sheet when it
+   *  changes): it must name THIS selection and no other — one object's id,
+   *  or a multi-selection's members joined. */
+  id: string;
+  /** The pages offered, in tab order. */
+  pages: readonly HostPage[];
+  onRowSlider?(page: string, key: string, t: number, committed: boolean): void;
+  /** The slider position a number typed into a slider row's readout lands
+   *  on, in the row's own unit; null for a row that takes none. A host
+   *  without it leaves the readout read-only in effect. */
+  typedRowPosition?(page: string, key: string, n: number): number | null;
+  onRowSegment?(page: string, key: string, value: string): void;
+  onRowSwitch?(page: string, key: string, value: boolean): void;
+  /** A hue row moved (`committed` as the sliders), or a stroke row's
+   *  colour. */
+  onColor?(page: string, key: string, color: RGBLike, committed: boolean): void;
+  /** A hue row's trailing circle: open the host's full picker on it. */
+  onPickColor?(page: string, key: string): void;
+  /** A stroke row's Width or Dash moved. */
+  onStroke?(page: string, key: string, patch: { width?: number; dash?: number }, committed: boolean): void;
+  /** An actions row's press: which option. */
+  onAction?(page: string, key: string, value: string): void;
+  onCardSlot?(page: string, key: string, slot: number, card: string | null): void;
+  /** A tap on a swatch (or a preset) of a `swatchStates` row. */
+  onSwatchState?(page: string, key: string, id: string): void;
+}
+
+/** The common-row buttons a selection withholds: a thing with no mirror
+ *  worth the name, one that cannot be duplicated, rotated or locked, or a
+ *  page of rules with nothing on it to act on — Delete included. */
+export type CommonAction = 'rotate' | 'mirrorH' | 'mirrorV' | 'duplicate' | 'lock' | 'delete';
+
 /** A structural RGB color so the package doesn't depend on the engine's
  *  RGBColor. Channels are 0–255. */
 export interface RGBLike {
@@ -47,6 +182,14 @@ export interface OutlineObject {
    *  the model so it stays in `sceneOrder` on reorder/reparent commits, but
    *  NOT shown as its own outline row. */
   chrome?: boolean;
+  /** An object drawn OVER the scene rather than in it (a host's own kind
+   *  of thing — a simulation's bots):
+   *  not in `sceneOrder`, so it sits above every scene row — inside its
+   *  group, when it has one — in the order of this rank (larger = higher).
+   *  Its row selects, frames and renames like any other, but does not drag
+   *  (there is no paint order to change) and has no lock / hide toggles.
+   *  Never written into a reorder's `sceneOrder`. */
+  overlayRank?: number;
 }
 
 /** Everything the Scene Outline needs, and nothing app-specific. */
@@ -570,6 +713,15 @@ export interface ObjectPropertiesModel {
    *  enabled set on — an empty filter would leave Random with nothing to
    *  pick — so a press that would empty it simply does nothing. */
   onPatternToggleTileSet?(family: string): void;
+  /** Selection is an object of the HOST's own kind (see {@link HostPagesModel}):
+   *  its type options are the pages the host lists, in its order, drawn
+   *  from their rows or holding the host's own element. Checked BEFORE
+   *  showRigOptions and showSvgOptions, and mutually exclusive with the
+   *  other type-option families. Absent, or with no pages, the selection
+   *  offers no host page. */
+  hostPages?: HostPagesModel;
+  /** Common-row buttons not drawn for this selection (see CommonAction). */
+  hiddenCommonActions?: readonly CommonAction[];
   /** Selection is a POSEABLE RIG (a Figgie mannequin). Its type options are
    *  the parts a slider can shape — Rig · Hands · Feet · Spine · Head, plus
    *  Reset — rather than the Stroke / Fill / Opacity a plain vector offers:
@@ -1164,6 +1316,13 @@ export interface BrushControlsModel {
   /** The Strength row's name. Default 'Strength'; a host whose strength IS
    *  the stroke's opacity (the paint brush's mode target) names it that. */
   strengthLabel?: string;
+  /** What the Strength handle READS, given its position — a host whose
+   *  row is not a strength at all (a simulation's tick rate: "6/s")
+   *  supplies this, and the handle shows the words instead of the paint
+   *  wash, which would say nothing about the value. A screen reader is
+   *  told the same words. Omit it for a real strength: the wash IS the
+   *  value in the currency it is spent in. */
+  strengthReadout?(value: number): string;
   /** The on-screen RADIUS, in px, that a Size value works out to on the
    *  canvas right now — camera zoom and all. The Size row draws a soft disc
    *  of exactly that size while the handle is held, so what you see above

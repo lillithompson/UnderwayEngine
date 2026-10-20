@@ -1,28 +1,10 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
-  BAR_CUSHION,
-  CONTENT_PAD,
-  HINT_HEIGHT,
-  ROW_GAP,
-  ROW_PILL,
-  ROW_SEGMENTED,
-  ROW_SLIDER,
-  SHADOW_PAD_SIZE,
-  SHEET_CONTENT_TOP,
-  SHEET_EDGE_CLEAR,
-  SHEET_PAD_BOTTOM,
-  SHEET_PAD_TOP,
-  SHEET_REMOVE,
-  SHEET_TABS,
-  SLIDER_CONTROL,
-  SLIDER_LABEL,
-  SLIDER_LABEL_GAP,
-  SubmenuKey,
-  editSheetHeight,
-  pageIsWelled,
-  sheetBottomInset,
-  submenuHeight,
+  BAR_CUSHION, CONTENT_PAD, editSheetHeight, HINT_HEIGHT, hostPageOfSubmenu, hostRowShape,
+  hostSubmenu, pageIsWelled, ROW_GAP, ROW_PILL, ROW_SEGMENTED, ROW_SLIDER, SHADOW_PAD_SIZE,
+  SHEET_CONTENT_TOP, SHEET_EDGE_CLEAR, SHEET_PAD_BOTTOM, SHEET_PAD_TOP, SHEET_REMOVE, SHEET_TABS,
+  sheetBottomInset, SLIDER_CONTROL, SLIDER_LABEL, SLIDER_LABEL_GAP, submenuHeight, SubmenuKey,
 } from '../logic/submenuHeight';
 import { svgStrokeRows } from '../logic/svgEdit';
 
@@ -268,5 +250,42 @@ describe('editSheetHeight (the sheet around a page)', () => {
     expect(sheet).toMatch(/tabs: \{ height: SHEET_TABS, marginHorizontal: -SHEET_PAD_HORIZONTAL \}/);
     expect(sheet).toMatch(/well: \{\s*marginTop: SHEET_CONTENT_TOP/);
     expect(sheet).toMatch(/removeRow: \{ height: SHEET_REMOVE/);
+  });
+});
+
+describe('a host page', () => {
+  it('stands one segmented row tall with no rows, so the sheet is never empty', () => {
+    expect(submenuHeight('host:anything')).toBe(submenuHeight('host:anything', { hostPage: { rows: [] } }));
+    expect(submenuHeight('host:anything', { hostPage: { rows: [{ kind: 'segmented' }] } })).toBe(submenuHeight('host:anything'));
+  });
+
+  it('grows by a slider row for each slider and hue row the host lists', () => {
+    const bare = submenuHeight('host:pen', { hostPage: { rows: [{ kind: 'switch' }] } });
+    expect(submenuHeight('host:pen', { hostPage: { rows: [{ kind: 'switch' }, { kind: 'slider' }, { kind: 'color' }] } }))
+      .toBe(bare + 2 * (ROW_SLIDER + ROW_GAP));
+  });
+
+  it('counts a stroke row as the Border page’s Width and Dash, and its hue row when it carries a colour', () => {
+    const one = submenuHeight('host:pen', { hostPage: { rows: [{ kind: 'stroke' }] } });
+    expect(one).toBe(submenuHeight('host:pen', { hostPage: { rows: [{ kind: 'slider' }, { kind: 'slider' }] } }));
+    expect(submenuHeight('host:pen', { hostPage: { rows: [{ kind: 'stroke', colored: true }] } })).toBe(one + ROW_SLIDER + ROW_GAP);
+  });
+
+  it('stands at the height the host declares for its own element, whatever its rows', () => {
+    const element = submenuHeight('host:processes', { hostPage: { elementHeight: 300 } });
+    expect(element).toBe(submenuHeight('host:processes', { hostPage: { elementHeight: 300, rows: [{ kind: 'slider' }] } }));
+    expect(submenuHeight('host:processes', { hostPage: { elementHeight: 310 } })).toBe(element + 10);
+  });
+
+  it('reads a row’s shape off the very model it renders', () => {
+    expect(hostRowShape({ kind: 'slider', key: 'k', label: 'K', value: 0.5, readout: '1' })).toEqual({ kind: 'slider', colored: false });
+    expect(hostRowShape({ kind: 'stroke', key: 'pen', width: 1, dash: 0 })).toEqual({ kind: 'stroke', colored: false });
+    expect(hostRowShape({ kind: 'stroke', key: 'pen', width: 1, dash: 0, color: { r: 0, g: 0, b: 0 } })).toEqual({ kind: 'stroke', colored: true });
+  });
+
+  it('is routed under its own key, prefixed so it can never collide with the panel’s pages', () => {
+    expect(hostSubmenu('pen')).toBe('host:pen');
+    expect(hostPageOfSubmenu('host:pen')).toBe('pen');
+    expect(hostPageOfSubmenu('stroke')).toBeNull();
   });
 });

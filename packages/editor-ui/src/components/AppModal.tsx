@@ -38,6 +38,11 @@ import { HEADER_HEIGHT, PANEL_BG, PANEL_BORDER, PANEL_INK, STATE_ACTIVE } from '
 // wants no Done button and no X standing in for one: going back is the
 // confirmation, which is what a chevron says and what a Done button —
 // sitting there like a decision still to be taken — does not.
+//
+// `bare` is chrome-less: no band and no X at all, for a takeover that
+// draws its own way out in its body — the making flow, whose Cancel sits
+// at the foot of every step (bug 1404b192) rather than a "New Inkling"
+// band standing over the whole flow.
 
 /** The status-bar clearance a takeover header wears when the host names
  *  none: Facet's webview constant, kept as the fallback so a modal outside
@@ -62,6 +67,7 @@ export function AppModal({
   background,
   floatingClose = false,
   page = false,
+  bare = false,
   children,
 }: {
   visible: boolean;
@@ -100,6 +106,12 @@ export function AppModal({
    *  Takes precedence over `floatingClose` — a pushed page is headed by
    *  the "< Title" row the chevron hangs in. */
   page?: boolean;
+  /** NO chrome: no band and no X, floating or otherwise. The takeover
+   *  draws its own way out (and calls `onClose` from it); `onClose` is
+   *  still the system back. As with `floatingClose`, the body clears the
+   *  status bar by `safeTop` and the screen carries `title` as its
+   *  accessibility label. `page` takes precedence. */
+  bare?: boolean;
   children: React.ReactNode;
 }) {
   // The pushed page's travel. The Modal has to OUTLIVE `visible` for the
@@ -131,6 +143,9 @@ export function AppModal({
   const pageX = useMemo(() => Animated.multiply(slide, width), [slide, width]);
 
   const Screen = page ? Animated.View : View;
+  // No band over the body: it clears the status bar itself, and the
+  // screen carries the title.
+  const headless = !page && (floatingClose || bare);
   return (
     <Modal
       visible={page ? mounted : visible}
@@ -148,7 +163,7 @@ export function AppModal({
         ]}
         // Headerless, there is no <Text> carrying the title — the screen
         // takes it, so the takeover still announces itself.
-        accessibilityLabel={floatingClose && !page ? title : undefined}
+        accessibilityLabel={headless ? title : undefined}
       >
         {page ? (
           // The app's own pushed-page header: the chevron in the gutter
@@ -177,7 +192,7 @@ export function AppModal({
             {headerRight}
           </View>
         ) : null}
-        {page || floatingClose ? null : (
+        {page || headless ? null : (
           <View
             style={[
               styles.header,
@@ -208,13 +223,13 @@ export function AppModal({
         {/* With no band above it the body takes the status-bar clearance
             itself, so the takeover's own first line starts where the
             header's title would have. */}
-        <View style={[styles.body, floatingClose && !page ? { paddingTop: safeTop } : null]}>
+        <View style={[styles.body, headless ? { paddingTop: safeTop } : null]}>
           {children}
         </View>
         {/* …and the X rides OVER that body rather than in a band above it:
             a panel-colored chip, so it stays legible over whatever scrolls
             beneath it. */}
-        {floatingClose && !page ? (
+        {floatingClose && !page && !bare ? (
           <Pressable
             style={[styles.floatingClose, { top: safeTop + 4 }]}
             onPress={onClose}

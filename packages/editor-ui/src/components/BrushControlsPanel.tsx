@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, PanResponder, Platform, StyleSheet, View } from 'react-native';
+import { Animated, PanResponder, Platform, StyleSheet, Text, View } from 'react-native';
 import type { BrushControlsModel } from '../adapter';
 import { CAPSULE_SIZE, MODAL_TEXT, PANEL_ANIM_MS, WHITE_25 } from '../theme';
 import { brushDotSize, brushSliderGrabsHandle, brushSliderValueFromX, isSingleTouchGesture, VALUE_DRAG_SURFACE } from '../logic/slider';
@@ -17,6 +17,12 @@ import { brushDotSize, brushSliderGrabsHandle, brushSliderValueFromX, isSingleTo
 //             opacity; this shows the value in the same currency.
 //   SIZE      a white dot whose DIAMETER grows toward the right — the width
 //             of the mark the brush will make.
+//
+// A host whose row is not a brush quantity at all supplies words instead
+// (BrushControlsModel.strengthReadout, FloatingSliderRow's `format`), and
+// the handle shows them: a host may seat a simulation's tick rate in this
+// row, where neither a dot nor a wash could say "6/s" and a percentage of
+// an unseen range said the wrong thing.
 //
 // The whole stack stands clear of the home-indicator strip: the LOWER row
 // takes the spot the properties panel's own controls hold (safeBottom +
@@ -88,12 +94,18 @@ const HIDDEN_Y = HANDLE * 2 + ROW_GAP + BOTTOM_MARGIN + 80;
  *  value. Exported as the package's one floating-slider look — any control
  *  that should "mirror the brush slider" (the Poser stage's turn slider)
  *  uses THIS row rather than growing a lookalike that drifts. */
-export function FloatingSliderRow({ label, value, onChange, readout, onPreview }: {
+export function FloatingSliderRow({ label, value, onChange, readout, format, onPreview }: {
   label: string;
   value: number;
   onChange: (value: number) => void;
   /** What the handle's interior shows — see the module header. */
   readout: 'diameter' | 'opacity';
+  /** The value IN WORDS, which the handle shows in place of the dot or
+   *  the wash. For a row that is not a brush quantity at all (a
+   *  simulation's tick rate, "6/s"): a growing dot would be a picture of
+   *  the wrong thing, and nothing on screen said what the number was.
+   *  A screen reader is told the same words. */
+  format?: (value: number) => string;
   /** Live value while the handle is HELD, and null the moment it is let go
    *  (or the touch turns out to have missed the handle). Drives the size
    *  preview above the stack; rows without one are unaffected. */
@@ -234,10 +246,16 @@ export function FloatingSliderRow({ label, value, onChange, readout, onPreview }
       <View
         accessibilityRole="adjustable"
         accessibilityLabel={`Brush ${label.toLowerCase()}`}
-        accessibilityValue={{ min: 0, max: 100, now: Math.round(v * 100) }}
+        accessibilityValue={format
+          // The words, where there are words: "6/s" is what the control
+          // is set to, and a percentage of a range nobody can see is not.
+          ? { min: 0, max: 100, now: Math.round(v * 100), text: format(v) }
+          : { min: 0, max: 100, now: Math.round(v * 100) }}
         style={[styles.handle, { left: v * (TRACK_W - HANDLE) }]}
       >
-        {readout === 'diameter' ? (
+        {format ? (
+          <Text style={styles.readout} numberOfLines={1}>{format(v)}</Text>
+        ) : readout === 'diameter' ? (
           <View style={[styles.dot, { width: dot, height: dot, borderRadius: dot / 2 }]} />
         ) : (
           // Full-size disc, always: only its opacity moves, so the left end
@@ -334,6 +352,7 @@ export function BrushControlsPanel({ model, safeBottom = 0 }: {
             <FloatingSliderRow
               label={model.strengthLabel ?? 'Strength'}
               readout="opacity" value={model.strength} onChange={model.onStrength}
+              format={model.strengthReadout}
             />
             {model.showSize === false ? null : <View style={{ height: ROW_GAP }} />}
           </>
@@ -397,6 +416,18 @@ const styles = StyleSheet.create({
   },
   dot: {
     backgroundColor: '#ffffff',
+  },
+  // The words inside the handle (a `format` row). The handle is a 44pt
+  // disc with a 2px rim, so the type is small and tight — "24/s" is about
+  // the widest string a tick rate makes — and it carries the label's own
+  // shadow for the times the handle rides over bright artwork.
+  readout: {
+    color: MODAL_TEXT,
+    fontSize: 12,
+    fontWeight: '700',
+    textShadowColor: 'rgba(0, 0, 0, 0.65)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   preview: {
     position: 'absolute',

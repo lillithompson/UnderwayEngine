@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { AlignEdge, BorderModel, EffectKind, EndpointsModel, FramingModel, GlowKind, GlowModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
+import type { AlignEdge, BorderModel, CommonAction, EffectKind, EndpointsModel, FramingModel, GlowKind, GlowModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, isSingleImageAction, swipeDismissDirection } from '../logic/imageEdit';
 import { PAINT_EDIT_OPTIONS } from '../logic/paintEdit';
 import {
@@ -10,7 +10,10 @@ import {
 import { multiSelectionOptions } from '../logic/multiOptions';
 import { composeFade, fadeMix } from '../logic/opacityEdit';
 import { isValueDragging } from '../logic/slider';
-import { SubmenuKey, editSheetHeight, emptyEffectHeight, pageIsWelled, submenuHeight } from '../logic/submenuHeight';
+import {
+  type HostSubmenuKey, SubmenuKey, editSheetHeight, emptyEffectHeight, hostPageOfSubmenu, hostRowShape, hostSubmenu,
+  pageIsWelled, submenuHeight,
+} from '../logic/submenuHeight';
 import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape, strokePageRemovable, svgPatternSectionRemovable, svgStrokeRows } from '../logic/svgEdit';
 import type { SVGEditAction, SvgPatternSection } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
@@ -24,6 +27,7 @@ import {
   EffectBar, EffectsBar, effectButtonCount, EFFECT_KINDS, effectLabel,
 } from './EffectsBar';
 import { BorderBar } from './BorderBar';
+import { HostPageBar } from './HostPageBar';
 import { OpacityBar } from './OpacityBar';
 import { RigJointsBar } from './RigJointsBar';
 import { RigPoseBar } from './RigPoseBar';
@@ -249,11 +253,21 @@ const EFFECT_OF_PAGE: Partial<Record<SubmenuKey, EffectKind>> = {
   shadow: 'shadow', glowOuter: 'outer', glowInner: 'inner',
 };
 
+const NO_HOST_PAGES: readonly import('../adapter').HostPage[] = [];
+
 /** The pages whose open state the panel keeps itself (see `localSub`). */
 type LocalSubmenu = 'background' | 'card' | 'shape' | 'image' | 'rigColor' | 'rigFigure';
-const isLocalSubmenu = (key: SubmenuKey): key is LocalSubmenu =>
-  key === 'background' || key === 'card' || key === 'shape' || key === 'image'
+/** A HOST's pages (adapter's HostPage) are kept the same way — the panel
+ *  holds which is open, the host only the values. */
+const isLocalSubmenu = (key: SubmenuKey): key is LocalSubmenu | HostSubmenuKey =>
+  key === 'background' || key === 'card' || key === 'shape' || key === 'image' || hostPageOfSubmenu(key) !== null
   || key === 'rigColor' || key === 'rigFigure';
+
+/** The common row's element keys, by the action a host withholds. */
+const COMMON_ACTION_KEY: Record<CommonAction, string> = {
+  rotate: 'rotate', mirrorH: 'flipH', mirrorV: 'flipV', duplicate: 'copy', lock: 'lock',
+  delete: 'delete',
+};
 
 interface OptionSpec extends Omit<EditTabSpec, 'selected'> {
   /** The page this option opens. Options carrying one light up as tabs while
@@ -434,7 +448,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // kind to have one); `multi` is what the SELECTION offers, whatever it is
   // made of. Both render on the sheet's ONE tab row — kind options first,
   // then the selection's — which scrolls if it must.
-  const hasTypeOptions = !!model.showImageEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showStrokeOptions || !!model.showRigOptions || showUngroup || showCopies || showMultiOpacity;
+  // The host's own pages for this selection (adapter's HostPagesModel):
+  // none for every engine kind.
+  const hostPages = model.hostPages?.pages ?? NO_HOST_PAGES;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showStrokeOptions || !!model.showRigOptions || hostPages.length > 0 || showUngroup || showCopies || showMultiOpacity;
   const hasMultiOptions = showLayout || showGroup || showMerge;
   const hasOptions = hasTypeOptions || hasMultiOptions;
   // Signature of the current selection's option set. It changes when the
@@ -443,7 +460,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // subtype is part of it so switching between two vector objects with
   // different menus (a line → a rectangle) re-lands the sheet.
   const typeSig = model.visible
-    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showCopies ? 'c' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showPatternOptions ? 'P' : ''}${model.showStrokeOptions ? 'S' : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}${[...svgHidden].join(',')}` : ''}`
+    ? `${multi ? 'm' : ''}${showLayout ? 'L' : ''}${showGroup ? 'G' : ''}${showUngroup ? 'g' : ''}${showCopies ? 'c' : ''}${showMerge ? 'M' : ''}${model.showImageEdit ? 'i' : ''}${model.showFrameOptions ? 'f' : ''}${model.showTextStyle ? 's' : ''}${model.showInvert ? 'v' : ''}${model.showPaintOptions ? 'p' : ''}${model.showPatternOptions ? 'P' : ''}${model.showStrokeOptions ? 'S' : ''}${model.hostPages ? `h${model.hostPages.id}:${hostPages.map((p) => p.key).join(',')}` : ''}${model.showSvgOptions ? `g${model.svgSubtype ?? 'stroke'}${model.onSvgEdit ? 'E' : ''}${[...svgHidden].join(',')}` : ''}`
     : '';
   const prevTypeSig = useRef('');
   useEffect(() => {
@@ -534,7 +551,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // left the rig's Color tab pressable but inert: openSubmenu ran off the
   // end of its chain (rigColor names no rig PART, so the rig branch skips
   // it too) and set nothing, so the page could never become the open one.
-  const [localSub, setLocalSub] = useState<LocalSubmenu | null>(null);
+  const [localSub, setLocalSub] = useState<LocalSubmenu | HostSubmenuKey | null>(null);
   // ── The pages (Crop / Effects / Border / Text …) ─────────────────────
   // The open page is what the Edit sheet's well holds, and its tab is the lit
   // one. The pages are separate components but only one shows at a time.
@@ -671,6 +688,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // and the page stand for every other kind that offers them. Checked
     // before showSvgOptions: a rig's figure IS an svg object, and the
     // other vector pages have nothing to act on for a baked silhouette.
+    // A thing of the host's own kind: the pages the host lists, in its
+    // order. Checked before the rig and the vectors.
+    : hostPages.length > 0 ? hostPages.map((p): SubmenuKey => hostSubmenu(p.key))
     : model.showRigOptions ? RIG_PAGES.map((o) => o.sub)
     : model.showSvgOptions
       ? ([
@@ -756,6 +776,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // downward dismiss swipe. Reset on every page change so it can't linger
   // true over a different page.
   const fontSheetOpenRef = useRef(false);
+  // …and true while the page showing scrolls in place: a host page whose
+  // element is taller than the sheet shows (HostPage.element.scrolls). Set
+  // each render from that page's model.
+  const pageScrollsRef = useRef(false);
 
   /** True while `key`'s page is the one showing — lights that tab. */
   const subOpen = (key: SubmenuKey) => activeSub === key;
@@ -856,6 +880,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // page it last showed, so the well doesn't empty as it goes.
   const displaySub: SubmenuKey | null = activeSub
     ?? (sheetOpen ? landingSubmenu(submenuOrder, lastSubRef.current) : lastSubRef.current);
+  /** The host page showing, if the page showing is the host's. */
+  const shownHostPage = displaySub && model.hostPages
+    ? model.hostPages.pages.find((p) => hostSubmenu(p.key) === displaySub)
+    : undefined;
   /** The effect whose CONTROLS are showing — null on the Effects page
    *  itself (its buttons belong to all three) and on every other page. The
    *  shadow stands in where nothing is showing, so the values below are
@@ -933,7 +961,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       // sideways drag is left alone: the tab row scrolls with it, and there
       // is no page carousel to fling.
       onMoveShouldSetPanResponder: (_e, g) =>
-        !fontSheetOpenRef.current && !isValueDragging() &&
+        !fontSheetOpenRef.current && !pageScrollsRef.current && !isValueDragging() &&
         g.dy > 10 && g.dy > Math.abs(g.dx) * 1.5,
       onPanResponderMove: (_e, g) => { sheetY.setValue(Math.max(0, g.dy)); },
       onPanResponderRelease: (_e, g) => {
@@ -1711,6 +1739,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     })) {
       removeAction = { label: 'Remove stroke', onPress: removeStroke };
     }
+  } else if (shownHostPage && model.hostPages) {
+    // A host page: its rows in the panel's own grammar, or the host's own
+    // element in the well.
+    activeBarEl = <HostPageBar page={shownHostPage} model={model.hostPages} />;
   } else if (displaySub === 'rigJoints' || displaySub === 'rigLimbs') {
     // The rig pages whose two faces are one box with tabs — the Copies
     // page's shape, because Left and Right are one setting asked twice and
@@ -1828,8 +1860,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // resizes to hold them), or the one Add button of an absent effect — plus
   // the Remove line when the page has one. The page shown through the slide
   // down (displaySub) keeps its height, so the sheet drops as it stood.
+  pageScrollsRef.current = !!shownHostPage?.element?.scrolls;
   const contentHeight = !displaySub ? null : addPage ? emptyEffectHeight() : submenuHeight(displaySub, {
     cropMode: framingForBar.mode,
+    // A host page is measured by what the host put on it.
+    hostPage: shownHostPage
+      ? { rows: shownHostPage.rows?.map(hostRowShape), elementHeight: shownHostPage.element?.height }
+      : undefined,
     // …counted exactly where the page will render it, on that same rule.
     opacityFade: !!model.onPickFadeColor,
     // Every hue row is counted exactly where its page will render it — the
@@ -1974,6 +2011,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       ? [<GridButton key="properties" label="Properties" icon="tune" onPress={openSheet} compact={compact} />]
       : []),
   ];
+  // …less the buttons this selection withholds (hiddenCommonActions): a
+  // thing of the host's own kind may have no mirror worth the name, or
+  // nothing to rotate, duplicate or lock.
+  const hiddenCommon = new Set((model.hiddenCommonActions ?? []).map((a) => COMMON_ACTION_KEY[a]));
+  if (hiddenCommon.size > 0) {
+    for (let i = row1.length - 1; i >= 0; i--) {
+      const el = row1[i];
+      if (React.isValidElement(el) && el.key != null && hiddenCommon.has(String(el.key))) row1.splice(i, 1);
+    }
+  }
   // A multi-selection's Group / Merge live in the Edit sheet (tabs, beside
   // Layout), not on this icon row — see showGroup / showMerge.
   if (model.onGroup && !multi) row1.push(<GridButton key="group" label="Group" icon="group" onPress={model.onGroup} compact={compact} />);
@@ -1985,9 +2032,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // …and LAST, Delete: the one press that takes the object off the page,
   // at the end of the row and away from everything that merely changes it.
   // (It sat mid-row, with Properties last, until the two traded places.)
-  row1.push(
-    <GridButton key="delete" label="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
-  );
+  // (…unless the selection withholds it too: a host's page of rules has no
+  // object on it to take off the page.)
+  if (!hiddenCommon.has(COMMON_ACTION_KEY.delete)) {
+    row1.push(
+      <GridButton key="delete" label="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
+    );
+  }
 
   // The sheet's type tabs (images: the image-edit set; text: Edit + Type),
   // null when the selection's kind offers none — a mixed multi-selection, say,
@@ -2011,7 +2062,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       onPress: () => openSubmenu(EFFECT_PAGE[kind]),
     })),
   ];
-  if (model.showImageEdit) {
+  if (hostPages.length > 0) {
+    // A thing of the host's own kind: its pages, as the host lists them.
+    typeSpecs = hostPages.map((page): OptionSpec => ({
+      key: hostSubmenu(page.key),
+      label: page.label,
+      sub: hostSubmenu(page.key),
+      onPress: () => openSubmenu(hostSubmenu(page.key)),
+    }));
+  } else if (model.showImageEdit) {
     typeSpecs = IMAGE_EDIT_OPTIONS
       // Image and Crop are single-target only — a mixed selection has no one
       // photo to swap, and no one frame to fit.

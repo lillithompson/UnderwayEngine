@@ -13,6 +13,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { SceneOutlineModel } from '../adapter';
 import { collapsedGroups, computeOutlineTree, flattenTree, reparentToSceneOrder, FlatOutlineRow } from '../logic/outlineTree';
 import { computeDropTarget } from '../logic/dragReorder';
+import { secondTapWithin } from '../logic/secondTap';
 import {
   DOUBLE_TAP_MS,
   OUTLINE_BG,
@@ -280,6 +281,9 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
   useEffect(() => { respondersRef.current.clear(); }, [rows.length]);
 
   const lastTapRef = useRef<{ id: string; time: number } | null>(null);
+  // An overlay has no paint order, so its rename dialog offers no
+  // Bring-to-front / Send-to-back.
+  const renamingOverlay = !!renaming && model.objects.get(renaming.id)?.overlayRank !== undefined;
 
   return (
     <>
@@ -330,6 +334,12 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                 const selected = model.selectedIds.has(row.id);
                 const locked = !!obj?.locked;
                 const hidden = !!obj?.hidden;
+                // An overlay (a thing of the host's own kind, drawn over the
+                // scene — a simulation's bot) is not in the paint order:
+                // nothing for a drag to reorder, and no hide of its own. Its
+                // row selects, frames, renames and LOCKS — the lock is how
+                // an overlay the canvas cannot pick is reached again.
+                const overlay = obj?.overlayRank !== undefined;
                 const glyph = row.isGroup
                   ? iconFor('group')
                   : obj?.icon ?? iconFor(obj?.kind ?? 'svg');
@@ -340,8 +350,10 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                 const handlePress = () => {
                   model.onSelect(row.id);
                   const now = Date.now();
-                  const last = lastTapRef.current;
-                  if (last && last.id === row.id && now - last.time < DOUBLE_TAP_MS) {
+                  // The "tap the same thing twice" rule, spelled once in
+                  // ../logic/secondTap; the
+                  // WINDOW is this control's. This was the fourth copy.
+                  if (secondTapWithin(lastTapRef.current, row.id, now, DOUBLE_TAP_MS)) {
                     lastTapRef.current = null;
                     model.onFrame(row.id);
                   } else {
@@ -384,7 +396,7 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                           to scroll the list instead. */}
                       <View
                         style={styles.rowGrab}
-                        {...getResponder(index, 'hold').panHandlers}
+                        {...(overlay ? null : getResponder(index, 'hold').panHandlers)}
                       >
                         {/* Indent + chevron: groups toggle collapse; leaves get
                             a chevron-width spacer so names align. */}
@@ -412,7 +424,7 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                         <View
                           style={styles.dragHandle}
                           hitSlop={DRAG_HANDLE_HIT_SLOP}
-                          {...getResponder(index, 'touch').panHandlers}
+                          {...(overlay ? null : getResponder(index, 'touch').panHandlers)}
                         >
                           <MaterialCommunityIcons name={icon(glyph)} size={18} color={OUTLINE_ICON} />
                         </View>
@@ -429,17 +441,21 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                           The gap holds a thumb's width open whatever the name
                           is long enough to eat. */}
                       <View style={styles.rowGap} />
-                      <Pressable
-                        style={styles.iconButton}
-                        onPress={() => model.onToggleHidden(row.id)}
-                        accessibilityLabel={hidden ? 'Show' : 'Hide'}
-                      >
-                        <MaterialCommunityIcons
-                          name={icon(hidden ? 'eye-off-outline' : 'eye-outline')}
-                          size={14}
-                          color={hidden ? OUTLINE_ICON_ACTIVE : OUTLINE_ICON}
-                        />
-                      </Pressable>
+                      {overlay ? (
+                        <View style={styles.iconButton} />
+                      ) : (
+                        <Pressable
+                          style={styles.iconButton}
+                          onPress={() => model.onToggleHidden(row.id)}
+                          accessibilityLabel={hidden ? 'Show' : 'Hide'}
+                        >
+                          <MaterialCommunityIcons
+                            name={icon(hidden ? 'eye-off-outline' : 'eye-outline')}
+                            size={14}
+                            color={hidden ? OUTLINE_ICON_ACTIVE : OUTLINE_ICON}
+                          />
+                        </Pressable>
+                      )}
                       <Pressable
                         style={styles.iconButton}
                         onPress={() => model.onToggleLock(row.id)}
@@ -476,8 +492,10 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
         initialName={renaming?.name ?? ''}
         onSubmit={(name) => { if (renaming) model.onRename(renaming.id, name); }}
         onClose={() => setRenaming(null)}
-        onBringToFront={renaming && model.onBringToFront ? () => model.onBringToFront!(renaming.id) : undefined}
-        onSendToBack={renaming && model.onSendToBack ? () => model.onSendToBack!(renaming.id) : undefined}
+        onBringToFront={renaming && model.onBringToFront && !renamingOverlay
+          ? () => model.onBringToFront!(renaming.id) : undefined}
+        onSendToBack={renaming && model.onSendToBack && !renamingOverlay
+          ? () => model.onSendToBack!(renaming.id) : undefined}
       />
     </>
   );

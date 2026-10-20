@@ -18,6 +18,9 @@ export interface OutlineTreeNode {
   /** Container chrome (a frame's clip-rect boundary): part of the tree/order
    *  but never shown as a row. */
   chrome: boolean;
+  /** Drawn over the scene, not in `sceneOrder` (OutlineObject.overlayRank):
+   *  part of the tree, never part of a serialized order. */
+  overlay: boolean;
   /** Children in display order (top→bottom). Empty for leaves. */
   children: OutlineTreeNode[];
 }
@@ -63,7 +66,11 @@ export function computeOutlineTree(
   }
 
   // Front-most position of a node (memoized): leaf → its index; group → max
-  // over descendant leaves (−1 when it has none, so empty groups sink).
+  // over descendant leaves (−1 when it has none, so empty groups sink). An
+  // overlay leaf ranks above the whole scene, but does not lift its group:
+  // a group sits where its scene leaves put it, with its overlays on top of
+  // it, so it holds its place when a bot joins it.
+  const overlayPos = (obj: OutlineObject) => sceneOrder.length + (obj.overlayRank ?? 0);
   const frontPos = new Map<string, number>();
   const computeFrontPos = (id: string): number => {
     const cached = frontPos.get(id);
@@ -73,8 +80,13 @@ export function computeOutlineTree(
     let pos: number;
     if (obj && obj.kind === 'group') {
       let max = -1;
-      for (const childId of childrenOf.get(id) ?? []) max = Math.max(max, computeFrontPos(childId));
+      for (const childId of childrenOf.get(id) ?? []) {
+        if (objects.get(childId)?.overlayRank !== undefined) continue;
+        max = Math.max(max, computeFrontPos(childId));
+      }
       pos = max;
+    } else if (obj && obj.overlayRank !== undefined) {
+      pos = overlayPos(obj);
     } else {
       pos = leafIndex.get(id) ?? -1;
     }
@@ -87,7 +99,9 @@ export function computeOutlineTree(
     const isGroup = obj?.kind === 'group';
     const childIds = isGroup ? (childrenOf.get(id) ?? []).slice() : [];
     childIds.sort((a, b) => computeFrontPos(b) - computeFrontPos(a));
-    return { id, isGroup, chrome: !!obj?.chrome, children: childIds.map(buildNode) };
+    return {
+      id, isGroup, chrome: !!obj?.chrome, overlay: obj?.overlayRank !== undefined, children: childIds.map(buildNode),
+    };
   };
 
   roots.sort((a, b) => computeFrontPos(b) - computeFrontPos(a));
@@ -150,7 +164,8 @@ export function collapsedGroups(
 
 /**
  * Serialize the (full, collapse-independent) tree back to a back→front
- * `sceneOrder` of leaf ids. Groups are not emitted (they aren't in sceneOrder).
+ * `sceneOrder` of leaf ids. Groups are not emitted (they aren't in sceneOrder),
+ * and neither are overlays (they never were).
  * Contiguous by construction: each group's leaves form one run.
  */
 export function treeToSceneOrder(roots: readonly OutlineTreeNode[]): string[] {
@@ -158,7 +173,7 @@ export function treeToSceneOrder(roots: readonly OutlineTreeNode[]): string[] {
   const walk = (node: OutlineTreeNode) => {
     if (node.isGroup) {
       for (const child of node.children) walk(child);
-    } else {
+    } else if (!node.overlay) {
       displayLeaves.push(node.id);
     }
   };

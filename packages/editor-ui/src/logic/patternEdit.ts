@@ -5,6 +5,8 @@
 // bar's action set. Kept pure (no react-native) so all of it is
 // unit-tested in node, mirroring imageEdit.ts / svgEdit.ts.
 
+import { secondTapWithin, type TapRecord } from './secondTap';
+
 /** The ten symmetry flags a pattern's painting can mirror by. Structurally
  *  identical to the engine's PatternSymmetry (declared here too so this
  *  package stays engine-import-free). */
@@ -220,13 +222,14 @@ export const PATTERN_TILE_TRANSFORM_IDENTITY: PatternTileTransform = {
 export const PATTERN_TILE_DOUBLE_TAP_MS = 400;
 
 /** Is a tap at `now` on `id` the second half of a double tap, given the
- *  last tap seen? The first tap arms the tile; this one rotates it. */
+ *  last tap seen? The first tap arms the tile; this one rotates it. The rule
+ *  is ./secondTap.ts's — the window is this control's. */
 export function isPatternTileDoubleTap(
-  last: { id: string; time: number },
+  last: TapRecord,
   id: string,
   now: number,
 ): boolean {
-  return last.id === id && now - last.time < PATTERN_TILE_DOUBLE_TAP_MS;
+  return secondTapWithin(last, id, now, PATTERN_TILE_DOUBLE_TAP_MS);
 }
 
 /** A quarter turn clockwise, keeping the mirrors — what a double tap does. */

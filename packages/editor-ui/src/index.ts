@@ -20,6 +20,7 @@ export * from './logic/patternEdit';
 export * from './logic/layout';
 export * from './logic/multiOptions';
 export * from './logic/tint';
+export * from './logic/secondTap';
 
 // Components (React Native).
 export { SceneOutlinePanel } from './components/SceneOutlinePanel';
@@ -42,3 +43,8 @@ export { CheckerboardFill, ColorSwatchFill } from './components/ColorSwatch';
 export { EyedropperOverlay } from './components/EyedropperOverlay';
 export { EndpointsBar } from './components/EndpointsBar';
 export { LayoutBar } from './components/LayoutBar';
+// A HOST page of the Edit sheet, and its rows, for a host that draws one
+// of its own pages somewhere else too (a making flow's step): the same
+// grammar the panel draws them in.
+export { CardSlotsRow, HostPageBar, HostRow } from './components/HostPageBar';
+export { SwatchStateRow } from './components/SwatchStateRow';

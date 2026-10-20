@@ -671,7 +671,12 @@ describe('the tile pose gestures (double-tap turn, long-press transform)', () =>
   it('the double-tap window: same tile inside the window only', () => {
     const last = { id: 'a', time: 1000 };
     expect(isPatternTileDoubleTap(last, 'a', 1000 + PATTERN_TILE_DOUBLE_TAP_MS - 1)).toBe(true);
-    expect(isPatternTileDoubleTap(last, 'a', 1000 + PATTERN_TILE_DOUBLE_TAP_MS)).toBe(false);
+    // The rule is logic/secondTap.ts's now, shared with
+    // the locked capsule segment's second tap, and the boundary is
+    // INCLUSIVE — a tap exactly PATTERN_TILE_DOUBLE_TAP_MS later still
+    // rotates (this copy was exclusive; the locked segment's was not).
+    expect(isPatternTileDoubleTap(last, 'a', 1000 + PATTERN_TILE_DOUBLE_TAP_MS)).toBe(true);
+    expect(isPatternTileDoubleTap(last, 'a', 1001 + PATTERN_TILE_DOUBLE_TAP_MS)).toBe(false);
     expect(isPatternTileDoubleTap(last, 'b', 1001)).toBe(false);
     expect(isPatternTileDoubleTap({ id: '', time: 0 }, 'a', 1)).toBe(false);
   });

@@ -82,7 +82,7 @@ describe('each handle reads out the thing its row controls', () => {
   it('draws the strength wash at full size, varying only its opacity', () => {
     // Clear at the left end, solid at the right — so the readout has to be
     // the opacity, not the size, of the disc.
-    const branch = /\{readout === 'diameter' \? \([\s\S]*?\)\}/.exec(SRC)?.[0] ?? '';
+    const branch = /readout === 'diameter' \? \([\s\S]*?\)\}/.exec(SRC)?.[0] ?? '';
     expect(branch).toContain('width: dot');           // the size row still grows
     expect(branch).toContain('styles.wash, { opacity: v }'); // the strength row fades
     const wash = /wash: \{[\s\S]*?\n  \},/.exec(SRC)?.[0] ?? '';
@@ -194,5 +194,40 @@ describe('a two-finger tap belongs to the canvas, not to a slider', () => {
     expect(SRC).toContain('cbRef.current(grabbedRef.current);');
     // …and an abandoned gesture must not fire the value again on release.
     expect(SRC).toContain('if (!gave) cbRef.current(dragRef.current);');
+  });
+});
+
+/**
+ * Phase 10b: a row can read out its value IN WORDS. The
+ * two brush rows show the value in the currency they control — a width, an
+ * opacity — but a host can seat something else in this row (DrawBots'
+ * tick rate), and neither a dot nor a wash can say "6/s".
+ */
+describe('a row can read its value out in words', () => {
+  it('shows the words inside the handle, in place of the dot and the wash', () => {
+    expect(SRC).toContain('format?: (value: number) => string;');
+    expect(SRC).toContain('{format ? (');
+    expect(SRC).toContain('<Text style={styles.readout} numberOfLines={1}>{format(v)}</Text>');
+    // It outranks both brush readouts: a row with words shows words, and
+    // the two washes are the branches under it.
+    expect(SRC.indexOf('{format ? ('))
+      .toBeLessThan(SRC.indexOf(") : readout === 'diameter' ? ("));
+  });
+
+  it('tells a screen reader the same words, not only the percentage', () => {
+    // "Edit value, currently 50%" of a range whose ends are not on screen
+    // was the whole of what a reader had to go on.
+    expect(SRC).toContain('now: Math.round(v * 100), text: format(v) }');
+  });
+
+  it('the panel hands the Strength row the host’s formatter', () => {
+    expect(SRC).toContain('format={model.strengthReadout}');
+  });
+
+  it('leaves a real strength alone: no formatter, no text', () => {
+    // The paint brush supplies none, so its handle is the wash it always
+    // was — the value in the currency it is spent in.
+    expect(SRC).toContain('{format ? (');
+    expect(SRC).not.toContain("format={() =>");
   });
 });

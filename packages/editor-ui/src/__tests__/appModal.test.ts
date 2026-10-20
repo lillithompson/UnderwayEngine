@@ -73,8 +73,9 @@ describe('the unified takeover chrome (AppModal)', () => {
     // taken.
     expect(shell).toContain('name="chevron-left"');
     expect(shell).toContain("accessibilityLabel={'Back from ' + title}");
-    expect(shell).toContain('{page || floatingClose ? null : (');
-    expect(shell).toContain('{floatingClose && !page ? (');
+    expect(shell).toContain('const headless = !page && (floatingClose || bare);');
+    expect(shell).toContain('{page || headless ? null : (');
+    expect(shell).toContain('{floatingClose && !page && !bare ? (');
     const tiles = read('PatternTileModal.tsx');
     expect(tiles).not.toContain('AppModalDoneButton');
     expect(tiles).not.toContain('doneWrap');
@@ -85,14 +86,24 @@ describe('the unified takeover chrome (AppModal)', () => {
     // content, and no <Text> carrying the title — so the screen takes it as
     // its accessibility label instead.
     expect(shell).toContain('floatingClose = false,');
-    expect(shell).toContain('accessibilityLabel={floatingClose && !page ? title : undefined}');
+    expect(shell).toContain('accessibilityLabel={headless ? title : undefined}');
     expect(shell).toContain(
-      '<View style={[styles.body, floatingClose && !page ? { paddingTop: safeTop } : null]}>',
+      '<View style={[styles.body, headless ? { paddingTop: safeTop } : null]}>',
     );
     expect(shell).toMatch(/floatingClose:\s*\{\s*position:\s*'absolute',/);
     // The chip is filled with the sheet's own surface so the X stays
     // legible over whatever scrolls beneath it.
     expect(shell).toContain('backgroundColor: PANEL_BG,');
+  });
+
+  it('the bare variant has no band and no X: the body draws its own way out (bug 1404b192)', () => {
+    expect(shell).toContain('bare = false,');
+    // Headless like floatingClose — the body clears the status bar and the
+    // screen carries the title — but the floating X is withheld too.
+    expect(shell).toContain('const headless = !page && (floatingClose || bare);');
+    expect(shell).toContain('{floatingClose && !page && !bare ? (');
+    // The system back still closes it.
+    expect(shell).toContain('onRequestClose={onClose}');
   });
 
   it('carries the standard Done button, in the Set Color layout', () => {

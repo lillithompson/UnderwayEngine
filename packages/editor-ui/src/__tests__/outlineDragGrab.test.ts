@@ -83,7 +83,7 @@ describe('the kind icon is the drag handle', () => {
   it('carries the responder, and a hit area wider than the glyph', () => {
     const handle = /<View\s+style=\{styles\.dragHandle\}[\s\S]*?\/>\s*<\/View>/.exec(SRC)?.[0] ?? '';
     expect(handle).toContain('hitSlop={DRAG_HANDLE_HIT_SLOP}');
-    expect(handle).toContain("{...getResponder(index, 'touch').panHandlers}");
+    expect(handle).toContain("{...(overlay ? null : getResponder(index, 'touch').panHandlers)}");
     // The glyph itself is what the finger aims at.
     expect(handle).toContain('MaterialCommunityIcons');
   });
@@ -111,7 +111,7 @@ describe('the line is split: its left half reorders, its right half scrolls', ()
   );
 
   it('the grab half carries the held responder — the icon, and the name', () => {
-    expect(grab).toContain("{...getResponder(index, 'hold').panHandlers}");
+    expect(grab).toContain("{...(overlay ? null : getResponder(index, 'hold').panHandlers)}");
     // The indent, the chevron, the kind icon and the text are all inside it.
     expect(grab).toContain('width: row.depth * OUTLINE_INDENT');
     expect(grab).toContain('style={styles.chevron}');
