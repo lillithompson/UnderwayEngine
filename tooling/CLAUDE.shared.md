@@ -122,8 +122,8 @@ failures before finishing.
 Where a test can go: `jest.config.js` roots the run at the project's web
 and components trees (and `scripts/`, where the project tests its own
 scripts) — `app/` and `backend/` are not in it (the backend has its own
-suite, `npm run test:backend`). There is **no
-renderer**: `react-native` resolves to a type-and-stub shim, so nothing can
+suite, `npm run test:backend`). There is **no renderer**: `react-native`
+resolves to a type-and-stub shim, so nothing can
 mount a `View`. Logic that needs testing therefore belongs in a plain `.ts`
 module (a screen's logic in a model module beside it), and facts about a
 screen's structure are pinned by tests that read the source text.

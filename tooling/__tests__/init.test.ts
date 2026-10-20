@@ -58,9 +58,10 @@ describe('init', () => {
       // Executable, or git ignores it (POSIX only; Windows has no mode bit).
       if (process.platform !== 'win32') expect(statSync(join(dir, '.githooks', 'pre-push')).mode & 0o111).not.toBe(0);
       const hook = readFileSync(join(dir, '.githooks', 'pre-push'), 'utf8');
-      // The gate's path is named once, and the hook says in a sentence when
-      // the submodule that holds it is not checked out.
-      expect(hook).toContain(`${TOOLING}/review.js"`);
+      // The gate's path is named once (the exec goes through `$gate`), and
+      // the hook says in a sentence when the submodule that holds it is not
+      // checked out.
+      expect(hook.split(`${TOOLING}/review.js`).length - 1).toBe(1);
       expect(hook).toContain('exec node "$gate" check --pre-push "$1"');
       expect(hook).toContain('git submodule update --init');
       expect(readFileSync(join(dir, '.claude', 'skills', 'ship', 'SKILL.md'), 'utf8')).toContain(`${TOOLING}/skills/ship.md`);

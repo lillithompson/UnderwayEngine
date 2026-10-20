@@ -119,8 +119,8 @@ are suggestions.
 a stub `init.js` writes: it names the gate's path in the vendored engine
 once, refuses the push in a sentence when the engine submodule is not
 checked out, and otherwise execs `tooling/review.js check --pre-push`). It
-starts no review; it refuses the push unless the pushed range has a pass as a whole,
-or every commit in it that needs a review has one of its own (so
+starts no review; it refuses the push unless the pushed range has a pass as
+a whole, or every commit in it that needs a review has one of its own (so
 per-commit records and accepts from before ranges still clear). Commit by
 commit, the commits not cleared by their own record are judged together:
 several small commits that add up to the line threshold need a review,

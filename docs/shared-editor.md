@@ -186,6 +186,21 @@ doc-path check, the hook, the CI backstop, the shared CLAUDE.md rules — is
 each app's `underway.config.json`; `tooling/README.md` says how an app is
 wired and what moves out of its own tree.
 
+Each app's review sees a tooling change through its pointer bump, so one
+change to the process is reviewed three times (and, on 2026-10-20, each of
+the three reviews found a different loose end in the same change). The gate
+is doing its job, but the cost is real: a change to `tooling/` should be
+reviewed once, here, and an app's review should treat a pure pointer bump
+whose engine range is already reviewed as cleared. That is the next change
+to make to the process itself — `review.js` reading the engine's own
+records through the submodule — and it is not made yet.
+
+Two things the first wiring taught: `git reset --hard` in a clone with
+`submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
+reports it; check `main` out again before committing there), and a project
+that never had the doc-path check will have stale paths in its codebase map
+to fix before its first ship (CozyJournal had 23).
+
 ## 6. Line endings
 
 Three of the four clones on the owner's Windows machine checked out CRLF
