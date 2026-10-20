@@ -14,7 +14,7 @@
  *   underway.config.json           from underway.config.example.json, with
  *                                  the name given (or the repository's
  *                                  directory name) — only if absent
- *   .githooks/pre-push             the one-line hook (tooling/pre-push)
+ *   .githooks/pre-push             the hook (tooling/pre-push), executable
  *   .claude/skills/ship/SKILL.md   a stub that follows tooling/skills/ship.md
  *   .github/workflows/submodule-pointer-check.yml
  *   package.json                   the scripts review, review:pending,
@@ -61,13 +61,17 @@ function root() {
 }
 
 /** Write `rel` with `text` unless it already holds it; say which. */
-function put(dir, rel, text, { keep = false } = {}) {
+function put(dir, rel, text, { keep = false, mode } = {}) {
   const file = path.join(dir, rel);
   const had = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+  // A file that is the same text is still given its mode: git ignores a
+  // hook that is not executable, and a clone on macOS or Linux keeps the
+  // mode the file was written with.
+  if (mode !== undefined && had !== null) fs.chmodSync(file, mode);
   if (had === text) return console.log(`  same     ${rel}`);
   if (had !== null && keep) return console.log(`  kept     ${rel} (differs; not overwritten)`);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, text);
+  fs.writeFileSync(file, text, mode !== undefined ? { mode } : undefined);
   console.log(`  ${had === null ? 'wrote   ' : 'updated '} ${rel}`);
 }
 
@@ -93,9 +97,10 @@ function init(argv, dir = root()) {
   const name = nameAt >= 0 ? argv[nameAt + 1] : path.basename(dir).toLowerCase();
   console.log(`init: ${dir}`);
   const example = JSON.parse(fs.readFileSync(path.join(__dirname, 'underway.config.example.json'), 'utf8'));
-  // The name given, and the values spelled from it (the record directory).
-  put(dir, CONFIG_FILE, `${JSON.stringify({ ...example, name, reviewRecords: `${name}-reviews` }, null, 2)}\n`, { keep: true });
-  put(dir, '.githooks/pre-push', fs.readFileSync(path.join(__dirname, 'pre-push'), 'utf8'));
+  // The name given; the record directory follows from it in config.js
+  // (`<name>-reviews`) unless the project sets one.
+  put(dir, CONFIG_FILE, `${JSON.stringify({ ...example, name }, null, 2)}\n`, { keep: true });
+  put(dir, '.githooks/pre-push', fs.readFileSync(path.join(__dirname, 'pre-push'), 'utf8'), { mode: 0o755 });
   put(dir, '.claude/skills/ship/SKILL.md', SKILL_STUB);
   put(dir, '.github/workflows/submodule-pointer-check.yml',
     fs.readFileSync(path.join(__dirname, 'workflows', 'submodule-pointer-check.yml'), 'utf8'));

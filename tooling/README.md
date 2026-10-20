@@ -18,7 +18,7 @@ none. That is what this replaces.
 | `gates.md` | What the gates are and why |
 | `skills/ship.md` | The `/ship` skill's text; the project's `.claude/skills/ship/SKILL.md` points here |
 | `CLAUDE.shared.md` | The rules every project's `CLAUDE.md` imports |
-| `pre-push` | The one-line hook a project copies to `.githooks/pre-push` |
+| `pre-push` | The hook `init.js` writes to a project's `.githooks/pre-push`: the gate's path once, a sentence when the engine submodule is not checked out, else the gate |
 | `workflows/submodule-pointer-check.yml` | The CI backstop for an unpushed submodule pointer |
 | `init.js` | Writes a project's stubs, config and package scripts, idempotently |
 | `check-clone.js` | The per-clone git settings and the LF checkout every fresh clone forgets |
@@ -33,7 +33,7 @@ node vendor/UnderwayEngine/tooling/init.js --name myapp
 It writes (and keeps in step, run it again any time):
 
 - `underway.config.json` — only if absent; edit it (below);
-- `.githooks/pre-push` — the one-line hook;
+- `.githooks/pre-push` — the hook (executable);
 - `.claude/skills/ship/SKILL.md` — a stub that follows `skills/ship.md`;
 - `.github/workflows/submodule-pointer-check.yml`;
 - `package.json` scripts: `review`, `review:pending`, `review:check`,

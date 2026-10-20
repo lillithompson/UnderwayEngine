@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,6 +10,7 @@ import { join } from 'node:path';
 /* eslint-disable @typescript-eslint/no-var-requires */
 const { init, packageJsonWith, SCRIPTS, TOOLING } = require('../init.js');
 const { checkClone } = require('../check-clone.js');
+const { loadConfig } = require('../config.js');
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 const ENV = {
@@ -45,9 +46,17 @@ describe('init', () => {
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: {} }));
     const log = jest.spyOn(console, 'log').mockImplementation(() => {});
     try {
-      init(['--name', 'myapp'], dir);
+      // Not the example's own name: a project wired as `myapp` would pass
+      // whatever the example carried.
+      init(['--name', 'fern'], dir);
       const cfg = JSON.parse(readFileSync(join(dir, 'underway.config.json'), 'utf8'));
-      expect(cfg.name).toBe('myapp');
+      expect(cfg.name).toBe('fern');
+      // The record directory is not written: config.js derives it from the
+      // name, so a renamed project cannot keep the example's.
+      expect(cfg.reviewRecords).toBeUndefined();
+      expect(loadConfig(dir).reviewRecords).toBe('fern-reviews');
+      // Executable, or git ignores it (POSIX only; Windows has no mode bit).
+      if (process.platform !== 'win32') expect(statSync(join(dir, '.githooks', 'pre-push')).mode & 0o111).not.toBe(0);
       const hook = readFileSync(join(dir, '.githooks', 'pre-push'), 'utf8');
       // The gate's path is named once, and the hook says in a sentence when
       // the submodule that holds it is not checked out.
