@@ -5,7 +5,8 @@
 # exists nowhere but that machine and every other clone's `git submodule update`
 # fails. Runs for everyone regardless of local git config — the per-clone
 # `push.recurseSubmodules=on-demand` guard can't (it's not committed). See the
-# "Submodule: vendor/UnderwayEngine" section of CLAUDE.md.
+# "Submodule: vendor/UnderwayEngine" section of the shared rules
+# (vendor/UnderwayEngine/tooling/CLAUDE.shared.md, imported by CLAUDE.md).
 name: Submodule pointer check
 
 on:

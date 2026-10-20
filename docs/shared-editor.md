@@ -190,7 +190,7 @@ wired and what moves out of its own tree.
 
 Three of the four clones on the owner's Windows machine checked out CRLF
 under Git's default `core.autocrlf=true`, which failed every source-pin
-test (ten engine suites, fifty-eight of Sol's). This repo and Sol now carry
-`.gitattributes` (`* text=auto eol=lf`), as DrawBot already did and as
-CozyJournal achieves with `core.eol=lf`; a clone that had already checked
-out CRLF needs the one-time rewrite in DrawBot's README.
+test (ten engine suites, fifty-eight of Sol's). This repo and every app
+now carry `.gitattributes` (`* text=auto eol=lf`), as DrawBot already did;
+a clone that had already checked out CRLF needs the one-time rewrite that
+`npm run check:clone` prints.

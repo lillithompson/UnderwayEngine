@@ -21,8 +21,8 @@ whichever repository the command runs in.
 `npm test`, `npm run typecheck` and `npm run check:doc-paths` pass (plus
 `npm run test:backend` when `backend/` changed). Agents run the first two
 as they work; `npm run ship` runs them all before it reviews and pushes
-(see "Shipping" below); a project's `checks` CI workflow re-runs them on
-every push, so a machine that skipped them still goes red.
+(see "Shipping" below); a project that has a `checks` CI workflow re-runs
+them there on every push, so a machine that skipped them still goes red.
 
 ## G2 Independent review
 
