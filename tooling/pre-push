@@ -4,4 +4,9 @@
 # review itself; the review pass (`/ship`, `npm run ship`) does. Turned on per
 # clone by `npm install` (postinstall sets core.hooksPath=.githooks). This is
 # the whole of a project's .githooks/pre-push; the gate lives in the engine.
-exec node "$(git rev-parse --show-toplevel)/vendor/UnderwayEngine/tooling/review.js" check --pre-push "$1"
+gate="$(git rev-parse --show-toplevel)/vendor/UnderwayEngine/tooling/review.js"
+if [ ! -f "$gate" ]; then
+  echo "pre-push: the engine submodule is not checked out, so the review gate cannot run: git submodule update --init" >&2
+  exit 1
+fi
+exec node "$gate" check --pre-push "$1"

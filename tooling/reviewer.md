@@ -64,7 +64,8 @@ For each item decide: OK, a finding, or not applicable.
    describe.
 6. **Tests.** Substantive behaviour — a fix, a new rule, a new code path —
    is covered by a test that would fail without the change. Tests live under
-   a jest root (`web/`, `components/`, `scripts/`); there is no renderer, so
+   one of the project's jest roots (`web/`, `components/`, and `scripts/`
+   where the project tests its scripts); there is no renderer, so
    logic belongs in a plain `.ts` module and a screen's structure is pinned
    by a test that reads the source text. A test that only restates the
    implementation (a lookup table, a getter) is a suggestion to delete.
