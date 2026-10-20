@@ -1,0 +1,70 @@
+# Fails the build if the parent commit records a submodule commit that has not
+# been pushed to the submodule's own remote. This is the server-side backstop
+# for the recurring "other computers can't merge" breakage: a machine pushes a
+# parent pointer bump but forgets to push the submodule, so the referenced SHA
+# exists nowhere but that machine and every other clone's `git submodule update`
+# fails. Runs for everyone regardless of local git config — the per-clone
+# `push.recurseSubmodules=on-demand` guard can't (it's not committed). See the
+# "Submodule: vendor/UnderwayEngine" section of CLAUDE.md.
+name: Submodule pointer check
+
+on:
+  push:
+  pull_request:
+
+# Only the latest run per ref matters; cancel superseded ones.
+concurrency:
+  group: submodule-pointer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      # Superproject only. Do NOT recurse submodules — that would try to check
+      # out the very SHA we're validating and fail before the clear message.
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Every recorded submodule commit must be on its remote
+        # Optional: set the SUBMODULE_RO_TOKEN repo secret to a read-only PAT if
+        # any submodule remote becomes private. Public remotes need no token.
+        env:
+          SUBMODULE_TOKEN: ${{ secrets.SUBMODULE_RO_TOKEN }}
+        run: |
+          set -uo pipefail
+          fail=0
+          # Each submodule declared in .gitmodules -> name.
+          names=$(git config -f .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | sed -E 's/^submodule\.(.*)\.path .*/\1/')
+          if [ -z "$names" ]; then
+            echo "No submodules declared in .gitmodules — nothing to check."
+            exit 0
+          fi
+          while IFS= read -r name; do
+            path=$(git config -f .gitmodules --get "submodule.$name.path")
+            url=$(git config -f .gitmodules --get "submodule.$name.url")
+            sha=$(git ls-tree HEAD "$path" | awk '{print $3}')
+            echo "::group::$name ($path)"
+            echo "recorded commit: $sha"
+            echo "remote:          $url"
+            fetchurl="$url"
+            if [ -n "${SUBMODULE_TOKEN:-}" ]; then
+              fetchurl=$(echo "$url" | sed -E "s#https://#https://x-access-token:${SUBMODULE_TOKEN}@#")
+            fi
+            # GitHub allows fetching a SHA by name only when it is reachable from
+            # an advertised ref (i.e. it has actually been pushed to a branch or
+            # tag). An unpushed commit fails here with "not our ref".
+            if git fetch --no-tags --depth=1 "$fetchurl" "$sha" >/dev/null 2>&1; then
+              echo "OK: reachable on remote"
+            else
+              echo "ERROR: $sha is NOT on $url."
+              echo "The submodule commit was never pushed. On the machine that made it:"
+              echo "  cd $path && git checkout main && git push origin main"
+              echo "then re-run this check."
+              fail=1
+            fi
+            echo "::endgroup::"
+          done <<< "$names"
+          exit $fail

@@ -6,6 +6,7 @@ module.exports = {
     '<rootDir>/packages/shell/src',
     '<rootDir>/packages/editor-ui/src',
     '<rootDir>/packages/editor/src',
+    '<rootDir>/tooling',
   ],
   testPathIgnorePatterns: ['/node_modules/', 'test-utils\\.ts$', 'facet-pipeline\\.ts$'],
   moduleNameMapper: {

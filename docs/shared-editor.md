@@ -178,7 +178,15 @@ Still open:
   switch the apps' `toolbarMeta` relies on; the alternative is a generic
   parameter `EditorConfig<TTool>` threaded through the package.
 
-## 5. Line endings
+## 5. Process
+
+The shipping process the apps share — the review gate, the ship pass, the
+doc-path check, the hook, the CI backstop, the shared CLAUDE.md rules — is
+`tooling/` in this repo, consumed through the submodule and parametrized by
+each app's `underway.config.json`; `tooling/README.md` says how an app is
+wired and what moves out of its own tree.
+
+## 6. Line endings
 
 Three of the four clones on the owner's Windows machine checked out CRLF
 under Git's default `core.autocrlf=true`, which failed every source-pin

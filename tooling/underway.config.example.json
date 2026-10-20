@@ -1,0 +1,15 @@
+{
+  "name": "myapp",
+  "reviewRecords": "myapp-reviews",
+  "submodule": "vendor/UnderwayEngine",
+  "alwaysReview": [],
+  "copySources": null,
+  "reviewerAddendum": "docs/review/project-rules.md",
+  "backendSchema": "backend/src/validation.ts",
+  "docPaths": {
+    "docs": ["README.md", "CLAUDE.md"],
+    "generated": [],
+    "prose": [],
+    "extensions": []
+  }
+}

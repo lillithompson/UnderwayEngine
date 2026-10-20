@@ -1,0 +1,7 @@
+#!/bin/sh
+# The independent review gate (vendor/UnderwayEngine/tooling/gates.md): refuse
+# a push whose commits have no passing or owner-accepted review. It starts no
+# review itself; the review pass (`/ship`, `npm run ship`) does. Turned on per
+# clone by `npm install` (postinstall sets core.hooksPath=.githooks). This is
+# the whole of a project's .githooks/pre-push; the gate lives in the engine.
+exec node "$(git rev-parse --show-toplevel)/vendor/UnderwayEngine/tooling/review.js" check --pre-push "$1"
