@@ -1,0 +1,13 @@
+# Every text file is committed and checked out with LF, whatever a clone's
+# core.autocrlf says. The editor-ui suite pins source text with "\n", so a
+# CRLF checkout (Git for Windows' default core.autocrlf=true) failed ten of
+# its suites on this repo alone — the apps that vendor it as a submodule
+# had each to document a per-clone config to undo that. Binary files are
+# detected by content (text=auto) and left alone.
+* text=auto eol=lf
+*.png binary
+*.wav binary
+*.tile binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
