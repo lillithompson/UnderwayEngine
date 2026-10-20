@@ -160,7 +160,17 @@ first, then the pointer bump in each app).
    row too wide for the window with the cycle arrows up now tightens its
    segments' padding before it wraps (CozyJournal's five-mode content row
    on a 393 pt phone goes from 14 to 11 pt a side), where it used to run
-   off the edge.
+   off the edge. Shipped in the three apps on 2026-10-20 (CozyJournal two
+   review rounds, Sol one, DrawBot three); what the reviews left for
+   later: DrawBot registers bots and instructions without `modeCapsule`
+   (its old bar never recalled their capsules on a hold — one flag each
+   turns it on, the owner's call); `contentModeSpecs(hostTools)` builds its
+   row per call and the shells pass a fresh `options` array per render,
+   so the capsule's layout memo does not bite until the shell's option
+   lists are memoized — both small, both for stage 6 when the shell is
+   the package's; and `web/editor/__tests__/toolbarMeta.test.ts` in each
+   app still holds the arrange-mode and freeform-bar pins the engine's
+   suite does not, which move with `freeformConfig` at stage 6.
 3. **Session and camera.** `editorSession.ts` (with `hostOps` for Sol's
    parallel document and DrawBot's commit wrapper), `cameraMath.ts`,
    `canvasTap.ts`, `groupHit.ts` (DrawBot's pixels-only hit is the better
