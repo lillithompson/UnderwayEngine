@@ -75,7 +75,7 @@ import { type HostPaintTargets, sessionHost } from './sessionHost';
  * when one is added. Dodging a white shape is a no-op by definition; the
  * tool's job is to look like one.
  */
-function sameColor(a: RGBColor, b: RGBColor): boolean {
+export function sameColor(a: RGBColor, b: RGBColor): boolean {
   return a.r === b.r && a.g === b.g && a.b === b.b;
 }
 
@@ -94,7 +94,7 @@ function sameColor(a: RGBColor, b: RGBColor): boolean {
  *  held brush. One-go-per-surface meant a shape took its whole colour on
  *  the dab that first touched it and then ignored the rest of the drag —
  *  the stroke only ever seemed to act when it crossed into a new shape. */
-function isUnaryMode(mode: BlendMode): boolean {
+export function isUnaryMode(mode: BlendMode): boolean {
   return mode === 'invert' || mode === 'rotate';
 }
 
@@ -163,7 +163,7 @@ export function dabHand(value: number): number {
  *  drift) layers on top of this at the call sites, and the erase / blur
  *  brushes never consult it — they are not blends, and lifting or
  *  softening paint is not a colour building up. */
-function blendStrength(mode: BlendMode, opacity: number): number {
+export function blendStrength(mode: BlendMode, opacity: number): number {
   const hand = dabHand(opacity);
   if (mode === 'normal') return hand;
   const strong = mode === 'dodge' || mode === 'burn' || mode === 'multiply';

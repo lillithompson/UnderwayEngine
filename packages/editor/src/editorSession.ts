@@ -261,9 +261,14 @@ export interface SessionEntry<TOps = unknown> {
   paintSessionId?: string;
 }
 
+/** A fresh session. The type parameters are the app's: `TTool` is never
+ *  inferred from the tool handed in (`NoInfer`, so a literal does not narrow
+ *  it) and `TOps` has nothing to infer from, so an app names them once in a
+ *  constructor of its own — Sol's `createSolSession(state, tool, doc)` — and
+ *  reads `hostDoc` typed everywhere after. */
 export function createEditorSession<TTool extends string = string, TDoc = undefined, TOps = unknown>(
   state: CompositionState,
-  activeTool: TTool | null = 'arrange' as TTool,
+  activeTool: NoInfer<TTool> | null = 'arrange' as TTool,
   hostDoc: TDoc = undefined as TDoc,
 ): EditorSession<TTool, TDoc, TOps> {
   // The session edits THROUGH THE SCENE GRAPH (docs/transform-refactor.md

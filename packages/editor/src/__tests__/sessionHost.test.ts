@@ -92,6 +92,9 @@ function placeRect(session: S, x: number, y: number, w = 4, h = 4): [S, string] 
   return [commitEntry(session, se), se.id!];
 }
 
+// Cleared before AND after: an app that installs its own host in a jest
+// setupFile runs this suite from its vendor root with one pre-installed.
+beforeEach(() => clearSessionHost());
 afterEach(() => clearSessionHost());
 
 describe('installing the host', () => {
