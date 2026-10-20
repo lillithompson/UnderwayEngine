@@ -66,16 +66,26 @@ the scene outline over the scene. This is the mechanism by which "the object
 property pages for different types" are shared: the panel renders any kind's
 pages, and an app supplies the rows for the kinds that are its own.
 
-**`packages/editor`** (new) holds the 34 files that were identical in all
-three apps and import nothing of any app: the long-press radial menu
+**`packages/editor`** holds, from stage 1, the 34 files that were identical
+in all three apps and import nothing of any app: the long-press radial menu
 (`radialMenu.ts`, `components/CanvasRadialMenu.tsx`), the tool sheet and
 popover (`ToolGridSheet`, `ToolPopover`, `toolSheetGrid`, `tapTargetGrid`),
 grid snap and the grid-weight / dimensions hooks, the resize and rotate
 maths, the paint guards and paint overlay preview, the eyedropper sample,
 the keyboard shortcuts, the confetti, the layout modal, the blend-mode table,
-the text style model, the page-save and host round-trip helpers. The apps
-import them through `@/editor/*` and their copies are gone. Eleven of their
-tests moved with them.
+the text style model, the page-save and host round-trip helpers; eleven of
+their tests moved with them. From stage 2 it holds the toolbar: its
+metadata and mode tables (`components/toolbarMeta.ts`), the standard tool
+ids and the mode types a format names (`toolIds.ts`), the shape glyphs
+(`components/ToolIcons.tsx`, `components/facetGlyphs.ts`), the mode
+capsule and the floating actions pill (`components/ToolModeCapsule.tsx`,
+`components/PatternActionsCapsule.tsx`) with their sizing and look
+(`floatingCapsuleSize.ts`, `components/floatingCapsuleStyle.ts`), the
+capsule swipe thresholds (`capsuleSwipe.ts`), and the first seam of the
+`EditorExtension` (`extension.ts`): the host-tool registry (`hostTools.ts`,
+§4.1), through which an app's own tools reach the bar. The apps import it
+all through `@/editor/*` and their copies are gone; each app's
+`web/editor/hostTools.ts` is its registry.
 
 ## 3. Still copied, and why
 
@@ -102,7 +112,7 @@ What the three shells wire in by hand today, named as seams:
 
 | Seam | Today, by hand | As an extension point |
 |---|---|---|
-| Extra tools on the bar | `ToolId` union members (`plant`, `bots`, `instructions`, `rig`, `word`, `tile`, `symmetry`) and their `TOOL_META` rows in each `toolbarMeta.ts` | `tools: HostTool[]` — id, label, glyph (MCI name or component), capsule (mode options), what arming it does. The standard tools stay in the package; `toolbarMeta` reads the host's list after its own. |
+| Extra tools on the bar | `ToolId` union members (`plant`, `bots`, `instructions`, `rig`, `word`, `tile`, `symmetry`) and their `TOOL_META` rows in each `toolbarMeta.ts` | **Done (stage 2).** `tools: HostTool[]` (`packages/editor/src/hostTools.ts`, the first field of `EditorExtension` in `extension.ts`) — id, label, icon (an MCI name; a shape the font lacks is drawn by the shell, as the line, arc and polygon glyphs already are), `kind` (`'tool'`, armed and lit while in hand, or `'setting'`, which toggles and never lights — symmetry), `contentMode: { gate }` (the tool rides the content group's row behind a format flag — rig, word, tile) and `modeCapsule` (a hold on the lit button recalls its capsule — plant). The standard tools stay in the package; the toolbar's functions that have to know a host tool take the registry, and each app's `web/editor/hostTools.ts` is its registry plus `TOOL_META = toolMetaFor(HOST_TOOLS)`, the whole bar's table over its own `ToolId`. |
 | Property pages for the app's kinds | DrawBot's `useSimEditor().selection`, CozyJournal's rig model, spread into the panel model in the shell | `hostPages(selection, session): HostPagesModel \| undefined` — already the engine's shape (`packages/editor-ui`); the shell calls it in one place. |
 | Scene outline rows | `sceneOutlineModel.ts` per app (tag labels, rig glyphs, bots as overlays) | `outline: { tagLabels, iconFor(node), overlays(session) }` — the labels for functional `prefix:id` tags, a kind's glyph, and the host's overlay rows. |
 | Layers drawn over the canvas | Sol's `RevealOverlay` / plant layer in `NodeLayer`, DrawBot's `DrawBotsLayer`, CozyJournal's `RigNodeLayer` | `layers: { nodeLayer?(node), overlay?(session, camera) }` — the host draws its own kinds of node and its own live layer, through the handles `CanvasSurface` already exposes. |
@@ -120,11 +130,37 @@ first, then the pointer bump in each app).
 
 1. **Done — chrome and leaves.** editor-ui unified with host pages;
    `packages/editor` with the 34 closed files.
-2. **Toolbar.** `toolbarMeta.ts`, `ToolIcons.tsx`, `ToolModeCapsule.tsx`,
-   `PatternActionsCapsule.tsx`, `floatingCapsuleSize.ts` move, with a
-   `HostTool` registry for the app-specific tools and DrawBot's capsule
-   superset adopted (muted / locked / drawn segments, tighten-then-wrap).
-   `ToolId` becomes the standard union plus `string` for host tools.
+2. **Done — toolbar** (engine c828449, 2026-10-20). `toolbarMeta.ts`,
+   `ToolIcons.tsx`, `facetGlyphs.ts` (CozyJournal's versions),
+   `ToolModeCapsule.tsx`, `PatternActionsCapsule.tsx`,
+   `floatingCapsuleSize.ts` and `floatingCapsuleStyle.ts` (DrawBot's — the
+   generic superset: muted / locked / drawn segments, glyph-faced and
+   muted momentary segments, tighten-then-wrap) are in `packages/editor`,
+   with the capsule swipe thresholds (`capsuleSwipe.ts`, the identical
+   part of each app's `topCapsuleSlot.ts`) beside them. The seam is the
+   host-tool registry of §4.1: `toolIds.ts` holds the `StandardToolId`
+   union and the mode types a format names, `hostTools.ts` the
+   `HostTool` record, `extension.ts` the `EditorExtension` with `tools` as
+   its first field. The content group reads the registry (a host tool
+   rides the row behind its gate flag), a host setting never lights, a
+   host tool with a capsule recalls it on a hold, and
+   `tileToolButtonId` generalized to `buttonArmingTool(config, tool,
+   hostTools)`. Sol registers plant (with its capsule); DrawBot bots,
+   instructions, tile and symmetry; CozyJournal rig, word, tile and
+   symmetry. Tile and symmetry are registered by two apps with identical
+   rows — a candidate for the standard set, the owner's call. DrawBot's
+   `ToolId` carries `push` (the standard union) and keeps it off its bar
+   with an app-side filtered mode list until stage 3 and 5 bring the brush
+   back. Seven test suites moved with the files (the generic halves of
+   the apps' toolbarMeta, toolModeCapsules, patternActionsCapsule,
+   capsuleWrap, topCapsuleSlot and facetGlyphs tests, and a registry
+   suite over a made-up app); what each app's shell does with the bar
+   stays pinned in the app, reading the components from the vendor path.
+   One visible change rides the superset into Sol and CozyJournal: a mode
+   row too wide for the window with the cycle arrows up now tightens its
+   segments' padding before it wraps (CozyJournal's five-mode content row
+   on a 393 pt phone goes from 14 to 11 pt a side), where it used to run
+   off the edge.
 3. **Session and camera.** `editorSession.ts` (with `hostOps` for Sol's
    parallel document and DrawBot's commit wrapper), `cameraMath.ts`,
    `canvasTap.ts`, `groupHit.ts` (DrawBot's pixels-only hit is the better
@@ -166,6 +202,28 @@ Settled by the owner, 2026-10-20:
   before that.
 - **The apps' working trees are committed** by agents in all three apps,
   CozyJournal's included (owner, 2026-10-20).
+- **The `ToolId` type stays a closed union per app** (stage 2, 2026-10-20):
+  `StandardToolId` (the package's, `toolIds.ts`) plus the app's own ids,
+  declared in the app's `web/formats/types.ts`. Neither of the two options
+  the question was posed as was taken. `string` for host tools would have
+  dissolved the app's own `Record<ToolId, …>` and exhaustive switches as
+  well as the package's; a generic `EditorConfig<TTool>` would have
+  threaded a parameter through a package that never needs to know which
+  host tool is armed — only that one is, and what its record says. So the
+  package's `TOOL_META` is `Record<StandardToolId, …>` (exhaustive over
+  what it owns), the app's is `Record<ToolId, …> = toolMetaFor(HOST_TOOLS)`
+  (exhaustive over what it owns, since `toolMetaFor` is typed by the
+  registry's ids and a tool in the union with no record fails there),
+  and the package's functions take a tool id as `string` where one comes
+  in — every app's union is assignable — and are typed where one goes
+  out: the standard ids they can produce (`lineModeToolId`,
+  `paintModeToolId`, `swatchPressTool`), or a generic parameter carrying
+  the caller's type through (`nextToolOnPress`, `toolbarButtonIds`,
+  `patternToolAnchor`, `contentModes` over the config's `contentTools`,
+  `contentModeTarget` over the mode). The one place a shell narrows is
+  where `contentModeOfToolId` seeds its `ContentMode` state. The same
+  arrangement serves `ContentMode` (`StandardContentMode` plus the app's
+  host modes).
 
 Still open:
 
@@ -174,9 +232,6 @@ Still open:
   `RigColorBar`, `showRigOptions`), so Sol and DrawBot ship that code
   without using it. Stage 7 makes them CozyJournal host pages, the way
   DrawBot's bot pages already are; nothing forces that earlier.
-- **The `ToolId` type.** A string registry (stage 2) loses the exhaustive
-  switch the apps' `toolbarMeta` relies on; the alternative is a generic
-  parameter `EditorConfig<TTool>` threaded through the package.
 
 ## 5. Process
 

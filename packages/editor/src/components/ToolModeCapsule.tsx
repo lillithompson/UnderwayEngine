@@ -312,17 +312,21 @@ export function ToolModeCapsule<K extends string>({
   };
   // How the segments lay out: one row, tightened if it must be, unless
   // even tight the row would leave the window — then rows. Estimated from
-  // the options, so it is settled before layout.
+  // the options, so it is settled before layout — and once per change of
+  // the options, the window or the arrows, not per render: the shell
+  // re-renders on every session change, and the estimate is a pass over
+  // the row each time.
   const { width: windowW } = useWindowDimensions();
-  const { padH: segmentPadH, rowCounts } = toolModeCapsuleLayout(
+  const withArrows = !!cycler;
+  const { padH: segmentPadH, rowCounts } = useMemo(() => toolModeCapsuleLayout(
     options.map((o) => ({
       label: o.label,
       art: !!(o.uri || o.icon || o.art),
       fixedWidth: o.color ? SWATCH_SEGMENT_WIDTH : undefined,
     })),
     FLOATING_CAPSULE_FONT_SIZE,
-    toolModeCapsuleAvailablePx(windowW, !!cycler),
-  );
+    toolModeCapsuleAvailablePx(windowW, withArrows),
+  ), [options, windowW, withArrows]);
   const wrapped = rowCounts.length > 1;
   useEffect(() => {
     if (!bounce) return undefined;

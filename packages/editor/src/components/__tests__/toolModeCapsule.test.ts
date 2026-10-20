@@ -110,13 +110,20 @@ describe('a muted segment is greyed and still tappable', () => {
 describe('a row that would not fit tightens, then wraps', () => {
   test('measures against the window and splits its options into rows', () => {
     expect(CAPSULE).toContain('const { width: windowW } = useWindowDimensions();');
-    expect(CAPSULE).toContain('const { padH: segmentPadH, rowCounts } = toolModeCapsuleLayout(');
-    expect(CAPSULE).toContain('toolModeCapsuleAvailablePx(windowW, !!cycler)');
+    expect(CAPSULE).toContain('const { padH: segmentPadH, rowCounts } = useMemo(() => toolModeCapsuleLayout(');
+    expect(CAPSULE).toContain('toolModeCapsuleAvailablePx(windowW, withArrows)');
     expect(CAPSULE).toContain('paddingHorizontal: segmentPadH,');
     expect(CAPSULE).toContain("flexDirection: wrapped ? 'column' : 'row',");
     // Wrapped, a shorter row stretches to the widest, under a hairline.
     expect(CAPSULE).toContain('...(wrapped ? { flexGrow: 1 } : {}),');
     expect(CAPSULE).toContain("{r > 0 ? <View style={{ height: 1, backgroundColor: FLOATING_CAPSULE_DIVIDER }} /> : null}");
+  });
+
+  test('the layout is estimated once per change of the row, not per render', () => {
+    // The shell re-renders on every session change; the estimate is a
+    // pass over the options, so it is memoized on what it reads.
+    expect(CAPSULE).toContain('const { padH: segmentPadH, rowCounts } = useMemo(() => toolModeCapsuleLayout(');
+    expect(CAPSULE).toContain('), [options, windowW, withArrows]);');
   });
 
   test('shares the segment metrics the split estimates with', () => {
@@ -128,6 +135,19 @@ describe('a row that would not fit tightens, then wraps', () => {
     const hit = Number(/const ARROW_HIT = (\d+);/.exec(CAPSULE)![1]);
     const gap = Number(/const ARROW_GAP = (\d+);/.exec(CAPSULE)![1]);
     expect(hit + gap).toBe(TOOL_MODE_ARROW_SPAN);
+  });
+});
+
+describe('a companion control beside the capsule', () => {
+  test('`leading` hangs off the left edge without widening the centred row; `leadingInline` seats it in the row', () => {
+    // The capsule stays exactly centred with a companion hung off its edge
+    // (the colour group's picker disc); a companion too wide for that
+    // (CozyJournal's rig sides pill) rides inline, so the PAIR is centred.
+    expect(CAPSULE).toContain('leading?: React.ReactNode;');
+    expect(CAPSULE).toContain('leadingInline?: boolean;');
+    expect(CAPSULE).toContain("leadingInline ? { flexDirection: 'row', alignItems: 'center' } : null,");
+    expect(CAPSULE).toContain("style={leadingInline ? { marginRight: 10 } : {");
+    expect(CAPSULE).toContain("right: '100%',");
   });
 });
 
