@@ -13,7 +13,7 @@ import {
   buildResizeNodes, buildRotateSelectedMulti, buildToggleHostItemLock, buildToggleLockMulti,
   buildUngroupSelectedMulti, canMergeSelectedMulti, commit, commitEntry, copyRunName,
   createEditorSession, expandSelectionUnits, groupSelectionMemberIds, isHostItemLocked,
-  isMultiSelectionLocked, isSelectableId, marqueeHitIds, recordEntry, redo, requiresUniformScale,
+  hostSelectionLive, isMultiSelectionLocked, isSelectableId, marqueeHitIds, recordEntry, redo, requiresUniformScale,
   resolveMultiSelectionBox, resolveMultiSelectionFrame, select, selectMany, selectionColor,
   selectionColorAlpha, selectionTakesAlpha, selectionUnitIds, toggleSelect, undo, withHostChange,
   withHostDoc, wholeUnitOfSelection,
@@ -450,6 +450,26 @@ describe('the host’s items in the selection', () => {
     [s, r2] = placeRect(s, 8, 8);
     expect(canMergeSelectedMulti(s.state, [r1, r2])).toBe(true);
     expect(canMergeSelectedMulti(s.state, [r1, 'mk_1'])).toBe(false);
+  });
+
+  test('a session with NO host document ignores the installed items adapter', () => {
+    // The engine’s own suites run from an app’s jest root with that app’s host
+    // installed: a plain createEditorSession(state) must not hand the adapter
+    // an undefined document (DrawBot’s adapter read `doc.tiles`).
+    let s = createEditorSession(makeBlankComposition('plain'));
+    let r1: string, r2: string;
+    const place = (x: number) => buildPlaceShape('rect', { cellX: x, cellY: 0, cellWidth: 4, cellHeight: 4 }, { r: 0, g: 0, b: 0 });
+    const p1 = place(0); s = commitEntry(s, p1); r1 = p1.id!;
+    const p2 = place(8); s = commitEntry(s, p2); r2 = p2.id!;
+    s = selectMany(s, [r2, r1]);
+    expect(s.selectedIds).toEqual([r1, r2]);
+    s = commitEntry(s, buildGroupSelectedMulti(s.state, [r1, r2])!);
+    expect(selectionUnitIds(s, r1)).toEqual([r1, r2]);
+    expect(wholeUnitOfSelection(s, [r1, r2])).toBe(s.state.groups[0].id);
+    expect(groupSelectionMemberIds(s, s.state.groups[0].id)).toEqual([r1, r2]);
+    expect(isSelectableId(s, 'mk_1')).toBe(false);
+    expect(hostSelectionLive(s, 'sheet')).toBe(false);
+    expect(isHostItemLocked(s, 'mk_1')).toBe(false);
   });
 
   test('without the document handed in, a state-level builder moves the scene alone', () => {

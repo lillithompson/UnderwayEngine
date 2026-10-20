@@ -290,6 +290,14 @@ function hostItems<TDoc, TOps>(): HostItems<TDoc, TOps> | null {
   return (sessionHost<TDoc, TOps>().items as HostItems<TDoc, TOps> | undefined) ?? null;
 }
 
+/** The installed items adapter FOR THIS SESSION: null when the session has
+ *  no host document to ask it about (a plain createEditorSession(state),
+ *  the engine's own tests under an app's installed host), whatever is
+ *  installed. */
+function itemsOf(session: { hostDoc: unknown }): HostItems<unknown, unknown> | null {
+  return session.hostDoc === undefined ? null : hostItems();
+}
+
 // ── Id minting ──────────────────────────────────────────────────────
 // Engine id namespaces ('svg_' / 'img_' / 'txt_' / 'grp_') are a naming
 // convention, not a routing rule: a node's kind comes from the array it is
@@ -410,8 +418,10 @@ function hostRevert<TDoc, TOps>(doc: TDoc, ops: TOps): TDoc {
  * play session, docs/drawBot.md §5.3: the flushes wrote its trail nodes into
  * `session.state` as provisional state), so the ops are RECORDED, not
  * applied; the host half is applied as a commit's is, the redo stack
- * cleared, the page dirtied. Outside a release build, `stateBefore` lets
- * it assert that replaying the ops over the pre-session state reaches the
+ * cleared, the page dirtied. The host half is recorded exactly as given —
+ * a kind the host wants on the step ('playSession') goes in `se.hostOps`;
+ * nothing is defaulted. Outside a release build, `stateBefore` lets it
+ * assert that replaying the ops over the pre-session state reaches the
  * state the session holds — the invariant undo depends on, since undo WILL
  * revert these ops.
  */
@@ -566,7 +576,7 @@ export function selectedHostIds(ids: readonly string[]): string[] {
  *  selection that lives in the host document, not the scene. */
 export function hostSelectionLive(session: SelectionSession, id: string | null): boolean {
   if (!id) return false;
-  const items = hostItems();
+  const items = itemsOf(session);
   if (!items) return false;
   if (items.selectionLive?.(session.hostDoc, id)) return true;
   return items.isHostId(id) && items.itemById(session.hostDoc, id) !== null;
@@ -575,7 +585,7 @@ export function hostSelectionLive(session: SelectionSession, id: string | null):
 /** Can `id` stand in a multi-selection: a live scene leaf, or a host item
  *  the document holds. */
 export function isSelectableId(session: SelectionSession, id: string): boolean {
-  const items = hostItems();
+  const items = itemsOf(session);
   if (items && items.isHostId(id)) return items.itemById(session.hostDoc, id) !== null;
   return !!findItem(session.state, id);
 }
@@ -585,7 +595,7 @@ export function isSelectableId(session: SelectionSession, id: string): boolean {
  *  (`isItemLocked`). A locked one is never picked on the canvas and an
  *  edit leaves it where it is. False for anything else. */
 export function isHostItemLocked(session: SelectionSession, id: string): boolean {
-  const items = hostItems();
+  const items = itemsOf(session);
   const member = items && items.isHostId(id) ? items.itemById(session.hostDoc, id) : null;
   if (!member) return false;
   return !!member.locked || (!!member.groupId && isGroupChainLocked(session.state, member.groupId));
@@ -598,7 +608,7 @@ export function isHostItemLocked(session: SelectionSession, id: string): boolean
 export function groupSelectionMemberIds(session: SelectionSession, groupId: string): string[] {
   const { state } = session;
   const leaves = allDescendantMemberIds(state, groupId).filter((id) => findItem(state, id));
-  const items = hostItems();
+  const items = itemsOf(session);
   if (!items) return leaves;
   const parentOf = new Map(state.groups.map((g) => [g.id, g.parentGroupId]));
   const within = (m: { groupId?: string }): boolean => {
@@ -622,7 +632,7 @@ function hostUnitId(state: CompositionState, member: { groupId?: string }): stri
 /** The unit `id` (a leaf or a host item) belongs to, or null when it is
  *  loose. */
 export function selectionUnitId(session: SelectionSession, id: string): string | null {
-  const items = hostItems();
+  const items = itemsOf(session);
   if (items && items.isHostId(id)) {
     const member = items.itemById(session.hostDoc, id);
     return member ? hostUnitId(session.state, member) : null;
@@ -637,7 +647,7 @@ function selectionUnitMembers(session: SelectionSession, unitId: string): string
   const leaves = state.groups.some((g) => g.id === unitId)
     ? allDescendantMemberIds(state, unitId).filter((id) => findItem(state, id))
     : [];
-  const items = hostItems();
+  const items = itemsOf(session);
   if (!items) return leaves;
   const inUnit = (m: { groupId?: string }) => !!m.groupId && hostUnitId(state, m) === unitId;
   const riders = items.items(session.hostDoc).filter(inUnit).map((m) => m.id);
@@ -648,7 +658,7 @@ function selectionUnitMembers(session: SelectionSession, unitId: string): string
  *  selects — its whole unit, shapes and host items alike — or null for a
  *  loose one (or a unit of one, which has nothing to act as). */
 export function selectionUnitIds(session: SelectionSession, id: string): string[] | null {
-  if (!hostItems()) return groupSelectionIds(session.state, id);
+  if (!itemsOf(session)) return groupSelectionIds(session.state, id);
   const unitId = selectionUnitId(session, id);
   if (!unitId) return null;
   const ids = selectionUnitMembers(session, unitId);
@@ -659,7 +669,7 @@ export function selectionUnitIds(session: SelectionSession, id: string): string[
  *  with the host's items): every member of it and nothing else, so the
  *  panel offers Ungroup. */
 export function wholeUnitOfSelection(session: SelectionSession, ids: readonly string[]): string | null {
-  if (!hostItems()) return wholeGroupIdOfSelection(session.state, ids);
+  if (!itemsOf(session)) return wholeGroupIdOfSelection(session.state, ids);
   if (ids.length < 2) return null;
   const unitId = selectionUnitId(session, ids[0]);
   if (!unitId) return null;
@@ -841,7 +851,7 @@ export function selectMany<S extends EditorSession>(
   // Scene leaves back to front, then the host's items in their own draw
   // order (they draw over the page).
   const orderIndex = new Map(session.state.sceneOrder.map((id, i) => [id, i]));
-  const items = hostItems();
+  const items = itemsOf(session);
   const hostOrder = items ? new Map(items.items(session.hostDoc).map((m, i) => [m.id, i])) : null;
   const sceneEnd = session.state.sceneOrder.length;
   const rank = (id: string) => (hostOrder && items!.isHostId(id)
