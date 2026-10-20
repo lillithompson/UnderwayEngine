@@ -94,8 +94,7 @@ function init(argv, dir = root()) {
   console.log(`init: ${dir}`);
   const example = JSON.parse(fs.readFileSync(path.join(__dirname, 'underway.config.example.json'), 'utf8'));
   // The name given, and the values spelled from it (the record directory).
-  put(dir, CONFIG_FILE, `${JSON.stringify({ ...example, name, reviewRecords: `${name}-reviews` }, null, 2)}
-`, { keep: true });
+  put(dir, CONFIG_FILE, `${JSON.stringify({ ...example, name, reviewRecords: `${name}-reviews` }, null, 2)}\n`, { keep: true });
   put(dir, '.githooks/pre-push', fs.readFileSync(path.join(__dirname, 'pre-push'), 'utf8'));
   put(dir, '.claude/skills/ship/SKILL.md', SKILL_STUB);
   put(dir, '.github/workflows/submodule-pointer-check.yml',

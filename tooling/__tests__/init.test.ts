@@ -48,7 +48,12 @@ describe('init', () => {
       init(['--name', 'myapp'], dir);
       const cfg = JSON.parse(readFileSync(join(dir, 'underway.config.json'), 'utf8'));
       expect(cfg.name).toBe('myapp');
-      expect(readFileSync(join(dir, '.githooks', 'pre-push'), 'utf8')).toContain(`${TOOLING}/review.js" check --pre-push`);
+      const hook = readFileSync(join(dir, '.githooks', 'pre-push'), 'utf8');
+      // The gate's path is named once, and the hook says in a sentence when
+      // the submodule that holds it is not checked out.
+      expect(hook).toContain(`${TOOLING}/review.js"`);
+      expect(hook).toContain('exec node "$gate" check --pre-push "$1"');
+      expect(hook).toContain('git submodule update --init');
       expect(readFileSync(join(dir, '.claude', 'skills', 'ship', 'SKILL.md'), 'utf8')).toContain(`${TOOLING}/skills/ship.md`);
       expect(existsSync(join(dir, '.github', 'workflows', 'submodule-pointer-check.yml'))).toBe(true);
       expect(JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).scripts.ship).toBe(SCRIPTS.ship);
