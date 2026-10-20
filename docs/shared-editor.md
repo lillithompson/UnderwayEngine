@@ -249,6 +249,22 @@ first, then the pointer bump in each app).
    with a jest mapping (the apps' `__mocks__/idb-keyval.ts`, a fourth
    copy to retire into this one). Editor package 43 suites / 929 tests;
    engine 342 of 343 suites (cameraRoll's host dependency, as before).
+   The three apps took it the same day (CozyJournal 9293e119 + b8b6c121,
+   Sol 75eed4c + 925e33b, DrawBot — see each app's log), every gate green
+   in each, and the migrations found two engine-side loose ends, fixed in
+   cc0f118 and taken as pointer bumps: a host's Color pass needs the
+   brush's private `sameColor`, `isUnaryMode` and `blendStrength` (now
+   exported), and `createEditorSession` inferred the tool literal handed
+   in (now `NoInfer<TTool>`; an app still names its three type arguments
+   once in a constructor of its own, Sol's `createSolSession`, because
+   `TOps` has nothing to infer from). **Not shipped**: the apps' ranges
+   cannot be reviewed by the process as it stands — see §5. Left for the
+   owner from the migrations: Sol's `shellWiring` and
+   `paintTrimOnDeselect` tests pin lines of the ENGINE's editorSession
+   (the stacks' spelling, `trimDeselectedPaint<S`), which an engine
+   refactor will break until they move here or read a looser shape; and
+   whether Sol should pin `cameraMatrixInto`, which its reveal depends on
+   and only the engine's suite now holds (Sol's jest roots exclude it).
 4. **Outline and properties glue.** `sceneOutlineModel.ts` with the
    `outline` extension; the shell's panel-model builders (the ~1,500 lines
    of `ObjectPropertiesModel` wiring in each `EditorShell.tsx`) as a
@@ -383,6 +399,32 @@ reviewed once, here, and an app's review should treat a pure pointer bump
 whose engine range is already reviewed as cleared. That is the next change
 to make to the process itself — `review.js` reading the engine's own
 records through the submodule — and it is not made yet.
+
+**Stage 3 made it necessary** (2026-10-20). `npm run ship` in CozyJournal
+ended at exit 4: the reviewer refused a 3,293 KB prompt ("Prompt is too
+long") — about 850 k tokens, where the model has 200 k. The range was two
+commits: the app's own diff (1.48 MB: twenty-six thousand lines deleted,
+the moved files and their tests) and the engine's appended diff for the
+pointer move (1.84 MB: the same files added under `packages/editor/src/`,
+plus 478 KB of the engine's `package-lock.json`, which the appended diff
+does not leave out although the project's own lockfile is). Neither half
+fits alone, so splitting the range does not help, and Sol's and DrawBot's
+ranges have the same shape. The prompt is almost entirely text the
+reviewer has already passed once: a file the engine adds is, byte for byte
+or nearly, a file the same range deletes from the app. Two changes to
+`review.js` would make such a range reviewable and the review truer, and
+both are the owner's to make (an agent never edits the gate's own files
+to get a range through, `CLAUDE.shared.md`): fold a MOVE — a file the
+appended engine diff adds whose content matches a file the project's
+diff deletes (by blob, or by path under `web/editor/` ↔
+`packages/editor/src/`) is shown once, as the delta between the two with
+one line of context, the way `copySources` already shows a changed copy,
+and listed when byte-identical; and leave the engine's lockfile out of
+the appended diff as the project's is. Stages 5 and 6 (CanvasSurface,
+EditorShell: 7,000 and 10,000 lines) have the same shape and will need it
+too. Until then the three apps' stage-3 commits sit unpushed on their
+local `main`s, their gates green, and the engine's commits are on
+`origin/main` ahead of them, which is the safe order.
 
 Two things the first wiring taught: `git reset --hard` in a clone with
 `submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
