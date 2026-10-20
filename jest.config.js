@@ -19,6 +19,10 @@ module.exports = {
     '^react-native$': '<rootDir>/shims/react-native',
     '^expo-file-system$': '<rootDir>/shims/expo-file-system',
     '^expo-sharing$': '<rootDir>/shims/expo-sharing',
+    // Real idb-keyval needs IndexedDB; tests run in node, so the engine's
+    // storage reads and writes an in-memory map (a test that mocks the
+    // module itself still wins).
+    '^idb-keyval$': '<rootDir>/shims/idb-keyval',
     '\\./loadTile$': '<rootDir>/packages/engine/src/__mocks__/loadTile',
   },
   workerIdleMemoryLimit: '1GB',

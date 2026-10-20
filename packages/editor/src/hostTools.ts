@@ -56,6 +56,24 @@ export interface HostTool<T extends string = string> extends ToolMeta {
    *  button's other long press (`holdRecallsModeCapsule`), as the standard
    *  groups' buttons do. */
   modeCapsule?: boolean;
+  /** How a TAP on the canvas is read while the tool is armed — for a tool
+   *  that PLACES something (canvasTap.ts `resolveCanvasTap` answers
+   *  `hostPlace` with the tool's id, and the shell builds the entry).
+   *  Absent, a tap selects what it hits and places nothing, as a brush's
+   *  does (DrawBot's Inklings: the sim layer's own gesture hooks claim the
+   *  press before the tap is read).
+   *   · 'anywhere': every tap places, hit or not — and a press on the
+   *     selection places too, rather than grabbing it (CozyJournal's Word,
+   *     dealing magnets over what is there; Sol's Plant, seeding among its
+   *     own drawings). Selecting is the arrange tool's job.
+   *   · 'onEmpty': a tap on an object selects it; a tap on empty canvas
+   *     places (CozyJournal's Figure, a fresh T-pose).
+   *   · 'against': the tool places AGAINST what is there (the Pattern
+   *     tile): a tap on an object that is not the tool's open target
+   *     selects it; otherwise it places when the shell says the tap joins
+   *     something, and clears the selection when it does not. A press on
+   *     the selection places. */
+  tap?: 'anywhere' | 'onEmpty' | 'against';
 }
 
 /** A registry: the host's tools, in the order they ride the content row.

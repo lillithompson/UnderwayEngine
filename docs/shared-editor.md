@@ -83,9 +83,26 @@ capsule and the floating actions pill (`components/ToolModeCapsule.tsx`,
 (`floatingCapsuleSize.ts`, `components/floatingCapsuleStyle.ts`), the
 capsule swipe thresholds (`capsuleSwipe.ts`), and the first seam of the
 `EditorExtension` (`extension.ts`): the host-tool registry (`hostTools.ts`,
-§4.1), through which an app's own tools reach the bar. The apps import it
-all through `@/editor/*` and their copies are gone; each app's
-`web/editor/hostTools.ts` is its registry.
+§4.1), through which an app's own tools reach the bar. From stage 3 it
+holds the session and the camera: `editorSession.ts` (the pure reducer and
+every entry builder), `cameraMath.ts`, `canvasTap.ts`, `groupHit.ts`,
+`transformGestures.ts`, `selectionOutline.ts`, `sceneOcclusion.ts`,
+`drawnPose.ts`, `paintBrush.ts`, `vectorEraser.ts`, `textCaret.ts`,
+`multiTapGesture.ts`, `sliderModeMenu.ts`, `activeColor.ts`,
+`colorUtils.ts`, DrawBot's `commitPipeline.ts`, the pattern patches with
+the planar-faces geometry they cut (`patternPatches.ts`, `planarFaces.ts`),
+the leaves that closed with them (`textNodeLayout`, `shapePaintDom`,
+`imageDrawLevels`, `cameraAvoid`, `rowEntryMemo`, `patternToolSwitch`,
+`editorPrefs`, `shapeStrokePreview`, `effectsBoxShadow`, and the
+components `ShapePatternEditOutline`, `EyedropperLayer`,
+`BlendPickerModal`, `NoPaintablesHint`, `PatternFillValueSlider`,
+`ColorPickerModal`, `SliderModeTarget`, `BlendBadgeIcons`), and the second
+seam of the `EditorExtension`: the session host (`sessionHost.ts`, §4.1) —
+an app's parallel document moved by the same undo step, its own selectable
+items, and its rules about nodes of its own kind — with the commit pipeline
+wrapper beside it. The apps import it all through `@/editor/*` and their
+copies are gone; each app's `web/editor/hostTools.ts` is its registry and
+its `web/editor/extension.ts` installs its session host.
 
 ## 3. Still copied, and why
 
@@ -94,9 +111,9 @@ app: `@/web/formats/types` (the `EditorConfig` and `ToolId` unions, which
 differ per app), `@/web/store/*` (each app's entry store), `@/components/
 bridgeSchema` (each app's native bridge events), `@/components/theme`, the
 fonts, and the app's own trees (`web/sol`, `web/sim*`, Figgie). The shell
-(`EditorShell.tsx`), the canvas (`CanvasSurface.tsx`), the session
-(`editorSession.ts`) and the host (`EditorHost.tsx`) are where the apps'
-own features are woven in by hand rather than plugged in.
+(`EditorShell.tsx`), the canvas (`CanvasSurface.tsx`) and the host
+(`EditorHost.tsx`) are where the apps' own features are still woven in by
+hand rather than plugged in; the session's were unwoven at stage 3.
 
 ## 4. The design for the rest: one editor, extended by a host
 
@@ -116,7 +133,7 @@ What the three shells wire in by hand today, named as seams:
 | Property pages for the app's kinds | DrawBot's `useSimEditor().selection`, CozyJournal's rig model, spread into the panel model in the shell | `hostPages(selection, session): HostPagesModel \| undefined` — already the engine's shape (`packages/editor-ui`); the shell calls it in one place. |
 | Scene outline rows | `sceneOutlineModel.ts` per app (tag labels, rig glyphs, bots as overlays) | `outline: { tagLabels, iconFor(node), overlays(session) }` — the labels for functional `prefix:id` tags, a kind's glyph, and the host's overlay rows. |
 | Layers drawn over the canvas | Sol's `RevealOverlay` / plant layer in `NodeLayer`, DrawBot's `DrawBotsLayer`, CozyJournal's `RigNodeLayer` | `layers: { nodeLayer?(node), overlay?(session, camera) }` — the host draws its own kinds of node and its own live layer, through the handles `CanvasSurface` already exposes. |
-| Commit pipeline wrapper | DrawBot's `commitPipeline.ts` + `commitWrapper.ts`; Sol's `solEntry` and the index-aligned Sol undo stacks | `wrapCommit?(pipeline)` as DrawBot has it; Sol's parallel document rides `SessionEntry.hostOps` with its own undo stack kept in step — the one piece that needs a change to `editorSession`. |
+| Commit pipeline wrapper | DrawBot's `commitPipeline.ts` + `commitWrapper.ts`; Sol's `solEntry` and the index-aligned Sol undo stacks; DrawBot's bots and tiles in the selection; CozyJournal's rig in the colour dispatch, the duplicate and the brush | **Done (stage 3).** `wrapCommit?: CommitWrapper` (`commitPipeline.ts`, DrawBot's file as it was, installed with `setCommitWrapper`) and `session?: SessionHost` (`sessionHost.ts`), three optional members an app fills as it needs: `ops` — a PARALLEL DOCUMENT moved by the same undo step (`EditorSession.hostDoc`, `hostUndoStack` / `hostRedoStack` index-aligned with the engine's, `SessionEntry.hostOps`, an entry of host ops alone pushing an empty engine entry; Sol's `SolOp[]`, DrawBot's `{before, after}` of its sim document); `items` — things the host's document holds that stand in the selection beside scene nodes (`HostItems`: id spelling, box, group, lock, through-a-matrix, remove, duplicate; DrawBot's bots and instruction tiles, which the marquee, the group and every multi builder carry through the adapter); `nodes` — rules about scene nodes of the host's own kind (`HostNodeRules`: a duplicate's companion ops, a node held to its aspect, a colour target off the object, the Color brush's pass over such nodes, the outline label of a tagged node; CozyJournal's rig and seeded squiggle). Installed once per app at module scope (`installSessionHost`), the way the commit wrapper and the brush's glyph-ink probe are, because the session's builders take a state, not a session, and are called from dozens of sites; a builder that moves host items takes the document as a trailing `hostDoc?`, where DrawBot's took `sim?`. `EditorSession<TTool, TDoc, TOps>` carries the app's types through, and every function that returns a session is generic over it. |
 | Host data in the file | Sol's `sol` chunk, DrawBot's `DBOT` trailer, both through the engine's v70 host-data chunks | `fileChunks: { tag, read(bytes, state), write(state) }` — the engine already carries foreign chunks through load, save and zip export untouched, which is what makes a foreign `.tile` editable: its scene is the engine's, and its host data waits for the app that wrote it. |
 | Capsules and floating chrome | Sol's strain chips, DrawBot's transport and bot capsules, CozyJournal's rig sides | `capsules(session): CapsuleSpec[]` over the shared `ToolModeCapsule` / `PatternActionsCapsule` (DrawBot's `muted`/`locked`/`art` segments and wrap-to-rows are the generic superset to adopt). |
 | Format configuration | `EditorConfig` per app, `makeFreeformConfig` | The common `EditorConfig` moves to the package; an app's extra fields ride `config.host: T`. |
@@ -171,13 +188,67 @@ first, then the pointer bump in each app).
    the package's; and `web/editor/__tests__/toolbarMeta.test.ts` in each
    app still holds the arrange-mode and freeform-bar pins the engine's
    suite does not, which move with `freeformConfig` at stage 6.
-3. **Session and camera.** `editorSession.ts` (with `hostOps` for Sol's
-   parallel document and DrawBot's commit wrapper), `cameraMath.ts`,
-   `canvasTap.ts`, `groupHit.ts` (DrawBot's pixels-only hit is the better
-   rule and should be adopted by all), `transformGestures.ts`,
-   `selectionOutline.ts`, `sceneOcclusion.ts`, `drawnPose.ts`,
-   `paintBrush.ts`, `vectorEraser.ts`, `textCaret.ts` and the other
-   identical leaves that import them (the 23 of §1).
+3. **Done — session and camera** (engine, 2026-10-20). The measurement:
+   of the twelve named files, five were already identical in all three
+   apps (`groupHit.ts`, `multiTapGesture.ts`, `textCaret.ts`,
+   `sceneOcclusion.ts`, `vectorEraser.ts`), three drifted by a comment
+   (`transformGestures.ts`, `selectionOutline.ts`, `activeColor.ts`), and
+   four carried the apps' features: `editorSession.ts` (CozyJournal's rig
+   in the colour dispatch, the duplicate, the aspect rule and the brush's
+   commit, its Reimagine squiggle held to its aspect; Sol's parallel
+   document on `SessionEntry.solOps` and the two index-aligned stacks;
+   DrawBot's sim document, its bots and tiles in the selection and every
+   multi builder, its `recordEntry` for a frozen run), `paintBrush.ts`
+   (CozyJournal's rig pass), `drawnPose.ts` (CozyJournal's rig canvas;
+   Sol's `boxFrame`), `canvasTap.ts` (each app's own tools' taps; DrawBot's
+   front item and its locked-run tap), `cameraMath.ts` (Sol's
+   `cameraMatrixInto`, DrawBot's `visibleWorldRect` inset) and
+   `sliderModeMenu.ts` (CozyJournal's rig modes). Every file moved in
+   CozyJournal's version; what the others carried became the second seam
+   (§4.1, "Commit pipeline wrapper": `sessionHost.ts` with `ops`, `items`
+   and `nodes`, and `commitPipeline.ts`), a `tap` rule on the host-tool
+   registry (§4.3), or an app-side module (CozyJournal's rig: its
+   `rigDrawnPose`, `rigSliderModes`, `rigPaint` and `rigRules`;
+   DrawBot's locked-run tap). Four generic additions from the other two
+   apps were adopted into the canonical text rather than dropped, each a
+   pure function or an optional parameter CozyJournal's callers never
+   see: Sol's `cameraMatrixInto` and `boxFrame`, DrawBot's
+   `visibleWorldRect` inset and `frontId` on `selectionOwnsPress`; and
+   two of DrawBot's dedupes (the text double tap through the chrome's
+   `secondTapWithin`, inclusive at the boundary as the pattern tile's
+   already was; `outermostPlainGroupOf` and `expandEach` under the
+   selection helpers). One behaviour of Sol's replaced CozyJournal's:
+   `buildGroupSelectedMulti` carries a locked member INSIDE a fully
+   selected group with its group instead of dropping it, which broke the
+   group apart around it (§4.3). Of the 23 identical leaves of §1,
+   seventeen closed and moved (`textNodeLayout`, `shapePaintDom`,
+   `imageDrawLevels`, `cameraAvoid`, `rowEntryMemo`, `patternToolSwitch`,
+   `editorPrefs`, `shapeStrokePreview`, `effectsBoxShadow` with
+   `colorUtils`, and the eight components §2 lists); `frameDrop.ts` waits
+   on `sceneOutlineModel` (stage 4), `textPaintPreview.tsx` on `NodeLayer`
+   (stage 5), `fontStacks.ts`, `homeStateDelivery.ts` and
+   `components/EditorNotice.tsx` on the theme, the bridge and the notice
+   (stage 6). `patternPatches.ts` and the `planarFaces.ts` it cuts with
+   (CozyJournal's `web/content/planarFaces.ts`, a second copy under
+   DrawBot's `web/editor/`) moved so `buildPatternMakeColorable` could stay
+   where it was. `editorSession` keeps `patternSymmetryEqual` (Sol's
+   placement; the two apps' `canvasSymmetry.ts` import it) and
+   `copyRunName` with `defaultOutlineName` (the standard half of the apps'
+   `outlineNameFor`). The photo placeholder's sentinel id is an app's own
+   word, persisted in its pages, so `buildPlacePhotoPlaceholder` takes the
+   app's `PhotoPlaceholder`. The brush's glyph-ink probe type
+   (`GlyphInkFn`) is the brush's own; each app's `web/fonts/glyphInk.ts`
+   implements it. Twenty-five suites travelled (the pure halves of the
+   apps' tests for every moved file, their shell and surface pins left
+   behind; DrawBot's `commitPipeline` and `planarFaces` suites), and three
+   are new: `sessionHost.test` (a made-up app's document, markers and
+   badge rules through every seam), the host-tap cases in
+   `canvasTap.test` over a made-up registry, and
+   `editorSession.shared.test`. This repo gains `react` as a dev
+   dependency (the moved `editorPrefs` hook) and a `shims/idb-keyval.ts`
+   with a jest mapping (the apps' `__mocks__/idb-keyval.ts`, a fourth
+   copy to retire into this one). Editor package 43 suites / 929 tests;
+   engine 342 of 343 suites (cameraRoll's host dependency, as before).
 4. **Outline and properties glue.** `sceneOutlineModel.ts` with the
    `outline` extension; the shell's panel-model builders (the ~1,500 lines
    of `ObjectPropertiesModel` wiring in each `EditorShell.tsx`) as a
@@ -209,7 +280,60 @@ Settled by the owner, 2026-10-20:
   DrawBot; DrawBot regains the `push` brush, which it cut with the rig, when
   the canvas and session are unified on CozyJournal's code (stage 3 and 5)
   — it reaches ten files of the drifted core and is not ported by hand
-  before that.
+  before that. Stage 3 found the first two already settled: `groupHit.ts`
+  and `multiTapGesture.ts` were identical in all three apps when measured
+  (the landing window had already reached Sol and DrawBot), and DrawBot's
+  pixels-only hit is not the selection's walk at all but a second,
+  separate pick in its `CanvasSurface.tsx` (`pixelHitTestAt`, for its
+  placing tools building in a group's empty box) beside the shared
+  `hitTestAt` every app has — a stage-5 matter, and the sentence in the
+  old item 3 preferring DrawBot's rule is superseded by this one. The
+  `push` brush is back in the moved files (`PaintToolKind`,
+  `brushDimsToSelection`, `toolYieldsToSelection`, the paint slider's
+  Brushes option); DrawBot keeps it off its bar with its app-side mode
+  list until stage 5 gives its canvas the brush.
+- **Generic additions from a non-canonical copy are adopted, not dropped,
+  when they are pure and CozyJournal's callers cannot see them** (stage 3,
+  2026-10-20): a new pure function (Sol's `cameraMatrixInto`, `boxFrame`),
+  an optional trailing parameter with its old behaviour as the default
+  (DrawBot's `visibleWorldRect` inset, `selectionOwnsPress`'s `frontId`),
+  a dedupe onto something the engine already had (DrawBot's
+  `secondTapWithin`). Dropping them would have made Sol and DrawBot keep
+  copies of engine-adjacent maths beside the engine's, which is the drift
+  the plan exists to end. The one adopted change of behaviour is Sol's
+  rule in `buildGroupSelectedMulti`: a locked member inside a fully
+  selected group goes with its group (CozyJournal's rule lifted the
+  unlocked members out around it, a bug no CozyJournal page had hit
+  because none locks a member inside a group); a group whose own chain is
+  locked still sits out. The owner can reverse any of these in one place.
+- **The session host is installed once at module scope, not threaded**
+  (stage 3, 2026-10-20): `installSessionHost(extension.session)` from the
+  app's `web/editor/extension.ts`, the way DrawBot's commit wrapper and
+  the brush's glyph-ink probe already install themselves. The session's
+  builders are pure over a `CompositionState` and are called from dozens
+  of sites in each shell (`buildApplyColor` alone from thirty-six in
+  CozyJournal); a `host` parameter at every one would have been the churn
+  without the seam, and at stage 6 the package's shell installs the
+  extension the same way. The one thing threaded is the host DOCUMENT —
+  per-session data, not a rule — as the trailing `hostDoc?` of the builders
+  that move host items, where DrawBot's already took `sim?`. A test
+  installs a host and clears it after.
+- **`canvasTap.ts`: the registry's `HostTool` grows a `tap` rule rather
+  than the shell keeping the branch** (stage 3, 2026-10-20). The three
+  apps' five placing tools had three shapes of tap between them, not five
+  — `'anywhere'` (CozyJournal's Word, Sol's Plant: every tap places, and a
+  press on the selection places too), `'onEmpty'` (CozyJournal's Figure: a
+  hit selects, empty canvas places) and `'against'` (the Pattern tile in
+  two apps: places against what is there, into the one target open for it,
+  and clears when nothing joins) — and `toolYieldsToSelection` keyed on the
+  same tools. Both read the registry now; `resolveCanvasTap` answers
+  `{ kind: 'hostPlace', tool }` and the shell dispatches on the id to its
+  own builder, which is the only branch it keeps until stage 5. DrawBot's
+  Inklings register no `tap`: its sim layer's gesture hooks claim the
+  press before the tap is read. The `'against'` facts the shell knows
+  (`openTarget`, `joins`) ride a trailing options object under those
+  names. A selection that is a MODE (CozyJournal's rig) stays a boolean
+  parameter, `selectionIsMode`.
 - **The apps' working trees are committed** by agents in all three apps,
   CozyJournal's included (owner, 2026-10-20).
 - **The `ToolId` type stays a closed union per app** (stage 2, 2026-10-20):
