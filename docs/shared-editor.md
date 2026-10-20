@@ -149,22 +149,34 @@ first, then the pointer bump in each app).
    this repo's editor-ui still carries, become CozyJournal host pages; the
    package then knows no app's kind of object at all.
 
-### 4.3 Decisions that are the owner's
+### 4.3 Decisions, and the ones still open
 
-- **Where the apps disagree, which behaviour is canonical.** Known
-  disagreements: DrawBot's pixels-only selection hit (`groupHit.ts`) vs the
-  bbox fallback the others keep; CozyJournal's two-finger-tap landing window
-  (`multiTapGesture.ts`, bug b3a2a998) which Sol and DrawBot lack; Sol's
-  removal of the raster paint group and the pattern studio (config, not
-  code, and fine); DrawBot's `push` brush being absent while Sol and
-  CozyJournal have it.
-- **Whether the rig stays in editor-ui** until stage 7 or moves to
-  CozyJournal earlier. Sol and DrawBot carry its code today without using it.
+Settled by the owner, 2026-10-20:
+
+- **CozyJournal is canonical.** Where the apps disagree, Sol and DrawBot
+  are made like CozyJournal; the differences the others carry are
+  oversights, not choices. In practice: a drifted file moves to the
+  package in CozyJournal's version, and the other two apps take it. Known
+  disagreements and their fate: DrawBot's pixels-only selection hit
+  (`groupHit.ts`) goes back to CozyJournal's walk; CozyJournal's
+  two-finger-tap landing window (`multiTapGesture.ts`) comes to Sol and
+  DrawBot; DrawBot regains the `push` brush, which it cut with the rig, when
+  the canvas and session are unified on CozyJournal's code (stage 3 and 5)
+  — it reaches ten files of the drifted core and is not ported by hand
+  before that.
+- **The apps' working trees are committed** by agents in all three apps,
+  CozyJournal's included (owner, 2026-10-20).
+
+Still open:
+
+- **The rig's place.** This repo's editor-ui carries CozyJournal's Figgie
+  rig pages (`logic/rigEdit.ts`, `RigJointsBar`, `RigPoseBar`,
+  `RigColorBar`, `showRigOptions`), so Sol and DrawBot ship that code
+  without using it. Stage 7 makes them CozyJournal host pages, the way
+  DrawBot's bot pages already are; nothing forces that earlier.
 - **The `ToolId` type.** A string registry (stage 2) loses the exhaustive
   switch the apps' `toolbarMeta` relies on; the alternative is a generic
   parameter `EditorConfig<TTool>` threaded through the package.
-- **Whether CozyJournal commits agents' work** (its CLAUDE.md says never
-  without being asked); the other two apps commit every finished change.
 
 ## 5. Line endings
 
