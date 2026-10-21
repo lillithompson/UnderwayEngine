@@ -781,6 +781,28 @@ round of its reviewer's suggestions — reviewed at 22 to 45 KB, and
 CozyJournal's last one (9 changed lines) fell under `review.js`'s own
 30-line floor and needed no review at all.
 
+**Stage 5a was never near it** (2026-10-21): CozyJournal's prompt 128 KB,
+DrawBot's 122, Sol's 362. The prompt size was the risk named before the
+stage started — 209 suites across the three apps read `CanvasSurface` or
+`NodeLayer` source text, app-side churn the move folding cannot collapse —
+and measuring it first is what showed the risk was not real. Two reasons.
+The pin churn is small: a mechanical re-point of CozyJournal's 73 suites
+measured 62 files, 92 lines, 67 KB, against the 890 KB a stage-3 range
+passed at. And the right answer turned out to shrink it rather than pay
+it: a suite dedicated to a moved file MOVES, which folds, and 48 of the
+209 exist in all three apps under the same name, so what looked like three
+apps' churn is one app's move and two deletions. Of the 209, 5a touched 84
+— the ones reading a file it moved. The 190 that read `CanvasSurface` are
+5b's. Sol's range is the largest of the three because its node-layer drift
+folds as a changed move and `plantNodeLayers.tsx` pairs with nothing (it is
+a new file in Sol's own tree, not a move into the engine), and because its
+two codebase documents carry very long table lines.
+
+So the next process step — a pointer bump whose engine range is already
+reviewed treated as cleared — is still not forced, and stage 5a did not
+touch `tooling/`. Stage 5b (`CanvasSurface`, 7,104 lines, and the 190 pins)
+and stage 6 (`EditorShell`, 10,682) are where it may be.
+
 Two things the first wiring taught: `git reset --hard` in a clone with
 `submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
 reports it; check `main` out again before committing there), and a project
