@@ -819,8 +819,9 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     showSvgOptions: svgEditable,
     svgSubtype: sharedSvgSubtype,
     // …less the pages the FORMAT withholds from every vector on its
-    // page (config.hiddenShapePages — Shadows keeps its shapes solid
-    // black by taking Stroke, Fill, Effects and Opacity off the row).
+    // page (the format's `hiddenShapePages` — CozyJournal's Shadows keeps
+    // its shapes solid black by taking Stroke, Fill, Effects and Opacity
+    // off the row).
     svgHiddenActions: hiddenShapePages,
     // …and whether the page may offer Remove, asked of the MEMBERS:
     // the subtype above names a shared option MENU, which a mixed
@@ -1033,9 +1034,11 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     onTextStyle,
     onPickTextColor,
     onResetTextStyle,
-    // A DrawBots bot or the arena (docs/drawBot.md §5.7): its pages
-    // and the common-row buttons it withholds. The panel checks them
-    // before the rig and the vectors.
+    // The HOST's own pages for this selection, and the common-row
+    // buttons it withholds — the one seam of this builder
+    // (docs/shared-editor.md §4.1): DrawBot's bots, instruction tiles,
+    // arena and fields pages reach the panel through it. The panel checks
+    // them before the rig's and the vectors'.
     hostPages,
     hiddenCommonActions,
     // Frame options (background / shadow / border / ungroup). Gated on an
