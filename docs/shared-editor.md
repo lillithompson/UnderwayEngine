@@ -100,9 +100,21 @@ components `ShapePatternEditOutline`, `EyedropperLayer`,
 seam of the `EditorExtension`: the session host (`sessionHost.ts`, §4.1) —
 an app's parallel document moved by the same undo step, its own selectable
 items, and its rules about nodes of its own kind — with the commit pipeline
-wrapper beside it. The apps import it all through `@/editor/*` and their
-copies are gone; each app's `web/editor/hostTools.ts` is its registry and
-its `web/editor/extension.ts` installs its session host.
+wrapper beside it. From stage 4 it holds the SCENE OUTLINE and the
+PROPERTIES GLUE: `sceneOutlineModel.ts` (the outline's view model — the row
+for every node, a tagged node's label, which rows a selection lights) with
+`frameDrop.ts`, the leaf that waited on it; `panelModel.ts`, the object
+properties panel's model — `buildPanelFacts` reads the selection (what is
+in hand, which pages its kind may open, the values those pages seed from)
+and `buildPanelModel` lays the pages out, with the host's own pages as its
+one seam; and `panelEffectModels.ts`, the panel's models ↔ the engine's
+effect records with the defaults an Add button materializes. The third seam
+of the `EditorExtension` comes with them: the outline host
+(`outlineHost.ts`, §4.1) — how the outline reads a node of the app's own
+kind, and the overlay rows its document holds. The apps import it all
+through `@/editor/*` and their copies are gone; each app's
+`web/editor/hostTools.ts` is its registry and its `web/editor/extension.ts`
+installs its session host and its outline host.
 
 ## 3. Still copied, and why
 
@@ -130,8 +142,8 @@ What the three shells wire in by hand today, named as seams:
 | Seam | Today, by hand | As an extension point |
 |---|---|---|
 | Extra tools on the bar | `ToolId` union members (`plant`, `bots`, `instructions`, `rig`, `word`, `tile`, `symmetry`) and their `TOOL_META` rows in each `toolbarMeta.ts` | **Done (stage 2).** `tools: HostTool[]` (`packages/editor/src/hostTools.ts`, the first field of `EditorExtension` in `extension.ts`) — id, label, icon (an MCI name; a shape the font lacks is drawn by the shell, as the line, arc and polygon glyphs already are), `kind` (`'tool'`, armed and lit while in hand, or `'setting'`, which toggles and never lights — symmetry), `contentMode: { gate }` (the tool rides the content group's row behind a format flag — rig, word, tile) and `modeCapsule` (a hold on the lit button recalls its capsule — plant). The standard tools stay in the package; the toolbar's functions that have to know a host tool take the registry, and each app's `web/editor/hostTools.ts` is its registry plus `TOOL_META = toolMetaFor(HOST_TOOLS)`, the whole bar's table over its own `ToolId`. |
-| Property pages for the app's kinds | DrawBot's `useSimEditor().selection`, CozyJournal's rig model, spread into the panel model in the shell | `hostPages(selection, session): HostPagesModel \| undefined` — already the engine's shape (`packages/editor-ui`); the shell calls it in one place. |
-| Scene outline rows | `sceneOutlineModel.ts` per app (tag labels, rig glyphs, bots as overlays) | `outline: { tagLabels, iconFor(node), overlays(session) }` — the labels for functional `prefix:id` tags, a kind's glyph, and the host's overlay rows. |
+| Property pages for the app's kinds | DrawBot's `useSimEditor().selection`, CozyJournal's rig model, spread into the panel model in the shell | **Done (stage 4).** `hostPages` / `hiddenCommonActions` (`HostPagesModel`, `packages/editor-ui`) — per-SELECTION data, not an installed rule, so they are two fields of `PanelModelInput` (`panelModel.ts`) rather than a member of the extension, and the shell hands them in at the one place it builds the model. DrawBot's `useSimEditor().selection` IS that pair; CozyJournal's rig pages stay the chrome's until stage 7 and its shell spreads them over the built model. |
+| Scene outline rows | `sceneOutlineModel.ts` per app (tag labels, rig glyphs, bots as overlays) | **Done (stage 4).** `outline?: OutlineHost` (`outlineHost.ts`, the third field of `EditorExtension`): `nodes(state)` — the host's reading of this page's own kinds, resolved ONCE per build (a glyph instead of the kind's, `chrome` for its rendering internals: CozyJournal's rig figure wears the Rig tool's glyph and its hidden pose record is no row) — and `overlays(state, doc)` — rows for what the host's DOCUMENT holds that draws over the scene (DrawBot's bots and instruction tiles, ranked by `overlayRank`, swallowed by a lit group they ride). Installed at module scope with the session host. The tag LABELS are not here: per-format or per-document data, handed to the builders as `tagLabels` (§4.3). |
 | Layers drawn over the canvas | Sol's `RevealOverlay` / plant layer in `NodeLayer`, DrawBot's `DrawBotsLayer`, CozyJournal's `RigNodeLayer` | `layers: { nodeLayer?(node), overlay?(session, camera) }` — the host draws its own kinds of node and its own live layer, through the handles `CanvasSurface` already exposes. |
 | Commit pipeline wrapper | DrawBot's `commitPipeline.ts` + `commitWrapper.ts`; Sol's `solEntry` and the index-aligned Sol undo stacks; DrawBot's bots and tiles in the selection; CozyJournal's rig in the colour dispatch, the duplicate and the brush | **Done (stage 3).** `wrapCommit?: CommitWrapper` (`commitPipeline.ts`, DrawBot's file as it was, installed with `setCommitWrapper`) and `session?: SessionHost` (`sessionHost.ts`), three optional members an app fills as it needs: `ops` — a PARALLEL DOCUMENT moved by the same undo step (`EditorSession.hostDoc`, `hostUndoStack` / `hostRedoStack` index-aligned with the engine's, `SessionEntry.hostOps`, an entry of host ops alone pushing an empty engine entry; Sol's `SolOp[]`, DrawBot's `{before, after}` of its sim document); `items` — things the host's document holds that stand in the selection beside scene nodes (`HostItems`: id spelling, box, group, lock, through-a-matrix, remove, duplicate; DrawBot's bots and instruction tiles, which the marquee, the group and every multi builder carry through the adapter); `nodes` — rules about scene nodes of the host's own kind (`HostNodeRules`: a duplicate's companion ops, a node held to its aspect, a colour target off the object, the Color brush's pass over such nodes, the outline label of a tagged node; CozyJournal's rig and seeded squiggle). Installed once per app at module scope (`installSessionHost`), the way the commit wrapper and the brush's glyph-ink probe are, because the session's builders take a state, not a session, and are called from dozens of sites; a builder that moves host items takes the document as a trailing `hostDoc?`, where DrawBot's took `sim?`. `EditorSession<TTool, TDoc, TOps>` carries the app's types through, and every function that returns a session is generic over it. |
 | Host data in the file | Sol's `sol` chunk, DrawBot's `DBOT` trailer, both through the engine's v70 host-data chunks | `fileChunks: { tag, read(bytes, state), write(state) }` — the engine already carries foreign chunks through load, save and zip export untouched, which is what makes a foreign `.tile` editable: its scene is the engine's, and its host data waits for the app that wrote it. |
@@ -288,10 +300,58 @@ first, then the pointer bump in each app).
    refactor will break until they move here or read a looser shape; and
    whether Sol should pin `cameraMatrixInto`, which its reveal depends on
    and only the engine's suite now holds (Sol's jest roots exclude it).
-4. **Outline and properties glue.** `sceneOutlineModel.ts` with the
-   `outline` extension; the shell's panel-model builders (the ~1,500 lines
-   of `ObjectPropertiesModel` wiring in each `EditorShell.tsx`) as a
-   package module with `hostPages` as its one seam.
+4. **Done — outline and properties glue** (engine, 2026-10-20). The
+   measurement, of the files this stage names:
+
+   | What | Lines (Cozy) | Sol differs by | DrawBot differs by |
+   |---|---|---|---|
+   | `web/editor/frameDrop.ts` | 152 | 0 (an import re-wrap) | 0 (an import re-wrap) |
+   | `web/editor/sceneOutlineModel.ts` | 233 | 60 | 70 |
+   | the shell's panel FACTS (its "Render" block) | 336 | 4 | 10 |
+   | the shell's panel MODEL (the `ObjectPropertiesPanel` literal) | 358 | 24 | 32 |
+   | the shell's model ↔ effect converters (its tail) | 160 | 0 | 0 |
+   | the shell's bar HANDLERS (hue row, opacity, stroke, fill, pattern fill, endpoints, transform, text, eyedropper arm, pattern pages) | 1,670 | 62 | 20 |
+
+   `frameDrop.ts` and the converters moved verbatim. `sceneOutlineModel.ts`
+   moved in CozyJournal's version with two generalizations and the outline
+   seam (§4.1): its `slotOutlineNames`, keyed by slot id and read through
+   this app's `scaffold.ts`, became `tagLabels`, keyed by the WHOLE
+   `prefix:id` tag over the engine's `isTagName` — Sol's spelling, the
+   generic one, since the engine cannot know a slot from a seed (§4.3) —
+   and a GROUP row goes through `outlineNameFor` like a leaf's (Sol's, so a
+   tagged seed group shows its label and never its tag), which is what
+   `DEFAULT_KIND_NAME` gains a `group` entry for. CozyJournal's rig glyph
+   and its hidden pose record, and DrawBot's bots and instruction tiles,
+   are the host's: `OutlineHost.nodes` and `OutlineHost.overlays`.
+   `buildGroupNames` stops naming a tagged group (its row's own label is
+   what the panel shows, and prefers). `HostNodeRules.outlineName` — added
+   at stage 3 in anticipation, installed by no app, and unreachable behind
+   `copyRunName`'s own tag check — is gone with it.
+
+   The panel-model builders landed as `panelModel.ts`: `buildPanelFacts`
+   (the selection read — what is in hand, which pages its kind may open,
+   the values those pages seed their rows from) and `buildPanelModel` (the
+   pages laid out in `ObjectPropertiesModel`'s grammar), with
+   `editTargetIds`, `effectTargetIds`, `foldTargets`, `svgEnclosesRef` and
+   `isRepeatTarget` beside them. The host's pages are its one seam
+   (`hostPages` / `hiddenCommonActions`, two fields of `PanelModelInput`,
+   handed in where the shell builds the model). Two of the other apps'
+   additions were adopted: DrawBot's `onObjectOpacity` guard for a
+   multi-selection with nothing to take it, and its host-item lock on the
+   Lock button (generic through the session host's `items`, so no app
+   branch). Sol's missing `onPatternMakeColorable` was an oversight and is
+   dropped. CozyJournal's rig pages stay the chrome's until stage 7: its
+   shell spreads them over the built model.
+
+   The bar HANDLERS stay in each app's shell and move with it at stage 6
+   (§4.3) — 1,670 lines that are 95 % identical, and every one of them a
+   `useCallback` over the shell's own commit pipeline. Two new suites
+   (`panelModel.test`, 25 cases over a made-up host; `panelEffectModels
+   .test`, 13) and one unioned from the three apps' own
+   (`sceneOutlineModel.test`, 29, with the outline seam driven over a
+   made-up app's badges and markers); `frameDrop.test` moved whole. Editor
+   package 46 suites; engine 346 of 347 (cameraRoll's host dependency, as
+   before).
 5. **Canvas.** `CanvasSurface.tsx` and `NodeLayer.tsx` with the `layers`
    extension; CozyJournal's rig layer, Sol's plant layer and DrawBot's sim
    layer become host layers.
@@ -373,6 +433,41 @@ Settled by the owner, 2026-10-20:
   (`openTarget`, `joins`) ride a trailing options object under those
   names. A selection that is a MODE (CozyJournal's rig) stays a boolean
   parameter, `selectionIsMode`.
+- **A tag is any `prefix:id` name, and its LABELS ride as data** (stage 4,
+  2026-10-20). Two decisions in one. What counts as a functional tag is the
+  engine's own rule, `isTagName` — already what `duplicateName` and
+  `copyRunName` go by in all three apps — rather than each app's own
+  prefixes, so the outline agrees with the duplicate about what a name is.
+  The one visible consequence: in CozyJournal a node the USER renames to
+  something tag-shaped ("todo: fix") now shows its kind's word in the
+  outline instead of that name, where before only `slot:` and `decor:` were
+  read as tags. Narrow, and the alternative was for the package to know
+  CozyJournal's scaffold. And the LABELS a tag maps to stayed a parameter
+  (`tagLabels`, keyed by the whole tag) rather than becoming a member of
+  the installed `outline` host, because they are per-format or
+  per-document DATA, not a rule: CozyJournal's and DrawBot's come from the
+  `EditorConfig` the page was opened with (which the package does not know
+  until stage 6) and Sol's from its own document and the scene graph. The
+  host DOCUMENT rides the same way (`hostDoc`, stage 3), for the same
+  reason.
+
+- **The panel-model builders are the MODEL, not the handlers** (stage 4,
+  2026-10-20). `panelModel.ts` holds what the panel's model is a pure
+  function of — the selection read (`buildPanelFacts`) and the pages laid
+  out over it (`buildPanelModel`) — and the bar HANDLERS stay in each
+  app's shell until stage 6 moves the shell itself. They are 1,670
+  near-identical lines and it is tempting to take them now, but every one
+  is a `useCallback` closing over the shell's commit pipeline, its tool and
+  prefs state, its pickers and its page flags: moving them would mean
+  inventing a context object of some fifty members and threading it
+  through, and stage 6 would delete that context when the shell arrives.
+  That is the churn without the seam — the argument this section already
+  makes for installing the session host rather than threading it. What the
+  move does buy now is the end of the drift in the two places it actually
+  bit: the facts (where a kind's pages are decided) and the model (where
+  they are laid out), which is also where all of this stage's
+  app-by-app differences were.
+
 - **The apps' working trees are committed** by agents in all three apps,
   CozyJournal's included (owner, 2026-10-20).
 - **The `ToolId` type stays a closed union per app** (stage 2, 2026-10-20):

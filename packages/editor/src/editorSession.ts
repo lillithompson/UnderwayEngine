@@ -4038,6 +4038,7 @@ export function buildDuplicateFrame(state: CompositionState, frameId: string): S
 // ── Outline names ───────────────────────────────────────────────────
 
 const DEFAULT_KIND_NAME: Record<string, string> = {
+  group: 'Group',
   svg: 'Drawing',
   image: 'Photo',
   text: 'Text',
@@ -4050,9 +4051,9 @@ const NAME_MAX = 24;
 
 /** The label the outline shows for an ordinary node: its explicit name; a
  *  text's content snippet; else a per-kind default. The standard half of
- *  the apps' `outlineNameFor` (their sceneOutlineModel.ts), which lays the
+ *  the shared `outlineNameFor` (sceneOutlineModel.ts), which lays the
  *  host's tagged nodes over it — a scaffold slot's declared name, a seed's
- *  card — through the installed host's `nodes.outlineName`. */
+ *  strain — through that function's `tagLabels`. */
 export function defaultOutlineName(
   kind: string,
   item: { name?: string; content?: string },
@@ -4082,8 +4083,9 @@ export function defaultOutlineName(
  * A TAGGED node (a format's `slot:` / `decor:` mark, a seed's tag) keeps
  * its tag verbatim, the way `duplicateName` does: the tag says what the
  * node IS to the host rather than what it is called, and numbering it would
- * mint tags no format looks for. The label a tagged node shows is the
- * host's to say (`nodes.outlineName`).
+ * mint tags no format looks for — which is also why it needs no tag labels
+ * here: the one kind of node whose label is the host's to say is the one
+ * kind this never numbers (sceneOutlineModel's `outlineNameFor`).
  */
 export function copyRunName(
   kind: string,
@@ -4092,8 +4094,7 @@ export function copyRunName(
 ): string {
   const own = item.name?.trim();
   if (own && isTagName(own)) return own;
-  const label = sessionHost().nodes?.outlineName?.(kind, item) ?? defaultOutlineName(kind, item);
-  return `${label} ${index}`;
+  return `${defaultOutlineName(kind, item)} ${index}`;
 }
 
 /** Toggle a GROUP's own lock (frame or plain group). Emits a single

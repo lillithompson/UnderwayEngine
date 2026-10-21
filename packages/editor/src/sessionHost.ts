@@ -30,6 +30,8 @@ import type { SceneOcclusion } from './sceneOcclusion';
 //    hidden record), a node a duplicate has to bring a companion along for
 //    (the rig's pose record), a node held to uniform scale (the rig, the
 //    day's seeded squiggle), and the Color brush's pass over such nodes.
+//    What the OUTLINE makes of such a node is a seam of its own
+//    (outlineHost.ts, stage 4).
 //
 // Installed ONCE per app, at module scope, by the app's own extension
 // module (`installSessionHost`), the way DrawBot's commit wrapper installs
@@ -159,11 +161,6 @@ export interface HostNodeRules {
   /** The Color brush's pass over the host's nodes, or null when the page
    *  has none. */
   paintTargets?(state: CompositionState, scope: ColorScope): HostPaintTargets | null;
-  /** The label the host's outline shows for a node it TAGS — a scaffold
-   *  slot's declared name, a seed's card — or null for an ordinary node,
-   *  which takes the standard label (editorSession's defaultOutlineName).
-   *  What the Copies page numbers its copies from. */
-  outlineName?(kind: string, item: { name?: string; content?: string }): string | null;
 }
 
 /** What an app supplies the shared session: any of the three. */

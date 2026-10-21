@@ -533,7 +533,6 @@ const RULES: HostNodeRules = {
       )),
     };
   },
-  outlineName: (_kind, item) => (item.name?.startsWith('badge_') ? 'Badge' : null),
 };
 
 function placeBadge(session: S, x: number): [S, string] {
@@ -627,11 +626,13 @@ describe('the host’s rules about nodes of its own', () => {
     expect(selectionTakesAlpha(s.state, b)).toBe(true);
   });
 
-  test('a run of copies is numbered from the host’s label for a node it tags', () => {
-    expect(copyRunName('svg', { name: 'badge_x' }, 3)).toBe('Badge 3');
+  test('a run of copies is numbered from the standard label, whatever the host', () => {
+    expect(copyRunName('svg', { name: 'badge_x' }, 3)).toBe('badge_x 3');
     expect(copyRunName('svg', {}, 3)).toBe('Drawing 3');
     expect(copyRunName('text', { content: 'hello' }, 2)).toBe('hello 2');
-    // A tag (a `prefix:id` name) keeps its name verbatim.
+    // A tag (a `prefix:id` name) keeps its name verbatim — and a tagged
+    // node is the one kind whose label the host says (the outline's
+    // tagLabels), which is why no host seam is read here.
     expect(copyRunName('svg', { name: 'slot:squiggle' }, 4)).toBe('slot:squiggle');
     clearSessionHost();
     expect(copyRunName('svg', { name: 'badge_x' }, 3)).toBe('badge_x 3');
