@@ -6,6 +6,8 @@
  * node out again on their own.
  */
 
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { drawnTextLayout } from '../textNodeLayout';
 import { drawnLeafOf, drawnLocalBox } from '../drawnPose';
 import { DEFAULT_LINE_HEIGHT, layoutText } from '@/engine/textLayout';
@@ -38,5 +40,22 @@ describe('drawnTextLayout', () => {
   it('hands back the node content it laid out', () => {
     const t = text();
     expect(drawnTextLayout(drawnLeafOf('text', t)).text).toBe(t);
+  });
+});
+
+describe('the node layer, the brush and the stroke preview share it', () => {
+  const src = (...parts: string[]) => readFileSync(resolve(__dirname, '..', ...parts), 'utf8');
+
+  it('TextNodeLayer lays out through drawnTextLayout, not its own layoutText call', () => {
+    const nodeLayer = src('components', 'NodeLayer.tsx');
+    expect(nodeLayer).toContain("import { drawnTextLayout } from '../textNodeLayout';");
+    expect(nodeLayer).toContain('const { layout, lineHeight } = drawnTextLayout(drawn);');
+    expect(nodeLayer).not.toContain('layoutText(node.content');
+  });
+
+  it('textPaintGeometry (the brush’s char boxes) does too', () => {
+    const brush = src('paintBrush.ts');
+    expect(brush).toContain('const { text, layout, lineHeight } = drawnTextLayout(d);');
+    expect(brush).not.toContain('layoutText(');
   });
 });

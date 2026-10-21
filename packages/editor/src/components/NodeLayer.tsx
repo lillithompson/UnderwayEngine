@@ -86,7 +86,12 @@ function fadedBorderEffects(
 /** The inner element: the node's local box at its own size, placed in the
  *  outer box by the world matrix about its top-left corner. Everything a
  *  kind draws goes inside this, in local cells × BASE_CELL_PX. */
-function innerStyle(frame: DrawnFrame): CSSProperties {
+/** The inner box of a node's two-element frame: the node's own untransformed
+ *  extent, carrying the pose. Exported because a HOST's layer for its own
+ *  kind of node has to place its content in the same box the shared layers
+ *  do — Sol's `PlantGroupLayer` (web/sol/scene/) is the one such layer
+ *  today. */
+export function innerStyle(frame: DrawnFrame): CSSProperties {
   return {
     position: 'absolute',
     left: 0,

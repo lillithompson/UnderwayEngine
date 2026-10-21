@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { makeViewport } from '@/engine/types';
 import {
   AXIS_COLOR, AXIS_STROKE_PX, AxisGroupElement, AxisLineElement, AxisSegment, DIAG_COLOR, QUARTER_COLOR,
@@ -214,5 +216,18 @@ describe('a bounded model TURNED with its pattern draws its lines turned about t
   test('unturned, the bounded model takes the axis-aligned path as before', () => {
     const [v] = symmetryAxisSegments(model({ bounded: true, lines: [{ kind: 'v', at: 8, dashed: false }] }), T, VIEW);
     expect(v).toMatchObject({ x1: 40 + px(8), x2: 40 + px(8), y1: 100 + px(6), y2: 100 + px(16) });
+  });
+});
+
+describe('the axes are screen-px hairlines, like every other outline', () => {
+  const src = (...parts: string[]) => readFileSync(resolve(__dirname, '..', ...parts), 'utf8');
+
+  test('the lines are screen-px hairlines — no counter-scaling left to keep in step', () => {
+    const outlineSrc = src('selectionOutline.ts');
+    expect(outlineSrc).toContain('export const HAIRLINE_PX = 2;');
+    expect(outlineSrc).not.toContain('SCREEN_INV_SCALE_X');
+    const axesSrc = src('symmetryAxesScreen.ts');
+    expect(axesSrc).toContain('export const AXIS_STROKE_PX = HAIRLINE_PX;');
+    expect(axesSrc).not.toContain('ZOOM_INV_VAR');
   });
 });
