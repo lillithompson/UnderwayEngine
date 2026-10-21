@@ -88,11 +88,11 @@ const PAGES: PanelPages = {
 };
 
 const PATTERN: PanelPatternState = {
-  tiles: [],
-  recent: [],
-  subTool: { kind: 'random' },
-  transforms: {},
-  enabledSets: new Set<string>(),
+  patternTiles: [],
+  patternRecent: [],
+  patternSubTool: { kind: 'random' },
+  patternTileTransforms: {},
+  patternEnabledSets: new Set<string>(),
 };
 
 /** Every handler, each recording that it was the one called. */

@@ -536,15 +536,15 @@ export interface PanelPages {
 /** The pattern pages' session state — the app's, not the document's. */
 export interface PanelPatternState {
   /** The whole tile menu, host-baked, filtered to the enabled sets. */
-  tiles: PatternTileRow[];
+  patternTiles: PatternTileRow[];
   /** The five the Tiles bar offers: the most-recently-used, resolved. */
-  recent: PatternTileRow[];
+  patternRecent: PatternTileRow[];
   /** The armed sub-tool, and — when it is a tile — which one. */
-  subTool: { kind: PatternPanelTool; spriteId?: string };
+  patternSubTool: { kind: PatternPanelTool; spriteId?: string };
   /** Each tile's pose, keyed by sprite id. */
-  transforms: Record<string, PatternTileTransform>;
+  patternTileTransforms: Record<string, PatternTileTransform>;
   /** The selected pattern's own tile-set filter, resolved. */
-  enabledSets: ReadonlySet<string>;
+  patternEnabledSets: ReadonlySet<string>;
 }
 
 /** The callbacks the shell owns. Every one is a `useCallback` over its
@@ -674,10 +674,13 @@ export interface PanelModelInput {
  */
 export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
   const {
-    session, facts: f, pattern, visible, safeTop, hiddenShapePages, shapePatternFills, fonts,
+    session, facts: f, visible, safeTop, hiddenShapePages, shapePatternFills, fonts,
     copiesSticky, hostPages, hiddenCommonActions, currentColor, svgFillSelectedStop,
     defaultFrameBackground,
   } = input;
+  const {
+    patternTiles, patternRecent, patternSubTool, patternTileTransforms, patternEnabledSets,
+  } = input.pattern;
   const {
     editOpen, effectsOpen, borderOpen, cropOpen, strokeOpen, svgFillOpen, svgPatternOpen,
     endpointsOpen, transformOpen, textStyleOpen, opacityOpen, patternBarOpen,
@@ -722,8 +725,8 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     // The Edit sheet's open state is the shell's, so the floating
     // Edit capsule can raise the same sheet the panel's own swipe
     // and dot do.
-    editOpen: editOpen,
-    onEditOpenChange: onEditOpenChange,
+    editOpen,
+    onEditOpenChange,
     // Content editing is not a tab: a tap on the selected text opens
     // the overlay (onNodeTap → onEditText).
     showImageEdit: imageEditable,
@@ -738,7 +741,7 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
       : (!!selected?.item.locked || frameLocked
         || (!!session.selectedId && isHostItemLocked(session, session.selectedId))),
     cornerRadius: selected?.kind === 'image' ? (selected.item.cornerRadius ?? 0) : 0,
-    onCornerRadius: onCornerRadius,
+    onCornerRadius,
     // The Effects page is shared by images, frames, text AND vectors
     // (the same page, the same NodeEffects on the node — a line's page
     // could open but read nothing back, so every edit sprang to the
@@ -756,10 +759,10 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
       ? shadowEffectToModel(effectsHost.effects?.shadow ?? DEFAULT_SHADOW_EFFECT)
       : undefined,
     shadowPresent: effectPresent('shadow'),
-    onAddShadow: onAddShadow,
-    onEffectsOpenChange: onEffectsOpenChange,
-    onShadow: onShadow,
-    onPickShadowColor: onPickShadowColor,
+    onAddShadow,
+    onEffectsOpenChange,
+    onShadow,
+    onPickShadowColor,
     // …and the two glows the same page holds, each seeded from the
     // object's own or from the default it would be created with.
     glows: effectsHost
@@ -774,11 +777,11 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     // brush is what puts one there, and this is where it comes off.
     ...(imageEditable ? {
       imageTintPresent,
-      onToggleImageTint: onToggleImageTint,
+      onToggleImageTint,
     } : {}),
-    onAddGlow: onAddGlow,
-    onGlow: onGlow,
-    onPickGlowColor: onPickGlowColor,
+    onAddGlow,
+    onGlow,
+    onPickGlowColor,
     borderOpen: borderOpen && (imageEditable || frameEditable),
     border: selected?.kind === 'image'
       ? borderEffectToModel(selected.item.effects?.border ?? defaultBorderEffect(currentColor))
@@ -786,10 +789,10 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
         ? borderEffectToModel(frameEffects?.border ?? defaultBorderEffect(currentColor))
         : undefined,
     borderPresent: effectPresent('border'),
-    onAddBorder: onAddBorder,
-    onBorderOpenChange: onBorderOpenChange,
-    onBorder: onBorder,
-    onPickBorderColor: onPickBorderColor,
+    onAddBorder,
+    onBorderOpenChange,
+    onBorder,
+    onPickBorderColor,
     cropOpen: cropOpen && !multiIds && imageEditable,
     // A node with no framing record is DRAWN as plain cover
     // (engine effectiveFraming), so that is what the bar must report —
@@ -798,9 +801,9 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     framing: selected?.kind === 'image'
       ? framingEffectToModel(selected.item.framing ?? COVER_FRAMING)
       : undefined,
-    onCropOpenChange: onCropOpenChange,
-    onFraming: onFraming,
-    onResetFraming: onResetFraming,
+    onCropOpenChange,
+    onFraming,
+    onResetFraming,
     // The Image page: the photo itself. Replace is offered only for an
     // UNLOCKED image, since a locked one is not editable and an
     // unfilled placeholder already replaces itself when tapped
@@ -868,12 +871,12 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
         : undefined,
     strokeRadius: selectedSvg?.stroke?.radius ?? 0,
     strokePresent: svgStrokePresent,
-    onAddStroke: onAddStroke,
-    onStrokeOpenChange: onStrokeOpenChange,
-    onStroke: onStroke,
-    onStrokeRadius: onStrokeRadius,
-    onPickStrokeColor: onPickStrokeColor,
-    onStrokeColor: onStrokeColor,
+    onAddStroke,
+    onStrokeOpenChange,
+    onStroke,
+    onStrokeRadius,
+    onPickStrokeColor,
+    onStrokeColor,
     // The Fill bar, offered by the closed shapes (rectangle / circle —
     // see svgHasFill). Seeded from the shape's own fill, or from its
     // color when it has never been filled, so the bar never opens blank.
@@ -889,9 +892,9 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
       return targets.length > 0 && targets.every(svgEnclosesRef);
     })(),
     svgFillPresent,
-    onAddSvgFill: onAddSvgFill,
-    onSvgFillOpenChange: onSvgFillOpenChange,
-    onSvgFill: onSvgFill,
+    onAddSvgFill,
+    onSvgFillOpenChange,
+    onSvgFill,
     // The Pattern page — a closed shape's tile fill. Offered where
     // the format allows one at all (shapePatternFills): the toolbar
     // can put the TILE TOOL in hand, or the format asks for fills
@@ -917,7 +920,7 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     ),
     onSvgPatternToggleTileSet: svgPatternPresent
       ? onSvgPatternToggleTileSet : undefined,
-    onSvgPatternOpenChange: onSvgPatternOpenChange,
+    onSvgPatternOpenChange,
     // Add, Remove and every row above them go over the WHOLE
     // selection, like the Stroke and Fill pages'. Only EDIT is
     // singular: the tiles are painted on the canvas inside a shape,
@@ -933,11 +936,11 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     // The fill's own colour, on the Fill page where it belongs — it
     // had no control at all there once the swatches moved to the
     // shared Color page, which is the bug this row closes.
-    onSvgFillColor: onSvgFillColor,
+    onSvgFillColor,
     endpointsOpen: endpointsOpen && svgEditable,
     endpoints: selectedSvg ? endpointsModelOf(selectedSvg) : undefined,
-    onEndpointsOpenChange: onEndpointsOpenChange,
-    onEndpoints: onEndpoints,
+    onEndpointsOpenChange,
+    onEndpoints,
     // The Transform bar: one vector at a time — a rotation slider and
     // Create copies both act on one object's own angle and place.
     // The Copies page, for ONE object or for a whole selection: a
@@ -951,16 +954,16 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     // multi-selection (no kind row of its own) that it has a Copies
     // tab at all.
     onTransformCopies: transformCopyable ? onTransformCopies : undefined,
-    onTransformOpenChange: onTransformOpenChange,
-    onTransformCopiesPreview: onTransformCopiesPreview,
+    onTransformOpenChange,
+    onTransformCopiesPreview,
     copiesSticky,
-    onCopiesSticky: onCopiesSticky,
-    onPickSvgFillColor: onPickSvgFillColor,
-    onShadowColor: onShadowColor,
-    onGlowColor: onGlowColor,
-    onBorderColor: onBorderColor,
-    onTextColor: onTextColor,
-    onFrameBackgroundColor: onFrameBackgroundColor,
+    onCopiesSticky,
+    onPickSvgFillColor,
+    onShadowColor,
+    onGlowColor,
+    onBorderColor,
+    onTextColor,
+    onFrameBackgroundColor,
     // The Opacity bar (whole-object opacity + edge soften), shared by
     // images and the closed vector shapes. Seeded from the object's
     // current values with the defaults resolved (opaque, hard edges) so
@@ -972,18 +975,18 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     showPatternOptions: patternEditable,
     // Vectors and patterns together: Stroke alone, applied to all.
     showStrokeOptions: mixedStrokeEditable,
-    patternBarOpen: patternBarOpen,
-    onPatternBarOpenChange: onPatternBarOpenChange,
+    patternBarOpen,
+    onPatternBarOpenChange,
     patternSymmetry: patternSymmetryKey(selectedPattern?.symmetry),
-    onPatternSymmetry: onPatternSymmetry,
-    patternTiles: pattern.tiles,
-    patternRecentTiles: pattern.recent,
-    patternTool: pattern.subTool.kind,
-    patternActiveTileId: pattern.subTool.kind === 'tile' ? pattern.subTool.spriteId ?? null : null,
-    onPatternPickTile: onPatternPickTile,
-    patternTileTransforms: pattern.transforms,
-    onPatternSetTileTransform: onPatternSetTileTransform,
-    onPatternArmTool: onPatternArmTool,
+    onPatternSymmetry,
+    patternTiles,
+    patternRecentTiles: patternRecent,
+    patternTool: patternSubTool.kind,
+    patternActiveTileId: patternSubTool.kind === 'tile' ? patternSubTool.spriteId ?? null : null,
+    onPatternPickTile,
+    patternTileTransforms,
+    onPatternSetTileTransform,
+    onPatternArmTool,
     // The Tile page's Make Colorable button, offered for the same
     // selection the rest of the pattern pages are (every member a
     // pattern, none locked). It is the one press on the sheet that
@@ -992,14 +995,14 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     // used to: the way INTO the grid is the canvas's floating Edit
     // capsule, which is where you already are.)
     onPatternMakeColorable: patternEditable ? onPatternMakeColorable : undefined,
-    onPatternGridAction: onPatternGridAction,
+    onPatternGridAction,
     patternAllowBorder: selectedPattern?.allowBorderConnections !== false,
-    onPatternToggleBorder: onPatternToggleBorder,
+    onPatternToggleBorder,
     // The Shapes page: what THIS pattern is made of. Offered for the
     // same selection the rest of the pattern pages are; a pattern
     // that has never said otherwise reads as the default families.
     patternTileSets: patternEditable
-      ? patternTileSetRows(PATTERN_TILE_FAMILIES, pattern.enabledSets)
+      ? patternTileSetRows(PATTERN_TILE_FAMILIES, patternEnabledSets)
       : undefined,
     onPatternToggleTileSet: patternEditable ? onPatternToggleTileSet : undefined,
     opacityOpen: opacityOpen
@@ -1011,7 +1014,7 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     // island is raster brushwork with no fill, border or stroke of its
     // own, so its page keeps the one row it always had.
     onPickFadeColor: selected && selected.kind !== 'paint' ? onPickFadeColor : undefined,
-    onOpacityOpenChange: onOpacityOpenChange,
+    onOpacityOpenChange,
     // A multi-selection is offered the page only when a member can
     // take it: one of host items alone has no opacity, and the page
     // stood there writing to nothing.
@@ -1022,14 +1025,14 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     // showTextStyle).
     showInvert: stickerEditable,
     inverted: stickerInverted,
-    onInvert: onInvert,
+    onInvert,
     textStyleOpen: textStyleOpen && textStyleEditable,
     textStyle: selected?.kind === 'text' ? textStyleToModel(selected.item.style) : undefined,
     fonts,
-    onTextStyleOpenChange: onTextStyleOpenChange,
-    onTextStyle: onTextStyle,
-    onPickTextColor: onPickTextColor,
-    onResetTextStyle: onResetTextStyle,
+    onTextStyleOpenChange,
+    onTextStyle,
+    onPickTextColor,
+    onResetTextStyle,
     // A DrawBots bot or the arena (docs/drawBot.md §5.7): its pages
     // and the common-row buttons it withholds. The panel checks them
     // before the rig and the vectors.
@@ -1039,7 +1042,7 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     // unlocked frame — a locked frame shows only the common actions.
     showFrameOptions: frameEditable,
     frameBackgroundColor: frameRect?.fillColor ?? defaultFrameBackground,
-    onPickFrameBackground: onPickFrameBackground,
+    onPickFrameBackground,
     // Ungroup here serves the FRAME only (its own type options). A
     // multi-selection's structural actions — Group / Ungroup / Merge /
     // Layout — left the panel for the floating capsule over it, so none
@@ -1051,11 +1054,11 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     // thing — closed regions, not objects — and no UI reaches it yet, so
     // it stays unset here.
     onUngroup: selectedFrameId ? onUngroupFrame : undefined,
-    onRotate: onRotate,
+    onRotate,
     onMirrorH: () => onMirror('h'),
     onMirrorV: () => onMirror('v'),
-    onDuplicate: onDuplicate,
-    onToggleLock: onToggleLock,
-    onDelete: onDelete,
+    onDuplicate,
+    onToggleLock,
+    onDelete,
   };
 }
