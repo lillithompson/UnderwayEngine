@@ -257,9 +257,32 @@ first, then the pointer bump in each app).
    exported), and `createEditorSession` inferred the tool literal handed
    in (now `NoInfer<TTool>`; an app still names its three type arguments
    once in a constructor of its own, Sol's `createSolSession`, because
-   `TOps` has nothing to infer from). **Not shipped**: the apps' ranges
-   cannot be reviewed by the process as it stands — see §5. Left for the
-   owner from the migrations: Sol's `shellWiring` and
+   `TOps` has nothing to infer from). Shipped in the three apps on
+   2026-10-20 once the review could fold the move (§5): CozyJournal in two
+   rounds (round 1 blocked on comments naming the deleted tap kinds and
+   `drawnPose.rigDrawnFrame`, the Figure's `tap` with no test, and the
+   grouping rule below with no test in any app's tree — the engine's
+   editorSession.test pins it since 11d03fd), Sol in one, DrawBot in two
+   (round 1 blocked on a dead duplicate `copyRunName`, the unpinned
+   `import './extension'` in EditorHost — a jest setup file installs the
+   host for every suite, so losing the import left every suite green —
+   and a `withSim` in docs/drawBot.md). What the three reviews left for
+   later: Sol's `setCycleCursor` now goes through the engine's
+   `withHostDoc`, which reconciles the selection where Sol's `withDoc` did
+   not, so a step back or forward with a seed GROUP selected clears it
+   (narrow; Sol installs no items adapter and a group id resolves through
+   neither findItem nor the frame check — an `items.selectionLive` for
+   seed groups, or withHostDoc leaving the selection alone, would settle
+   it); Sol's shell commits through the engine's `commitEntry`, so
+   `{ entry: [], hostOps: [] }` pushes a vacuous step where `commitSol`
+   read an empty array as none (every caller guards today); Sol pins no
+   `import './extension'` at its install site the way DrawBot now does;
+   both Sol and DrawBot keep single-line `editorSession` imports in some
+   forty test files; CozyJournal's canvasTap.test keeps four imports only
+   string pins use, and two trimmed suites' headers describe the moved
+   cases; DrawBot's docEdit.ts header still says `withSim`; and Sol's
+   scripts/__tests__/underwayConfig.test.ts asserts a review for a path
+   that no longer exists. Left for the owner from the migrations: Sol's `shellWiring` and
    `paintTrimOnDeselect` tests pin lines of the ENGINE's editorSession
    (the stacks' spelling, `trimDeselectedPaint<S`), which an engine
    refactor will break until they move here or read a looser shape; and
@@ -422,9 +445,14 @@ line of context and removals collapsed, the way `copySources` already
 shows a changed copy, and listed when byte-identical (`classifyMoves`,
 `engineMoves`; `gates.md` "Moves"); and the engine's lockfile is left out
 of the appended diff as the project's is. What is hashed is still the full
-diff, so no record's key moved. Stages 5 and 6 (CanvasSurface,
-EditorShell: 7,000 and 10,000 lines) have the same shape and ride the
-same rule.
+diff, so no record's key moved. With it the three ranges shipped the same
+day: CozyJournal's prompt 3,293 → 516 KB, Sol's 859 KB and DrawBot's
+890 KB (each about forty-five files folded, a dozen of them kept and
+trimmed), the two larger ones within reach of the limit but inside it.
+Stages 5 and 6 (CanvasSurface, EditorShell: 7,000 and 10,000 lines) have
+the same shape and ride the same rule; if one of their ranges is still
+too long, the next step is the one above — a pointer bump whose engine
+range is already reviewed treated as cleared.
 
 Two things the first wiring taught: `git reset --hard` in a clone with
 `submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
