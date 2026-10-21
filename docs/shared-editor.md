@@ -452,6 +452,20 @@ first, then the pointer bump in each app).
    between CozyJournal and DrawBot and absent from Sol, which gains them
    unused — the arrangement editor-ui already has with CozyJournal's rig
    pages (§4.3, "The rig's place"). `regionChromeScreen.ts` and
+   `regionChromeScreen.ts`'s 60 lines of DrawBot drift turned out to be a
+   whole feature CozyJournal's copy has none of — the FORWARD ARROW
+   (`EditorConfig.forwardArrow`, `ForwardArrow`, `forwardArrowPath`,
+   `writeForwardArrow`), the faint screen-space guide saying the top of a
+   page leads, which DrawBot's bot look page carries and no other page
+   does. It is adopted into the package rather than dropped, by this
+   section's own rule in §4.3: it is pure, it is additive (no CozyJournal
+   caller can see it), and it reads the module's private `sx`/`sy`, so
+   leaving it behind would have meant DrawBot keeping a copy of this
+   chrome's camera maths beside the package's. Its two pure describes
+   moved with it; WHICH page carries an arrow, and DrawBot's surface
+   group for it, stay in that app. Found by DrawBot's typecheck, which is
+   the gate that sees a dropped export at all.
+
    `maskWordScale.ts` were the two that looked like leaves and were not:
    `maskWordScale` imports `@/web/formats/scaffold` and
    `templateNodes`, and `selectionShapeOutline` imports
@@ -492,8 +506,8 @@ first, then the pointer bump in each app).
    `panelModel` pins already do (§4.3's open call covers both).
    `fontsEpoch.test.ts` was identical in all three apps and moved whole,
    and `fontFamily.test.ts` is new, over the seam with no pack installed,
-   with one, and after one is taken away. Editor package 58 suites / 1,163
-   tests; engine 357 of 358 (cameraRoll's host dependency, as before).
+   with one, and after one is taken away. Editor package 59 suites / 1,171
+   tests; engine 358 of 359 (cameraRoll's host dependency, as before).
    `NodeLayer.tsx` itself is typechecked only in the apps, as every
    component in this package already is — no engine suite imports one, the
    engine having no renderer — so what the package pins of it is its source

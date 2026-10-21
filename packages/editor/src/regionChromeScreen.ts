@@ -494,3 +494,63 @@ export function writeRegionChrome(
   held.forEach((c) => c.remove());
   return fresh;
 }
+
+// ── The forward arrow (EditorConfig.forwardArrow) ───────────────────────
+// A page whose TOP means something says so: DrawBot's bot look page
+// (its configs/botLook, docs/drawBot.md §5.1), where whatever is at the
+// top of the drawing leads when the bot moves. Without it a user draws a car facing right and
+// it drives sideways. Faint, outside the page, and SCREEN-SPACE like the
+// rest of this chrome, so it is never part of the picture: it does not
+// print, export, or take a hit, and it is re-anchored through the camera
+// on every pan/zoom frame (one `d` write) like the midline.
+
+/** A world-space arrow, in L0 cells: up the page from `tailY` to `tipY`
+ *  at `x`. */
+export interface ForwardArrow {
+  x: number;
+  tailY: number;
+  tipY: number;
+}
+
+/** The arrow's ink: the midline's, fainter, since it says less. */
+export const FORWARD_ARROW_COLOR = 'rgba(40,40,40,0.3)';
+/** Its line weight, screen px. */
+export const FORWARD_ARROW_WIDTH = 3;
+/** The head's half-width and depth, as a share of the shaft's length. */
+export const FORWARD_ARROW_HEAD = 0.35;
+
+/** The arrow through the camera as one path: the shaft, then the head's
+ *  two strokes back from the tip. Empty when the scale is not positive. */
+export function forwardArrowPath(arrow: ForwardArrow, t: WorldTransform): string {
+  if (!(t.scale > 0)) return '';
+  const x = sx(t, arrow.x);
+  const tail = sy(t, arrow.tailY);
+  const tip = sy(t, arrow.tipY);
+  const head = Math.abs(tail - tip) * FORWARD_ARROW_HEAD;
+  const back = tip < tail ? tip + head : tip - head;
+  return `M${x} ${tail}L${x} ${tip}M${x - head} ${back}L${x} ${tip}L${x + head} ${back}`;
+}
+
+/** Write the arrow into its group (one <path>, minted once), or clear it
+ *  when there is none. Called per camera frame and per render, never
+ *  through React state. */
+export function writeForwardArrow(group: SVGGElement | null, t: WorldTransform, arrow: ForwardArrow | null): void {
+  if (!group) return;
+  if (arrow === null) {
+    if (group.childNodes.length > 0) group.replaceChildren();
+    return;
+  }
+  // The group holds the one path: its first child, with no query per frame.
+  let path = group.firstChild as SVGPathElement | null;
+  if (!path) {
+    path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('data-forward-arrow', '');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', FORWARD_ARROW_COLOR);
+    path.setAttribute('stroke-width', String(FORWARD_ARROW_WIDTH));
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    group.appendChild(path);
+  }
+  path.setAttribute('d', forwardArrowPath(arrow, t));
+}
