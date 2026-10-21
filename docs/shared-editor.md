@@ -294,7 +294,16 @@ first, then the pointer bump in each app).
    string pins use, and two trimmed suites' headers describe the moved
    cases; DrawBot's docEdit.ts header still says `withSim`; and Sol's
    scripts/__tests__/underwayConfig.test.ts asserts a review for a path
-   that no longer exists. Left for the owner from the migrations: Sol's `shellWiring` and
+   that no longer exists. Three of those were cleared by stage 4, which
+   touched the files they sat in: Sol pins its `import './extension'`
+   install site now (`web/sol/doc/__tests__/shellWiring.test.ts`, beside a
+   pin that Sol fills none of the OUTLINE seam), Sol's
+   `scripts/__tests__/underwayConfig.test.ts` names a path the tree has,
+   and DrawBot's `docEdit.ts` header says `withHostDoc`. The rest stand:
+   Sol's `setCycleCursor` through `withHostDoc`, the vacuous empty-ops
+   step, the single-line `editorSession` imports in some forty test files
+   each in Sol and DrawBot, and CozyJournal's `canvasTap.test` imports that
+   only string pins use. Left for the owner from the migrations: Sol's `shellWiring` and
    `paintTrimOnDeselect` tests pin lines of the ENGINE's editorSession
    (the stacks' spelling, `trimDeselectedPaint<S`), which an engine
    refactor will break until they move here or read a looser shape; and
@@ -303,14 +312,18 @@ first, then the pointer bump in each app).
 4. **Done — outline and properties glue** (engine, 2026-10-20). The
    measurement, of the files this stage names:
 
-   | What | Lines (Cozy) | Sol differs by | DrawBot differs by |
+   | What | Lines (Cozy) | Sol | DrawBot |
    |---|---|---|---|
-   | `web/editor/frameDrop.ts` | 152 | 0 (an import re-wrap) | 0 (an import re-wrap) |
-   | `web/editor/sceneOutlineModel.ts` | 233 | 60 | 70 |
-   | the shell's panel FACTS (its "Render" block) | 336 | 4 | 10 |
-   | the shell's panel MODEL (the `ObjectPropertiesPanel` literal) | 358 | 24 | 32 |
+   | `web/editor/frameDrop.ts` | 152 | 0 | 6 (an import re-wrap) |
+   | `web/editor/__tests__/frameDrop.test.ts` | 273 | 4 | 2 |
+   | `web/editor/sceneOutlineModel.ts` | 233 | 117 | 94 |
+   | the shell's panel FACTS (its "Render" block) | 336 | 6 | 14 |
+   | the shell's panel MODEL (the `ObjectPropertiesPanel` literal) | 359 | 24 | 35 |
    | the shell's model ↔ effect converters (its tail) | 160 | 0 | 0 |
    | the shell's bar HANDLERS (hue row, opacity, stroke, fill, pattern fill, endpoints, transform, text, eyedropper arm, pattern pages) | 1,670 | 62 | 20 |
+
+   The Sol and DrawBot columns are lines that DIFFER against CozyJournal's
+   copy, counted as §1's are — every line the diff shows, on either side.
 
    `frameDrop.ts` and the converters moved verbatim. `sceneOutlineModel.ts`
    moved in CozyJournal's version with two generalizations and the outline
@@ -350,8 +363,34 @@ first, then the pointer bump in each app).
    .test`, 13) and one unioned from the three apps' own
    (`sceneOutlineModel.test`, 29, with the outline seam driven over a
    made-up app's badges and markers); `frameDrop.test` moved whole. Editor
-   package 46 suites; engine 346 of 347 (cameraRoll's host dependency, as
-   before).
+   package 47 suites / 1,015 tests; engine 346 of 347 (cameraRoll's host
+   dependency, as before).
+
+   Shipped in the three apps on 2026-10-20 — CozyJournal first, so an
+   engine-side finding would be fixed once (none was). CozyJournal passed
+   in one round, Sol in one, DrawBot in two; every app then took a round of
+   its reviewer's suggestions, and CozyJournal's second round caught a bug
+   in one of those FIXES, which is the one thing worth carrying forward:
+   its outline host's `null` fast path asked `rigFigureIds`, and
+   `findRigs` behind it wants the record AND its figure AND a parseable
+   record, so an ORPHANED `poser:pose:<id>` node — figure deleted, or a
+   record that will not parse — would have lost its `chrome` and become a
+   visible row named from the first 24 characters of its pose JSON. A host
+   answering `null` for "none of my kinds here" has to ask about its DATA,
+   not about what resolves. What the reviews left for later: the ~20 pins
+   per app that now restate this package's `panelModel` internals rather
+   than what each shell hands in — the engine's `panelModel.test` covers
+   the behaviour and runs in two of the three trees — which is the same
+   call the owner already holds for Sol's engine-source pins in item 3; and
+   DrawBot's reviewer noticed a second behaviour rider nobody had named,
+   that a trail node's `trail:<botId>:<seq0>` tag is a tag by `isTagName`
+   too, so an unconsolidated trail's row reads "Drawing" rather than the
+   raw tag (pinned there now). Sol's reviewer found one thing for the gate
+   itself: `tooling/config.js`'s always-review list still names
+   `^web/editor/editorSession\.ts$`, a path no app that has taken stage 3
+   still has — harmless, since the pointer entry brings engine changes
+   under review anyway, but a dead pattern for whoever next edits the
+   gate (an agent does not edit `tooling/` on its own account, §5).
 5. **Canvas.** `CanvasSurface.tsx` and `NodeLayer.tsx` with the `layers`
    extension; CozyJournal's rig layer, Sol's plant layer and DrawBot's sim
    layer become host layers.
@@ -548,6 +587,16 @@ Stages 5 and 6 (CanvasSurface, EditorShell: 7,000 and 10,000 lines) have
 the same shape and ride the same rule; if one of their ranges is still
 too long, the next step is the one above — a pointer bump whose engine
 range is already reviewed treated as cleared.
+
+**Stage 4 shipped well inside it** (2026-10-20): CozyJournal's prompt
+278 KB, Sol's 294, DrawBot's 300 — about a third of stage 3's, with the
+same shape of range (a file deleted here, the same file added under
+`packages/editor/src` there) and the same number of commits. The move
+folding is what makes the difference; stage 4 moved less raw text than
+stage 3 did, which is the rest of it. Each app's follow-up commits — a
+round of its reviewer's suggestions — reviewed at 22 to 45 KB, and
+CozyJournal's last one (9 changed lines) fell under `review.js`'s own
+30-line floor and needed no review at all.
 
 Two things the first wiring taught: `git reset --hard` in a clone with
 `submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
