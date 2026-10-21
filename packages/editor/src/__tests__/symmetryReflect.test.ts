@@ -25,8 +25,9 @@ import {
 // Canvas symmetry through EDITS: wrapping an action's entry in
 // withSymmetryReflection refreshes the orbit of everything the entry
 // touches — stale partners leave, partner copies of the new state arrive,
-// one undo step. These pin the replace-orbit semantics, the guards that
-// keep it from fighting the user, and the gesture / panel wiring.
+// one undo step. These pin the replace-orbit semantics and the guards that
+// keep it from fighting the user; each app's gesture and panel wiring is
+// pinned in its own tree (docs/shared-editor.md §4.2 item 5).
 
 const INK: RGBColor = { r: 10, g: 20, b: 30 };
 const FRAME = { cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 8 };

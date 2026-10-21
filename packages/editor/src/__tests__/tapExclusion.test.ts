@@ -5,6 +5,9 @@ import { overlayNearPoint, TAP_EXCLUSION_RADIUS } from '../tapExclusion';
 // whole screen — so a thumb reaching for the tile radial or the capsules
 // along the bottom and falling a few points short placed a tile instead.
 // A tap within one undo-button radius of any floating control is refused.
+// This pins the radius and the geometry; that an app's tile tap consults
+// them before placing anything is pinned in its own tree
+// (docs/shared-editor.md §4.2 item 5).
 
 /** A DOM stand-in: `canvas` with a child, and a control outside it. */
 function fakeDom() {

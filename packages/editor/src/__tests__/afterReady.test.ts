@@ -1,8 +1,10 @@
 import { AFTER_READY_FALLBACK_MS, afterReady, pageIsReady, __resetAfterReadyForTest } from '../afterReady';
 
-// §3.2b of docs/response_open_speed.md: module-scope background work ran
-// while the page was still booting behind the splash — a CMS fetch on the
-// same radio and the same thread as the open it was holding up.
+// §3.2b of CozyJournal's docs/response_open_speed.md: module-scope
+// background work ran while the page was still booting behind the splash —
+// a CMS fetch on the same radio and the same thread as the open it was
+// holding up. This pins the gate itself; WHICH of an app's work waits on it
+// is pinned in that app's own tree (docs/shared-editor.md §4.2 item 5).
 
 describe('waiting for the frame the splash lifts on', () => {
   afterEach(__resetAfterReadyForTest);

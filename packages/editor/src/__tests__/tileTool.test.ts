@@ -5,9 +5,14 @@ import { patternCellTint, PATTERN_BASE_INK } from '@/engine/patternObject';
 import { makeBlankComposition } from '../blankComposition';
 import { buildPlaceLineShape, buildPlacePolyline, buildRotateSelected } from '../editorSession';
 import {
-  buildPlaceTile, filledPatternCellCount,
-  gatherTileConstraints, MAX_TILE_CELLS_TOTAL, mergeTileStrokeOps, TILE_ENDPOINT_TOL_FRAC,
-  tileGridLevelOf, tileTapJoinsPattern,
+  buildPlaceTile,
+  filledPatternCellCount,
+  gatherTileConstraints,
+  MAX_TILE_CELLS_TOTAL,
+  mergeTileStrokeOps,
+  TILE_ENDPOINT_TOL_FRAC,
+  tileGridLevelOf,
+  tileTapJoinsPattern,
 } from '../tileTool';
 import { paintStampPoints } from '../paintBrush';
 
@@ -15,7 +20,9 @@ import { paintStampPoints } from '../paintBrush';
 // picked to connect with what already touches the cell's 8 border
 // connection points — neighbouring tiles' own connection points, and the
 // loose endpoints of drawn lines. These pin the placement builder the tap
-// commits through and the toolbar/gesture wiring around it.
+// commits through; each app's own toolbar and gesture wiring, and which
+// tools its registry carries, are pinned in its own tree
+// (docs/shared-editor.md §4.2 item 5).
 //
 // Editing is OPT-IN. The tool creates: a dragged region mints a fresh
 // Pattern object and joins nothing. The one object it may rework is the

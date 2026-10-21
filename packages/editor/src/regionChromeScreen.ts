@@ -2,13 +2,14 @@ import { BASE_CELL_PX } from './cameraMath';
 import type { EditableRegion } from './editableRegion';
 import type { WorldTransform } from './symmetryAxesScreen';
 
-// The editable region's chrome, in SCREEN space (docs/social_game_spec.md
-// §7.3): a grey veil over everything that is not the turn's, a dotted
-// line on the midline, and green circles on the connection points — all drawn in
-// the same viewport-sized <svg> as the paint veil and the symmetry axes,
-// re-anchored through the camera on every pan/zoom frame (applyLiveCamera)
-// and never as React state. A world-space overlay crashed WKWebView once
-// (§1.3); nothing here widens the world layer.
+// The editable region's chrome, in SCREEN space (CozyJournal's
+// docs/social_game_spec.md §7.3): a grey veil over everything that is not
+// the turn's, a dotted line on the midline, and green circles on the
+// connection points — all drawn in the same viewport-sized <svg> as the
+// paint veil and the symmetry axes, re-anchored through the camera on
+// every pan/zoom frame (applyLiveCamera) and never as React state. A
+// world-space overlay crashed WKWebView once (§1.3); nothing here widens
+// the world layer.
 
 /** The veil's fill over everything that is not yours. */
 export const REGION_VEIL_FILL = 'rgba(120,124,128,0.55)';

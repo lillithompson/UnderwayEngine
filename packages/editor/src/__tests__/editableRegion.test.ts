@@ -2,8 +2,10 @@ import { bboxInRegion, clampToRegion } from '../editableRegion';
 import { markerScreenPoints, midlineSegment, regionVeilPath } from '../regionChromeScreen';
 import { BASE_CELL_PX, WORLD_CELLS } from '../cameraMath';
 
-// The editable band (docs/social_game_spec.md §7.3): the clamp the draw
-// and drag paths share, the bbox rule, and the screen-space chrome.
+// The editable band (CozyJournal's docs/social_game_spec.md §7.3): the
+// clamp the draw and drag paths share, the bbox rule, and the screen-space
+// chrome. How an app's canvas and shell wire it up is pinned in that app's
+// own tree (docs/shared-editor.md §4.2 item 5).
 
 /** The top band of a board 32 cells wide and 42 tall — bounded on all
  *  four sides, the way a Creature turn's band is (the real board is 8 ×

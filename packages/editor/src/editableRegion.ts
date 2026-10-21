@@ -1,8 +1,8 @@
-// The editable band of a page (docs/social_game_spec.md §7.3): a format
-// that lets a turn draw in one part of the canvas alone — Creature's
-// half — hands the canvas a rect in world cells, and every draw sample
-// and shape-drag point is CLAMPED into it here. Pure, so the drag and
-// the draw paths share one rule and the tests pin it.
+// The editable band of a page (CozyJournal's docs/social_game_spec.md
+// §7.3): a format that lets a turn draw in one part of the canvas alone —
+// Creature's half — hands the canvas a rect in world cells, and every
+// draw sample and shape-drag point is CLAMPED into it here. Pure, so the
+// drag and the draw paths share one rule and the tests pin it.
 
 export interface EditableRegion {
   yMin: number;

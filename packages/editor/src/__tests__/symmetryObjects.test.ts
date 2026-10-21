@@ -10,8 +10,9 @@ import { withSymmetryCopies } from '../symmetryObjects';
 
 // The canvas Symmetry setting mirrors every VECTOR mark at commit: the
 // entry gains one copy per orbit map, each the same object carried through
-// the isometry point by point. These pin the copy math and the gesture
-// wiring that routes every drawing tool through it.
+// the isometry point by point. These pin the copy math; the gesture wiring
+// that routes each app's drawing tools through it is pinned in its own tree
+// (docs/shared-editor.md §4.2 item 5).
 
 const INK: RGBColor = { r: 10, g: 20, b: 30 };
 const FRAME = { cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 8 };

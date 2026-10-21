@@ -1,15 +1,27 @@
 import { CompositionState, PATTERN_SYMMETRY_OFF, PatternObject, PatternSymmetry } from '@/engine/types';
 import {
-  applySymmetryAffine, applySymmetryAffineVec, canvasSymmetryOn, canvasSymmetrySpecOf,
-  patternOwnSymmetry, canvasWideSymmetry, canvasSymmetryStamps, SYMMETRY_MENU_MODES, symmetryMenuFlags,
-  symmetryMenuKeyOf, symmetryMenuLabel, symmetryAffineMaps, symmetryOverlayModel, symmetryToolbarIcon,
+  applySymmetryAffine,
+  applySymmetryAffineVec,
+  canvasSymmetryOn,
+  canvasSymmetrySpecOf,
+  patternOwnSymmetry,
+  canvasWideSymmetry,
+  canvasSymmetryStamps,
+  SYMMETRY_MENU_MODES,
+  symmetryMenuFlags,
+  symmetryMenuKeyOf,
+  symmetryMenuLabel,
+  symmetryAffineMaps,
+  symmetryOverlayModel,
+  symmetryToolbarIcon,
 } from '../canvasSymmetry';
 import { makeBlankComposition } from '../blankComposition';
 
 // The canvas Symmetry control (Facet's tile-editor mirror, ported): the
 // toolbar cycle + modal choose the mode, the frame is planted on the view
-// at toggle-on, and Tile stamps mirror about it. These pin the pure logic
-// and the shell/canvas wiring.
+// at toggle-on, and Tile stamps mirror about it. These pin the pure logic;
+// each app's own shell and canvas wiring is pinned in its own tree
+// (docs/shared-editor.md §4.2 item 5).
 
 const OFF = PATTERN_SYMMETRY_OFF;
 const H: PatternSymmetry = { ...OFF, mirrorH: true };
