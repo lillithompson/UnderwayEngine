@@ -417,3 +417,139 @@ describe('review.js check in a scratch repository', () => {
     expect(full).toContain('+export const same = 1;');
   });
 });
+
+describe('classifyMoves (a file the project deletes that the engine adds)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { classifyMoves } = require('../review.js');
+
+  it('pairs by content first, then by name and the longest shared path tail, each file once', () => {
+    const deleted = new Map([
+      ['web/editor/same.ts', 'b1'],
+      ['web/editor/components/X.tsx', 'b2'],
+      ['web/other/X.tsx', 'b3'],
+      ['web/editor/gone.ts', 'b4'],
+    ]);
+    const added = new Map([
+      ['packages/editor/src/same.ts', 'b1'],
+      ['packages/editor/src/components/X.tsx', 'b9'],
+      ['packages/editor/src/fresh.ts', 'b8'],
+    ]);
+    const { unchanged, changed } = classifyMoves(deleted, added);
+    expect(unchanged).toEqual([{ from: 'web/editor/same.ts', to: 'packages/editor/src/same.ts' }]);
+    // X.tsx: the components/ tail wins over the stray X.tsx elsewhere.
+    expect(changed).toEqual([{ from: 'web/editor/components/X.tsx', to: 'packages/editor/src/components/X.tsx' }]);
+    // fresh.ts has no partner; gone.ts was deleted for good.
+  });
+
+  it('is content first even when the names differ', () => {
+    const { unchanged, changed } = classifyMoves(
+      new Map([['web/content/planarFaces.ts', 'b1']]),
+      new Map([['packages/editor/src/planarFaces.ts', 'b1'], ['packages/editor/src/other.ts', 'b2']]),
+    );
+    expect(unchanged).toEqual([{ from: 'web/content/planarFaces.ts', to: 'packages/editor/src/planarFaces.ts' }]);
+    expect(changed).toEqual([]);
+  });
+});
+
+describe('review.js pending --prompt folds a move into the engine', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires */
+  const { execFileSync, spawnSync } = require('node:child_process');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  /* eslint-enable @typescript-eslint/no-var-requires */
+  const REVIEW = path.join(__dirname, '..', 'review.js');
+  const ENV = {
+    ...process.env,
+    GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t',
+    GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1',
+  };
+  let base: string;
+  afterEach(() => fs.rmSync(base, { recursive: true, force: true }));
+
+  it('lists an identical moved file, diffs a changed one from the deleted file, and leaves the engine lockfile out', () => {
+    base = fs.mkdtempSync(path.join(os.tmpdir(), 'review-move-'));
+    const run = (cwd: string, ...args: string[]) =>
+      execFileSync('git', ['-c', 'protocol.file.allow=always', ...args], { cwd, env: ENV, encoding: 'utf8' }).trim();
+    // The engine: a repo with a lockfile and nothing of the editor yet.
+    const engine = path.join(base, 'engine');
+    fs.mkdirSync(engine);
+    run(engine, 'init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(engine, 'package-lock.json'), '{"v":1}\n');
+    fs.writeFileSync(path.join(engine, 'README'), 'engine\n');
+    run(engine, 'add', '.');
+    run(engine, 'commit', '-q', '-m', 'engine root');
+    const e0 = run(engine, 'rev-parse', 'HEAD');
+    // The project: two editor files, the engine vendored at e0.
+    const origin = path.join(base, 'origin.git');
+    execFileSync('git', ['init', '-q', '--bare', '-b', 'main', origin], { env: ENV });
+    const dir = path.join(base, 'work');
+    execFileSync('git', ['clone', '-q', origin, dir], { env: ENV });
+    run(dir, 'checkout', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(dir, 'underway.config.json'), JSON.stringify({ name: 'sol' }));
+    fs.mkdirSync(path.join(dir, 'web', 'editor'), { recursive: true });
+    const same = 'export const same = 1;\n';
+    const cut = ['keep', 'gone1', 'gone2', 'gone3', 'gone4', 'gone5', 'tail', ''].join('\n');
+    fs.writeFileSync(path.join(dir, 'web', 'editor', 'same.ts'), same);
+    fs.writeFileSync(path.join(dir, 'web', 'editor', 'cut.ts'), cut);
+    const trim = ['pure1', 'pure2', 'pure3', 'pure4', 'pure5', 'shell pin', ''].join('\n');
+    fs.writeFileSync(path.join(dir, 'web', 'editor', 'trim.test.ts'), trim);
+    run(dir, 'submodule', 'add', '-q', engine, 'vendor/UnderwayEngine');
+    run(dir, 'add', '.');
+    run(dir, 'commit', '-q', '-m', 'root');
+    run(dir, 'push', '-q', 'origin', 'main');
+    // The engine takes the two files (one cut down), adds one of its own, and bumps its lockfile.
+    fs.mkdirSync(path.join(engine, 'packages', 'editor', 'src'), { recursive: true });
+    fs.writeFileSync(path.join(engine, 'packages', 'editor', 'src', 'same.ts'), same);
+    fs.writeFileSync(path.join(engine, 'packages', 'editor', 'src', 'cut.ts'), ['keep', 'added there', 'tail', ''].join('\n'));
+    fs.writeFileSync(path.join(engine, 'packages', 'editor', 'src', 'fresh.ts'), 'export const fresh = 2;\n');
+    fs.writeFileSync(path.join(engine, 'packages', 'editor', 'src', 'trim.test.ts'), trim);
+    fs.writeFileSync(path.join(engine, 'package-lock.json'), '{"v":2,"lock":"LOCKFILE-NOISE"}\n');
+    run(engine, 'add', '.');
+    run(engine, 'commit', '-q', '-m', 'engine takes the editor');
+    const e1 = run(engine, 'rev-parse', 'HEAD');
+    // The project deletes its copies and takes the pointer.
+    const sub = path.join(dir, 'vendor', 'UnderwayEngine');
+    run(sub, 'fetch', '-q', 'origin');
+    run(sub, 'checkout', '-q', e1);
+    fs.rmSync(path.join(dir, 'web', 'editor', 'same.ts'));
+    fs.rmSync(path.join(dir, 'web', 'editor', 'cut.ts'));
+    fs.writeFileSync(path.join(dir, 'web', 'editor', 'trim.test.ts'), 'shell pin\n');   // kept: its own pins stay
+    fs.writeFileSync(path.join(dir, 'web', 'editor', 'own.ts'), "import { same } from '@/editor/same';\n");
+    run(dir, 'add', '-A', 'web', 'vendor/UnderwayEngine');
+    run(dir, 'commit', '-q', '-m', 'the editor comes from the engine');
+
+    const r = spawnSync('node', [REVIEW, 'pending', '--prompt'], { cwd: dir, env: ENV, encoding: 'utf8' });
+    expect(r.status).toBe(0);
+    const out: string = r.stdout;
+    const section = (title: string) => out.split(`### ${title}`)[1].split('\n### ')[0];
+    expect(out).toContain('3 files this range MOVES into the engine');
+    expect(out).toContain('or keeps and trims, 1 of them');
+    expect(section('Moved into the engine unchanged (here before this range, added there)'))
+      .toContain(`web/editor/same.ts\tvendor/UnderwayEngine@${e1.slice(0, 8)}:packages/editor/src/same.ts`);
+    expect(section('Moved into the engine unchanged (here before this range, added there)'))
+      .toContain(`web/editor/trim.test.ts\tvendor/UnderwayEngine@${e1.slice(0, 8)}:packages/editor/src/trim.test.ts\t(kept here, trimmed: its own diff is below)`);
+    const changed = section("Moved into the engine and changed: diff from the file here before this range to the engine's");
+    expect(changed).toContain('--- web/editor/cut.ts');
+    expect(changed).toContain(`+++ vendor/UnderwayEngine@${e1.slice(0, 8)}:packages/editor/src/cut.ts`);
+    expect(changed).toContain('-… (5 lines removed)');
+    expect(changed).toContain('+added there');
+    const rest = section('Diff of everything else');
+    expect(rest).toContain('web/editor/own.ts');
+    expect(rest).toContain(`# ---- vendor/UnderwayEngine ${e0}..${e1} ----`);
+    expect(rest).toContain('packages/editor/src/fresh.ts');   // the engine's genuinely new file is still shown
+    expect(rest).not.toContain('export const same = 1;');     // neither half repeats the move
+    expect(rest).not.toContain('gone1');
+    expect(rest).not.toContain('LOCKFILE-NOISE');             // the engine's lockfile is left out too
+    // The kept file's own trim stays, its removed run collapsed; the engine's copy of it is not repeated.
+    expect(rest).toContain('web/editor/trim.test.ts');
+    expect(rest).toContain('-… (5 lines removed)');
+    expect(rest).not.toContain('-pure1');
+    expect(rest).not.toContain('+pure1');
+    // The record is keyed by the FULL diff, folding or not.
+    const recordFor = execFileSync('node', ['-e',
+      `process.stdout.write(require(${JSON.stringify(REVIEW)}).recordPath('origin/main..HEAD'))`,
+    ], { cwd: dir, env: ENV, encoding: 'utf8' });
+    expect(recordFor).toMatch(/[0-9a-f]{64}\.md$/);
+  });
+});

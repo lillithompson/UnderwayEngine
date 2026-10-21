@@ -68,8 +68,18 @@
  * source, it is listed by path; changed, it is diffed against the source,
  * with long runs of removed lines reduced to a count. A source not checked
  * out here is skipped, and its files are diffed in full as before. The
- * record is still keyed by the full diff. `pending --prompt` prints what
- * the reviewer would be given, starting no reviewer.
+ * record is still keyed by the full diff.
+ *
+ * Moves: in a range that bumps the engine pointer, a file the project
+ * deletes that the engine's appended diff adds — paired by content, else by
+ * name and the longest shared path tail — is a MOVE into the engine
+ * (docs/shared-editor.md: every stage of the shared editor's consolidation
+ * is one). It is shown once: listed when byte-identical, else diffed from
+ * the deleted file to the engine's with removals collapsed as a copy's are,
+ * and left out of both halves of the diff. The engine's lockfile is left
+ * out of the appended diff as the project's is. Hashing is untouched by
+ * either. `pending --prompt` prints what the reviewer would be given,
+ * starting no reviewer.
  *
  * Exit: 0 pass, not needed, or already cleared; 1 changes requested (or, for
  * check/pending, something left uncleared); 2 usage or setup error; 3 the
@@ -100,9 +110,12 @@ const TESTS = [/(^|\/)__tests__\//, /\.test\.[jt]sx?$/];
 // Lines that do not count toward LINE_THRESHOLD.
 const NOT_CODE = [...TESTS, /\.md$/, /(^|\/)package-lock\.json$/];
 
-// Left out of the diff the reviewer sees (it can still read them).
+// Left out of the diff the reviewer sees (it can still read them). The
+// same list applies inside the engine's appended diff (SUB_EXCLUDES): the
+// engine's lockfile was 478 KB of a 3.3 MB prompt once.
 const LOCKFILES = ['package-lock.json', 'backend/package-lock.json'];
 const DIFF_EXCLUDES = LOCKFILES.map((p) => `:(exclude)${p}`);
+const SUB_EXCLUDES = ['package-lock.json'].map((p) => `:(exclude)${p}`);
 
 // In a copied file's diff against its source, a run of more removed lines
 // than this is shown as a count: a cut is checked by the tests and the
@@ -185,6 +198,57 @@ function classifyCopies(added, tipBlobs, sources) {
       const from = sources.find((s) => s.blobs.has(p));
       if (from) changed.push({ path: p, source: from });
     }
+  }
+  return { unchanged, changed };
+}
+
+/**
+ * Which files MOVED across the two repositories in a range that bumps the
+ * engine pointer: `deleted` maps each path the project's diff deletes — or
+ * keeps and TRIMS, the pure half gone to the engine and its own pins left
+ * (engineMoves says which) — to its blob at the base, `added` each path the
+ * engine's appended diff adds to its blob at the new pointer. A pair with
+ * the same blob is `unchanged`
+ * (the file went over byte for byte); failing that, an added file pairs with
+ * the deleted file of the same basename whose path shares the longest tail
+ * with it (web/editor/components/X.tsx ↔ packages/editor/src/components/X.tsx
+ * over a stray X.tsx elsewhere) as `changed`. Each file pairs at most once.
+ * What the consolidation of the shared editor does at every stage
+ * (docs/shared-editor.md §5): shown once, as the delta, it is a review of
+ * what changed in the move rather than of two copies of 7,000 lines.
+ */
+function classifyMoves(deleted, added) {
+  const unchanged = [];
+  const changed = [];
+  const freeDeleted = new Map(deleted);
+  const byBlob = new Map();
+  for (const [p, blob] of freeDeleted) if (!byBlob.has(blob)) byBlob.set(blob, p);
+  const rest = [];
+  for (const [to, blob] of added) {
+    const from = byBlob.get(blob);
+    if (from !== undefined && freeDeleted.has(from)) {
+      unchanged.push({ from, to });
+      freeDeleted.delete(from);
+      byBlob.delete(blob);
+    } else rest.push(to);
+  }
+  const base = (p) => p.slice(p.lastIndexOf('/') + 1);
+  const sharedTail = (a, b) => {
+    const as = a.split('/'), bs = b.split('/');
+    let n = 0;
+    while (n < as.length && n < bs.length && as[as.length - 1 - n] === bs[bs.length - 1 - n]) n++;
+    return n;
+  };
+  for (const to of rest) {
+    let best = null;
+    for (const from of freeDeleted.keys()) {
+      if (base(from) !== base(to)) continue;
+      const tail = sharedTail(from, to);
+      if (!best || tail > best.tail) best = { from, tail };
+    }
+    if (!best) continue;
+    changed.push({ from: best.from, to });
+    freeDeleted.delete(best.from);
   }
   return { unchanged, changed };
 }
@@ -302,22 +366,85 @@ function rangeOf(spec) {
 /**
  * The diff of base..tip as the reviewer reads it, lockfiles and `exclude`
  * paths left out. A pointer bump shows as two SHAs, so what moved inside
- * the engine is appended.
+ * the engine is appended; `subExclude` names paths inside the engine to
+ * leave out of that (its lockfile, the files a move already shows) — only
+ * when SHOWING, never when hashing, so a record's key does not depend on
+ * what was folded.
  */
-function rangeDiff(files, base, tip, exclude = []) {
+function rangeDiff(files, base, tip, exclude = [], subExclude = null) {
   const skip = exclude.map((p) => `:(exclude,literal)${p}`);
   let diff = git(['diff', '--no-color', '--no-ext-diff', base, tip, '--', '.', ...DIFF_EXCLUDES, ...skip], { cwd: ROOT });
   const sub = CONFIG.submodule;
   if (files.some((f) => f.path === sub)) {
-    const at = (rev) => (tryGit(['ls-tree', rev, sub], { cwd: ROOT }) || '').split(/\s+/)[2];
-    const [from, to] = [at(base), at(tip)];
-    const inner = from && to && tryGit(['-C', sub, 'diff', '--no-color', from, to], { cwd: ROOT });
+    const { from, to } = pointerMove(base, tip);
+    const subSkip = subExclude ? ['--', '.', ...SUB_EXCLUDES, ...subExclude.map((p) => `:(exclude,literal)${p}`)] : [];
+    const inner = from && to && tryGit(['-C', sub, 'diff', '--no-color', from, to, ...subSkip], { cwd: ROOT });
     if (inner) diff += `\n# ---- ${sub} ${from}..${to} ----\n${inner}`;
     else if (!from) diff += `\n# ---- ${sub} added at ${to} ----\n`;
     else if (!to) diff += `\n# ---- ${sub} removed (was ${from}) ----\n`;
     else diff += `\n# ---- ${sub} moved ${from}..${to}; its diff is not available locally ----\n`;
   }
   return diff;
+}
+
+/** The engine commits a range moves the pointer between: {from, to}, either
+ *  undefined when the pointer is absent at that end. */
+function pointerMove(base, tip) {
+  const sub = CONFIG.submodule;
+  const at = (rev) => (tryGit(['ls-tree', rev, sub], { cwd: ROOT }) || '').split(/\s+/)[2];
+  return { from: at(base), to: at(tip) };
+}
+
+/**
+ * The files a pointer-bumping range MOVED into the engine (classifyMoves):
+ * what the project deletes paired with what the engine adds between the two
+ * pointers. {unchanged, changed, from, to, objects}: `objects` is the
+ * engine's object directory, so the changed ones can be diffed here across
+ * the two repositories without fetching. Nothing when the range does not
+ * move the pointer, or the engine's diff is not available locally.
+ */
+function engineMoves(c) {
+  const sub = CONFIG.submodule;
+  const none = { unchanged: [], changed: [], from: null, to: null, objects: null };
+  if (!c.files.some((f) => f.path === sub)) return none;
+  const { from, to } = pointerMove(c.base, c.sha);
+  if (!from || !to) return none;
+  const addedList = tryGit(['-C', sub, 'diff', '--name-only', '--no-renames', '-z', '--diff-filter=A', from, to], { cwd: ROOT });
+  if (addedList === null) return none;
+  // The project's side: what it deleted, and what it kept but changed — a
+  // test whose pure half went to the engine and whose shell pins stayed.
+  const status = git(['diff', '--name-status', '--no-renames', '-z', '--diff-filter=DM', c.base, c.sha], { cwd: ROOT }).split('\0').filter(Boolean);
+  const kept = new Set();
+  const sourcePaths = [];
+  for (let i = 0; i + 1 < status.length; i += 2) {
+    sourcePaths.push(status[i + 1]);
+    if (status[i] === 'M') kept.add(status[i + 1]);
+  }
+  const addedPaths = addedList.split('\0').filter(Boolean);
+  if (!sourcePaths.length || !addedPaths.length) return none;
+  const baseBlobs = parseLsTree(git(['ls-tree', '-r', '-z', c.base], { cwd: ROOT }));
+  const toBlobs = parseLsTree(git(['-C', sub, 'ls-tree', '-r', '-z', to], { cwd: ROOT }));
+  const sources = new Map(sourcePaths.filter((p) => baseBlobs.has(p) && !LOCKFILES.includes(p)).map((p) => [p, baseBlobs.get(p)]));
+  const added = new Map(addedPaths.filter((p) => toBlobs.has(p)).map((p) => [p, toBlobs.get(p)]));
+  const { unchanged, changed } = classifyMoves(sources, added);
+  const common = tryGit(['-C', sub, 'rev-parse', '--git-common-dir'], { cwd: ROOT });
+  const objects = common ? path.join(path.resolve(ROOT, sub, common.trim()), 'objects') : null;
+  return {
+    unchanged, changed, from, to, objects, kept,
+    blobs: { base: baseBlobs, to: toBlobs },
+  };
+}
+
+/** `diff` with the removed runs collapsed (collapseRemovals) in the files
+ *  named by `paths` only — the project's trimmed copies of files that
+ *  moved to the engine, whose removed runs are the move itself. */
+function collapseRemovalsIn(diff, paths) {
+  if (!paths.size) return diff;
+  const parts = diff.split(/^(?=diff --git )/m);
+  return parts.map((part) => {
+    const m = /^diff --git a\/(.*?) b\/(.*)$/m.exec(part);
+    return m && paths.has(m[2]) ? collapseRemovals(part.replace(/\n$/, '')) + (part.endsWith('\n') ? '\n' : '') : part;
+  }).join('');
 }
 
 /**
@@ -345,10 +472,18 @@ function copySources() {
 }
 
 /**
- * What the reviewer is shown of a range: {diff, unchanged, changed, notes}.
- * Files the range adds that are copies (classifyCopies) come out of `diff`;
- * `unchanged` lists the identical ones and `changed` holds each other one's
- * diff against its source, removals collapsed.
+ * What the reviewer is shown of a range: {diff, unchanged, changed, moves,
+ * notes}. Files the range adds that are copies (classifyCopies) come out of
+ * `diff`; `unchanged` lists the identical ones and `changed` holds each
+ * other one's diff against its source, removals collapsed. Files a pointer
+ * bump MOVES into the engine (engineMoves) come out of both halves of
+ * `diff` — the project's deletion and the engine's addition — and
+ * `moves.unchanged` lists the identical ones, `moves.changed` the delta
+ * from the deleted file to the added one, removals collapsed the same way.
+ * A source the project KEPT and trimmed stays in the diff with its own
+ * changes, its removed runs collapsed (they are the half that moved).
+ * The engine's lockfile is left out of the appended diff as the project's
+ * is. The hash is of the full diff throughout (describeRange).
  */
 function reviewDiff(c) {
   const { sources, notes } = copySources();
@@ -360,17 +495,49 @@ function reviewDiff(c) {
     added.length ? parseLsTree(git(['ls-tree', '-r', '-z', c.sha], { cwd: ROOT })) : new Map(),
     sources,
   );
-  if (!unchanged.length && !changed.length) return { diff: c.diff, unchanged, changed: [], notes };
+  const mv = engineMoves(c);
+  const moved = [...mv.unchanged, ...mv.changed];
+  const kept = mv.kept || new Set();
+  const sub = CONFIG.submodule;
+  const engineLabel = `${sub}@${(mv.to || '').slice(0, 8)}`;
+  const keptNote = (m) => (kept.has(m.from) ? '\t(kept here, trimmed: its own diff is below)' : '');
+  const moves = {
+    unchanged: mv.unchanged.map((m) => `${m.from}\t${engineLabel}:${m.to}${keptNote(m)}`),
+    changed: mv.changed.map((m) => {
+      // Two blobs from two repositories: the project's at the base, the
+      // engine's at the new pointer, read through the engine's objects.
+      const env = { ...process.env, GIT_ALTERNATE_OBJECT_DIRECTORIES: mv.objects || '' };
+      const d = git(['diff', '--no-color', '--no-ext-diff', '-U1', mv.blobs.base.get(m.from), mv.blobs.to.get(m.to)], { cwd: ROOT, env });
+      return collapseRemovals(d
+        .replace(/^diff --git .*$/m, `diff --git a/${m.from} b/${m.to}`)
+        .replace(/^--- a\/.*$/m, `--- ${m.from}${keptNote(m)}`)
+        .replace(/^\+\+\+ b\/.*$/m, `+++ ${engineLabel}:${m.to}`));
+    }),
+    count: moved.length,
+    kept: moved.filter((m) => kept.has(m.from)).length,
+  };
+  const folded = unchanged.length || changed.length || moved.length;
+  const subExclude = c.files.some((f) => f.path === sub) ? moved.map((m) => m.to) : null;
+  // A deleted source comes out of the diff; a kept one stays, trimmed.
+  const gone = moved.filter((m) => !kept.has(m.from)).map((m) => m.from);
+  const diff = collapseRemovalsIn(
+    folded
+      ? rangeDiff(c.files, c.base, c.sha, [...unchanged, ...changed].map((f) => f.path).concat(gone), subExclude)
+      : rangeDiff(c.files, c.base, c.sha, [], subExclude),
+    new Set(moved.map((m) => m.from).filter((p) => kept.has(p))),
+  );
+  if (!unchanged.length && !changed.length) return { diff, unchanged: [], changed: [], moves, notes };
   // The source's objects, readable here without fetching them in.
   const env = { ...process.env, GIT_ALTERNATE_OBJECT_DIRECTORIES: sources.map((s) => s.objects).join(path.delimiter) };
   const label = (s) => `${s.name}@${s.commit.slice(0, 8)}`;
   return {
-    diff: rangeDiff(c.files, c.base, c.sha, [...unchanged, ...changed].map((f) => f.path)),
+    diff,
     unchanged: unchanged.map((f) => `${f.path}\t${label(f.source)}`),
     changed: changed.map(({ path: p, source: s }) => {
       const d = git(['diff', '--no-color', '--no-ext-diff', '-U1', `${s.commit}:${p}`, `${c.sha}:${p}`], { cwd: ROOT, env });
       return collapseRemovals(d.replace(/^--- a\/.*$/m, `--- ${label(s)}:${p}`));
     }),
+    moves,
     notes,
   };
 }
@@ -503,9 +670,14 @@ function buildPrompt(c, prior) {
     head === c.sha
       ? '- The checkout is at this commit. It may also hold uncommitted changes that are not part of it; ignore them.'
       : `- The checkout is at a LATER commit (${head}), so a file you read may already include later changes. Judge the diff; read files for context.`,
-    '- Lockfiles are left out of the diff below.',
+    '- Lockfiles are left out of the diff below, the engine\'s included.',
   );
   const shown = reviewDiff(c);
+  if (shown.moves.count) {
+    lines.push(
+      `- ${shown.moves.count} files this range MOVES into the engine (${CONFIG.submodule}): a file the project deletes — or keeps and trims, ${shown.moves.kept} of them, their own changes still in the diff below with removed runs collapsed — that the engine's pointer move adds, paired by content or by name. The ${shown.moves.unchanged.length} byte-identical ones are listed, not diffed. The ${shown.moves.changed.length} changed ones are shown ONCE, as the diff from the project's file before this range to the engine's, with one line of context; a run of more than ${REMOVED_RUN_KEPT} removed lines shows as \`-… (N lines removed)\`. Judge what changed in the move — what the engine's version does differently, and whether what was cut from it reappears where the project's own modules now hold it — and read either file for the rest.`,
+    );
+  }
   if (shown.unchanged.length || shown.changed.length) {
     lines.push(
       `- ${shown.unchanged.length + shown.changed.length} files this range adds are copies of files at the same path in another repository (${CONFIG.copySources}), already reviewed there. The ${shown.unchanged.length} byte-identical ones are listed, not diffed. The ${shown.changed.length} changed ones are diffed against their source with one line of context, and a run of more than ${REMOVED_RUN_KEPT} removed lines shows as \`-… (N lines removed)\`. Judge what this repository changed; read a file here for the rest.`,
@@ -553,9 +725,15 @@ function buildPrompt(c, prior) {
   if (shown.changed.length) {
     lines.push('', '### Copied and changed: diff against the source', '```diff', shown.changed.join('\n'), '```');
   }
+  if (shown.moves.unchanged.length) {
+    lines.push('', '### Moved into the engine unchanged (here before this range, added there)', '```', ...shown.moves.unchanged, '```');
+  }
+  if (shown.moves.changed.length) {
+    lines.push('', '### Moved into the engine and changed: diff from the file here before this range to the engine\'s', '```diff', shown.moves.changed.join('\n'), '```');
+  }
   lines.push(
     '',
-    shown.changed.length || shown.unchanged.length ? '### Diff of everything else' : '### Diff',
+    shown.changed.length || shown.unchanged.length || shown.moves.count ? '### Diff of everything else' : '### Diff',
     '```diff',
     shown.diff,
     '```',
@@ -793,6 +971,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  needsReview, parseNumstat, parseReview, collapseRemovals, classifyCopies, parseLsTree, lastField, prePushRanges, pushRevLists,
+  needsReview, parseNumstat, parseReview, collapseRemovals, classifyCopies, classifyMoves, parseLsTree, lastField, prePushRanges, pushRevLists,
   recordPath, passingRecord, spliceAddendum, LINE_THRESHOLD, PROJECT_RULES, CONFIG_FILE,
 };

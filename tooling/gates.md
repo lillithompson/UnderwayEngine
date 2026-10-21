@@ -55,6 +55,17 @@ and a later one fixed is not a finding; scope is still judged per commit.
   objects in place and fetches nothing; a source not checked out on this
   machine is skipped with a note, and its copies are diffed in full. The
   source list is an always-reviewed path.
+- **Moves.** A range that bumps the engine pointer and deletes files the
+  engine's appended diff adds has MOVED them into the engine — what every
+  stage of the shared editor's consolidation does (`docs/shared-editor.md`),
+  and what made a 3.3 MB prompt of stage 3 before this rule. A deleted file
+  and an added one with the same content are a move; failing that, an added
+  file pairs with the deleted file of the same name whose path shares the
+  longest tail with it. A move is shown once: listed when byte-identical,
+  else as the diff from the deleted file to the engine's, with one line of
+  context and removals collapsed as a copy's are, and left out of both
+  halves of the diff. The engine's lockfile is left out of the appended
+  diff as the project's is. What is hashed is still the full diff.
 - It starts `claude -p` on **Opus** (`REVIEW_MODEL` overrides) in restricted
   mode: read, grep and glob only, no settings, no MCP, no skills, no
   session. Variables that tie a process to the calling Claude Code session

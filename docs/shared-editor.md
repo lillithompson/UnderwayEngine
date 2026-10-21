@@ -412,19 +412,19 @@ fits alone, so splitting the range does not help, and Sol's and DrawBot's
 ranges have the same shape. The prompt is almost entirely text the
 reviewer has already passed once: a file the engine adds is, byte for byte
 or nearly, a file the same range deletes from the app. Two changes to
-`review.js` would make such a range reviewable and the review truer, and
-both are the owner's to make (an agent never edits the gate's own files
-to get a range through, `CLAUDE.shared.md`): fold a MOVE — a file the
-appended engine diff adds whose content matches a file the project's
-diff deletes (by blob, or by path under `web/editor/` ↔
-`packages/editor/src/`) is shown once, as the delta between the two with
-one line of context, the way `copySources` already shows a changed copy,
-and listed when byte-identical; and leave the engine's lockfile out of
-the appended diff as the project's is. Stages 5 and 6 (CanvasSurface,
-EditorShell: 7,000 and 10,000 lines) have the same shape and will need it
-too. Until then the three apps' stage-3 commits sit unpushed on their
-local `main`s, their gates green, and the engine's commits are on
-`origin/main` ahead of them, which is the safe order.
+`review.js` make such a range reviewable and the review truer, and the
+owner called for them the same day (an agent never edits the gate's own
+files on its own account, `CLAUDE.shared.md`): a MOVE — a file the
+appended engine diff adds that pairs with a file the project's diff
+deletes, by content, else by name and the longest shared path tail — is
+shown once, as the delta from the deleted file to the engine's with one
+line of context and removals collapsed, the way `copySources` already
+shows a changed copy, and listed when byte-identical (`classifyMoves`,
+`engineMoves`; `gates.md` "Moves"); and the engine's lockfile is left out
+of the appended diff as the project's is. What is hashed is still the full
+diff, so no record's key moved. Stages 5 and 6 (CanvasSurface,
+EditorShell: 7,000 and 10,000 lines) have the same shape and ride the
+same rule.
 
 Two things the first wiring taught: `git reset --hard` in a clone with
 `submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
