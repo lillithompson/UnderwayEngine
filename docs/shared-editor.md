@@ -31,18 +31,20 @@ the work below:
 | `web/fonts/` | 8 | 8 | 5 | 0.7 k each |
 
 The drift is concentrated in a few large files. Lines that differ against
-CozyJournal's copy:
+CozyJournal's copy (the canvas and node-layer rows re-measured 2026-10-21,
+before stage 5a: stage 4 had touched both since this table was first taken,
+and `NodeLayer.tsx` was no longer identical in DrawBot):
 
 | File | Sol | DrawBot | Cozy | Sol vs Cozy | DrawBot vs Cozy |
 |---|---|---|---|---|---|
 | `EditorShell.tsx` | 8,232 | 9,357 | 10,682 | 3,978 | 2,723 |
-| `components/CanvasSurface.tsx` | 5,933 | 6,789 | 7,089 | 1,718 | 944 |
+| `components/CanvasSurface.tsx` | 5,939 | 6,774 | 7,104 | 1,737 | 1,042 |
 | `editorSession.ts` | 6,989 | 7,709 | 7,206 | 399 | 889 |
 | `EditorHost.tsx` | 359 | 560 | 1,429 | 1,276 | 1,333 |
 | `entryRaster.ts` | 373 | 227 | 905 | 794 | 858 |
 | `importEntryTile.ts` | 262 | 379 | 432 | 310 | 417 |
 | `components/toolbarMeta.ts` | 932 | 1,001 | 1,006 | 126 | 39 |
-| `components/NodeLayer.tsx` | 1,326 | 1,167 | 1,167 | 161 | 0 |
+| `components/NodeLayer.tsx` | 1,326 | 1,168 | 1,167 | 161 | 3 |
 
 Of the 57 files identical in all three, only 34 import nothing but the
 engine, editor-ui, the shell and each other; the other 23 are identical
@@ -111,7 +113,18 @@ one seam; and `panelEffectModels.ts`, the panel's models ↔ the engine's
 effect records with the defaults an Add button materializes. The third seam
 of the `EditorExtension` comes with them: the outline host
 (`outlineHost.ts`, §4.1) — how the outline reads a node of the app's own
-kind, and the overlay rows its document holds. The apps import it all
+kind, and the overlay rows its document holds. From stage 5a it holds the NODE LAYER and the
+canvas's closed leaves: `components/NodeLayer.tsx` (every kind of scene
+node's DOM — shape, image, text, paint, pattern — in CozyJournal's
+version, with Sol's optional `children` on `SvgNodeLayer` adopted), the
+fonts seam it needed (`fontsEpoch.ts`, identical in all three apps, and
+`fontFamily.ts`, the stack rule with each app's pack installed through
+`registerFontFamily` as the brush's glyph-ink probe already is),
+`textPaintPreview.tsx` — held back at stage 3 waiting on `NodeLayer` — and
+the nine leaves the canvas pulls in that import no app: `tileTool.ts`,
+`canvasSymmetry.ts`, `regionChromeScreen.ts`, `symmetryReflect.ts`,
+`symmetryAxesScreen.ts`, `symmetryObjects.ts`, `tapExclusion.ts`,
+`afterReady.ts` and `editableRegion.ts`. The apps import it all
 through `@/editor/*` and their copies are gone; each app's
 `web/editor/hostTools.ts` is its registry and its `web/editor/extension.ts`
 installs its session host and its outline host.
@@ -144,7 +157,7 @@ What the three shells wire in by hand today, named as seams:
 | Extra tools on the bar | `ToolId` union members (`plant`, `bots`, `instructions`, `rig`, `word`, `tile`, `symmetry`) and their `TOOL_META` rows in each `toolbarMeta.ts` | **Done (stage 2).** `tools: HostTool[]` (`packages/editor/src/hostTools.ts`, the first field of `EditorExtension` in `extension.ts`) — id, label, icon (an MCI name; a shape the font lacks is drawn by the shell, as the line, arc and polygon glyphs already are), `kind` (`'tool'`, armed and lit while in hand, or `'setting'`, which toggles and never lights — symmetry), `contentMode: { gate }` (the tool rides the content group's row behind a format flag — rig, word, tile) and `modeCapsule` (a hold on the lit button recalls its capsule — plant). The standard tools stay in the package; the toolbar's functions that have to know a host tool take the registry, and each app's `web/editor/hostTools.ts` is its registry plus `TOOL_META = toolMetaFor(HOST_TOOLS)`, the whole bar's table over its own `ToolId`. |
 | Property pages for the app's kinds | DrawBot's `useSimEditor().selection`, CozyJournal's rig model, spread into the panel model in the shell | **Done (stage 4).** `hostPages` / `hiddenCommonActions` (`HostPagesModel`, `packages/editor-ui`) — per-SELECTION data, not an installed rule, so they are two fields of `PanelModelInput` (`panelModel.ts`) rather than a member of the extension, and the shell hands them in at the one place it builds the model. DrawBot's `useSimEditor().selection` IS that pair; CozyJournal's rig pages stay the chrome's until stage 7 and its shell spreads them over the built model. |
 | Scene outline rows | `sceneOutlineModel.ts` per app (tag labels, rig glyphs, bots as overlays) | **Done (stage 4).** `outline?: OutlineHost` (`outlineHost.ts`, the third field of `EditorExtension`): `nodes(state)` — the host's reading of this page's own kinds, resolved ONCE per build (a glyph instead of the kind's, `chrome` for its rendering internals: CozyJournal's rig figure wears the Rig tool's glyph and its hidden pose record is no row) — and `overlays(state, doc)` — rows for what the host's DOCUMENT holds that draws over the scene (DrawBot's bots and instruction tiles, ranked by `overlayRank`, swallowed by a lit group they ride). Installed at module scope with the session host. The tag LABELS are not here: per-format or per-document data, handed to the builders as `tagLabels` (§4.3). |
-| Layers drawn over the canvas | Sol's `RevealOverlay` / plant layer in `NodeLayer`, DrawBot's `DrawBotsLayer`, CozyJournal's `RigNodeLayer` | `layers: { nodeLayer?(node), overlay?(session, camera) }` — the host draws its own kinds of node and its own live layer, through the handles `CanvasSurface` already exposes. |
+| Layers drawn over the canvas | Sol's `RevealOverlay` / plant layer in `NodeLayer`, DrawBot's `DrawBotsLayer`, CozyJournal's `RigNodeLayer` | `layers: { nodeLayer?(node), overlay?(session, camera) }` — the host draws its own kinds of node and its own live layer, through the handles `CanvasSurface` already exposes. **Designed, not yet added** (stage 5a, 2026-10-21): both members are dispatched from `CanvasSurface`, not from `NodeLayer` — Sol's `SeedMarkLayer` and `PlantGroupLayer` were DEFINED in its node layer but rendered by its canvas — so the field would have had no app setting it until the canvas moves. It arrives with `CanvasSurface` at stage 5b. What stage 5a did instead: the node layer moved with Sol's two components extracted to `web/sol/scene/`, beside the `plantLayer` policy whose DOM they are, and each app's canvas imports the package's node layer and its own layers side by side. |
 | Commit pipeline wrapper | DrawBot's `commitPipeline.ts` + `commitWrapper.ts`; Sol's `solEntry` and the index-aligned Sol undo stacks; DrawBot's bots and tiles in the selection; CozyJournal's rig in the colour dispatch, the duplicate and the brush | **Done (stage 3).** `wrapCommit?: CommitWrapper` (`commitPipeline.ts`, DrawBot's file as it was, installed with `setCommitWrapper`) and `session?: SessionHost` (`sessionHost.ts`), three optional members an app fills as it needs: `ops` — a PARALLEL DOCUMENT moved by the same undo step (`EditorSession.hostDoc`, `hostUndoStack` / `hostRedoStack` index-aligned with the engine's, `SessionEntry.hostOps`, an entry of host ops alone pushing an empty engine entry; Sol's `SolOp[]`, DrawBot's `{before, after}` of its sim document); `items` — things the host's document holds that stand in the selection beside scene nodes (`HostItems`: id spelling, box, group, lock, through-a-matrix, remove, duplicate; DrawBot's bots and instruction tiles, which the marquee, the group and every multi builder carry through the adapter); `nodes` — rules about scene nodes of the host's own kind (`HostNodeRules`: a duplicate's companion ops, a node held to its aspect, a colour target off the object, the Color brush's pass over such nodes, the outline label of a tagged node; CozyJournal's rig and seeded squiggle). Installed once per app at module scope (`installSessionHost`), the way the commit wrapper and the brush's glyph-ink probe are, because the session's builders take a state, not a session, and are called from dozens of sites; a builder that moves host items takes the document as a trailing `hostDoc?`, where DrawBot's took `sim?`. `EditorSession<TTool, TDoc, TOps>` carries the app's types through, and every function that returns a session is generic over it. |
 | Host data in the file | Sol's `sol` chunk, DrawBot's `DBOT` trailer, both through the engine's v70 host-data chunks | `fileChunks: { tag, read(bytes, state), write(state) }` — the engine already carries foreign chunks through load, save and zip export untouched, which is what makes a foreign `.tile` editable: its scene is the engine's, and its host data waits for the app that wrote it. |
 | Capsules and floating chrome | Sol's strain chips, DrawBot's transport and bot capsules, CozyJournal's rig sides | `capsules(session): CapsuleSpec[]` over the shared `ToolModeCapsule` / `PatternActionsCapsule` (DrawBot's `muted`/`locked`/`art` segments and wrap-to-rows are the generic superset to adopt). |
@@ -179,7 +192,7 @@ first, then the pointer bump in each app).
    symmetry. Tile and symmetry are registered by two apps with identical
    rows — a candidate for the standard set, the owner's call. DrawBot's
    `ToolId` carries `push` (the standard union) and keeps it off its bar
-   with an app-side filtered mode list until stage 3 and 5 bring the brush
+   with an app-side filtered mode list until stage 3 and 5b bring the brush
    back. Seven test suites moved with the files (the generic halves of
    the apps' toolbarMeta, toolModeCapsules, patternActionsCapsule,
    capsuleWrap, topCapsuleSlot and facetGlyphs tests, and a registry
@@ -238,7 +251,7 @@ first, then the pointer bump in each app).
    `editorPrefs`, `shapeStrokePreview`, `effectsBoxShadow` with
    `colorUtils`, and the eight components §2 lists); `frameDrop.ts` waits
    on `sceneOutlineModel` (stage 4), `textPaintPreview.tsx` on `NodeLayer`
-   (stage 5), `fontStacks.ts`, `homeStateDelivery.ts` and
+   (stage 5a, done), `fontStacks.ts`, `homeStateDelivery.ts` and
    `components/EditorNotice.tsx` on the theme, the bridge and the notice
    (stage 6). `patternPatches.ts` and the `planarFaces.ts` it cuts with
    (CozyJournal's `web/content/planarFaces.ts`, a second copy under
@@ -391,9 +404,120 @@ first, then the pointer bump in each app).
    still has — harmless, since the pointer entry brings engine changes
    under review anyway, but a dead pattern for whoever next edits the
    gate (an agent does not edit `tooling/` on its own account, §5).
-5. **Canvas.** `CanvasSurface.tsx` and `NodeLayer.tsx` with the `layers`
-   extension; CozyJournal's rig layer, Sol's plant layer and DrawBot's sim
-   layer become host layers.
+5. **Canvas.** Split in two when the measurement came in (owner,
+   2026-10-21). The stage was planned as `CanvasSurface.tsx` and
+   `NodeLayer.tsx` moving together with the `layers` extension, CozyJournal's
+   rig layer, Sol's plant layer and DrawBot's sim layer becoming host
+   layers. What the measurement found is that CozyJournal's canvas — the
+   canonical one, so the one that has to move — is the only one of the
+   three that cannot: it imports SEVEN modules of its app (six rig modules
+   and `@figgie`) and carries 196 rig references in 65 separate clusters
+   through its gesture machinery, where Sol's canvas imports ONE
+   (`plantLayer`) and DrawBot's TWO (`lockedTap`, `simSession`), both of
+   which the `layers` seam and stage 3's tap seam already cover. The rig
+   inside the canvas is not a drawing layer and `layers` does not reach
+   it: `beginRigPose` is a whole gesture mode with its own hit radius and
+   drawn-frame mapping, `previewRigInks` sits in the paint-preview
+   dispatch, `restoreRigPoses` in the gesture-restore, and a `rigHandle`
+   registry is repainted imperatively per frame. §4.3 assigns the rig to
+   stage 7; this forces part of it. The `push` brush rides the same file —
+   DrawBot's canvas holds ZERO push references and `pushBrush.ts` is
+   imported only by CozyJournal's canvas and its `rigPaint`,
+   `rigPushStore` and `RigControlsPanel`, which is why DrawBot cut the
+   brush WITH the rig — so item 1 below moves to 5b with it. All three
+   canvases also import `@/components/theme`,
+   `@/native-shell/bridge/webBridge`, `@/web/hooks/useSuppressIOSLoupe`
+   and `@/components/openTrace`, which item 3 and item 6 put at stage 6.
+
+   **5a — Done: the node layer and the canvas's closed leaves** (engine,
+   2026-10-21). The measurement, of the files this half names:
+
+   | What | Lines (Cozy) | Sol | DrawBot |
+   |---|---|---|---|
+   | `components/NodeLayer.tsx` | 1,167 | 161 | 3 |
+   | `tileTool.ts` | 1,138 | absent | 0 |
+   | `canvasSymmetry.ts` | 649 | absent | 0 |
+   | `regionChromeScreen.ts` | 495 | absent | 60 |
+   | `symmetryReflect.ts` | 369 | absent | 0 |
+   | `symmetryAxesScreen.ts` | 243 | absent | 0 |
+   | `symmetryObjects.ts` | 101 | absent | 0 |
+   | `textPaintPreview.tsx` | 86 | 0 | 0 |
+   | `tapExclusion.ts` | 76 | absent | 0 |
+   | `afterReady.ts` | 66 | 2 | 0 |
+   | `editableRegion.ts` | 41 | absent | 0 |
+   | `web/fonts/fontsEpoch.ts` | 35 | 0 | 0 |
+
+   The Sol and DrawBot columns are lines that DIFFER against CozyJournal's
+   copy, counted as §1's are. Six of the eleven leaves are byte-identical
+   between CozyJournal and DrawBot and absent from Sol, which gains them
+   unused — the arrangement editor-ui already has with CozyJournal's rig
+   pages (§4.3, "The rig's place"). `regionChromeScreen.ts` and
+   `maskWordScale.ts` were the two that looked like leaves and were not:
+   `maskWordScale` imports `@/web/formats/scaffold` and
+   `templateNodes`, and `selectionShapeOutline` imports
+   `@/web/formats/poserRig`, so both stay until stage 6; `openTrace.ts`
+   imports the bridge and stays with it.
+
+   `NodeLayer.tsx` moved in CozyJournal's version with one generic
+   addition of Sol's adopted — the optional `children` on `SvgNodeLayer`,
+   drawn over the shape inside its matrix wrapper, which no shared caller
+   passes — and one new seam, the FONTS. The node layer was the last
+   mover to import `@/web/fonts/*`: `fontsEpoch.ts` is identical in all
+   three apps and moved whole, and `fontFamilyFor` split into the rule
+   (`fontFamily.ts`, the system stack and the quoting) and each app's DATA
+   (its bundled pack), installed by `registerFontFamily` from the app's
+   `web/fonts/loadPackFonts.ts` — the file that already installs the
+   brush's glyph-ink probe, and the same reasoning as §4.3's `tagLabels`:
+   a pack is per-app data, not a rule. With no pack installed the stack is
+   the system one, which is what an app shows before its faces load.
+
+   What moved with them: eight suites split the way stages 3 and 4 split
+   theirs, the behaviour half to the package and the CANVAS and SHELL pins
+   left behind in the app — `tileTool` (102 cases, seven describes to the
+   package and ten kept), `canvasSymmetry` (66, seven and two),
+   `symmetryReflect` (24), `symmetryAxesScreen` (15, which pinned nothing
+   app-side and moved whole), `symmetryObjects` (7), `tapExclusion` (10),
+   `afterReady` (7) and `editableRegion` (5), plus `textPaintPreview`'s
+   (6, its two canvas cases kept). The union the owner called for added
+   nothing: of the cases DrawBot's copies hold that CozyJournal's do not,
+   every one is either that app's own wording of a canvas pin or a rule
+   stage 3 already pinned in the package — `patternSymmetryEqual` by value
+   in `editorSession.shared.test`, the editing text's dismissal tap in
+   `canvasTap.test`. One case of CozyJournal's went back to the app
+   because the package cannot hold it: `canvasSymmetry`'s "a known tool id
+   the unrestricted bar no longer carries" reads `KNOWN_TOOLS` and
+   `TOOL_META`, which are each app's.
+   A NodeLayer pin inside a suite about the APP's own wiring was
+   re-pointed at the vendor path rather than moved, which is what stage 4's
+   `panelModel` pins already do (§4.3's open call covers both).
+   `fontsEpoch.test.ts` was identical in all three apps and moved whole,
+   and `fontFamily.test.ts` is new, over the seam with no pack installed,
+   with one, and after one is taken away. Editor package 58 suites / 1,163
+   tests; engine 357 of 358 (cameraRoll's host dependency, as before).
+   `NodeLayer.tsx` itself is typechecked only in the apps, as every
+   component in this package already is — no engine suite imports one, the
+   engine having no renderer — so what the package pins of it is its source
+   text. This repo gains `react-dom` and
+   `@types/react-dom` as dev dependencies (the moved `textPaintPreview`
+   renders through `createRoot` and `flushSync`), the way stage 3 gained
+   `react`. Two dead imports fell out on the way, both caught by this
+   repo's stricter `noUnusedLocals` and neither visible in the apps, whose
+   tsconfig extends Expo's: an unused `React` in `textPaintPreview.tsx`
+   and an unused `drawnLocalBox` in `NodeLayer.tsx`.
+
+   **5b — To do: the canvas.** `CanvasSurface.tsx` with the `layers` seam
+   (§4.1) and a seam for the rig's canvas BEHAVIOUR, which is the thing to
+   design before writing code: a press-claim (`beginRigPose`), a
+   paint-preview pass (`previewRigInks`), a gesture-restore
+   (`restoreRigPoses`), the push stroke's rig targets, the live-handle
+   registry and the drawn-frame mapping. Naturally alongside stage 7, which
+   moves the rig's PAGES, or before stage 6. The three §4.3 items this
+   stage was to settle — DrawBot regaining `push`, `pixelHitTestAt`, and
+   the shell's last host-place branch — are decided there now and
+   implemented here, since all three live inside the file. The 190 suites
+   that read `CanvasSurface` source text across the three apps (73 Cozy,
+   52 Sol, 65 DrawBot) are 5b's churn, not 5a's: 5a touched only the 84
+   that read a file it moved.
 6. **Shell and host.** `EditorShell.tsx` and `EditorHost.tsx` as the
    package's screen, taking `config`, `extension` and the app's store
    adapter; `web/formats/types.ts`'s common `EditorConfig`, `web/fonts/*`
@@ -416,7 +540,7 @@ Settled by the owner, 2026-10-20:
   (`groupHit.ts`) goes back to CozyJournal's walk; CozyJournal's
   two-finger-tap landing window (`multiTapGesture.ts`) comes to Sol and
   DrawBot; DrawBot regains the `push` brush, which it cut with the rig, when
-  the canvas and session are unified on CozyJournal's code (stage 3 and 5)
+  the canvas and session are unified on CozyJournal's code (stage 3 and 5b)
   — it reaches ten files of the drifted core and is not ported by hand
   before that. Stage 3 found the first two already settled: `groupHit.ts`
   and `multiTapGesture.ts` were identical in all three apps when measured
@@ -424,12 +548,13 @@ Settled by the owner, 2026-10-20:
   pixels-only hit is not the selection's walk at all but a second,
   separate pick in its `CanvasSurface.tsx` (`pixelHitTestAt`, for its
   placing tools building in a group's empty box) beside the shared
-  `hitTestAt` every app has — a stage-5 matter, and the sentence in the
+  `hitTestAt` every app has — a stage-5b matter, and the sentence in the
   old item 3 preferring DrawBot's rule is superseded by this one. The
   `push` brush is back in the moved files (`PaintToolKind`,
   `brushDimsToSelection`, `toolYieldsToSelection`, the paint slider's
   Brushes option); DrawBot keeps it off its bar with its app-side mode
-  list until stage 5 gives its canvas the brush.
+  list until stage 5b gives its canvas the brush (and the reason it is 5b
+  and not 5a is below).
 - **Generic additions from a non-canonical copy are adopted, not dropped,
   when they are pure and CozyJournal's callers cannot see them** (stage 3,
   2026-10-20): a new pure function (Sol's `cameraMatrixInto`, `boxFrame`),
@@ -466,7 +591,7 @@ Settled by the owner, 2026-10-20:
   and clears when nothing joins) — and `toolYieldsToSelection` keyed on the
   same tools. Both read the registry now; `resolveCanvasTap` answers
   `{ kind: 'hostPlace', tool }` and the shell dispatches on the id to its
-  own builder, which is the only branch it keeps until stage 5. DrawBot's
+  own builder, which is the only branch it keeps until stage 5b. DrawBot's
   Inklings register no `tap`: its sim layer's gesture hooks claim the
   press before the tap is read. The `'against'` facts the shell knows
   (`openTarget`, `joins`) ride a trailing options object under those
@@ -531,6 +656,50 @@ Settled by the owner, 2026-10-20:
   where `contentModeOfToolId` seeds its `ContentMode` state. The same
   arrangement serves `ContentMode` (`StandardContentMode` plus the app's
   host modes).
+
+- **The three canvas questions, settled 2026-10-21 (stage 5a), to be
+  implemented at 5b.** All three live inside `CanvasSurface.tsx`, which 5a
+  did not move (§4.2 item 5), so each is a decision on record rather than
+  code.
+
+  **`pixelHitTestAt` generalizes; it does not become host-side.** DrawBot's
+  second pick is seven lines, and it differs from the shared `hitTestAt`
+  only in asking `findSceneObjectAtCell(…, { pixelsOnly: true })` where the
+  selection's walk asks `findSelectableAtCell`; both then refuse a frame
+  boundary. It is reachable from outside in exactly one place, the surface
+  handle's `pixelHitAt`, which DrawBot's sim layer calls to place a tool
+  inside a group's empty box. So the package's canvas keeps both picks and
+  always exposes `pixelHitAt` — a pure addition no CozyJournal caller can
+  see, which is this section's own rule for a generic addition from a
+  non-canonical copy, and nothing for a host to install. Host-side was the
+  alternative and is worse: the walk it shares with `hitTestAt` is the
+  engine's scene reading, and a host implementing it would be a second copy
+  of the hit test beside the package's, which is the drift the plan exists
+  to end.
+
+  **The last host-place branch RELOCATES; it does not disappear.** The three
+  shells' `hostPlace` arms differ in only two riders — Sol snaps the cell
+  through `snapPoint`, and CozyJournal's tile and DrawBot's tile refuse a
+  tap within reach of the floating chrome (`overlayNearTap`) — so both
+  become declared flags on the tool's registry row beside its `tap` rule,
+  the package's canvas computes the cell and applies them, and it calls one
+  `onHostPlace(tool, cellX, cellY)`. Each app's shell then keeps a switch
+  from its own tool ids to its own builders (`onAddRig`, `onAddWord`,
+  `onAddTile`, `onPlantSeed`). The branch leaves the CANVAS, which is what
+  is moving; it cannot leave the app, because the builders are the app's
+  and so is the shell until stage 6, which makes it an extension member.
+  The earlier sentence calling this "the only branch it keeps until stage
+  5" was too strong: stage 5 moves it one layer out, stage 6 removes it.
+
+  **DrawBot regains `push` at 5b, with the rig's canvas seam.** The brush
+  is in the moved files already, and the plan read the app-side
+  `DRAWBOT_PAINT_MODES` filter as the only thing holding it off the bar —
+  one line in `hostTools.ts`, one use in the shell, three assertions. It is
+  not: DrawBot's canvas holds no push gesture at all (zero references), and
+  `pushBrush.ts` is imported only by CozyJournal's canvas and its
+  `rigPaint`, `rigPushStore` and `RigControlsPanel`. The brush pushes a
+  rig's joints, which is why DrawBot cut it with the rig and why it comes
+  back with the rig's seam, not before.
 
 Still open:
 
