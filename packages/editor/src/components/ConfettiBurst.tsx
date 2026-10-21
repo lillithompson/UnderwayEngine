@@ -28,7 +28,7 @@ import {
 // started at mount. A Web Animation begins at its first painted frame,
 // and the paint can come well after the effect that called animate():
 // the Done press starts the page's full raster in the microtasks right
-// behind the same handler (EditorShell setDone, web/editor/afterPaint),
+// behind the same handler (the shell's setDone, afterPaint.ts here),
 // and a main thread held for a second is a burst that begins a second
 // late. Timed from the mount, as Facet's own setTimeout is, the cleanup
 // then ran out mid-flight — or before a particle had been drawn at all,

@@ -33,7 +33,7 @@ import type { ToolIconProps } from '@/editor/components/ToolIcons';
 // rotate's one 30° nudge.
 //
 // The radial Blend fan wears MaterialCommunityIcons names for the same
-// modes (PAINT_RADIAL_BLEND_ICONS, web/editor/sliderModeMenu.ts) because a
+// modes (PAINT_RADIAL_BLEND_ICONS, sliderModeMenu.ts beside this) because a
 // radial button takes a glyph NAME, not a component. Those two tables now
 // say the same thing in different alphabets — worth folding together (the
 // radial can take a data-URI) if the fan is touched again.

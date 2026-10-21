@@ -1,7 +1,7 @@
 /**
  * What a hit test tests, read off the scene graph (P5 of
- * docs/transform-refactor.md). The engine twin of the host's
- * `web/editor/drawnPose.ts`, and built to the same rule.
+ * docs/transform-refactor.md). The engine twin of the editor package's
+ * `drawnPose.ts`, and built to the same rule.
  *
  * A leaf is DRAWN as its local content carried through its world matrix.
  * So a world query point belongs to that leaf exactly when the INVERSE

@@ -12,7 +12,7 @@
  * - a **pattern**, whose cells are baked by `patternSVGView` and must be
  *   baked in the frame they will be drawn in.
  *
- * Both answers were the host's (`web/editor/drawnPose.ts`), which is where
+ * Both answers were the host's (the editor package's `drawnPose.ts`), which is where
  * the node layer reads them. They live here so the SVG export can read the
  * very same thing: the screen and the export drawing one node two ways is
  * the class of bug this whole refactor is about.

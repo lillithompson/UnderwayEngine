@@ -1,4 +1,4 @@
-import { applyCompOps, revertCompOps } from '@/engine/compositionOps';
+import { applyCompOps, findItem, revertCompOps } from '@/engine/compositionOps';
 import { measureTextBbox } from '@/engine/textLayout';
 import { RGBColor, SVGObject, TextStyle } from '@/engine/types';
 import { COVER_FRAMING } from '@/engine/imageFraming';
@@ -11,6 +11,7 @@ import {
   buildMirrorSelected,
   buildMoveNode,
   buildToggleLock,
+  buildToggleLockGroup,
   buildPlaceImage,
   buildPlacePhotoPlaceholder,
   buildReplaceImageContent,
@@ -1462,5 +1463,71 @@ describe('word stickers (magnetic poetry)', () => {
     const rot = buildRotateNodeFree(session.state, id, 12);
     const applied = applyCompOps(session.state, rot!.entry);
     expect(applied.texts![0].angleDeg).toBeCloseTo(12, 6);
+  });
+});
+
+describe('Group over a selection with locked members', () => {
+  // Sol's rule, adopted at stage 3 (docs/shared-editor.md §4.3): a locked
+  // member INSIDE a fully selected group goes with its group — the group
+  // moves whole and the member's parent is untouched, so its lock has
+  // nothing to refuse. Dropping it instead broke the group apart, lifting
+  // the unlocked members out around it (a Sol seed's marker is locked by
+  // design). A LOOSE locked member still sits out, and a group whose own
+  // chain is locked still sits out whole.
+  const rect = (x: number) => buildPlaceShape('rect', { cellX: x, cellY: 0, cellWidth: 4, cellHeight: 4 }, { r: 0, g: 0, b: 0 });
+  const setup = () => {
+    let s = createEditorSession(makeBlankComposition('grp-lock'));
+    const [a, b, c] = [rect(0), rect(8), rect(16)];
+    s = commitEntry(s, a); s = commitEntry(s, b); s = commitEntry(s, c);
+    return { s, a: a.id!, b: b.id!, c: c.id! };
+  };
+
+  test('a locked member inside a fully selected group nests with its group, whole', () => {
+    let { s, a, b, c } = setup();
+    s = commitEntry(s, buildGroupSelectedMulti(s.state, [a, b])!);
+    const inner = s.state.groups[0].id;
+    s = commitEntry(s, buildToggleLock(s.state, b)!);
+    expect(findItem(s.state, b)!.item.locked).toBe(true);
+    const se = buildGroupSelectedMulti(s.state, [a, b, c], undefined)!;
+    expect(se).not.toBeNull();
+    const op = se.entry[0] as { op: string; figureIds: string[]; childGroupIds?: string[] };
+    expect(op.op).toBe('groupFigures');
+    // The inner group nests as a child, its locked member counted with the rest…
+    expect(op.childGroupIds).toEqual([inner]);
+    // …and only the loose shape is re-parented.
+    expect(op.figureIds).toEqual([c]);
+    const grouped = commitEntry(s, se);
+    const outer = grouped.state.groups.find((g) => g.id !== inner)!;
+    expect(grouped.state.groups.find((g) => g.id === inner)!.parentGroupId).toBe(outer.id);
+    expect(findItem(grouped.state, b)!.item.groupId).toBe(inner);
+    expect(findItem(grouped.state, b)!.item.locked).toBe(true);
+  });
+
+  test('a LOOSE locked member sits out, as it does for align and grid', () => {
+    let { s, a, b, c } = setup();
+    s = commitEntry(s, buildToggleLock(s.state, b)!);
+    const se = buildGroupSelectedMulti(s.state, [a, b, c])!;
+    const op = se.entry[0] as { figureIds: string[] };
+    expect(op.figureIds).toEqual([a, c]);
+    // Two locked loose members and one free: nothing to bind.
+    const s2 = commitEntry(s, buildToggleLock(s.state, c)!);
+    expect(buildGroupSelectedMulti(s2.state, [a, b, c])).toBeNull();
+  });
+
+  test('a group whose own chain is locked sits out whole', () => {
+    let { s, a, b, c } = setup();
+    s = commitEntry(s, buildGroupSelectedMulti(s.state, [a, b])!);
+    const inner = s.state.groups[0].id;
+    s = commitEntry(s, buildToggleLockGroup(s.state, inner)!);
+    expect(s.state.groups[0].locked).toBe(true);
+    // The locked group and one loose shape: one participant, nothing to bind.
+    expect(buildGroupSelectedMulti(s.state, [a, b, c])).toBeNull();
+    // …but with a second loose shape the two loose ones bind and the locked group is left alone.
+    const d = rect(24);
+    s = commitEntry(s, d);
+    const se = buildGroupSelectedMulti(s.state, [a, b, c, d.id!])!;
+    const op = se.entry[0] as { figureIds: string[]; childGroupIds?: string[] };
+    expect(op.figureIds).toEqual([c, d.id]);
+    expect(op.childGroupIds).toBeUndefined();
   });
 });

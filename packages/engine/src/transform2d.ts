@@ -253,7 +253,7 @@ export function translate(tx: number, ty: number): Transform2D {
  * one here, so a signature carrying both read as if it carried one type
  * twice. `bboxToCells` / `bboxFromCells` below are the crossing.
  *
- * The host has its own declaration (`web/editor/resizeMath.CellBbox`) rather
+ * The editor package has its own declaration (`resizeMath.CellBbox`) rather
  * than importing this one, so that its pure resize leaf keeps zero imports;
  * structural typing makes the two interchangeable at every call site.
  */

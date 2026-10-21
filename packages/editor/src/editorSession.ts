@@ -1777,7 +1777,7 @@ export const COLORABLE_GROUP_NAME = 'Colorable';
  *   1. One closed shape per region the pattern's drawing cuts its own
  *      bounding box into — Patchwork's own patches, made on demand of a
  *      pattern instead of dealt by the day, over the same geometry
- *      (web/editor/patternPatches.ts → web/content/planarFaces.ts), so the
+ *      (patternPatches.ts → planarFaces.ts, beside this), so the
  *      same promise holds: no two overlap, none is missing, and together
  *      they are exactly the bounding rectangle. They take the pattern's
  *      slot, so they lie BEHIND everything that follows.
