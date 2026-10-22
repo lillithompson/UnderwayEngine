@@ -496,10 +496,11 @@ first, then the pointer bump in each app).
 
    What moved with them: eight suites split the way stages 3 and 4 split
    theirs, the behaviour half to the package and the CANVAS and SHELL pins
-   left behind in the app — `tileTool` (102 cases, seven describes to the
-   package and ten kept), `canvasSymmetry` (66, seven and two),
-   `symmetryReflect` (24), `symmetryAxesScreen` (15, which pinned nothing
-   app-side and moved whole), `symmetryObjects` (7), `tapExclusion` (10),
+   left behind in the app — `tileTool` (eleven describes / 68 cases to the
+   package, ten / 34 kept), `canvasSymmetry` (nine / 40 to the package,
+   three / 26 kept), `symmetryReflect` (24), `symmetryAxesScreen` (15,
+   which pinned nothing app-side and moved whole), `symmetryObjects` (7),
+   `tapExclusion` (10),
    `afterReady` (7) and `editableRegion` (5), plus `textPaintPreview`'s
    (6, its two canvas cases kept). The union the owner called for added
    nothing: of the cases DrawBot's copies hold that CozyJournal's do not,
@@ -514,9 +515,27 @@ first, then the pointer bump in each app).
    wiring was re-pointed at the vendor path rather than moved — eleven
    suites in CozyJournal, nine in DrawBot, eight in Sol — which is what
    stage 4's `panelModel` pins already do (§4.3's open call covers both).
+   Where the describe was MIXED at the case level — a pure reading of the
+   package's own function beside a pin of the shell that reaches it — the
+   split is per case, which is what the first two review rounds were spent
+   finding: a describe named for a shell behaviour can still hold the only
+   coverage a package function has, and a header that says otherwise is an
+   invitation to delete it. Twenty of those cases moved after round 2
+   (`tileTool`'s grid readings, `canvasSymmetry`'s frame and axis maths).
+   What is still only covered app-side, measured after round 2 and left for
+   5b, is a short list of DOM writers and the constants they read:
+   `regionChromeScreen`'s `writeRegionChrome`, `markerKey`,
+   `flagRefusedMarkers` and `boardOutlineRect` (in CozyJournal's
+   `regionMarkerPop.test`), `symmetryAxesScreen`'s `axisGroupOf`,
+   `symmetryObjects`' `mirroredSegments` and `mirroredSVGCopy`,
+   `textPaintPreview`'s three preview functions, and `tileTool`'s
+   `tapLandsOnPatternGrid`, `isShapePatternFillGrid` and
+   `tileCellWithinGrowReach`. Each is reachable only through a canvas that
+   has not moved yet, so their cases move when it does.
+
    `fontsEpoch.test.ts` was identical in all three apps and moved whole,
    and `fontFamily.test.ts` is new, over the seam with no pack installed,
-   with one, and after one is taken away. Editor package 59 suites / 1,182
+   with one, and after one is taken away. Editor package 59 suites / 1,196
    tests; engine 358 of 359 (cameraRoll's host dependency, as before).
    `NodeLayer.tsx` itself is typechecked only in the apps, as every
    component in this package already is — no engine suite imports one, the

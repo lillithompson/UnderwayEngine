@@ -1,4 +1,9 @@
-import { applyCompOps, revertCompOps } from '@/engine/compositionOps';
+import { applyCompOps, revertCompOps, withSceneGraph } from '@/engine/compositionOps';
+import { toLegacyView } from '@/engine/sceneGraph';
+import { graphOf } from '@/engine/sceneHitFrame';
+import { applySceneOps, buildSetTransform } from '@/engine/sceneGraphOps';
+import { rotatePointAboutCW } from '@/engine/compositionArcMath';
+import { MAX_PATTERN_GRID } from '@/engine/patternObject';
 import { CompositionState, PATTERN_SYMMETRY_OFF, PatternObject, RGBColor } from '@/engine/types';
 import { getRenderedSignature, mirrorCellState } from '@/engine/connectivity';
 import { patternCellTint, PATTERN_BASE_INK } from '@/engine/patternObject';
@@ -6,6 +11,13 @@ import { makeBlankComposition } from '../blankComposition';
 import { buildPlaceLineShape, buildPlacePolyline, buildRotateSelected } from '../editorSession';
 import {
   buildPlaceTile,
+  buildPlaceTileInPattern,
+  editableTilePattern,
+  grownPatternGrid,
+  patternGridActionTarget,
+  patternGridActionsTargetOpen,
+  tileCellInPattern,
+  tileTargetPattern,
   filledPatternCellCount,
   gatherTileConstraints,
   MAX_TILE_CELLS_TOTAL,
@@ -1046,5 +1058,236 @@ describe('tileGridLevelOf', () => {
     expect(tileGridLevelOf(pane({ rotation: 90 }))).toBeNull();
     expect(tileGridLevelOf(pane({ angleDeg: 15 }))).toBeNull();
     expect(tileGridLevelOf(pane({ mirrorV: true }))).toBeNull();
+  });
+});
+
+describe('patternGridActionTarget — Flood/Close/Clear aim at exactly one pattern', () => {
+  // Two patterns at different resolutions: a step-1 grid (level 0) and a
+  // step-2 grid (level 1) — what switching grid levels mid-session mints.
+  const fineBox = { cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1 };
+  const coarseBox = { cellX: 4, cellY: 4, cellWidth: 2, cellHeight: 2 };
+  const both = withTileObject(
+    withTileObject(blank(), fineBox, 'test/tile_00000000'),
+    coarseBox, 'test/tile_00000000',
+  );
+  const fineId = 'pat_test_0_0';
+  const coarseId = 'pat_test_4_4';
+  test('a selected pattern outranks the open one', () => {
+    expect(patternGridActionTarget(both, coarseId, fineId)).toBe(coarseId);
+    // A selection that is not a pattern falls through to the open grid.
+    expect(patternGridActionTarget(both, 'svg_bogus', fineId)).toBe(fineId);
+  });
+
+  test('nothing selected: the pattern OPEN for editing is the target', () => {
+    expect(patternGridActionTarget(both, null, coarseId)).toBe(coarseId);
+    expect(patternGridActionTarget(both, null, fineId)).toBe(fineId);
+  });
+
+  test('nothing selected and nothing open: no target at all', () => {
+    // The rule used to guess — the sole pattern at the current grid level,
+    // else the last one a stroke had touched — so a press could rewrite a
+    // grid the user had not pointed at. It aims only where they pointed now.
+    expect(patternGridActionTarget(both, null, null)).toBeNull();
+    expect(patternGridActionTarget(both, null, 'pat_gone')).toBeNull();
+  });
+
+  test('a hidden, locked or non-pattern id is not a target', () => {
+    for (const flag of ['hidden', 'locked'] as const) {
+      const off = {
+        ...both,
+        patternObjects: both.patternObjects!.map((q) => (
+          q.id === coarseId ? { ...q, [flag]: true } : q)),
+      };
+      expect(patternGridActionTarget(off, null, coarseId)).toBeNull();
+    }
+    expect(patternGridActionTarget(both, null, 'svg_bogus')).toBeNull();
+  });
+});
+
+describe('patternGridActionsTargetOpen — the capsule stands only over an OPEN grid', () => {
+  // Flood / Close / Clear rewrite a grid's CONTENTS, so they ask the same
+  // licence the brushes do: the pattern must be OPEN for editing (the
+  // double border). A pattern that is merely selected is closed to them.
+  test('the open grid, with nothing or itself selected, is a target', () => {
+    expect(patternGridActionsTargetOpen(null, 'pat_a')).toBe(true);
+    expect(patternGridActionsTargetOpen(undefined, 'pat_a')).toBe(true);
+    expect(patternGridActionsTargetOpen('pat_a', 'pat_a')).toBe(true);
+  });
+
+  test('a pattern selected that is NOT the open one takes the capsule down', () => {
+    // The actions aim at the SELECTION first (patternGridActionTarget), and
+    // that selection's contents are closed — so the capsule would stand as
+    // dead chrome over a grid its presses may not rewrite.
+    expect(patternGridActionsTargetOpen('pat_b', 'pat_a')).toBe(false);
+  });
+
+  test('nothing open: no capsule, selected pattern or not', () => {
+    // `editableId` arrives already resolved through editableTilePattern, so
+    // a hidden or LOCKED pattern is null here — a selected pattern that
+    // cannot be opened at all takes the capsule down with it.
+    expect(patternGridActionsTargetOpen(null, null)).toBe(false);
+    expect(patternGridActionsTargetOpen('pat_a', null)).toBe(false);
+    expect(patternGridActionsTargetOpen('pat_a', undefined)).toBe(false);
+  });
+});
+
+describe('editableTilePattern — the grid the double border marks', () => {
+  // A pattern is opened for editing by hand (the Edit capsule); the double
+  // ring (the text edit ring's style, in the pattern's orange) is the page's
+  // one sign of it, and nothing the Tile tool does can change a grid that
+  // isn't wearing it.
+  const box = { cellX: 4, cellY: 4, cellWidth: 2, cellHeight: 2 };
+  const seeded = withTileObject(blank(), box, 'test/tile_00000000');
+  const id = 'pat_test_4_4';
+  test('resolves the id against the live scene — and nothing else', () => {
+    expect(editableTilePattern(seeded, id)?.id).toBe(id);
+    expect(editableTilePattern(seeded, null)).toBeNull();
+    expect(editableTilePattern(seeded, undefined)).toBeNull();
+    // Gone (an undo, a delete), or never a pattern: the mode goes with it.
+    expect(editableTilePattern(seeded, 'pat_gone')).toBeNull();
+    expect(editableTilePattern(seeded, 'svg_bogus')).toBeNull();
+    expect(editableTilePattern(blank(), id)).toBeNull();
+  });
+
+  test('a hidden or locked pattern cannot be open — neither can take an edit', () => {
+    for (const flag of ['hidden', 'locked'] as const) {
+      const off = {
+        ...seeded,
+        patternObjects: seeded.patternObjects!.map((q) => ({ ...q, [flag]: true })),
+      };
+      expect(editableTilePattern(off, id)).toBeNull();
+    }
+  });
+});
+
+describe('stamping INTO the OPEN pattern’s own grid (the Edit capsule’s target)', () => {
+  const PICK = { spriteId: 'test/tile_00000000' };
+  /** A plain cols×rows grid placed as one object. */
+  const grid = (
+    state: CompositionState, id: string,
+    box: { cellX: number; cellY: number; cellWidth: number; cellHeight: number },
+    cols: number, rows: number, extra: Partial<PatternObject> = {},
+  ) => applyCompOps(state, [{
+    op: 'placeObject', kind: 'pattern',
+    item: { id, ...box, cols, rows, cells: new Array(cols * rows).fill(spriteCell('test/tile_00000000')), ...extra } as PatternObject,
+  }]);
+  const patternOf = (state: CompositionState, id: string) => state.patternObjects!.find((p) => p.id === id)!;
+  test('tileTargetPattern: the OPEN pattern, unless its grid IS the composition grid at this level', () => {
+    // A step-1 grid ON the lattice at level 0: the plain stamp already edits it.
+    const aligned = withTileObject(blank(), { cellX: 2, cellY: 2, cellWidth: 1, cellHeight: 1 }, 'test/tile_00000000');
+    expect(tileTargetPattern({ ...aligned, gridLevel: 0 }, 'pat_test_2_2', 0)).toBeNull();
+    // The same grid at level 1 (step 2): another resolution — the target.
+    expect(tileTargetPattern({ ...aligned, gridLevel: 1 }, 'pat_test_2_2', 1)?.id).toBe('pat_test_2_2');
+    // Off the lattice, or turned: the target.
+    const off = grid(blank(), 'pat_off', { cellX: 0.5, cellY: 0.25, cellWidth: 2, cellHeight: 2 }, 2, 2);
+    expect(tileTargetPattern(off, 'pat_off', 0)?.id).toBe('pat_off');
+    const turned = grid(blank(), 'pat_turn', { cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2 }, 2, 2, { angleDeg: 30 });
+    expect(tileTargetPattern(turned, 'pat_turn', 0)?.id).toBe('pat_turn');
+    // Nothing open, not a pattern, or locked: none.
+    expect(tileTargetPattern(off, null, 0)).toBeNull();
+    expect(tileTargetPattern(off, 'svg_nope', 0)).toBeNull();
+    const locked = grid(blank(), 'pat_lock', { cellX: 0.5, cellY: 0, cellWidth: 2, cellHeight: 2 }, 2, 2, { locked: true });
+    expect(tileTargetPattern(locked, 'pat_lock', 0)).toBeNull();
+  });
+
+  test('tileCellInPattern: the grid cell under a point, inside or past the edge, the free turn undone', () => {
+    const s = grid(blank(), 'p', { cellX: 1, cellY: 1, cellWidth: 4, cellHeight: 4 }, 2, 2);
+    const p = patternOf(s, 'p');
+    expect(tileCellInPattern(p, 2, 2)).toEqual({ col: 0, row: 0 });
+    expect(tileCellInPattern(p, 4.5, 1.5)).toEqual({ col: 1, row: 0 });
+    // Past the edge: a negative / over-range index the grow makes room for.
+    expect(tileCellInPattern(p, -0.5, 1.5)).toEqual({ col: -1, row: 0 });
+    expect(tileCellInPattern(p, 2, 6)).toEqual({ col: 0, row: 2 });
+    // Turned a half turn about its centre (3, 3): the page's (1.5, 1.5) is
+    // the grid's far corner cell.
+    const half = { ...p, angleDeg: 180 };
+    expect(tileCellInPattern(half, 1.5, 1.5)).toEqual({ col: 1, row: 1 });
+    // A repeating grid never grows: outside it names nothing.
+    expect(tileCellInPattern({ ...p, tileMode: 'repeat', tileWidthL0: 4, tileHeightL0: 4 }, -0.5, 1.5)).toBeNull();
+  });
+
+  // A pattern inside a bound group is drawn through the GROUP's transform,
+  // and until P5 the tile hit-test undid only the pattern's own free angle:
+  // the taps landed in the cell the grid would have been in if the group
+  // were not there. The frame is the group's now (sceneHitFrame), so a tap
+  // names the cell the user is looking at.
+  test('tileCellInPattern: a pattern carried by its bound group is tapped where the group draws it', () => {
+    const s = withSceneGraph(grid(blank(), 'p', { cellX: 1, cellY: 1, cellWidth: 4, cellHeight: 4 }, 2, 2));
+    const graph = graphOf(s);
+    // Twice the size about the grid's centre (3, 3): the grid now runs
+    // -1..7 and each cell is 4 wide, so the page point (6, 2) is the
+    // TOP-RIGHT cell — while at 1:1 that point is past the right edge.
+    const op = buildSetTransform(graph, 'p', { tx: -1, ty: -1, sx: 2, sy: 2, rotationDeg: 0 })!;
+    const scaled = applySceneOps(graph, [op]);
+    const state = { ...s, ...toLegacyView(scaled), graph: scaled };
+    const moved = patternOf(state, 'p');
+    expect(tileCellInPattern(moved, 6, 2, state.graph)).toEqual({ col: 1, row: 0 });
+    // The same page point, the same object, asked WITHOUT the graph: read
+    // off its own world fields, which say the same thing — the legacy view
+    // rescales a pattern's box, so this case agrees either way.
+    expect(tileCellInPattern(moved, 6, 2)).toEqual({ col: 1, row: 0 });
+    // The centre of every drawn cell names that cell.
+    for (const [col, row] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      expect(tileCellInPattern(moved, -1 + 2 + col * 4, -1 + 2 + row * 4, state.graph))
+        .toEqual({ col, row });
+    }
+  });
+
+  test('grownPatternGrid keeps every existing cell exactly where it was on the page — turned or not', () => {
+    const s = withTileObject(blank(), { cellX: 4, cellY: 4, cellWidth: 2, cellHeight: 2 }, 'test/tile_00000000');
+    const p = patternOf(s, 'pat_test_4_4');
+    const left = grownPatternGrid(p, -1, 0)!;
+    expect([left.cols, left.rows, left.cellX, left.cellY, left.cellWidth]).toEqual([2, 1, 2, 4, 4]);
+    expect(left.cells).toEqual([null, p.cells[0]]);
+    // Growing to a cell it already holds is the same grid.
+    expect(grownPatternGrid(p, 0, 0)).toBe(p);
+    // Turned a quarter: the box moves so the old cell's page centre holds.
+    const turned = { ...p, angleDeg: 90 };
+    const g = grownPatternGrid(turned, 1, 0)!;
+    expect([g.cols, g.rows]).toEqual([2, 1]);
+    const centre = (q: PatternObject, col: number, row: number) => {
+      const stepX = q.cellWidth / q.cols;
+      const stepY = q.cellHeight / q.rows;
+      return rotatePointAboutCW(
+        q.cellX + (col + 0.5) * stepX, q.cellY + (row + 0.5) * stepY,
+        q.cellX + q.cellWidth / 2, q.cellY + q.cellHeight / 2, q.angleDeg ?? 0,
+      );
+    };
+    const before = centre(turned, 0, 0);
+    const after = centre(g, 0, 0);
+    expect(after[0]).toBeCloseTo(before[0]);
+    expect(after[1]).toBeCloseTo(before[1]);
+    expect(g.cells[0]).toEqual(p.cells[0]);
+    expect(g.cells[1]).toBeNull();
+    // Past the grid cap, or a grid that can't grow: none.
+    expect(grownPatternGrid(p, MAX_PATTERN_GRID, 0)).toBeNull();
+    expect(grownPatternGrid({ ...p, rotation: 90 }, 1, 0)).toBeNull();
+  });
+
+  test('buildPlaceTileInPattern: a cell inside re-rolls in place; past the edge the grid grows and takes the tile', () => {
+    const s = grid(blank(), 'p', { cellX: 0.5, cellY: 0.5, cellWidth: 4, cellHeight: 2 }, 2, 1);
+    const inside = buildPlaceTileInPattern(s, 'p', 3, 1, INK, undefined, { ...PICK, transform: { rotation: 90, mirrorH: false, mirrorV: false } })!;
+    expect(inside.entry).toHaveLength(1);
+    expect(inside.entry[0].op).toBe('editPatternCells');
+    const rolled = applyCompOps(s, inside.entry);
+    expect(patternOf(rolled, 'p').cells[1]).toMatchObject({ type: 'sprite', transform: { rotation: 90 } });
+    expect(patternOf(rolled, 'p').cols).toBe(2);
+    // Past the right edge: one op, the grid three wide, the new cell filled,
+    // the old two where they were (the box grew right, in the grid's OWN
+    // step — not the composition's).
+    const past = buildPlaceTileInPattern(s, 'p', 5.5, 1, INK, undefined, PICK)!;
+    expect(past.entry).toHaveLength(1);
+    expect(past.id).toBe('p');
+    const grown = patternOf(applyCompOps(s, past.entry), 'p');
+    expect([grown.cols, grown.rows, grown.cellX, grown.cellWidth]).toEqual([3, 1, 0.5, 6]);
+    expect(grown.cells[2]).toMatchObject({ type: 'sprite', spriteId: 'test/tile_00000000' });
+    expect(grown.cells[0]).toEqual(patternOf(s, 'p').cells[0]);
+    // Undo brings the original grid back whole.
+    expect(patternOf(revertCompOps(applyCompOps(s, past.entry), past.entry), 'p')).toEqual(patternOf(s, 'p'));
+    // Locked, missing, or a repeating grid stamped outside: nothing.
+    expect(buildPlaceTileInPattern(grid(blank(), 'l', { cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2 }, 1, 1, { locked: true }), 'l', 1, 1, INK)).toBeNull();
+    expect(buildPlaceTileInPattern(s, 'nope', 1, 1, INK)).toBeNull();
+    const rep = grid(blank(), 'r', { cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2 }, 1, 1, { tileMode: 'repeat', tileWidthL0: 2, tileHeightL0: 2 });
+    expect(buildPlaceTileInPattern(rep, 'r', 5, 1, INK)).toBeNull();
   });
 });
