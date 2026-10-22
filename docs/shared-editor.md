@@ -918,20 +918,37 @@ first, then the pointer bump in each app).
    `REVEAL_GLIDE_MS` — the two callers want different flights, a refusal
    being answered where a reveal is admired.
 
-   A SECOND bug came out with it, and it is the better argument for
-   collapsing a duplication rather than merely recording one. Sol's
-   `frameSeedsCamera` measured its leaves through
+   **A SECOND bug was claimed here and does not exist — retracted
+   2026-10-22, in Sol's review round 1.** What this paragraph said: that
+   Sol's `frameSeedsCamera` measured its leaves through
    `computeFrameSelectionCamera`, which reads each leaf's
-   `arcBoundingBox(segments)` in its own LOCAL space and never applies the
-   node's world matrix. Every plant hangs under a group that carries one
-   (`plantElementMatrix`), so a plant that had been moved, scaled or turned
-   was framed on the wrong rectangle and the Draw flew somewhere the plant
-   was not. NOTHING PINNED IT because both halves agreed with each other —
-   the camera was computed from the same local boxes the suite asserted it
-   against, which is the shape of every bug a duplication hides.
-   `frameSeedsRect` goes through `resolveMultiSelectionBox`, whose
-   `nodeInkAabb` reads `drawnCorners` off the graph: the engine's one
-   reading of "the union of these nodes' inked bounds".
+   `arcBoundingBox(segments)` in LOCAL space and never applies the node's
+   world matrix, so a plant whose group had been moved, scaled or turned
+   was framed on the wrong rectangle — and that nothing pinned it because
+   both halves of the duplication agreed with each other.
+
+   The reviewer asked for the test that would fail without the fix, and
+   there is none, because there is nothing to fix: a seed group's transform
+   is baked THROUGH to its leaves' segments on every edit, so for Sol's
+   plants the local union and the world union are the same numbers. All
+   three cases were then checked against each other — a group move, a 30°
+   turn, a 2× scale — and the two readings agree to the last decimal every
+   time. The switch to `resolveMultiSelectionBox` is a consolidation onto
+   the canvas's own box reading (so a Draw flies to exactly the box a
+   selection of those plants would wear) and nothing more.
+
+   It is left standing rather than deleted because of HOW it was made,
+   which is the part worth carrying: the claim was reasoned from two
+   function signatures — one reads segments, the other reads the graph, so
+   the first must be wrong about a transformed node — and never checked
+   against the data. Sol's leaves do not hold the shape the argument
+   assumed. A duplication is a good enough reason to collapse something on
+   its own; dressing one up as a latent bug put a false fact in a commit
+   message, in this plan, and very nearly into a test written to confirm
+   it. The lesson for the stages left: verify a claim about the DATA
+   against the data, the way §4.2 item 5 already says to verify a pin
+   against the regression it names.
+
    Sol's side is `web/sol/scene/plantCanvasLayers.tsx`, and it is the
    reason `layers` is a prop rather than an installed rule: what it draws
    from is a whole render's worth of Sol's own work — the plant plan, each
