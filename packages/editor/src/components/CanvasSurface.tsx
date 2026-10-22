@@ -51,7 +51,7 @@ import { signalReady } from '@/native-shell/bridge/webBridge';
 import { pageIsReady } from '../afterReady';
 import { useSuppressIOSLoupe } from '../useSuppressIOSLoupe';
 import { tapTargetGrid } from './tapTargetGrid';
-import { BG_EDITOR_CANVAS, CANVAS_HAIRLINE } from '@/editor-ui';
+import { BG_EDITOR_CANVAS, CANVAS_HAIRLINE } from '@/editor-ui/theme';
 import {
   BASE_CELL_PX,
   FRAME_OBJECT_FIT,
