@@ -1,4 +1,6 @@
-import { CompositionState, PATTERN_SYMMETRY_OFF, PatternObject, PatternSymmetry } from '@/engine/types';
+import {
+  CompositionState, PATTERN_SYMMETRY_OFF, PatternObject, PatternSymmetry, makeViewport,
+} from '@/engine/types';
 import {
   applySymmetryAffine,
   applySymmetryAffineVec,
@@ -11,11 +13,18 @@ import {
   symmetryMenuFlags,
   symmetryMenuKeyOf,
   symmetryMenuLabel,
+  pickSymmetryFrame,
+  resnapSymmetryFrame,
+  symmetryNeedsUniformCenter,
+  symmetryAxesShown,
+  symmetryOverlayFor,
   symmetryAffineMaps,
   symmetryOverlayModel,
   symmetryToolbarIcon,
 } from '../canvasSymmetry';
+import { compSnapStep } from '@/engine/compositionCellMath';
 import { makeBlankComposition } from '../blankComposition';
+import { screenToWorld } from '../cameraMath';
 
 // The canvas Symmetry control (Facet's tile-editor mirror, ported): the
 // toolbar cycle + modal choose the mode, the frame is planted on the view
@@ -362,3 +371,219 @@ describe('a selected pattern scopes the mirror to itself', () => {
 
 // The shell/canvas wiring is DOM-bound; pin the source, the established
 // pattern for RN-shell behaviours the node suite can't render.
+
+describe('the symmetry frame', () => {
+  const camera = { offsetX: 0.1, offsetY: 0.05, zoom: 1.7 };
+  const viewport = makeViewport(390, 700);
+
+  test('centers on the view center, snapped to the half-step lattice', () => {
+    for (const gridLevel of [0, 1, 2, -1]) {
+      const step = compSnapStep(gridLevel);
+      const frame = pickSymmetryFrame(camera, viewport, gridLevel);
+      const center = screenToWorld(viewport.width / 2, viewport.height / 2, camera, viewport);
+      const cx = frame.cellX + frame.cellWidth / 2;
+      const cy = frame.cellY + frame.cellHeight / 2;
+      // On the half-step lattice…
+      expect(Math.abs(cx / (step / 2) - Math.round(cx / (step / 2)))).toBeLessThan(1e-9);
+      expect(Math.abs(cy / (step / 2) - Math.round(cy / (step / 2)))).toBeLessThan(1e-9);
+      // …and within a half step of the true view center.
+      expect(Math.abs(cx - center.cellX)).toBeLessThanOrEqual(step / 2 + 1e-9);
+      expect(Math.abs(cy - center.cellY)).toBeLessThanOrEqual(step / 2 + 1e-9);
+    }
+  });
+
+  test('the frame’s edges land on the grid proper (parity rule)', () => {
+    for (const gridLevel of [0, 1, 2]) {
+      const step = compSnapStep(gridLevel);
+      const frame = pickSymmetryFrame(camera, viewport, gridLevel);
+      expect(Math.abs(frame.cellX / step - Math.round(frame.cellX / step))).toBeLessThan(1e-9);
+      expect(Math.abs(frame.cellY / step - Math.round(frame.cellY / step))).toBeLessThan(1e-9);
+      // Whole steps per axis, at least the quad-capable four.
+      expect(frame.cellWidth / step).toBeGreaterThanOrEqual(4);
+      expect(frame.cellHeight / step).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  test('a grid change re-validates the frame: fine keeps it, coarse re-snaps it', () => {
+    // A frame planted at level 0 (step 1), center at (4.5, 5.5) — a
+    // cell-bisecting position, so the parity rule made both sides odd.
+    const frame = { cellX: 0, cellY: 1, cellWidth: 9, cellHeight: 9 };
+    // Any finer grid contains the old lattice: untouched, same object.
+    expect(resnapSymmetryFrame(frame, 0)).toBe(frame);
+    expect(resnapSymmetryFrame(frame, -2)).toBe(frame);
+    // Coarser (step 4): (4.5, 5.5) is neither an edge nor a cell-bisecting
+    // position of the new grid, so the center snaps to the nearest valid
+    // spot and the frame rebuilds around it, grid-aligned, whole steps.
+    const step = compSnapStep(2);
+    const snapped = resnapSymmetryFrame(frame, 2);
+    const cx = snapped.cellX + snapped.cellWidth / 2;
+    const cy = snapped.cellY + snapped.cellHeight / 2;
+    expect(Math.abs(cx / (step / 2) - Math.round(cx / (step / 2)))).toBeLessThan(1e-9);
+    expect(Math.abs(cx - 4.5)).toBeLessThanOrEqual(step / 2);
+    expect(Math.abs(cy - 5.5)).toBeLessThanOrEqual(step / 2);
+    expect(snapped.cellX / step).toBeCloseTo(Math.round(snapped.cellX / step));
+    expect(snapped.cellWidth / step).toBeGreaterThanOrEqual(4);
+    // A frame already valid at the coarse level passes through unchanged.
+    const coarse = { cellX: 0, cellY: 0, cellWidth: 16, cellHeight: 16 };
+    expect(resnapSymmetryFrame(coarse, 2)).toBe(coarse);
+  });
+
+  test('a selection’s centre wins over the view’s, still on the lattice', () => {
+    // Turning the mirror on with something in hand plants the axes on THAT,
+    // wherever the page is scrolled to.
+    const box = { cellX: 20, cellY: 12, cellWidth: 3, cellHeight: 5 };
+    for (const gridLevel of [0, 1, -1]) {
+      const step = compSnapStep(gridLevel);
+      const frame = pickSymmetryFrame(camera, viewport, gridLevel, box);
+      const cx = frame.cellX + frame.cellWidth / 2;
+      const cy = frame.cellY + frame.cellHeight / 2;
+      // Within a half step of the object's own centre…
+      expect(Math.abs(cx - 21.5)).toBeLessThanOrEqual(step / 2 + 1e-9);
+      expect(Math.abs(cy - 14.5)).toBeLessThanOrEqual(step / 2 + 1e-9);
+      // …and still on the half-step lattice, edges on the grid proper.
+      expect(Math.abs(cx / (step / 2) - Math.round(cx / (step / 2)))).toBeLessThan(1e-9);
+      expect(Math.abs(frame.cellX / step - Math.round(frame.cellX / step))).toBeLessThan(1e-9);
+    }
+    // The frame keeps the VIEW's size — the axes are canvas-wide, and the
+    // extent only sets the block modes' quarter lines. (Within the one step
+    // the parity rule may add: an odd centre wants an odd step count.)
+    const around = pickSymmetryFrame(camera, viewport, 1, box);
+    const plain = pickSymmetryFrame(camera, viewport, 1);
+    expect(Math.abs(around.cellWidth - plain.cellWidth)).toBeLessThanOrEqual(compSnapStep(1));
+    expect(Math.abs(around.cellHeight - plain.cellHeight)).toBeLessThanOrEqual(compSnapStep(1));
+    expect(around.cellX).not.toBe(plain.cellX);
+  });
+
+  test('a different view yields a different frame — re-toggling re-centers', () => {
+    const a = pickSymmetryFrame(camera, viewport, 1);
+    // offsetX is screen px (camera pan); 100 px at this zoom is a several-
+    // cell shift, comfortably past the half-step snap.
+    const b = pickSymmetryFrame({ ...camera, offsetX: camera.offsetX + 100 }, viewport, 1);
+    expect(a.cellX).not.toBe(b.cellX);
+  });
+
+  // ── Uniform-parity centers for the diagonal / rotational modes ──────
+  // A 45° reflection (or quarter turn) about a mixed-parity center sends
+  // every cell center to a lattice corner — no stamp has a cell to land
+  // in, and the engine could only snap the axis half a cell off the drawn
+  // line. So the modes that carry such axes demand ONE parity across the
+  // frame's two center coordinates; H/V axes act per-coordinate and keep
+  // their independent snap.
+
+  const parity2 = (frame: { cellX: number; cellY: number; cellWidth: number; cellHeight: number }, step: number) => {
+    const c2x = Math.round((frame.cellX + frame.cellWidth / 2) / (step / 2));
+    const c2y = Math.round((frame.cellY + frame.cellHeight / 2) / (step / 2));
+    return ((c2x ^ c2y) & 1) === 0;
+  };
+
+  test('symmetryNeedsUniformCenter: the diagonal-carrying modes and no other', () => {
+    expect(symmetryNeedsUniformCenter(undefined)).toBe(false);
+    expect(symmetryNeedsUniformCenter(H)).toBe(false);
+    expect(symmetryNeedsUniformCenter(HV)).toBe(false);
+    expect(symmetryNeedsUniformCenter({ ...OFF, mirrorQuad: true })).toBe(false);
+    expect(symmetryNeedsUniformCenter({ ...OFF, mirrorRow: true })).toBe(false);
+    for (const key of ['mirrorDiag1', 'mirrorDiag2', 'mirrorDiagBoth', 'mirrorStar', 'mirrorRotate'] as const) {
+      expect(symmetryNeedsUniformCenter({ ...OFF, [key]: true })).toBe(true);
+    }
+  });
+
+  test('a diagonal mode’s frame lands both centers on ONE parity, wherever the view sits', () => {
+    const DIAG: PatternSymmetry = { ...OFF, mirrorDiag1: true };
+    for (const gridLevel of [0, 1, 2, -1]) {
+      const step = compSnapStep(gridLevel);
+      for (const dy of [0, 37, 61, 100]) {
+        const cam = { ...camera, offsetY: camera.offsetY + dy };
+        const frame = pickSymmetryFrame(cam, viewport, gridLevel, undefined, DIAG);
+        expect(parity2(frame, step)).toBe(true);
+        // Still within a half step of the true view center on each axis.
+        const center = screenToWorld(viewport.width / 2, viewport.height / 2, cam, viewport);
+        expect(Math.abs(frame.cellX + frame.cellWidth / 2 - center.cellX))
+          .toBeLessThanOrEqual(step / 2 + 1e-9);
+        expect(Math.abs(frame.cellY + frame.cellHeight / 2 - center.cellY))
+          .toBeLessThanOrEqual(step / 2 + 1e-9);
+      }
+    }
+  });
+
+  test('a mode switch re-snaps a standing mixed-parity frame; H/V frames pass through', () => {
+    // Planted for H/V: center (4.5, 4) — x mid-cell, y on an edge. Fine
+    // for per-axis mirrors, unreflectable for a diagonal.
+    const mixed = { cellX: 0, cellY: 0, cellWidth: 9, cellHeight: 8 };
+    expect(resnapSymmetryFrame(mixed, 0, H)).toBe(mixed);
+    const DIAG: PatternSymmetry = { ...OFF, mirrorDiag1: true };
+    const snapped = resnapSymmetryFrame(mixed, 0, DIAG);
+    expect(snapped).not.toBe(mixed);
+    expect(parity2(snapped, 1)).toBe(true);
+    // The nudge is half a step on one axis, no more.
+    expect(Math.abs(snapped.cellY + snapped.cellHeight / 2 - 4)).toBeLessThanOrEqual(0.5 + 1e-9);
+    expect(snapped.cellX + snapped.cellWidth / 2).toBe(4.5);
+    // A frame already on one parity passes through untouched.
+    const odd = { cellX: 0, cellY: 0, cellWidth: 9, cellHeight: 9 };
+    expect(resnapSymmetryFrame(odd, 0, DIAG)).toBe(odd);
+  });
+
+  test('a LOADED page’s frame is re-validated on open — the stale-star half-cell hole', () => {
+    // Every live path re-snaps (turn-on, mode switch, grid change), but a
+    // page SAVED with a mixed-parity frame — one written before the
+    // uniform-parity rule, or under a mode that didn't need it — reopened
+    // with it verbatim. Under Star, the overlay then drew its diagonals
+    // through the stale center while every mirrored stamp snapped to the
+    // lattice half a cell away: "the symmetry center is drawn at (3,3),
+    // but the actual geometry centers at (3,2.5)".
+    const STAR: PatternSymmetry = { ...OFF, mirrorStar: true };
+    // The reported shape: 6 steps wide (center on a border), 5 tall
+    // (center mid-cell) — mixed parity, which star's diagonal cannot
+    // reflect cells across…
+    const stale = { cellX: 0, cellY: 0, cellWidth: 6, cellHeight: 5 };
+    // …its exact diagonal image of a CELL CENTER is a lattice CORNER:
+    // reflecting (0.5, 0.5) about the 45° line through (3, 2.5) lands on
+    // (1, 0) — no cell to land in, so the engine could only round.
+    const cx = 3;
+    const cy = 2.5;
+    expect([cx - cy + 0.5, cy - cx + 0.5]).toEqual([1, 0]);
+    // resnap heals it (one parity, center within half a step)…
+    const healed = resnapSymmetryFrame(stale, 0, STAR);
+    expect(healed).not.toBe(stale);
+    expect(parity2(healed, 1)).toBe(true);
+  });
+});
+
+describe('the axes a pattern-scoped mirror draws', () => {
+  test('a repeating pattern draws no axes, though its mirror still stands', () => {
+    const frame = { cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 8 };
+    const scoped = { flags: H, frame, only: 'pat_1' };
+    const scaled = [{ id: 'pat_1', tileMode: 'scale' }];
+    const repeat = [{ id: 'pat_1', tileMode: 'repeat' }];
+
+    expect(symmetryAxesShown(scoped, scaled)).toBe(true);
+    expect(symmetryAxesShown(scoped, repeat)).toBe(false);
+    expect(symmetryOverlayFor(scoped, repeat, 0)).toBeNull();
+    expect(symmetryOverlayFor(scoped, scaled, 0)!.lines.length).toBeGreaterThan(0);
+
+    // The canvas-wide mirror is nobody's pattern: a repeating pattern
+    // elsewhere on the page does not take the canvas axes away.
+    const wide = { flags: H, frame };
+    expect(symmetryAxesShown(wide, repeat)).toBe(true);
+    expect(symmetryOverlayFor(wide, repeat, 0)!.bounded).toBe(false);
+
+    // …and the mirror itself is untouched: the spec still scopes to the
+    // pattern, so stamps keep mirroring inside it.
+    expect(canvasWideSymmetry(scoped as never)).toBeUndefined();
+
+    // No spec (mirror off) draws nothing, and asks nothing of the patterns.
+    expect(symmetryAxesShown(undefined, repeat)).toBe(false);
+    expect(symmetryOverlayFor(undefined, repeat, 0)).toBeNull();
+    // A scope naming a pattern the state no longer holds still draws: the
+    // absence is not a repeat.
+    expect(symmetryAxesShown(scoped, [])).toBe(true);
+    expect(symmetryAxesShown(scoped, undefined)).toBe(true);
+  });
+
+  test('the live-drag frame overrides the spec’s box, and repeat still silences it', () => {
+    const frame = { cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 8 };
+    const scoped = { flags: H, frame, only: 'pat_1' };
+    const moved = { cellX: 4, cellY: 2, cellWidth: 8, cellHeight: 8 };
+    expect(symmetryOverlayFor(scoped, [{ id: 'pat_1', tileMode: 'scale' }], 0, moved)!.frame).toEqual(moved);
+    expect(symmetryOverlayFor(scoped, [{ id: 'pat_1', tileMode: 'repeat' }], 0, moved)).toBeNull();
+  });
+});

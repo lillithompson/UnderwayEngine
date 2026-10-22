@@ -451,7 +451,8 @@ first, then the pointer bump in each app).
    copy, counted as §1's are. Six of the eleven leaves are byte-identical
    between CozyJournal and DrawBot and absent from Sol, which gains them
    unused — the arrangement editor-ui already has with CozyJournal's rig
-   pages (§4.3, "The rig's place"). `regionChromeScreen.ts` and
+   pages (§4.3, "The rig's place").
+
    `regionChromeScreen.ts`'s 60 lines of DrawBot drift turned out to be a
    whole feature CozyJournal's copy has none of — the FORWARD ARROW
    (`EditorConfig.forwardArrow`, `ForwardArrow`, `forwardArrowPath`,
@@ -466,24 +467,32 @@ first, then the pointer bump in each app).
    group for it, stay in that app. Found by DrawBot's typecheck, which is
    the gate that sees a dropped export at all.
 
-   `maskWordScale.ts` were the two that looked like leaves and were not:
-   `maskWordScale` imports `@/web/formats/scaffold` and
-   `templateNodes`, and `selectionShapeOutline` imports
-   `@/web/formats/poserRig`, so both stay until stage 6; `openTrace.ts`
-   imports the bridge and stays with it.
+   `maskWordScale.ts` and `selectionShapeOutline.ts` are the two that
+   looked like leaves and were not: `maskWordScale` imports
+   `@/web/formats/scaffold` and `templateNodes`, and
+   `selectionShapeOutline` imports `@/web/formats/poserRig`, so both stay
+   until stage 6; `openTrace.ts` imports the bridge and stays with it.
 
    `NodeLayer.tsx` moved in CozyJournal's version with one generic
    addition of Sol's adopted — the optional `children` on `SvgNodeLayer`,
    drawn over the shape inside its matrix wrapper, which no shared caller
    passes — and one new seam, the FONTS. The node layer was the last
    mover to import `@/web/fonts/*`: `fontsEpoch.ts` is identical in all
-   three apps and moved whole, and `fontFamilyFor` split into the rule
-   (`fontFamily.ts`, the system stack and the quoting) and each app's DATA
-   (its bundled pack), installed by `registerFontFamily` from the app's
-   `web/fonts/loadPackFonts.ts` — the file that already installs the
-   brush's glyph-ink probe, and the same reasoning as §4.3's `tagLabels`:
-   a pack is per-app data, not a rule. With no pack installed the stack is
-   the system one, which is what an app shows before its faces load.
+   three apps and moved whole, and `fontFamilyFor` became a PROBE the app
+   installs, the way the brush's glyph-ink probe already is and from the
+   same file (`web/fonts/loadPackFonts.ts`). `fontFamily.ts` holds the
+   fallback (`SYSTEM_STACK`) and the registry; the resolver itself — the
+   pack lookup, the quoting, and the rule that `'system'` and the empty id
+   are the bare stack — stays whole in each app's
+   `web/fonts/registerFonts.ts`, which builds it from that app's fonts
+   pack. The line was drawn there rather than at "rule here, data there"
+   because a pack is not a table the package can read: `registerFonts`
+   parses it, keys it by `fontId`, and answers for ids it has never heard
+   of, and splitting that would have put half of one function in each
+   repo. With nothing installed the answer is the system stack, which is
+   what an app shows before its faces load. `registerFonts` imports
+   `SYSTEM_STACK` from the package, so the two cannot disagree about what
+   a text node looks like before the pack arrives.
 
    What moved with them: eight suites split the way stages 3 and 4 split
    theirs, the behaviour half to the package and the CANVAS and SHELL pins
@@ -501,12 +510,13 @@ first, then the pointer bump in each app).
    because the package cannot hold it: `canvasSymmetry`'s "a known tool id
    the unrestricted bar no longer carries" reads `KNOWN_TOOLS` and
    `TOOL_META`, which are each app's.
-   A NodeLayer pin inside a suite about the APP's own wiring was
-   re-pointed at the vendor path rather than moved, which is what stage 4's
-   `panelModel` pins already do (§4.3's open call covers both).
+   A NodeLayer or regionChromeScreen pin inside a suite about the APP's own
+   wiring was re-pointed at the vendor path rather than moved — eleven
+   suites in CozyJournal, nine in DrawBot, eight in Sol — which is what
+   stage 4's `panelModel` pins already do (§4.3's open call covers both).
    `fontsEpoch.test.ts` was identical in all three apps and moved whole,
    and `fontFamily.test.ts` is new, over the seam with no pack installed,
-   with one, and after one is taken away. Editor package 59 suites / 1,171
+   with one, and after one is taken away. Editor package 59 suites / 1,182
    tests; engine 358 of 359 (cameraRoll's host dependency, as before).
    `NodeLayer.tsx` itself is typechecked only in the apps, as every
    component in this package already is — no engine suite imports one, the
