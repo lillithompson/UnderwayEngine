@@ -1042,6 +1042,14 @@ folds as a changed move and `plantNodeLayers.tsx` pairs with nothing (it is
 a new file in Sol's own tree, not a move into the engine), and because its
 two codebase documents carry very long table lines.
 
+**Stage 5b.1 and 5b.2 are nowhere near it either** (2026-10-22):
+CozyJournal's range after the whole rig refactor — the pointer bump, the
+twist, the joint posing and the layer — measured 233 KB, against the 890 KB
+a stage-3 range passed at. The risk named for 5b was never the refactor
+but the MOVE: 166 suites read `CanvasSurface` source text, and the move's
+own 7,104 lines fold only if `review.js` pairs the file the engine adds
+with the file the app deletes.
+
 So the next process step — a pointer bump whose engine range is already
 reviewed treated as cleared — is still not forced, and stage 5a did not
 touch `tooling/`. Stage 5b (`CanvasSurface`, 7,104 lines, and the 190 pins)
