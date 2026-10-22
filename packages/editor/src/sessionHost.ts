@@ -29,7 +29,9 @@ import type { SceneOcclusion } from './sceneOcclusion';
 //    colour is not on the object (CozyJournal's rig, whose colours live on a
 //    hidden record), a node a duplicate has to bring a companion along for
 //    (the rig's pose record), a node held to uniform scale (the rig, the
-//    day's seeded squiggle), and the Color brush's pass over such nodes.
+//    day's seeded squiggle), and the Color and PUSH brushes' passes over
+//    such nodes — a node whose geometry is a bake of something else is
+//    coloured and deformed through what it was baked from.
 //    What the OUTLINE makes of such a node is a seam of its own
 //    (outlineHost.ts, stage 4).
 //
@@ -152,6 +154,42 @@ export interface HostPaintTargets {
   restore?(): void;
 }
 
+/**
+ * The PUSH brush's pass over the host's own kinds of thing for one stroke,
+ * resolved at the press. Push is the one brush that lays no colour: what
+ * is under the disc MOVES with it, and each kind takes that the only way
+ * its own geometry can — raster texels smear, vector points are carried,
+ * and a node whose geometry is a BAKE of something else pushes the
+ * something else (CozyJournal's rig re-poses its joints).
+ */
+export interface HostPushTargets {
+  /** Every node this pass owns, which the VECTOR pass then skips — all of
+   *  them, whether the brush may reach them or not: their geometry is a
+   *  bake, and warping it would leave the bake and the thing it was baked
+   *  from describing different shapes. */
+  readonly ids: ReadonlySet<string>;
+  /** One dab: what is under the disc at (`cellX`, `cellY`) takes the
+   *  travel (`dxCells`, `dyCells`) scaled by its own distance from the
+   *  centre and by `strength`. True when anything moved. */
+  push(
+    cellX: number, cellY: number, radiusCells: number,
+    dxCells: number, dyCells: number, strength: number,
+  ): boolean;
+  /** Show what the dabs have reached, through the host's own live channel
+   *  — the canvas's vector preview is an overlay path, and a bake has none
+   *  to lay one over. */
+  preview(): void;
+  /** …and the COMMITTED picture back, for a stroke that is abandoned or
+   *  that moved nothing. */
+  restore(state: CompositionState): void;
+  /** Did the stroke move anything of the host's? */
+  changed(): boolean;
+  /** The ops committing what moved, built over `state` — the state the
+   *  parts before this one leave behind, because `replaceScene` snapshots
+   *  every collection. Empty when nothing moved. */
+  commit(state: CompositionState): CompUndoEntry;
+}
+
 /** Rules the host adds about scene nodes of its own kind. */
 export interface HostNodeRules {
   /** Ops a duplicate brings along for the copied leaves: `copies` pairs each
@@ -172,6 +210,14 @@ export interface HostNodeRules {
   /** The Color brush's pass over the host's nodes, or null when the page
    *  has none. */
   paintTargets?(state: CompositionState, scope: ColorScope): HostPaintTargets | null;
+  /** The PUSH brush's pass over them, or null when the page has none.
+   *  `filterIds` is the selection's filter (null for none) and `skipIds`
+   *  what every brush skips, both resolved at the press. */
+  pushTargets?(
+    state: CompositionState,
+    filterIds: ReadonlySet<string> | null,
+    skipIds: ReadonlySet<string>,
+  ): HostPushTargets | null;
 }
 
 /** What an app supplies the shared session: any of the three. */
