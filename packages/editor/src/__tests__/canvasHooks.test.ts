@@ -730,17 +730,26 @@ describe('the surface’s half of the layers seam', () => {
     expect(body).toContain('for (const { standIn } of targets.standIns) {');
   });
 
-  test('one glide serves the rect ask and a host’s own camera', () => {
+  test('ONE glide, asked with a box, and the box becomes a camera here', () => {
     // Two copies of "tween the camera and commit on arrival" is what this
-    // replaces; the only difference was which camera and how long.
+    // replaces, and one prop where there were two: a host asks with a
+    // BOX, never a camera, because the fit and the chrome insets are the
+    // canvas's knowledge — a host computing its own camera frames without
+    // them, which is a framed thing landing under the toolbar.
     expect(SRC).toContain('const glideCameraTo = (target: Camera, durationMs: number) => {');
-    expect(SRC).toContain('), REVEAL_GLIDE_MS);');
-    expect(SRC).toContain('glideCameraTo(cameraGlide.camera, cameraGlide.durationMs);');
-    // The ASK is the seq, not the camera: the same ask must not fly again
-    // on an unrelated render…
-    expect(SRC).toContain('const glideSeq = cameraGlide?.seq ?? 0;');
-    expect(SRC).toContain('if (!cameraGlide || glideSeq === 0) return;');
-    // …and a finger down wins outright.
+    expect(SRC).toContain('revealRect?: { bbox: CellBbox; key: string; durationMs?: number } | null;');
+    expect(SRC).not.toContain('cameraGlide?:');
+    expect(SRC).toContain('glideCameraTo(computeFrameCellBboxCamera(');
+    expect(SRC).toContain('{ top: avoidTopPx ?? 0, bottom: avoidBottomPx ?? 0 },');
+    // The ask's own duration, the shared default when it names none.
+    expect(SRC).toContain('), revealRect.durationMs ?? REVEAL_GLIDE_MS);');
+    expect(SRC).toContain('const REVEAL_GLIDE_MS = 520;');
+    // The ASK is the key: the same one must not fly again on an unrelated
+    // render…
+    expect(SRC).toContain("const revealKey = revealRect?.key ?? '';");
+    expect(SRC).toContain('}, [revealKey, applyLiveCamera]);');
+    // …and a finger already down wins outright, where a finger landing
+    // during a glide cancels it and commits the camera where it stands.
     expect(SRC).toContain(
       "if (gestureRef.current.mode !== 'idle' || pointersRef.current.size > 0) return;",
     );

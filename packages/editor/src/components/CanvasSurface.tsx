@@ -423,26 +423,31 @@ interface CanvasSurfaceProps {
    *  when there is no region, which a page with an arrow and no region is
    *  (regionChromeScreen.writeForwardArrow). */
   forwardArrow?: ForwardArrow;
-  /** A world rect the camera should GLIDE to frame, and the `key` of the
-   *  ask that wants it framed (docs/social_game_spec.md §7.3): a Creature
-   *  turn refused over a point the move before left uncarried flies the
-   *  view to that point, since the notice can say how many are left but
-   *  not where. Re-flown whenever `key` changes — pressing *I'm Done*
-   *  again after panning away asks again — and never on the same key
-   *  twice, so a render for any other reason does not yank the camera. A
-   *  touch cancels it, like the avoid-glide. */
-  revealRect?: { bbox: CellBbox; key: string } | null;
   /**
-   * …and a camera the shell has worked out itself, for a host framing
-   * something the canvas cannot read one box for (Sol's zoom to the plants
-   * a Draw grew, which fits a set of scene nodes). The same tween as
-   * `revealRect`'s, with the duration the caller chooses.
+   * A world rect the camera should GLIDE to frame, and the `key` of the
+   * ask that wants it framed: CozyJournal's Creature turn refused over a
+   * point the move before left uncarried flies the view to that point,
+   * since the notice can say how many are left but not where
+   * (docs/social_game_spec.md §7.3); Sol's Draw frames the plants it grew
+   * (its architecture §6.4).
    *
-   * `seq` is the ASK: a new one flies, the same one is ignored however many
-   * renders go by. Dropped while a finger is down or a gesture is in
-   * flight — the finger wins.
+   * Re-flown whenever `key` changes — pressing *I'm Done* again after
+   * panning away asks again — and never on the same key twice, so a
+   * render for any other reason does not yank the camera. A touch cancels
+   * it, like the avoid-glide, and an ask that arrives while a finger is
+   * already down is DROPPED rather than fought.
+   *
+   * `durationMs` is the ask's own, defaulting to {@link REVEAL_GLIDE_MS}:
+   * the two callers want different flights (a refusal is answered, a
+   * reveal is admired) and the duration is per-ask data, like the key.
+   *
+   * ONE prop for both, where Sol passed a camera it had worked out itself
+   * (stage 5b.4c's `cameraGlide`, gone at 5b.4e): the BOX is the question
+   * — the canvas owns how a box becomes a camera, which is where the
+   * chrome insets and the fit live, and a host that computed its own
+   * camera was quietly framing without them.
    */
-  cameraGlide?: { camera: Camera; durationMs: number; seq: number } | null;
+  revealRect?: { bbox: CellBbox; key: string; durationMs?: number } | null;
   /** A finger landed on the canvas — ANY finger, before the press is
    *  classified and whatever it turns out to mean. For a host that has
    *  something playing which a touch should end (Sol's Draw reveal, its
@@ -1032,7 +1037,7 @@ export function CanvasSurface({
   onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp,
   ghosts,
   editableRegion, regionChrome, markers, forwardArrow, veiledIds, revealRect,
-  cameraGlide, onCanvasPointerDown,
+  onCanvasPointerDown,
   hostTools, openTrace, gestures, layers, surfaceHandle,
 }: CanvasSurfaceProps) {
   // The scene as the canvas draws and hit-tests it: the veiled nodes
@@ -1580,27 +1585,22 @@ export function CanvasSurface({
     if (!revealRect) return;
     const s = stateRef.current;
     if (s.viewport.width <= 0 || s.viewport.height <= 0) return;
+    // An ask that arrives while a finger is already down is dropped: the
+    // finger wins, and an unasked-for flight under it is the one thing a
+    // glide must never do. (A finger that lands DURING one cancels it and
+    // commits the camera where it stands — `cancelCameraTween` on the
+    // press. This is the other end of the same rule.)
+    if (gestureRef.current.mode !== 'idle' || pointersRef.current.size > 0) return;
+    // The box becomes a camera HERE, which is the point of taking a box:
+    // the fit and the chrome insets are the canvas's knowledge, and a host
+    // computing its own camera was framing without them — a plant could
+    // land under the toolbar.
     glideCameraTo(computeFrameCellBboxCamera(
       s.viewport, revealRect.bbox, FRAME_OBJECT_FIT,
       { top: avoidTopPx ?? 0, bottom: avoidBottomPx ?? 0 },
-    ), REVEAL_GLIDE_MS);
+    ), revealRect.durationMs ?? REVEAL_GLIDE_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealKey, applyLiveCamera]);
-
-  // …and the same glide to a camera the SHELL has already worked out, for
-  // a host that frames something the canvas cannot read a box for: Sol's
-  // zoom to the plants a Draw grew (its architecture §6.4), which fits a
-  // set of scene nodes rather than one rect. Asked once per ask (`seq`),
-  // and DROPPED while a finger is down or a gesture is in flight — the
-  // finger wins, and an unasked-for flight under it is the one thing a
-  // glide must never do.
-  const glideSeq = cameraGlide?.seq ?? 0;
-  useEffect(() => {
-    if (!cameraGlide || glideSeq === 0) return;
-    if (gestureRef.current.mode !== 'idle' || pointersRef.current.size > 0) return;
-    glideCameraTo(cameraGlide.camera, cameraGlide.durationMs);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [glideSeq, applyLiveCamera]);
 
   // ── Viewport tracking ─────────────────────────────────────────────
   useEffect(() => {
