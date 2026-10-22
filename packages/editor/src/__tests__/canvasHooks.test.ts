@@ -402,6 +402,7 @@ describe('the seam’s declarations', () => {
       onPointerUp: (_x, _y, end) => { seen.push(`up ${end}`); },
       holdOpensMenu: () => true,
       previewSelectionEntry: (se) => { seen.push(`preview ${se === null ? 'none' : 'entry'}`); },
+      beforePick: (x, y) => (x === y ? 'peg_1' : null),
     };
     const handle: CanvasSurfaceHandle = {
       getLiveCamera: () => makeBlankComposition('x').camera,
@@ -415,6 +416,10 @@ describe('the seam’s declarations', () => {
     expect(hooks.holdOpensMenu!()).toBe(true);
     hooks.previewSelectionEntry!(null);
     expect(seen).toEqual(['move 3,4', 'up release', 'up takeover', 'up cancel', 'preview none']);
+    // Not a claim: an id to SELECT before the scene is asked, or null to
+    // let the press fall through to it.
+    expect(hooks.beforePick!(5, 5)).toBe('peg_1');
+    expect(hooks.beforePick!(5, 6)).toBeNull();
     expect(handle.pixelHitAt(0, 0)).toBeNull();
     expect(handle.layerSlot).toBeNull();
     expect(handle.getLiveCamera().zoom).toBe(makeBlankComposition('x').camera.zoom);

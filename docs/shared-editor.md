@@ -638,7 +638,14 @@ first, then the pointer bump in each app).
    — its start angle, its live drive, its reset and its entry — ONCE at
    the press, so the four things the canvas does differently for a host's
    node are one object rather than four optional calls, and "is this one of
-   mine?" is asked once of the host's own data). `canvasTwist.ts`'s
+   mine?" is asked once of the host's own data). One member of the shipped
+   seam §4.3 did not name came with it: DrawBot's `beforePick(x, y)`, the
+   pick that runs BEFORE the scene is hit-tested so a tap on a bot does not
+   reach the shape under it, which it passes as a prop beside
+   `GestureHooks` and declares on its own `BotGestures extends
+   GestureHooks`. It is a question the surface asks the host while deciding
+   a press, which is what that interface is, so it is a member of it here
+   and one prop fewer on the canvas. `canvasTwist.ts`'s
    `resolveTwistUnit` is the one reading of what a finger pair would turn:
    the multi unit, the host's lone unit, its grown grip, and the box the
    turn still pivots about — both apps had written that gate out by hand

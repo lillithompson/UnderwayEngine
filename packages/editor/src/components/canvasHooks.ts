@@ -116,6 +116,22 @@ export interface GestureHooks {
    *  the gesture ends. Per pointer move: a reference hand-over, never a
    *  render. */
   previewSelectionEntry?: (se: SessionEntry | null) => void;
+  /**
+   * What the host has under the finger, IN FRONT OF every scene node, in
+   * surface pixels — asked before the scene is hit-tested. A string is the
+   * id to select (the tap is spent on it, and the selection grabs below
+   * yield to it); null lets the press fall through to the scene.
+   *
+   * Not a claim: the host's thing is being SELECTED here, not driven, and
+   * the gestures that follow are the canvas's own. DrawBot's bot hit test
+   * is the one that needs it — its tiles and bots draw over the scene, so
+   * a tap on one must not reach the shape underneath — and it shipped this
+   * as a prop beside `GestureHooks` rather than a member of it. Adopted
+   * into the interface (stage 5b.1): it is a question the surface asks the
+   * host while deciding a press, which is what this interface is, and one
+   * home beats two.
+   */
+  beforePick?: (x: number, y: number) => string | null;
 }
 
 /**
