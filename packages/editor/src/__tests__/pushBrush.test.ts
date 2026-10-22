@@ -9,6 +9,8 @@
  * wiring that offers the brush.
  */
 
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { applyCompOps, revertCompOps } from '@/engine/compositionOps';
 import {
   commitCanvasPaint, createCanvasPaintWorking, islandHeightCells, smudgeCanvasPaint,
@@ -371,5 +373,29 @@ describe('a HOST’s own kind of node under the brush', () => {
     const ps = createPushStrokeState(state, null, new Set());
     expect(ps.host).toBeNull();
     expect(ps.svgs.map((t) => t.id)).toEqual([DIAL, 'svg_ok']);
+  });
+});
+
+describe('what the CANVAS does with the finalize gate', () => {
+  const SURFACE = readFileSync(
+    resolve(__dirname, '..', 'components', 'CanvasSurface.tsx'), 'utf8',
+  );
+
+  it('counts the island half, so a push over nothing but paint still commits', () => {
+    // pushStrokeChanged() reads the host and vector halves only — a push
+    // over nothing but raster paint moves neither, and a gate on it alone
+    // dropped the stroke: the smear stayed on screen (the preview draws
+    // into the committed island's own canvas) until the next commit
+    // re-rendered the island from tiles that never changed, which read as
+    // "my second push undid my first".
+    expect(SURFACE).toContain('const smeared = !!g.paint && g.paint.rev > 0;');
+    expect(SURFACE).toContain('if (g.push && (pushStrokeChanged(g.push) || smeared)) {');
+  });
+
+  it('drives the host’s live picture per dab, and hands it back on an abandon', () => {
+    // A bake has no overlay path for the canvas to preview it with, so the
+    // pass that owns the deformation is the channel it is shown through.
+    expect(SURFACE).toContain("if (moved.host) g.push!.host?.preview();");
+    expect(SURFACE).toContain('g.push?.host?.restore(stateRef.current);');
   });
 });

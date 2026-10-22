@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { applyCompOps } from '@/engine/compositionOps';
 import type { RGBColor } from '@/engine/types';
 import { SVG_UNITS_PER_L0_CELL } from '@/engine/svgExport';
@@ -158,5 +160,35 @@ describe('the modes that ask for it', () => {
     expect(arrangeModeTracesShape('move')).toBe(true);
     expect(arrangeModeTracesShape('rotate')).toBe(true);
     expect(arrangeModeTracesShape('select')).toBe(false);
+  });
+});
+
+describe('the canvas draws it inside the selection outline element', () => {
+  const SURFACE = readFileSync(
+    resolve(__dirname, '..', 'components', 'CanvasSurface.tsx'), 'utf8',
+  );
+
+  it('which is what makes every live preview move it for free', () => {
+    // A drag re-anchors that element and a twist rewrites its transform, so
+    // a border drawn inside it needs no live handling of its own.
+    expect(SURFACE).toContain('data-selection-shape-outline=""');
+    expect(SURFACE).toContain('preserveAspectRatio="none"');
+    expect(SURFACE).toContain('vectorEffect="non-scaling-stroke"');
+  });
+
+  it('…and the rectangle it replaces goes transparent, element and all', () => {
+    expect(SURFACE).toContain("shapeOutlinePath ? 'transparent' : selectionRingColor,");
+  });
+
+  it('only Move and Rotate, and never a multi-selection', () => {
+    expect(SURFACE).toContain('tracesOwnBorder && !multiSelectionBox && selectionBox');
+    expect(SURFACE).toContain('arrangeModeNoScale(session.activeTool, arrangeMode)');
+  });
+
+  it('…and a colour brush keeps the border the mode asks for', () => {
+    // The brush is not the selection tool, but the mode still says what a
+    // press would do — and the paint veil cuts its lit hole to this same
+    // border, so the ring over it has to be drawn the same way.
+    expect(SURFACE).toContain('|| brushDimsToSelection(session.activeTool));');
   });
 });
