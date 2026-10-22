@@ -527,3 +527,85 @@ describe('the surface’s wiring of the seam', () => {
     expect(SRC).toContain('propsRef.current.gestures?.previewSelectionEntry?.(ids, entry);');
   });
 });
+
+// The surface's HALF of the claim lifecycle: declaring the props, offering
+// the press at the right moment, routing a claimed pointer, ending it for
+// each of the three reasons, and mounting the slot a layer draws in. These
+// came over from DrawBot at stage 5b.4, where they pinned that app's own
+// copy of the canvas; the hooks they are about are filled by DrawBot alone,
+// so nothing in another app's tree can fail when one stops working.
+describe('the surface’s half of the claim', () => {
+  const SRC = fs.readFileSync(
+    path.join(__dirname, '..', 'components', 'CanvasSurface.tsx'), 'utf8',
+  );
+
+  test('declares the props the seam rides on', () => {
+    for (const prop of [
+      'inputLocked?: boolean;',
+      'gestures?: GestureHooks;',
+      'layers?: CanvasLayers;',
+      'surfaceHandle?: React.MutableRefObject<CanvasSurfaceHandle | null>;',
+    ]) expect(SRC).toContain(prop);
+  });
+
+  test('a claim is offered only to a ONE-finger press, after the two-finger check', () => {
+    // Two fingers are the camera's, whatever they landed on: a claim
+    // offered before `beginTwoPointerGesture` would take the pinch.
+    const two = SRC.indexOf('if (beginTwoPointerGesture()) return;');
+    const single = SRC.indexOf('if (pointersRef.current.size !== 1) return;', two);
+    const claim = SRC.indexOf("if (offerClaim('press', pt, e)) return;", single);
+    expect(two).toBeGreaterThan(0);
+    expect(single).toBeGreaterThan(two);
+    expect(claim).toBeGreaterThan(single);
+  });
+
+  test('the middle-button pan has one definition and one call, ahead of everything', () => {
+    // It is the desktop's camera and nothing else: a middle drag with a
+    // host's tool armed, under an input lock, on a done page, in a live
+    // text or with no tool at all still moves the view (DrawBot's bug
+    // f1079398, where it fell to the simulation's lock).
+    const down = SRC.indexOf('const onPointerDown = (e: React.PointerEvent) => {');
+    const middle = SRC.indexOf('if (e.button === 1) {\n      beginMiddlePan(e, pt);\n      return;\n    }', down);
+    expect(middle).toBeGreaterThan(down);
+    for (const later of [
+      "if (offerClaim('press', pt, e)) return;",
+      'if (propsRef.current.inputLocked) {',
+      'if (propsRef.current.onEditWhileDone) {',
+      'if (seekCaretAt(e, pt)) {',
+      'if (!propsRef.current.session.activeTool) {',
+    ]) expect(SRC.indexOf(later, down)).toBeGreaterThan(middle);
+    const begin = SRC.indexOf('const beginMiddlePan = (e: React.PointerEvent, pt: { x: number; y: number }) => {');
+    expect(begin).toBeGreaterThan(0);
+    expect(SRC.slice(begin, SRC.indexOf('\n  };\n', begin)))
+      .toContain("mode: 'pan', startCamera: liveCameraRef.current,");
+    expect(SRC.split('beginMiddlePan(e, pt);')).toHaveLength(2);
+  });
+
+  test('a hold on a claim, and on a front pick, opens the radial menu', () => {
+    // Without it a host's own thing would be the one object on the page
+    // whose quick actions a hold could never reach — and the hold CANCELS
+    // the claim, so nothing the press was doing survives into the menu.
+    expect(SRC).toContain('if (hooks.holdOpensMenu?.()) {');
+    expect(SRC).toContain("hooks.onPointerUp?.(pt.x, pt.y, 'cancel');");
+    expect(SRC).toContain('if (isHostId(frontPick)) armLongPress(pt);');
+  });
+
+  test('a claimed pointer’s moves and all three endings go to the hooks', () => {
+    expect(SRC).toContain('propsRef.current.gestures?.onPointerMove?.(pt.x, pt.y, e);');
+    // A release or a cancel, from the pointer's own end…
+    expect(SRC).toContain(
+      "propsRef.current.gestures?.onPointerUp?.(pt.x, pt.y, cancelled ? 'cancel' : 'release');",
+    );
+    // …and a TAKEOVER when a second finger arrives, which only the host
+    // knows how to settle.
+    expect(SRC).toContain("propsRef.current.gestures?.onPointerUp?.(at.x, at.y, 'takeover');");
+  });
+
+  test('mounts a pointer-inert layer slot and fills the handle from it', () => {
+    expect(SRC).toContain('ref={layerSlotRef}');
+    expect(SRC).toContain("style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}");
+    expect(SRC).toContain('getLiveCamera: () => liveCameraRef.current,');
+    expect(SRC).toContain('pixelHitAt: (x, y) => pixelHitTestAt({ x, y })?.id ?? null,');
+    expect(SRC).toContain('layerSlot: layerSlotRef.current,');
+  });
+});
