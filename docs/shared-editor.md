@@ -157,7 +157,7 @@ What the three shells wire in by hand today, named as seams:
 | Extra tools on the bar | `ToolId` union members (`plant`, `bots`, `instructions`, `rig`, `word`, `tile`, `symmetry`) and their `TOOL_META` rows in each `toolbarMeta.ts` | **Done (stage 2).** `tools: HostTool[]` (`packages/editor/src/hostTools.ts`, the first field of `EditorExtension` in `extension.ts`) — id, label, icon (an MCI name; a shape the font lacks is drawn by the shell, as the line, arc and polygon glyphs already are), `kind` (`'tool'`, armed and lit while in hand, or `'setting'`, which toggles and never lights — symmetry), `contentMode: { gate }` (the tool rides the content group's row behind a format flag — rig, word, tile) and `modeCapsule` (a hold on the lit button recalls its capsule — plant). The standard tools stay in the package; the toolbar's functions that have to know a host tool take the registry, and each app's `web/editor/hostTools.ts` is its registry plus `TOOL_META = toolMetaFor(HOST_TOOLS)`, the whole bar's table over its own `ToolId`. |
 | Property pages for the app's kinds | DrawBot's `useSimEditor().selection`, CozyJournal's rig model, spread into the panel model in the shell | **Done (stage 4).** `hostPages` / `hiddenCommonActions` (`HostPagesModel`, `packages/editor-ui`) — per-SELECTION data, not an installed rule, so they are two fields of `PanelModelInput` (`panelModel.ts`) rather than a member of the extension, and the shell hands them in at the one place it builds the model. DrawBot's `useSimEditor().selection` IS that pair; CozyJournal's rig pages stay the chrome's until stage 7 and its shell spreads them over the built model. |
 | Scene outline rows | `sceneOutlineModel.ts` per app (tag labels, rig glyphs, bots as overlays) | **Done (stage 4).** `outline?: OutlineHost` (`outlineHost.ts`, the third field of `EditorExtension`): `nodes(state)` — the host's reading of this page's own kinds, resolved ONCE per build (a glyph instead of the kind's, `chrome` for its rendering internals: CozyJournal's rig figure wears the Rig tool's glyph and its hidden pose record is no row) — and `overlays(state, doc)` — rows for what the host's DOCUMENT holds that draws over the scene (DrawBot's bots and instruction tiles, ranked by `overlayRank`, swallowed by a lit group they ride). Installed at module scope with the session host. The tag LABELS are not here: per-format or per-document data, handed to the builders as `tagLabels` (§4.3). |
-| Layers drawn over the canvas, and the gestures a host claims | Sol's plant layers rendered by its canvas, DrawBot's `DrawBotsLayer` in a slot, CozyJournal's `RigNodeLayer` and its whole `rigPose` gesture mode | `layers: { nodeLayer?(node) }` plus the CANVAS HOOKS — `GestureHooks` and `CanvasSurfaceHandle` (`canvasHooks.ts`). **The seam already existed and was adopted, not designed** (stage 5b, settled 2026-10-22): DrawBot had shipped it in its own `web/editor/components/canvasHooks.ts`, 56 lines that CozyJournal and Sol had no copy of, and CozyJournal's rig maps onto it member for member — `beginRigPose` IS `onPointerDown` returning a CLAIM, the move case IS `onPointerMove`, `finishRigPose` IS `onPointerUp`, and the hold that abandons a pose grab (so a rig is not the one object whose radial menu will not open) IS `holdOpensMenu`. DrawBot's `claimedPointerRef` lifecycle is the lifecycle CozyJournal's gesture union member gets by hand. §4.3 records the decision, the two widenings it needed and the four members beside it. `overlay?(session, camera)` was designed here and is **dropped**: the only thing it was for, Sol's `RevealOverlay`, is mounted by the SHELL and is stage 6, and the canvas's real overlay mechanism is the `layerSlot` + handle DrawBot ships — imperative by design, because Sol's §9.2 and DrawBot's §10.3 both forbid React state per frame. What stage 5a did first: the node layer moved with Sol's two components extracted to `web/sol/scene/`, beside the `plantLayer` policy whose DOM they are. |
+| Layers drawn over the canvas, and the gestures a host claims | Sol's plant layers rendered by its canvas, DrawBot's `DrawBotsLayer` in a slot, CozyJournal's `RigNodeLayer` and its whole `rigPose` gesture mode | **Done (stage 5b.1).** `layers: { nodeLayer?(node) }` plus the CANVAS HOOKS — `GestureHooks` and `CanvasSurfaceHandle` — in `packages/editor/src/components/canvasHooks.ts`, with the host's per-node RECORDS and the TWO-FINGER TWIST beside them and `canvasTwist.ts`'s `resolveTwistUnit` reading what a pair would turn. Two of the four are installed rules on `EditorExtension.canvas` (`records`, `twist`); the hooks and `layers` are PROPS of `CanvasSurface`, which is the plan's own line (§4.3) — an installed rule goes on the extension, per-render data rides as a prop, as the panel's host pages do — and both close over state only the shell holds (DrawBot's `useSimEditor()`, Sol's per-render plant plan and its rasters' oversample). **The seam already existed and was adopted, not designed** (stage 5b, settled 2026-10-22): DrawBot had shipped it in its own `web/editor/components/canvasHooks.ts`, 56 lines that CozyJournal and Sol had no copy of, and CozyJournal's rig maps onto it member for member — `beginRigPose` IS `onPointerDown` returning a CLAIM, the move case IS `onPointerMove`, `finishRigPose` IS `onPointerUp`, and the hold that abandons a pose grab (so a rig is not the one object whose radial menu will not open) IS `holdOpensMenu`. DrawBot's `claimedPointerRef` lifecycle is the lifecycle CozyJournal's gesture union member gets by hand. §4.3 records the decision, the two widenings it needed and the four members beside it. `overlay?(session, camera)` was designed here and is **dropped**: the only thing it was for, Sol's `RevealOverlay`, is mounted by the SHELL and is stage 6, and the canvas's real overlay mechanism is the `layerSlot` + handle DrawBot ships — imperative by design, because Sol's §9.2 and DrawBot's §10.3 both forbid React state per frame. What stage 5a did first: the node layer moved with Sol's two components extracted to `web/sol/scene/`, beside the `plantLayer` policy whose DOM they are. |
 | Commit pipeline wrapper | DrawBot's `commitPipeline.ts` + `commitWrapper.ts`; Sol's `solEntry` and the index-aligned Sol undo stacks; DrawBot's bots and tiles in the selection; CozyJournal's rig in the colour dispatch, the duplicate and the brush | **Done (stage 3).** `wrapCommit?: CommitWrapper` (`commitPipeline.ts`, DrawBot's file as it was, installed with `setCommitWrapper`) and `session?: SessionHost` (`sessionHost.ts`), three optional members an app fills as it needs: `ops` — a PARALLEL DOCUMENT moved by the same undo step (`EditorSession.hostDoc`, `hostUndoStack` / `hostRedoStack` index-aligned with the engine's, `SessionEntry.hostOps`, an entry of host ops alone pushing an empty engine entry; Sol's `SolOp[]`, DrawBot's `{before, after}` of its sim document); `items` — things the host's document holds that stand in the selection beside scene nodes (`HostItems`: id spelling, box, group, lock, through-a-matrix, remove, duplicate; DrawBot's bots and instruction tiles, which the marquee, the group and every multi builder carry through the adapter); `nodes` — rules about scene nodes of the host's own kind (`HostNodeRules`: a duplicate's companion ops, a node held to its aspect, a colour target off the object, the Color brush's pass over such nodes, the outline label of a tagged node; CozyJournal's rig and seeded squiggle). Installed once per app at module scope (`installSessionHost`), the way the commit wrapper and the brush's glyph-ink probe are, because the session's builders take a state, not a session, and are called from dozens of sites; a builder that moves host items takes the document as a trailing `hostDoc?`, where DrawBot's took `sim?`. `EditorSession<TTool, TDoc, TOps>` carries the app's types through, and every function that returns a session is generic over it. |
 | Host data in the file | Sol's `sol` chunk, DrawBot's `DBOT` trailer, both through the engine's v70 host-data chunks | `fileChunks: { tag, read(bytes, state), write(state) }` — the engine already carries foreign chunks through load, save and zip export untouched, which is what makes a foreign `.tile` editable: its scene is the engine's, and its host data waits for the app that wrote it. |
 | Capsules and floating chrome | Sol's strain chips, DrawBot's transport and bot capsules, CozyJournal's rig sides | `capsules(session): CapsuleSpec[]` over the shared `ToolModeCapsule` / `PatternActionsCapsule` (DrawBot's `muted`/`locked`/`art` segments and wrap-to-rows are the generic superset to adopt). |
@@ -586,7 +586,7 @@ first, then the pointer bump in each app).
    tsconfig extends Expo's: an unused `React` in `textPaintPreview.tsx`
    and an unused `drawnLocalBox` in `NodeLayer.tsx`.
 
-   **5b — To do: the canvas.** `CanvasSurface.tsx` with `layers.nodeLayer`
+   **5b — In progress: the canvas.** `CanvasSurface.tsx` with `layers.nodeLayer`
    and the CANVAS HOOKS. The seam for the rig's canvas BEHAVIOUR — a
    press-claim (`beginRigPose`), a paint-preview pass (`previewRigInks`), a
    gesture-restore (`restoreRigPoses`), the push stroke's rig targets, the
@@ -615,6 +615,45 @@ first, then the pointer bump in each app).
    its own types already draw (`PushSvgTarget` generic,
    `PushRigTarget` the host's) — and the generic half is what gives
    DrawBot the brush back.
+
+   Cut in four, so that "does the seam cover the rig?" and "did the move
+   break something?" are answered separately rather than together across
+   7,104 lines: **5b.1** the seam alone, in the engine; **5b.2**
+   CozyJournal's rig refactored out of its canvas IN PLACE against that
+   seam, with no move in flight; **5b.3** the seamed `CanvasSurface.tsx`
+   moved, `pushBrush.ts` split, and the app-side-only cases above brought
+   over; **5b.4** each app takes it, CozyJournal first (it also owes the
+   pointer bump it missed, having shipped 5a before three later engine
+   commits landed).
+
+   **5b.1 — Done: the seam** (engine, 2026-10-22).
+   `packages/editor/src/components/canvasHooks.ts` is DrawBot's 56 lines
+   adopted at the same path, with the two widenings §4.3 names, and three
+   seams beside them: `CanvasLayers` (`nodeLayer`, whose three answers are
+   the contract — `undefined` for a node that is none of the host's, an
+   element to draw instead, `null` for the host's own node that draws
+   nothing here), `CanvasRecords` (`has`, the one predicate the paint
+   veil and `resolveCanvasTap`'s `selectionIsMode` read) and `CanvasTwist`
+   (`loneUnit`, `grip`, and `node(state, id)` resolving a `HostNodeTwist`
+   — its start angle, its live drive, its reset and its entry — ONCE at
+   the press, so the four things the canvas does differently for a host's
+   node are one object rather than four optional calls, and "is this one of
+   mine?" is asked once of the host's own data). `canvasTwist.ts`'s
+   `resolveTwistUnit` is the one reading of what a finger pair would turn:
+   the multi unit, the host's lone unit, its grown grip, and the box the
+   turn still pivots about — both apps had written that gate out by hand
+   and two of the three had grown a host rider on it. `EditorExtension`
+   gains `canvas?: CanvasHost` for the two installed RULES; the hooks and
+   `layers` are props (§4.1's row). Editor package 61 suites / 1,223
+   tests; engine 360 of 361 (`cameraRoll`'s host dependency, as before).
+   The new suite is a made-up app with a DIAL (a scene node with a hidden
+   record holding its needle's angle) and a PEG (a document's own thing
+   that twists as a unit of one), the way `sessionHost.test` and
+   `panelModel.test` are; every member of the adopted interfaces is USED
+   in it, so deleting one fails the suite's compile rather than passing
+   silently, and the two widenings are pinned as source text — the only
+   tool for a declaration this repo does not run — each naming the
+   simplification that would undo it.
 6. **Shell and host.** `EditorShell.tsx` and `EditorHost.tsx` as the
    package's screen, taking `config`, `extension` and the app's store
    adapter; `web/formats/types.ts`'s common `EditorConfig`, `web/fonts/*`
@@ -857,6 +896,26 @@ Settled by the owner, 2026-10-20:
   grip is; the paint-preview passes, which are not a new seam at all
   because `rigPaint.ts` already implements stage 3's `HostPaintTargets`;
   and `layers.nodeLayer`.
+
+  Where each of the four is WIRED follows the line this section already
+  draws and needed no new call (5b.1): an installed RULE goes on the
+  `EditorExtension`, per-render DATA rides as a prop, which is why the
+  panel's host pages are two fields of `PanelModelInput`. So `records` and
+  `twist` are `EditorExtension.canvas`, installed once at module scope
+  beside the session and outline hosts; `GestureHooks` and `layers` are
+  props of `CanvasSurface`, because both close over state only the shell
+  holds — DrawBot's `useSimEditor()` builds its hooks, and Sol's plant
+  layer needs that render's plan, its composites and their raster
+  oversample. DrawBot's `extraGestures` prop is that prop already.
+
+  One shape the implementation settled (5b.1), where §4.3 had left the
+  members loose: a host node's twist resolves ONCE, at the press
+  (`CanvasTwist.node(state, id)` answering a `HostNodeTwist` — start
+  angle, live drive, reset, entry), rather than standing as four optional
+  calls the canvas makes separately. It is the same shape as the outline
+  host's reader, for the same reason, and it makes "is this one of mine?"
+  a question asked once of the host's own DATA — which is the finding 5a
+  paid three rounds for.
 
   What this does NOT need: stage 7 first. The canvas imports none of the
   rig's pages (`rigEdit`, `RigJointsBar`, `RigPoseBar`, `RigColorBar`,

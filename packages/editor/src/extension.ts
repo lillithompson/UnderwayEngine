@@ -1,6 +1,7 @@
 import type { HostTool } from './hostTools';
 import type { SessionHost } from './sessionHost';
 import type { OutlineHost } from './outlineHost';
+import type { CanvasHost } from './components/canvasHooks';
 import type { CommitWrapper } from './commitPipeline';
 
 // The EditorExtension: everything an app plugs into the shared editor
@@ -14,12 +15,19 @@ import type { CommitWrapper } from './commitPipeline';
 // document, its selectable items and its node rules (`session`), and the
 // commit pipeline wrapper (`wrapCommit`). Stage 4 — the outline and the
 // properties glue — adds the third: how the scene outline reads the app's
-// own kinds of thing (`outline`). The host PAGES of the panel are not a
-// member here: they are per-selection data, and the shell hands the
-// package's panel model its `hostPages` / `hiddenCommonActions` in one
-// place (panelModel.ts). The seams to come (the canvas layers, the file
-// chunks, the capsules, the config's host fields, the host bridge) are
+// own kinds of thing (`outline`). Stage 5b — the canvas — adds the fourth:
+// what a two-finger twist means for the app's own things, and whether it
+// keeps a record beside a scene node (`canvas`). The seams to come (the
+// file chunks, the capsules, the config's host fields, the host bridge) are
 // listed in §4.1 and arrive with the stages that need them.
+//
+// Two kinds of thing an app plugs in are deliberately NOT members here,
+// and the line between them is the plan's own (§4.3): an installed RULE
+// belongs on the extension, per-render DATA rides as a prop. So the panel's
+// host PAGES are two fields of `PanelModelInput` (panelModel.ts) — they are
+// per-selection — and the canvas's GESTURE HOOKS and host NODE LAYERS are
+// props of `CanvasSurface` (canvasHooks.ts): both close over state only the
+// shell holds, DrawBot's `useSimEditor()` and Sol's per-render plant plan.
 
 /**
  * What an app supplies beside its `EditorConfig`. `TTool` is the app's own
@@ -46,6 +54,15 @@ export interface EditorExtension<TTool extends string = string, TDoc = unknown, 
    *  per-document data, handed to the outline's builders as `tagLabels`
    *  (§4.3). */
   outline?: OutlineHost<TDoc>;
+  /** What the shared canvas needs of the app as installed rules
+   *  (canvasHooks.ts): whether it keeps a RECORD beside a scene node of
+   *  its own kind — CozyJournal's rig, a selection that is a mode rather
+   *  than an object in hand — and what a TWO-FINGER TWIST means for its
+   *  own things, which two apps need independently (a rig rolls the figure
+   *  inside its viewport; DrawBot's bot decides whether a lone selection
+   *  twists at all and how big the grip for it is). Installed once with
+   *  `installCanvasHost`. */
+  canvas?: CanvasHost<TDoc>;
   /** The app's wrapper round the shell's commit pipeline
    *  (commitPipeline.ts): DrawBot freezes a paused run before any edit and
    *  untags the trail nodes an edit touches. Installed with
