@@ -668,6 +668,75 @@ first, then the pointer bump in each app).
    silently, and the two widenings are pinned as source text — the only
    tool for a declaration this repo does not run — each naming the
    simplification that would undo it.
+
+   **5b.2 — Done: the rig out of CozyJournal's canvas, in place**
+   (CozyJournal, 2026-10-22), in four commits and with no move in flight,
+   so that "does the seam cover the rig?" was answered before "did the move
+   break something?" ever came up. It covers it: the canvas holds **no rig
+   reference at all** now except the push stroke's state, which goes with
+   `pushBrush.ts`'s split at 5b.3.
+
+   The four clusters and where each went. The TWO-FINGER TWIST goes to
+   `web/editor/rigCanvasHost.ts`, the installed `CanvasHost`: the canvas
+   resolves `twist.node(state, id)` once at the press and the four things
+   it then does differently — the start angle, the live drive, the reset,
+   the entry — ride on that one object. The JOINT POSING goes to
+   `rigGestures.ts`, as a claim: what was a gesture-union member woven
+   through forty-odd branches is `createRigGestures(deps)` with the grab in
+   flight as its own state, and what the canvas gained instead is DrawBot's
+   claim lifecycle. The NODE LAYER goes to `rigLayers.tsx`, through the
+   `layers` prop. The BRUSHES' live halves go to the host passes they
+   belong to: the Color brush's through `HostPaintTargets.preview` /
+   `restore` in `rigPaint.ts`, the push brush's in `rigPush.ts`.
+   Two duplications fell out on the way: the Turn slider in
+   `RigControlsPanel` was a second copy of "find the stage element, write
+   `rigCanvasTransform`", and both go through `previewRigRoll` now, beside
+   `previewRigColor`; and `resetRigCanvas` is gone with it.
+
+   Two FURTHER widenings the stage needed, both recorded in §4.3 and
+   neither foreseen by the mapping: `claimAt`, because the two apps' claims
+   sit at different points in the press router and neither can move to the
+   other's; and `onPointerUp` losing its React event, because the surface
+   has none to give for a stale-pointer heal (where DrawBot's canvas leaves
+   a claim live, a bug the merged canvas fixes) and neither app's hook ever
+   read it. With `beforePick` that is FOUR changes to a seam adopted
+   "whole", which is worth saying plainly: the interface was right, its
+   signatures were not quite.
+
+   What the suites gained is the point of the exercise.
+   `rigGestures.test` DRIVES the hooks — press, move, each of the three
+   endings — over a poser page with a real viewport, where every rule the
+   gesture union held could only ever be pinned as source text, because it
+   was reachable solely through a 7,000-line component.
+   `rigCanvasHost.test` does the same for the records predicate and the
+   twist. Nineteen source pins across nine of this app's suites were
+   re-pointed at the module that now holds what they name. CozyJournal:
+   639 suites / 10,538 tests.
+
+   **Measured for 5b.3 while 5b.2 was in hand**: the canvas's remaining
+   app-side imports are nine, and three of them are the ones this item's 5a
+   note parked at stage 6 — which, since the canvas imports them, would
+   park the MOVE at stage 6 too. Each turns out smaller than that.
+   `selectionShapeOutline.ts` differs from Sol's and DrawBot's copies by
+   exactly TWO lines, and both are the rig check
+   `isRigFigure(state, id) -> return null`, which IS `CanvasRecords.has` —
+   the seam 5b.2 just built — so it moves whole.
+   `creatureGeometry`'s `magnetToLines`, `lineGridPoints` and
+   `midlineGridPoints` are pure geometry over `(gridLevel, ys)` with
+   nothing of the format in them, so those three leaves move and the rest
+   of the file stays. `maskWordScale` is the one that genuinely imports the
+   app (`templateNodes`, `scaffold`), and what the canvas wants of it is a
+   scale factor for a node under a drag — a `HostNodeRules` shape (stage
+   3's seam) rather than a new one. The other six are 5b.3's own:
+   `rigTurnLive` and `rigPushStore` (generic stores carrying rig names),
+   `pushBrush` (the split), `rigPush`, `hostTools` (the registry reaches
+   the canvas as a prop or through the extension, as `canvasTap` already
+   takes it as a parameter) and the open trace's two probes.
+   `useSuppressIOSLoupe` is byte-identical in all three apps and imports
+   only the package and the shell — a closed leaf that moves with the
+   canvas — and `@/components/theme`'s two constants (`BG_EDITOR_CANVAS`,
+   `HAIRLINE`) are identical in all three, which
+   `packages/editor-ui/src/theme.ts` is the precedent for.
 6. **Shell and host.** `EditorShell.tsx` and `EditorHost.tsx` as the
    package's screen, taking `config`, `extension` and the app's store
    adapter; `web/formats/types.ts`'s common `EditorConfig`, `web/fonts/*`
