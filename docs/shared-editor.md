@@ -807,6 +807,26 @@ first, then the pointer bump in each app).
    tests; editor package 67 suites / 1,293 tests; engine 366 of 367.
    CozyJournal's range, canvas move and all, reviews at 239 KB — the move
    folding does its job.
+
+   **5b.4 — In progress: Sol and DrawBot take it.** Step one is done and
+   is the one that had to come first, before either app adopted: the four
+   host-place callbacks (`onAddRig`, `onAddWord`, `onAddTile`,
+   `onPlantSeed`) are ONE `onHostPlace(tool, cellX, cellY)`, with their
+   two riders declared on the tool's registry row (`HostTool.place` —
+   §4.3's settled design, built once rather than three times). Each app's
+   shell keeps a switch from its own ids to its own builders.
+
+   What the two apps' canvases still hold that the package's does not,
+   measured at 5b.3 — about ten for DrawBot and five for Sol, all of them
+   generic additions to adopt rather than seams to design. DrawBot:
+   `session.hostDoc` threaded through every multi builder (stage 3's
+   `HostItems`, which CozyJournal passes nothing for), `isSimId` giving
+   way to the package's own `isHostId`, `inputLocked` with the `lockedTap`
+   gesture mode, `groupDragGesture` for a host item's group, and
+   `forwardArrow` (whose writer 5a already adopted). Sol: `liveCameraOut`,
+   `cameraGlide`, the plant plan's per-render data reaching `layers`, and
+   two `snapPoint` calls on placement — the second of which is now the
+   `place.snap` rider its Plant row declares.
 6. **Shell and host.** `EditorShell.tsx` and `EditorHost.tsx` as the
    package's screen, taking `config`, `extension` and the app's store
    adapter; `web/formats/types.ts`'s common `EditorConfig`, `web/fonts/*`
@@ -966,7 +986,8 @@ Settled by the owner, 2026-10-20:
   of the hit test beside the package's, which is the drift the plan exists
   to end.
 
-  **The last host-place branch RELOCATES; it does not disappear.** The three
+  **The last host-place branch RELOCATES; it does not disappear** (done,
+  stage 5b.4's first step). The three
   shells' `hostPlace` arms differ in only two riders — Sol snaps the cell
   through `snapPoint`, and CozyJournal's tile and DrawBot's tile refuse a
   tap within reach of the floating chrome (`overlayNearTap`) — so both
@@ -979,6 +1000,13 @@ Settled by the owner, 2026-10-20:
   and so is the shell until stage 6, which makes it an extension member.
   The earlier sentence calling this "the only branch it keeps until stage
   5" was too strong: stage 5 moves it one layer out, stage 6 removes it.
+
+  As built: `HostTool.place` is `{ snap?, clearOfOverlay? }`, and
+  `clearOfOverlay` is asked BEFORE the cell is read, because there is then
+  no cell to speak of. Done as the FIRST step of 5b.4, before either
+  remaining app adopted the canvas, so the collapse happened once rather
+  than three times — the four callbacks were still four props when the
+  canvas moved at 5b.3.
 
   **DrawBot regains `push` at 5b, with the rig's canvas seam.** The brush
   is in the moved files already, and the plan read the app-side
