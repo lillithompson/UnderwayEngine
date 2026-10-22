@@ -481,7 +481,17 @@ first, then the pointer bump in each app).
    `NodeLayer.tsx` moved in CozyJournal's version with one generic
    addition of Sol's adopted — the optional `children` on `SvgNodeLayer`,
    drawn over the shape inside its matrix wrapper, which no shared caller
-   passes — and one new seam, the FONTS. The node layer was the last
+   passes — and one new seam, the FONTS. Sol's review found the hole that
+   leaves and it is worth stating as a rule: **a generic addition adopted
+   from a non-canonical copy is pinned HERE, not in the app that passes
+   it.** Sol pinned that its `SeedMarkLayer` passes children; nothing
+   pinned that the package still renders them, so deleting the `{children}`
+   JSX — the obvious tidy for whoever next reads a prop no shared caller
+   passes — left every suite in all four repos green while every seed
+   marker silently lost its strain initial. An app-side pin cannot fail the
+   run of the repo doing the deleting, and the prop's TYPE surviving is not
+   the render surviving. `__tests__/nodeLayer.test.ts` holds it now
+   (verified by deleting the line), and it is where 5b's `layers` pins go. The node layer was the last
    mover to import `@/web/fonts/*`: `fontsEpoch.ts` is identical in all
    three apps and moved whole, and `fontFamilyFor` became a PROBE the app
    installs, the way the brush's glyph-ink probe already is and from the
