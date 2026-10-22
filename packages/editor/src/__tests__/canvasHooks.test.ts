@@ -357,6 +357,42 @@ describe('the host’s own DOM per scene node', () => {
     DIAL_ANGLE.set('dial_1', 0);
     expect(LAYERS.nodeLayer!(input('dial_1'))).toBe('dial');
   });
+
+  // The gesture side of that `null` (`previewStandIn`, the sixth widening,
+  // stage 5b.4). A node whose layer draws nothing has no element of its
+  // own, so a live preview written on it writes on nothing: the host says
+  // which of ITS elements stands in, and many nodes share one.
+  describe('what previews a node the host draws nothing for', () => {
+    const PRESSED: { nodeId: string; world: Mat2D }[] = [];
+    const layers: CanvasLayers = {
+      previewStandIn: (nodeId) => (nodeId.startsWith('absorbed') ? {
+        // Every leaf of one plant answers that plant's key.
+        key: `plant_${nodeId.slice('absorbed_'.length, -1)}`,
+        el: () => ({ style: {} }) as unknown as HTMLElement,
+        css: (id, world) => {
+          PRESSED.push({ nodeId: id, world });
+          // A null answer leaves the element where it stands.
+          return world.a === 0 ? null : world;
+        },
+      } : undefined),
+    };
+
+    test('a node with an element of its own has no stand-in', () => {
+      expect(layers.previewStandIn!('plain_1')).toBeUndefined();
+    });
+
+    test('nodes sharing a key share one element, and the host maps the pose', () => {
+      const a = layers.previewStandIn!('absorbed_7a')!;
+      const b = layers.previewStandIn!('absorbed_7b')!;
+      expect(a.key).toBe(b.key);
+      const world: Mat2D = { a: 2, b: 0, c: 0, d: 2, e: 1, f: 1 };
+      expect(a.css('absorbed_7a', world)).toBe(world);
+      expect(PRESSED.map((w) => w.nodeId)).toEqual(['absorbed_7a']);
+      // …and null is "leave it", which is how a stand-in with nothing to
+      // show keeps the committed render.
+      expect(a.css('absorbed_7a', { a: 0, b: 0, c: 0, d: 1, e: 0, f: 0 })).toBeNull();
+    });
+  });
 });
 
 describe('the seam’s declarations', () => {
@@ -400,6 +436,21 @@ describe('the seam’s declarations', () => {
     // pointer move for a layer with nothing to draw.
     expect(SRC).toContain('ids: readonly string[], entry: (() => SessionEntry | null) | null,');
     expect(SRC).not.toContain('previewSelectionEntry?: (se: SessionEntry | null) => void;');
+  });
+
+  test('a node the host draws nothing for still has something to preview', () => {
+    // The SIXTH widening (stage 5b.4c), and a hole in the adopted seam
+    // rather than an addition to it: `nodeLayer` could already answer
+    // `null` — "mine, and it draws nothing here" — and nothing said what a
+    // live gesture then writes its preview transform on. It wrote it on
+    // nothing, and Sol's plant sat still under the finger while every
+    // shape beside it moved. Deleting this takes that bug back.
+    expect(SRC).toContain('previewStandIn?(nodeId: string): HostPreviewStandIn | undefined;');
+    expect(SRC).toContain('export interface HostPreviewStandIn {');
+    // One element for many nodes is the point of it, so the key is what
+    // the surface dedupes on and `css` is the host's own mapping.
+    expect(SRC).toContain('readonly key: string;');
+    expect(SRC).toContain('css(nodeId: string, world: Mat2D): Mat2D | null;');
   });
 
   test('the surface always offers the pixel pick: the package keeps both hit tests', () => {
@@ -607,5 +658,84 @@ describe('the surface’s half of the claim', () => {
     expect(SRC).toContain('getLiveCamera: () => liveCameraRef.current,');
     expect(SRC).toContain('pixelHitAt: (x, y) => pixelHitTestAt({ x, y })?.id ?? null,');
     expect(SRC).toContain('layerSlot: layerSlotRef.current,');
+  });
+});
+
+// The surface's HALF of the layer seam and the two per-render inputs Sol's
+// adoption brought (stage 5b.4c). Sol is the only app that fills any of
+// these, so nothing in CozyJournal's or DrawBot's tree can fail when one
+// stops working — §4.3's rule again, and the reason the DECLARATION and
+// the WRITE are separate cases.
+describe('the surface’s half of the layers seam', () => {
+  const SRC = fs.readFileSync(
+    path.join(__dirname, '..', 'components', 'CanvasSurface.tsx'), 'utf8',
+  );
+
+  test('asks the host whether one of its elements stands in for a node', () => {
+    expect(SRC).toContain(
+      'const standInFor = (id: string) => propsRef.current.layers?.previewStandIn?.(id);',
+    );
+    // Resolved once per gesture, on the ids array's own identity: a plant
+    // at its cap would otherwise cost two thousand lookups per frame,
+    // which is the whole thing a composite exists to avoid.
+    expect(SRC).toContain('if (hit && hit.ids === ids) return hit;');
+    expect(SRC).toContain('if (seen.has(standIn.key)) continue;');
+  });
+
+  test('writes the stand-in once per move, and the node’s own element never', () => {
+    // The driving member is the FIRST of the key's nodes in the gesture's
+    // own list, and the host maps its previewed world matrix.
+    const at = SRC.indexOf('const applyGesturePreview = ');
+    expect(at).toBeGreaterThan(0);
+    const body = SRC.slice(at, SRC.indexOf('\n  };\n', at));
+    expect(body).toContain('for (const id of targets.own) {');
+    expect(body).toContain('for (const { standIn, driverId } of targets.standIns) {');
+    expect(body).toContain('const css = pose ? standIn.css(driverId, pose.world) : null;');
+    // …and such a node does not go through React either: the stand-in
+    // takes whatever the map says, off-square included.
+    expect(body).toContain(
+      'if (!matIsSimilarity(pose.css) && !standInFor(id)) (posed ??= new Map()).set(id, pose.world);',
+    );
+  });
+
+  test('both teardowns put the stand-in back, as they do an own element', () => {
+    // A preview written by hand has to be undone by hand, whichever
+    // element took it: React's reconciler skips DOM writes for props
+    // unchanged since the last render.
+    expect(SRC).toContain('const el = standInFor(id)?.el() ?? nodeEl(id);');
+    const at = SRC.indexOf('const resetMultiDragEls = ');
+    const body = SRC.slice(at, SRC.indexOf('\n  };\n', at));
+    expect(body).toContain('for (const { standIn } of targets.standIns) {');
+  });
+
+  test('one glide serves the rect ask and a host’s own camera', () => {
+    // Two copies of "tween the camera and commit on arrival" is what this
+    // replaces; the only difference was which camera and how long.
+    expect(SRC).toContain('const glideCameraTo = (target: Camera, durationMs: number) => {');
+    expect(SRC).toContain('), REVEAL_GLIDE_MS);');
+    expect(SRC).toContain('glideCameraTo(cameraGlide.camera, cameraGlide.durationMs);');
+    // The ASK is the seq, not the camera: the same ask must not fly again
+    // on an unrelated render…
+    expect(SRC).toContain('const glideSeq = cameraGlide?.seq ?? 0;');
+    expect(SRC).toContain('if (!cameraGlide || glideSeq === 0) return;');
+    // …and a finger down wins outright.
+    expect(SRC).toContain(
+      "if (gestureRef.current.mode !== 'idle' || pointersRef.current.size > 0) return;",
+    );
+  });
+
+  test('a finger on the canvas reaches the host before anything is read about it', () => {
+    const at = SRC.indexOf('const onPointerDown = (e: React.PointerEvent) => {');
+    const told = SRC.indexOf('propsRef.current.onCanvasPointerDown?.();', at);
+    expect(told).toBeGreaterThan(at);
+    // Before the layout read, the tween cancel, the capture and the
+    // pointer bookkeeping: whatever the host ends needs the frame it asks
+    // for to see the finger.
+    for (const later of [
+      'const r = el.getBoundingClientRect();',
+      'cancelCameraTween(true);',
+      'el.setPointerCapture(e.pointerId);',
+      'if (beginTwoPointerGesture()) return;',
+    ]) expect(SRC.indexOf(later, at)).toBeGreaterThan(told);
   });
 });

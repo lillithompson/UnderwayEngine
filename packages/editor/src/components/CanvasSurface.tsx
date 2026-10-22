@@ -240,7 +240,7 @@ import { shadowGlowBoxShadow } from '../effectsBoxShadow';
 import { overlayNearPoint, TAP_EXCLUSION_RADIUS } from '../tapExclusion';
 import {
   type CanvasLayers, type CanvasRecords, type CanvasSurfaceHandle, type GestureHooks,
-  type HostNodeTwist, type PointerClaim, type PriorSelection, canvasHost,
+  type HostNodeTwist, type HostPreviewStandIn, type PointerClaim, type PriorSelection, canvasHost,
 } from './canvasHooks';
 import { resolveTwistUnit } from '../canvasTwist';
 import { type HostTool, hostTool } from '../hostTools';
@@ -432,6 +432,23 @@ interface CanvasSurfaceProps {
    *  twice, so a render for any other reason does not yank the camera. A
    *  touch cancels it, like the avoid-glide. */
   revealRect?: { bbox: CellBbox; key: string } | null;
+  /**
+   * …and a camera the shell has worked out itself, for a host framing
+   * something the canvas cannot read one box for (Sol's zoom to the plants
+   * a Draw grew, which fits a set of scene nodes). The same tween as
+   * `revealRect`'s, with the duration the caller chooses.
+   *
+   * `seq` is the ASK: a new one flies, the same one is ignored however many
+   * renders go by. Dropped while a finger is down or a gesture is in
+   * flight — the finger wins.
+   */
+  cameraGlide?: { camera: Camera; durationMs: number; seq: number } | null;
+  /** A finger landed on the canvas — ANY finger, before the press is
+   *  classified and whatever it turns out to mean. For a host that has
+   *  something playing which a touch should end (Sol's Draw reveal, its
+   *  architecture §6.3): the frame that ending asks for must see the
+   *  finger, so nothing may precede this. */
+  onCanvasPointerDown?: () => void;
   /** Node ids withheld from render AND hit-test for the session — a twin
    *  of `hidden` the document never carries (§7.3's veil). */
   veiledIds?: ReadonlySet<string>;
@@ -1015,6 +1032,7 @@ export function CanvasSurface({
   onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp,
   ghosts,
   editableRegion, regionChrome, markers, forwardArrow, veiledIds, revealRect,
+  cameraGlide, onCanvasPointerDown,
   hostTools, openTrace, gestures, layers, surfaceHandle,
 }: CanvasSurfaceProps) {
   // The scene as the canvas draws and hit-tests it: the veiled nodes
@@ -1219,8 +1237,8 @@ export function CanvasSurface({
    *  joined: a tap's fingers land together (MULTI_TAP_LAND_WINDOW). */
   const firstFingerDownAtRef = useRef(0);
   const multiTapLastLandAtRef = useRef(0);
-  const propsRef = useRef({ inputLocked, gestures, session, currentColor, paintSessionRef, brushRadiusScale, onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onAddText, onRequestPhoto, onRevertToArrange, onHostPlace, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap, editingText, editingCaret, onCaretSeek, onSelectAllText, cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides, colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo, onLongPress, onLongPressMove, onLongPressUp, onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp });
-  propsRef.current = { inputLocked, gestures, session, currentColor, paintSessionRef, brushRadiusScale, onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onAddText, onRequestPhoto, onRevertToArrange, onHostPlace, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap, editingText, editingCaret, onCaretSeek, onSelectAllText, cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides, colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo, onLongPress, onLongPressMove, onLongPressUp, onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp };
+  const propsRef = useRef({ inputLocked, onCanvasPointerDown, gestures, session, currentColor, paintSessionRef, brushRadiusScale, onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onAddText, onRequestPhoto, onRevertToArrange, onHostPlace, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap, editingText, editingCaret, onCaretSeek, onSelectAllText, cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides, colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo, onLongPress, onLongPressMove, onLongPressUp, onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp });
+  propsRef.current = { inputLocked, onCanvasPointerDown, gestures, session, currentColor, paintSessionRef, brushRadiusScale, onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onAddText, onRequestPhoto, onRevertToArrange, onHostPlace, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap, editingText, editingCaret, onCaretSeek, onSelectAllText, cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides, colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo, onLongPress, onLongPressMove, onLongPressUp, onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp };
 
   // Live preview of a corner resize: the RESCALED node being dragged, or null
   // when idle. `previewResizedNode` runs the same geometry adapter the release
@@ -1529,26 +1547,24 @@ export function CanvasSurface({
   // board, at any zoom (§7.3). Keyed on the ASK, not the rect — pressing
   // *I'm Done* again after panning away must fly again, and a render for
   // any other reason must not.
-  const revealKey = revealRect?.key ?? '';
-  useEffect(() => {
-    if (revealKey === '') return;
-    if (!revealRect) return;
-    const s = stateRef.current;
-    if (s.viewport.width <= 0 || s.viewport.height <= 0) return;
+  /**
+   * Fly the camera to `target` over `durationMs` and commit it on arrival,
+   * in the avoid-glide's one tween slot — so a touch cancels-and-commits
+   * it the same way, and a host raster waits it out (`isGestureBusy`).
+   *
+   * Zoom travels in LOG space: linear zoom races away at the start and
+   * crawls at the end when the two ends differ by a factor, which a glide
+   * that reframes the page always does.
+   */
+  const glideCameraTo = (target: Camera, durationMs: number) => {
     const from = liveCameraRef.current;
-    const target = computeFrameCellBboxCamera(
-      s.viewport, revealRect.bbox, FRAME_OBJECT_FIT,
-      { top: avoidTopPx ?? 0, bottom: avoidBottomPx ?? 0 },
-    );
     cancelCameraTween(false);
     cameraTweenRef.current = tween({
-      duration: REVEAL_GLIDE_MS,
+      duration: durationMs,
       ease: cubicOut,
       onUpdate: (t) => applyLiveCamera({
         offsetX: mix(from.offsetX, target.offsetX, t),
         offsetY: mix(from.offsetY, target.offsetY, t),
-        // Zoom travels in LOG space: linear zoom races away at the start
-        // and crawls at the end when the two ends differ by a factor.
         zoom: Math.exp(mix(Math.log(from.zoom), Math.log(target.zoom), t)),
       }),
       onComplete: () => {
@@ -1556,8 +1572,35 @@ export function CanvasSurface({
         propsRef.current.onCameraCommit(target);
       },
     });
+  };
+
+  const revealKey = revealRect?.key ?? '';
+  useEffect(() => {
+    if (revealKey === '') return;
+    if (!revealRect) return;
+    const s = stateRef.current;
+    if (s.viewport.width <= 0 || s.viewport.height <= 0) return;
+    glideCameraTo(computeFrameCellBboxCamera(
+      s.viewport, revealRect.bbox, FRAME_OBJECT_FIT,
+      { top: avoidTopPx ?? 0, bottom: avoidBottomPx ?? 0 },
+    ), REVEAL_GLIDE_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealKey, applyLiveCamera]);
+
+  // …and the same glide to a camera the SHELL has already worked out, for
+  // a host that frames something the canvas cannot read a box for: Sol's
+  // zoom to the plants a Draw grew (its architecture §6.4), which fits a
+  // set of scene nodes rather than one rect. Asked once per ask (`seq`),
+  // and DROPPED while a finger is down or a gesture is in flight — the
+  // finger wins, and an unasked-for flight under it is the one thing a
+  // glide must never do.
+  const glideSeq = cameraGlide?.seq ?? 0;
+  useEffect(() => {
+    if (!cameraGlide || glideSeq === 0) return;
+    if (gestureRef.current.mode !== 'idle' || pointersRef.current.size > 0) return;
+    glideCameraTo(cameraGlide.camera, cameraGlide.durationMs);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [glideSeq, applyLiveCamera]);
 
   // ── Viewport tracking ─────────────────────────────────────────────
   useEffect(() => {
@@ -1818,6 +1861,45 @@ export function CanvasSurface({
 
   const frameEl = (id: string): HTMLElement | null =>
     worldRef.current?.querySelector(`[data-frame-id="${CSS.escape(id)}"]`) ?? null;
+
+  /** Does a HOST element stand in for this node in a live preview
+   *  (`CanvasLayers.previewStandIn`)? A node whose layer drew nothing has
+   *  no element of its own, so writing a transform on it writes on
+   *  nothing: Sol's plant draws every leaf it absorbs as one composite,
+   *  and a drag of the plant moves that one element. */
+  const standInFor = (id: string) => propsRef.current.layers?.previewStandIn?.(id);
+
+  /**
+   * How a gesture's members divide: the ones with elements of their own,
+   * and ONE driving member per host stand-in (the first of them in the
+   * gesture's own id list, whose previewed pose the stand-in is written
+   * from). Resolved once per gesture — `ids` is the gesture's own array,
+   * so its identity is the cache key — because a plant at its cap would
+   * otherwise cost two thousand lookups and two thousand style writes per
+   * frame, which is the whole thing a composite exists to avoid.
+   */
+  const previewTargetsRef = useRef<{
+    ids: readonly string[];
+    own: string[];
+    standIns: { standIn: HostPreviewStandIn; driverId: string }[];
+  } | null>(null);
+  const previewTargets = (ids: readonly string[]) => {
+    const hit = previewTargetsRef.current;
+    if (hit && hit.ids === ids) return hit;
+    const own: string[] = [];
+    const standIns: { standIn: HostPreviewStandIn; driverId: string }[] = [];
+    const seen = new Set<string>();
+    for (const id of ids) {
+      const standIn = standInFor(id);
+      if (!standIn) { own.push(id); continue; }
+      if (seen.has(standIn.key)) continue;
+      seen.add(standIn.key);
+      standIns.push({ standIn, driverId: id });
+    }
+    const out = { ids, own, standIns };
+    previewTargetsRef.current = out;
+    return out;
+  };
 
   /** The frame's border overlay — a sibling of its clip wrapper (so an
    *  outside/center stroke isn't cropped), which therefore has to be
@@ -2311,7 +2393,10 @@ export function CanvasSurface({
    *  reconciler writes nothing back. */
   const resetDragEl = (id: string, opts?: { outline?: boolean }) => {
     hideDimsHud();
-    const el = nodeEl(id);
+    // The node's own element, or the host's stand-in where one draws it
+    // (`CanvasLayers.previewStandIn`): a preview written by hand has to be
+    // put back by hand, whichever element took it.
+    const el = standInFor(id)?.el() ?? nodeEl(id);
     if (el) el.style.transform = '';
     // A dragged scoped pattern's axes previewed the shifted box: back onto
     // the committed one (a drop's own render moves them again at once).
@@ -4259,15 +4344,31 @@ export function CanvasSurface({
     // similarities, and a similarity composed on top of the leaf's own
     // matrix leaves the same total as re-drawing would (90 fps rule — the
     // re-draw is reserved for the one gesture that has no other answer).
+    //
+    // …except a node a HOST stands in for: it has no element, so it never
+    // takes the element write, and it must not go through React either —
+    // the stand-in takes whatever the map says, and an off-square stretch
+    // thickens its strokes for the length of the drag the way a frame's
+    // preview does, settling on the commit's render.
+    const targets = previewTargets(ids);
     let posed: Map<string, Mat2D> | null = null;
     for (const [id, pose] of moved) {
-      if (!matIsSimilarity(pose.css)) (posed ??= new Map()).set(id, pose.world);
+      if (!matIsSimilarity(pose.css) && !standInFor(id)) (posed ??= new Map()).set(id, pose.world);
     }
-    for (const id of ids) {
+    for (const id of targets.own) {
       const el = nodeEl(id);
       if (!el) continue;
       const pose = posed?.has(id) ? undefined : moved.get(id);
       el.style.transform = pose ? cssMatrix(pose.css, BASE_CELL_PX) : '';
+    }
+    // One write per stand-in, from its driving member's previewed pose,
+    // mapped into the host's own element space by the host.
+    for (const { standIn, driverId } of targets.standIns) {
+      const el = standIn.el();
+      if (!el) continue;
+      const pose = moved.get(driverId);
+      const css = pose ? standIn.css(driverId, pose.world) : null;
+      el.style.transform = css ? cssMatrix(css, BASE_CELL_PX) : '';
     }
     setLivePose(posed);
   };
@@ -4305,8 +4406,13 @@ export function CanvasSurface({
     // the standing one) is the source of truth again. Already-null bails
     // out of React without a render, so an ordinary drag costs nothing.
     setLivePose(null);
-    for (const id of ids) {
+    const targets = previewTargets(ids);
+    for (const id of targets.own) {
       const el = nodeEl(id);
+      if (el) el.style.transform = '';
+    }
+    for (const { standIn } of targets.standIns) {
+      const el = standIn.el();
       if (el) el.style.transform = '';
     }
     if (selectionOutlineRef.current) {
@@ -4678,6 +4784,11 @@ export function CanvasSurface({
   const onPointerDown = (e: React.PointerEvent) => {
     const el = containerRef.current;
     if (!el) return;
+    // A finger on the canvas — any finger, whatever it turns out to mean —
+    // before anything else is read about it: a host with something playing
+    // that a touch should end needs the frame that ending asks for to see
+    // the finger (Sol's Draw reveal).
+    propsRef.current.onCanvasPointerDown?.();
     // One layout read per gesture, not per move (see localPoint).
     const r = el.getBoundingClientRect();
     containerRectRef.current = { left: r.left, top: r.top };
@@ -5520,15 +5631,24 @@ export function CanvasSurface({
           `translate(${d.dxCells * BASE_CELL_PX}px, ${d.dyCells * BASE_CELL_PX}px)`;
         previewSelectionEntry(g.ids, () => buildMoveNodes(
           stateRef.current, g.ids, d.dxCells, d.dyCells, propsRef.current.session.hostDoc));
-        for (const id of g.ids) {
+        const targets = previewTargets(g.ids);
+        for (const id of targets.own) {
           const el = nodeEl(id);
           // …and any word among them grows into the bottle as it would on
-          // its own (maskWordScale), about its own centre.
+          // its own (dragScale.ts), about its own centre.
           const maskScale = dragScaleFactor(stateRef.current, id, d.dxCells, d.dyCells);
           if (el) {
             el.style.transform = maskScale === 1
               ? worldTranslate : `${worldTranslate} scale(${maskScale})`;
           }
+        }
+        // …and one write for each host stand-in among them. A plain
+        // translate is the same for every member, so the driving pose is
+        // not needed: nothing a host grows by being dragged exists, and a
+        // composite rides the group's one delta.
+        for (const { standIn } of targets.standIns) {
+          const el = standIn.el();
+          if (el) el.style.transform = worldTranslate;
         }
         // The members' standing partners ride along, mapped per orbit — a
         // dragged symmetric pair claims its own halves, so no peer doubles

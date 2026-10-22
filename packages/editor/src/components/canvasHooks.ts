@@ -3,6 +3,7 @@ import type { Camera, CompositionState, Viewport } from '@/engine/types';
 import type { LegacyLeaf } from '@/engine/sceneGraph';
 import type { SessionEntry } from '../editorSession';
 import type { DrawnLeaf } from '../drawnPose';
+import type { Mat2D } from '@/engine/sceneTransform';
 import type { CellBbox } from '../resizeMath';
 
 // The CANVAS seam of the shared editor (docs/shared-editor.md §4.1,
@@ -41,6 +42,15 @@ import type { CellBbox } from '../resizeMath';
 // router; and `onPointerUp` drops the React event, because the surface has
 // none to give for a stale-pointer heal or a page backgrounded mid-touch,
 // and neither app's hook ever read it.
+//
+// Two more again as the remaining apps adopted the canvas (5b.4), both
+// signatures rather than ideas: `previewSelectionEntry` takes the
+// gesture's ids and its entry as a thunk, because whether a gesture moves
+// anything of the host's is the host's own question and the surface would
+// have to build an entry to ask it; and `CanvasLayers.previewStandIn`,
+// which is `nodeLayer`'s `null` answer seen from the gesture side — a node
+// whose layer draws nothing has no element of its own, so the live preview
+// was writing a transform on nothing.
 //
 // What is NOT here: `overlay?(session, camera)`, which the plan once
 // designed for this row and which is dropped. The one thing it was for is
@@ -259,6 +269,51 @@ export interface CanvasLayers {
    * invisible rather than unmounting, which is what keeps its GL context.
    */
   nodeLayer?(node: HostNodeLayerInput): React.ReactNode | undefined;
+  /**
+   * The host's own element that stands in for `nodeId` while a gesture
+   * PREVIEWS it, or undefined for a node the canvas previews itself.
+   *
+   * This is `nodeLayer`'s `null` answer seen from the gesture side, and
+   * the SIXTH widening of the adopted seam (§4.3) — a hole in it rather
+   * than a new feature. A node whose layer draws nothing has no element of
+   * its own, so the canvas's live preview wrote a transform on nothing and
+   * the node sat still under the finger. Sol's plant is exactly that: one
+   * composite element draws every leaf it absorbs, and a drag of the plant
+   * must move that one element, from one member's previewed pose, rather
+   * than two thousand elements that do not exist.
+   *
+   * Asked per gesture, not per frame: the canvas resolves the whole
+   * member list once at the press (the ids array is the gesture's own) and
+   * writes one element per distinct `key` per move.
+   */
+  previewStandIn?(nodeId: string): HostPreviewStandIn | undefined;
+}
+
+/**
+ * The host element that stands in for a scene node in a live gesture
+ * preview (`CanvasLayers.previewStandIn`).
+ *
+ * One stand-in draws MANY nodes, which is the whole reason it exists, so
+ * the canvas writes it once per move and not once per node: every node
+ * answering the same `key` is drawn by one element, and the first of them
+ * in the gesture's own id list is the one whose previewed pose drives it.
+ */
+export interface HostPreviewStandIn {
+  /** Which stand-in this is — Sol's plant group id. Nodes sharing a key
+   *  share an element. */
+  readonly key: string;
+  /** The element to write, or null when it is not mounted (a plant the
+   *  page is hiding, a render that has not landed yet). */
+  el(): HTMLElement | null;
+  /**
+   * The matrix to put on that element, in CELLS, for the driving node's
+   * previewed WORLD matrix — or null to leave it where it stands. The
+   * host maps it, because only the host knows what its element's space is:
+   * Sol composes the relative map the leaf took about the composite's own
+   * centre, so the plant rides a drag, a twist or a stretch of its seed
+   * exactly where its stamps would.
+   */
+  css(nodeId: string, world: Mat2D): Mat2D | null;
 }
 
 /**
