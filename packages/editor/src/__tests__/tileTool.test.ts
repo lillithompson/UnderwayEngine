@@ -1035,8 +1035,10 @@ describe('tileTapJoinsPattern', () => {
   });
 });
 
-// The press asks the same question: with nothing to place against, the
-// drag drags out a REGION instead of laying a stroke of tiles.
+// The level a pattern IS worked at: the one whose step is the pattern's
+// own cell step. WHICH level a fresh page opens at, and what the first tap
+// therefore edits, is each app's own (DrawBot's `openingGridLevel`,
+// web/editor/gridLevel.ts) and is pinned there.
 describe('tileGridLevelOf', () => {
   const pane = (over: Partial<PatternObject>): PatternObject => ({
     id: 'pat_x', cellX: 16, cellY: -24, cellWidth: 48, cellHeight: 64, cols: 6, rows: 8,
