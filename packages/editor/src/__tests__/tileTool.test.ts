@@ -3,12 +3,13 @@ import { toLegacyView } from '@/engine/sceneGraph';
 import { graphOf } from '@/engine/sceneHitFrame';
 import { applySceneOps, buildSetTransform } from '@/engine/sceneGraphOps';
 import { rotatePointAboutCW } from '@/engine/compositionArcMath';
-import { MAX_PATTERN_GRID } from '@/engine/patternObject';
+import { MAX_PATTERN_GRID, patternCellTint, PATTERN_BASE_INK } from '@/engine/patternObject';
 import { CompositionState, PATTERN_SYMMETRY_OFF, PatternObject, RGBColor } from '@/engine/types';
 import { getRenderedSignature, mirrorCellState } from '@/engine/connectivity';
-import { patternCellTint, PATTERN_BASE_INK } from '@/engine/patternObject';
 import { makeBlankComposition } from '../blankComposition';
-import { buildPlaceLineShape, buildPlacePolyline, buildRotateSelected } from '../editorSession';
+import {
+  buildPlaceLineShape, buildPlacePattern, buildPlacePolyline, buildRotateSelected,
+} from '../editorSession';
 import {
   buildPlaceTile,
   buildPlaceTileInPattern,
@@ -1289,5 +1290,64 @@ describe('stamping INTO the OPEN pattern’s own grid (the Edit capsule’s targ
     expect(buildPlaceTileInPattern(s, 'nope', 1, 1, INK)).toBeNull();
     const rep = grid(blank(), 'r', { cellX: 0, cellY: 0, cellWidth: 2, cellHeight: 2 }, 1, 1, { tileMode: 'repeat', tileWidthL0: 2, tileHeightL0: 2 });
     expect(buildPlaceTileInPattern(rep, 'r', 5, 1, INK)).toBeNull();
+  });
+});
+
+describe('a dragged REGION mints its own object and joins nothing', () => {
+  // Dragging out a region is the Tile tool's CREATING gesture, and creating
+  // never edits: a region laid against a compatible pattern — same step,
+  // same lattice, sharing an edge — used to grow that object instead of
+  // standing beside it, which rewrote a grid nobody had opened. The shell
+  // commits the region placement straight through now (EditorShell
+  // onCreatePattern), with no merge in the path at all.
+
+  function regionEntry(bbox: { cellX: number; cellY: number; cellWidth: number; cellHeight: number }, cols: number, rows: number) {
+    return buildPlacePattern(bbox, cols, rows, undefined, undefined, true, undefined, INK);
+  }
+
+  test('a region against a pattern leaves it alone: two objects, the old one untouched', () => {
+    const seeded = withTileObject(
+      blank(), { cellX: 6, cellY: 2, cellWidth: 2, cellHeight: 2 }, 'test/tile_00000000',
+    );
+    // A 2×2 region sharing the object's right edge. Its entry is the empty
+    // placeObject plus the flood's editPatternCells against its own id.
+    const se = regionEntry({ cellX: 8, cellY: 2, cellWidth: 4, cellHeight: 4 }, 2, 2);
+    expect(se.entry.map((o) => o.op)).toEqual(['placeObject', 'editPatternCells']);
+    const after = applyCompOps(seeded, se.entry);
+    expect(after.patternObjects).toHaveLength(2);
+    expect(after.patternObjects![0]).toEqual(seeded.patternObjects![0]);
+  });
+
+  test('even handed to the merge, a region absorbs only what is OPEN', () => {
+    // The merge is still what consolidates a tile STROKE, and a region is
+    // one placed item to it — so the reach rule is worth pinning from this
+    // side too: with nothing open, nothing is absorbed.
+    const seeded = withTileObject(
+      blank(), { cellX: 6, cellY: 2, cellWidth: 2, cellHeight: 2 }, 'test/tile_00000000',
+    );
+    const se = regionEntry({ cellX: 8, cellY: 2, cellWidth: 4, cellHeight: 4 }, 2, 2);
+    expect(mergeTileStrokeOps(seeded, se).entry.some((o) => o.op === 'removeObject')).toBe(false);
+    // …and with the neighbour open, it is: one grid, the flood folded in.
+    const merged = mergeTileStrokeOps(seeded, se, 'pat_test_6_2');
+    expect(merged.id).toBe('pat_test_6_2');
+    expect(merged.entry.map((o) => o.op)).toEqual(['removeObject', 'placeObject']);
+    const op = merged.entry[1];
+    if (op.op !== 'placeObject') throw new Error('expected placeObject');
+    const item = op.item as PatternObject;
+    // The union box: x 6..12, y 2..6 at step 2 → 3×2.
+    expect(item).toMatchObject({
+      id: 'pat_test_6_2', cellX: 6, cellY: 2, cellWidth: 6, cellHeight: 4, cols: 3, rows: 2,
+    });
+    // The seed's one tile plus the flood's four — the fold translated the
+    // region-id edits into the grown grid, so none ride as separate ops
+    // against an id the swap retired.
+    expect(item.cells.filter(Boolean)).toHaveLength(5);
+    expect(item.cells[0]).toEqual(spriteCell('test/tile_00000000'));
+    expect(applyCompOps(seeded, merged.entry).patternObjects).toHaveLength(1);
+  });
+
+  test('a lone region beside nothing passes through untouched', () => {
+    const se = regionEntry({ cellX: 20, cellY: 20, cellWidth: 4, cellHeight: 4 }, 2, 2);
+    expect(mergeTileStrokeOps(blank(), se)).toBe(se);
   });
 });

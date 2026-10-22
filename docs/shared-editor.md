@@ -496,8 +496,8 @@ first, then the pointer bump in each app).
 
    What moved with them: eight suites split the way stages 3 and 4 split
    theirs, the behaviour half to the package and the CANVAS and SHELL pins
-   left behind in the app — `tileTool` (eleven describes / 68 cases to the
-   package, ten / 34 kept), `canvasSymmetry` (nine / 40 to the package,
+   left behind in the app — `tileTool` (twelve describes / 71 cases to the
+   package, ten / 31 kept), `canvasSymmetry` (nine / 40 to the package,
    three / 26 kept), `symmetryReflect` (24), `symmetryAxesScreen` (15,
    which pinned nothing app-side and moved whole), `symmetryObjects` (7),
    `tapExclusion` (10),
@@ -520,8 +520,9 @@ first, then the pointer bump in each app).
    split is per case, which is what the first two review rounds were spent
    finding: a describe named for a shell behaviour can still hold the only
    coverage a package function has, and a header that says otherwise is an
-   invitation to delete it. Twenty of those cases moved after round 2
-   (`tileTool`'s grid readings, `canvasSymmetry`'s frame and axis maths).
+   invitation to delete it. Twenty-eight of those cases moved across the
+   three review rounds: `canvasSymmetry`'s frame and axis maths (eleven),
+   `tileTool`'s grid readings (fourteen) and its region-drag maths (three).
    What is still only covered app-side, measured after round 2 and left for
    5b, is a short list of DOM writers and the constants they read:
    `regionChromeScreen`'s `writeRegionChrome`, `markerKey`,
@@ -535,7 +536,7 @@ first, then the pointer bump in each app).
 
    `fontsEpoch.test.ts` was identical in all three apps and moved whole,
    and `fontFamily.test.ts` is new, over the seam with no pack installed,
-   with one, and after one is taken away. Editor package 59 suites / 1,196
+   with one, and after one is taken away. Editor package 59 suites / 1,199
    tests; engine 358 of 359 (cameraRoll's host dependency, as before).
    `NodeLayer.tsx` itself is typechecked only in the apps, as every
    component in this package already is — no engine suite imports one, the
