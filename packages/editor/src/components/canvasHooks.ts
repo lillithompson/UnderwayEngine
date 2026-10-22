@@ -139,12 +139,29 @@ export interface GestureHooks {
    *  hold could never open the quick actions on — a rig's joint knobs
    *  cover most of its body, and a bot is all of itself. */
   holdOpensMenu?: () => boolean;
-  /** A multi-selection gesture in flight — a drag, a twist, a corner
-   *  resize — and the entry its release would commit, so a host layer can
-   *  draw the selection's own things where it would put them; null when
-   *  the gesture ends. Per pointer move: a reference hand-over, never a
-   *  render. */
-  previewSelectionEntry?: (se: SessionEntry | null) => void;
+  /**
+   * A multi-selection gesture in flight — a drag, a twist, a corner resize
+   * — and the entry its release would commit, so a host layer can draw the
+   * selection's own things where it would put them (DrawBot's bots and
+   * instruction tiles ride a mixed group under the finger with the
+   * shapes). `entry` is null when the gesture ends.
+   *
+   * Per pointer move, so the entry comes as a THUNK and the ids beside it:
+   * whether this gesture moves anything of the host's is the host's own
+   * question — which of these ids are its, and whether any of its items
+   * rides a group among them — and only the host can answer it without
+   * building the entry first. A gesture over shapes alone then costs the
+   * hook one predicate and no reducer pass. DrawBot's canvas had that gate
+   * written out in front of the call; it belongs behind it.
+   *
+   * The FIFTH widening of the adopted seam (§4.3), and the same kind as
+   * the other four: the surface hands the host what it needs to answer
+   * rather than deciding on its behalf. DrawBot's took a built
+   * `SessionEntry | null` alone.
+   */
+  previewSelectionEntry?: (
+    ids: readonly string[], entry: (() => SessionEntry | null) | null,
+  ) => void;
   /**
    * What the host has under the finger, IN FRONT OF every scene node, in
    * surface pixels — asked before the scene is hit-tested. A string is the

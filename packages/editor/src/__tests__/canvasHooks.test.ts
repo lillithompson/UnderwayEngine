@@ -390,6 +390,18 @@ describe('the seam’s declarations', () => {
     expect(SRC).toContain("claimAt?: 'press' | 'grab';");
   });
 
+  test('a selection preview comes with its ids and as a thunk, not as a built entry', () => {
+    // The FIFTH widening (stage 5b.4). DrawBot's took a built
+    // `SessionEntry | null` and gated in front of the call — "do any of
+    // these ids name a bot, or does a bot ride a group among them?" — a
+    // question only the host can answer and which the surface would have
+    // to build an entry to ask. Collapsing this back to one argument
+    // means every multi gesture over shapes alone pays a reducer pass per
+    // pointer move for a layer with nothing to draw.
+    expect(SRC).toContain('ids: readonly string[], entry: (() => SessionEntry | null) | null,');
+    expect(SRC).not.toContain('previewSelectionEntry?: (se: SessionEntry | null) => void;');
+  });
+
   test('the surface always offers the pixel pick: the package keeps both hit tests', () => {
     expect(SRC).toContain('pixelHitAt(x: number, y: number): string | null;');
     expect(SRC).not.toContain('pixelHitAt?(');
@@ -409,7 +421,12 @@ describe('the seam’s declarations', () => {
       onPointerMove: (x, y) => { seen.push(`move ${x},${y}`); },
       onPointerUp: (_x, _y, end) => { seen.push(`up ${end}`); },
       holdOpensMenu: () => true,
-      previewSelectionEntry: (se) => { seen.push(`preview ${se === null ? 'none' : 'entry'}`); },
+      previewSelectionEntry: (ids, entry) => {
+        // The gate is the HOST's: it reads the ids and only then builds.
+        if (entry === null) { seen.push('preview none'); return; }
+        if (!ids.some((id) => id.startsWith('peg_'))) { seen.push('preview skipped'); return; }
+        seen.push(`preview ${entry() === null ? 'nothing' : 'entry'}`);
+      },
       beforePick: (x, y) => (x === y ? 'peg_1' : null),
     };
     const handle: CanvasSurfaceHandle = {
@@ -426,8 +443,18 @@ describe('the seam’s declarations', () => {
     // claim.
     for (const end of ends) hooks.onPointerUp!(0, 0, end);
     expect(hooks.holdOpensMenu!()).toBe(true);
-    hooks.previewSelectionEntry!(null);
-    expect(seen).toEqual(['move 3,4', 'up release', 'up takeover', 'up cancel', 'preview none']);
+    // The ids and a THUNK, not a built entry: a gesture over nothing of the
+    // host's never costs it a reducer pass (the fifth widening, §4.3).
+    let built = 0;
+    hooks.previewSelectionEntry!(['sq_1'], () => { built += 1; return { entry: [] }; });
+    expect(built).toBe(0);
+    hooks.previewSelectionEntry!(['peg_1'], () => { built += 1; return { entry: [] }; });
+    expect(built).toBe(1);
+    hooks.previewSelectionEntry!(['peg_1'], null);
+    expect(seen).toEqual([
+      'move 3,4', 'up release', 'up takeover', 'up cancel',
+      'preview skipped', 'preview entry', 'preview none',
+    ]);
     // Not a claim: an id to SELECT before the scene is asked, or null to
     // let the press fall through to it.
     expect(hooks.beforePick!(5, 5)).toBe('peg_1');
@@ -437,5 +464,66 @@ describe('the seam’s declarations', () => {
     expect(handle.getLiveCamera().zoom).toBe(makeBlankComposition('x').camera.zoom);
     expect(handle.getViewport().width).toBe(100);
     expect(prior.selectedIds).toEqual([]);
+  });
+});
+
+// What the SURFACE does with the seam. DrawBot is the only app that fills
+// `beforePick` or `previewSelectionEntry`, so nothing in CozyJournal's or
+// Sol's tree fails when a call site goes — which is §4.3's rule for a
+// generic addition adopted from a non-canonical copy, and the declaration
+// surviving is not the call surviving (5a's `children` lesson).
+describe('the surface’s wiring of the seam', () => {
+  const SRC = fs.readFileSync(
+    path.join(__dirname, '..', 'components', 'CanvasSurface.tsx'), 'utf8',
+  );
+
+  test('asks beforePick once per press, before the tool branches', () => {
+    expect(SRC).toContain(
+      "pressFrontPickRef.current = propsRef.current.gestures?.beforePick?.(pt.x, pt.y) ?? null;",
+    );
+    // …and forgets the last press's answer first, so a press that returns
+    // early from one of the gates above cannot leave a stale pick that a
+    // later tool branch reads as its own.
+    expect(SRC).toContain('pressFrontPickRef.current = null;');
+  });
+
+  test('four things read that pick, and each is a press a host item takes', () => {
+    // The selection's one-finger grab and the selected node's own grab
+    // both yield to a thing drawn in front of them (frontItemTakesPress /
+    // selectionOwnsPress's frontId); the select tool picks it instead of
+    // the scene behind it; shift-click toggles it into the selection.
+    expect(SRC).toContain('if (frontItemTakesPress(pressFrontPickRef.current, ids)) return false;');
+    expect(SRC).toContain('frontId: pressFrontPickRef.current,');
+    expect(SRC).toContain('const frontPick = pressFrontPickRef.current;');
+    expect(SRC).toContain('const front = pressFrontPickRef.current;');
+  });
+
+  test('a settled tap asks the host fresh rather than reading the press’s pick', () => {
+    // A tap settles from branches the press router's set never ran through
+    // — a marquee below the slop, a tile stamp that never stamped.
+    const at = SRC.indexOf('const settleTap = ');
+    expect(at).toBeGreaterThan(0);
+    const head = SRC.slice(at, at + 1200);
+    expect(head).toContain('propsRef.current.gestures?.beforePick?.(pt.x, pt.y) ?? null');
+    expect(head).toContain('propsRef.current.onSelect(picked);');
+  });
+
+  test('every multi gesture offers its proposed entry, and the teardown ends it', () => {
+    // Three gestures in flight — the drag, the twist, the corner resize —
+    // plus the teardown that clears the preview. Fewer than four and a
+    // host layer draws its things in the wrong place for one of them, or
+    // leaves them there after the finger lifts. Counted over the code
+    // alone: a comment naming the hook would otherwise count as a call.
+    const code = SRC
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^[ 	]*\/\/.*$/gm, '');
+    expect(code.match(/previewSelectionEntry\(/g)).toHaveLength(4);
+    expect(SRC).toContain('previewSelectionEntry(ids, null);');
+    expect(SRC).toContain('previewSelectionEntry(g.ids, () => twisted);');
+    expect(SRC).toContain('previewSelectionEntry(g.ids, () => resized);');
+    expect(SRC).toContain('previewSelectionEntry(g.ids, () => buildMoveNodes(');
+    // The hand-over is the hook itself, unguarded: whether there is
+    // anything to draw is the host's question, asked behind the call.
+    expect(SRC).toContain('propsRef.current.gestures?.previewSelectionEntry?.(ids, entry);');
   });
 });

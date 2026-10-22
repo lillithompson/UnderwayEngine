@@ -105,7 +105,9 @@ import {
   resolveMultiSelectionBox,
   resolveMultiSelectionFrame,
   canTwoPointerManipulate,
-  groupSelectionIds,
+  buildMoveNodes,
+  isHostId,
+  selectionUnitIds,
   filterPolylinePoints,
   lineShapeGeometry,
   arcShapeSegments,
@@ -163,7 +165,8 @@ import { paintToCssBackground, rgbCss } from '../colorUtils';
 import { cameraAvoidingBottomInset } from '../cameraAvoid';
 import { caretCodePoint, caretUtf16AtPoint, textCaretBox, textSelectionBoxes } from '../textCaret';
 import {
-  dragCellBbox, isTextDoubleTap, resolveCanvasTap, selectionBoxHitsCell, selectionContains,
+  dragCellBbox, frontItemTakesPress, isTextDoubleTap, lockedTapClearsSelection,
+  resolveCanvasTap, selectionBoxHitsCell, selectionContains,
   tapClearsSelection,
   selectionHoldsNode, selectionOwnsPress, selectionSwallowsCanvas, toolYieldsToSelection,
 } from '../canvasTap';
@@ -189,7 +192,9 @@ import {
 } from '../editableRegion';
 import { triggerHaptic } from '@/native-shell/bridge/webBridge';
 import { collectPaintGuards, pointInPaintGuard } from '../paintGuards';
-import { MARKER_POP_KEYFRAMES, writeRegionChrome, type RegionMarker } from '../regionChromeScreen';
+import {
+  type ForwardArrow, MARKER_POP_KEYFRAMES, type RegionMarker, writeForwardArrow, writeRegionChrome,
+} from '../regionChromeScreen';
 
 import { mirroredSegments, withSymmetryCopies } from '../symmetryObjects';
 import { SymmetryDragPeer, symmetryDragPeers, withSymmetryReflection } from '../symmetryReflect';
@@ -367,6 +372,18 @@ const BRUSH_CURSOR_GRADIENT_ID = 'cj-brush-cursor-gradient';
 const PUSH_CURSOR_COLOR = { r: 168, g: 168, b: 168 };
 
 interface CanvasSurfaceProps {
+  /**
+   * One-finger input on the canvas is LOCKED: nothing is selected, drawn,
+   * dragged or placed, and the two-finger pan/zoom stays live (DrawBot's
+   * running simulation, docs/drawBot.md §5.2). A press made under the lock
+   * is a `lockedTap` and does one thing on release — put the selection
+   * away, and with it the properties panel (canvasTap's
+   * `lockedTapClearsSelection`).
+   *
+   * The chrome that drives whatever holds the lock is its own and is not
+   * reached through here.
+   */
+  inputLocked?: boolean;
   session: EditorSession;
   aspect: number;
   currentColor: RGBColor;
@@ -400,6 +417,12 @@ interface CanvasSurfaceProps {
   /** World points drawn as green circles in the same overlay — the
    *  connection points. Recomputed by the shell on commit only. */
   markers?: readonly RegionMarker[];
+  /** The page's forward arrow (`EditorConfig.forwardArrow`): the faint
+   *  screen-space guide saying the top of a page leads, drawn in the same
+   *  overlay in a `<g>` of its own — the region writer clears its group
+   *  when there is no region, which a page with an arrow and no region is
+   *  (regionChromeScreen.writeForwardArrow). */
+  forwardArrow?: ForwardArrow;
   /** A world rect the camera should GLIDE to frame, and the `key` of the
    *  ask that wants it framed (docs/social_game_spec.md §7.3): a Creature
    *  turn refused over a point the move before left uncarried flies the
@@ -717,13 +740,19 @@ type Gesture =
   // it does under every other mode. It used to go straight to 'idle',
   // which ate the tap and with it the gesture.
   | { mode: 'nodeTap'; nodeId: string; wasSelected: boolean; startX: number; startY: number }
+  // A one-finger press made while `inputLocked` holds: nothing moves, and
+  // a release within the slop puts the selection away and the properties
+  // panel with it (canvasTap's lockedTapClearsSelection). The lock cannot
+  // simply drop the press, because the tap that dismisses a page is the
+  // one thing a locked canvas still owes.
+  | { mode: 'lockedTap'; startX: number; startY: number }
   | { mode: 'drag'; nodeId: string; startX: number; startY: number; dx: number; dy: number;
       wasSelected: boolean;
       /** The turn the node's box is DRAWN at, snapshotted at the press, which
        *  the outline's live transform composes on — as in 'multiDrag'. The
        *  DRAWN turn, not the node's own `angleDeg`: a member of a tilted
        *  FRAME is turned by the frame and carries no angle of its own (a
-       *  frame's members drag one at a time — groupSelectionIds promotes
+       *  frame's members drag one at a time — selectionUnitIds promotes
        *  plain groups only), so the raw field wrote a bare translate over
        *  the resting rotation and the box stood square for the length of
        *  every drag. */
@@ -977,6 +1006,7 @@ function veilState(state: CompositionState, veiledIds: ReadonlySet<string> | und
 }
 
 export function CanvasSurface({
+  inputLocked,
   session, aspect, currentColor, paintSessionRef, brushRadiusScale, avoidBottomPx, avoidTopPx, editingText, editingImage, editingCaret, onCaretSeek, onSelectAllText,
   onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onViewportChange, onAddText, onRequestPhoto, onRevertToArrange, onHostPlace, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap,
   cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides,
@@ -984,7 +1014,7 @@ export function CanvasSurface({
   onLongPress, onLongPressMove, onLongPressUp,
   onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp,
   ghosts,
-  editableRegion, regionChrome, markers, veiledIds, revealRect,
+  editableRegion, regionChrome, markers, forwardArrow, veiledIds, revealRect,
   hostTools, openTrace, gestures, layers, surfaceHandle,
 }: CanvasSurfaceProps) {
   // The scene as the canvas draws and hit-tests it: the veiled nodes
@@ -1143,6 +1173,16 @@ export function CanvasSurface({
    *  claimed pointer's moves and its end go to the hooks and the surface
    *  runs none of its own machinery for it. */
   const claimedPointerRef = useRef<{ pointerId: number; claim: PointerClaim } | null>(null);
+  /** What a host layer has under the press being decided
+   *  (`GestureHooks.beforePick`): a thing drawn in FRONT of the whole scene
+   *  — DrawBot's bots and instruction tiles, its arena's border. Read by
+   *  the selection grabs, which yield a press that landed on it
+   *  (canvasTap's `frontItemTakesPress`), and by the select tool, which
+   *  picks it rather than whatever the scene has behind it. Set once per
+   *  press, before the tool branches, and cleared at the top of the next
+   *  one so a press that returns early cannot leave a stale pick behind;
+   *  null with no hook. */
+  const pressFrontPickRef = useRef<string | null>(null);
   // Frame clip-rect (boundary) node ids. Frames are only selectable from the
   // Scene Outline, so a tap that lands on a frame's boundary rect (its
   // background surface) must not select it — hitTestAt filters these out.
@@ -1179,8 +1219,8 @@ export function CanvasSurface({
    *  joined: a tap's fingers land together (MULTI_TAP_LAND_WINDOW). */
   const firstFingerDownAtRef = useRef(0);
   const multiTapLastLandAtRef = useRef(0);
-  const propsRef = useRef({ gestures, session, currentColor, paintSessionRef, brushRadiusScale, onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onAddText, onRequestPhoto, onRevertToArrange, onHostPlace, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap, editingText, editingCaret, onCaretSeek, onSelectAllText, cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides, colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo, onLongPress, onLongPressMove, onLongPressUp, onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp });
-  propsRef.current = { gestures, session, currentColor, paintSessionRef, brushRadiusScale, onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onAddText, onRequestPhoto, onRevertToArrange, onHostPlace, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap, editingText, editingCaret, onCaretSeek, onSelectAllText, cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides, colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo, onLongPress, onLongPressMove, onLongPressUp, onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp };
+  const propsRef = useRef({ inputLocked, gestures, session, currentColor, paintSessionRef, brushRadiusScale, onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onAddText, onRequestPhoto, onRevertToArrange, onHostPlace, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap, editingText, editingCaret, onCaretSeek, onSelectAllText, cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides, colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo, onLongPress, onLongPressMove, onLongPressUp, onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp });
+  propsRef.current = { inputLocked, gestures, session, currentColor, paintSessionRef, brushRadiusScale, onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onAddText, onRequestPhoto, onRevertToArrange, onHostPlace, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap, editingText, editingCaret, onCaretSeek, onSelectAllText, cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides, colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo, onLongPress, onLongPressMove, onLongPressUp, onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp };
 
   // Live preview of a corner resize: the RESCALED node being dragged, or null
   // when idle. `previewResizedNode` runs the same geometry adapter the release
@@ -1303,6 +1343,14 @@ export function CanvasSurface({
     }
     : null;
 
+  // …and the FORWARD ARROW beside it (regionChromeScreen.writeForwardArrow),
+  // in a <g> of its own rather than the region's: the region writer clears
+  // its group when there is no region, and a page can carry an arrow with
+  // no region at all (DrawBot's bot look page is exactly that).
+  const arrowGroupRef = useRef<SVGGElement | null>(null);
+  const forwardArrowRef = useRef<ForwardArrow | null>(null);
+  forwardArrowRef.current = forwardArrow ?? null;
+
   // The last settled tap / caret press on a scene node, for the text
   // double-tap (isTextDoubleTap): two quick taps on the text being edited
   // select its whole content.
@@ -1384,6 +1432,8 @@ export function CanvasSurface({
       notePoppedMarkers(
         writeRegionChrome(regionGroupRef.current, s.viewport, t, regionModelRef.current),
       );
+      // …and the forward arrow, which is screen space for the same reason.
+      writeForwardArrow(arrowGroupRef.current, t, forwardArrowRef.current);
       // …and the symmetry axes, for the same reason.
       writeAxes(t, s.viewport);
     }
@@ -1393,10 +1443,12 @@ export function CanvasSurface({
   // The region chrome, written for the committed camera on every render
   // that could change it — the model, the viewport, the camera.
   useEffect(() => {
+    const t = worldLayerTransform(state.camera, state.viewport);
     notePoppedMarkers(writeRegionChrome(
-      regionGroupRef.current, state.viewport, worldLayerTransform(state.camera, state.viewport), regionModelRef.current,
+      regionGroupRef.current, state.viewport, t, regionModelRef.current,
     ));
-  }, [state.camera, state.viewport, editableRegion, regionChrome, markers, regionTargets]);
+    writeForwardArrow(arrowGroupRef.current, t, forwardArrowRef.current);
+  }, [state.camera, state.viewport, editableRegion, regionChrome, markers, regionTargets, forwardArrow]);
 
   // Declared ahead of the resync effect below, which must know whether an
   // avoid-glide currently owns the camera.
@@ -1438,9 +1490,9 @@ export function CanvasSurface({
   // fought.
   const avoidBbox = useMemo(() => (
     session.selectedIds.length >= 2
-      ? resolveMultiSelectionBox(state, session.selectedIds)
+      ? resolveMultiSelectionBox(state, session.selectedIds, session.hostDoc)
       : resolveSelectionBox(state, session.selectedId)?.bbox ?? null
-  ), [state, session.selectedId, session.selectedIds]);
+  ), [state, session.hostDoc, session.selectedId, session.selectedIds]);
   const avoidBboxKey = avoidBbox
     ? `${avoidBbox.cellX},${avoidBbox.cellY},${avoidBbox.cellWidth},${avoidBbox.cellHeight}`
     : '';
@@ -1450,7 +1502,7 @@ export function CanvasSurface({
     const s = stateRef.current;
     const sel = propsRef.current.session;
     const bbox = sel.selectedIds.length >= 2
-      ? resolveMultiSelectionBox(s, sel.selectedIds)
+      ? resolveMultiSelectionBox(s, sel.selectedIds, sel.hostDoc)
       : resolveSelectionBox(s, sel.selectedId)?.bbox ?? null;
     if (!bbox) return;
     const from = liveCameraRef.current;
@@ -1888,7 +1940,7 @@ export function CanvasSurface({
     const s = stateRef.current;
     const ids = propsRef.current.session.selectedIds;
     if (noScale() || ids.length < 2 || !canResizeMultiSelection(s, ids)) return false;
-    const frame = resolveMultiSelectionFrame(s, ids);
+    const frame = resolveMultiSelectionFrame(s, ids, propsRef.current.session.hostDoc);
     if (!frame) return false;
     const cam = liveCameraRef.current;
     const r2 = HANDLE_HIT_RADIUS_PX * HANDLE_HIT_RADIUS_PX;
@@ -1932,11 +1984,17 @@ export function CanvasSurface({
   const groupDragGesture = (
     state: CompositionState, id: string, pt: { x: number; y: number },
   ) => {
-    const ids = groupSelectionIds(state, id);
-    const box = ids ? resolveMultiSelectionBox(state, ids) : null;
+    // The whole UNIT a tap on `id` selects — its scene leaves AND the
+    // host's own items riding the same group (`selectionUnitIds`, stage 3's
+    // `HostItems`): a group of shapes and DrawBot's bots drags as one, from
+    // a press on any of it. With no items adapter installed this IS
+    // `groupSelectionIds`, which it falls back to.
+    const { hostDoc } = propsRef.current.session;
+    const ids = selectionUnitIds({ state, hostDoc }, id);
+    const box = ids ? resolveMultiSelectionBox(state, ids, hostDoc) : null;
     // The turn the outline is drawn at, so the live preview can put it back
     // on — a bound group off the quarters wears a rotated box.
-    const frame = ids ? resolveMultiSelectionFrame(state, ids) : null;
+    const frame = ids ? resolveMultiSelectionFrame(state, ids, hostDoc) : null;
     return ids && box
       ? {
           mode: 'multiDrag' as const, ids, box, angleDeg: frame?.angleDeg ?? 0,
@@ -1964,8 +2022,13 @@ export function CanvasSurface({
   const beginMultiDrag = (pt: { x: number; y: number }) => {
     const ids = propsRef.current.session.selectedIds;
     if (rotateOnly() || ids.length < 2) return false;
-    const frame = resolveMultiSelectionFrame(stateRef.current, ids);
-    const box = resolveMultiSelectionBox(stateRef.current, ids);
+    // A host item drawn in FRONT of the whole scene keeps the press, even
+    // inside the box of a selection behind it (canvasTap's
+    // `frontItemTakesPress`) — unless it is itself part of that selection.
+    if (frontItemTakesPress(pressFrontPickRef.current, ids)) return false;
+    const { hostDoc } = propsRef.current.session;
+    const frame = resolveMultiSelectionFrame(stateRef.current, ids, hostDoc);
+    const box = resolveMultiSelectionBox(stateRef.current, ids, hostDoc);
     if (!frame || !box) return false;
     const cell = screenToWorld(pt.x, pt.y, liveCameraRef.current, stateRef.current.viewport);
     // The box as drawn: a bound group's is turned with it.
@@ -2006,6 +2069,7 @@ export function CanvasSurface({
     const cell = screenToWorld(pt.x, pt.y, liveCameraRef.current, s.viewport);
     if (!selectionOwnsPress({
       hitId: hit ? hit.id : null,
+      frontId: pressFrontPickRef.current,
       selectedId: id,
       insideBox: selectionBoxHitsCell(sel.bbox, sel.angleDeg, cell.cellX, cell.cellY),
       sceneOrder: s.sceneOrder,
@@ -2165,9 +2229,9 @@ export function CanvasSurface({
   useEffect(() => subscribeRotateLive((v) => {
     if (!v) { hideDimsHud(); return; }
     const s = stateRef.current;
-    const { selectedId, selectedIds } = propsRef.current.session;
+    const { selectedId, selectedIds, hostDoc } = propsRef.current.session;
     const box = selectedIds.length >= 2
-      ? resolveMultiSelectionBox(s, selectedIds)
+      ? resolveMultiSelectionBox(s, selectedIds, hostDoc)
       : selectedId ? resolveSelectionBox(s, selectedId)?.bbox ?? null : null;
     if (!box) { hideDimsHud(); return; }
     updateRotationHud(box.cellX + box.cellWidth / 2, box.cellY + box.cellHeight / 2, v.angleDeg);
@@ -4208,12 +4272,35 @@ export function CanvasSurface({
     setLivePose(posed);
   };
 
+  /**
+   * Hand a host layer the entry a multi gesture in flight WOULD commit, so
+   * it can draw its own things where the release will put them
+   * (`GestureHooks.previewSelectionEntry`): DrawBot's bots and instruction
+   * tiles ride a mixed group's drag, twist and corner resize under the
+   * finger with the shapes. A null `entry` ends the preview.
+   *
+   * The entry rides as a THUNK and the ids go with it, because this runs
+   * per pointer move and building one is a reducer pass over every member:
+   * whether this gesture moves anything of the host's is the host's own
+   * question, so it gates on the ids and calls the thunk only if it has
+   * something to draw. Two of the three gestures have built the entry for
+   * their own preview by then and the thunk hands that one over; the drag
+   * previews with a plain translate and would otherwise pay for an entry
+   * nobody reads.
+   */
+  const previewSelectionEntry = (
+    ids: readonly string[], entry: (() => SessionEntry | null) | null,
+  ) => {
+    propsRef.current.gestures?.previewSelectionEntry?.(ids, entry);
+  };
+
   /** Tear down a multi-drag's live preview: clear every member's transform
    *  and re-anchor the combined outline on the committed geometry — React's
    *  reconciler skips DOM writes for props unchanged since the last render,
    *  so the drag's inline mutations have to be put back by hand. */
   const resetMultiDragEls = (ids: readonly string[]) => {
     hideDimsHud();
+    previewSelectionEntry(ids, null);
     // Drop any off-square re-draw: the committed render (or, on a cancel,
     // the standing one) is the source of truth again. Already-null bails
     // out of React without a render, so an ordinary drag costs nothing.
@@ -4224,7 +4311,8 @@ export function CanvasSurface({
     }
     if (selectionOutlineRef.current) {
       const outline = selectionOutlineRef.current;
-      const frame = resolveMultiSelectionFrame(stateRef.current, ids);
+      const frame = resolveMultiSelectionFrame(
+        stateRef.current, ids, propsRef.current.session.hostDoc);
       if (frame) setOutlineBox(frame.bbox);
       outline.style.transform = outlineGestureTransform('', frame?.angleDeg ?? 0);
       // A multiManipulate counter-scales the outline chrome; put it back.
@@ -4398,6 +4486,7 @@ export function CanvasSurface({
     const unit = resolveTwistUnit(stateRef.current, sel, {
       moveOnly: moveOnly(),
       pxPerCell: pxPerCell(liveCameraRef.current, stateRef.current.viewport),
+      hostDoc: propsRef.current.session.hostDoc,
     });
     const insideUnit = (pt: { x: number; y: number }) => {
       if (!unit) return false;
@@ -4407,7 +4496,12 @@ export function CanvasSurface({
     };
     if (unit && insideUnit(a) && insideUnit(b)) {
       const s = stateRef.current;
-      if (unit.ids.every((id) => canTwoPointerManipulate(s, id))) {
+      // A host's own item turns and moves with the unit as a shape does,
+      // and the scene's questions do not apply to it: it is not a node, so
+      // `canTwoPointerManipulate` (which resolves through `findItem`) can
+      // only say no. Its own lock is the adapter's and is read by the
+      // builders (`isHostItemLocked`).
+      if (unit.ids.every((id) => isHostId(id) || canTwoPointerManipulate(s, id))) {
         gestureRef.current = {
           mode: 'multiManipulate', ids: [...unit.ids], box: unit.box, angleDeg: unit.angleDeg,
           aId, bId, accumDeg: 0, lastPairDeg: pairAngleDeg(a, b), deltaDeg: 0,
@@ -4569,6 +4663,18 @@ export function CanvasSurface({
     return true;
   };
 
+  /** The desktop camera pan a middle-button drag is, whatever tool is
+   *  armed. `noTap` keeps the release from being read as a tap, which is
+   *  what would drop a text or open the photo picker; `preventDefault`
+   *  stops the browser's middle-click autoscroll from hijacking the drag. */
+  const beginMiddlePan = (e: React.PointerEvent, pt: { x: number; y: number }) => {
+    e.preventDefault();
+    gestureRef.current = {
+      mode: 'pan', startCamera: liveCameraRef.current,
+      startX: pt.x, startY: pt.y, moved: false, noTap: true,
+    };
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     const el = containerRef.current;
     if (!el) return;
@@ -4617,6 +4723,45 @@ export function CanvasSurface({
     }
     if (beginTwoPointerGesture()) return;
     if (pointersRef.current.size !== 1) return;
+    // Forget the last press's front pick before anything can read it: the
+    // gates below return early for presses that never reach the scene, and
+    // one of those must not leave the pick a tool branch would have read.
+    pressFrontPickRef.current = null;
+
+    // Desktop: a middle-mouse-button drag pans the camera regardless of the
+    // active tool (parity with the two-finger / no-tool pan). FIRST of
+    // everything a one-pointer press can mean — ahead of a host's claim,
+    // the input lock, the done-page gate, the caret and every tool — so
+    // nothing on the page is grabbed, drawn on, or placed while the middle
+    // button is the one held: it is the desktop's camera and nothing else
+    // (DrawBot's bug f1079398, where it fell to the simulation's lock).
+    if (e.button === 1) {
+      beginMiddlePan(e, pt);
+      return;
+    }
+
+    // A host's gestures at the 'press' point (canvasHooks.ts `claimAt`),
+    // which is what that default MEANS: before the surface reads anything
+    // else about the press — ahead of the input lock, the done-page gate,
+    // the caret and every tool. DrawBot's bots and its arena are armed by
+    // their own tool and the claim has to beat the running simulation's
+    // lock below, so nothing may precede it but the middle button.
+    //
+    // Settled at stage 5b.4, where the claim sat after the done gate and
+    // the caret and nothing exercised the difference (CozyJournal's rig
+    // claims at 'grab'). DrawBot's is the shipped order, and it is the one
+    // `claimAt: 'press'` already documents; the canvas was what disagreed.
+    if (offerClaim('press', pt, e)) return;
+
+    // …then the lock on one-finger input: nothing is selected, drawn,
+    // dragged or placed (the two-finger camera above is still live) — all
+    // but a TAP, which puts the selection away and the properties panel's
+    // pages with it, as a background tap does unlocked (canvasTap's
+    // `lockedTapClearsSelection`).
+    if (propsRef.current.inputLocked) {
+      gestureRef.current = { mode: 'lockedTap', startX: pt.x, startY: pt.y };
+      return;
+    }
 
     // A page marked DONE takes no edits (reopenDone.ts). Before every
     // branch below — the caret, the crop, the tools — so there is no
@@ -4642,29 +4787,6 @@ export function CanvasSurface({
       return;
     }
 
-    // Desktop: a middle-mouse-button drag pans the camera regardless of the
-    // active tool (parity with the two-finger / no-tool pan). Checked before
-    // every tool branch so nothing on the page is grabbed, drawn on, or
-    // placed while the middle button is the one held. preventDefault stops the
-    // browser's middle-click autoscroll from hijacking the drag.
-    if (e.button === 1) {
-      e.preventDefault();
-      gestureRef.current = {
-        mode: 'pan', startCamera: liveCameraRef.current,
-        startX: pt.x, startY: pt.y, moved: false, noTap: true,
-      };
-      return;
-    }
-
-    // A host's gestures at the 'press' point (canvasHooks.ts): after the
-    // middle button, which is the desktop's camera and nothing else, and
-    // before every tool. This app's own host claims at 'grab' instead
-    // (rigGestures.ts), so nothing reaches here yet; the done-page gate and
-    // the caret above still precede it, where DrawBot's router puts its
-    // claim ahead of the equivalent lock — the one ordering stage 5b.3 has
-    // to settle when the three routers become one.
-    if (offerClaim('press', pt, e)) return;
-
     // No tool active: the canvas is view-only. Fall straight through to the
     // camera pan below — before the crop and tool branches, so nothing on the
     // page can be grabbed, drawn on, or placed.
@@ -4687,6 +4809,16 @@ export function CanvasSurface({
         return;
       }
     }
+
+    // What a host layer has under the finger, drawn in FRONT of every
+    // scene node (canvasHooks.ts `beforePick`): the selection grabs below
+    // yield to it, and the select tool picks it rather than whatever the
+    // scene has behind it. Read once, here, before the tool branches — the
+    // hook walks the host's own things, and a press must not ask twice and
+    // risk two answers. Asked HERE and not at the top of the press, so the
+    // gates above — the middle button, a claim, the lock, the done page,
+    // the caret, the crop — cost no walk at all.
+    pressFrontPickRef.current = propsRef.current.gestures?.beforePick?.(pt.x, pt.y) ?? null;
 
     const tool = propsRef.current.session.activeTool;
     // Selection first, for every tool that would otherwise create something
@@ -5030,8 +5162,14 @@ export function CanvasSurface({
       // multi / hit branches so shift always means "add to selection". A
       // shift-click on empty canvas is inert (keeps the current selection).
       if (e.shiftKey) {
-        const hit = hitTestAt(pt);
-        if (hit) propsRef.current.onToggleSelect(hit.id);
+        // A host item is drawn over the whole scene, so it is what the
+        // click toggles when one is under it — and only one that can
+        // actually stand in a multi-selection: a host's SENTINEL id (the
+        // arena's border) is a selection of its own and not a member of
+        // anything (DrawBot's bug db99d9c8).
+        const front = pressFrontPickRef.current;
+        const target = front !== null && isHostId(front) ? front : hitTestAt(pt)?.id;
+        if (target) propsRef.current.onToggleSelect(target);
         gestureRef.current = { mode: 'idle' };
         return;
       }
@@ -5052,6 +5190,25 @@ export function CanvasSurface({
       // scene, and only its knobs are special; the rest of the figure is an
       // ordinary object.
       if (offerClaim('grab', pt, e)) return;
+      // A host item is drawn above the whole scene, so it is the topmost
+      // thing under the finger: the press selects IT, not the node behind
+      // it. Dragging one is the host's own gesture, claimed above on the
+      // one already selected, so this press picks (re-announcing one that
+      // is already in hand), and a hold on it opens the radial menu — a
+      // host's thing must not be the one object on the page whose quick
+      // actions a hold cannot reach. A SENTINEL id (DrawBot's arena
+      // border) is selected and nothing more: it has no menu and no group.
+      const frontPick = pressFrontPickRef.current;
+      if (frontPick !== null) {
+        propsRef.current.onSelect(frontPick);
+        if (isHostId(frontPick)) armLongPress(pt);
+        // …and a GROUPED one selects its whole unit and drags it, as a
+        // press on a grouped shape does (selectionUnitIds).
+        const unitDrag = isHostId(frontPick)
+          ? groupDragGesture(stateRef.current, frontPick, pt) : null;
+        gestureRef.current = unitDrag ?? { mode: 'idle' };
+        return;
+      }
       const hit = hitTestAt(pt);
       // The selected object keeps the presses on the box it draws (even the
       // empty space inside a thin stroke's box), so a nudge can't fall
@@ -5177,7 +5334,10 @@ export function CanvasSurface({
         // relative matrix between where it stands and where the graph puts
         // it under the proposed transforms — a bound group's members ride
         // their group's one transform, loose members orbit on their own.
-        applyGesturePreview(g.ids, buildManipulateNodes(stateRef.current, g.ids, 1, d)?.entry);
+        const twisted = buildManipulateNodes(
+          stateRef.current, g.ids, 1, d, propsRef.current.session.hostDoc);
+        applyGesturePreview(g.ids, twisted?.entry);
+        previewSelectionEntry(g.ids, () => twisted);
         // The combined outline's box centre IS the pivot, so it takes the
         // bare twist, on top of the turn it is drawn at.
         if (selectionOutlineRef.current) {
@@ -5250,8 +5410,11 @@ export function CanvasSurface({
         // …turned over with it when the corner has crossed the pinned one:
         // the entry then carries the members' mirrors too, and each leaf's
         // relative matrix is a reflection.
-        applyGesturePreview(g.ids,
-          buildResizeNodes(stateRef.current, g.ids, g.oldBox, next, g.angleDeg, flip)?.entry);
+        const resized = buildResizeNodes(
+          stateRef.current, g.ids, g.oldBox, next, g.angleDeg, flip,
+          propsRef.current.session.hostDoc);
+        applyGesturePreview(g.ids, resized?.entry);
+        previewSelectionEntry(g.ids, () => resized);
         // The combined outline re-draws at the live box (geometry write, not a
         // transform, so its ring and handles keep their screen size).
         if (selectionOutlineRef.current) setOutlineBox(next);
@@ -5355,6 +5518,8 @@ export function CanvasSurface({
         const d = multiDragDeltaCells(g.box, g.dx, g.dy);
         const worldTranslate =
           `translate(${d.dxCells * BASE_CELL_PX}px, ${d.dyCells * BASE_CELL_PX}px)`;
+        previewSelectionEntry(g.ids, () => buildMoveNodes(
+          stateRef.current, g.ids, d.dxCells, d.dyCells, propsRef.current.session.hostDoc));
         for (const id of g.ids) {
           const el = nodeEl(id);
           // …and any word among them grows into the bottle as it would on
@@ -5525,6 +5690,17 @@ export function CanvasSurface({
   };
 
   const settleTap = (pt: { x: number; y: number }) => {
+    // A host layer's pick first (canvasHooks.ts `beforePick`): its own
+    // thing under the finger is drawn over every scene node, so it is
+    // selected before the scene is asked and the tap is spent on it. Asked
+    // fresh rather than read off `pressFrontPickRef`, because a tap settles
+    // from branches the press router's set never ran through (a marquee
+    // below the slop, a tile stamp that never stamped).
+    const picked = propsRef.current.gestures?.beforePick?.(pt.x, pt.y) ?? null;
+    if (picked !== null) {
+      propsRef.current.onSelect(picked);
+      return;
+    }
     const hit = hitTestAt(pt);
     const selectedId = propsRef.current.session.selectedId;
     const selectedKind = selectedId ? findItem(stateRef.current, selectedId)?.kind : undefined;
@@ -5836,7 +6012,8 @@ export function CanvasSurface({
         if (cancelled) return;
         // One entry for the whole group twist — the same live delta the
         // preview was drawn with; factor 1 keeps every member its own size.
-        const se = buildManipulateNodes(stateRef.current, g.ids, 1, g.deltaDeg);
+        const se = buildManipulateNodes(
+          stateRef.current, g.ids, 1, g.deltaDeg, propsRef.current.session.hostDoc);
         if (se) doCommitReflected(se);
         return;
       }
@@ -5848,7 +6025,8 @@ export function CanvasSurface({
         if (cancelled || !g.changed || !g.lastBox) return;
         // The same box the preview drew — one entry for the whole group.
         const se = buildResizeNodes(
-          stateRef.current, g.ids, g.oldBox, g.lastBox, g.angleDeg, g.lastFlip);
+          stateRef.current, g.ids, g.oldBox, g.lastBox, g.angleDeg, g.lastFlip,
+          propsRef.current.session.hostDoc);
         if (se) doCommitReflected(se);
         return;
       }
@@ -5862,6 +6040,17 @@ export function CanvasSurface({
         // A middle-button pan never settles a tap (see noTap) — a stationary
         // middle click is inert, not a select / place.
         if (!g.noTap) settleTap(pt);
+        return;
+      }
+      case 'lockedTap': {
+        gestureRef.current = { mode: 'idle' };
+        const sel = propsRef.current.session;
+        if (lockedTapClearsSelection({
+          movedPx: Math.hypot(pt.x - g.startX, pt.y - g.startY),
+          slopPx: TAP_SLOP_PX,
+          hasSelection: !!sel.selectedId || sel.selectedIds.length > 0,
+          cancelled,
+        })) doSelect(null);
         return;
       }
       case 'nodeTap': {
@@ -5936,7 +6125,8 @@ export function CanvasSurface({
         if (!g.active) { settleTap(pt); return; }
         // Select everything the rect touched. The shell normalizes the id
         // list (0 → clear, 1 → single, 2+ → multi with the combined box).
-        propsRef.current.onSelectMany(marqueeHitIds(stateRef.current, marqueeCellRect(g, pt)));
+        propsRef.current.onSelectMany(marqueeHitIds(
+          stateRef.current, marqueeCellRect(g, pt), propsRef.current.session.hostDoc));
         return;
       }
       case 'multiDrag': {
@@ -5950,7 +6140,8 @@ export function CanvasSurface({
           // frame reparenting — the group moves as a rigid unit and its
           // members keep their frame membership.
           const d = multiDragDeltaCells(g.box, g.dx, g.dy);
-          const se = buildMoveNodesWithDragScale(stateRef.current, g.ids, d.dxCells, d.dyCells);
+          const se = buildMoveNodesWithDragScale(
+            stateRef.current, g.ids, d.dxCells, d.dyCells, propsRef.current.session.hostDoc);
           if (se) doCommitReflected(se);
         } else {
           // A settled tap inside the combined box: collapse to the normal tap
@@ -6267,9 +6458,9 @@ export function CanvasSurface({
   // (resolveMultiSelectionFrame).
   const multiSelectionFrame = useMemo(
     () => (session.selectedIds.length >= 2
-      ? resolveMultiSelectionFrame(state, session.selectedIds)
+      ? resolveMultiSelectionFrame(state, session.selectedIds, session.hostDoc)
       : null),
-    [state, session.selectedIds],
+    [state, session.hostDoc, session.selectedIds],
   );
   const multiSelectionBox = multiSelectionFrame?.bbox ?? null;
   // A GROUP selection resizes as one unit from its combined box's corners —
@@ -6911,6 +7102,9 @@ export function CanvasSurface({
             animation is declared. */}
         <style>{MARKER_POP_KEYFRAMES}</style>
         <g ref={regionGroupRef} data-region-chrome="" />
+        {/* The page's forward arrow (EditorConfig.forwardArrow): the same
+            screen-space idiom, a <g> of its own. */}
+        <g ref={arrowGroupRef} data-forward-arrow-group="" />
       </svg>
       {/* The paint filter made VISIBLE: with a color-group brush armed and a
           selection in force, the brush may only touch the selected object(s)

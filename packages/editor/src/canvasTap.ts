@@ -49,6 +49,44 @@ export function tapClearsSelection(
 }
 
 /**
+ * The same rule for a press made while the canvas is LOCKED to one-finger
+ * input (`CanvasSurface`'s `inputLocked` prop and its `lockedTap` gesture:
+ * DrawBot's running simulation, docs/drawBot.md §0.3).
+ *
+ * The lock ignores one-finger input outright — nothing can be drawn,
+ * dragged or picked while it holds — but a selection made before the lock
+ * survives into it, and with it the properties panel and any page left
+ * open on it. The tap that puts those away everywhere else
+ * ({@link tapClearsSelection}) is swallowed by the lock, so a page opened
+ * on a locked object could not be dismissed from the canvas at all
+ * (DrawBot's report f4f59f08). A press that stays within the tap slop does
+ * it now, wherever it lands — nothing on a locked canvas can be picked in
+ * its place; a drag is still nothing at all.
+ *
+ * Adopted into the package at stage 5b.4 from DrawBot's
+ * `web/simEditor/lockedTap.ts`, which was this file's until stage 3 moved
+ * the tap rules here and whose own header said so. `inputLocked` is a
+ * generic prop and the gesture mode that reads this is the package's, so
+ * the rule is too: a package-side gesture reaching into an app for its one
+ * predicate is the inversion this stage exists to end. WHICH app locks its
+ * canvas, and why, stays that app's — as with `forwardArrow`, whose writer
+ * was adopted at 5a on the same grounds while which page carries an arrow
+ * stayed DrawBot's.
+ */
+export function lockedTapClearsSelection(opts: {
+  /** How far the finger travelled from press to release, in px. */
+  movedPx: number;
+  /** The surface's tap-against-drag threshold. */
+  slopPx: number;
+  /** Is anything selected — a leaf, a multi-selection, or one of the
+   *  host's own items? */
+  hasSelection: boolean;
+  cancelled: boolean;
+}): boolean {
+  return opts.hasSelection && !opts.cancelled && opts.movedPx <= opts.slopPx;
+}
+
+/**
  * Decide what a tap does from what it landed on, the active tool, and
  * whether a text is being typed into right now.
  *

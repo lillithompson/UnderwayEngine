@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { BASE_CELL_PX } from '../cameraMath';
 import { FakeEl } from './test-utils';
 import {
@@ -66,5 +68,39 @@ describe('writeForwardArrow', () => {
     writeForwardArrow(g as never, T, null);
     expect(g.children).toHaveLength(0);
     expect(() => writeForwardArrow(null, T, ARROW)).not.toThrow();
+  });
+});
+
+// The arrow is DrawBot's feature and no CozyJournal or Sol page carries
+// one, so nothing in those trees can fail when the surface stops drawing
+// it: the §4.3 rule for a generic addition adopted from a non-canonical
+// copy — pin it HERE, and pin the DECLARATION and the WRITE as separate
+// cases, which is the lesson `SvgNodeLayer`'s `children` cost at 5a.
+describe('the surface draws it', () => {
+  const SRC = fs.readFileSync(
+    path.join(__dirname, '..', 'components', 'CanvasSurface.tsx'), 'utf8',
+  );
+
+  test('takes the arrow as a prop and holds it in a ref for the camera path', () => {
+    expect(SRC).toContain('forwardArrow?: ForwardArrow;');
+    expect(SRC).toContain('const forwardArrowRef = useRef<ForwardArrow | null>(null);');
+  });
+
+  test('gives it a <g> of its own, not the region chrome’s', () => {
+    // writeRegionChrome CLEARS its group when there is no region, and a
+    // page can carry an arrow with no region at all.
+    expect(SRC).toContain('const arrowGroupRef = useRef<SVGGElement | null>(null);');
+    expect(SRC).toContain('<g ref={arrowGroupRef} data-forward-arrow-group="" />');
+  });
+
+  test('writes it on BOTH screen-space paths: the live camera and the render', () => {
+    // Screen-space chrome has to be re-anchored per camera frame as well
+    // as per render, the way the region's veil and the symmetry axes are;
+    // one path alone leaves the arrow lagging a pinch or stale after a
+    // commit.
+    const calls = SRC.match(/writeForwardArrow\(arrowGroupRef\.current, t, forwardArrowRef\.current\)/g);
+    expect(calls).toHaveLength(2);
+    // …and the render path re-runs when the arrow itself changes.
+    expect(SRC).toMatch(/markers, regionTargets, forwardArrow\]\);/);
   });
 });

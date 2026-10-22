@@ -556,8 +556,19 @@ export function redo<S extends EditorSession>(session: S): S {
 /** What the session-free helpers below read of a session. */
 type SelectionSession = Pick<EditorSession, 'state' | 'hostDoc'>;
 
-/** Is `id` one of the installed host's items, by its spelling? */
-function isHostId(id: string): boolean {
+/**
+ * Is `id` one of the installed host's items, by its spelling?
+ *
+ * Exported for the CANVAS, which asks it of what a press found (stage
+ * 5b.4): a host item stands in a multi-selection and twists with it, but
+ * it is not a scene node, so the questions the canvas asks the scene about
+ * one — `canTwoPointerManipulate`, `findItem` — all answer no. The
+ * alternative was `sessionHost().items?.isHostId(id) ?? false` written out
+ * at each of those sites, which is this function's body copied four times
+ * with a `?? false` each time; one spelling of "whose id is this" beats
+ * four.
+ */
+export function isHostId(id: string): boolean {
   return hostItems()?.isHostId(id) ?? false;
 }
 

@@ -59,14 +59,21 @@ export function buildMoveNodeWithDragScale(
  * handful of words carried into the bottle together grow just as they
  * would one at a time. One undo entry, the scales built against the moved
  * state in turn.
+ *
+ * `hostDoc` rides through to `buildMoveNodes`, which carries the host's own
+ * items in the selection along with the shapes (`HostItems`, stage 3) —
+ * DrawBot's bots and instruction tiles drag with a mixed group. Nothing
+ * SCALES a host item: the drag-scale rule is about scene nodes, and the
+ * loop below walks ids the scene knows.
  */
-export function buildMoveNodesWithDragScale(
+export function buildMoveNodesWithDragScale<TDoc = undefined>(
   state: CompositionState,
   ids: readonly string[],
   dx: number,
   dy: number,
+  hostDoc?: TDoc,
 ): SessionEntry | null {
-  const move = buildMoveNodes(state, ids, dx, dy);
+  const move = buildMoveNodes(state, ids, dx, dy, hostDoc);
   const entry = [...(move?.entry ?? [])];
   let cur = move ? applyCompOps(state, move.entry) : state;
   for (const id of ids) {

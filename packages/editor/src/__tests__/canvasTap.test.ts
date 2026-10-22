@@ -1,7 +1,10 @@
+import fs from 'fs';
+import path from 'path';
 import {
   dragCellBbox, PLACE_BOX_MIN_CELLS, TEXT_DOUBLE_TAP_MS, isTextDoubleTap,
   resolveCanvasTap, resolveNodeTap,
-  frontItemTakesPress, selectionBoxHitsCell, selectionOwnsPress, tapClearsSelection, toolYieldsToSelection,
+  frontItemTakesPress, lockedTapClearsSelection,
+  selectionBoxHitsCell, selectionOwnsPress, tapClearsSelection, toolYieldsToSelection,
   SELECTION_CLAIM_MAX_COVERAGE, selectionSwallowsCanvas, selectionViewportCoverage,
 } from '../canvasTap';
 import { findSceneObjectAtCell } from '@/engine/compositionOps';
@@ -694,5 +697,69 @@ describe('the text double tap’s window is inclusive', () => {
     // same one-millisecond change.
     expect(isTextDoubleTap({ id: 'txt-1', time: 1000 - TEXT_DOUBLE_TAP_MS }, 'txt-1', 1000)).toBe(true);
     expect(isTextDoubleTap({ id: 'txt-1', time: 1000 - TEXT_DOUBLE_TAP_MS - 1 }, 'txt-1', 1000)).toBe(false);
+  });
+});
+
+// Adopted into this file at stage 5b.4 from DrawBot's
+// web/simEditor/lockedTap.ts, which was this file's until stage 3 moved
+// the tap rules here. Report f4f59f08: "When property pages are open,
+// tapping the canvas outside of the property page should dismiss them." A
+// selection made before the lock survives into it, and the lock swallowed
+// every one-finger press — the background tap that puts the panel and its
+// pages away included.
+describe('a tap on a canvas whose one-finger input is LOCKED', () => {
+  const tap = { movedPx: 0, slopPx: 4, hasSelection: true, cancelled: false };
+
+  test('puts the selection away, and with it the panel and its pages', () => {
+    expect(lockedTapClearsSelection(tap)).toBe(true);
+    // Inclusive at the slop, as the surface's own tap-against-drag is.
+    expect(lockedTapClearsSelection({ ...tap, movedPx: 4 })).toBe(true);
+  });
+
+  test('is nothing when the finger dragged, the press was cancelled, or nothing is selected', () => {
+    expect(lockedTapClearsSelection({ ...tap, movedPx: 4.5 })).toBe(false);
+    expect(lockedTapClearsSelection({ ...tap, cancelled: true })).toBe(false);
+    expect(lockedTapClearsSelection({ ...tap, hasSelection: false })).toBe(false);
+  });
+
+  // The surface's half. No CozyJournal or Sol page locks its canvas, so
+  // nothing in those trees fails if the lock goes back to dropping the
+  // press (§4.3's rule for an addition adopted from a non-canonical copy).
+  describe('the surface', () => {
+    const SRC = fs.readFileSync(
+      path.join(__dirname, '..', 'components', 'CanvasSurface.tsx'), 'utf8',
+    );
+
+    test('turns a locked press into a lockedTap gesture instead of dropping it', () => {
+      expect(SRC).toMatch(
+        /if \(propsRef\.current\.inputLocked\) \{\s*gestureRef\.current = \{ mode: 'lockedTap', startX: pt\.x, startY: pt\.y \};\s*return;\s*\}/,
+      );
+      expect(SRC).not.toMatch(/if \(propsRef\.current\.inputLocked\) return;/);
+    });
+
+    test('settles a lockedTap through the one clearing path, onSelect(null)', () => {
+      const at = SRC.indexOf("case 'lockedTap': {");
+      expect(at).toBeGreaterThan(0);
+      const body = SRC.slice(at, SRC.indexOf('return;\n      }', at));
+      expect(body).toContain('lockedTapClearsSelection(');
+      expect(body).toContain('slopPx: TAP_SLOP_PX');
+      expect(body).toContain('doSelect(null)');
+    });
+
+    test('offers the lock AFTER a host’s claim and the middle button, before everything else', () => {
+      // The claim has to beat the lock (DrawBot's bots are armed by their
+      // own tool and drag while a run is going), and the middle button is
+      // the desktop's camera through the lock as the two-finger pinch is
+      // (bug f1079398). Everything else — the done-page gate, the caret,
+      // the crop, every tool — is downstream of the lock.
+      const mid = SRC.indexOf('if (e.button === 1) {\n      beginMiddlePan(e, pt);');
+      const claim = SRC.indexOf("if (offerClaim('press', pt, e)) return;");
+      const lock = SRC.indexOf('if (propsRef.current.inputLocked) {');
+      const done = SRC.indexOf('if (propsRef.current.onEditWhileDone) {');
+      expect(mid).toBeGreaterThan(0);
+      expect(claim).toBeGreaterThan(mid);
+      expect(lock).toBeGreaterThan(claim);
+      expect(done).toBeGreaterThan(lock);
+    });
   });
 });

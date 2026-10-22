@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { makeBlankComposition } from '@/editor/blankComposition';
 import type { CompositionState, CompUndoEntry, RGBColor, SVGObject } from '@/engine/types';
 import { matApplyPoint } from '@/engine/sceneTransform';
@@ -685,3 +687,86 @@ describe('the host’s rules about nodes of its own', () => {
   });
 });
 
+
+// ── The canvas carries the host's items through ────────────────────────
+//
+// `HostItems` gives every multi builder a trailing `hostDoc?`, and the
+// shared canvas is the one caller that reaches ALL of them. CozyJournal
+// and Sol install no items adapter and pass `undefined`, so nothing in
+// either tree fails when a call site loses the argument — and what it
+// costs is DrawBot's bots and instruction tiles sitting still while the
+// shapes they are grouped with move under the finger (its bug db99d9c8).
+// So the threading is pinned HERE, by §4.3's rule for a generic addition
+// adopted from a non-canonical copy, and pinned per CALL SITE rather than
+// by counting: a count counts the prose too.
+describe('the shared canvas hands its session’s hostDoc to every multi builder', () => {
+  const SRC = fs.readFileSync(
+    path.join(__dirname, '..', 'components', 'CanvasSurface.tsx'), 'utf8',
+  );
+
+  /** `src` with line and block comments removed, so a builder named in
+   *  prose is not read as a call. */
+  const code = SRC
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '')
+    .replace(/([^:])\/\/.*$/gm, '$1');
+
+  /** Every call to `name` in the canvas, as the text between its own
+   *  parentheses (balanced, so a nested call comes with it). */
+  const callsTo = (name: string): string[] => {
+    const out: string[] = [];
+    const needle = `${name}(`;
+    for (let i = code.indexOf(needle); i >= 0; i = code.indexOf(needle, i + 1)) {
+      // Not a longer identifier ending in this name, and not the
+      // declaration (`function name(`).
+      if (/[A-Za-z0-9_$.]/.test(code[i - 1] ?? '')) continue;
+      let depth = 0;
+      let j = i + needle.length - 1;
+      for (; j < code.length; j += 1) {
+        if (code[j] === '(') depth += 1;
+        else if (code[j] === ')') { depth -= 1; if (depth === 0) break; }
+      }
+      out.push(code.slice(i, j + 1));
+    }
+    return out;
+  };
+
+  // Every builder `HostItems` gave a trailing `hostDoc?`, and how many
+  // places the canvas calls each from. A new call site with no hostDoc
+  // fails the first assertion; a call site that disappears fails the
+  // second, which is what says the tally was read and not guessed.
+  const BUILDERS: ReadonlyArray<readonly [string, number]> = [
+    ['resolveMultiSelectionBox', 5],
+    ['resolveMultiSelectionFrame', 5],
+    ['buildManipulateNodes', 2],
+    ['buildResizeNodes', 2],
+    ['buildMoveNodes', 1],
+    ['buildMoveNodesWithDragScale', 1],
+    ['marqueeHitIds', 1],
+    ['selectionUnitIds', 1],
+    ['resolveTwistUnit', 1],
+  ];
+
+  for (const [name, count] of BUILDERS) {
+    test(`${name}`, () => {
+      const calls = callsTo(name);
+      expect(calls).toHaveLength(count);
+      for (const call of calls) expect(call).toContain('hostDoc');
+    });
+  }
+
+  test('a tap on a grouped host item drags its whole unit, not just the shapes', () => {
+    // `groupDragGesture` reads `selectionUnitIds`, which falls back to
+    // `groupSelectionIds` with no adapter installed, so CozyJournal and
+    // Sol are unchanged — and a group of shapes and bots drags as one.
+    expect(code).not.toContain('groupSelectionIds(');
+    expect(code).toContain('selectionUnitIds({ state, hostDoc }, id)');
+  });
+
+  test('a host item twists with the unit, where the scene’s own question cannot answer', () => {
+    // A host item is not a scene node: `canTwoPointerManipulate` resolves
+    // through `findItem` and can only say no, which would refuse the
+    // twist of any unit holding one (DrawBot's bug 3d02c7d5).
+    expect(code).toContain('unit.ids.every((id) => isHostId(id) || canTwoPointerManipulate(s, id))');
+  });
+});
