@@ -549,6 +549,10 @@ describe('the symmetry frame', () => {
 });
 
 describe('the axes a pattern-scoped mirror draws', () => {
+  // A pattern in REPEAT mode fills its box with copies of one tile, so one
+  // pair of axes across the whole region rules lines through every copy and
+  // names a centre none of them has. The MIRROR still applies — stamps land
+  // in their orbits as before; only the drawing goes.
   test('a repeating pattern draws no axes, though its mirror still stands', () => {
     const frame = { cellX: 0, cellY: 0, cellWidth: 8, cellHeight: 8 };
     const scoped = { flags: H, frame, only: 'pat_1' };

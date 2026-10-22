@@ -532,7 +532,21 @@ first, then the pointer bump in each app).
    `textPaintPreview`'s three preview functions, and `tileTool`'s
    `tapLandsOnPatternGrid`, `isShapePatternFillGrid` and
    `tileCellWithinGrowReach`. Each is reachable only through a canvas that
-   has not moved yet, so their cases move when it does.
+   has not moved yet, so their cases move when it does. Two duplications
+   come with them and are worth doing in the same pass, both named by
+   CozyJournal's reviewer: the fake-SVG `FakeEl` fixture, which the
+   package's new `forwardArrow.test` and CozyJournal's `regionMarkerPop`
+   each carry for writers in the SAME module, and which belongs in
+   `packages/editor/src/__tests__/test-utils.ts` once the second one is
+   here; and `fontFamily.ts`'s `SYSTEM_STACK`, which is the engine's
+   `FALLBACK_FAMILY_STACK` (`compositionSVGCore.ts`, whose comment already
+   says it mirrors the node layer's stack) differing only in `'` against
+   `&apos;`. Their agreement is load-bearing — a text node has to look the
+   same in the DOM preview and the SVG export — and 5a is the first time
+   both live in one repo, so deriving one from the other (the editor may
+   import the engine) would make the drift impossible. 5a added neither
+   copy — the counts are the same as before it — which is why both are
+   recorded here rather than taken in it.
 
    `fontsEpoch.test.ts` was identical in all three apps and moved whole,
    and `fontFamily.test.ts` is new, over the seam with no pack installed,

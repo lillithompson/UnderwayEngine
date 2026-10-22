@@ -1,5 +1,6 @@
-// The editable band of a page (CozyJournal's docs/social_game_spec.md
-// §7.3): a format that lets a turn draw in one part of the canvas alone —
+// The editable band of a page (CozyJournal's social_game_spec design note
+// §7.3, deleted there and read as prose — its CozyJournal.md says so): a
+// format that lets a turn draw in one part of the canvas alone —
 // Creature's half — hands the canvas a rect in world cells, and every
 // draw sample and shape-drag point is CLAMPED into it here. Pure, so the
 // drag and the draw paths share one rule and the tests pin it.

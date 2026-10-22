@@ -1,5 +1,7 @@
 // Work that must not stand in front of the first frame
-// (CozyJournal's docs/response_open_speed.md §3.2b).
+// (CozyJournal's response_open_speed design note §3.2b — one of the notes
+// that repo deleted while its comments still cite them; read it as prose,
+// its CozyJournal.md says, and the code is the record).
 //
 // The editor page boots by parsing megabytes of JS, building the pack
 // registry, reading IndexedDB and compiling shaders, and the native splash
