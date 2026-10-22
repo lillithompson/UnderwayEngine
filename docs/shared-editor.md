@@ -312,11 +312,16 @@ first, then the pointer bump in each app).
    install site now (`web/sol/doc/__tests__/shellWiring.test.ts`, beside a
    pin that Sol fills none of the OUTLINE seam), Sol's
    `scripts/__tests__/underwayConfig.test.ts` names a path the tree has,
-   and DrawBot's `docEdit.ts` header says `withHostDoc`. The rest stand:
-   Sol's `setCycleCursor` through `withHostDoc`, the vacuous empty-ops
-   step, the single-line `editorSession` imports in some forty test files
-   each in Sol and DrawBot, and CozyJournal's `canvasTap.test` imports that
-   only string pins use. Left for the owner from the migrations: Sol's `shellWiring` and
+   and DrawBot's `docEdit.ts` header says `withHostDoc`. A fourth was
+   cleared by stage 5a, which is the stage that touched those files: the
+   two trimmed suites whose headers still described the moved cases —
+   5a rewrote every split suite's header in all three apps, over three
+   review rounds that were almost entirely about getting them to say
+   which half they are (item 5). The rest stand: Sol's `setCycleCursor`
+   through `withHostDoc`, the vacuous empty-ops step, the single-line
+   `editorSession` imports in some forty test files each in Sol and
+   DrawBot, and CozyJournal's `canvasTap.test` imports that only string
+   pins use. Left for the owner from the migrations: Sol's `shellWiring` and
    `paintTrimOnDeselect` tests pin lines of the ENGINE's editorSession
    (the stacks' spelling, `trimDeselectedPaint<S`), which an engine
    refactor will break until they move here or read a looser shape; and
@@ -544,9 +549,14 @@ first, then the pointer bump in each app).
    `&apos;`. Their agreement is load-bearing — a text node has to look the
    same in the DOM preview and the SVG export — and 5a is the first time
    both live in one repo, so deriving one from the other (the editor may
-   import the engine) would make the drift impossible. 5a added neither
-   copy — the counts are the same as before it — which is why both are
-   recorded here rather than taken in it.
+   import the engine) would make the drift impossible — so both were taken
+   in 5a after all, once a review pointed out that the shared homes already
+   existed: `SYSTEM_STACK` is now the engine's `SYSTEM_FAMILY_STACK`
+   (`fontWeight.ts`, beside the weight map, which exists for exactly this
+   reason — one spelling for every text renderer), from which the SVG
+   export derives its XML-quoted form; and `FakeEl` is one fixture in
+   `packages/editor/src/__tests__/test-utils.ts`, used by this package's
+   `forwardArrow.test` and by each app's `regionMarkerPop`.
 
    `fontsEpoch.test.ts` was identical in all three apps and moved whole,
    and `fontFamily.test.ts` is new, over the seam with no pack installed,

@@ -1,7 +1,8 @@
 /**
- * The one place that maps a TextStyle's weight to a numeric CSS/font weight.
- * Used by every text renderer (DOM node layer, SVG export, raster cache key)
- * so a family's face selection stays consistent across canvas and export.
+ * The one place that maps a TextStyle's weight to a numeric CSS/font weight,
+ * and the one place that spells the fallback family tail. Used by every text
+ * renderer (DOM node layer, SVG export, raster cache key) so a family's face
+ * selection stays consistent across canvas and export.
  */
 
 import { FontWeight, TextStyle } from './types';
@@ -20,3 +21,16 @@ export function effectiveFontWeight(style: Pick<TextStyle, 'weight' | 'bold'>): 
   if (style.weight) return FONT_WEIGHT_NUMERIC[style.weight];
   return style.bold ? 700 : 400;
 }
+
+/**
+ * The warm system tail every family falls back to — what `fontId: 'system'`
+ * (and an un-embedded family) lands on.
+ *
+ * Here because the DOM preview and the SVG export have to agree: a text node
+ * must look the same in the editor and in what it exports. The two spell it
+ * differently only in quoting — CSS takes `'`, an XML attribute takes
+ * `&apos;` — so the export derives its form from this one
+ * (`compositionSVGCore`) and the editor's `fontFamily.ts` uses it as the
+ * answer when an app has installed no pack.
+ */
+export const SYSTEM_FAMILY_STACK = "system-ui, -apple-system, 'Segoe UI', sans-serif";

@@ -1,4 +1,5 @@
 import { BASE_CELL_PX } from '../cameraMath';
+import { FakeEl } from './test-utils';
 import {
   FORWARD_ARROW_COLOR, FORWARD_ARROW_HEAD, FORWARD_ARROW_WIDTH, forwardArrowPath, writeForwardArrow,
 } from '../regionChromeScreen';
@@ -10,22 +11,6 @@ import {
 // (its docs/drawBot.md §5.1); WHICH page carries it, and the surface's
 // own group for it, are pinned in that app's tree.
 
-class FakeEl {
-  attrs = new Map<string, string>();
-  children: FakeEl[] = [];
-  constructor(readonly tag: string) {}
-  setAttribute(k: string, v: string): void { this.attrs.set(k, String(v)); }
-  getAttribute(k: string): string | null { return this.attrs.get(k) ?? null; }
-  appendChild(c: FakeEl): FakeEl { this.children.push(c); return c; }
-  replaceChildren(): void { this.children = []; }
-  get childNodes(): FakeEl[] { return this.children; }
-  get firstChild(): FakeEl | null { return this.children[0] ?? null; }
-  querySelector(sel: string): FakeEl | null {
-    const m = /^(\w+)\[([\w-]+)\]$/.exec(sel);
-    if (!m) throw new Error(`unhandled selector ${sel}`);
-    return this.children.find((c) => c.tag === m[1] && c.attrs.has(m[2])) ?? null;
-  }
-}
 
 beforeAll(() => {
   (globalThis as unknown as { document: unknown }).document = {

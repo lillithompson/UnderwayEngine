@@ -19,7 +19,7 @@ import {
   Bbox, Mat2D, axisScaleSplit, localMatrix, matApplyBbox, matApplyPoint, matMul, matTranslate,
   matrixString, unstretchedBoxPose,
 } from './sceneTransform';
-import { effectiveFontWeight } from './fontWeight';
+import { SYSTEM_FAMILY_STACK, effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
@@ -731,10 +731,12 @@ function applyNodeEffects(
   return out;
 }
 
-/** Fallback family tail appended after the node's own font, mirroring the
- *  DOM node layer's stack so an un-embedded family (or `fontId: 'system'`)
- *  lands on the same platform face in the export that the editor shows. */
-const FALLBACK_FAMILY_STACK = "system-ui, -apple-system, &apos;Segoe UI&apos;, sans-serif";
+/** Fallback family tail appended after the node's own font: the shared
+ *  stack (`fontWeight.ts` SYSTEM_FAMILY_STACK) in XML-attribute quoting, so
+ *  an un-embedded family (or `fontId: 'system'`) lands on the same platform
+ *  face in the export that the editor shows. Derived rather than spelled
+ *  again — the editor's node layer answers with the same constant. */
+const FALLBACK_FAMILY_STACK = SYSTEM_FAMILY_STACK.replace(/'/g, '&apos;');
 
 /**
  * Build SVG markup for a text node: one `<text>` element per layout line

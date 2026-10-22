@@ -16,8 +16,16 @@
  * loaded its pack yet shows.
  */
 
-/** Warm system stack — the cozy fallback tail of every family. */
-export const SYSTEM_STACK = "system-ui, -apple-system, 'Segoe UI', sans-serif";
+import { SYSTEM_FAMILY_STACK } from '@/engine/fontWeight';
+
+/**
+ * Warm system stack — the fallback tail of every family.
+ *
+ * The engine's, not a second spelling of it: the SVG export appends the same
+ * stack (XML-quoted) after a node's own font, and a text node has to look
+ * the same in the DOM preview and in what the page exports.
+ */
+export const SYSTEM_STACK = SYSTEM_FAMILY_STACK;
 
 /** What an app's font pack answers for a `TextStyle.fontId`. */
 export type FontFamilyFn = (fontId: string) => string;

@@ -166,3 +166,50 @@ export function shearedIslandFixture(): {
     at: matApplyPoint(d.world, 18.0625 - island.cellX, 18.0625 - island.cellY),
   };
 }
+
+/**
+ * A stand-in for an SVG element, for the screen-space chrome writers that
+ * build DOM by hand — `regionChromeScreen`'s veil, midline, markers, board
+ * outline and forward arrow, and `symmetryAxesScreen`'s axes. There is no
+ * renderer in these suites (react-native resolves to a stub), so the
+ * writers are driven against this and their output read back off it.
+ *
+ * Shared because three suites wanted the same fake for writers in the SAME
+ * module: this package's forwardArrow.test and each app's regionMarkerPop.
+ * Kept here rather than in any one of them (docs/shared-editor.md §4.2
+ * item 5).
+ */
+export class FakeEl {
+  attrs = new Map<string, string>();
+  style: Record<string, string> = {};
+  children: FakeEl[] = [];
+  parent: FakeEl | null = null;
+  constructor(readonly tag: string) {}
+  setAttribute(k: string, v: string): void { this.attrs.set(k, String(v)); }
+  getAttribute(k: string): string | null { return this.attrs.has(k) ? this.attrs.get(k)! : null; }
+  removeAttribute(k: string): void { this.attrs.delete(k); }
+  appendChild(c: FakeEl): FakeEl { c.parent = this; this.children.push(c); return c; }
+  /** The writer puts the board's frame straight AFTER the veil (so the
+   *  outline is drawn on the grey), which is the one bit of ordering it
+   *  asks the DOM for. */
+  after(c: FakeEl): void {
+    c.parent = this.parent;
+    const sibs = this.parent?.children;
+    if (sibs) sibs.splice(sibs.indexOf(this) + 1, 0, c);
+  }
+  remove(): void {
+    if (this.parent) this.parent.children = this.parent.children.filter((x) => x !== this);
+    this.parent = null;
+  }
+  replaceChildren(): void { this.children = []; }
+  get childNodes(): FakeEl[] { return this.children; }
+  /** The one child a single-path writer mints and then reuses
+   *  (`writeForwardArrow`), rather than querying for it per frame. */
+  get firstChild(): FakeEl | null { return this.children[0] ?? null; }
+  querySelector(sel: string): FakeEl | null { return this.querySelectorAll(sel)[0] ?? null; }
+  querySelectorAll(sel: string): FakeEl[] {
+    const m = /^(\w+)\[([\w-]+)\]$/.exec(sel);
+    if (!m) throw new Error(`unhandled selector ${sel}`);
+    return this.children.filter((c) => c.tag === m[1] && c.attrs.has(m[2]));
+  }
+}
