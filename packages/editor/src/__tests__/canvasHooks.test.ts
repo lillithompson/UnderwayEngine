@@ -383,6 +383,15 @@ describe('the seam’s declarations', () => {
     expect(SRC).toContain('prevSelection?: PriorSelection;');
   });
 
+  test('a claim is offered at one of two points in the press router, DrawBot’s by default', () => {
+    // The third widening: CozyJournal's rig joints are a grab inside the
+    // select tool, after the selection's own grabs — offered the press
+    // first they would swallow a brush stroke and the figure's own corner
+    // handles — while DrawBot's bots must beat the running simulation's
+    // lock, so nothing may precede them.
+    expect(SRC).toContain("claimAt?: 'press' | 'grab';");
+  });
+
   test('the surface always offers the pixel pick: the package keeps both hit tests', () => {
     expect(SRC).toContain('pixelHitAt(x: number, y: number): string | null;');
     expect(SRC).not.toContain('pixelHitAt?(');
@@ -397,6 +406,7 @@ describe('the seam’s declarations', () => {
     const prior: PriorSelection = { selectedId: null, selectedIds: [] };
     const seen: string[] = [];
     const hooks: GestureHooks = {
+      claimAt: 'grab',
       onPointerDown: () => claim,
       onPointerMove: (x, y) => { seen.push(`move ${x},${y}`); },
       onPointerUp: (_x, _y, end) => { seen.push(`up ${end}`); },
@@ -410,6 +420,7 @@ describe('the seam’s declarations', () => {
       pixelHitAt: () => null,
       layerSlot: null,
     };
+    expect(hooks.claimAt).toBe('grab');
     expect(hooks.onPointerDown!(1, 2, {} as never)).toBe(claim);
     hooks.onPointerMove!(3, 4, {} as never);
     for (const end of ends) hooks.onPointerUp!(0, 0, end, {} as never);

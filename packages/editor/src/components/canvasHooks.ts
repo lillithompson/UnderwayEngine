@@ -100,6 +100,25 @@ export interface PointerClaim {
  * the surface drives it and asks the host what it means.
  */
 export interface GestureHooks {
+  /**
+   * WHERE in the press router the surface offers a press to
+   * `onPointerDown`. The two apps' claims do not sit in the same place and
+   * neither can move to the other's — the third widening the adoption
+   * needed, and the one §4.3's member-for-member mapping passed over:
+   *
+   *  · `'press'` (the default, DrawBot's) — FIRST, before the surface
+   *    reads anything else about the press: ahead of the input lock, the
+   *    done-page gate, the caret and every tool. DrawBot's bots and its
+   *    arena are armed by their own tool and the claim has to beat the
+   *    running simulation's lock, so nothing may precede it.
+   *  · `'grab'` — inside the SELECT tool only, after the selection's own
+   *    grabs (a corner handle, a multi-selection's combined box) and
+   *    before the scene is hit-tested. CozyJournal's rig joints are a grab
+   *    on an object like any other: offered the press first they would
+   *    swallow a brush stroke, a shift-click, and the corner handles of
+   *    the very figure they belong to.
+   */
+  claimAt?: 'press' | 'grab';
   onPointerDown?: (x: number, y: number, e: React.PointerEvent) => PointerClaim | null;
   onPointerMove?: (x: number, y: number, e: React.PointerEvent) => void;
   onPointerUp?: (x: number, y: number, end: PointerEnd, e: React.PointerEvent) => void;
