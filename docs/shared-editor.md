@@ -645,7 +645,9 @@ first, then the pointer bump in each app).
    `GestureHooks` and declares on its own `BotGestures extends
    GestureHooks`. It is a question the surface asks the host while deciding
    a press, which is what that interface is, so it is a member of it here
-   and one prop fewer on the canvas. `canvasTwist.ts`'s
+   and one prop fewer on the canvas. A third WIDENING came out of 5b.2
+   and is recorded in §4.3: `claimAt`, because the two apps' claims sit
+   at different points in the press router. `canvasTwist.ts`'s
    `resolveTwistUnit` is the one reading of what a finger pair would turn:
    the multi unit, the host's lone unit, its grown grip, and the box the
    turn still pivots about — both apps had written that gate out by hand
@@ -891,6 +893,21 @@ Settled by the owner, 2026-10-20:
   moves onto the claim, since a claimed press can select (DrawBot's bot
   drag and the rig's joint grab both do) and the canvas today carries that
   bookkeeping in three separate branches.
+
+  A THIRD widening the mapping above passed over, found while writing the
+  rig's hooks (5b.2): **the two claims do not sit in the same place in the
+  press router, and neither can move to the other's.** DrawBot asks its
+  hooks FIRST, before the surface reads anything else about the press —
+  ahead of the input lock, the done-page gate, the caret and every tool —
+  because its bots are armed by their own tool and the claim has to beat
+  the running simulation's lock. CozyJournal's `beginRigPose` sits inside
+  the SELECT tool, after the shift-click, the corner-handle grabs and the
+  multi-selection box, and before the scene is hit-tested: a rig's joint
+  grab is a grab on an object like any other, and offered the press first
+  it would swallow a brush stroke, a shift-click, and the corner handles
+  of the very figure it belongs to. So `GestureHooks` carries
+  `claimAt?: 'press' | 'grab'`, defaulting to `'press'` — DrawBot's, the
+  shipped behaviour — and the surface offers the claim at both points.
 
   Four members beside the hooks, and only ONE of them is the rig's alone:
   the host's per-node records, reached as predicates rather than a map
