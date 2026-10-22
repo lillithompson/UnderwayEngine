@@ -492,6 +492,10 @@ const isBadge = (state: CompositionState, id: string) =>
  *  is a node of its own). */
 const badgeColours = new Map<string, RGBColor>();
 
+/** What the host's live channel is showing, outside the document: the
+ *  stand-in for a rig's sketch repainting itself mid-stroke. */
+const shown = new Map<string, RGBColor>();
+
 const RULES: HostNodeRules = {
   duplicateCompanions: (state, copies) => copies
     .filter((c) => c.kind === 'svg' && isBadge(state, c.fromId))
@@ -516,6 +520,12 @@ const RULES: HostNodeRules = {
     const touched = new Map<string, RGBColor>();
     return {
       ids,
+      // The live channel, for a host whose colour is not ON the object the
+      // dab lands on: there is nothing to lay the canvas's overlay over, so
+      // the host is told what it looks like now and hands the committed
+      // picture back when the stroke is abandoned.
+      preview: () => { for (const [id, c] of touched) shown.set(id, c); },
+      restore: () => { for (const id of touched.keys()) shown.delete(id); },
       reaches: (_id, scope) => scope !== 'patterns',
       stamp: (draft, cellX, cellY, radiusCells) => {
         let painted = false;
@@ -614,6 +624,42 @@ describe('the host’s rules about nodes of its own', () => {
     expect(objectColor.host!.commit(s.state)).toEqual([
       { op: 'renameSVG', svgId: b, oldName: 'badge_x', newName: 'badge_9' },
     ]);
+  });
+
+  test('the pass drives the host’s own live picture, and hands it back on an abandon', () => {
+    // A node whose colour is not ON the object has nothing for the canvas's
+    // overlay to be laid over — a rig's silhouette is a bake the live
+    // sketch draws over — so the pass is the host's live channel too: it is
+    // told what it looks like now, and a stroke that commits nothing hands
+    // the committed picture back. A stroke that DOES commit needs neither:
+    // the records move and the host's layer re-pushes from them.
+    shown.clear();
+    let s = newSession();
+    let b: string;
+    [s, b] = placeBadge(s, 0);
+    const objectColor = createObjectColorState('fills', s.state);
+    objectColor.host!.stamp(
+      { brushColor: { r: 7, g: 7, b: 7 }, blendMode: 'normal', opacity: 1 } as never, 2, 2, 1, null, new Set(), null,
+    );
+    objectColor.host!.preview!();
+    expect(shown.get(b)).toEqual({ r: 7, g: 7, b: 7 });
+    objectColor.host!.restore!();
+    expect(shown.has(b)).toBe(false);
+  });
+
+  test('a host that needs no live picture supplies neither', () => {
+    // Both are optional: a host whose colour IS on the object is previewed
+    // by the canvas's own overlay like any other node.
+    installSessionHost({
+      nodes: {
+        paintTargets: () => ({
+          ids: new Set<string>(), reaches: () => false, stamp: () => false, commit: () => [],
+        }),
+      },
+    });
+    const pass = createObjectColorState('fills', newSession().state).host!;
+    expect(pass.preview).toBeUndefined();
+    expect(pass.restore).toBeUndefined();
   });
 
   test('without a host, the brush’s state carries no pass and the dispatch is the standard one', () => {

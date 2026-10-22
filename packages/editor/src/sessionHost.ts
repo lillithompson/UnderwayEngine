@@ -139,6 +139,17 @@ export interface HostPaintTargets {
    *  its own ops in turn when one builds on another). Empty when nothing
    *  changed. */
   commit(state: CompositionState): CompUndoEntry;
+  /** Show the host's nodes as the release would leave them, after a dab.
+   *  The canvas's own preview is an overlay laid over the object, which a
+   *  node whose colour is not ON the object has nothing to lay it over: a
+   *  rig is simply told what colour it is now, through the live channel
+   *  its layer offers, the way a joint drag tells it what pose it is in.
+   *  Absent for a host that needs no live picture. */
+  preview?(): void;
+  /** …and back to the committed page, for a stroke that is abandoned or
+   *  that changed nothing. A stroke that DOES commit needs none of this —
+   *  the records move and the host's layer re-pushes from them. */
+  restore?(): void;
 }
 
 /** Rules the host adds about scene nodes of its own kind. */
