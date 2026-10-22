@@ -647,7 +647,12 @@ first, then the pointer bump in each app).
    a press, which is what that interface is, so it is a member of it here
    and one prop fewer on the canvas. A third WIDENING came out of 5b.2
    and is recorded in §4.3: `claimAt`, because the two apps' claims sit
-   at different points in the press router. `canvasTwist.ts`'s
+   at different points in the press router. `HostPaintTargets` (stage 3's)
+   grows `preview` / `restore`, the live channel a node whose colour is not
+   ON the object needs: the canvas's own preview is an overlay laid over the
+   object, and a rig's silhouette is a bake its live sketch draws over, so
+   it is told what colour it is now the way a joint drag tells it what pose
+   it is in. `canvasTwist.ts`'s
    `resolveTwistUnit` is the one reading of what a finger pair would turn:
    the multi unit, the host's lone unit, its grown grip, and the box the
    turn still pivots about — both apps had written that gate out by hand
