@@ -38,7 +38,7 @@ and `NodeLayer.tsx` was no longer identical in DrawBot):
 | File | Sol | DrawBot | Cozy | Sol vs Cozy | DrawBot vs Cozy |
 |---|---|---|---|---|---|
 | `EditorShell.tsx` | 8,232 | 9,357 | 10,682 | 3,978 | 2,723 |
-| `components/CanvasSurface.tsx` | 5,939 | 6,774 | 7,104 | 1,737 | 1,042 |
+| `components/CanvasSurface.tsx` (moved, stage 5b) | 5,939 | 6,774 | 7,104 | 1,737 | 1,042 |
 | `editorSession.ts` | 6,989 | 7,709 | 7,206 | 399 | 889 |
 | `EditorHost.tsx` | 359 | 560 | 1,429 | 1,276 | 1,333 |
 | `entryRaster.ts` | 373 | 227 | 905 | 794 | 858 |
@@ -127,7 +127,17 @@ the nine leaves the canvas pulls in that import no app: `tileTool.ts`,
 `afterReady.ts` and `editableRegion.ts`. The apps import it all
 through `@/editor/*` and their copies are gone; each app's
 `web/editor/hostTools.ts` is its registry and its `web/editor/extension.ts`
-installs its session host and its outline host.
+installs its session host and its outline host. From stage 5b it holds the
+CANVAS: `components/CanvasSurface.tsx` (CozyJournal's version, nothing of
+any app in it) with the seam it is configured through
+(`components/canvasHooks.ts` — the presses a host claims, the DOM it draws
+per scene node, its per-node records and the two-finger twist — and
+`canvasTwist.ts`), the leaves it needed
+(`selectionShapeOutline.ts`, `useSuppressIOSLoupe.ts`, `turnLive.ts`,
+`pushStrength.ts`, `editableRegion.ts`'s magnet) and two splits: the push
+brush's vector half (`pushBrush.ts`, the rig half behind
+`HostPushTargets`) and the move-and-scale of a node that changes size by
+being dragged (`dragScale.ts`, the factor behind `HostNodeRules.dragScale`).
 
 ## 3. Still copied, and why
 
@@ -136,9 +146,9 @@ app: `@/web/formats/types` (the `EditorConfig` and `ToolId` unions, which
 differ per app), `@/web/store/*` (each app's entry store), `@/components/
 bridgeSchema` (each app's native bridge events), `@/components/theme`, the
 fonts, and the app's own trees (`web/sol`, `web/sim*`, Figgie). The shell
-(`EditorShell.tsx`), the canvas (`CanvasSurface.tsx`) and the host
-(`EditorHost.tsx`) are where the apps' own features are still woven in by
-hand rather than plugged in; the session's were unwoven at stage 3.
+(`EditorShell.tsx`) and the host (`EditorHost.tsx`) are where the apps' own
+features are still woven in by hand rather than plugged in; the session's
+were unwoven at stage 3 and the canvas's at stage 5b.
 
 ## 4. The design for the rest: one editor, extended by a host
 
@@ -738,6 +748,65 @@ first, then the pointer bump in each app).
    canvas — and `@/components/theme`'s two constants (`BG_EDITOR_CANVAS`,
    `HAIRLINE`) are identical in all three, which
    `packages/editor-ui/src/theme.ts` is the precedent for.
+
+   **5b.3 — Done: the canvas moves** (engine, 2026-10-22).
+   `components/CanvasSurface.tsx` is the package's, in CozyJournal's
+   version, and **nothing of any app reaches it**: what was woven in by
+   hand is the seam 5b.2 refactored that app against, and the two things
+   an app still owns ride as props — `hostTools`, its own tools with the
+   rule each placing one's tap is read by, and `openTrace`, the two probes
+   of a host that times its own open (the event name the marks are posted
+   under is per-app `bridgeSchema`, which is stage 6's).
+
+   Six leaves moved ahead of it, each one of the canvas's remaining
+   app-side imports: `useSuppressIOSLoupe.ts` and its suite whole
+   (byte-identical in all three apps); `selectionShapeOutline.ts` in
+   CozyJournal's version, its two-line difference from the others being
+   the rig check, which IS `CanvasRecords.has`; `editableRegion.ts`'s new
+   MAGNET (`lineGridPoints`, `magnetToLines`), from CozyJournal's
+   `creatureGeometry`, which keeps its own `midlineGridPoints` as the
+   midline case of the first; `turnLive.ts` (rigTurnLive generalized);
+   `pushStrength.ts` (rigPushStore's generic half); and the chrome's two
+   canvas colours, which each app's `theme.ts` now RE-EXPORTS rather than
+   restates — the `SYSTEM_FAMILY_STACK` move of 5a, for the same reason.
+
+   Two SPLITS rather than moves. `pushBrush.ts` keeps its falloff, its
+   vector warp, its raster smear and its one-entry commit here, and the
+   rig half goes behind `HostPushTargets` — a node whose geometry is a BAKE
+   of something else is pushed by pushing what it was baked from, and its
+   path is excluded from the warp precisely so the two cannot end up
+   describing different shapes. `maskWordScale` becomes
+   `HostNodeRules.dragScale` plus `dragScale.ts`: the whole wrapper (move,
+   then scale about the node's own centre, against the moved state, one
+   undo entry, single and multi) was generic and only the FACTOR was the
+   app's.
+
+   Three things the move taught, worth the lines:
+
+   · `@/editor-ui`'s index re-exports COMPONENTS, so a file that wants two
+     palette values pulls a react-native tree in behind them. A plain
+     re-export in CozyJournal's `components/theme.ts` took out every one
+     of that app's components suites at once. `@/editor-ui/theme` is the
+     import; the index is for the chrome.
+   · A source pin on a MODULE SPECIFIER is a pin on where the file lives.
+     The canvas spells its neighbours relatively here where it spelled
+     them `@/editor/…` in the app, and a suite that pinned the import line
+     failed on the move. One did.
+   · A pin written as `indexOf(a) < indexOf(b)` needs `a` and `b` to be
+     unique in the file. The open trace's ordering pin read `report()`,
+     which now also appears in the prop's TYPE, forty thousand characters
+     earlier — so the pin failed while the order it names was right.
+
+   The PINS, measured and re-pointed: 60 of CozyJournal's suites read the
+   canvas's source, in five different spellings of the path. All of them go
+   through one helper — `editorSource('components', 'CanvasSurface.tsx')`
+   in that app's `web/editor/__tests__/test-utils.ts` — which is the shared
+   helper Sol's 5a reviewer asked for, built here because this stage is
+   what made it worth building: how the engine lays its own tree out is not
+   an app's to repeat sixty times over. CozyJournal 643 suites / 10,554
+   tests; editor package 67 suites / 1,293 tests; engine 366 of 367.
+   CozyJournal's range, canvas move and all, reviews at 239 KB — the move
+   folding does its job.
 6. **Shell and host.** `EditorShell.tsx` and `EditorHost.tsx` as the
    package's screen, taking `config`, `extension` and the app's store
    adapter; `web/formats/types.ts`'s common `EditorConfig`, `web/fonts/*`
