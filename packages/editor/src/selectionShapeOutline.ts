@@ -7,7 +7,7 @@ import { svgHasFill } from '@/editor-ui/logic/svgEdit';
 import { type Bbox, decomposeMatrix } from '@/engine/sceneTransform';
 import type { CompositionState, SVGObject } from '@/engine/types';
 import { MIN_OUTLINE_CELLS } from './selectionOutline';
-import { canvasHost } from './components/canvasHooks';
+import type { CanvasRecords } from './components/canvasHooks';
 
 // The selection ring as the OBJECT'S OWN BORDER rather than a rectangle
 // around it — what Move and Rotate draw (arrangeModeNoScale), where a box
@@ -75,6 +75,13 @@ export function selectionShapePath(
   selectedId: string | null,
   local: Bbox | null,
   freeAxis: 'x' | 'y' | null,
+  /** The host's records as the CALLER resolved them (`CanvasRecords`),
+   *  because that seam is resolved ONCE per render and this is one of its
+   *  readers — asking the host again here was a second walk of the page
+   *  per render, which is the one thing its own contract forbids. Absent
+   *  (or null) is "no host records on this page", which is what every
+   *  caller outside the canvas means. */
+  records?: CanvasRecords | null,
 ): SelectionShapePath | null {
   if (!selectedId || !local || freeAxis) return null;
   // A node the HOST keeps a record beside has no shape outline of its own
@@ -82,7 +89,7 @@ export function selectionShapePath(
   // object whose subpaths are a BAKE of a pose, and hugging that bake
   // would draw the outline on a silhouette the live sketch has already
   // moved away from. The box is what such a selection wears.
-  if (canvasHost().records?.(state)?.has(selectedId)) return null;
+  if (records?.has(selectedId)) return null;
   const node = getNode(graphOf(state), selectedId);
   if (!node || node.kind !== 'svg') return null;
   const object = localHitObject(node) as SVGObject;

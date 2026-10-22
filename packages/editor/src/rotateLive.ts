@@ -1,5 +1,5 @@
 // The selection tool's Rotate slider announcing the angle it is dragging
-// through (arrangeRotate.ts) — the rig Turn slider's rigTurnLive, for the
+// through (arrangeRotate.ts) — `turnLive.ts`'s twin, for the
 // rotation readout: CanvasSurface subscribes and labels the selection's
 // pivot with the live angle, the same HUD, chrome and View Settings gate a
 // two-finger twist wears (updateRotationHud). One object's value is its

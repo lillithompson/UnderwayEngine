@@ -2319,16 +2319,17 @@ export function CanvasSurface({
     updateRotationHud(box.cellX + box.cellWidth / 2, box.cellY + box.cellHeight / 2, v.angleDeg);
   }), []);
 
-  // A rig being turned announces itself (rigTurnLive) — from the Turn
-  // slider up in the shell, or from a two-finger twist here. The figure
-  // re-projects as it turns, so its silhouette is a different shape every
-  // frame and no one box is true until the gesture settles: rather than
-  // chase it, the selection outline FADES OUT for the duration and fades
-  // back in on the committed geometry when the turn ends. The re-anchor is
-  // done by hand for the same reason every other live preview is: React
-  // renders the outline from committed state, and a turn that ends where
-  // it began would have React write nothing back. The DOM writes are
-  // one-per-gesture-edge (publishRigTurnLive dedupes), not per frame.
+  // A node whose own TURN is live announces itself (`turnLive.ts`) — from a
+  // host's own slider up in the shell, or from a two-finger twist here.
+  // CozyJournal's rig is the case: the figure re-projects as it turns, so
+  // its silhouette is a different shape every frame and no one box is true
+  // until the gesture settles. Rather than chase it, the selection outline
+  // FADES OUT for the duration and fades back in on the committed geometry
+  // when the turn ends. The re-anchor is done by hand for the same reason
+  // every other live preview is: React renders the outline from committed
+  // state, and a turn that ends where it began would have React write
+  // nothing back. The DOM writes are one-per-gesture-edge
+  // (`publishTurnLive` dedupes), not per frame.
   useEffect(() => subscribeTurnLive((v) => {
     const id = propsRef.current.session.selectedId;
     if (!id) return;
@@ -6665,11 +6666,27 @@ export function CanvasSurface({
   const tracesOwnBorder = arrangeModeTracesShape(arrangeMode)
     && (arrangeModeNoScale(session.activeTool, arrangeMode)
       || brushDimsToSelection(session.activeTool));
+  // Whether the HOST keeps a record beside a scene node, asked ONCE per
+  // render (canvasHooks.ts `CanvasRecords`) — CozyJournal's rig keeps its
+  // pose, its colours and its roll on a hidden one. A predicate, never the
+  // record: three rules read it and all three are about a selection that
+  // is a MODE rather than an object in hand. In a ref too, because the
+  // gesture handlers are created once.
+  //
+  // Declared ahead of the shape outline below, which is the third reader:
+  // it used to ask the host itself and so walked the page a second time
+  // per render, which this seam's own contract forbids — a host that has
+  // to find its own kinds finds them once.
+  const hostRecords = useMemo(() => canvasHost().records?.(state) ?? null, [state]);
+  const hostRecordsRef = useRef<CanvasRecords | null>(hostRecords);
+  hostRecordsRef.current = hostRecords;
+
   const shapeOutlinePath = useMemo(
     () => (tracesOwnBorder && !multiSelectionBox && selectionBox
-      ? selectionShapePath(state, session.selectedId, selectionBox.local, selectionBox.freeAxis)
+      ? selectionShapePath(
+        state, session.selectedId, selectionBox.local, selectionBox.freeAxis, hostRecords)
       : null),
-    [state, tracesOwnBorder, session.selectedId, multiSelectionBox, selectionBox],
+    [state, tracesOwnBorder, session.selectedId, multiSelectionBox, selectionBox, hostRecords],
   );
   // Read by the gesture handlers, which re-anchor the ring imperatively.
   ringOutsetRef.current = ringOutset;
@@ -6687,16 +6704,6 @@ export function CanvasSurface({
   const patternEditReplacesSelectionBox = tileEditShape !== null
     && multiSelectionBox === null
     && session.selectedId === tileEditShape.id;
-
-  // Whether the HOST keeps a record beside a scene node, asked once per
-  // render (canvasHooks.ts `CanvasRecords`) — CozyJournal's rig keeps its
-  // pose, its colours and its roll on a hidden one. A predicate, never the
-  // record: two rules read it and both are about a selection that is a
-  // MODE rather than an object in hand. In a ref too, because the gesture
-  // handlers are created once.
-  const hostRecords = useMemo(() => canvasHost().records?.(state) ?? null, [state]);
-  const hostRecordsRef = useRef<CanvasRecords | null>(hostRecords);
-  hostRecordsRef.current = hostRecords;
 
   // The paint veil's hole geometry, for the camera path (applyLiveCamera) to
   // re-anchor the screen-space veil between renders. Written every render so
@@ -7076,7 +7083,7 @@ export function CanvasSurface({
               // value; applyLiveCamera keeps it in step thereafter.
               [ZOOM_INV_VAR]: String(zoomInvRef.current || (t.scale > 0 ? 1 / t.scale : 1)),
               pointerEvents: 'none',
-              // The rigTurnLive fade: while a rig turn is in flight the
+              // The `turnLive.ts` fade: while a host's own turn is in flight the
               // outline's opacity is dropped to 0 by hand (and put back on
               // settle); this transition is what makes both edges a fade.
               transition: `opacity ${SELECTION_OUTLINE_FADE_MS}ms ease`,

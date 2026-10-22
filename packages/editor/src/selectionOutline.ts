@@ -90,7 +90,8 @@ export const SCREEN_INV_TRANSFORM =
 export const HAIRLINE_PX = 2;
 
 /** How long the selection outline's fade takes, ms — the bow-out while a
- *  rig turn is in flight and the return once it settles (rigTurnLive).
+ *  host's own turn is in flight and the return once it settles
+ *  (`turnLive.ts`).
  *  Opacity only: a compositor-side transition, nothing on the layout path. */
 export const SELECTION_OUTLINE_FADE_MS = 150;
 

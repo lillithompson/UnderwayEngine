@@ -92,19 +92,28 @@ describe('which selections get their own border', () => {
     // a ragged silhouette that reads as part of the drawing rather than as
     // a selection, and the one outline that moves under you, since posing a
     // joint reshapes it. Its box is what every grab on it acts on.
+    //
+    // The records come from the CALLER, not from `canvasHost()` here: that
+    // seam is resolved once per render and this is one of its readers, so
+    // asking the host again would walk the host's own page a second time
+    // per render. Installing one changes nothing by itself.
     const shape = placed(
       buildPlaceShape('star', { cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 4 }, INK),
     );
     expect(shape.path).not.toBeNull();
-    // Same object, same page: the only thing that changed is that the host
-    // answers for it now. The rule is the RECORD, not the shape of the path.
     installCanvasHost({ records: () => ({ has: (id) => id === shape.id }) });
     expect(selectionShapePath(shape.state, shape.id, shape.box.local, shape.box.freeAxis))
-      .toBeNull();
-    // …and a host with nothing of its own on this page changes nothing.
-    installCanvasHost({ records: () => null });
-    expect(selectionShapePath(shape.state, shape.id, shape.box.local, shape.box.freeAxis))
       .not.toBeNull();
+    // Handed the records, the same object on the same page keeps its box.
+    // The rule is the RECORD, not the shape of the path.
+    expect(selectionShapePath(
+      shape.state, shape.id, shape.box.local, shape.box.freeAxis,
+      { has: (id) => id === shape.id },
+    )).toBeNull();
+    // …and a page the host holds nothing on changes nothing.
+    expect(selectionShapePath(
+      shape.state, shape.id, shape.box.local, shape.box.freeAxis, null,
+    )).not.toBeNull();
   });
 
   test('nothing selected, nothing drawn', () => {
