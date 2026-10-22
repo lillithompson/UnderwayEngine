@@ -74,6 +74,25 @@ export interface HostTool<T extends string = string> extends ToolMeta {
    *     something, and clears the selection when it does not. A press on
    *     the selection places. */
   tap?: 'anywhere' | 'onEmpty' | 'against';
+  /**
+   * The two RIDERS on where a placing tap lands, declared here because
+   * they were the only things the three shells' host-place arms differed
+   * in (docs/shared-editor.md §4.3): the canvas computes the cell, applies
+   * whichever of these the row asks for, and calls one `onHostPlace`.
+   *
+   *  · `snap`: the cell is pulled onto the grid when Grid Snap is on, the
+   *    way every other placement is (`gridSnap.snapPoint`) — Sol's seed
+   *    lands on an intersection rather than between two.
+   *  · `clearOfOverlay`: a tap within a thumb's reach of any floating
+   *    chrome places NOTHING (`tapExclusion.ts`). The thumb was going for
+   *    a control and fell short, and a thing placed there is a silent
+   *    wrong edit — which is a tile's problem and not a word's, because a
+   *    word dealt near the chrome is a word you can see and move.
+   *
+   * Both absent is the plain case: the tapped cell, unrounded, wherever it
+   * fell (CozyJournal's Figure and Word).
+   */
+  place?: { snap?: boolean; clearOfOverlay?: boolean };
 }
 
 /** A registry: the host's tools, in the order they ride the content row.

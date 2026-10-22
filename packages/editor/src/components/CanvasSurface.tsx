@@ -238,7 +238,7 @@ import {
   type HostNodeTwist, type PointerClaim, type PriorSelection, canvasHost,
 } from './canvasHooks';
 import { resolveTwistUnit } from '../canvasTwist';
-import type { HostTool } from '../hostTools';
+import { type HostTool, hostTool } from '../hostTools';
 
 // The editor canvas: GL grid pass at the bottom (Phase 0 wiring kept), one
 // absolutely-positioned world-transform DOM container above it holding a
@@ -477,24 +477,26 @@ interface CanvasSurfaceProps {
    *  "done placing", not "another one" — the shell re-arms the arrange tool
    *  instead of opening the picker again (see resolveCanvasTap). */
   onRevertToArrange: () => void;
-  /** Rig tool: tap on empty canvas plants a fresh T-pose rig with its middle
-   *  on this world cell. No drag form — a rig has one size at birth, and the
-   *  corner handles resize it afterwards like any object. */
-  onAddRig: (cellX: number, cellY: number) => void;
-  /** Word tool: tap on empty canvas deals a random magnetic-poetry tile
-   *  centered on this world cell. No drag form either — a word is the size of
-   *  its own card. */
-  onAddWord: (cellX: number, cellY: number) => void;
+  /**
+   * A settled tap under one of the app's OWN placing tools (hostTools.ts
+   * `tap`): place whatever that tool places, centred on this world cell.
+   *
+   * ONE callback for every such tool, because the canvas's part is the
+   * same for all of them — read the tap, apply the tool's two declared
+   * riders (`HostTool.place`: the grid snap, and refusing a tap within
+   * reach of the floating chrome) and hand over the cell. The shell
+   * switches on the id to its own builder, which is where the knowledge
+   * of what a rig, a word, a tile or a seed IS belongs. None of these
+   * tools has a drag form: a rig has one size at birth, a word is the
+   * size of its own card, a tile fills one grid cell, and a drag pans.
+   */
+  onHostPlace: (tool: string, cellX: number, cellY: number) => void;
   /** Pattern tool: a drag on empty canvas selected `bbox` — a region of
    *  grid cells, cols×rows of them (each ≤ 16). The shell places a fresh
    *  PatternObject of that resolution covering it, always its own object:
    *  dragging out a region is the CREATING gesture, and creating never
    *  merges into or edits a pattern already on the page. */
   onCreatePattern: (bbox: CellBbox, cols: number, rows: number) => void;
-  /** Tile tool: a tap (hit or not — the tile lands against what is there)
-   *  fills the grid cell under this world point with one connecting
-   *  Pattern tile (see buildPlaceTile). No drag form — a drag pans. */
-  onAddTile: (cellX: number, cellY: number) => void;
   /** The pattern sub-tool a press INSIDE a pattern paints with (the Tools /
    *  Tiles properties bars set it; the shell owns it). Absent = random. */
   patternSubTool?: PatternSubTool;
@@ -976,7 +978,7 @@ function veilState(state: CompositionState, veiledIds: ReadonlySet<string> | und
 
 export function CanvasSurface({
   session, aspect, currentColor, paintSessionRef, brushRadiusScale, avoidBottomPx, avoidTopPx, editingText, editingImage, editingCaret, onCaretSeek, onSelectAllText,
-  onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onViewportChange, onAddText, onRequestPhoto, onRevertToArrange, onAddRig, onAddWord, onAddTile, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap,
+  onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onViewportChange, onAddText, onRequestPhoto, onRevertToArrange, onHostPlace, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap,
   cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides,
   colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo,
   onLongPress, onLongPressMove, onLongPressUp,
@@ -1177,8 +1179,8 @@ export function CanvasSurface({
    *  joined: a tap's fingers land together (MULTI_TAP_LAND_WINDOW). */
   const firstFingerDownAtRef = useRef(0);
   const multiTapLastLandAtRef = useRef(0);
-  const propsRef = useRef({ gestures, session, currentColor, paintSessionRef, brushRadiusScale, onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onAddText, onRequestPhoto, onRevertToArrange, onAddRig, onAddWord, onAddTile, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap, editingText, editingCaret, onCaretSeek, onSelectAllText, cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides, colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo, onLongPress, onLongPressMove, onLongPressUp, onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp });
-  propsRef.current = { gestures, session, currentColor, paintSessionRef, brushRadiusScale, onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onAddText, onRequestPhoto, onRevertToArrange, onAddRig, onAddWord, onAddTile, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap, editingText, editingCaret, onCaretSeek, onSelectAllText, cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides, colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo, onLongPress, onLongPressMove, onLongPressUp, onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp };
+  const propsRef = useRef({ gestures, session, currentColor, paintSessionRef, brushRadiusScale, onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onAddText, onRequestPhoto, onRevertToArrange, onHostPlace, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap, editingText, editingCaret, onCaretSeek, onSelectAllText, cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides, colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo, onLongPress, onLongPressMove, onLongPressUp, onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp });
+  propsRef.current = { gestures, session, currentColor, paintSessionRef, brushRadiusScale, onSelect, onSelectMany, onToggleSelect, onCommit, onCameraCommit, onAddText, onRequestPhoto, onRevertToArrange, onHostPlace, onCreatePattern, patternSubTool, patternRegionDrags, tileRegionDrags, frameDropHighlight, patternExcludedFamiliesOf, newShapeStyle, onNodeTap, onColorBrushDoubleTap, editingText, editingCaret, onCaretSeek, onSelectAllText, cropPanNodeId, onCropPan, onCropZoom, lineToolMode, arcToolMode, arrangeMode, tileEditPatternId, polygonSides, colorBlendMode, colorBrushOpacity, colorScope, vectorEraser, onEditWhileDone, onUndo, onRedo, onLongPress, onLongPressMove, onLongPressUp, onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp };
 
   // Live preview of a corner resize: the RESCALED node being dragged, or null
   // when idle. `previewResizedNode` runs the same geometry adapter the release
@@ -5605,21 +5607,26 @@ export function CanvasSurface({
         propsRef.current.onRevertToArrange();
         return;
       case 'hostPlace': {
-        // One of this app's own placing tools (hostTools.ts): the shell's
-        // builder for the tool the action names.
-        const cell = screenToWorld(pt.x, pt.y, liveCameraRef.current, stateRef.current.viewport);
-        switch (action.tool) {
-          case 'rig': propsRef.current.onAddRig(cell.cellX, cell.cellY); return;
-          case 'word': propsRef.current.onAddWord(cell.cellX, cell.cellY); return;
-          case 'tile':
-            // …unless the thumb was reaching for a control and fell short: a
-            // tap this close to any floating chrome is meant for the chrome,
-            // and a tile placed there is a silent wrong edit (tapExclusion.ts).
-            if (overlayNearTap(pt)) return;
-            propsRef.current.onAddTile(cell.cellX, cell.cellY);
-            return;
-          default: return;
-        }
+        // One of the app's OWN placing tools (hostTools.ts). The canvas's
+        // part is the same for every one of them: read the tap, apply the
+        // two riders the tool's registry row declares, hand the cell to
+        // the shell — which is where the knowledge of what the tool places
+        // belongs, and which is the only branch it keeps until stage 6.
+        const place = hostTool(hostToolsRef.current, action.tool)?.place;
+        // …unless the thumb was reaching for a control and fell short: a
+        // tap that close to any floating chrome is meant for the chrome,
+        // and a thing placed there is a silent wrong edit. Asked before
+        // the cell, because there is then no cell to speak of.
+        if (place?.clearOfOverlay && overlayNearTap(pt)) return;
+        const s = stateRef.current;
+        const cell = screenToWorld(pt.x, pt.y, liveCameraRef.current, s.viewport);
+        // …and snapped, for a tool that asks: it lands on an intersection
+        // the way every other placement does, rather than between two.
+        const at = place?.snap
+          ? snapPoint(cell.cellX, cell.cellY, s.gridLevel, gridSnapRef.current)
+          : cell;
+        propsRef.current.onHostPlace(action.tool, at.cellX, at.cellY);
+        return;
       }
       case 'none':
         // No tool active — a tap is inert (the pan it settled from already
