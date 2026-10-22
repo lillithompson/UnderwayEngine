@@ -401,7 +401,8 @@ interface CanvasSurfaceProps {
    *  §7.3, EditorConfig.editableRegion): every draw sample and shape-drag
    *  point is clamped into it, and — with `magnetYs` — the final point of
    *  a stroke or drag within tolerance of one of those lines snaps to its
-   *  nearest grid point (creatureGeometry.magnetToLines). */
+   *  nearest grid point (`editableRegion.ts`'s `magnetToLines`, which came
+   *  here from CozyJournal's creatureGeometry with the canvas). */
   editableRegion?: EditableRegion & { magnetYs?: readonly number[] };
   /** The region's chrome: the veil over everything outside it, a dotted
    *  line on each of the band's edges, and — where the region is a piece
