@@ -491,11 +491,12 @@ first, then the pointer bump in each app).
    marker silently lost its strain initial. An app-side pin cannot fail the
    run of the repo doing the deleting, and the prop's TYPE surviving is not
    the render surviving. `__tests__/nodeLayer.test.ts` holds it now
-   (verified by deleting the line), and it is where 5b's `layers` pins go. The node layer was the last
-   mover to import `@/web/fonts/*`: `fontsEpoch.ts` is identical in all
-   three apps and moved whole, and `fontFamilyFor` became a PROBE the app
-   installs, the way the brush's glyph-ink probe already is and from the
-   same file (`web/fonts/loadPackFonts.ts`). `fontFamily.ts` holds the
+   (verified by deleting the line), and it is where 5b's `layers` pins go.
+   The node layer was the last mover to import `@/web/fonts/*`:
+   `fontsEpoch.ts` is identical in all three apps and moved whole, and
+   `fontFamilyFor` became a PROBE the app installs, the way the brush's
+   glyph-ink probe already is and from the same file
+   (`web/fonts/loadPackFonts.ts`). `fontFamily.ts` holds the
    fallback (`SYSTEM_STACK`) and the registry; the resolver itself — the
    pack lookup, the quoting, and the rule that `'system'` and the empty id
    are the bare stack — stays whole in each app's
@@ -570,8 +571,10 @@ first, then the pointer bump in each app).
 
    `fontsEpoch.test.ts` was identical in all three apps and moved whole,
    and `fontFamily.test.ts` is new, over the seam with no pack installed,
-   with one, and after one is taken away. Editor package 59 suites / 1,199
-   tests; engine 358 of 359 (cameraRoll's host dependency, as before).
+   with one, and after one is taken away. Editor package 60 suites / 1,201
+   tests; engine 359 of 360 (cameraRoll's host dependency, as before).
+   (The sixtieth is `nodeLayer.test.ts`, added after 5a shipped in two of
+   the three apps, when Sol's review found the `children` seam unpinned.)
    `NodeLayer.tsx` itself is typechecked only in the apps, as every
    component in this package already is — no engine suite imports one, the
    engine having no renderer — so what the package pins of it is its source
