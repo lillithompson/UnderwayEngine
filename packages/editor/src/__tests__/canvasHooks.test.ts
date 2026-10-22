@@ -370,9 +370,7 @@ describe('the seam’s declarations', () => {
   // are — each naming the simplification that would undo it.
   test('a claimed press ends for one of three reasons, not with a boolean', () => {
     expect(SRC).toContain("export type PointerEnd = 'release' | 'takeover' | 'cancel';");
-    expect(SRC).toContain(
-      'onPointerUp?: (x: number, y: number, end: PointerEnd, e: React.PointerEvent) => void;',
-    );
+    expect(SRC).toContain('onPointerUp?: (x: number, y: number, end: PointerEnd) => void;');
     expect(SRC).not.toContain('cancelled: boolean');
   });
 
@@ -423,7 +421,10 @@ describe('the seam’s declarations', () => {
     expect(hooks.claimAt).toBe('grab');
     expect(hooks.onPointerDown!(1, 2, {} as never)).toBe(claim);
     hooks.onPointerMove!(3, 4, {} as never);
-    for (const end of ends) hooks.onPointerUp!(0, 0, end, {} as never);
+    // No event on the end: the surface has none for a stale-pointer heal
+    // or a page backgrounded mid-touch, and must still be able to end a
+    // claim.
+    for (const end of ends) hooks.onPointerUp!(0, 0, end);
     expect(hooks.holdOpensMenu!()).toBe(true);
     hooks.previewSelectionEntry!(null);
     expect(seen).toEqual(['move 3,4', 'up release', 'up takeover', 'up cancel', 'preview none']);

@@ -909,6 +909,14 @@ Settled by the owner, 2026-10-20:
   `claimAt?: 'press' | 'grab'`, defaulting to `'press'` — DrawBot's, the
   shipped behaviour — and the surface offers the claim at both points.
 
+  A FOURTH, which only subtracts: `onPointerUp` drops the React event.
+  The surface has none to give where it most needs to end a claim — a
+  stale-pointer heal, a page backgrounded mid-touch (DrawBot's own
+  `cancelStaleGesture` leaves a claim live, which is a bug the merged
+  canvas fixes), a hold that handed the touch to the radial menu — and
+  neither app's hook reads one: DrawBot's implementation already drops the
+  parameter its own interface declares.
+
   Four members beside the hooks, and only ONE of them is the rig's alone:
   the host's per-node records, reached as predicates rather than a map
   (the twist's start angle, the paint veil's "a rig is a mode, not a

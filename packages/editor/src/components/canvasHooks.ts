@@ -36,6 +36,12 @@ import type { CellBbox } from '../resizeMath';
 //    finger — the camera's gesture — has to put the selection back; the
 //    canvas carried that bookkeeping in three separate gesture branches.
 //
+// Two more came out of wiring the rig's hooks up (5b.2): `claimAt`, below,
+// because the two apps' claims do not sit in the same place in the press
+// router; and `onPointerUp` drops the React event, because the surface has
+// none to give for a stale-pointer heal or a page backgrounded mid-touch,
+// and neither app's hook ever read it.
+//
 // What is NOT here: `overlay?(session, camera)`, which the plan once
 // designed for this row and which is dropped. The one thing it was for is
 // mounted by the shell (stage 6), and the canvas's real overlay mechanism
@@ -121,7 +127,11 @@ export interface GestureHooks {
   claimAt?: 'press' | 'grab';
   onPointerDown?: (x: number, y: number, e: React.PointerEvent) => PointerClaim | null;
   onPointerMove?: (x: number, y: number, e: React.PointerEvent) => void;
-  onPointerUp?: (x: number, y: number, end: PointerEnd, e: React.PointerEvent) => void;
+  /** No event: the surface must be able to end a claim when it has none —
+   *  a stale-pointer heal, a page backgrounded mid-touch, a hold that
+   *  handed the touch to the radial menu — and neither app's hook reads
+   *  one (DrawBot's own implementation already drops the parameter). */
+  onPointerUp?: (x: number, y: number, end: PointerEnd) => void;
   /** Asked right after a claim: does a stationary hold on this press open
    *  the long-press radial menu? When it fires, the surface cancels the
    *  claim (`onPointerUp` with `cancel`) and the menu owns the touch.
