@@ -879,14 +879,13 @@ first, then the pointer bump in each app).
    other way round.
 
    **Sol's additions** (engine 6c31c7e + a30cb15 + 70412bb + e0c0d08, app
-   2c038dd). `cameraGlide` — a camera the shell has worked out, for a host
-   framing something the canvas cannot read one box for — and
-   `onCanvasPointerDown`, a finger reaching the host before anything is
-   read about the press. `revealRect`'s tween and this one are ONE
-   `glideCameraTo` now rather than two copies, and Sol's reveal glide gains
-   the shared one's log-space zoom where its own mixed zoom linearly.
-   `liveCameraOut` is NOT adopted, which was the open call: it is a ref the
-   surface pushes the drawing camera into, and
+   2c038dd; the glide revised at 5b.4e below). `cameraGlide` — a camera the
+   shell had worked out — and `onCanvasPointerDown`, a finger reaching the
+   host before anything is read about the press. `revealRect`'s tween and
+   this one became ONE `glideCameraTo` rather than two copies, and Sol's
+   reveal glide gained the shared one's log-space zoom where its own mixed
+   zoom linearly. `liveCameraOut` is NOT adopted, which was the open call:
+   it is a ref the surface pushes the drawing camera into, and
    `CanvasSurfaceHandle.getLiveCamera()` already pulls the same value —
    Sol's `RevealOverlay` read `liveCamera.current ?? camera` once a frame,
    which is that getter exactly. A pushed mirror is only as fresh as the
@@ -896,6 +895,43 @@ first, then the pointer bump in each app).
    not adopted and needs nothing: it is plant-layer data, and the hook that
    draws the plants is Sol's own closure.
 
+   **5b.4e — Done: one glide, asked with a box** (owner's call, 2026-10-22;
+   engine 1eae4c5, Sol ba0fe05, CozyJournal 01a9fe10, DrawBot 23823f1).
+   5b.4c adopted `cameraGlide` as Sol's prop stood and flagged it beside
+   `revealRect` as one gesture asked two ways — fit this box, or go to this
+   camera. The owner's call was to conform, and `cameraGlide` is gone:
+   `revealRect` carries an optional `durationMs` and Sol asks with a BOX.
+
+   The box is the right question, and the reason is not tidiness. The
+   canvas owns how a box becomes a camera, and that is where the FIT and
+   the CHROME INSETS live — `computeFrameCellBboxCamera(viewport, bbox,
+   FRAME_OBJECT_FIT, { top: avoidTopPx, bottom: avoidBottomPx })`. A host
+   handing over a finished camera skips all of it, and
+   `computeFrameSelectionCamera` frames into the bare viewport, so a Draw
+   could land its plants under the top bar or behind the properties panel,
+   and the deeper that panel the worse it got. `revealRect` also drops an
+   ask that arrives while a finger is already down, which it did not and
+   Sol's glide did: that is the other end of a rule the canvas held at one
+   end only (a finger landing DURING a glide cancels it and commits the
+   camera where it stands), and the two belong together. The duration is
+   per-ask data like the key, so it rides the prop and defaults to
+   `REVEAL_GLIDE_MS` — the two callers want different flights, a refusal
+   being answered where a reveal is admired.
+
+   A SECOND bug came out with it, and it is the better argument for
+   collapsing a duplication rather than merely recording one. Sol's
+   `frameSeedsCamera` measured its leaves through
+   `computeFrameSelectionCamera`, which reads each leaf's
+   `arcBoundingBox(segments)` in its own LOCAL space and never applies the
+   node's world matrix. Every plant hangs under a group that carries one
+   (`plantElementMatrix`), so a plant that had been moved, scaled or turned
+   was framed on the wrong rectangle and the Draw flew somewhere the plant
+   was not. NOTHING PINNED IT because both halves agreed with each other —
+   the camera was computed from the same local boxes the suite asserted it
+   against, which is the shape of every bug a duplication hides.
+   `frameSeedsRect` goes through `resolveMultiSelectionBox`, whose
+   `nodeInkAabb` reads `drawnCorners` off the graph: the engine's one
+   reading of "the union of these nodes' inked bounds".
    Sol's side is `web/sol/scene/plantCanvasLayers.tsx`, and it is the
    reason `layers` is a prop rather than an installed rule: what it draws
    from is a whole render's worth of Sol's own work — the plant plan, each
@@ -1495,7 +1531,8 @@ with the file the app deletes.
 
 **Stage 5b.3 and 5b.4 never came near it either, which settles the
 question for stage 5** (2026-10-22). The three ranges at the end of 5b.4:
-CozyJournal 498 KB, Sol 492, DrawBot 493 — the whole of stage 5b in each,
+CozyJournal 498 KB, Sol 492, DrawBot 493, and 5b.4e's own round after
+them at 519 / 513 / 514 — the whole of stage 5b in each,
 and each inside the 890 KB a stage-3 range passed at. The move folding is
 what does it, and the shape is worth naming because it is the opposite of
 what was feared: the app ranges holding the DELETION of a 6,000-line canvas
