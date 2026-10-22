@@ -658,8 +658,9 @@ first, then the pointer bump in each app).
    turn still pivots about — both apps had written that gate out by hand
    and two of the three had grown a host rider on it. `EditorExtension`
    gains `canvas?: CanvasHost` for the two installed RULES; the hooks and
-   `layers` are props (§4.1's row). Editor package 61 suites / 1,223
-   tests; engine 360 of 361 (`cameraRoll`'s host dependency, as before).
+   `layers` are props (§4.1's row). Editor package 61 suites / 1,226
+   tests after 5b.2's additions to the seam; engine 360 of 361
+   (`cameraRoll`'s host dependency, as before).
    The new suite is a made-up app with a DIAL (a scene node with a hidden
    record holding its needle's angle) and a PEG (a document's own thing
    that twists as a unit of one), the way `sessionHost.test` and
