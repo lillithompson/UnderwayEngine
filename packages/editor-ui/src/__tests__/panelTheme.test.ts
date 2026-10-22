@@ -7,6 +7,8 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
+  BG_EDITOR_CANVAS,
+  CANVAS_HAIRLINE,
   HEADER_BG,
   HEADER_INK,
   PANEL_BG,
@@ -167,5 +169,21 @@ describe('object-properties chrome matches the toolbar', () => {
         .toEqual([file, false]);
     }
     expect(/^export const SHEET_BG\b/m.test(read('effectBar.tsx'))).toBe(true);
+  });
+});
+
+describe('the canvas’s own two colours', () => {
+  it('the ground is lighter than ink and darker than a white page', () => {
+    // Not chrome: the surface the page sits on. A white page has to read as
+    // a sheet of paper ON something, so the ground is off-white rather than
+    // white — and it is the one value the shared canvas takes from here.
+    expect(BG_EDITOR_CANVAS).toBe('#efefef');
+    expect(BG_EDITOR_CANVAS).not.toBe('#ffffff');
+  });
+
+  it('the canvas hairline is struck from the same ink as the panel’s', () => {
+    // Both are the ink at a tenth, from the same ramp: a rule on the canvas
+    // and a rule in the chrome must not read as two different greys.
+    expect(CANVAS_HAIRLINE).toMatch(/^rgba\(36, ?37, ?42, ?0\.10\)$/);
   });
 });

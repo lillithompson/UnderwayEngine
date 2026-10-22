@@ -102,6 +102,23 @@ export const PANEL_SHEET_ROW_ACTIVE = 'rgba(42, 42, 42, 0.10)';
 // The device's bottom inset is added on top — see logic/panelLayout.ts.
 export const OBJECT_PANEL_HEIGHT = 61;
 
+// ── The canvas itself ──────────────────────────────────────────────────
+// Not chrome, but the ground the chrome stands on, and the only two values
+// of each app's own theme the shared canvas reads. Identical in all three
+// apps when the canvas moved here (stage 5b.3 of docs/shared-editor.md),
+// and kept beside the chrome's for the same reason the rest of this file
+// exists: one source of truth for the look, rather than one per app.
+
+/** The bare editor canvas behind the page — a shade darker than the page
+ *  itself, so a white page reads as a sheet of paper on a surface. (A
+ *  figure's solid volumes are baked against the PAGE's colour, not this
+ *  one, so they read a shade lighter than bare canvas.) */
+export const BG_EDITOR_CANVAS = '#efefef';
+
+/** 1 pt rules and borders — the page's own drop shadow ring, and every
+ *  hairline the canvas draws. */
+export const CANVAS_HAIRLINE = 'rgba(36,37,42,0.10)';
+
 // ── Modal surfaces (Facet AppModal / ViewModal) ──
 export const MODAL_BG = '#3f3f3f'; // Facet BG_RAISED_ALT
 export const MODAL_BORDER = '#1f1f1f'; // Facet BG_ELEVATED

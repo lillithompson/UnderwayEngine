@@ -1,3 +1,6 @@
+import { compSnapStep } from '@/engine/compositionCellMath';
+import { WORLD_CELLS } from './cameraMath';
+
 // The editable band of a page (CozyJournal's social_game_spec design note
 // §7.3, deleted there and read as prose — its CozyJournal.md says so): a
 // format that lets a turn draw in one part of the canvas alone —
@@ -39,4 +42,53 @@ export function bboxInRegion(
   if (box.cellX === undefined || box.cellWidth === undefined) return true;
   return box.cellX >= (region.xMin ?? -Infinity) - eps
     && box.cellX + box.cellWidth <= (region.xMax ?? Infinity) + eps;
+}
+
+// ── Where a turn CONNECTS on a dividing line ────────────────────────────
+// The band's edges are lines a stroke is meant to meet, so the grid points
+// on one are an affordance (the chrome draws them faintly — see
+// regionChromeScreen's `targets`) and a stroke's end is PULLED onto the
+// nearest one. Both are pure geometry over `(gridLevel, ys)` with nothing
+// of any format in them; CozyJournal's `creatureGeometry` had them, which
+// is the one format that has lines so far.
+
+/** How close (as a fraction of the grid step) a stroke's end must fall to
+ *  a dividing line to be pulled onto it. Wider than the tolerance a
+ *  CONNECTION is judged by, so the pull happens before the judgement. */
+export const MAGNET_REACH_FRAC = 0.4;
+
+/** The grid intersections of the line `y` across the page at `gridLevel`:
+ *  x = k · step over the page's width, both edges included. What the
+ *  chrome draws as faint targets, so where a stroke can END is on the
+ *  board before it is drawn. */
+export function lineGridPoints(gridLevel: number, y: number): [number, number][] {
+  const step = compSnapStep(gridLevel);
+  const out: [number, number][] = [];
+  for (let x = 0; x <= WORLD_CELLS + 1e-9; x += step) out.push([x, y]);
+  return out;
+}
+
+/**
+ * A point that reaches one of `ys` — within {@link MAGNET_REACH_FRAC} of
+ * the line — snapped onto that line at its NEAREST grid point: a stroke
+ * that starts or ends on a dividing line is pulled onto the point it
+ * connects at. Unchanged otherwise, and unchanged where there is no line
+ * to pull to. A band with a line on each side of it is why this takes a
+ * LIST.
+ *
+ * ANY x along the line snaps. It used to pull only an end already within
+ * the connection tolerance of a grid point, so a shape whose sides
+ * visibly met the dotted line between two grid points connected nothing,
+ * and the turn was refused with no sign of where it fell short.
+ */
+export function magnetToLines(
+  pt: [number, number], gridLevel: number, ys: readonly number[],
+): [number, number] {
+  const step = compSnapStep(gridLevel);
+  const reach = step * MAGNET_REACH_FRAC;
+  for (const y of ys) {
+    if (Math.abs(pt[1] - y) > reach) continue;
+    return [Math.round(pt[0] / step) * step, y];
+  }
+  return pt;
 }

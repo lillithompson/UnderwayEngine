@@ -1,11 +1,15 @@
-import { bboxInRegion, clampToRegion } from '../editableRegion';
+import {
+  MAGNET_REACH_FRAC, bboxInRegion, clampToRegion, lineGridPoints, magnetToLines,
+} from '../editableRegion';
+import { compSnapStep } from '@/engine/compositionCellMath';
 import { markerScreenPoints, midlineSegment, regionVeilPath } from '../regionChromeScreen';
 import { BASE_CELL_PX, WORLD_CELLS } from '../cameraMath';
 
 // The editable band (CozyJournal's docs/social_game_spec.md §7.3): the
-// clamp the draw and drag paths share, the bbox rule, and the screen-space
-// chrome. How an app's canvas and shell wire it up is pinned in that app's
-// own tree (docs/shared-editor.md §4.2 item 5).
+// clamp the draw and drag paths share, the bbox rule, the screen-space
+// chrome, and the magnet that pulls a stroke's end onto the dividing line
+// it is aimed at. How an app's canvas and shell wire it up is pinned in
+// that app's own tree (docs/shared-editor.md §4.2 item 5).
 
 /** The top band of a board 32 cells wide and 42 tall — bounded on all
  *  four sides, the way a Creature turn's band is (the real board is 8 ×
@@ -75,5 +79,50 @@ describe('the region chrome, screen space', () => {
     expect(midlineSegment(view, 21, t)).toEqual({ x1: 0, y1: 20 + 21 * BASE_CELL_PX * 2, x2: 400, y2: 20 + 21 * BASE_CELL_PX * 2, dashOffset: expect.any(Number) });
     expect(midlineSegment(view, 21, { ...t, translateY: -100000 })).toBeNull();
     expect(markerScreenPoints([{ x: 4, y: 21, met: false }], t)).toEqual([{ cx: 10 + 4 * BASE_CELL_PX * 2, cy: 20 + 21 * BASE_CELL_PX * 2 }]);
+  });
+});
+
+describe('the magnet onto a dividing line', () => {
+  // One grid level, one line across the middle of the page, and a band
+  // with a line on EACH side of it (a three-part game's middle part).
+  const LEVEL = 0;
+  const STEP = compSnapStep(LEVEL);
+  const MID = 21;
+  const UPPER = 14;
+  const LOWER = 28;
+
+  it('pulls a point within reach of a line onto its nearest grid point, and leaves others alone', () => {
+    const reach = STEP * MAGNET_REACH_FRAC;
+    expect(magnetToLines([4.1, MID + reach * 0.4], LEVEL, [MID])).toEqual([4, MID]);
+    // Within reach of the LINE is enough — a finger aims at the line, and
+    // the reach is wider than the tolerance a connection is judged by.
+    expect(magnetToLines([4.1, MID + reach * 0.9], LEVEL, [MID])).toEqual([4, MID]);
+    expect(magnetToLines([4.1, MID + reach * 1.5], LEVEL, [MID]))
+      .toEqual([4.1, MID + reach * 1.5]);
+    // ANY x along the line snaps to its nearest grid point: an end on the
+    // line BETWEEN two grid points used to connect nothing, and the turn
+    // was refused with no sign of where it fell short.
+    expect(magnetToLines([4.4, MID], LEVEL, [MID])).toEqual([4, MID]);
+    expect(magnetToLines([4.6, MID], LEVEL, [MID])).toEqual([5, MID]);
+    // A band with a line on each side pulls to whichever is near.
+    expect(magnetToLines([4.1, LOWER - reach * 0.4], LEVEL, [UPPER, LOWER])).toEqual([4, LOWER]);
+    expect(magnetToLines([4.1, UPPER + reach * 0.4], LEVEL, [UPPER, LOWER])).toEqual([4, UPPER]);
+    // …and nothing pulls where there is no line at all (the last part).
+    expect(magnetToLines([4.1, MID], LEVEL, [])).toEqual([4.1, MID]);
+  });
+
+  it('has no edge: a point off the page is pulled like any other', () => {
+    expect(magnetToLines([-4.1, MID], LEVEL, [MID])).toEqual([-4, MID]);
+    expect(magnetToLines([WORLD_CELLS + 4.1, MID], LEVEL, [MID]))
+      .toEqual([WORLD_CELLS + 4, MID]);
+  });
+
+  it('lineGridPoints: a line’s grid points across the page, both edges included', () => {
+    expect(lineGridPoints(0, MID).map((p) => p[0]))
+      .toEqual(Array.from({ length: WORLD_CELLS + 1 }, (_, i) => i));
+    expect(lineGridPoints(0, MID).every(([, y]) => y === MID)).toBe(true);
+    // The level sets the step, so a coarser grid offers fewer targets.
+    expect(lineGridPoints(1, MID)).toHaveLength(WORLD_CELLS / 2 + 1);
+    expect(lineGridPoints(-1, MID)).toHaveLength(WORLD_CELLS * 2 + 1);
   });
 });
