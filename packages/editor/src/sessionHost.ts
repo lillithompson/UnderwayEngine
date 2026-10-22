@@ -204,6 +204,20 @@ export interface HostNodeRules {
    *  game's given shape). The standard rules — a pattern's tile, a word
    *  sticker — are the session's own. */
   holdsAspect?(state: CompositionState, nodeId: string): boolean;
+  /**
+   * A node the host grows or shrinks BY BEING DRAGGED, as a factor about
+   * its own centre: `1` for no change, which is every node of every other
+   * kind. CozyJournal's word sticker is the case — carried into a
+   * template's mask it takes the size that mask's coverage asks for, so
+   * dropping a word into the narrow neck of a bottle lands it small
+   * rather than clipped.
+   *
+   * Measured against the PRE-move state at the drag's delta, because the
+   * node's own box and the delta are both expressed there. Asked per
+   * pointer move for the live preview and again for the commit
+   * (dragScale.ts), so it must be cheap and pure.
+   */
+  dragScale?(state: CompositionState, nodeId: string, dx: number, dy: number): number;
   /** A node whose colour lives off the object, or null for an ordinary
    *  one. */
   colorTarget?(state: CompositionState, nodeId: string): HostColorTarget | null;
