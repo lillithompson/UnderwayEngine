@@ -6794,6 +6794,16 @@ export function CanvasSurface({
   // node's group, not the node. Memoized per groups array: the render walk
   // below is per-node and must not re-walk an ancestor chain each time.
   const hiddenGroups = useMemo(() => hiddenGroupIds(state.groups), [state.groups]);
+  /** What this render is re-drawing through React rather than previewing
+   *  with an element transform (canvasHooks.ts `HostNodeLayerInput`): the
+   *  off-square poses and a live resize's target. A host that draws many
+   *  nodes as one element reads it to lift such a node back out for the
+   *  length of the gesture. */
+  const liveIds = useMemo(() => {
+    const ids = new Set<string>(livePose ? livePose.keys() : []);
+    if (liveResize) ids.add(liveResize.id);
+    return ids;
+  }, [livePose, liveResize]);
 
   // The view facts a host's own layer sizes itself from (canvasHooks.ts
   // `HostNodeLayerInput`): the zoom the page is drawn at, the device pixel
@@ -6850,6 +6860,8 @@ export function CanvasSurface({
       zoom: zoomScale,
       dpr,
       isBusy: isGestureBusy,
+      liveIds,
+      hiddenGroups,
     });
     if (hostLayer !== undefined) return hostLayer;
     // A veiled or hidden leaf draws nothing.

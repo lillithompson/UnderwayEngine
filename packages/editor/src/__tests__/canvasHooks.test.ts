@@ -331,14 +331,16 @@ describe('the host’s own DOM per scene node', () => {
   const LAYERS: CanvasLayers = {
     nodeLayer: (node) => {
       if (DIAL_ANGLE.has(node.id)) return 'dial' as unknown as never;
-      if (node.id.startsWith('absorbed')) return null;
+      // …unless the gesture is re-drawing it, which needs its own element.
+      if (node.id.startsWith('absorbed') && !node.liveIds.has(node.id)) return null;
       return undefined;
     },
   };
 
-  const input = (id: string) => ({
+  const input = (id: string, live: readonly string[] = []) => ({
     id, kind: 'svg' as const, node: {} as never, drawn: {} as never,
     strokeScale: 1, zoom: 1, dpr: 2, isBusy: () => false,
+    liveIds: new Set(live), hiddenGroups: new Set<string>(),
   });
 
   test('undefined is “none of mine”, null is “mine, and it draws nothing”', () => {
@@ -356,6 +358,16 @@ describe('the host’s own DOM per scene node', () => {
     expect(LAYERS.nodeLayer!(input('dial_1'))).toBeUndefined();
     DIAL_ANGLE.set('dial_1', 0);
     expect(LAYERS.nodeLayer!(input('dial_1'))).toBe('dial');
+  });
+
+  test('a node the gesture is RE-DRAWING is lifted back out of the one element', () => {
+    // `liveIds` is what this render previews through React rather than
+    // with an element transform — an off-square stretch, a live resize —
+    // and a node drawn as part of someone else's element has no element
+    // of its own for that re-draw to land on, so the host must give it one
+    // back for the length of the gesture.
+    expect(LAYERS.nodeLayer!(input('absorbed_1'))).toBeNull();
+    expect(LAYERS.nodeLayer!(input('absorbed_1', ['absorbed_1']))).toBeUndefined();
   });
 
   // The gesture side of that `null` (`previewStandIn`, the sixth widening,

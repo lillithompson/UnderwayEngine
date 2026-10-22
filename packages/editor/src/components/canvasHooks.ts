@@ -240,6 +240,24 @@ export interface HostNodeLayerInput {
   /** Is a gesture or a camera tween in flight? A host raster is never
    *  regenerated on those frames (Sol's architecture §9.2 rule 4). */
   isBusy(): boolean;
+  /**
+   * The nodes THIS RENDER is re-drawing through React because a gesture
+   * pulled them off square (a shear, a non-uniform stretch) or is resizing
+   * them — the one case the canvas cannot preview with an element
+   * transform, since a CSS transform sits above the element's own matrix.
+   *
+   * A host that draws several nodes as ONE element has to know: such a
+   * node needs its own element back for the length of the gesture, or the
+   * re-draw has nothing to land on (Sol's plant lifts a stamp being
+   * stretched out of its composite). Identity-stable across a render that
+   * changed neither, so a hook can memoize its own plan on it.
+   */
+  readonly liveIds: ReadonlySet<string>;
+  /** The groups the page is HIDING, their descendants included — by their
+   *  own flag or an ancestor's. A host drawing many nodes as one must
+   *  leave out the hidden ones, which the canvas would simply not draw.
+   *  Identity-stable the same way. */
+  readonly hiddenGroups: ReadonlySet<string>;
 }
 
 /**
