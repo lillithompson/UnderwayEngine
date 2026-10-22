@@ -609,6 +609,16 @@ describe('the surface’s half of the claim', () => {
       'layers?: CanvasLayers;',
       'surfaceHandle?: React.MutableRefObject<CanvasSurfaceHandle | null>;',
     ]) expect(SRC).toContain(prop);
+    // …and the two the GESTURE handlers read go through the props ref,
+    // which is the only way a handler created once sees a live prop. A
+    // seam prop declared but left out of it reads as absent at every call
+    // site, silently: `layers` was, and a host's composite went back to
+    // standing still under the finger.
+    const refs = SRC.match(/propsRef\.current = \{ ([^}]*)\}/);
+    expect(refs).not.toBeNull();
+    for (const name of ['inputLocked', 'onCanvasPointerDown', 'gestures', 'layers']) {
+      expect(refs![1].split(', ')).toContain(name);
+    }
   });
 
   test('a claim is offered only to a ONE-finger press, after the two-finger check', () => {
