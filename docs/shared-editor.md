@@ -1283,11 +1283,126 @@ first, then the pointer bump in each app).
    host dependency, as before). CozyJournal 646 / 10,625; Sol 280 / 3,417;
    DrawBot 531 / 9,236. The three ranges review at 75 / 74 / 70 KB (§5).
 
-   **6.2 to 6.6 — not started.** What 6.2 has to settle is recorded under
-   "Still open" below, because the measurement turned up one thing that is
-   not a consolidation question: every app's entry store is keyed
-   `'cozy:' / 'sol:' / 'drawbots:'`, and that prefix is the namespace of
-   the user's stored pages.
+   **6.2a — Done: the store's closed leaves** (engine 2c0b167 + 737aeeb,
+   CozyJournal 1db22403, Sol e523a77, DrawBot 027d95c; 2026-10-23). The four
+   files under each app's `web/store/` that carry no app data, plus the seam
+   the rest of the tree needs.
+
+   | What | Lines (Cozy) | Sol | DrawBot |
+   |---|---|---|---|
+   | `assetJanitor.ts` | 105 | 2 | 12 |
+   | `pageIds.ts` | 94 | 55 | 0 |
+   | `resetData.ts` | 27 | 6 | 4 |
+   | `pageIO.ts` | 20 | 0 | 0 |
+
+   The Sol and DrawBot columns are lines that DIFFER against CozyJournal's
+   copy, counted as §1's are. `pageIO.ts` was byte-identical in all three.
+   `resetData.ts`'s CODE was byte-identical in all three and only its
+   COMMENT differed, listing each app's key prefixes. `pageIds.ts` was
+   byte-identical in CozyJournal's and DrawBots'; Sol's 55 lines of
+   difference are not drift but ABSENCE — its copy is exactly the ULID half
+   of the other two under a different header, so Sol gains the page-NAME
+   half unused. `assetJanitor.ts` differed from CozyJournal's by a single
+   CHANGED line in Sol (the stamp's key — 2 by this table's both-sides
+   count) and by that line plus a sim-document sweep in DrawBots.
+
+   **The seam is one word, and it is the first in this plan that REFUSES
+   rather than defaults.** Every key all three apps write is
+   `<app>:<kind>[:<id>]` — entry, thumb, view, index, settings, homeState,
+   assetSweep, and each app's own besides — so `store/storeKeys.ts` holds
+   the shape and the app installs the word (`registerStoreNamespace`, from
+   its own `web/store/storeNamespace.ts`, one spelling per app). Every other
+   seam in this plan falls back when nothing is installed: no font pack
+   means the system stack, no session host means no host ops, no outline
+   host means no host rows. This one throws. The reason is the asymmetry of
+   the failure — a wrong font family shows the system face for a moment,
+   a wrong namespace writes a page where nothing will ever look for it
+   again — and the install is at module scope, so the throw is a boot-time
+   failure or nothing at all. `registerStoreNamespace` also refuses anything
+   but a bare lowercase word, because a namespace with a colon in it would
+   re-shape every key built from it (`a:b:entry:x` reads as namespace `a` to
+   anything scanning a prefix).
+
+   It is worth putting beside 6.1's opposite call. `PACK_FONTS_STYLE_ID` was
+   three spellings of a private DOM id and collapsed to ONE constant;
+   `ENTRY_PREFIX` is three spellings of a persisted namespace and collapses
+   to a SEAM. The test is not how alike the three values are — both were one
+   line — but whether anything outside the process has a copy of it. A
+   `<style>` element lives as long as the page; a key lives as long as the
+   user's data.
+
+   A second seam on the janitor, `registerExtraSweep`: an app's own
+   leftovers of the same kind ride the same once-a-day schedule rather than
+   keeping a second stamp beside it. DrawBots' `sweepOrphanSimDocuments` is
+   the only caller, it runs FIRST, and a failure in it does not cost the
+   blob sweep its day. The stamp's key is read through the namespace at each
+   use rather than captured into a module constant, because the install and
+   this module's load are both module-scope effects and their order is the
+   bundler's.
+
+   `PAGE_ID_PREFIX` and `isPageId` came with `pageIds.ts` out of each app's
+   `web/store/types.ts`: `newPageId` is what spells the prefix and the two
+   cannot be allowed to disagree. Each app's `types.ts` re-exports them —
+   the `SYSTEM_FAMILY_STACK` move of 5a, for the same reason.
+
+   **No wrappers for `pageIO` and `resetData`, and the rule is worth
+   stating**, because 6.1 kept two. A wrapper earns its place by holding app
+   DATA — 6.1's hold the font pack and the face reader — not by sparing an
+   import re-point. `PAGE_IO` is a constant and `resetJournalData` a
+   four-line function, so their 50 importers across the three apps
+   (`PAGE_IO` 15 / 10 / 14, `resetJournalData` 5 / 3 / 3) moved instead, and
+   no tree keeps a stub. `assetJanitor.ts` stays as a
+   wrapper in all three because it has data: the namespace, and DrawBots'
+   sweep.
+
+   Two findings, both from an app rather than from the engine:
+
+   · `ExtraSweep` was declared `() => Promise<void>` and DrawBots'
+     `sweepOrphanSimDocuments` answers a `SimSweepResult`, so that app's
+     TYPECHECK refused it — the gate that sees a seam's signature at all, as
+     5a's dropped `forwardArrow` export was. It takes `Promise<unknown>`
+     now, which is the honest shape (the module awaits and discards), and a
+     case installing a reporting sweep pins it so narrowing it back fails
+     this package's compile.
+   · `collagePageId` has ZERO uses in DrawBots outside its own file — it
+     derives a week's collage page name and that app has no collages — and
+     its copy was byte-identical to CozyJournal's, which uses it at 14
+     sites. The move turns a dead copy into one shared implementation
+     rather than two; DrawBots now ships it unused, the arrangement 5a made
+     for the six canvas leaves Sol ships without a tool for. Left as it is,
+     and recorded, which is what 5b.4 did with `maskWordScale`.
+
+   Suites: `storeKeys.test` (12 cases) and `pageIds.test` (12) are new, and
+   **`pageIds.ts` had no suite of its own in any of the three apps** — its
+   ULID rules were covered only incidentally through `entryStore`'s and
+   `homeState`'s tests, so the one that matters most (within a millisecond
+   the random tail is INCREMENTED, not re-rolled, or an index scan hands two
+   pages back swapped) could have been tidied away with everything green.
+   `assetJanitor.test`'s behaviour half moved here, driven over a made-up
+   namespace, with six new cases over the two seams; each app keeps the
+   wiring half, which is a fact about its own screens.
+
+   One trap paid out in all three apps, and it is on §4.3's list:
+   `afterReady.test.ts` pinned `'void sweepIfDue();'` inside
+   `web/store/assetJanitor.ts` — the line that MOVED — so each app reads the
+   package's copy through `editorSource('store', 'assetJanitor.ts')` now.
+   Sol's `check:doc-paths` caught four stale paths its codebase map named,
+   which is the half of the doc sweep a machine can do.
+
+   `packages/editor/src/store/` is a new subdirectory rather than five more
+   files at a package root that has eighty; suites stay flat in
+   `src/__tests__/`, as `components/`' already do.
+
+   Editor package 119 suites / 2,126 tests; engine 373 of 374 (cameraRoll's
+   host dependency, as before). CozyJournal 650 / 10,653; Sol 281 / 3,420;
+   DrawBot 535 / 9,270. The three ranges, 6.1 and 6.2a together, review at
+   146 / 150 / 144 KB (§5).
+
+   **6.2b to 6.6 — not started.** What is left of the store is the big half:
+   `entryStore.ts` (42 declarations in all three apps, 549 / 479 / 535 lines,
+   a large share byte-identical), the shared half of `types.ts`, and
+   `homeState.ts`. The namespace seam they need is built; `deleteJournalPage`
+   and `dates`/`streaks` are each app's own and stay.
 7. **Property pages for the apps' kinds, all the way.** CozyJournal's rig
    pages (`rigEdit.ts`, `RigJointsBar`, `RigPoseBar`, `RigColorBar`), which
    this repo's editor-ui still carries, become CozyJournal host pages; the
@@ -1717,18 +1832,6 @@ Still open:
   shell. An agent should not decide which, because the second shrinks the
   stage as written.
 
-- **The entry store's key namespace, before 6.2 moves anything** (raised at
-  6.0, 2026-10-23). `entryStore.ts` is 42 declarations in all three apps
-  (549 / 479 / 535 lines) and a large share of them are byte-identical, so
-  it is a good mover. But its keys are `ENTRY_PREFIX = 'cozy:entry:'` /
-  `'sol:entry:'` / `'drawbots:entry:'`, and the same for the index and the
-  settings — the namespace every page an installed app has ever saved lives
-  under. Unlike `PACK_FONTS_STYLE_ID`, which 6.1 collapsed to one constant
-  because nothing persisted it, this one must stay per app and ride in as
-  DATA: a package that hardcoded one prefix would orphan every stored page
-  on two of the three apps. Recorded here rather than left as a thing to
-  notice while moving 549 lines.
-
 - **The push brush on DrawBots' bar.** Stage 5b put the gesture in the
   canvas DrawBot draws on and left the app-side `DRAWBOT_PAINT_MODES`
   filter standing, so nothing but that one line holds it off (§4.3).
@@ -1854,6 +1957,14 @@ reviewer's prompt and prints it without starting a reviewer; that is the
 way to get this number before the ship pass rather than after it, and it
 is worth doing per sub-stage from here on, because 6.5 is the range that
 may not fit and the earlier numbers say nothing about it.
+
+**With 6.2a on top** the three ranges are **146 / 150 / 144 KB** — still a
+sixth of what a stage-3 range passed at, for two sub-stages and about
+1,000 lines moved. Worth noting WHY these stay so small when stage 3's
+exploded: a range that moves a file the engine adds and the app deletes
+folds to the delta between them, and both sub-stages so far are almost
+entirely that. 6.5's range will hold the same kind of move for a
+10,000-line file, which is the one that has never been tried.
 
 Two things the first wiring taught: `git reset --hard` in a clone with
 `submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
