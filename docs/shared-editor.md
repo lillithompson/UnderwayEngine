@@ -1451,10 +1451,55 @@ first, then the pointer bump in each app).
    name (Sol's did). It is inert in that app, which installs `nodes` and no
    `items`.
 
+   **Round 1 of Sol's and DrawBots' reviews** found three more things, and
+   two of them are the SAME overclaim a third and fourth time — which is the
+   part of this sub-stage worth carrying forward, more than anything that
+   moved:
+
+   · **The janitor's behaviour suite was COPIED into the package, not
+     moved, in two of the three apps.** CozyJournal's was trimmed at round 1;
+     Sol's and DrawBots' were left whole, byte-for-byte identical to the new
+     engine suite and exercising the package's module through a four-line
+     re-export — so they passed whatever those apps did. The record above
+     said "`assetJanitor.test`'s behaviour half moved here … each app keeps
+     the wiring half" while that was true of one app in three. It is true of
+     all three now. DrawBots keeps two cases besides the wiring, and they
+     earn it: they drive the REAL `sweepOrphanSimDocuments` through that
+     app's wrapper, where this package's suite drives a stand-in.
+   · **The namespace pin went through three versions before it held what it
+     claimed.** Round 1 named eleven constants by hand; the word is in 54
+     declarations across 14 files in CozyJournal, 19 across 9 in Sol, 32
+     across 12 in DrawBots. The second version scanned, but anchored
+     `^const `, so every `export const` escaped it silently — Sol's reviewer
+     found `homeStateDelta.ts`'s persisted image prefix sitting outside a pin
+     whose own comment said it covered everything. **The lesson is not "count
+     more carefully": it is that a pin must DERIVE its scope rather than
+     assert it.** All three now walk the trees, collect every file declaring
+     a namespaced constant in any form, and fail if that set differs from the
+     list they hold — so a new file keying under the namespace is a loud
+     failure instead of a gap. Each was verified both ways: rename the word
+     and most cases fail; add a file using it and the completeness case names
+     it.
+   · A fourth stale comment of the same kind as round 1's six
+     (`entryStore.ts`'s "Ids … live in `./pageIds`"), in all three apps.
+     Round 1's own sweep grepped `web/store/pageIds` and missed the RELATIVE
+     form, which is worth saying plainly: a sweep is only as wide as the
+     spelling it greps for.
+
+   And one finding of the plan's own kind, where a file's comment turned out
+   to be load-bearing. Both reviews asked for the duplicated
+   `Asset.fromModule` lookup to become one helper. Putting it on `faces.ts`
+   broke `fontRoster.test.ts` in every app — jest cannot parse expo-asset's
+   ESM unmocked, and that suite wants the FACE table ALONE — which is exactly
+   what the comment at the top of `faces.ts` says the module is
+   dependency-free FOR. The helper is `web/fonts/faceAsset.ts`, its own
+   module, and its header records why it is not a method on the table. A
+   file that explains its own shape is worth reading before changing it.
+
    Editor package 119 suites / 2,129 tests; engine 373 of 374 (cameraRoll's
-   host dependency, as before). CozyJournal 650 / 10,658; Sol 281 / 3,423;
-   DrawBot 535 / 9,275. The three ranges, 6.1 and 6.2a together, review at
-   146 / 150 / 144 KB before the fixes (§5).
+   host dependency, as before). CozyJournal 650 / 10,660; Sol 281 / 3,417;
+   DrawBot 535 / 9,271. The three ranges, 6.1 and 6.2a together, reviewed at
+   202 / 178 / 174 KB with the first round of fixes on them (§5).
 
    **6.2b to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
    rule is to measure before planning, and the measurement makes 6.2b a
