@@ -20,7 +20,8 @@ is the engine's; the apps' codebase maps (`Sol.md`, `DrawBots.md`,
 ## 1. Measured, 2026-10-20
 
 Per-file comparison of the three `web/` trees (CRLF-insensitive), before
-the work below:
+the work below. Source files only — `__tests__` and `__mocks__` are left
+out, which is what makes the file counts reproducible:
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
@@ -30,6 +31,30 @@ the work below:
 | `web/store/` | 14 | 8 | 1 | 1.1 k / 1.7 k / 3.6 k |
 | `web/fonts/` | 8 | 8 | 5 | 0.7 k each |
 
+And the same trees NOW (re-measured 2026-10-23, at the start of stage 6
+and again after 6.1), so the table above stays the baseline it says it is
+rather than being overwritten:
+
+| Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
+|---|---|---|---|---|
+| `web/editor/` (incl. `components/`) | 111 | 38 | 4 | 12.2 k / 17.9 k / 25.9 k |
+| `web/editorUi/` | — | — | — | retired at stage 1 |
+| `web/formats/` | 53 | 7 | 1 | 1.2 k / 3.9 k / 16.8 k |
+| `web/store/` | 14 | 8 | 1 | 1.1 k / 1.7 k / 3.6 k |
+| `web/fonts/` | 5 | 4 | 0 | 181 / 230 / 203 |
+
+Four rows' worth of reading, and the fourth is the one that matters for
+this stage. `web/editor/` has lost 82 of its 193 files and two thirds of
+its lines — stages 1 to 5 — and what is LEFT is the drifted part: only 4
+of the 111 files are still identical in all three apps, against 57 of 193
+before. The consolidation has taken the easy files; the shell is most of
+the rest. `web/formats/` and `web/store/` have not moved at all, which is
+why stage 6 begins with them (item 6). `web/fonts/` is the shape every
+tree ends up in: five files, none identical, because after 6.1 each app
+keeps only the two files that are its own DATA plus two thin wrappers over
+the package — a tree whose files all differ because nothing generic is
+left in it.
+
 The drift is concentrated in a few large files. Lines that differ against
 CozyJournal's copy (the canvas and node-layer rows re-measured 2026-10-21,
 before stage 5a: stage 4 had touched both since this table was first taken,
@@ -37,10 +62,10 @@ and `NodeLayer.tsx` was no longer identical in DrawBot):
 
 | File | Sol | DrawBot | Cozy | Sol vs Cozy | DrawBot vs Cozy |
 |---|---|---|---|---|---|
-| `EditorShell.tsx` | 8,232 | 9,357 | 10,682 | 3,978 | 2,723 |
+| `EditorShell.tsx` (re-measured 2026-10-23, stage 6.0) | 7,494 | 8,589 | 10,077 | 4,235 | 3,240 |
 | `components/CanvasSurface.tsx` (MOVED, stage 5b — the package's, in CozyJournal's version with both other apps' generic additions adopted) | 5,939 | 6,774 | 7,104 | 1,737 | 1,042 |
 | `editorSession.ts` | 6,989 | 7,709 | 7,206 | 399 | 889 |
-| `EditorHost.tsx` | 359 | 560 | 1,429 | 1,276 | 1,333 |
+| `EditorHost.tsx` (re-measured 2026-10-23, stage 6.0) | 362 | 563 | 1,429 | 1,279 | 1,336 |
 | `entryRaster.ts` | 373 | 227 | 905 | 794 | 858 |
 | `importEntryTile.ts` | 262 | 379 | 432 | 310 | 417 |
 | `components/toolbarMeta.ts` | 932 | 1,001 | 1,006 | 126 | 39 |
@@ -51,6 +76,17 @@ engine, editor-ui, the shell and each other; the other 23 are identical
 leaves that import a drifted file (`cameraMath`, `drawnPose`, `paintBrush`,
 `editorSession`, `sliderModeMenu`, `toolbarMeta`, `activeColor`,
 `NodeLayer`) and move only when it does.
+
+**The two re-measured rows went UP while the files shrank, and that is a
+warning about the measure rather than news about the drift** (stage 6.0,
+2026-10-23). `EditorShell.tsx` lost 605 to 768 lines to stage 5 and its
+drift against CozyJournal rose from 3,978 / 2,723 to 4,235 / 3,240: what
+stage 5 removed was the canvas's share, which was *identical*, so the
+remainder is a more drifted file than the whole was. A whole-file diff
+count measures how much of a file is shared only if the file is one thing.
+The shell is not, and §4.2 item 6 records what it is instead — 89 % of each
+app's shell appears VERBATIM in CozyJournal's, in runs up to 730 lines,
+which is the number that decides whether it can move.
 
 ## 2. Shared now
 
@@ -1060,11 +1096,198 @@ first, then the pointer bump in each app).
    canvas, a node layer or a canvas leaf of its own. What stage 6 inherits
    from it is in §4.3's closing note.
 
-6. **Shell and host.** `EditorShell.tsx` and `EditorHost.tsx` as the
-   package's screen, taking `config`, `extension` and the app's store
-   adapter; `web/formats/types.ts`'s common `EditorConfig`, `web/fonts/*`
-   and the shared half of `web/store/*` move with them. Each app's
-   `web/editor/` is then its extension alone.
+6. **Shell and host — IN PROGRESS** (2026-10-23). `EditorShell.tsx` and
+   `EditorHost.tsx` as the package's screen, taking `config`, `extension`
+   and the app's store adapter; `web/formats/types.ts`'s common
+   `EditorConfig`, `web/fonts/*` and the shared half of `web/store/*` move
+   with them. Each app's `web/editor/` is then its extension alone.
+
+   **6.0 — Done: measured** (2026-10-23). Three findings, and two of them
+   changed the order of the rest.
+
+   | | Cozy | Sol | DrawBot |
+   |---|---|---|---|
+   | `EditorShell.tsx` | 10,077 | 7,494 | 8,589 |
+   | whole-file drift vs Cozy | — | 4,235 | 3,240 |
+   | **verbatim in Cozy, in runs of 3+ lines** | — | **87 %** | **89 %** |
+   | longest shared runs | — | 372, 346, 337 | 730, 503, 388 |
+   | `EditorHost.tsx` | 1,429 | 362 | 563 |
+   | **verbatim in Cozy, in runs of 3+ lines** | — | **58 %** | **45 %** |
+   | longest shared runs | — | 33, 13, 13 | 22, 18, 15 |
+
+   **The shell moves; the whole-file drift was reading it wrong.** 89 % of
+   DrawBot's shell and 87 % of Sol's is byte-identical text in CozyJournal's,
+   in long runs. Cut at its own section comments the file is 36 sections,
+   and the drift sorts cleanly: the ten BAR-HANDLER sections are 1,635 lines
+   drifting by **56 (Sol) / 40 (DrawBot)**, with THREE of the ten —
+   the Stroke bar (156 lines), the Fill bar (51) and the eyedropper
+   arm-and-commit (45) — byte-identical in all three apps, and seven of
+   the ten the same LENGTH in all three to the line. What
+   genuinely differs is the preamble (691 / 524, almost all imports), the
+   JSX render tree (737 / 748), the commit pipeline (176 / 172 of 174
+   lines — the app's own, as designed), the boot, and the sections only one
+   app has (CozyJournal's rig sliders and social turn, Sol's cycle and
+   reveal, DrawBot's transport).
+
+   **The bar handlers do NOT move first, and §4.3 already said why.** The
+   handover for this stage suggested taking them first, as the biggest
+   identical block. §4.3's stage-4 decision argues the opposite — they are
+   `useCallback`s over the shell's own commit pipeline, so moving them
+   alone means inventing a context object of some fifty members and
+   threading it through, which stage 6 would then delete — and the
+   measurement only sharpens that: there is no seam-shaped boundary around
+   them, and at 1,635 lines they would be paid for twice in review. They
+   ride inside the shell, for free, when it moves.
+
+   **The foundations are a PREREQUISITE, not a tail.** The suggested order
+   put `web/formats/types.ts`, `web/fonts/*` and `web/store/*` last. The
+   shell's distinct app-side import specifiers are **29 (Cozy) / 46 (Sol) /
+   33 (DrawBot)** — against the canvas's NINE at 5b.3 — and they cluster
+   into exactly those trees: `@/web/store/*` (8 / 6 / 7), `@/web/formats/*`
+   (13 / 3 / 5), `@/web/fonts/*` (3 each), `@/components/*` (8 / 5 / 5, the
+   bridge schema, the theme, the open trace) and `@/native-shell/bridge/
+   webBridge` (1 each), plus each app's own trees (1 / 29 / 14 — Sol's shell
+   imports twenty-nine of its own modules). A package file cannot import
+   `@/web/store/entryStore`, so those clusters have to become seams BEFORE
+   the shell can move, not after. Left last, the shell move is blocked on
+   them.
+
+   So the order is foundations first, most closed first: **6.1** the fonts,
+   **6.2** the store adapter, **6.3** the common `EditorConfig`, **6.4** the
+   host bridge, **6.5** the shell with the bar handlers inside it, **6.6**
+   the host.
+
+   **`EditorHost.tsx` is not one file three times over** — and this is the
+   one the handover had wrong, not stale. It read the 1,429 / 362 / 563 as
+   "the drift is nearly all in one app". It is not drift: only **FIVE
+   top-level declarations exist in all three**, four of them trivial
+   (`ActionScreen` 8 / 4 / 11, `ResolvedRoute` 7 / 8 / 10,
+   `OpeningPlaceholder` 10 / 9 / 9, and the imports), and the fifth is
+   `EditorHost` itself at 812 / 267 / 381 lines with 685 / 745 diff-lines.
+   The longest run of shared text in the whole file is 33 lines, against the
+   shell's 730. The three hosts are three ROUTE TABLES that share a
+   skeleton: CozyJournal's extra thousand lines are `openGlyph`,
+   `openRedline`, `openSocialTurn`, `takePageForks` and `takePageNames`;
+   DrawBot's are `pushFormats` and its salvage channel; Sol's is
+   `canvasIssue` and its strain routes. What is actually common is a
+   ~200-line state machine — resolve the query, let a `NAVIGATE_TO` override
+   it, hold at the placeholder while warm, mint a multi-file page once per
+   session, clear the action screens, mount the shell. **An owner's call is
+   open on it** (see "Still open"): the stage as written says the host
+   becomes the package's screen, and the measurement says only its state
+   machine can.
+
+   **6.1 — Done: the fonts** (engine 5c457ae, CozyJournal b874b708, Sol
+   ecc0172, DrawBot 76bae3f; 2026-10-23). Five of the seven files under
+   each app's `web/fonts/` are the package's, and the drift between the
+   three copies was ONE line.
+
+   | What | Lines (Cozy) | Sol | DrawBot |
+   |---|---|---|---|
+   | `domTextMeasurer.ts` | 182 | 0 | 0 |
+   | `loadPackFonts.ts` | 155 | 1 | 1 |
+   | `glyphInk.ts` | 140 | 1 | 2 |
+   | `settleFaces.ts` | 75 | 0 | 0 |
+   | `exportFonts.ts` | 71 | 0 | 0 |
+   | `registerFonts.ts` (STAYS) | 82 | 1 | 8 |
+   | `faces.ts` (STAYS) | 36 | 15 | 0 |
+
+   The Sol and DrawBot columns are lines that DIFFER against CozyJournal's
+   copy, counted as §1's are. The one line in `loadPackFonts.ts` is
+   `PACK_FONTS_STYLE_ID`, the id of the `<style>` element the `@font-face`
+   rules live under — `cozy-` / `sol-` / `drawbots-pack-fonts`. It is one
+   constant now, `underway-pack-fonts`: its only job is to stop a second
+   module instance adding a second copy of the rules, there is one app per
+   page, and nothing outside that module names it (checked — three uses,
+   all inside the file, plus its own suite). `glyphInk.ts`'s difference was
+   a `export type { GlyphInkFn }` re-export line.
+
+   What stays each app's is its DATA and the one thing that needs its
+   bundler: `faces.ts` (the `FACE` require table — Sol ships three families
+   where the other two ship twenty) and `registerFonts.ts` (the pack list
+   and the `fontFamilyFor` resolver, which 5a had already settled as the
+   app's because a pack is not a table the package can read). DrawBot's
+   list lives at `web/fonts/fonts.json` rather than `assets/packs/`, having
+   no content packs — the one structural difference between the three.
+
+   Two seams, both the shape of 5a's `registerFontFamily`:
+
+   · `FontPack` (`loadPackFonts.ts`) — `fonts`, `faceUri(fontId)` and
+     `fontFamilyFor`, handed in as a PARAMETER rather than installed at
+     module scope, because the load is one boot-time call with one caller.
+     `faceUri` answers a STRING, not an asset module: resolving one needs
+     `Asset.fromModule` (expo-asset), and keeping that in the app is what
+     lets `packages/editor` stay free of expo. A suite pins that the file
+     imports neither expo-font nor expo-asset.
+   · `registerFaceFetch` (`exportFonts.ts`) — the app's face READER,
+     installed at module scope, because `registerExportFonts()` is called
+     with no arguments from nine sites in five of CozyJournal's modules and
+     `entryRaster` runs with no editor mounted at all. The cache, the
+     concurrent-export dedupe and the engine wiring are shared, so the
+     three apps hold one answer to "has this face already been read?".
+
+   `domTextMeasurer` now reads the family through `fontFamily.ts`'s
+   installed probe instead of the app's `registerFonts` directly, which is
+   the one behaviour-relevant change in the sub-stage. Verified against the
+   code rather than reasoned from the signatures (§4.2 item 5's lesson): in
+   all three apps `registerTextMeasurer(domTextMeasurer)` has exactly ONE
+   call site, eight lines above `registerFontFamily(fontFamilyFor)` in the
+   same synchronous function, with nothing between them that lays text out —
+   so no measurement can see the gap. A suite pins that ordering by
+   position.
+
+   Each app keeps two thin wrappers (`loadPackFonts.ts` → its `FontPack`,
+   `exportFonts.ts` → its reader) with their export NAMES and signatures
+   unchanged, which is what made this sub-stage cheap: the three shells'
+   `loadPackFonts()`, the eleven modules that call `registerExportFonts()`
+   and the twelve suites that `jest.mock` either path (5 / 4 / 3) are
+   untouched.
+   The one re-point is `colorBrushPixelAccurate.test.ts`'s glyph-ink import
+   in each app.
+
+   Suites split as stages 3 to 5 split theirs. `settleFaces.test` (62 lines,
+   identical in all three) moved whole; `domTextMeasurer.test`,
+   `loadPackFonts.test` and `exportFonts.test` have their behaviour halves
+   here, driven over a made-up pack and a made-up face reader the way
+   `sessionHost.test` and `panelModel.test` drive their seams — every member
+   of `FontPack` is USED, so dropping one fails the suite's compile. What
+   each app keeps is sharper than what left it: that every font its pack
+   offers resolves to a URI (the roster test holds `fonts.json` and
+   `faces.ts` to each other; this holds the RESOLVED uri, which is what
+   actually becomes a rule), that its own families measure under their own
+   CSS names, that the pack reaches the package's registry at all, and that
+   its shell awaits the install before it builds the session.
+
+   **One trap paid out, and it is on §4.3's list.** That last pin reads the
+   shell for `createEditorSession(` in CozyJournal — and Sol's shell calls
+   `createSolSession(` and DrawBot's `createSimSession(`, each app naming
+   its own constructor because `TOps` has nothing to infer from (item 3).
+   Copied verbatim the pin would have FAILED rather than held, which is the
+   benign direction; the same pin written as `indexOf(...) > -1` would have
+   passed vacuously in two apps.
+
+   One dead import fell out, caught by this repo's stricter
+   `noUnusedLocals` and invisible in the apps, as two did at 5a: an unused
+   `TextStyle` in `glyphInk.ts`.
+
+   **Left for later, and deliberate:** `faceUri` and `fetchFaceBase64` are
+   ~18 lines of `Asset.fromModule` glue duplicated in all three apps. That
+   is the price of keeping expo out of `packages/editor`, and it is the same
+   call 5a made for `registerFonts`. The engine does already import
+   expo-asset once (`packages/engine/src/loadTile.ts`), so the boundary is
+   the editor package's rather than the repo's — if the owner would rather
+   pay the dependency, the two helpers collapse into `FontPack` and the
+   seam becomes an asset-module lookup again.
+
+   Editor package 116 suites / 2,094 tests; engine 370 of 371 (cameraRoll's
+   host dependency, as before). CozyJournal 646 / 10,625; Sol 280 / 3,417;
+   DrawBot 531 / 9,236. The three ranges review at 75 / 74 / 70 KB (§5).
+
+   **6.2 to 6.6 — not started.** What 6.2 has to settle is recorded under
+   "Still open" below, because the measurement turned up one thing that is
+   not a consolidation question: every app's entry store is keyed
+   `'cozy:' / 'sol:' / 'drawbots:'`, and that prefix is the namespace of
+   the user's stored pages.
 7. **Property pages for the apps' kinds, all the way.** CozyJournal's rig
    pages (`rigEdit.ts`, `RigJointsBar`, `RigPoseBar`, `RigColorBar`), which
    this repo's editor-ui still carries, become CozyJournal host pages; the
@@ -1457,18 +1680,54 @@ Settled by the owner, 2026-10-20:
   `onHostPlace` is the one §4.3 already names as becoming an extension
   member there.
 
-  THE ONE THING THE CANVAS COULD NOT TAKE is `EditorShell.tsx`'s 1,670
-  lines of bar HANDLERS (§4.2 item 4): 95 % identical across the apps,
-  every one a `useCallback` over the shell's own commit pipeline. The
-  canvas's move is the argument that they will fold too — the fear each
-  time was the pin churn and the review size, and stage 5b's three ranges
-  came in at 492–498 KB against the 890 KB a stage-3 range passed at — but
-  the shell is 10,682 lines against the canvas's 7,104 and it is the first
-  mover whose range may genuinely not fit. §5's named next step (a pointer
-  bump whose engine range is already reviewed treated as cleared) is for
-  that stage and no earlier one.
+  THE ONE THING THE CANVAS COULD NOT TAKE is `EditorShell.tsx`'s bar
+  HANDLERS (§4.2 item 4): 95 % identical across the apps, every one a
+  `useCallback` over the shell's own commit pipeline. The canvas's move is
+  the argument that they will fold too — the fear each time was the pin
+  churn and the review size, and stage 5b's three ranges came in at
+  492–498 KB against the 890 KB a stage-3 range passed at — but the shell
+  is the biggest file left and the first mover whose range may genuinely
+  not fit. §5's named next step (a pointer bump whose engine range is
+  already reviewed treated as cleared) is for that stage and no earlier
+  one.
+
+  Stage 6.0 measured both numbers in this paragraph and they hold: the
+  handlers are 1,635 lines today (1,670 when item 4 counted them, before
+  stage 5 took the canvas's share) and they drift by 56 / 40, which is the
+  95 % stated as a count. The shell is 10,077 lines, not 10,682, for the
+  same reason. Where 6.0 DIFFERS from this note is the order: it reads
+  "they will fold too" as an argument for taking them WITH the shell rather
+  than ahead of it, which is what §4.2 item 4 itself concluded — see item 6.
 
 Still open:
+
+- **Whether `EditorHost.tsx` becomes the package's screen at all** (raised
+  at 6.0, 2026-10-23). Item 6 says it does. The measurement says the three
+  hosts are not one drifted file but three ROUTE TABLES sharing a skeleton:
+  five top-level declarations in all three, four of them trivial, the fifth
+  `EditorHost` itself at 812 / 267 / 381 lines with 685 / 745 diff-lines
+  and a longest shared run of 33 lines (the shell's is 730). The ~200-line
+  state machine inside it IS shared and can move — resolve the query, let a
+  `NAVIGATE_TO` override it, hold at the placeholder while warm, mint a
+  multi-file page once per session, clear the action screens, mount the
+  shell. Each app's ACTIONS cannot: they open that app's own kinds of page.
+  So the choices are to move the state machine and leave each app a route
+  table over it (which is a real consolidation of about 200 lines three
+  times over), or to leave the host alone and let the stage end at the
+  shell. An agent should not decide which, because the second shrinks the
+  stage as written.
+
+- **The entry store's key namespace, before 6.2 moves anything** (raised at
+  6.0, 2026-10-23). `entryStore.ts` is 42 declarations in all three apps
+  (549 / 479 / 535 lines) and a large share of them are byte-identical, so
+  it is a good mover. But its keys are `ENTRY_PREFIX = 'cozy:entry:'` /
+  `'sol:entry:'` / `'drawbots:entry:'`, and the same for the index and the
+  settings — the namespace every page an installed app has ever saved lives
+  under. Unlike `PACK_FONTS_STYLE_ID`, which 6.1 collapsed to one constant
+  because nothing persisted it, this one must stay per app and ride in as
+  DATA: a package that hardcoded one prefix would orphan every stored page
+  on two of the three apps. Recorded here rather than left as a thing to
+  notice while moving 549 lines.
 
 - **The push brush on DrawBots' bar.** Stage 5b put the gesture in the
   canvas DrawBot draws on and left the app-side `DRAWBOT_PAINT_MODES`
@@ -1582,9 +1841,19 @@ moved file folded with it.
 
 So the next process step — a pointer bump whose engine range is already
 reviewed treated as cleared — is STILL not forced, by any part of stage 5,
-and neither 5a nor 5b touched `tooling/`. Stage 6 (`EditorShell`, 10,682
+and neither 5a nor 5b touched `tooling/`. Stage 6 (`EditorShell`, 10,077
 lines, and `EditorHost`) is where it may be; it is the one file left that
 is bigger than the canvas was.
+
+**Stage 6.1 is nowhere near it** (2026-10-23): CozyJournal's range measures
+**75 KB**, Sol's **74** and DrawBot's **70**, against the 890 KB a stage-3
+range passed at — the smallest ranges any stage of this plan has produced,
+because the sub-stage moves 623 lines and the move folding shows each file
+once. Measured with `review.js pending --prompt | wc -c`, which builds the
+reviewer's prompt and prints it without starting a reviewer; that is the
+way to get this number before the ship pass rather than after it, and it
+is worth doing per sub-stage from here on, because 6.5 is the range that
+may not fit and the earlier numbers say nothing about it.
 
 Two things the first wiring taught: `git reset --hard` in a clone with
 `submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
