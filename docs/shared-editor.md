@@ -1559,11 +1559,17 @@ first, then the pointer bump in each app).
    named, not how many the sentence claims. The round-3 fix had removed the
    count from the other two apps and missed this one, because this app spells
    it in words where they spelled it as a numeral, and a sweep for "four
-   files" does not find "two files and two thin wrappers". So the counts are
-   gone from all three maps and from all three namespace paragraphs, rather
-   than corrected a fourth time: a sentence that says "what stays here is
-   this app's own, under `web/fonts/`" cannot go stale, and the guard holds
-   the list under it. The guard also asserts the QUALIFIED path now
+   files" does not find "two files and two thin wrappers". So the counts came
+   out of the maps and the namespace paragraphs rather than being corrected a
+   fourth time — though not in one pass: Sol's round-3 review found §4.1 of
+   `Sol.md` carrying three numerals in the same paragraph as the sentence
+   "No count here on purpose", two of them ADDED by the commit that wrote
+   that sentence, which is this failure's purest form. A claim about counts
+   is itself a count.
+
+   The shape to keep: a sentence that says "what stays here is this app's
+   own, under `web/fonts/`" cannot go stale, and the guard holds the list
+   under it. The guard also asserts the QUALIFIED path now
    (`web/fonts/<name>`), since a bare filename would be satisfied by any
    mention of that name anywhere in the map.
 
