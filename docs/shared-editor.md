@@ -1398,11 +1398,52 @@ first, then the pointer bump in each app).
    DrawBot 535 / 9,270. The three ranges, 6.1 and 6.2a together, review at
    146 / 150 / 144 KB (§5).
 
-   **6.2b to 6.6 — not started.** What is left of the store is the big half:
-   `entryStore.ts` (42 declarations in all three apps, 549 / 479 / 535 lines,
-   a large share byte-identical), the shared half of `types.ts`, and
-   `homeState.ts`. The namespace seam they need is built; `deleteJournalPage`
-   and `dates`/`streaks` are each app's own and stay.
+   **6.2b to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
+   rule is to measure before planning, and the measurement makes 6.2b a
+   different and much smaller job than "the shared half of `web/store/*`"
+   sounds.
+
+   | File | Decls in all 3 | Cozy | Sol | DrawBot | the big one |
+   |---|---|---|---|---|---|
+   | `entryStore.ts` | **42 of 68** | 549 | 479 | 535 | many byte-identical |
+   | `types.ts` | **6 of 31** | 253 | 140 | 241 | `JournalEntry` 177 / 86 / 163, drift 139 / 54 |
+   | `homeState.ts` | **6 of 19** | 472 | 148 | 155 | `buildHomeStateDelta` 356 / 79 / 79, drift 329 / 327 |
+
+   **Only `entryStore.ts` is a file that moves.** The other two are the shape
+   `EditorHost.tsx` turned out to be at 6.0 — not drifted files but per-app
+   records that share a few helpers:
+
+   · `types.ts` holds each app's own stored RECORD. `JournalEntry` is 27
+     fields in CozyJournal, 18 in Sol and 26 in DrawBots, and `AppSettings`,
+     `ALL_FORMATS` and `DEFAULT_SETTINGS` are absent from DrawBots
+     altogether. What is genuinely shared is about sixty lines of helpers —
+     `dayStartMs`, `inImageWindow`, `isIssuedEntry`, `entryImagesBehindPage`,
+     `EntryStatus` — of which `dayStartMs` and `inImageWindow` are
+     byte-identical between CozyJournal and DrawBots.
+   · `homeState.ts` is each app's own home payload. `buildHomeStateDelta` is
+     356 lines in CozyJournal against 79 in each of the others and drifts by
+     329 / 327; only `slotPlan` (17 lines) is byte-identical in all three.
+     CozyJournal's extra 300 lines are its prompts, its rail, its collages
+     and its tile budget.
+
+   So 6.2b is `entryStore.ts` plus about eighty lines of leaves, and
+   `types.ts` and `homeState.ts` STAY — which also means the common
+   `EditorConfig` of 6.3 is the last of `web/formats/` rather than one piece
+   of a larger store move.
+
+   **The one design question 6.2b has to settle, and it is the owner's**
+   (see "Still open"): `entryStore`'s 42 shared declarations are generic over
+   a record that is each app's own. Stage 3 answered the same question for
+   the session — `EditorSession<TTool, TDoc, TOps>` carries the app's types
+   through and every function that returns a session is generic over it — and
+   §4.3 answered it again for `ToolId`, where neither of the two options the
+   question was posed as was taken. The store's version is narrower than
+   either, because most of `entryStore` never reads a field: it is key
+   layout, the per-format index, the sidecar images and the settings merge,
+   over a record it only stores and hands back. Whether that becomes
+   `EntryStore<TEntry>`, or an installed entry adapter, or only the key and
+   index mechanics with each app keeping its own accessors, is the call that
+   decides how much of 549 lines moves.
 7. **Property pages for the apps' kinds, all the way.** CozyJournal's rig
    pages (`rigEdit.ts`, `RigJointsBar`, `RigPoseBar`, `RigColorBar`), which
    this repo's editor-ui still carries, become CozyJournal host pages; the
@@ -1815,6 +1856,22 @@ Settled by the owner, 2026-10-20:
   than ahead of it, which is what §4.2 item 4 itself concluded — see item 6.
 
 Still open:
+
+- **How `entryStore.ts` carries each app's own entry record** (raised at
+  6.2b's measurement, 2026-10-23). 42 of its 68 declarations exist in all
+  three apps and a large share are byte-identical, so it is the one file
+  left in `web/store/` that moves — but it is generic over a `JournalEntry`
+  that is 27 fields in CozyJournal, 18 in Sol and 26 in DrawBots. Most of
+  the file never reads a field (key layout, the per-format index, the
+  sidecar images, the settings merge), which is what makes several answers
+  viable: `EntryStore<TEntry>` on stage 3's
+  `EditorSession<TTool, TDoc, TOps>` precedent; an installed entry adapter
+  on the session host's; or only the key and index mechanics, with each app
+  keeping its own accessors over its own record. The precedent cuts both
+  ways and the owner took a third option the last time this question was
+  posed (§4.3, `ToolId`), so it is not an agent's to guess. Note also that
+  this is the user's stored data: unlike every seam so far, a wrong answer
+  here is not a visual regression.
 
 - **Whether `EditorHost.tsx` becomes the package's screen at all** (raised
   at 6.0, 2026-10-23). Item 6 says it does. The measurement says the three
