@@ -65,6 +65,14 @@ export function buildMoveNodeWithDragScale(
  * DrawBot's bots and instruction tiles drag with a mixed group. Nothing
  * SCALES a host item: the drag-scale rule is about scene nodes, and the
  * loop below walks ids the scene knows.
+ *
+ * What that move attached as `hostOps` is carried back OUT, which is the
+ * half stage 5b.4a lost: this rebuilt its result as `{ entry }` and
+ * dropped them, so a drag of a shape and a loose host item together
+ * committed the shape and snapped the item back — after the host's own
+ * layer had previewed it at the new place. A selection of host items
+ * ALONE leaves `entry` empty, and an empty entry with host ops is still a
+ * step: only a drag that moves nothing at all answers null.
  */
 export function buildMoveNodesWithDragScale<TDoc = undefined>(
   state: CompositionState,
@@ -86,5 +94,6 @@ export function buildMoveNodesWithDragScale<TDoc = undefined>(
     cur = applyCompOps(cur, scale.entry);
     entry.push(...scale.entry);
   }
+  if (move?.hostOps) return { entry, hostOps: move.hostOps };
   return entry.length > 0 ? { entry } : null;
 }

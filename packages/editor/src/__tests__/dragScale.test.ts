@@ -114,4 +114,68 @@ describe('a multi-selection dragged as one', () => {
     const without = buildMoveNodes(state, [balloon, plain], 2, 3);
     expect(with_).toEqual(without);
   });
+
+  // The host's own ITEMS ride a mixed drag too (`HostItems.through`, stage
+  // 3), and this wrapper has to carry what `buildMoveNodes` attached. A
+  // made-up app with a PIN — a thing its document holds, which the scene
+  // knows nothing about — selected beside the shapes.
+  describe('with the host’s own items in the selection', () => {
+    interface Doc { pins: { id: string; x: number; y: number }[] }
+    const doc: Doc = { pins: [{ id: 'pin_1', x: 20, y: 20 }] };
+    const ITEMS = {
+      isHostId: (id: string) => id.startsWith('pin_'),
+      itemById: (d: Doc, id: string) => d.pins.find((p) => p.id === id) ?? null,
+      items: (d: Doc) => d.pins,
+      box: (d: Doc, id: string) => {
+        const p = d.pins.find((q) => q.id === id);
+        return p ? { cellX: p.x, cellY: p.y, cellWidth: 1, cellHeight: 1 } : null;
+      },
+      through: (d: Doc, ids: ReadonlySet<string>, m: { e: number; f: number }) => ({
+        pins: d.pins.map((p) => (ids.has(p.id) ? { ...p, x: p.x + m.e, y: p.y + m.f } : p)),
+      }),
+      remove: (d: Doc) => d,
+      setGroup: (d: Doc) => d,
+      setLocked: (d: Doc) => d,
+      duplicate: (d: Doc) => ({ doc: d, ids: [] as string[] }),
+      // The op the host would commit: where its pins ended up.
+      change: (_before: Doc, after: Doc) => ({ pins: after.pins }),
+    };
+
+    beforeEach(() => installSessionHost({ items: ITEMS as never }));
+
+    it('carries the host ops out, beside the shapes’ own entry', () => {
+      // The bug this pins (DrawBot's db99d9c8, regressed by stage 5b.4a and
+      // caught in its review): the wrapper rebuilt its result as
+      // `{ entry }` and dropped `move.hostOps`, so a marquee of a shape AND
+      // a loose host item committed the shape and snapped the item back —
+      // after the host's layer had already previewed it at the new place.
+      // Passing `hostDoc` IN is not carrying `hostOps` OUT, which is why
+      // the per-call-site pin in sessionHost.test could not see it.
+      const [state, balloon, plain] = page();
+      const se = buildMoveNodesWithDragScale(state, [plain, 'pin_1'], 3, -4, doc)!;
+      expect(se.hostOps).toEqual({ pins: [{ id: 'pin_1', x: 23, y: 16 }] });
+      expect(se.entry.length).toBeGreaterThan(0);
+      // The same ops the plain move attaches: the wrapper adds the scales
+      // and changes nothing else about them.
+      expect(buildMoveNodes(state, [plain, 'pin_1'], 3, -4, doc)!.hostOps)
+        .toEqual(se.hostOps);
+      void balloon;
+    });
+
+    it('commits the item alone, where the scene has nothing to move', () => {
+      // `entry` is empty with no scene node selected, and the old reading
+      // returned null there — so a drag of host items by themselves
+      // committed NOTHING at all.
+      const [state] = page();
+      const se = buildMoveNodesWithDragScale(state, ['pin_1'], 3, -4, doc);
+      expect(se).not.toBeNull();
+      expect(se!.entry).toEqual([]);
+      expect(se!.hostOps).toEqual({ pins: [{ id: 'pin_1', x: 23, y: 16 }] });
+    });
+
+    it('…and still answers null when nothing moves at all', () => {
+      const [state] = page();
+      expect(buildMoveNodesWithDragScale(state, [], 3, -4, doc)).toBeNull();
+    });
+  });
 });
