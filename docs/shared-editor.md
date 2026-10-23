@@ -1329,10 +1329,11 @@ first, then the pointer bump in each app).
    The hazard the reviewer named is real and is now CLOSED rather than
    merely described: a rename of `STORE_NAMESPACE` would have re-spelled the
    stamp and left the rest behind. Each app's `storeNamespace.test.ts` holds
-   every one of its namespaced literals to that constant — read from source,
-   since they are unexported consts — by NAME in CozyJournal and Sol, and by
-   a directory SCAN in DrawBots, whose thirty-two would have gone stale as a
-   list. All three were verified by changing the word in one place and
+   every namespaced DECLARATION to that constant — read from source, since
+   they are unexported consts — by a derived directory SCAN in all three,
+   which rounds 1 and 2 arrived at in two steps (CozyJournal and Sol named
+   their constants by hand first, and a hand-written list is what went
+   stale). All three were verified by changing the word in one place and
    watching most of the suite fail, which is 5a's standard for a pin.
 
    Every other seam in this plan falls back when nothing is installed: no font pack
@@ -1340,8 +1341,17 @@ first, then the pointer bump in each app).
    host means no host rows. This one throws. The reason is the asymmetry of
    the failure — a wrong font family shows the system face for a moment,
    a wrong namespace writes a page where nothing will ever look for it
-   again — and the install is at module scope, so the throw is a boot-time
-   failure or nothing at all. `registerStoreNamespace` also refuses anything
+   again. The install is at module scope, before any key can be built, so a
+   missing one fails immediately rather than writing somewhere wrong — but
+   not loudly: `assetJanitor`'s only production path is
+   `installAssetJanitor`'s `void sweepIfDue()`, and `sweepIfDue` is async, so
+   the throw arrives as an unhandled rejection, which is a console warning on
+   web and nothing a user sees. `storeKeys.ts` says so in those words, and
+   each app's `storeNamespace.test.ts` is the real backstop. (This paragraph
+   said "a boot-time failure or nothing at all" until CozyJournal's round-2
+   review pointed out that the code comment it describes had been corrected
+   inside the same range and the design document had not — which cannot be
+   both ways in one tree.) `registerStoreNamespace` also refuses anything
    but a bare lowercase word, because a namespace with a colon in it would
    re-shape every key built from it (`a:b:entry:x` reads as namespace `a` to
    anything scanning a prefix).
