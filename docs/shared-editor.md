@@ -1486,6 +1486,33 @@ first, then the pointer bump in each app).
      form, which is worth saying plainly: a sweep is only as wide as the
      spelling it greps for.
 
+   **Round 2 of both reviews found the same thing again, and this is the one
+   to remember: a fix that ADDS a file re-breaks a count.** Each app's
+   codebase map said "four files are this app's" under `web/fonts/`; round
+   1's fix for the namespace duplication added `faceAsset.ts` in the same
+   commit and the count was INCREMENTED to five while the tree went to five
+   (six in DrawBots, which has a `fonts.json`). DrawBots' reviewer put it
+   exactly: "round 1's finding re-created by its own fix". The same shape hit
+   the pin's own DESCRIPTION — three places still described the version of
+   the scan the round-1 commit had replaced underneath them.
+
+   The structural answer, and it is why the recurrence was worth the rounds:
+   **the count is no longer prose.** Each app's `fontRoster.test.ts` — which
+   already existed to make a silent disagreement between `fonts.json`,
+   `faces.ts` and `package.json` loud — now also holds the codebase MAP to
+   the directory: a module there that the map does not name fails it. Verified
+   in each app by removing every mention and watching the case name the file.
+   A number in a sentence cannot be held to anything; a membership test can.
+
+   The scan also gained two trees, and not hypothetically: CozyJournal's
+   `app/analytics.tsx` keeps two persisted keys under the namespace that a
+   `web/`-and-`components/`-only walk never saw — a THIRD gap in the same pin,
+   after the hand-named constants and the `^const ` anchor. And §4.1 of
+   `Sol.md` still said "the native side's three" where there are four files
+   and five declarations: round 1 fixed the test half of that finding and left
+   standing the very sentence the test backs, so the doc and its pin
+   disagreed on the page.
+
    And one finding of the plan's own kind, where a file's comment turned out
    to be load-bearing. Both reviews asked for the duplicated
    `Asset.fromModule` lookup to become one helper. Putting it on `faces.ts`
@@ -1498,8 +1525,22 @@ first, then the pointer bump in each app).
 
    Editor package 119 suites / 2,129 tests; engine 373 of 374 (cameraRoll's
    host dependency, as before). CozyJournal 650 / 10,660; Sol 281 / 3,417;
-   DrawBot 535 / 9,271. The three ranges, 6.1 and 6.2a together, reviewed at
-   202 / 178 / 174 KB with the first round of fixes on them (§5).
+   DrawBot 535 / 9,272. The three ranges, 6.1 and 6.2a together, reviewed at
+   202 / 178 / 174 KB with the first round of fixes on them, and 233 / 228 KB
+   for Sol and DrawBots at round 2 (§5). CozyJournal shipped after round 1
+   and its remaining range is 34 KB.
+
+   **Three review rounds for two sub-stages that moved 1,000 lines, and
+   every blocking finding in all three was PROSE.** Not one was a bug: the
+   code did what it said from the first commit. What kept failing was the
+   describing — a count, a claim about scope, a comment naming a moved file,
+   a sentence left standing when the test under it was rewritten. §4.3's
+   list already says to expect that; what these rounds add is the remedy
+   worth generalising: **where a doc states a fact a machine could check,
+   make the machine check it.** The doc-path checker already does this for
+   paths; `fontRoster.test.ts` now does it for a directory's membership in
+   the map, and `storeNamespace.test.ts` derives its own scope instead of
+   asserting it. Both replaced a sentence that had gone wrong twice.
 
    **6.2b to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
    rule is to measure before planning, and the measurement makes 6.2b a
