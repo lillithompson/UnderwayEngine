@@ -14,12 +14,23 @@
  * rather than falling back the way `fontFamily`'s probe does. A wrong family
  * shows the system face for a moment; a wrong namespace writes a page where
  * nothing will look for it again. An app installs at module scope, before
- * any key can be built, so the throw is a boot-time failure or nothing.
+ * any key can be built, so a missing install fails IMMEDIATELY rather than
+ * writing somewhere wrong.
  *
- * That promise is only kept if callers build their keys where the throw can
- * be SEEN. A key built inside a `try` that guards the store itself turns the
- * refusal back into a silent wrong behaviour — which is why `assetJanitor`
- * calls {@link storeKey} above its own try/catch, and says so.
+ * How loudly it fails depends on the caller, and the honest answer is: not
+ * very. `assetJanitor`'s only production path is `installAssetJanitor`'s
+ * `void sweepIfDue()`, and `sweepIfDue` is async — so the throw arrives as
+ * an unhandled rejection, which is a console warning on web and nothing a
+ * user sees. What it is NOT is a page written under a namespace nothing
+ * reads back, and that is the trade. A caller that wants it visible should
+ * await or catch.
+ *
+ * Either way it only fails at all if callers build their keys where the
+ * throw can escape. A key built inside a `try` that guards the store itself
+ * turns the refusal back into a silent wrong behaviour — which is why
+ * `assetJanitor` calls {@link storeKey} above its own try/catch, and says
+ * so. Each app's `storeNamespace.test.ts` is the real backstop: it pins the
+ * install and every literal the app still spells itself.
  */
 
 let namespace: string | null = null;
