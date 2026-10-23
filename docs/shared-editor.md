@@ -1241,15 +1241,28 @@ Settled by the owner, 2026-10-20:
   than three times — the four callbacks were still four props when the
   canvas moved at 5b.3.
 
-  **DrawBot regains `push` at 5b, with the rig's canvas seam.** The brush
-  is in the moved files already, and the plan read the app-side
+  **DrawBot regains `push` at 5b, with the rig's canvas seam — and the
+  last step is a product decision, not a move (open, 2026-10-22).** The
+  brush was in the moved files already, and the plan read the app-side
   `DRAWBOT_PAINT_MODES` filter as the only thing holding it off the bar —
-  one line in `hostTools.ts`, one use in the shell, three assertions. It is
-  not: DrawBot's canvas holds no push gesture at all (zero references), and
-  `pushBrush.ts` is imported only by CozyJournal's canvas and its
-  `rigPaint`, `rigPushStore` and `RigControlsPanel`. The brush pushes a
-  rig's joints, which is why DrawBot cut it with the rig and why it comes
-  back with the rig's seam, not before.
+  one line in `hostTools.ts`, one use in the shell, three assertions. At
+  the time that was wrong: DrawBot's canvas held no push gesture at all
+  (zero references), and `pushBrush.ts` was imported only by CozyJournal's
+  canvas and its `rigPaint`, `rigPushStore` and `RigControlsPanel`.
+
+  5b.3 and 5b.4b closed that half. The gesture is in the canvas all three
+  apps now draw on, and `pushBrush.ts`'s rig work went behind
+  `HostPushTargets`, which is optional and resolves to null for an app
+  that installs no `nodes` — so on DrawBot the brush would warp vector
+  paths and smear raster, which is the whole of it bar the joints. Nothing
+  technical holds it off that bar any more; the `PaintMode` filter is
+  again the only thing, exactly as the first reading said.
+
+  What is left is therefore a PRODUCT call and the owner's: a fourth
+  brush, by hand, in DrawBots' raster group, in an app that has shipped
+  without one. The filter, its use in the shell and the three assertions
+  stay until that call is made, and `hostTools.ts` says so where the line
+  is rather than promising a stage that is done.
 
 - **The canvas seam is DrawBot's, adopted whole (stage 5b, settled by the
   owner 2026-10-22).** Stage 5a left "a seam for the rig's canvas
@@ -1456,6 +1469,14 @@ Settled by the owner, 2026-10-20:
   that stage and no earlier one.
 
 Still open:
+
+- **The push brush on DrawBots' bar.** Stage 5b put the gesture in the
+  canvas DrawBot draws on and left the app-side `DRAWBOT_PAINT_MODES`
+  filter standing, so nothing but that one line holds it off (§4.3).
+  Turning it on adds a brush to a shipped app's toolbar, which is a
+  product decision rather than a consolidation: the line, its use in
+  `EditorShell.tsx` and the three assertions in `hostTools.test.ts` stay
+  until the owner makes it.
 
 - **The rig's place.** This repo's editor-ui carries CozyJournal's Figgie
   rig pages (`logic/rigEdit.ts`, `RigJointsBar`, `RigPoseBar`,
