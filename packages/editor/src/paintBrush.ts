@@ -1505,8 +1505,8 @@ export function createTextPaintState(): TextPaintState {
 
 /**
  * Where a glyph's INK sits in its layout box: the probe the text pass reads
- * so a dab lands on the letter, not the whole box. Implemented by the app
- * over its own text measurer (its web/fonts/glyphInk.ts) and installed with
+ * so a dab lands on the letter, not the whole box. Implemented over the
+ * shared text measurer (glyphInk.ts, this package's since 6.1) and installed with
  * {@link setGlyphInk}; null when there is nothing to measure with (no
  * canvas, a face still loading) — the caller keeps the whole box then. A
  * glyph with no ink at all comes back zero-sized.
@@ -1515,9 +1515,10 @@ export type GlyphInkFn = (
   ch: string, style: TextStyle, boxW: number, lineHeight: number,
 ) => { x: number; y: number; w: number; h: number } | null;
 
-/** Where each character's INK sits in its layout box (the app's web/fonts/glyphInk),
- *  registered by the app beside the text measurer. Null — a node suite, or
- *  before the fonts load — keeps every character's whole box. */
+/** Where each character's INK sits in its layout box (glyphInk.ts),
+ *  registered beside the text measurer by whatever loads the font pack
+ *  (loadPackFonts.ts). Null — a node suite, or before the fonts load —
+ *  keeps every character's whole box. */
 let glyphInk: GlyphInkFn | null = null;
 
 export function registerGlyphInk(fn: GlyphInkFn | null): void {

@@ -1081,7 +1081,7 @@ const REMEASURE_EPSILON_CELLS = 1e-3;
  *
  * The one repair for the font-loading gap. A text's box is measured once,
  * when it is placed or edited, and `TextMeasurer` cannot answer until the
- * face it is asked about has loaded (web/fonts/domTextMeasurer.ts gates on
+ * face it is asked about has loaded (domTextMeasurer.ts gates on
  * `document.fonts.check`) — so a text placed in the second before the pack
  * faces settle is sized by the engine's font-blind approximation and then
  * keeps that box for good. The glyphs repaint in the real face when it

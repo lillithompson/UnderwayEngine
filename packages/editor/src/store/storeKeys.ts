@@ -15,6 +15,11 @@
  * shows the system face for a moment; a wrong namespace writes a page where
  * nothing will look for it again. An app installs at module scope, before
  * any key can be built, so the throw is a boot-time failure or nothing.
+ *
+ * That promise is only kept if callers build their keys where the throw can
+ * be SEEN. A key built inside a `try` that guards the store itself turns the
+ * refusal back into a silent wrong behaviour — which is why `assetJanitor`
+ * calls {@link storeKey} above its own try/catch, and says so.
  */
 
 let namespace: string | null = null;

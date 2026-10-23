@@ -6,9 +6,10 @@
  * 'system' and the empty id to the warm system stack, an unknown id is
  * quoted verbatim so it works wherever its @font-face exists), but the
  * PACK is each app's own data — `web/fonts/registerFonts.ts`, built from
- * that app's fonts pack. So the app installs its resolver here, the way it
- * installs the brush's glyph-ink probe ({@link registerGlyphInk} in
- * paintBrush.ts), from the same `web/fonts/loadPackFonts.ts`.
+ * that app's fonts pack. Since 6.1 the app hands that resolver over on its
+ * `FontPack` (`loadPackFonts.ts`, this package's) and the load installs it
+ * here, beside the brush's glyph-ink probe ({@link registerGlyphInk} in
+ * paintBrush.ts) and the engine's text measurer.
  *
  * Nothing is installed in a unit test unless the test installs it, and the
  * fallback is the system stack: a text node measures and draws with the

@@ -73,8 +73,13 @@ export function registerExtraSweep(fn: ExtraSweep | null): void {
 }
 
 function lastSweepAt(): number {
+  // The key is built OUTSIDE the try: that guard is for a store that will
+  // not answer (a blocked or cleared localStorage), and swallowing a missing
+  // namespace with it would turn storeKeys' refusal into a silent
+  // once-a-foreground sweep instead of the boot-time failure it promises.
+  const key = lastSweepKey();
   try {
-    const raw = globalThis.localStorage?.getItem(lastSweepKey());
+    const raw = globalThis.localStorage?.getItem(key);
     const at = raw ? Number(raw) : NaN;
     return Number.isFinite(at) ? at : 0;
   } catch {
@@ -83,8 +88,9 @@ function lastSweepAt(): number {
 }
 
 function markSwept(at: number): void {
+  const key = lastSweepKey();
   try {
-    globalThis.localStorage?.setItem(lastSweepKey(), String(at));
+    globalThis.localStorage?.setItem(key, String(at));
   } catch { /* a lost stamp costs one extra sweep */ }
 }
 

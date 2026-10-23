@@ -143,6 +143,28 @@ describe('the stamp', () => {
   });
 });
 
+describe('with no namespace installed', () => {
+  // storeKeys promises a missing install is "a boot-time failure or
+  // nothing". The stamp's key is therefore built ABOVE this module's
+  // try/catch, which exists to guard a store that will not answer: built
+  // inside it, the refusal would be swallowed and the sweep would quietly
+  // run on every foreground instead of once a day, for the life of the app.
+  it('refuses rather than sweeping on every foreground', async () => {
+    registerStoreNamespace(null);
+    await expect(sweepIfDue(T0)).rejects.toThrow(/no app namespace installed/);
+    expect(sweepImageAssets).not.toHaveBeenCalled();
+  });
+
+  it('refuses on the write too, not only the read', async () => {
+    // markSwept runs after the due check, so a key built lazily only there
+    // would pass the read and die on the write.
+    registerStoreNamespace('madeup');
+    await sweepIfDue(T0);
+    registerStoreNamespace(null);
+    await expect(sweepIfDue(T0 + DAY)).rejects.toThrow(/no app namespace installed/);
+  });
+});
+
 describe('an app’s own sweep, riding along', () => {
   it('runs before the blob sweep, on the same day’s schedule', async () => {
     const order: string[] = [];
