@@ -1540,7 +1540,22 @@ first, then the pointer bump in each app).
    make the machine check it.** The doc-path checker already does this for
    paths; `fontRoster.test.ts` now does it for a directory's membership in
    the map, and `storeNamespace.test.ts` derives its own scope instead of
-   asserting it. Both replaced a sentence that had gone wrong twice.
+   asserting it.
+
+   **A fourth round found the limit of that, and it is worth stating:
+   membership is checkable, a COUNT is not.** CozyJournal's map said "this
+   app's own two files and two thin wrappers" over a list that had grown to
+   five, and the new guard could not see it — it holds which modules are
+   named, not how many the sentence claims. The round-3 fix had removed the
+   count from the other two apps and missed this one, because this app spells
+   it in words where they spelled it as a numeral, and a sweep for "four
+   files" does not find "two files and two thin wrappers". So the counts are
+   gone from all three maps and from all three namespace paragraphs, rather
+   than corrected a fourth time: a sentence that says "what stays here is
+   this app's own, under `web/fonts/`" cannot go stale, and the guard holds
+   the list under it. The guard also asserts the QUALIFIED path now
+   (`web/fonts/<name>`), since a bare filename would be satisfied by any
+   mention of that name anywhere in the map.
 
    **6.2b to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
    rule is to measure before planning, and the measurement makes 6.2b a
