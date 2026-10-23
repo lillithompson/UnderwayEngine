@@ -54,8 +54,16 @@ export function __resetAssetSweepHolds(): void {
   openSessions = 0;
 }
 
-/** An app's own sweep of its own leftovers, run on the same schedule. */
-export type ExtraSweep = () => Promise<void>;
+/**
+ * An app's own sweep of its own leftovers, run on the same schedule.
+ *
+ * `Promise<unknown>` rather than `Promise<void>`: this module awaits the
+ * sweep and discards whatever it answers, so an app's existing sweep — which
+ * is likely to report what it removed, as DrawBots' `sweepOrphanSimDocuments`
+ * returns a `SimSweepResult` — can be handed over as it stands rather than
+ * wrapped in a lambda that throws its result away.
+ */
+export type ExtraSweep = () => Promise<unknown>;
 
 let extraSweep: ExtraSweep | null = null;
 

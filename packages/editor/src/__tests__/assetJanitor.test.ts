@@ -176,4 +176,16 @@ describe('an app’s own sweep, riding along', () => {
     expect(await sweepIfDue(T0)).not.toBeNull();
     expect(sweepImageAssets).toHaveBeenCalledTimes(1);
   });
+
+  // The seam takes `Promise<unknown>`, not `Promise<void>`: this module
+  // discards whatever the sweep answers, and an app's existing sweep is
+  // likely to report what it removed — DrawBots' `sweepOrphanSimDocuments`
+  // returns a `SimSweepResult`. Narrowing it back to `Promise<void>` would
+  // fail this file's COMPILE, which is the only tool there is for a
+  // declaration; DrawBots' typecheck is what found it.
+  it('takes a sweep that reports what it removed, not just a void one', async () => {
+    const reporting = async () => ({ deleted: 3, scanned: 11 });
+    registerExtraSweep(reporting);
+    expect(await sweepIfDue(T0)).not.toBeNull();
+  });
 });
