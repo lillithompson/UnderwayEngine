@@ -1311,8 +1311,31 @@ first, then the pointer bump in each app).
    `<app>:<kind>[:<id>]` — entry, thumb, view, index, settings, homeState,
    assetSweep, and each app's own besides — so `store/storeKeys.ts` holds
    the shape and the app installs the word (`registerStoreNamespace`, from
-   its own `web/store/storeNamespace.ts`, one spelling per app). Every other
-   seam in this plan falls back when nothing is installed: no font pack
+   its own `web/store/storeNamespace.ts`).
+
+   **What 6.2a did NOT do, which three of this stage's docs claimed it had**
+   (CozyJournal's review, round 1): it did not route those keys through
+   `storeKey()`. The builder spells exactly ONE key per app — the janitor's
+   `<ns>:assetSweep:last`, which moved with the janitor — and every other
+   prefix is still a whole literal where it is used: nine in CozyJournal's
+   `entryStore.ts` plus two native, five in Sol's plus four elsewhere,
+   thirty-two across eleven files in DrawBots. They come through at 6.2b,
+   with `entryStore.ts`. Each app's codebase map and each
+   `storeNamespace.ts` header said "installed once, the word spelled once",
+   which is 6.2b's end state written as though 6.2a had reached it — the
+   mistake item 5 of this section names, made again by the hand that wrote
+   that warning. Each now says which single key the builder spells.
+
+   The hazard the reviewer named is real and is now CLOSED rather than
+   merely described: a rename of `STORE_NAMESPACE` would have re-spelled the
+   stamp and left the rest behind. Each app's `storeNamespace.test.ts` holds
+   every one of its namespaced literals to that constant — read from source,
+   since they are unexported consts — by NAME in CozyJournal and Sol, and by
+   a directory SCAN in DrawBots, whose thirty-two would have gone stale as a
+   list. All three were verified by changing the word in one place and
+   watching most of the suite fail, which is 5a's standard for a pin.
+
+   Every other seam in this plan falls back when nothing is installed: no font pack
    means the system stack, no session host means no host ops, no outline
    host means no host rows. This one throws. The reason is the asymmetry of
    the failure — a wrong font family shows the system face for a moment,
@@ -1393,10 +1416,45 @@ first, then the pointer bump in each app).
    files at a package root that has eighty; suites stay flat in
    `src/__tests__/`, as `components/`' already do.
 
-   Editor package 119 suites / 2,126 tests; engine 373 of 374 (cameraRoll's
-   host dependency, as before). CozyJournal 650 / 10,653; Sol 281 / 3,420;
-   DrawBot 535 / 9,270. The three ranges, 6.1 and 6.2a together, review at
-   146 / 150 / 144 KB (§5).
+   **Round 1 of CozyJournal's review** (2026-10-23) blocked on two things,
+   both prose and both fixed in all three apps rather than only the one
+   reviewed — which is what the review being per-app rather than per-engine
+   makes possible to get wrong three times:
+
+   · the namespace overclaim above;
+   · **six code comments naming the two files the range deleted** —
+     `web/store/pageIO.ts` and `web/store/resetData.ts` — in CozyJournal,
+     three in Sol and four in DrawBots. `check:doc-paths` reads `.md` only,
+     so it stayed green while the `.md` docs were in fact clean: the
+     mechanical half of the doc sweep does not cover comments, and §4.3's
+     list already says a comment naming a deleted file is the thing to look
+     for.
+
+   Four suggestions were taken. One was a real contract bug rather than
+   prose: `assetJanitor` built the stamp's key INSIDE the try/catch that
+   guards a localStorage which will not answer, so `storeKeys`' promise that
+   a missing install is "a boot-time failure or nothing" was false on the
+   only path that builds a key — the refusal was swallowed and the blob
+   sweep would have run on every foreground instead of once a day, silently,
+   for the life of the app. The key is built above the try now, in the read
+   and the write, with two cases pinning it. Three were stale comments in
+   THIS repo that 6.1 made false (`paintBrush.ts` ×2, `editorSession.ts`,
+   `fontFamily.ts`, all naming a `web/fonts/` file that is now a package
+   sibling), one was the twelfth copy of `PAGE_IO` in two apps'
+   `test-utils.ts`, and one was `metro.config.js` and `registerFonts.ts` in
+   all three apps saying `loadPackFonts.ts` require()s the faces — which
+   `faces.ts` does, and which is the exact error §4.2 was rewritten to fix
+   at 6.1.
+
+   One scope finding: CozyJournal's 6.1 pointer bump also carried engine
+   66834ea, a `dragScale` behaviour fix, which that commit message did not
+   name (Sol's did). It is inert in that app, which installs `nodes` and no
+   `items`.
+
+   Editor package 119 suites / 2,129 tests; engine 373 of 374 (cameraRoll's
+   host dependency, as before). CozyJournal 650 / 10,658; Sol 281 / 3,423;
+   DrawBot 535 / 9,275. The three ranges, 6.1 and 6.2a together, review at
+   146 / 150 / 144 KB before the fixes (§5).
 
    **6.2b to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
    rule is to measure before planning, and the measurement makes 6.2b a
