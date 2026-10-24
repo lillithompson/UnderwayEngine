@@ -2413,10 +2413,12 @@ first, then the pointer bump in each app).
    read whose file is the package's now, and an expected import spelling
    that follows the file.
 
-   CozyJournal 659 suites / 10,768 tests; Sol 278 / 3,324; DrawBot 543 /
-   9,327; engine 406 of 407 (cameraRoll's host dependency, as before —
-   `expo-media-library` is not installed in this repo, and that suite fails
-   with 6.5a stashed too) / 7,310.
+   CozyJournal 667 suites / 10,837 tests; Sol 278 / 3,324; DrawBot 551 /
+   9,396; engine 398 of 399 / 7,222. The two apps whose jest roots take in
+   the vendored package run its suites too, so their counts rose by the
+   eight this sub-stage added; Sol’s do not. The engine’s one failure is
+   cameraRoll’s host dependency, as before — `expo-media-library` is not
+   installed in this repo, and that suite fails with 6.5a stashed too.
 
    **6.5b and 6.6 — not started.** The measurement below is 6.2b’s, from
    2026-10-23, kept because it is what re-ordered the sub-stages: the
