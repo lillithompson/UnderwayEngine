@@ -1722,6 +1722,25 @@ first, then the pointer bump in each app).
    list — that is a scope ASSERTED — but to derive it from each app's git
    HEAD and assert the count it derives.
 
+   **6.3c — Done: the frozen issue** (2026-10-23). `CommonFormatIssue` and
+   `readIssuePayload` join `editorConfig.ts`. Both were byte-identical in
+   all three apps but for the format id, and this sub-stage exists as a
+   PREREQUISITE: `entryStore.ts` names `FormatIssue` in `createEntry` and on
+   the stored record, so 6.2b could not move before it.
+
+   The arrangement is the one 6.3b settled, and it is worth naming because
+   it cost nothing: each app declares `interface FormatIssue extends
+   CommonFormatIssue { formatId: FormatId }`, and the **73 (Cozy) / 15 (Sol)
+   / 24 (DrawBots) files that read an issue did not change at all** — they
+   import `FormatIssue` from `@/web/formats/types` as they always did and
+   get their own closed union. An extension, not a re-export, is what buys
+   that; a re-export would have handed all 112 files a `formatId: string`.
+
+   Six cases, and the three that matter are the defensive ones: a payload
+   that is a string, a number or `null` reads as an empty partial rather
+   than throwing, because every caller destructures the result and the
+   payload crossed a JSON freeze/thaw out of the store.
+
    **6.2b to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
    rule is to measure before planning, and the measurement makes 6.2b a
    different and much smaller job than "the shared half of `web/store/*`"
@@ -2356,6 +2375,10 @@ entirely that. 6.5's range will hold the same kind of move for a
 the 890 KB a stage-3 range passed at. The sub-stage moves 418 lines of
 source and 522 of suite, and the move folding shows each file once.
 Measured with `review.js pending --prompt | wc -c`, as 6.1's note says to.
+
+**With 6.3b and 6.3c on top** the three ranges are **89 / 76 / 98 KB**
+(CozyJournal / Sol / DrawBots) — still a tenth of what a stage-3 range
+passed at, for a sub-stage that took 1,473 lines out of the three apps.
 
 Two things the first wiring taught: `git reset --hard` in a clone with
 `submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
