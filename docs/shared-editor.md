@@ -2376,9 +2376,10 @@ the 890 KB a stage-3 range passed at. The sub-stage moves 418 lines of
 source and 522 of suite, and the move folding shows each file once.
 Measured with `review.js pending --prompt | wc -c`, as 6.1's note says to.
 
-**With 6.3b and 6.3c on top** the three ranges are **89 / 76 / 98 KB**
-(CozyJournal / Sol / DrawBots) — still a tenth of what a stage-3 range
-passed at, for a sub-stage that took 1,473 lines out of the three apps.
+**With 6.3a to 6.3c on them** the three ranges are **97 / 83 / 106 KB**
+(CozyJournal / Sol / DrawBots) — still about a tenth of what a stage-3 range
+passed at, for three sub-stages that took some 1,900 lines out of the three
+apps. 6.5's is still the one that has never been tried.
 
 Two things the first wiring taught: `git reset --hard` in a clone with
 `submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
