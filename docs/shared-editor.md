@@ -31,38 +31,45 @@ out, which is what makes the file counts reproducible:
 | `web/store/` | 14 | 8 | 1 | 1.1 k / 1.7 k / 3.6 k |
 | `web/fonts/` | 8 | 8 | 5 | 0.7 k each |
 
-And the same trees NOW (re-measured 2026-10-24, after 6.3d), so the table
+And the same trees NOW (re-measured 2026-10-24, after 6.5a), so the table
 above stays the baseline it says it is rather than being overwritten.
 `Files` is the UNION of file names across the three apps, which is what
 makes a file that only one app has still count once:
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
-| `web/editor/` (incl. `components/`) | 111 | 38 | 4 | 12.3 k / 18.0 k / 26.0 k |
+| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 11.5 k / 17.2 k / 25.1 k |
 | `web/editorUi/` | — | — | — | retired at stage 1 |
-| `web/formats/` | 50 | 5 | 1 | 293 / 768 / 13.8 k |
-| `web/store/` | 12 | 6 | 0 | 976 / 1.5 k / 3.4 k |
+| `web/formats/` | 49 | 4 | 1 | 285 / 740 / 13.8 k |
+| `web/store/` | 12 | 6 | 0 | 504 / 1.0 k / 2.9 k |
 | `web/fonts/` | 5 | 5 | 1 | 213 / 233 / 234 |
 
 Four rows' worth of reading, and the second is this stage's. `web/editor/`
-has lost 82 of its 193 files and two thirds of its lines — stages 1 to 5 —
-and what is LEFT is the drifted part: only 4 of the 111 files are still
-identical in all three apps, against 57 of 193 before. The consolidation
-has taken the easy files; the shell is most of the rest.
+has lost 92 of its 193 files and two thirds of its lines — stages 1 to 6 —
+and what is LEFT is the drifted part: only ONE of the 101 files is still
+identical in all three apps, against 57 of 193 before. 6.5a took the last
+of the identical LEAVES; the one file still identical everywhere is
+`homeStateDelivery.ts`, which cannot follow them because it imports two of
+each app’s own modules (`components/bridgeSchema.ts` and
+`components/homeStateDelta.ts`). The consolidation has taken the easy
+files; the shell is most of the rest.
 
 `web/formats/` is the tree stage 6 has actually emptied, and the lines are
-where to see it: Sol's 1.2 k is 293 and DrawBots' 3.9 k is 768, where at
+where to see it: Sol's 1.2 k is 285 and DrawBots' 3.9 k is 740, where at
 the start of the stage both were trees of their own. What is left in those
 two apps is `types.ts`, `configs/`, and three thin wrappers. CozyJournal's
 13.8 k against 16.8 k looks like less progress and is not: nearly all of
 its remainder is the modules that are its own games — the social turn, the
 rig, the templates, the word scatter, the Today thumbnail, the glyph and
 redline targets — none of which any other app has, and
-of the five files that still exist in all three apps, one is byte-identical
+of the four files that still exist in all three apps, one is byte-identical
 (`validateConfig.ts`, now the same one-line wrapper in each) and the rest
 hold each app's own data.
 
-`web/store/` is 6.2a's four files out and 6.2b's `entryStore.ts` still in.
+`web/store/` is 6.2a's four files out and 6.2b's `entryStore.ts` out as
+well — the store's shared half is the package's, and the lines here are the
+three apps' own records and wrappers over it (the row's 976 / 1.5 k / 3.4 k
+was taken before 6.2b landed).
 `web/fonts/` is the shape every tree ends up in: five files, ONE identical,
 because after 6.1 each app keeps its own DATA plus thin wrappers — and that
 one, `faceAsset.ts`, is there because 6.2a's round-1 fix added it to all
@@ -2297,10 +2304,125 @@ first, then the pointer bump in each app).
    9,349; engine 390 of 391 (cameraRoll's host dependency, as before) /
    7,153.
 
-   **6.5a to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
-   rule is to measure before planning, and the measurement makes 6.2b a
-   different and much smaller job than "the shared half of `web/store/*`"
-   sounds.
+   **6.5a — Done: the shell's siblings** (2026-10-24). The modules and rows
+   `EditorShell.tsx` reaches for from beside it, moved ahead of the shell
+   itself so 6.5b has one import surface to re-point rather than two jobs at
+   once.
+
+   **Measured over the three apps' HEAD**, declaration by declaration:
+
+   | File | Cozy | Sol | DrawBot | decls in all 3 | identical | the drift |
+   |---|---|---|---|---|---|---|
+   | `fontStacks.ts` | 23 | 23 | 23 | 3 of 3 | **3** | — |
+   | `multiSelectionCapsule.ts` | 60 | 60 | 60 | 3 of 3 | **3** | — |
+   | `editorNotice.ts` | 54 | 57 | 54 | 6 of 6 | 5 | `useEditorNotice`: Sol's `quiet` |
+   | `gridLevel.ts` | 62 | 62 | 83 | 5 of 7 | **5** | — (DrawBots adds 2) |
+   | `overlayZ.ts` | 62 | 46 | 78 | 6 of 11 | **6** | — (Cozy + DrawBots share 2 more; DrawBots adds 3) |
+   | `propertiesPanelVisibility.ts` | 100 | 27 | 30 | 1 of 2 | **1** | — (Cozy adds `rigTurnSliderVisible`) |
+   | `arrangeRotate.ts` | 81 | 75 | 131 | 5 of 9 | 4 | `rotateSliderTargets`, **32 / 27 / 27** |
+   | `components/ShapePickerModal.tsx` | 101 | 101 | 101 | — | whole file but one doc path | |
+   | `components/SymmetryModal.tsx` | 103 | 103 | 103 | — | whole file but one doc word | |
+   | `components/symmetryModalMeta.ts` | 27 | 27 | 27 | 1 of 1 | **1** | — |
+   | `components/BrushColorRow.tsx` | 79 | 79 | 80 | — | whole file but DrawBots' named track width | |
+   | `components/EditorNotice.tsx` | 88 | 88 | 88 | — | **byte-identical** | |
+   | `components/ArrangeRotateSlider.tsx` | 110 | 110 | 110 | — | **byte-identical** | |
+
+   Nine of the thirteen moved WHOLE. Four split into a shared base and each
+   app's own over a re-export, the `CommonEditorConfig` arrangement of 6.3b
+   applied to leaves: `overlayZ` (eight layers shared, DrawBots keeping its
+   size ask, its look-page Done and its ready-looks row),
+   `propertiesPanelVisibility` (CozyJournal keeping `rigTurnSliderVisible`,
+   a question only an app with a rig can ask), `gridLevel` (DrawBots keeping
+   the ONE level it works at and the rule that HOLDS a page there) and
+   `arrangeRotate` — which is the sub-stage's finding.
+
+   **`rotateSliderTargets` is not a three-app declaration, and I built a
+   seam before I knew that.** The first measurement said four of the five
+   were byte-identical and the fifth drifted in ONE condition — CozyJournal
+   excluding its rig, whose turn is a yaw about the axis the viewer sees as
+   vertical and not a free angle on a bbox. That is true of CozyJournal
+   against Sol and false of DrawBots, whose version takes a `SimSession`
+   with a `hostDoc`, lets a bot ride a multi-selection, and seats the row on
+   one bot's heading read from up. I had already moved the function behind a
+   module-scope `RotateExclusion` registry when two gates said so: the
+   typecheck refused the install itself (CozyJournal's `rigById` returns
+   `RigOnPage | null`, and the seam declared a predicate), and DrawBots'
+   `botRotate.test.ts` returned `null` for all three of its bot cases. The
+   seam is **gone**. A registry installed by one app, to share one 27-line
+   function with one other app, while the third keeps its own copy anyway,
+   is machinery that does not pay for itself — 6.2a's rule about wrappers,
+   read the other way round. So the package holds the four that were the
+   same, and all three apps declare their own `rotateSliderTargets` over
+   them, as DrawBots' module already did for its other four declarations.
+
+   The lesson is not "measure more", which the stage already says. It is
+   that a seam is a claim about the OTHER apps, and the measurement that
+   licenses it has to cover every app, not the pair that prompted it.
+
+   **The gate fact bit the other way this time.** `packages/editor` is
+   excluded from the engine's root `tsconfig.json`, so a file there is
+   typechecked only while a suite loads it — and not one of the eleven
+   package modules this sub-stage created had a suite. Eight added
+   (`fontStacks`, `multiSelectionCapsule`, `editorNotice`, `gridLevel`,
+   `overlayZ`, `propertiesPanelVisibility`, `arrangeRotate`, and
+   `editorModals` for the sheets' icon table), 89 cases. The practice there
+   is measured, not assumed: of the five existing suites that reach into
+   `components/`, every one names a `.ts` module and none imports a
+   component — a `.tsx` cannot be imported in the engine's jest, whose
+   react-native shim carries only the members the engine itself touches (no
+   `Animated`, no `StyleSheet`) and whose JSX setting makes a component's
+   own `import React` read as unused. So the six `.tsx` rows are read as
+   SOURCE in the package's suites and typechecked where real react-native
+   is: the three apps. That is the standing arrangement for every other
+   component in `packages/editor/src/components/`, not something 6.5a
+   invented.
+
+   **Three more findings, each a rule already written here, caught again:**
+
+   · *A doc comment belongs to the declaration below it* (§4.3's extractor
+     bug) — and my banner slicing broke it twice more. `overlayZ.ts` carried
+     a COPY of `FINISHED_PAGE_Z`'s doc comment above the stage note, an
+     orphan documenting nothing; `propertiesPanelVisibility.ts`'s stage note
+     landed at the END of the file, where it read as the declaration
+     above's. Both fixed. The mirror of the bug that invented drift at 6.4a
+     is the one that writes it.
+
+   · *A sweep that restores "the app's own names" has to measure which names
+     those are.* `openingGridLevel` is byte-identical in all three apps, but
+     DrawBots' shell imports it beside two names that genuinely are that
+     app's, so the restoring sweep kept a DUPLICATE of a shared declaration
+     — the drift this stage exists to remove. Trimmed: DrawBots' module
+     keeps `DRAWBOTS_GRID_LEVEL` and `pinnedGridLevel` and re-exports the
+     rest.
+
+   · *Moving a file can recreate the copy another module exists to prevent.*
+     `BrushColorRow.tsx` came over with `const TRACK_W = 260` written back
+     out, where DrawBots had replaced that literal with
+     `FLOATING_ROW_TRACK_W` precisely because "the two rows had a copy each,
+     which is how a third would have appeared". So that module came too
+     (`@/editor/components/floatingRowTrack`), and DrawBots' Speed row reads
+     it where it read its own.
+
+   **And the spelling rule the pins taught.** A reference to a module still
+   in `web/editor/` carries the spelling the apps have always used for a
+   sibling there (`./gridLevel`), because the shell's own source pins read
+   that text — my uniform re-point to `@/web/editor/arrangeRotate` broke
+   four of them. Where a module moved WHOLE there is no sibling left and the
+   pin follows the package instead (`@/editor/gridLevel`). 35 source pins
+   across the three apps moved with their subjects, in two kinds only: a
+   read whose file is the package's now, and an expected import spelling
+   that follows the file.
+
+   CozyJournal 659 suites / 10,768 tests; Sol 278 / 3,324; DrawBot 543 /
+   9,327; engine 406 of 407 (cameraRoll's host dependency, as before —
+   `expo-media-library` is not installed in this repo, and that suite fails
+   with 6.5a stashed too) / 7,310.
+
+   **6.5b and 6.6 — not started.** The measurement below is 6.2b’s, from
+   2026-10-23, kept because it is what re-ordered the sub-stages: the
+   stage’s own rule is to measure before planning, and that measurement
+   made 6.2b a different and much smaller job than "the shared half of
+   `web/store/*`" sounds.
 
    | File | Decls in all 3 | Cozy | Sol | DrawBot | the big one |
    |---|---|---|---|---|---|
