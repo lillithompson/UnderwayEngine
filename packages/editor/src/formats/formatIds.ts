@@ -8,11 +8,9 @@
 // over three different answers to "which ones are".
 //
 // That is the `registerStoreNamespace` shape of 6.2a — data installed at
-// module scope, from the app's own `web/formats/types.ts` — and the predicate
-// below was byte-identical in all three apps while each set was its own
-// (docs/shared-editor.md §4.2 item 6, stage 6.3d). Stage 6.2b's
-// `isAlwaysDoneFormat` is the same shape over the same tree and joins this
-// file when `entryStore.ts` moves.
+// module scope, from the app's own `web/formats/types.ts` — and both
+// predicates below were byte-identical in all three apps while each set was
+// its own (docs/shared-editor.md §4.2 item 6, stages 6.3d and 6.2b).
 //
 // Unlike the store's namespace this one does NOT throw when nothing is
 // installed: an app that installs no set has no multi-file formats, which is
@@ -22,6 +20,7 @@
 // still see and open.
 
 let multiFile: ReadonlySet<string> = new Set();
+let alwaysDone: ReadonlySet<string> = new Set();
 
 /** Install the app's multi-file format ids (its `web/formats/types.ts` does,
  *  at module scope). */
@@ -40,4 +39,23 @@ export function registerMultiFileFormats(ids: ReadonlySet<string>): void {
  */
 export function isMultiFileFormat(formatId: string): boolean {
   return multiFile.has(formatId);
+}
+
+/** Install the app's always-done format ids (its `web/formats/types.ts`
+ *  does, at module scope). */
+export function registerAlwaysDoneFormats(ids: ReadonlySet<string>): void {
+  alwaysDone = ids;
+}
+
+/**
+ * True for a format whose pages are NEVER work in progress — one with no
+ * way to say "I'm Done", so a page of it is read as done the moment it
+ * exists (every Sol canvas, whose bandless page carries no info page to
+ * press Done on).
+ *
+ * Read by the entry store's own `alwaysDone`, on READ rather than on
+ * create, so the files already on disk are covered with no migration.
+ */
+export function isAlwaysDoneFormat(formatId: string): boolean {
+  return alwaysDone.has(formatId);
 }

@@ -1994,7 +1994,141 @@ first, then the pointer bump in each app).
    3,368; DrawBot 541 / 9,328. Sol is three cases down and that is the trim:
    its validator's generic per-rule cases are the package's now.
 
-   **6.2b to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
+   **6.2b — Done: the entry store** (2026-10-24). `entryStore.ts`'s shared
+   half is the package's, over the base record and the generic §4.3 settled,
+   with the four readers of a stored entry that all three apps had.
+
+   | | Cozy | Sol | DrawBot |
+   |---|---|---|---|
+   | `entryStore.ts` declarations | 67 | 42 | 44 |
+   | in all three | — | **41** | — |
+   | of those, byte-identical | — | **20** | — |
+   | in both Cozy and DrawBots | 44 | — | 44 |
+   | of those, byte-identical | **33** | — | — |
+   | `JournalEntry` fields | 27 | 18 | 26 |
+   | in all three | — | **18** | — |
+   | `entryStore.ts` lines, before → after | 874 → 510 | 483 → 127 | 564 → 204 |
+   | `store/types.ts` lines, before → after | 664 → 546 | 215 → 101 | 256 → 135 |
+
+   **The records nest exactly, which is what makes one base serve them:**
+   Sol's 18 ⊂ DrawBots' 26 ⊂ CozyJournal's 27, the shape 6.3b found for
+   `canvas` and 6.3b's own nesting of the config. 13 of the 18 were
+   byte-identical in all three and **the other five differ in a doc comment
+   only** — each naming that app's own home-list model — so the text is
+   CozyJournal's with the app-specific names generalised, which this time
+   meant actually doing it rather than claiming it (the header said
+   "generalised" before the pass that generalised them, and the claim was
+   caught by re-reading rather than by a gate).
+
+   **A FACTORY, not a module of free functions, and the reason is the call
+   sites.** `EntryStore<TEntry extends JournalEntryBase>` is a type, so the
+   store is `createEntryStore<JournalEntry, AppSettings>()` and each app's
+   `web/store/entryStore.ts` binds its two types ONCE and re-exports the
+   members under the names its callers have always imported — 37 / 20 / 38
+   importing files, none of which moved. Free generic functions would have
+   made each of those 95 files name the type at every call.
+
+   **Four declarations stay each app's, three of them for one reason.** A
+   declaration that reads a field outside the base cannot be generic over it:
+   `createEntry` is the one §4.3 names (`pageId`, `unlisted`), and
+   `setEntrySeededFills` and `setEntryTitle` are the other two.
+   **§4.3's answer said "`createEntry` alone" and that was one short of
+   right** — not because the count was wrong but because of what it was taken
+   over: the 41 declarations ALL THREE apps had, and those two are in only
+   CozyJournal's and DrawBots'. The fourth, `createEntryIfMissing`, stays for
+   a different reason: it reads no field of its own, it CALLS `createEntry`.
+   All four are a handful of lines over `patchEntryMeta`, `mutateEntry`,
+   `readEntryMeta`, `writeImageMeta`, `upsertEntry` and `asRead`, which the
+   store exposes for exactly that.
+
+   **6.2a's promise is kept: the five prefixes come through `storeKey()`**,
+   and so do CozyJournal's own four (`cozy:today:`, `cozy:reveal:`,
+   `cozy:series:doodle`, `cozy:collage:`). **No file in any of the three apps
+   declares a namespaced constant for a stored KEY any more** — each app's
+   `storeNamespace.test.ts` lost its `entryStore.ts` entry, which is the
+   derived pin working rather than weakening, and what the scan still finds
+   is the bridge's event names, which the native side listens for and nothing
+   in the package builds. The three module headers and the three codebase
+   maps now say that instead of "the store's come through at 6.2b".
+
+   **Three seams, and the first of them is a correction to how this plan has
+   been building seams.**
+
+   · **`alwaysDoneFormats` is a REQUIRED OPTION, not an installed set**, and
+     6.2b found out the hard way why that matters. `isAlwaysDoneFormat` was
+     byte-identical in all three apps over three different sets, so it went
+     into `formats/formatIds.ts` beside 6.3d's `isMultiFileFormat` as an
+     install — and every one of Sol's always-done cases failed, because its
+     `entryStore.test.ts` imports only TYPES from `@/web/formats/types` and
+     a type-only import is ERASED: the module never loaded, so the install
+     never ran. The fallback was silent and in the user's data — a page
+     filed `new` that every reader should see as `done`. So the store takes
+     the set, the compiler requires it, and no convention is relied on.
+     `formatIds.ts` keeps both predicates for the apps' own callers.
+   · `combineSettings` — what a settings WRITE stores, `{ ...stored,
+     ...patch }` when absent, which is Sol's whole behaviour. CozyJournal's
+     and DrawBots' is not: their games list is reconciled against the
+     formats the build offers before the patch lands, and `knownFormats` is
+     only ever stamped together with the list it describes. That is a fact
+     about those apps' format sets, so it is handed in. `mergeSettings` is
+     required for the same reason the namespace is: the defaults are the
+     app's and the store cannot guess them.
+   · `sidecars` and `listableFormat` — the extra binary sidecars an app keys
+     by entry id (CozyJournal's Today cutout and seed reveal), so
+     `clearEntryImages` drops them with the rest and `sidecarPresence` can
+     be asked about them; and whether a format's index belongs in the union
+     a formatless list reads, which is DrawBots' scratch rule — a look page
+     is no file and is listed only when asked for by name.
+
+   **What STAYED, as the 6.2b measurement said it would:** `types.ts` (each
+   app's own record and its format vocabulary) and `homeState.ts` (each app's
+   own home payload). And one thing the measurement had not weighed: the 8
+   fields CozyJournal and DrawBots share beyond the 18 (`unlisted`, `flat`,
+   `pageId`, `syncedAt`, `baseEditedAt`, `templateBaseline`, `seededFills`,
+   `title`), 23 of DrawBots' 26 being byte-identical to CozyJournal's. They
+   stayed, deliberately: they are not one concept to name — half are about
+   SHARING a page, two are the format layer's — and putting them in the base
+   would hand Sol eight fields it never writes, which is the opposite of what
+   a base record is for. `templateBaseline` and `seededFills` are stage 7's,
+   with the property pages.
+
+   **Suites: the behaviour half is the package's, driven over a made-up app
+   with a record field of its own, and the trim is 6.2a's lesson again.**
+   Eight describes left each app — the CRUD, the index and its staleness, the
+   listing and its order, the status transitions, the image writes and the
+   stamp they move, the freshness pair, the imported-page guard, the ULID
+   rules — because they were the same behaviour verified three times through
+   three bindings, which both apps' jest roots then ran a fourth time as the
+   package's. What each app keeps is what only it can say: its real format
+   ids through the always-done rule, its own settings defaults and the write
+   it reconciles, its own `createEntry` and the three declarations round it,
+   and (CozyJournal) its branch and fork entries, its page naming, its series
+   week and its collage.
+
+   Two coverage gaps closed, both the `pageIds.ts` kind (6.2a: a rule covered
+   only incidentally).
+
+   · The four readers of a stored entry had no suite of their own in any
+     app — `dayStartMs`, `isIssuedEntry`, `inImageWindow`,
+     `entryImagesBehindPage`, tested through whichever home payload happened
+     to call them. `entryRecord.test.ts` is theirs, and writing it turned up
+     an asymmetry worth a case of its own: a page SAVED with no images drawn
+     at all reads as behind, because an absent `imagesAt` is read as zero —
+     work owed rather than nothing to do.
+   · And the always-done rule's own edge: `markNotDone` on such a page
+     returns `in_progress` and leaves `in_progress` ON DISK, and only the
+     next read turns it back to `done`. Three apps' suites asserted the read
+     and none the write, so "what is on disk agrees with what every read
+     gives back" was true of `upsertEntry` and not of this path. Both halves
+     are pinned now, with the reason beside them.
+
+   Editor package 83 suites / 1,642 tests; engine 386 of 387 (cameraRoll's
+   host dependency, as before) / 7,121. CozyJournal 658 / 10,706; Sol 280 /
+   3,331; DrawBot 541 / 9,290. The three apps' totals fall by 39 / 37 / 38,
+   which is the trim above: the same behaviour is counted once now, in the
+   package, instead of four times.
+
+   **6.4a to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
    rule is to measure before planning, and the measurement makes 6.2b a
    different and much smaller job than "the shared half of `web/store/*`"
    sounds.
