@@ -1125,6 +1125,43 @@ first, then the pointer bump in each app).
    `EditorConfig`, `web/fonts/*` and the shared half of `web/store/*` move
    with them. Each app's `web/editor/` is then its extension alone.
 
+   **Where the stage stands, plainly** (2026-10-24, after 6.5a). **Stage 6
+   is NOT complete.** Every sub-stage but the last two is done, green and
+   committed in all four repos, nothing pushed:
+
+   | Sub-stage | | What it did |
+   |---|---|---|
+   | 6.0 | done | measured; re-ordered the rest |
+   | 6.1 | done | the fonts |
+   | 6.2a | done | the page I/O options, the id minter, the reset, the janitor |
+   | 6.3a–6.3c | done | the common `EditorConfig`, the frozen prompt, the issue reader |
+   | 6.3d | done | the rest of the format layer — the scaffold vocabulary |
+   | 6.2b | done | the entry store, over `JournalEntryBase` and a generic |
+   | 6.4a | done | the app chrome's palette |
+   | 6.4b | done | the host bridge — which needed no seam |
+   | 6.5a | done | the shell's siblings: eleven modules and two sheets |
+   | **6.5b** | **not started** | **the shell itself, bar handlers inside it** |
+   | **6.6** | **not started** | **the host's ~200-line state machine** |
+
+   What is left is the two biggest movers in the plan and the two the
+   measurement has least to say about: `EditorShell.tsx` at 10,077 / 7,494 /
+   8,589 lines, and `EditorHost.tsx`, whose common part is a state machine
+   under a route table per app. Every foundation they were blocked on is in
+   place — the fonts, the store, the config, the bridge, and now the
+   siblings — so nothing stands between 6.5b and the shell but the shell.
+
+   **What stage 7 inherits, as things stand.** Stage 7 is the apps' own
+   property pages (CozyJournal's rig: `rigEdit.ts`, `RigJointsBar`,
+   `RigPoseBar`, `RigColorBar`), and it inherits a question that has nothing
+   to do with them: whether the shell moved. If 6.5b and 6.6 land, stage 7
+   starts with `web/editor/` holding each app's extension alone, which is
+   what item 6 promises, and the rig pages are the last app vocabulary in
+   editor-ui. If they do not, stage 7 is still DOABLE — the rig pages are
+   editor-ui's, not the shell's, and 6.5a took the last of their shared
+   leaves — but it would be the odd order: moving an app's own kind out of
+   the shared layer while the shared layer's biggest file is still three
+   copies. Stage 7 should wait on 6.5b.
+
    **6.0 — Done: measured** (2026-10-23). Three findings, and two of them
    changed the order of the rest.
 
@@ -3079,6 +3116,31 @@ Measured with `review.js pending --prompt | wc -c`, as 6.1's note says to.
 (CozyJournal / Sol / DrawBots) — still about a tenth of what a stage-3 range
 passed at, for three sub-stages that took some 1,900 lines out of the three
 apps. 6.5's is still the one that has never been tried.
+
+**With 6.3d, 6.2b, 6.4a, 6.4b and 6.5a on them the ranges are no longer
+small** (2026-10-24): CozyJournal **709 KB**, Sol **659**, DrawBots **624**,
+and the engine's own range **605**. Against the 890 KB a stage-3 range
+passed at and the 3,293 KB the reviewer refused, that is inside the gate and
+not comfortably — eight sub-stages of unpushed work in each app, some 5,000
+lines moved, where the last recorded point was 97 / 83 / 106 KB after 6.3c.
+
+These are CUMULATIVE over every unpushed commit, which is what `review.js
+pending` means, so the number says as much about not having shipped since
+6.1 as about any one sub-stage. The per-sub-stage figures 6.1's note asked
+for cannot be recovered after the fact from a cumulative prompt; what can be
+said is that five sub-stages added about 600 KB between them, roughly 120 KB
+each, which is the same order as 6.1's 75 and 6.2a's 71 and nothing like
+stage 3's explosion. The move folding is still doing its work.
+
+**The practical reading for 6.5b.** A ship pass now, before the shell moves,
+would take each app's range back to about nothing and leave 6.5b measured on
+its own — which is the only way the question §5 has been asking since 6.1
+("is the shell's range reviewable?") gets a clean answer rather than one
+confounded by eight sub-stages of backlog. If instead 6.5b lands on top of
+this, its range starts at 624–709 KB before the shell's own diff, and the
+10,000-line file is exactly the one the folding has never been tried on. The
+owner's call, and it is the first time in this stage that the ORDER of
+shipping and moving matters to the measurement.
 
 Two things the first wiring taught: `git reset --hard` in a clone with
 `submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
