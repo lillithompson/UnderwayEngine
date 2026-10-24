@@ -31,29 +31,45 @@ out, which is what makes the file counts reproducible:
 | `web/store/` | 14 | 8 | 1 | 1.1 k / 1.7 k / 3.6 k |
 | `web/fonts/` | 8 | 8 | 5 | 0.7 k each |
 
-And the same trees NOW (re-measured 2026-10-23, at the start of stage 6
-and again after 6.1), so the table above stays the baseline it says it is
-rather than being overwritten:
+And the same trees NOW (re-measured 2026-10-24, after 6.3d), so the table
+above stays the baseline it says it is rather than being overwritten.
+`Files` is the UNION of file names across the three apps, which is what
+makes a file that only one app has still count once:
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
-| `web/editor/` (incl. `components/`) | 111 | 38 | 4 | 12.2 k / 17.9 k / 25.9 k |
+| `web/editor/` (incl. `components/`) | 111 | 38 | 4 | 12.3 k / 18.0 k / 26.0 k |
 | `web/editorUi/` | — | — | — | retired at stage 1 |
-| `web/formats/` | 53 | 7 | 1 | 1.2 k / 3.9 k / 16.8 k |
-| `web/store/` | 14 | 8 | 1 | 1.1 k / 1.7 k / 3.6 k |
-| `web/fonts/` | 5 | 4 | 0 | 181 / 230 / 203 |
+| `web/formats/` | 50 | 5 | 1 | 293 / 768 / 13.8 k |
+| `web/store/` | 12 | 6 | 0 | 976 / 1.5 k / 3.4 k |
+| `web/fonts/` | 5 | 5 | 1 | 213 / 233 / 234 |
 
-Four rows' worth of reading, and the fourth is the one that matters for
-this stage. `web/editor/` has lost 82 of its 193 files and two thirds of
-its lines — stages 1 to 5 — and what is LEFT is the drifted part: only 4
-of the 111 files are still identical in all three apps, against 57 of 193
-before. The consolidation has taken the easy files; the shell is most of
-the rest. `web/formats/` and `web/store/` have not moved at all, which is
-why stage 6 begins with them (item 6). `web/fonts/` is the shape every
-tree ends up in: five files, none identical, because after 6.1 each app
-keeps only the two files that are its own DATA plus two thin wrappers over
-the package — a tree whose files all differ because nothing generic is
-left in it.
+Four rows' worth of reading, and the second is this stage's. `web/editor/`
+has lost 82 of its 193 files and two thirds of its lines — stages 1 to 5 —
+and what is LEFT is the drifted part: only 4 of the 111 files are still
+identical in all three apps, against 57 of 193 before. The consolidation
+has taken the easy files; the shell is most of the rest.
+
+`web/formats/` is the tree stage 6 has actually emptied, and the lines are
+where to see it: Sol's 1.2 k is 293 and DrawBots' 3.9 k is 768, where at
+the start of the stage both were trees of their own. What is left in those
+two apps is `types.ts`, `configs/`, and three thin wrappers. CozyJournal's
+13.8 k against 16.8 k looks like less progress and is not: nearly all of
+its remainder is the modules that are its own games — the social turn, the
+rig, the templates, the word scatter, the Today thumbnail, the glyph and
+redline targets — none of which any other app has, and
+of the five files that still exist in all three apps, one is byte-identical
+(`validateConfig.ts`, now the same one-line wrapper in each) and the rest
+hold each app's own data.
+
+`web/store/` is 6.2a's four files out and 6.2b's `entryStore.ts` still in.
+`web/fonts/` is the shape every tree ends up in: five files, ONE identical,
+because after 6.1 each app keeps its own DATA plus thin wrappers — and that
+one, `faceAsset.ts`, is there because 6.2a's round-1 fix added it to all
+three at once. The row said "5 / 4 / 0" and the sentence under it said
+"none identical" until this re-measurement: a fix that adds a file breaks a
+count, which is the thing item 6's round-2 finding is about, three numbers
+at a time.
 
 The drift is concentrated in a few large files. Lines that differ against
 CozyJournal's copy (the canvas and node-layer rows re-measured 2026-10-21,
@@ -1653,7 +1669,7 @@ first, then the pointer bump in each app).
    | in all three | — | **22** | — |
    | of those, byte-identical in comment AND declaration | — | **21** | — |
    | in Cozy + DrawBots only | 32 | — | 32 |
-   | the app's own alone | 4 | **0** | 3 |
+   | the app's own alone | 5 | **0** | 3 |
    | `web/formats/types.ts` lines, before → after | 1,043 → 463 | 458 → 156 | 1,009 → 418 |
 
    **This is a move, not a merge, and the 21 is why.** Twenty-one of the
@@ -1670,10 +1686,12 @@ first, then the pointer bump in each app).
    **Sol has no field of its own at all**, which is the shape of this tree:
    Sol's config is a 23-member SUBSET, and the 32 members CozyJournal and
    DrawBots share between them are the template, scaffold and completion
-   layer. Those stay in each app for now and move when `edited.ts` and
-   `scaffold.ts` do, because that is where their types (`DoneRefusal`,
-   `MarkScene`, `TemplateBaseline`) come from — the one import
-   `web/formats/types.ts` still makes of a sibling.
+   layer. Those stayed in each app at this sub-stage and moved at 6.3d with
+   `edited.ts` and `scaffold.ts`, because that is where their types
+   (`DoneRefusal`, `MarkScene`, `TemplateBaseline`) come from — the one
+   import `web/formats/types.ts` still made of a sibling. 6.3d found all 36
+   of the two apps' shared members byte-identical, which is why they came in
+   one piece.
 
    **The four ids are `string` in the package, and §4.3 had already decided
    that.** `formatId`, `tools`, `firstTool` and `contentTools` name unions
@@ -1741,6 +1759,240 @@ first, then the pointer bump in each app).
    that is a string, a number or `null` reads as an empty partial rather
    than throwing, because every caller destructures the result and the
    payload crossed a JSON freeze/thaw out of the store.
+
+   **6.3d — Done: the rest of the format layer** (2026-10-24). The scaffold a
+   format seeds onto a page, the edited rule, the template-node readers, the
+   prompt flow, the completion rule, the config validator and the photo
+   sentinel are the package's, with the 32 config members and the vocabulary
+   they are declared over.
+
+   **It is a MOVE, and here is the measurement that says so.** Between
+   CozyJournal's copies and DrawBots':
+
+   | File | Declarations | In both | Byte-identical | What differs |
+   |---|---|---|---|---|
+   | `scaffold.ts` | 37 / 37 | 36 | **35** | `buildScaffoldEntry`'s tail |
+   | `edited.ts` | 27 / 27 | 27 | **24** | `scaffoldNodeCount`, `isEntryEdited`, one comment word |
+   | `templateNodes.ts` | 16 / 16 | 16 | **16** | — |
+   | `promptFlow.ts` | 7 / 7 | 7 | **7** | — |
+   | `completion.ts` | 1 / 1 | 1 | **1** | — |
+   | `validateConfig.ts` | 1 / 1 | 1 | **1** | — |
+   | the scaffold vocabulary | 176 lines | — | **176 lines** | — |
+   | `EditorConfig` members | 41 / 39 | 36 | **36** | — |
+
+   Eighty-one declarations, seventy-eight of them the same bytes. And the
+   config row is the one that decided the sub-stage's SIZE: 6.3b had counted
+   32 members as "CozyJournal and DrawBots only" and left them for later, and
+   **all 36 of the two apps' shared members turn out to be byte-identical in
+   doc comment as well as declaration** — so the 32 come here now as
+   `ScaffoldEditorConfig extends CommonEditorConfig` with nothing to merge,
+   rather than being paid for twice. (6.3b's table says CozyJournal has 4
+   members of its own where it has 5 — `openingColorIsPersonal`,
+   `bornWithRig`, `rigTool`, `wordTool`, `wordStickers`; 22 + 32 + 4 is 58
+   and that row's own total is 59. Corrected above and in that table.)
+
+   **Why it is one sub-stage and not two.** `scaffold.ts`, `edited.ts` and
+   `templateNodes.ts` are strongly connected — `scaffold` takes
+   `TemplateBaseline` from `edited`, `edited` takes the mask readers from
+   `templateNodes`, `templateNodes` takes `decorIdOfNode` from `scaffold` —
+   so they cannot be split, and the scaffold vocabulary has to precede all
+   three. That is 1,900 of CozyJournal's lines in one piece; `completion`,
+   `promptFlow` and `validateConfig` are 268 more over the same seams, and
+   making them a 6.3e would buy a second review round for them and nothing
+   else.
+
+   **Three seams, and the first is the only drift the two big files had.**
+
+   · `ScaffoldFurniture` (`formats/scaffold.ts`) — what an app's own formats
+     arrive HOLDING beyond their slots, their frame and their decor texts.
+     CozyJournal has two kinds and nobody else has any: Adrift's word tiles,
+     scattered clear of the frame, and Poise's T-posed Figgie rig with its
+     hidden pose record. ONE rule with three members — `build`, `count`,
+     `touched` — because the three questions are one question asked three
+     ways: what the furniture puts on a fresh page, how many nodes that is
+     (the edited rule's threshold), and whether the user has touched any of
+     it. Floating a sticker into the mask and posing the rig both add no node
+     and edit no slot, so each needs its own test, and an app that answered
+     one without the others would have a page counting its own furniture as
+     the user's work. Every member is used, so dropping one fails this
+     package's compile. Installed at module scope rather than handed in:
+     `buildScaffoldEntry` has 56 call sites across the two apps and their
+     suites and takes no context object — the `registerFaceFetch` case of
+     6.1, not the `FontPack` one. Nothing installed means no furniture,
+     which is the honest fallback: a format with no stickers and no rig
+     seeds none either way. The register carries ONE cast, in the package,
+     with the invariant stated — the config every scaffold call is made with
+     is the config of the app that installed the rule, there being one app
+     per page, which is what `registerStoreNamespace` already rests on. That
+     is what keeps each app's own rule free of casts, and it is the same
+     asymmetry §4.3 settled for `ToolId` at stage 2 and 6.3b for the config's
+     ids.
+   · the PHOTO SENTINEL — `cozy:` / `sol:` / `drawbots:photo-placeholder` in
+     three otherwise byte-identical files. It comes through `storeKey()`
+     rather than becoming a second install, and the reason is a fact the
+     file's own comment had been carrying all along: **the blob store keys
+     blobs BY `imageId`** (each app's `persistence.ts`), so this id is a key
+     under the app's namespace exactly like the entry's and the thumb's. It
+     is the sixth prefix 6.2a promised would come through the builder, and
+     routing it there removes a seam rather than adding one — each app's
+     `storeNamespace.test.ts` lost a file from its derived list, which is
+     that pin working rather than weakening. A FUNCTION, not a constant, for
+     the reason `assetJanitor` reads its stamp's key at each use: the app's
+     install and this module's load are both module-scope effects and their
+     order is the bundler's. Each app's own `photoPlaceholder.ts` captures it
+     into the constant its screens have always imported, after importing its
+     `web/store/storeNamespace` for the side effect — so the order is that
+     one file's to guarantee, once, where it can be read.
+   · `registerMultiFileFormats` (`formats/formatIds.ts`) — `isMultiFileFormat`
+     was byte-identical in all three apps while each `MULTI_FILE_FORMATS` set
+     was its own, so the SET is installed and the question is asked in the
+     package. `entryCloseAction` is why this exists at all: it reads that
+     predicate, and without it that declaration could not have moved.
+     6.2b's `isAlwaysDoneFormat` is the same shape over the same tree and
+     joins this file. Unlike the store's namespace it does NOT throw when
+     nothing is installed — an app with no multi-file formats is a real
+     answer, and 6.2a's asymmetry does not arise: a wrong answer here files
+     a page the user can still see and open.
+
+   **Two things could not come, and an app had been carrying each one dead.**
+
+   · `isPreMaskAdriftPage` compares against `'magneticPoetry'`, so it is
+     CozyJournal's (`web/formats/adriftRelic.ts`). DrawBots carried the
+     function dead in a file byte-identical to CozyJournal's, and **six cases
+     of its own suite drove it over `'magneticPoetry'` and `'haiku'`** —
+     format ids that app has never had — passing because the function takes a
+     string. The relic and its cases are CozyJournal's now, which is what
+     makes that impossible again.
+   · Sol's `isEntryEdited`. Seven of Sol's eight `edited.ts` declarations
+     were CozyJournal's text with "page" read as "canvas" and are the
+     package's; the eighth stays, because the QUESTION differs. A Sol canvas
+     opens blank, so there is nothing to subtract and the answer is simply
+     whether anything is on it, where the package's takes a scaffold — and a
+     `ScaffoldEditorConfig`, which Sol's config is not, so it cannot be
+     called there at all rather than being called with nothing to say.
+     Sol's `MarkScene` was `unknown[]` where CozyJournal's is typed, and
+     adopting the package's is §4.3's canonical rule doing what it says.
+
+   **`validateEditorConfig` takes the scaffold half as a `Partial`, and that
+   is what lets ONE function serve three apps.** Sol's copy was these checks
+   with every scaffold one deleted — 37 lines against 129, byte-identical in
+   the other two — and optional members make those checks VACUOUS on a
+   config that declares none of the layer rather than absent. Nothing is
+   weakened where the layer IS declared: there the members are required by
+   the app's own interface, so a misspelt `scaffold` fails where the config
+   is written. The host-tool registry is a parameter, the way
+   `deadContentModes` already took it, and each app keeps a one-line wrapper
+   passing its own — which is the only rule whose answer depends on which
+   tools ride the content row, and the only thing left in each app's suite.
+
+   **An uncounted prerequisite, the shape 6.0 found for the shell.**
+   `edited.ts` needs `fnv1a32`, and `seededRandom.ts` was two copies of one
+   48-line file — CozyJournal's `web/content/`, DrawBots' `web/formats/` —
+   differing by a two-line header. It is **the engine's** now
+   (`packages/engine/src/seededRandom.ts`) rather than the editor package's:
+   it is pure 32-bit arithmetic with no editor concept in it, DrawBots'
+   simulation imports it, and the engine is the one package `npm run
+   typecheck` actually covers. Each app keeps a re-export, because the
+   module's leaf-ness is load-bearing in CozyJournal (the dailyContent ↔
+   squiggle require cycle its header describes) and a re-export is a leaf
+   too. That also let `store/pageIds.ts` stop carrying a private THIRD
+   spelling of FNV-1a: the two formulations were verified equal before the
+   fold (shift-adds against `Math.imul`, both × 16777619 in 32-bit space),
+   and `pageIds.test.ts` now pins two collage page ids as LITERALS — every
+   collage page an installed app has filed is NAMED by that function, and
+   its four determinism cases would have passed straight through a changed
+   hash.
+
+   **Each app's suites now run with its store namespace installed**
+   (`jest.setup.ts`, new in CozyJournal and Sol, extended in DrawBots). It
+   says the true thing once instead of in every suite that reaches a key: in
+   an app a namespace is always installed before any key is built. 6.2a's one
+   built key was reached only through each app's own `assetJanitor.ts`, which
+   imports the install for its side effect; the photo sentinel is read by the
+   PACKAGE's scaffold, so a suite can now reach a key without loading a
+   module of the app's store at all. It cost one thing and the precedent was
+   already there: `storeKeys.test.ts`'s "with no app installed" describe
+   clears its own install, the way Sol's `extension.ts` setup file already
+   made three engine suites clear their own hosts.
+
+   **The install's reachability is the thing an installed seam gets wrong,
+   and it is now derived rather than described.** The furniture seam has a
+   fallback — "no furniture" — which is the right answer for two apps of
+   three and a SILENT wrong one for CozyJournal: a page would arrive without
+   its word bank or its rig and nothing would fail. Three things followed
+   from measuring instead of assuming where the install is reached from:
+   · The app's `web/formats/types.ts` is NOT a reliable hub. It looked like
+     one — every formats module imports it — but `configs/patchwork.ts`
+     imports only TYPES from it, which are erased, and `resetPageAsk.ts`
+     imports nothing from it at all. Verified against the code rather than
+     reasoned from the shape, which is item 5's lesson.
+   · So the install lives in the CONFIG MODULES that declare the member:
+     `configs/poser.ts`, `configs/magneticPoetry.ts` and `configs/comic.ts`
+     import `web/formats/scaffoldFurniture` for the side effect. The
+     invariant is exact and local — a config that says `bornWithRig: true`
+     is the thing that needs the rig seeded, so the module that says it is
+     the module that makes the seeder exist. That one change took eighteen
+     failing suites to one.
+   · And `scaffoldFurniture.test.ts`'s last case DERIVES the rest: it walks
+     `web/`, `components/` and `app/`, collects every module that declares
+     `bornWithRig` or `wordStickers` on a config, and fails if one of them
+     cannot reach the install. It found `pageTemplate.test.ts` on its first
+     run, which reached the install only transitively. Verified both ways,
+     and with a floor on the count it checks so a pattern that stopped
+     matching could not pass over nothing.
+
+   **Suites split as every stage since 3 has split them, and the trims are
+   6.2a's lesson applied before a reviewer had to ask.** The behaviour halves
+   are the package's, driven over a made-up app with a closed format id of
+   its own (`test-utils`' `makeScaffoldConfig`), the way `editorConfig.test`
+   and 6.1's `loadPackFonts.test` drive theirs. What each app keeps is the
+   half that cannot be made up:
+
+   · `completion.test.ts` and `promptFlow.test.ts` were byte-identical in the
+     two apps and named nothing of either beyond the `EditorConfig` type, so
+     they are DELETED rather than left as copies — which is precisely what
+     6.2a found twice with the janitor's suite, "copied, not moved, in two
+     apps of three", and what both apps' jest roots make invisible: the
+     package's copy runs in them anyway.
+   · `scaffold.test.ts` keeps three cases in each app, and only three: the
+     ones that read that app's own `EditorShell.tsx`. That is 6.3a's split
+     rule — "only the Crop-bar pair reads the app's `EditorShell.tsx`, and
+     that is what each app keeps".
+   · `edited.test.ts` keeps the half driven by the REAL configs, which is the
+     point of it: that a freshly opened page of each shipped format reads as
+     uninitialized is a fact about those configs, and a fixture scaffold
+     could agree while the shipped one seeds an extra node.
+   · `templateNodes.test.ts` is DrawBots' deleted and CozyJournal's reduced
+     to `adriftRelic.test.ts`.
+   · `photoPlaceholder.test.ts` was byte-identical in ALL THREE apps and so
+     pinned the sentinel's spelling in NONE of them — the one value in the
+     file that can never change, since it is in every page every installed
+     copy of each app has ever saved. Each app's is now that pin and nothing
+     else.
+
+   Two coverage gaps closed on the way, both of the `pageIds.ts` kind (6.2a:
+   a file whose rules were covered only incidentally). `seededRandom.ts` had
+   no suite in either app that carried it — a shuffle that stopped being
+   deterministic changes what every device generates for a given day without
+   failing anything that reads the result — and now has thirteen cases with
+   its persisted values pinned as literals. And `imageFraming`'s sibling
+   problem: `formats/edited.ts`'s `printedFillSignatures`,
+   `templateBaselineOf` and `doneRefusal` were exercised only through
+   CozyJournal's real configs, so Sol and DrawBots tested them not at all.
+
+   One mistake worth recording, and it is the measurement one again. Three
+   of the new package suite's cases were written from what the code looked
+   like rather than from what it does: a `patternFill` seed arrives PRINTED
+   (`seedPatternFill` floods it), `sceneNodeIds` walks the kinds in a fixed
+   order rather than sorting, and `isEntryEdited` over an empty scaffold
+   reads a seeded shape as the user's. All three failed on the first run and
+   all three were the test being wrong, not the code — which is the benign
+   direction, and the reason to write the case before trusting the reading.
+
+   Editor package 81 suites / 1,581 tests; engine 384 of 385 (cameraRoll's
+   host dependency, as before) / 7,061. CozyJournal 658 / 10,745; Sol 280 /
+   3,368; DrawBot 541 / 9,328. Sol is three cases down and that is the trim:
+   its validator's generic per-rule cases are the package's now.
 
    **6.2b to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
    rule is to measure before planning, and the measurement makes 6.2b a

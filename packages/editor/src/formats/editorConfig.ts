@@ -43,12 +43,12 @@ export interface ShapeLock {
  * one text, with DrawBots' canvas as the superset
  * (docs/shared-editor.md §4.2 item 6, stage 6.3b).
  *
- * An app's own fields are NOT here. Each app declares
- * `interface EditorConfig extends CommonEditorConfig` and adds them: 4 of
- * CozyJournal's are its rig and word stickers, 3 of DrawBots' are its
- * simulation and forward arrow, and the 32 that CozyJournal and DrawBots
- * share are the template, scaffold and completion layer, which Sol has none
- * of and which moves when `edited.ts` and `scaffold.ts` do.
+ * An app's own fields are NOT here. Each app declares an `EditorConfig` of
+ * its own and adds them: 5 of CozyJournal's are its rig and word stickers,
+ * 3 of DrawBots' are its simulation and forward arrow. The 32 those two
+ * apps share are the format layer below ({@link ScaffoldEditorConfig},
+ * stage 6.3d), which Sol declares none of — so Sol extends THIS interface
+ * and the other two extend that one.
  *
  * WHY THE TOOL AND FORMAT IDS ARE `string` HERE. `formatId`, `tools`,
  * `firstTool` and `contentTools` name unions that are each app's own
