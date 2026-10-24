@@ -16,7 +16,7 @@ import {
 } from '@/engine/shapePatternFill';
 import { applyPatternCellEdits, patternReconcileEdits } from '@/engine/patternObject';
 import { DEFAULT_PATTERN_EXCLUDED_FAMILIES } from '../patternTileFamilies';
-import type { MarkScene, TemplateBaseline } from './edited';
+import type { TemplateBaseline } from './edited';
 import { applyCompOps, computeSVGBbox } from '@/engine/compositionOps';
 import { makeBlankComposition } from '../blankComposition';
 import { measureTextBbox } from '@/engine/textLayout';
@@ -343,8 +343,13 @@ export interface ScaffoldFurniture<TConfig extends ScaffoldEditorConfig = Scaffo
   count(config: TConfig): number;
   /** Whether any of the furniture bears the user's hand: a sticker floated
    *  into the mask, a rig moved off its T-pose. Asked BEFORE the template
-   *  baseline comparison, which is blind to both. */
-  touched(config: TConfig, state: MarkScene): boolean;
+   *  baseline comparison, which is blind to both.
+   *
+   *  The whole composition rather than a {@link MarkScene}, because
+   *  {@link isEntryEdited} has one in hand and a rule may need to read a
+   *  node the narrow scene does not carry — CozyJournal's reads its rig's
+   *  pose record off `texts` and the figure off `svgObjects`. */
+  touched(config: TConfig, state: CompositionState): boolean;
 }
 
 let furniture: ScaffoldFurniture | undefined;

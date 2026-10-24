@@ -8,6 +8,14 @@ import { registerStoreNamespace, storeKey, storeNamespace } from '../store/store
 afterEach(() => registerStoreNamespace(null));
 
 describe('with no app installed', () => {
+  // CLEARS ITS OWN, because this suite also runs inside each app, whose test
+  // harness installs that app's namespace for every suite (its
+  // `jest.setup.ts`) exactly as the app does. The arrangement Sol's
+  // `extension.ts` setup file already needed: an app installs the world its
+  // editor runs in, and a package suite whose subject is the ABSENCE of an
+  // install says so here rather than depending on load order.
+  beforeEach(() => registerStoreNamespace(null));
+
   it('refuses to build a key rather than guessing a namespace', () => {
     // The alternative — falling back to some default, the way the font
     // family probe falls back to the system stack — would write every page
