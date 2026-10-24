@@ -1573,6 +1573,57 @@ first, then the pointer bump in each app).
    (`web/fonts/<name>`), since a bare filename would be satisfied by any
    mention of that name anywhere in the map.
 
+   **6.3a — Done: the closed leaf of `web/formats/`** (2026-10-23).
+   `svgImageGeometry.ts` — the GEOMETRY of an SVG picture placed on a page,
+   its `<path>`s flattened to polylines in world cells — is the package's
+   (`packages/editor/src/formats/svgImageGeometry.ts`).
+
+   It is the plainest move this plan has left: **418 lines, byte-identical
+   in all three apps, importing nothing but the engine** (`@/engine/types`,
+   `@/engine/imageFraming`). That is stage 1's own criterion word for word
+   — "the 34 files that were identical in all three apps and import nothing
+   of any app" — and it was missed for five stages because stage 1 read
+   `web/editor/` and this file sits in `web/formats/`, a tree §1's table
+   says has "not moved at all". No seam, no adoption decision, no owner's
+   call: the three copies were the same bytes.
+
+   **It was dead in two apps of the three.** Its only reader anywhere is
+   CozyJournal's `web/formats/pageTemplate.ts` (the Adrift template traces
+   its mask and its bottle through it); Sol and DrawBots each carried 418
+   lines whose only importer was its own suite. So the move turns three
+   copies, two of them dead, into one shared implementation — the
+   arrangement 5a made for the six canvas leaves Sol ships without a tool
+   for, and 6.2a for `collagePageId`.
+
+   Two suites moved, and **both were byte-identical in all three apps**:
+   `svgImageGeometry.test.ts` (188 lines) is dedicated to the moved file and
+   went whole, and `imageFraming.test.ts` (334 lines) SPLIT. Its split is
+   worth recording, because the file was not what its name says: of its
+   three parts, the engine's framing helpers and the mode-by-mode SVG
+   export test `packages/engine`, and **`imageFraming.ts` had no suite of
+   its own in this repo** — `resolveFraming`, `coverDrawSize`,
+   `clampPanOffset`, `straightenCoverScale`, `tileGeometry`,
+   `cropRatioValue` and `FRAMING_DEFAULTS` were named by no suite here at
+   all, and the three apps' identical copy was the only thing testing
+   them. The "nothing draws an image by stretching it" pair reads the
+   PACKAGE's `NodeLayer.tsx` and this file, and only the Crop-bar pair
+   reads the app's `EditorShell.tsx`. The first two moved; the third is
+   what each app keeps. The package's half asserts that no `vendor/UnderwayEngine`
+   path and no mention of `EditorShell` survived the cut, so a future
+   careless copy of the app's half into it fails rather than passes
+   vacuously — which is the 6.2a lesson (the janitor suite COPIED, not
+   moved, in two apps of three) written as a check instead of a resolution.
+
+   One duplication found and deliberately NOT folded, flagged as
+   `CLAUDE.shared.md` asks: `parseSvgViewBox`'s root-tag regex and its
+   four-line `attr()` reader are a third spelling of what
+   `packages/engine/src/compositionImageImport.ts`'s `svgIntrinsicSize`
+   does inline. The two have genuinely different contracts — one answers
+   the viewBox's x/y/w/h for mapping coordinates, the other the display
+   size, preferring `width`/`height` — so only the attribute reader is
+   actually shared, and collapsing it is a change to the engine's own
+   import path rather than part of this move.
+
    **6.2b to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
    rule is to measure before planning, and the measurement makes 6.2b a
    different and much smaller job than "the shared half of `web/store/*`"
@@ -1590,8 +1641,12 @@ first, then the pointer bump in each app).
 
    · `types.ts` holds each app's own stored RECORD. `JournalEntry` is 27
      fields in CozyJournal, 18 in Sol and 26 in DrawBots, and `AppSettings`,
-     `ALL_FORMATS` and `DEFAULT_SETTINGS` are absent from DrawBots
-     altogether. What is genuinely shared is about sixty lines of helpers —
+     `ALL_FORMATS` and `DEFAULT_SETTINGS` are not DECLARED in DrawBots'
+     copy — that app keeps them in `components/appSettings.ts` and
+     `components/formatIds.ts`, which its `types.ts` imports and RE-EXPORTS
+     under the same names, because they ride the native bundle too
+     (`DrawBots.md`, "Mirror modules"). So all three apps do have them,
+     and `entryStore`'s settings half is shared by three, not two. What is genuinely shared is about sixty lines of helpers —
      `dayStartMs`, `inImageWindow`, `isIssuedEntry`, `entryImagesBehindPage`,
      `EntryStatus` — of which `dayStartMs` and `inImageWindow` are
      byte-identical between CozyJournal and DrawBots.
