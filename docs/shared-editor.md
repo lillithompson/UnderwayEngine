@@ -2123,10 +2123,15 @@ first, then the pointer bump in each app).
      are pinned now, with the reason beside them.
 
    Editor package 83 suites / 1,642 tests; engine 386 of 387 (cameraRoll's
-   host dependency, as before) / 7,121. CozyJournal 658 / 10,706; Sol 280 /
-   3,331; DrawBot 541 / 9,290. The three apps' totals fall by 39 / 37 / 38,
-   which is the trim above: the same behaviour is counted once now, in the
-   package, instead of four times.
+   host dependency, as before) / 7,121. CozyJournal 660 / 10,766; Sol 280 /
+   3,331; DrawBot 543 / 9,350.
+
+   The arithmetic of those three is worth a line, since a move's usually is.
+   Each app's OWN cases fall by 39 / 37 / 38 — the trim above — and
+   CozyJournal's and DrawBots' totals nonetheless RISE, because their jest
+   roots include this package and they now run the 60 cases of the two new
+   suites as well. Sol's do not (its roots are `scripts/`, `web/` and
+   `components/` only, as 6.3a recorded), so Sol's total is the trim alone.
 
    **6.4a to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
    rule is to measure before planning, and the measurement makes 6.2b a
