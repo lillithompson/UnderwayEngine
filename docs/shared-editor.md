@@ -2220,7 +2220,84 @@ first, then the pointer bump in each app).
    (cameraRoll's host dependency, as before) / 7,138. CozyJournal 661 /
    10,783; Sol 280 / 3,331; DrawBot 544 / 9,364.
 
-   **6.4b to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
+   **6.4b — Done: the host bridge, and it needs no seam** (2026-10-24). This
+   sub-stage was budgeted as a design — "the HostBridge seam" — and the
+   measurement says there is nothing to design. That is the finding, and it
+   is worth as much as a seam would have been.
+
+   **What the three shells actually do with the bridge**, counted at every
+   call site:
+
+   | Call | Cozy | Sol | DrawBot |
+   |---|---|---|---|
+   | `isInWebView()` | 12 | 4 | 4 |
+   | `triggerHaptic()` | 5 | 8 | 4 |
+   | `postAppEvent(APP_EVENT_NAVIGATE, …)` | 7 | 1 | — |
+   | `postAppEvent(APP_EVENT_TELEMETRY, …)` | 1 | — | 1 |
+   | `postAppEvent` / `onAppEvent` on a SEND or SOCIAL channel | 10 | — | — |
+
+   **The two calls all three shells make are already the package's**
+   (`@/native-shell/bridge/webBridge`, since stage 1): `isInWebView` and
+   `triggerHaptic` take no app vocabulary and need nothing. Everything else
+   is one app's — ten of CozyJournal's bridge calls are its Response,
+   Redline, Glyph and social channels, and Sol and DrawBot have one event
+   each between them.
+
+   So the bridge traffic does not become a seam of its own; it rides the
+   app's `EditorExtension` the way `onHostPlace` does (§4.3), or stays an
+   app-side prop, and 6.5b decides which per callback by §4.3's own test:
+   does the thing close over state only the shell holds? An event NAME and a
+   payload shape close over nothing of the shell's. **Inventing a
+   `HostBridge` with a `homeStateEvent` and a `navigateEvent` on it would
+   have been the mistake 6.0 warned about in the other direction — a seam
+   built before its consumer moved, which the consumer then deletes.**
+
+   What the sub-stage DID move is the three `components/` leaves the shells
+   read beside the bridge, which are prerequisites either way:
+
+   | File | Lines | In all three | Home |
+   |---|---|---|---|
+   | `imageDataUri.ts` | 28 | byte-identical but one doc path | `@/engine/imageDataUri` |
+   | `omitKeys.ts` | 14 | **byte-identical** | `@/engine/omitKeys` |
+   | `openTrace.ts` | 109 | byte-identical but one doc path | `@/native-shell/openTrace` |
+
+   The homes follow 6.4a's rule, which a source pin set: arithmetic with no
+   editor concept goes to the ENGINE, and `openTrace` goes to the SHELL
+   package because it already imported `@/native-shell/profiling` and
+   because its whole point is that both sides of an app record into one
+   module. `OpenMark` and `OpenTracePayload` came with it out of each app's
+   `bridgeSchema.ts` — the declarations were identical in all three, only
+   `OpenMark`'s comment differing — and each schema re-exports them, so
+   nothing that reads a mark moved.
+
+   `openTrace`'s suite SPLIT, and the split is the file's own shape: the
+   recorder, the table and what crosses the bridge are the package's (the
+   three describes were byte-identical in the two apps that had them), and
+   each app keeps "the wiring", which reads its own components and router
+   screens for the marks they record. `imageDataUri`'s and `omitKeys`'
+   suites were byte-identical in every app that had them and moved whole.
+
+   **One dead import, in all three shells.** Every `EditorShell.tsx`
+   imported `APP_EVENT_HOME_STATE` and used it nowhere — invisible in the
+   apps, whose tsconfig does not set `noUnusedLocals`, and the third such
+   find of the stage after 6.1's `TextStyle` and 5a's two. Dropped.
+
+   **And the sweep lesson for the third time, now with the remedy.**
+   `textPlaceholder`'s re-point at 6.4a missed `./textPlaceholder`; this
+   sub-stage's first sweep for the three leaves missed
+   `'../imageDataUri'`; and the sweep written WIDE enough to catch that
+   then over-matched, rewriting `'./openTrace'` inside `web/editor/` — which
+   is each app's own PAGE-side trace module, not the recorder, and the
+   typecheck caught it in six files. A re-point sweep has to match the
+   module's identity, not its name: a pattern narrower than the spellings in
+   use misses, and one wider than the module's own path hits a namesake.
+   What makes it safe either way is that both failures are compile errors.
+
+   CozyJournal 659 suites / 10,768 tests; Sol 278 / 3,324; DrawBot 543 /
+   9,349; engine 390 of 391 (cameraRoll's host dependency, as before) /
+   7,153.
+
+   **6.5a to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
    rule is to measure before planning, and the measurement makes 6.2b a
    different and much smaller job than "the shared half of `web/store/*`"
    sounds.
