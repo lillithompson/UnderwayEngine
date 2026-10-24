@@ -1172,10 +1172,11 @@ first, then the pointer bump in each app).
    `canvasIssue` and its strain routes. What is actually common is a
    ~200-line state machine — resolve the query, let a `NAVIGATE_TO` override
    it, hold at the placeholder while warm, mint a multi-file page once per
-   session, clear the action screens, mount the shell. **An owner's call is
-   open on it** (see "Still open"): the stage as written says the host
-   becomes the package's screen, and the measurement says only its state
-   machine can.
+   session, clear the action screens, mount the shell. An owner's call was
+   open on it and is now ANSWERED (§4.3, settled 2026-10-23): the state
+   machine moves and each app keeps a route table over it, so the stage as
+   written — "the host becomes the package's screen" — is narrowed to the
+   part the measurement says is genuinely shared, not abandoned.
 
    **6.1 — Done: the fonts** (engine 5c457ae, CozyJournal b874b708, Sol
    ecc0172, DrawBot 76bae3f; 2026-10-23). Five of the seven files under
@@ -1778,19 +1779,23 @@ first, then the pointer bump in each app).
    `EditorConfig` of 6.3 is the last of `web/formats/` rather than one piece
    of a larger store move.
 
-   **The one design question 6.2b has to settle, and it is the owner's**
-   (see "Still open"): `entryStore`'s 42 shared declarations are generic over
-   a record that is each app's own. Stage 3 answered the same question for
-   the session — `EditorSession<TTool, TDoc, TOps>` carries the app's types
-   through and every function that returns a session is generic over it — and
-   §4.3 answered it again for `ToolId`, where neither of the two options the
-   question was posed as was taken. The store's version is narrower than
-   either, because most of `entryStore` never reads a field: it is key
+   **The one design question 6.2b had to settle was the owner's, and it is
+   now ANSWERED** (§4.3, settled 2026-10-23): a base record plus a generic.
+   `JournalEntryBase` holds the 18 fields all three `JournalEntry` types
+   have, the package's store is `EntryStore<TEntry extends
+   JournalEntryBase>`, and each app keeps the declarations that read a field
+   of its own — which the corrected measurement says is **`createEntry`
+   alone**. Of the 41 declarations in all three apps, 9 touch no entry field,
+   31 touch only fields all three records share, and one touches a field
+   that is not in all three. §4.3 records the answer, the first count's
+   error, and why the extractor produced it.
+
+   Stage 3 had answered the same question for the session
+   (`EditorSession<TTool, TDoc, TOps>`) and §4.3 again for `ToolId`, where
+   neither posed option was taken; this is a third shape again, and narrower
+   than either, because most of `entryStore` never reads a field: it is key
    layout, the per-format index, the sidecar images and the settings merge,
-   over a record it only stores and hands back. Whether that becomes
-   `EntryStore<TEntry>`, or an installed entry adapter, or only the key and
-   index mechanics with each app keeping its own accessors, is the call that
-   decides how much of 549 lines moves.
+   over a record it only stores and hands back.
 7. **Property pages for the apps' kinds, all the way.** CozyJournal's rig
    pages (`rigEdit.ts`, `RigJointsBar`, `RigPoseBar`, `RigColorBar`), which
    this repo's editor-ui still carries, become CozyJournal host pages; the
@@ -2202,39 +2207,54 @@ Settled by the owner, 2026-10-20:
   "they will fold too" as an argument for taking them WITH the shell rather
   than ahead of it, which is what §4.2 item 4 itself concluded — see item 6.
 
-Still open:
+- **How `entryStore.ts` carries each app's own entry record** (asked at
+  6.2b's measurement, answered by the owner 2026-10-23). **A base record
+  plus a generic**: `JournalEntryBase` holds the 18 fields all three
+  `JournalEntry` types have, the package's store is
+  `EntryStore<TEntry extends JournalEntryBase>`, and each app keeps the
+  declarations that read a field of its OWN.
 
-- **How `entryStore.ts` carries each app's own entry record** (raised at
-  6.2b's measurement, 2026-10-23). 42 of its 68 declarations exist in all
-  three apps and a large share are byte-identical, so it is the one file
-  left in `web/store/` that moves — but it is generic over a `JournalEntry`
-  that is 27 fields in CozyJournal, 18 in Sol and 26 in DrawBots. Most of
-  the file never reads a field (key layout, the per-format index, the
-  sidecar images, the settings merge), which is what makes several answers
-  viable: `EntryStore<TEntry>` on stage 3's
-  `EditorSession<TTool, TDoc, TOps>` precedent; an installed entry adapter
-  on the session host's; or only the key and index mechanics, with each app
-  keeping its own accessors over its own record. The precedent cuts both
-  ways and the owner took a third option the last time this question was
-  posed (§4.3, `ToolId`), so it is not an agent's to guess. Note also that
-  this is the user's stored data: unlike every seam so far, a wrong answer
-  here is not a visual regression.
+  The measurement is what shaped the question, and a corrected measurement
+  is what made the answer this one. Of the 41 declarations `entryStore.ts`
+  has in all three apps, **9 touch no entry field at all** (the prefixes,
+  the filter, the settings pair), **31 touch only fields all three records
+  share**, and **exactly ONE — `createEntry` — touches a field that is not
+  in all three** (`pageId` and `unlisted`, which CozyJournal and DrawBots
+  have and Sol does not). The drift sits in the same place: `createEntry`
+  drifts 20/25 against CozyJournal and the five namespaced prefix constants
+  drift 2 each, which is the one word 6.2a already made a seam.
 
-- **Whether `EditorHost.tsx` becomes the package's screen at all** (raised
-  at 6.0, 2026-10-23). Item 6 says it does. The measurement says the three
-  hosts are not one drifted file but three ROUTE TABLES sharing a skeleton:
-  five top-level declarations in all three, four of them trivial, the fifth
-  `EditorHost` itself at 812 / 267 / 381 lines with 685 / 745 diff-lines
-  and a longest shared run of 33 lines (the shell's is 730). The ~200-line
-  state machine inside it IS shared and can move — resolve the query, let a
+  **The first count given to the owner was wrong and the method is the
+  warning.** It read "35 of 41 move, 6 read a CozyJournal-only field",
+  because the extractor gave each declaration the text up to the NEXT
+  declaration — and so credited each with the FOLLOWING one's doc comment.
+  `getView` was charged with `seedRevealRecipe` (named in `setSeedReveal`'s
+  comment below it), `setThumb` with `setEntrySeededFills`', and
+  `listEntries` with a field called `flat`, which is `Array.prototype.flat`.
+  A doc comment belongs to the member below it; an extractor that assumes
+  otherwise reports drift that is not there. The same bug reported 9 of
+  `EditorConfig`'s 22 shared fields as differing when 21 of 22 are
+  byte-identical.
+
+  Note what makes this seam unlike every other in the plan: it is the
+  user's STORED DATA. A wrong font family shows the system face for a
+  moment; a wrong answer here is not a visual regression.
+
+- **Whether `EditorHost.tsx` becomes the package's screen** (asked at 6.0,
+  answered by the owner 2026-10-23). **The ~200-line state machine moves
+  and each app keeps a route table over it** — resolve the query, let a
   `NAVIGATE_TO` override it, hold at the placeholder while warm, mint a
   multi-file page once per session, clear the action screens, mount the
-  shell. Each app's ACTIONS cannot: they open that app's own kinds of page.
-  So the choices are to move the state machine and leave each app a route
-  table over it (which is a real consolidation of about 200 lines three
-  times over), or to leave the host alone and let the stage end at the
-  shell. An agent should not decide which, because the second shrinks the
-  stage as written.
+  shell. Each app's ACTIONS stay the app's: they open that app's own kinds
+  of page (CozyJournal's `openGlyph`, `openRedline`, `openSocialTurn`,
+  `takePageForks`, `takePageNames`; DrawBots' `pushFormats` and its salvage
+  channel; Sol's `canvasIssue` and its strain routes). So item 6's "the
+  host becomes the package's screen" is narrowed, not abandoned: about 200
+  lines three times over, which the measurement says is all that is
+  genuinely shared — three declarations in all three apps, longest shared
+  run 33 lines against the shell's 730.
+
+Still open:
 
 - **The push brush on DrawBots' bar.** Stage 5b put the gesture in the
   canvas DrawBot draws on and left the app-side `DRAWBOT_PAINT_MODES`
