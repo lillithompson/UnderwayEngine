@@ -14,6 +14,11 @@ import { commitCanvasPaint, createCanvasPaintWorking, stampCanvasPaint } from '@
 import { createPaintObjectFromTiles, mintPaintObjectId } from '@/engine/paintObject';
 import type { PaintObject, RGBColor } from '@/engine/types';
 import { makeBlankComposition } from '@/editor/blankComposition';
+import { makeViewport, type ImageObject, type TextObject } from '@/engine/types';
+import type {
+  CommonFormatIssue, PromptStep, ScaffoldEditorConfig, ScaffoldNode,
+} from '../formats/editorConfig';
+import { SLOT_TEXT_DEFAULT_STYLE } from '../formats/scaffold';
 
 // Shared fixtures for the editor package's tests (the apps' own copies add
 // the fixtures that need a format: a stored Reimagine page, say).
@@ -212,4 +217,143 @@ export class FakeEl {
     if (!m) throw new Error(`unhandled selector ${sel}`);
     return this.children.filter((c) => c.tag === m[1] && c.attrs.has(m[2]));
   }
+}
+
+// ── The format layer's fixtures (stage 6.3d) ────────────────────────────
+//
+// A made-up app, the way `editorConfig.test.ts`'s `AppEditorConfig` and
+// 6.1's `loadPackFonts.test.ts` make one up: the config fixture below is a
+// scaffolded format with a closed format id of its own, because a format id
+// is each app's union and the package's suites must not borrow one. Both
+// apps' `web/formats/__tests__/test-utils.ts` held these verbatim (the
+// CompositionState fixture, the slot/text/image makers, the mint) under a
+// Haiku name; each now re-exports them and keeps the fixtures that need a
+// format of its own.
+
+/** The made-up app's format ids — a closed union, as every app's is. */
+export type TestFormatId = 'scaffolded' | 'blank';
+
+export interface TestEditorConfig extends ScaffoldEditorConfig {
+  formatId: TestFormatId;
+}
+
+/**
+ * A CompositionState the engine's reducers accept, built from the pieces a
+ * test hands in. Mirrors the engine's own minimal inline fixture
+ * (packages/engine/src/__tests__/imageSceneObject.test.ts) so `applyCompOps`
+ * sees exactly the shape it expects.
+ */
+export function makeScaffoldState(parts: Partial<CompositionState> = {}): CompositionState {
+  const figures = parts.figures ?? [];
+  const svgObjects = parts.svgObjects ?? [];
+  const images = parts.images ?? [];
+  const texts = parts.texts ?? [];
+  return {
+    id: 'test',
+    name: 'test',
+    figures,
+    svgObjects,
+    images,
+    texts,
+    imageBlobs: {},
+    lineDraft: null,
+    arcDraft: null,
+    editingLineId: null,
+    selectedVertexIndex: null,
+    lastChosenColor: { r: 255, g: 255, b: 255 },
+    customColors: [],
+    groups: [],
+    sceneOrder: [
+      ...images.map((i) => i.id),
+      ...figures.map((f) => f.id),
+      ...svgObjects.map((s) => s.id),
+      ...texts.map((t) => t.id),
+    ],
+    gridLevel: 0,
+    strokeScale: 8,
+    gridIntensity: 0.5,
+    camera: { offsetX: 0, offsetY: 0, zoom: 1 },
+    viewport: makeViewport(800, 600),
+    selectedFigureIds: new Set(),
+    activeFigureKey: null,
+    compTool: 'select',
+    createRegion: null,
+    renderGeneration: 0,
+    ...parts,
+  };
+}
+
+export function makeImage(id: string, overrides: Partial<ImageObject> = {}): ImageObject {
+  return {
+    id,
+    imageId: 'blob_' + id,
+    mimeType: 'image/png',
+    pixelWidth: 1024,
+    pixelHeight: 768,
+    cellX: 0,
+    cellY: 0,
+    cellWidth: 8,
+    cellHeight: 6,
+    ...overrides,
+  };
+}
+
+export function makeText(id: string, content: string, overrides: Partial<TextObject> = {}): TextObject {
+  return {
+    id,
+    content,
+    style: { ...SLOT_TEXT_DEFAULT_STYLE },
+    cellX: 0,
+    cellY: 0,
+    cellWidth: 8,
+    cellHeight: 2,
+    ...overrides,
+  };
+}
+
+/** One image slot and three text slots — the shape CozyJournal's Daily Haiku
+ *  seeds, which is what these fixtures were written against. */
+export const SCAFFOLD_FOUR_SLOTS: ScaffoldNode[] = [
+  { kind: 'imageSlot', slotId: 'photo', hint: 'Tap to add your photo', cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 24 },
+  { kind: 'textSlot', slotId: 'line1', hint: '5 syllables', placeholder: 'First line…', style: {}, cellX: 2, cellY: 24, cellWidth: 28, cellHeight: 2 },
+  { kind: 'textSlot', slotId: 'line2', hint: '7 syllables', placeholder: 'Second line…', style: {}, cellX: 2, cellY: 26, cellWidth: 28, cellHeight: 2 },
+  { kind: 'textSlot', slotId: 'line3', hint: '5 syllables', placeholder: 'Third line…', style: {}, cellX: 2, cellY: 28, cellWidth: 28, cellHeight: 2 },
+];
+
+export const SCAFFOLD_FOUR_PROMPT_FLOW: PromptStep[] = [
+  { id: 'p-photo', kind: 'fillSlot', slotId: 'photo', title: 'Add a photo from your day' },
+  { id: 'p-line1', kind: 'fillSlot', slotId: 'line1', title: 'Write the first line' },
+  { id: 'p-line2', kind: 'fillSlot', slotId: 'line2', title: 'Write the second line' },
+  { id: 'p-line3', kind: 'fillSlot', slotId: 'line3', title: 'Write the third line' },
+  { id: 'p-free', kind: 'free' },
+];
+
+export function makeScaffoldConfig(overrides: Partial<TestEditorConfig> = {}): TestEditorConfig {
+  return {
+    formatId: 'scaffolded',
+    canvas: { aspect: 1 },
+    tools: ['arrange', 'photos', 'text', 'color'],
+    scaffold: SCAFFOLD_FOUR_SLOTS,
+    promptFlow: SCAFFOLD_FOUR_PROMPT_FLOW,
+    completion: { kind: 'allSlotsFilled' },
+    ...overrides,
+  };
+}
+
+export function makeFormatIssue(payload?: Record<string, unknown>): CommonFormatIssue {
+  return { formatId: 'scaffolded', isoDate: '2026-07-28', label: 'Scaffolded', payload };
+}
+
+/** Deterministic mintId honoring the engine id namespaces, recording calls. */
+export function makeMintId(): { mintId: (kind: 'svg' | 'text' | 'image' | 'group') => string; calls: string[] } {
+  const calls: string[] = [];
+  let n = 0;
+  const prefix = { svg: 'svg_', text: 'txt_', image: 'img_', group: 'grp_' } as const;
+  return {
+    calls,
+    mintId: (kind) => {
+      calls.push(kind);
+      return prefix[kind] + 's' + n++;
+    },
+  };
 }

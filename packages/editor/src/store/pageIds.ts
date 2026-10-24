@@ -1,3 +1,5 @@
+import { fnv1a32 } from '@/engine/seededRandom';
+
 // Ids and page NAMES, in one place both sides of an app read: the WebView's
 // store mints them where a page is made, and the app's own side mints one
 // for a page from before names the first time an act shares it, and derives
@@ -7,6 +9,17 @@
 // The ULID minter below was byte-identical in all three apps; the page-NAME
 // half was byte-identical in CozyJournal's and DrawBots' and absent from
 // Sol's, which has no page names.
+//
+// Its one import is the engine's `seededRandom`, which is 32-bit arithmetic
+// and nothing else, so "a native bundle can import it" still holds.
+// `collagePageId` used to carry a private THIRD spelling of FNV-1a, folded
+// into that module at stage 6.3d when the editor's own `formats/edited.ts`
+// came to need the same hash. The two formulations were verified equal
+// before the fold (shift-adds against `Math.imul`, both × 16777619 in
+// 32-bit space) and `pageIds.test.ts` now pins two derived ids as
+// LITERALS — because every collage page an installed app has ever filed is
+// named by this function, a hash that changed by one bit would rename all
+// of them, and the suite's determinism cases would have passed through it.
 
 /** The prefix every page id wears (an entry's `pageId`) — one grammar with
  *  an app's server (backend validation.PageIdSchema). Here rather than in an
@@ -75,16 +88,6 @@ export function newPageId(): string {
   return PAGE_ID_PREFIX + ulid();
 }
 
-/** FNV-1a over a string, from `seed` — 32 bits, stable everywhere. */
-function fnv1a(text: string, seed: number): number {
-  let h = seed >>> 0;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h;
-}
-
 /**
  * A week's collage's page NAME, DERIVED rather than minted — like its
  * entry id (types.collageEntryId) — so every device that composes the same
@@ -95,7 +98,7 @@ function fnv1a(text: string, seed: number): number {
  */
 export function collagePageId(weekStart: string, groupId?: string): string {
   const key = `collage|${weekStart}|${groupId ?? ''}`;
-  const bits = [fnv1a(key, 0x811c9dc5), fnv1a(key, 0x01000193), fnv1a(key, 0x9e3779b9)];
+  const bits = [fnv1a32(key), fnv1a32(key, 0x01000193), fnv1a32(key, 0x9e3779b9)];
   let tail = '';
   for (let i = 0; i < RAND_LEN; i++) {
     // Five bits at a time from the 96 the three hashes hold.

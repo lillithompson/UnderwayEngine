@@ -1,5 +1,7 @@
-import type { Paint, PatternSymmetry, RGBColor } from '@/engine/types';
+import type { BorderEffect, Paint, PatternSymmetry, RGBColor, TextStyle } from '@/engine/types';
 import type { ArcToolMode, ArrangeMode, LineToolMode } from '../toolIds';
+import type { RegionMarker } from '../regionChromeScreen';
+import type { DoneRefusal, MarkScene, TemplateBaseline } from './edited';
 
 /** The default fill a visible-background frame board uses when a format doesn't
  *  override it, and the fallback shown in the frame Background picker. A warm
@@ -201,6 +203,259 @@ export interface CommonEditorConfig {
   shapeModalParametric?: boolean;
   shapeModalExtraSolids?: boolean;
   hiddenShapePages?: readonly ShapePropertyPage[];
+}
+
+
+// ── The format layer: a page that is a PROMPT ───────────────────────────
+//
+// Everything below is declared by CozyJournal and DrawBots and by neither
+// Sol nor the package's own screens: a page those two apps open is a format
+// — an instruction, a scaffold of slots seeded onto it, a prompt flow that
+// walks the user through filling them and a rule for when it counts as
+// done. A Sol canvas opens blank, so Sol declares none of it and ships it
+// unused (docs/shared-editor.md §4.2 item 6, stage 6.3d).
+//
+// It was two copies of one text. Of the 36 members those two apps share,
+// ALL 36 were byte-identical in doc comment as well as declaration, and
+// four of them are the ids 6.3b left as `string` here for each app to
+// re-narrow — so 32 move, with nothing to merge. The vocabulary they are
+// declared over (the slot kinds, the frame, the decor text, the prompt step
+// and the completion rule) was byte-identical in the two apps as well.
+
+/** Engine-node name prefix that marks a node as a scaffold slot. */
+export const SLOT_NAME_PREFIX = 'slot:';
+
+/** Engine-node name prefix that marks a node as scaffold DECOR — page chrome
+ *  the format seeded (the Haiku date stamp), as opposed to a fillable
+ *  slot. Deliberately distinct from SLOT_NAME_PREFIX so `slotIdOfNode` (and
+ *  everything keyed off it: prompt flow, completion, slot recovery) keeps
+ *  ignoring these. */
+export const DECOR_NAME_PREFIX = 'decor:';
+
+export interface ScaffoldSlotBase {
+  slotId: string;
+  /** What the Scene Outline calls this slot's node until the user renames it
+   *  (e.g. Reimagine's squiggle is "Reimagine Me"). The node's `name` field
+   *  holds the functional `slot:<slotId>` tag, so without this the outline
+   *  showed the tag itself; with it, the row reads as content. Purely a
+   *  display default — nothing is stored on the node, and a slot that joins a
+   *  frame group (its tag still its name) is labelled the same way. Absent → the outline's per-kind default ("Drawing", "Photo"). */
+  outlineName?: string;
+  /** World-cell rect in the composition's canonical 0..32 space. */
+  cellX: number;
+  cellY: number;
+  cellWidth: number;
+  cellHeight: number;
+}
+
+export type ScaffoldNode =
+  /** Tap-to-fill photo slot ("tap to add your photo").
+   *
+   *  Default: seeded as a subtle SVG frame that the photos tool later
+   *  REPLACES with the picked ImageObject. When `seedImage` is true, the slot
+   *  is instead seeded as a real ImageObject showing a bundled placeholder
+   *  bitmap (see photoPlaceholder.ts) — same slot tag, membership, and
+   *  swap-on-fill behavior as the frame, just an image instead of a vector. */
+  | (ScaffoldSlotBase & { kind: 'imageSlot'; hint: string; seedImage?: boolean })
+  /** Pre-placed editable text ("write your haiku here"). */
+  | (ScaffoldSlotBase & {
+      kind: 'textSlot';
+      hint: string;
+      placeholder: string;
+      style: Partial<TextStyle>;
+    })
+  /** Pre-seeded vector content (e.g. the day's squiggle). The segments come
+   *  from the frozen issue payload under `payloadKey`, seeded ONCE into a
+   *  fresh composition; from there it is ordinary editable content — the user
+   *  can move, restyle, reshape or delete it, and those edits persist like any
+   *  other node. The issue payload is the starting point, not a lock. */
+  | (ScaffoldSlotBase & {
+      kind: 'seedSvg';
+      payloadKey: string;
+      /** Seed this slot LOCKED. The default is unlocked, because a seed is
+       *  ordinarily a starting point to be drawn over — Patchwork locks the
+       *  two curves its patches are cut from, so the pieces can be coloured
+       *  in without the lines under them moving. The user can still unlock it
+       *  from the Scene Outline; this is the state it arrives in, not a rule.
+       *
+       *  It also exempts the slot from `unlockSeedSvgSlots`, the one-shot
+       *  migration that strips a lock the old Reimagine builds shipped. */
+      locked?: boolean;
+      /** Seed this slot HIDDEN: on the page, in the document, and out of
+       *  sight — the eye toggle's state, not a deletion.
+       *
+       *  For a seed that is scaffolding rather than picture. Patchwork's two
+       *  curves are the seams its patches were cut along, and every patch
+       *  draws its own outline exactly under them: they add nothing to what
+       *  is on screen, while a tap meant for a piece could land on the line
+       *  lying over it. Locking them stopped the line MOVING; hiding them
+       *  takes them out of the drawing altogether, so what is on the page is
+       *  the pieces and nothing else.
+       *
+       *  Like `locked`, the state it arrives in rather than a rule: the
+       *  Scene Outline's eye brings it back. */
+      hidden?: boolean;
+      /** Seed this slot with an empty PATTERN GRID: a `size × size` tile
+       *  repeating inside the seeded shape's own outline
+       *  (engine/shapePatternFill.ts), with no tiles in it yet.
+       *
+       *  Blank on purpose — the grid is the invitation, not the picture.
+       *  The shape opens looking exactly as it would without one, and a
+       *  double tap on it (or the Pattern page's Edit) goes straight into
+       *  painting instead of asking for a pattern to be added first.
+       *  Patchwork's patches are cloth waiting to be printed.
+       *
+       *  `gridCells` is the square the tile is measured against, in world
+       *  cells, and the tile is laid at twice its resolution — the rule a
+       *  fill added by hand follows against the page's own grid, so a 2×2
+       *  tile spans exactly one square. Patchwork hands it the unit every
+       *  piece of its line travels, which puts one repeat of the pattern on
+       *  each step of the drawing's own lattice.
+       *
+       *  It arrives PRINTED — a random flood, closed, rolled afresh every
+       *  time the scaffold runs (scaffold.ts `seedPatternFill`), and
+       *  recorded on the entry so the edited rule knows it for the
+       *  scaffold's (JournalEntry.seededFills).
+       *
+       *  A starting point like the rest of the seed: the Pattern page's Size
+       *  slider, its symmetry, the tiles painted into it and its removal are
+       *  ordinary edits from there. */
+      patternFill?: {
+        size: number;
+        gridCells: number;
+        /** The ink the dealt cloth is printed in, given the seed's fill.
+         *  Default: the seed's own stroke colour. */
+        ink?: (fillColor: RGBColor | undefined) => RGBColor;
+      };
+    });
+
+/**
+ * A Figma-style frame declared by a format. It groups the named scaffold
+ * slots into an `isFrame` group whose rectangular boundary clips them (on
+ * canvas + export) and defines the exported region exactly. The member
+ * slots stay ordinary top-level scaffold slots (so prompt flow + completion
+ * enumerate them unchanged) — the frame is a layout/clipping wrapper, not a
+ * fillable slot. `background`, when set, paints behind the members; otherwise
+ * the boundary is invisible (clip only). Rect is in canonical 0..32 space.
+ */
+export interface ScaffoldFrame {
+  cellX: number;
+  cellY: number;
+  cellWidth: number;
+  cellHeight: number;
+  /** slotIds of the scaffold slots contained by (and clipped to) the frame,
+   *  back-to-front. Every id must name a slot in `EditorConfig.scaffold`. */
+  memberSlotIds: string[];
+  background?: RGBColor;
+  /** Default border for the frame, seeded onto its boundary rect's effects (so
+   *  it renders + edits exactly like a user-added border). Honors
+   *  inside/center/outside like an image's border. Absent → no border. */
+  border?: BorderEffect;
+  /** Group name for the frame (its Scene Outline label, e.g. "Today's Hopes,
+   *  Dreams, Plans"). Falls back to the issue label when absent. */
+  name?: string;
+}
+
+/**
+ * A decorative text seeded alongside a format's scaffold (e.g. the Daily
+ * Haiku's date stamp). NOT a fillable slot: it carries a `decor:<decorId>` tag
+ * rather than a `slot:` one, so the prompt flow, completion rules, slot
+ * recovery, and config validation all ignore it — the tag exists so readers
+ * that care about page chrome can still recognize it (todayThumb keeps the
+ * date stamp out of the Today-card poem cutout).
+ *
+ * Seeded once at init as an ordinary, editable text node and persisted from
+ * there: the user can move, restyle, or rewrite it like anything else on the
+ * page. `style` merges over SLOT_TEXT_DEFAULT_STYLE. Rect is in canonical
+ * 0..32 space.
+ */
+export interface ScaffoldDecorText {
+  /** Stable id behind the node's `decor:<decorId>` tag. Unique per config. */
+  decorId: string;
+  content: string;
+  style: Partial<TextStyle>;
+  /** Join `frame` as its FRONT-most member, so the text is clipped to the
+   *  frame, exported with it, and listed inside it in the Scene Outline.
+   *  Requires the config to declare a `frame`. */
+  inFrame?: boolean;
+  cellX: number;
+  cellY: number;
+  cellWidth: number;
+  cellHeight: number;
+}
+
+export type PromptStep =
+  /** Highlight a slot and ask the user to fill it. Advances when the
+   *  slot's completion condition is met (image chosen / text edited). */
+  | { id: string; kind: 'fillSlot'; slotId: string; title: string; body?: string }
+  /** Informational interstitial (e.g. the doodle constraint banner). */
+  | { id: string; kind: 'info'; title: string; body?: string }
+  /** Free editing; the flow is done and full (configured) tools unlock. */
+  | { id: string; kind: 'free'; title?: string };
+
+export type CompletionRule =
+  | { kind: 'allSlotsFilled' }
+  | { kind: 'slotsFilled'; slotIds: string[] }
+  /** Any content edit beyond the scaffold counts (squiggle, tapestry…). */
+  | { kind: 'anyEdit' };
+
+/**
+ * The part of a format-driven app's `EditorConfig` that CozyJournal and
+ * DrawBots share — see the band comment above for what it is and why Sol
+ * has none of it.
+ *
+ * Those two apps declare `interface EditorConfig extends
+ * ScaffoldEditorConfig`; Sol extends {@link CommonEditorConfig} directly.
+ * So a package module that reads a scaffold takes THIS type and a module
+ * that reads only the common half takes that one, and Sol's config is
+ * refused by the first at compile time rather than failing on a missing
+ * field at run time. {@link validateEditorConfig} is the one reader that
+ * wants both, and it takes the scaffold half as a `Partial`.
+ *
+ * `scaffold`, `promptFlow` and `completion` are REQUIRED: a format
+ * without them is a format with no page to fill, no flow and no way to be
+ * finished, and every config in both apps declares all three (the empty
+ * scaffold with `{ kind: 'anyEdit' }` is how a free-drawing format spells
+ * "no slots").
+ */
+export interface ScaffoldEditorConfig extends CommonEditorConfig {
+  instruction?: string;
+  firstMoveInstruction?: string;
+  about?: string;
+  infoArt?: false;
+  instructionEmphasis?: string;
+  tileTool?: boolean;
+  templateTextPlaceholders?: boolean;
+  templateTextQuotes?: readonly string[];
+  titleOnDone?: boolean;
+  titleOnDoneSubject?: string;
+  doneRequiresWordInMask?: boolean;
+  templateLockedExcept?: readonly string[];
+  doneRule?: (state: MarkScene, baseline: TemplateBaseline | undefined) => DoneRefusal | undefined;
+  placeRule?: (state: MarkScene, baseline: TemplateBaseline | undefined, kind: 'svg' | 'text' | 'image') => string | undefined;
+  textRule?: (content: string) => string | undefined;
+  enterCommitsText?: boolean;
+  noAutoCapitalize?: boolean;
+  editableRegion?: { yMin: number; yMax: number; magnetYs?: readonly number[] };
+  regionChrome?: {
+    veil: 'outside';
+    midline: { ys: readonly number[]; dash: true };
+    board?: { xMin: number; xMax: number; yMin: number; yMax: number };
+    targetYs?: readonly number[];
+  };
+  markers?: (state: MarkScene, baseline: TemplateBaseline | undefined, gridLevel: number) => RegionMarker[];
+  veiledIds?: ReadonlySet<string>;
+  isResponse?: boolean;
+  isRedline?: boolean;
+  isGlyph?: boolean;
+  frameDropHighlight?: boolean;
+  seedMoveCounts?: boolean;
+  resettable?: boolean;
+  scaffold: ScaffoldNode[];
+  frame?: ScaffoldFrame;
+  promptFlow: PromptStep[];
+  completion: CompletionRule;
+  decorTexts?: ScaffoldDecorText[];
 }
 
 /**

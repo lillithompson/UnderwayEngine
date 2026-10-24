@@ -72,6 +72,18 @@ describe('isPageId', () => {
 });
 
 describe('collagePageId', () => {
+  it('is these exact ids, and that is not a preference', () => {
+    // Every collage page an installed app has ever filed is NAMED by this
+    // function, so its output is persisted data: a hash that changed by one
+    // bit would rename all of them, and the determinism cases below would
+    // pass straight through that. Pinned as literals when stage 6.3d folded
+    // this file's private third spelling of FNV-1a into the engine's
+    // `seededRandom.fnv1a32` — the two formulations were verified equal
+    // first, and this is what holds them equal.
+    expect(collagePageId('2026-03-02', 'grp_1')).toBe('pg_01KJNXGE00W1CZMC229HQ9MHAC');
+    expect(collagePageId('2026-01-05')).toBe('pg_01KE5Q8600QG5SSK1X9SRHD28M');
+  });
+
   it('is DERIVED, so every device that composes the same week agrees', () => {
     // The contract that makes a collage filed twice one page and never two.
     const a = collagePageId('2026-03-02', 'grp_1');
