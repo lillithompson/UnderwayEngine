@@ -1614,6 +1614,22 @@ first, then the pointer bump in each app).
    vacuously — which is the 6.2a lesson (the janitor suite COPIED, not
    moved, in two apps of three) written as a check instead of a resolution.
 
+   **DrawBots' test count falls by three, and it is the pins working rather
+   than coverage lost** — worth writing down, because the arithmetic of a
+   move otherwise looks wrong. CozyJournal's total is unchanged (the 17
+   cases of the dedicated suite and the 30 behaviour cases move, and that
+   app runs the package's suites) and Sol's falls by exactly those 47 (its
+   `jest.config.js` roots at `scripts/`, `web/` and `components/` only, so
+   it does not run them — and Sol never had a reader for the file). DrawBots
+   runs the package's suites and should therefore be unchanged too, but
+   `web/sim/__tests__/sourcePin.test.ts` generates a case PER FILE in two
+   scans — `walk(web/)`, which counts `__tests__` as well, and a
+   web+components+app walk that does not — so a tree with one source file
+   and one test file fewer has three cases fewer. Every file that exists is
+   still checked; there is no gap to fill in the package, because the
+   symbols those pins forbid (`BEHAVIOURS[`, the bot-kind vocabulary) are
+   DrawBots' own and a shared file cannot name them.
+
    One duplication found and deliberately NOT folded, flagged as
    `CLAUDE.shared.md` asks: `parseSvgViewBox`'s root-tag regex and its
    four-line `attr()` reader are a third spelling of what
