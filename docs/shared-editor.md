@@ -1640,6 +1640,88 @@ first, then the pointer bump in each app).
    actually shared, and collapsing it is a change to the engine's own
    import path rather than part of this move.
 
+   **6.3b — Done: the common half of `EditorConfig`** (2026-10-23).
+   `CommonEditorConfig` is the package's
+   (`packages/editor/src/formats/editorConfig.ts`), with the three leaves
+   that exist only for it: `DEFAULT_FRAME_BACKGROUND`, `ShapePropertyPage`
+   and `ShapeLock`.
+
+   | | Cozy | Sol | DrawBot |
+   |---|---|---|---|
+   | `EditorConfig` members | 59 | 23 | 57 |
+   | in all three | — | **22** | — |
+   | of those, byte-identical in comment AND declaration | — | **21** | — |
+   | in Cozy + DrawBots only | 32 | — | 32 |
+   | the app's own alone | 4 | **0** | 3 |
+   | `web/formats/types.ts` lines, before → after | 1,043 → 463 | 458 → 156 | 1,009 → 418 |
+
+   **This is a move, not a merge, and the 21 is why.** Twenty-one of the
+   twenty-two members every app declares were byte-identical in their
+   DOC COMMENT as well as their declaration — the same prose about the same
+   field, three times. The twenty-second, `canvas`, nested exactly: Sol's
+   inside CozyJournal's (which adds `initialFitName` and `symmetryDefault`)
+   inside DrawBots' (which adds `hideGridControls`). So DrawBots' is adopted
+   as the superset, the way stage 2 took its capsules and 5b.4 took the
+   other two apps' canvas additions, and all three of the adopted members
+   are OPTIONAL — which is what makes adopting them free for the apps that
+   had none. 1,473 lines leave the three apps for 204 in the package.
+
+   **Sol has no field of its own at all**, which is the shape of this tree:
+   Sol's config is a 23-member SUBSET, and the 32 members CozyJournal and
+   DrawBots share between them are the template, scaffold and completion
+   layer. Those stay in each app for now and move when `edited.ts` and
+   `scaffold.ts` do, because that is where their types (`DoneRefusal`,
+   `MarkScene`, `TemplateBaseline`) come from — the one import
+   `web/formats/types.ts` still makes of a sibling.
+
+   **The four ids are `string` in the package, and §4.3 had already decided
+   that.** `formatId`, `tools`, `firstTool` and `contentTools` name unions
+   that are each app's own. §4.3's stage-2 ruling on `ToolId` took neither
+   option it was posed as, and its reason applies unchanged here: `string`
+   for the package's side, because every app's union is assignable going IN,
+   rather than a generic `EditorConfig<TTool>` threading a parameter through
+   a package that never needs to know WHICH host tool is armed. A config is
+   data the app hands in, so it is exactly that case. Each app declares
+   `interface EditorConfig extends CommonEditorConfig` and re-narrows the
+   four, keeping its own `Record<ToolId, …>` and exhaustive switches; each
+   `types.ts` re-exports the three leaves, the `SYSTEM_FAMILY_STACK`
+   arrangement of 5a, so none of its importers moved.
+
+   **A gate fact found here that every later sub-stage depends on, and it is
+   not what it looks like: `npm run typecheck` in this repo DOES NOT
+   typecheck `packages/editor`.** The root `tsconfig.json` excludes
+   `packages/editor` and `packages/editor-ui` outright. What typechecks a
+   file in either is ts-jest's diagnostics while a SUITE loads it — so a
+   package module no suite reaches is typechecked by nothing here at all.
+   Verified both ways, which is 5a's standard for a pin: a deliberate
+   `const n: number = 'x'` in `store/storeKeys.ts` leaves `npm run
+   typecheck` green and fails `npm test` with TS2322. The new
+   `editorConfig.test.ts` exists partly to close that gap for this file, and
+   says so in its header. Two of its cases earned their place immediately by
+   failing on values invented rather than read (`symmetryDefault:
+   'mirrorX'`, where `PatternSymmetry` is a ten-boolean record, and
+   `ShapeLock.line: 'straight'`, where `LineToolMode` is
+   `'line' | 'rectangle'`).
+
+   The suite drives the seam over a made-up app the way `sessionHost.test`
+   and 6.1's `loadPackFonts.test` drive theirs: an `AppEditorConfig` with
+   three closed unions and a field of its own, whose assignment to
+   `CommonEditorConfig` IS the assertion. A derived case holds the package's
+   CODE to naming none of `FormatId`, `ToolId` or `ContentMode` while its
+   header names all three — the reason lives there, so both halves are
+   checked rather than described.
+
+   **One mistake worth recording, because the fix is 6.2a's lesson 2.** The
+   script that rewrote the three apps computed "the members all three
+   declare" from the working tree, and rewrote Sol first — so the second run
+   intersected against the five members Sol had left and kept almost
+   everything in the other two apps. It typechecked green, because an
+   interface may redeclare an inherited member with an identical type, so
+   nothing failed; the text was simply still three copies. Caught by reading
+   the result rather than the exit code. The fix was not to hardcode the
+   list — that is a scope ASSERTED — but to derive it from each app's git
+   HEAD and assert the count it derives.
+
    **6.2b to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
    rule is to measure before planning, and the measurement makes 6.2b a
    different and much smaller job than "the shared half of `web/store/*`"
@@ -2268,6 +2350,12 @@ exploded: a range that moves a file the engine adds and the app deletes
 folds to the delta between them, and both sub-stages so far are almost
 entirely that. 6.5's range will hold the same kind of move for a
 10,000-line file, which is the one that has never been tried.
+
+**Stage 6.3a's ranges are the smallest this plan has produced**
+(2026-10-23): CozyJournal **23 KB**, Sol **29**, DrawBots **32**, against
+the 890 KB a stage-3 range passed at. The sub-stage moves 418 lines of
+source and 522 of suite, and the move folding shows each file once.
+Measured with `review.js pending --prompt | wc -c`, as 6.1's note says to.
 
 Two things the first wiring taught: `git reset --hard` in a clone with
 `submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
