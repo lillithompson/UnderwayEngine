@@ -202,3 +202,43 @@ export interface CommonEditorConfig {
   shapeModalExtraSolids?: boolean;
   hiddenShapePages?: readonly ShapePropertyPage[];
 }
+
+/**
+ * The day's resolved prompt for a format, frozen onto the stored entry at
+ * issue time (a pack update changes future days only, never history).
+ * `payload` carries format-specific data (squiggle segments, doodle topic +
+ * constraint, word lists, 8-ball question…).
+ *
+ * `formatId` is a `string` here for the reason the config's four ids are —
+ * see the header. Each app declares
+ * `interface FormatIssue extends CommonFormatIssue { formatId: FormatId }`,
+ * so everything that reads one keeps its own closed union.
+ */
+export interface CommonFormatIssue {
+  formatId: string;
+  /** 'YYYY-MM-DD' local date the issue is for. */
+  isoDate: string;
+  /** Short label shown on cards and in the editor banner. */
+  label: string;
+  detail?: string;
+  /** One more frozen line, under `detail`, for the one kind of page that
+   *  has a second thing to say about itself: a finished social game whose
+   *  card a player has since taken off the feed — *Made private by Ann*
+   *  (web/store/salvagedMoveEntry, matchesModel.keptCardRemovedLine).
+   *  Absent on every other issue. */
+  note?: string;
+  payload?: Record<string, unknown>;
+}
+
+/**
+ * Narrow a frozen issue's payload to a format's payload shape. Every
+ * field stays optional-defensive because the payload crossed a JSON
+ * freeze/thaw (the entry store) — config factories must tolerate missing or
+ * malformed fields rather than trust the compile-time shape.
+ */
+export function readIssuePayload<T extends Record<string, unknown>>(
+  issue: CommonFormatIssue,
+): Partial<T> {
+  const p = issue.payload;
+  return p && typeof p === 'object' ? (p as Partial<T>) : {};
+}

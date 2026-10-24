@@ -5,7 +5,9 @@ import { PATTERN_SYMMETRY_OFF } from '@/engine/types';
 
 import {
   type CommonEditorConfig,
+  type CommonFormatIssue,
   DEFAULT_FRAME_BACKGROUND,
+  readIssuePayload,
   type ShapeLock,
   type ShapePropertyPage,
 } from '../formats/editorConfig';
@@ -116,6 +118,47 @@ describe('the leaves that exist for the config', () => {
 
   test('the frame background default is the warm off-white, #F4F3F1', () => {
     expect(DEFAULT_FRAME_BACKGROUND).toEqual({ r: 244, g: 243, b: 241 });
+  });
+});
+
+describe('a frozen issue and its payload', () => {
+  // The payload crossed a JSON freeze/thaw on the way out of the entry
+  // store, so readIssuePayload is deliberately defensive rather than a
+  // cast: every caller is a config factory reading fields that may simply
+  // not be there.
+  const issue = (payload?: unknown): CommonFormatIssue => ({
+    formatId: 'daily', isoDate: '2026-10-23', label: 'Draw the day',
+    ...(payload === undefined ? {} : { payload: payload as never }),
+  });
+
+  test('a payload that is an object comes back as a partial', () => {
+    expect(readIssuePayload<{ topic: string }>(issue({ topic: 'rain' })))
+      .toEqual({ topic: 'rain' });
+  });
+
+  test('a missing payload reads as an empty partial, not undefined', () => {
+    // A factory destructures the result, so it must never be nullish.
+    expect(readIssuePayload(issue())).toEqual({});
+  });
+
+  test.each([['a string', 'nope'], ['a number', 7], ['null', null]])(
+    'a payload that is %s reads as empty rather than throwing', (_what, p) => {
+      expect(readIssuePayload(issue(p))).toEqual({});
+    },
+  );
+
+  test('an app narrows the format id and still IS a CommonFormatIssue', () => {
+    type AppFormatId = 'daily' | 'freePlay';
+    interface AppFormatIssue extends CommonFormatIssue {
+      formatId: AppFormatId;
+    }
+    const own: AppFormatIssue = {
+      formatId: 'freePlay', isoDate: '2026-10-23', label: 'Free play',
+    };
+    const common: CommonFormatIssue = own;
+    expect(common.formatId).toBe('freePlay');
+    expect(common.detail).toBeUndefined();
+    expect(common.note).toBeUndefined();
   });
 });
 
