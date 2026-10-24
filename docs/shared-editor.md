@@ -2133,7 +2133,94 @@ first, then the pointer bump in each app).
    suites as well. Sol's do not (its roots are `scripts/`, `web/` and
    `components/` only, as 6.3a recorded), so Sol's total is the trim alone.
 
-   **6.4a to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
+   **6.4a — Done: the app chrome's palette** (2026-10-24).
+   `components/theme.ts` was ONE palette written out three times, and the
+   measurement is the flattest in this plan:
+
+   | | Cozy | Sol | DrawBot |
+   |---|---|---|---|
+   | `components/theme.ts` declarations | 83 | 80 | 77 |
+   | in all three | — | **69** | — |
+   | byte-identical in all three | — | **60** | — |
+   | identical in CODE, differing in a doc comment | — | **9** | — |
+   | genuinely drifted | — | **0** | — |
+   | lines, before → after | 973 → 478 | 604 → 136 | 715 → 217 |
+
+   **Not one value disagreed.** The nine were each app's doc comment naming
+   its own screens — "the Journal" against "the Notebook",
+   `components/todayModel` against `components/notebookModel` — over the same
+   hex, the same spacing, the same font name. So
+   `packages/editor-ui/src/appTheme.ts` is the APP chrome's palette: the
+   ground under a screen, the inks, the fonts, the spacing, the radii, the
+   gradients, the CTA, the floating nav, and the fill/ink helpers over them.
+
+   **It is editor-ui's rather than `packages/editor`'s, and that is the
+   interesting call.** There was already a `theme.ts` there — the EDITOR
+   chrome's palette, shared since stage 1 — and two of the three apps already
+   derived `BG_EDITOR_CANVAS` and `CANVAS_HAIRLINE` from it rather than
+   restating them. The app chrome's palette belongs beside it for the same
+   reason: both sides of an app read it. The WebView's editor reads the inks
+   (a text placeholder's hint grey) and the native navigation shell reads the
+   lot, so it has to be importable from a bundle that holds no WebView code,
+   which is what editor-ui already is.
+
+   The suite's last case holds the SPLIT itself — no editor token in the
+   app's half, no app token in the editor's — because a token in the wrong
+   half is a token two palettes will drift on, and nothing but text can see
+   where a declaration lives.
+
+   **`perceivedLuma` went to the ENGINE, and a source pin is what decided
+   it.** It is the one import `appTheme.ts` has, byte-identical in all three
+   apps at 24 lines, and it went into editor-ui beside the palette first —
+   where **DrawBots' `web/simRender/__tests__/sourcePin.test.ts` failed at
+   once**: that app holds its sim render layer to engine imports only
+   (`DrawBots.md`, "Simulation layer"), and `editor-ui` is on the pin's
+   forbidden list. So it is `@/engine/perceivedLuma`, which is 6.3d's
+   `seededRandom` call made for the same reason — arithmetic with no editor
+   concept in it, in the one package `npm run typecheck` actually covers.
+   Worth recording as the good case: a LAYERING rule enforced by a check
+   caught a placement a reviewer would have had to catch by reading.
+
+   **Two helpers that were private in every app are exported here**,
+   `clamp01` and `hexToRgb`, because each app's own tint code builds on them.
+   The split is what made them part of the shared surface; they were already
+   shared, just not sayable. (A re-export serves a module's importers and not
+   its own code, which is the thing to remember when a file is split in two:
+   each app's `components/theme.ts` imports what its own declarations read
+   and re-exports the rest.)
+
+   **One drift closed on §4.3's rule.** Sol DECLARED `BG_EDITOR_CANVAS` and
+   `HAIRLINE` where CozyJournal and DrawBots derive them from editor-ui's own
+   theme — so Sol's chrome could drift from the canvas it sits on. Sol takes
+   the derivation.
+
+   **`formats/textPlaceholder.ts` comes with it**, which 6.3d deferred for
+   exactly this: its hint colour reads `INK_HINT`, which had no home outside
+   the apps until now. Byte-identical in CozyJournal's and DrawBots' copies;
+   Sol had the two constants and not the colour, and ships it unused.
+
+   What each app keeps is its own: CozyJournal's per-format card tints and
+   format identities, DrawBots' tint table and social mark, Sol's pen
+   palette, strain colours and socket inks — and each app's brand gradient
+   stops, which are the three values that genuinely differ.
+
+   Every pin that read the palette as SOURCE TEXT reads both halves now,
+   through one helper per app
+   (`components/__tests__/themeSource.test-utils.ts`). Reading one half would
+   pass or fail by where a token happens to live rather than by whether it is
+   declared at all, which is not what any of those pins is about.
+
+   One re-point missed on the first pass and worth the line, because it is
+   6.2a's round-1 lesson again: `textPlaceholder`'s importers were swept for
+   `@/web/formats/textPlaceholder` and two of CozyJournal's modules spell it
+   `./textPlaceholder`. **A sweep is only as wide as the spelling it greps
+   for** — the typecheck caught it, which is what a derived sweep is for.
+
+   Editor package 83 suites; editor-ui 46 / 740; engine 387 of 388
+   (cameraRoll's host dependency, as before) / 7,138. CozyJournal 661 /
+   10,783; Sol 280 / 3,331; DrawBot 544 / 9,364.
+
+   **6.4b to 6.6 — not started. Measured, 2026-10-23**, since the stage's own
    rule is to measure before planning, and the measurement makes 6.2b a
    different and much smaller job than "the shared half of `web/store/*`"
    sounds.
