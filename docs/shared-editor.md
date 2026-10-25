@@ -31,30 +31,33 @@ out, which is what makes the file counts reproducible:
 | `web/store/` | 14 | 8 | 1 | 1.1 k / 1.7 k / 3.6 k |
 | `web/fonts/` | 8 | 8 | 5 | 0.7 k each |
 
-And the same trees NOW (re-measured 2026-10-25, after 6.6b and 6.5b.1), so
+And the same trees NOW (re-measured 2026-10-25, after 6.5b.2), so
 the table above stays the baseline it says it is rather than being
 overwritten. `Files` is the UNION of file names across the three apps,
 which is what makes a file that only one app has still count once:
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
-| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 11,342 / 17,080 / 25,030 |
+| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 10,927 / 16,665 / 24,605 |
 | `web/editorUi/` | — | — | — | retired at stage 1 |
 | `web/formats/` | 49 | 4 | 1 | 282 / 737 / 13,787 |
 | `web/store/` | 12 | 6 | 0 | 510 / 1,009 / 2,922 |
 | `web/fonts/` | 5 | 5 | 1 | 213 / 233 / 234 |
 
-The file COUNTS have not moved since 6.5a and the lines barely have, which
-is the honest reading of 6.6 and 6.5b.1: both took DECLARATIONS out of
-files that stay — each app still has an `editorQuery.ts`, an
-`EditorHost.tsx` and an `EditorShell.tsx` — where every sub-stage up to
-6.5a took whole files. Measured against each app's HEAD before 6.6a
-(Sol 102c61c, DrawBots 308e277, CozyJournal 3dd7cb10), `web/editor/` went
-11,464 → 11,342, 17,198 → 17,080 and 25,143 → 25,030: **122 / 118 / 113
-lines lighter, and not one file lighter** — 30 / 58 / 78 files before and
-after. A stage that empties files shows up in the first column;
-a stage that hollows them out shows up only in the last, and the rest of
-stage 6 is the second kind.
+The file COUNTS have not moved since 6.5a and the lines have, which
+is the honest reading of 6.6, 6.5b.1 and 6.5b.2: all three took
+DECLARATIONS and STATEMENTS out of files that stay — each app still has an
+`editorQuery.ts`, an `EditorHost.tsx` and an `EditorShell.tsx` — where
+every sub-stage up to 6.5a took whole files. Measured against each app's
+HEAD before 6.6a (Sol 102c61c, DrawBots 308e277, CozyJournal 3dd7cb10),
+`web/editor/` went 11,464 → 10,927, 17,198 → 16,665 and 25,143 → 24,605:
+**537 / 533 / 538 lines lighter, and not one file lighter** — 30 / 58 / 78
+files before and after. A stage that empties files shows up in the first
+column; a stage that hollows them out shows up only in the last, and the
+rest of stage 6 is the second kind. 6.5b.2 is four fifths of that
+movement on its own (415 / 415 / 425), which is what the first slice of a
+10,000-line component looks like from here: a quarter of the way through
+the file's shared half, and the file still exists in three copies.
 
 Four rows' worth of reading, and the second is this stage's. `web/editor/`
 has lost 92 of its 193 files and two thirds of its lines — stages 1 to 6 —
@@ -213,6 +216,57 @@ splits: the push brush's vector half (`pushBrush.ts`, the rig half behind
 `HostPushTargets`) and the move-and-scale of a node that changes size by
 being dragged (`dragScale.ts`, the factor behind `HostNodeRules.dragScale`).
 No app has a canvas, a node layer or a canvas leaf of its own any more.
+
+From stage 6 it holds the FOUNDATIONS the shell and the host stand on, and
+then the first slices of those two screens. The order was measured, not
+guessed: the shell's app-side import specifiers cluster into exactly these
+trees (§4.2 item 6, 6.0), so each had to become a seam BEFORE the shell
+could move rather than after.
+
+· **The fonts** (6.1): `domTextMeasurer.ts`, `loadPackFonts.ts`,
+  `glyphInk.ts`, `settleFaces.ts` and `exportFonts.ts`. Each app keeps its
+  DATA and the one thing that needs its bundler — `faces.ts`'s require
+  table and `registerFonts.ts`'s pack list — and hands the rest in as a
+  `FontPack` parameter or installs a face reader (`registerFaceFetch`).
+  `PACK_FONTS_STYLE_ID` is one constant now, `underway-pack-fonts`.
+· **The store** (6.2a, 6.2b): `store/pageIO.ts`, `store/pageIds.ts`,
+  `store/resetData.ts`, `store/assetJanitor.ts`, `store/storeKeys.ts` and
+  `store/entryStore.ts` — the key layout, the per-format index, the sidecar
+  images and the settings merge, as `EntryStore<TEntry extends
+  JournalEntryBase>` over a record it only stores and hands back. Each app
+  keeps `types.ts` and `homeState.ts`, which are its own stored record and
+  its own home payload, and `createEntry`, the one declaration that reads a
+  field only it has.
+· **The format layer** (6.3a–6.3d): `formats/editorConfig.ts`'s
+  `CommonEditorConfig` — the fields every app's `EditorConfig` extends, with
+  an app's extras riding on top — plus the frozen prompt, the issue reader
+  (`CommonFormatIssue`), the scaffold vocabulary and `formats/edited.ts`,
+  `formats/photoPlaceholder.ts`'s shape. The sentinel's WORD stays each
+  app's, built from its own store namespace.
+· **The app chrome's palette** (6.4a) and **the host bridge** (6.4b) — the
+  latter needing no seam at all, which is the only seam this stage looked
+  for and did not find.
+· **The shell's siblings** (6.5a): eleven modules and two sheets that sat
+  beside `EditorShell.tsx` and imported nothing of any app, `overlayZ.ts`
+  among them, with each app binding its own z-order under the old name.
+· **The editor query and the host's open path** (6.6a, 6.6b):
+  `editorQuery.ts`'s seven byte-identical readers over a key list each app
+  supplies, and `hostRoute.ts` — `useEditorQuery` and `useResolvedRoute`,
+  the ~200-line state machine behind every app's `EditorHost.tsx`. Each
+  app's host is its ROUTE TABLE over it; the state machine is the package's.
+· **The shell's own leaves and its first closed clusters** (6.5b.1,
+  6.5b.2): `components/ToolbarPushdown.tsx` with its height,
+  `colorPickerSpec.ts`'s row type generic over the picker id, and eight
+  hooks — `useRadialMenus`, `useEyedropper`, `useImageEdits`,
+  `useShapeToolModes`, `usePhotoSource`, `useColorBlendMode`,
+  `useColorScope`, `usePatternExcludedFamilies` — 56 statements of state
+  and handlers that were byte-identical in all three shells. `framingTarget`
+  comes with them, exported and tested, being the one decision among the
+  eight rather than plumbing.
+
+`EditorShell.tsx` itself is still each app's, and is most of what is left of
+the consolidation: §4.2 item 6 says what remains of it and §4.3 how it is
+being sliced.
 
 ## 3. Still copied, and why
 
@@ -1137,9 +1191,11 @@ first, then the pointer bump in each app).
    `EditorConfig`, `web/fonts/*` and the shared half of `web/store/*` move
    with them. Each app's `web/editor/` is then its extension alone.
 
-   **Where the stage stands, plainly** (2026-10-25, after 6.6b and
-   6.5b.1). **Stage 6 is NOT complete, and what is left of it is one
-   thing: the shell's body.** 6.6 is done. 6.0 to 6.5a are PUSHED — the
+   **Where the stage stands, plainly** (2026-10-25, after 6.5b.2).
+   **Stage 6 is NOT complete, and what is left of it is one thing: the
+   rest of the shell's body.** 6.6 is done, and the body's first slice is
+   done — eight closed clusters, 465 lines of each app — leaving the bar
+   handlers, the render tree and the remainder. 6.0 to 6.5a are PUSHED — the
    engine was at 7ce9a99 and Sol at 102c61c when this session began — and
    what is unpushed is this session's work plus three review-fix commits
    in CozyJournal (f9ce6e14..3dd7cb10) that were never shipped. (The line
@@ -1160,7 +1216,8 @@ first, then the pointer bump in each app).
    | 6.6a | done | the editor query's shared half — the host's prerequisite |
    | 6.6b | done | the host's open path; each app keeps its route table |
    | 6.5b.1 | done | two of the shell's own leaves: the pushdown, the picker row |
-   | **6.5b.2+** | **not started** | **the shell's BODY — and it is not one move** |
+   | 6.5b.2 | done | eight of the shell's closed clusters, as hooks |
+   | **6.5b.3+** | **not started** | **the bar handlers, the render tree, the remainder** |
 
    **6.6 came before 6.5b, and the measurement is why.** The plan's order
    was 6.5b then 6.6. 6.6's design was already settled (§4.3, 2026-10-23),
@@ -1170,19 +1227,34 @@ first, then the pointer bump in each app).
    as the entry below sets out. Doing the settled one first cost nothing
    and left 6.5b measured on a clear queue.
 
-   **What is left, re-measured 2026-10-25.** `EditorShell.tsx` at
-   10,013 / 7,431 / 8,520 lines (Cozy / Sol / DrawBots). Its body is 624 /
-   553 / 571 statements, of which 435 are declared in all three apps and
-   340 of those are byte-identical — and they do NOT come out as a block:
-   over CozyJournal's order they fall into 250 runs, the shared ones in 85
-   of them. The 6.5b.2+ entry below is that measurement in full, and the
-   conclusion it forces is that the shell is SLICED, not moved.
+   **What is left, re-measured 2026-10-25 (before 6.5b.2).**
+   `EditorShell.tsx` at 10,013 / 7,431 / 8,520 lines (Cozy / Sol /
+   DrawBots). Its body is 624 / 553 / 571 statements, of which 435 are
+   declared in all three apps and 340 of those are byte-identical — and
+   they do NOT come out as a block: over CozyJournal's order they fall
+   into 250 runs, the shared ones in 85 of them. The 6.5b.2+ entry below
+   is that measurement in full, and the conclusion it forces is that the
+   shell is SLICED, not moved.
 
-   **What stage 7 inherits, as things stand.** Stage 7 is the apps' own
-   property pages (CozyJournal's rig: `rigEdit.ts`, `RigJointsBar`,
-   `RigPoseBar`, `RigColorBar`), and it inherits a question that has nothing
-   to do with them: whether the shell moved. It has not, and on the
-   measurement below it will not move in one stage. So the choice stage 7
+   **And after 6.5b.2**, which took 56 of those statements: the file is
+   **9,588 / 7,016 / 8,105** and `web/editor/` is 425 / 415 / 415 lines
+   lighter (Cozy / Sol / DrawBots) with not one file fewer — the second
+   column of §1's table has not moved since 6.5a and the last one has,
+   three sub-stages running. The body is now **576 / 505 / 523**
+   statements, which is 56 out and EIGHT back in: a hook call is a
+   statement too, and `const { … } = useX(…)` reads as one of the
+   anonymous ones (59 → 67), so the named count is what fell — 565 → 509.
+   Of the named, **284** are still byte-identical in all three: the
+   shared statements that did not close, or closed and would not place.
+
+   **What stage 7 inherits, as things stand** (restated 2026-10-25, after
+   6.5b.2). Stage 7 is the apps' own property pages (CozyJournal's rig:
+   `rigEdit.ts`, `RigJointsBar`, `RigPoseBar`, `RigColorBar`), and it
+   inherits a question that has nothing to do with them: whether the shell
+   moved. It has not, and will not move in one stage — but it is no longer
+   standing still either, and 6.5b.2 removed the only reason stage 7 had to
+   wait. The two do not contend for the same code: the rig is in the
+   app-only bucket, and 6.5b.2 took statements out of the shared one. So the choice stage 7
    faced is now a real one rather than a wait: it is DOABLE today — the rig
    pages are editor-ui's, not the shell's, and 6.5a took the last of their
    shared leaves — and "wait on 6.5b" no longer names a date. Two things
@@ -2687,9 +2759,171 @@ first, then the pointer bump in each app).
    CozyJournal 671 suites / 10,888 tests; Sol 278 / 3,323; DrawBots 555 /
    9,447; engine 402 of 403 / 7,274.
 
-   **6.5b.2+ — not started, and the measurement says why it is plural.**
-   The shell's BODY, measured 2026-10-25 over the three apps' HEAD. This
-   is the measurement 6.0 did not have: 6.0 counted LINES (89 % of
+   **6.5b.2 — Done: eight of the shell's closed clusters, as hooks** (engine
+   bd11abd, CozyJournal 741da3d0, Sol 87c5b74, DrawBots a87e602;
+   2026-10-25). The first slice of the shell's BODY, on the owner's call of
+   the same day: take the slicing, mid-size clusters only, and leave stage 7
+   where it is. **56 statements, 465 lines of each app** — byte-identical in
+   all three and closed under the four inputs 6.5b.2+ named.
+
+   | Hook | stmts | lines | inputs it takes | what it is |
+   |---|---|---|---|---|
+   | `useRadialMenus` | 14 | 72 | `sessionRef`, `setSession`, `applyEntry` | the two long-press menus and the gesture lifecycle they share |
+   | `useEyedropper` | 10 | 95 | `sessionRef`, `updateSettings` | the loupe, and the swatch row it files into |
+   | `useImageEdits` | 8 | 111 | `sessionRef`, `setSession`, `applyEntry` | the four edits that coalesce one undo step |
+   | `useShapeToolModes` | 7 | 23 | `config` | the modes in force, and the format's power to pin them |
+   | `usePhotoSource` | 5 | 55 | `sessionRef`, `applyEntry`, the placeholder | the picker, the drag-place and the replace |
+   | `useColorBlendMode` | 5 | 33 | the armed tool | the blend, and the marks that advertise it |
+   | `useColorScope` | 4 | 34 | — | the recolour brush's aim |
+   | `usePatternExcludedFamilies` | 3 | 42 | — | the tile-set filter, memoized per painted cell |
+
+   **The unit is the connected component of the body's read graph**, which is
+   what "a closed cluster" means once it is measured rather than eyeballed.
+   6.5b.2+ proposed two clusters by name (the pattern-tile chooser, the save
+   pipeline); decomposing the closed set properly gives 35 components over
+   183 statements plus 77 singletons, and these eight are the ones that both
+   close and PLACE.
+
+   **Placeability is a second gate, and the read graph cannot see it.** A
+   component's statements are scattered — the eyedropper's ten run from body
+   position 7 to 442 — so extracting one collapses them to a single call,
+   which must sit after everything it reads and before everything that reads
+   it. Two components that were closed are NOT placeable and were dropped for
+   it: the caret/text-selection group (10 statements, 72 lines) and the
+   default-font group (5, 52). Both are the same shape — a `useState` read by
+   an early effect, grouped with a handler that needs `applyEntry` 200
+   statements later — and both fail identically in all three apps, which is
+   the sign the measurement is right rather than an accident of one app.
+   **React hook order is a total order the read graph does not capture**, and
+   a cluster has to be measured against it before it is called closed.
+
+   **A ninth cluster measured and was refused on the package's own terms.**
+   `useChromeInsets` (3 statements, 27 lines: `useSafeAreaInsets`, the
+   headerless flag, the chrome's box) closes, places in all three apps, and
+   is byte-identical — and it is the only thing in `packages/editor` that
+   would import `react-native-safe-area-context`. The package's two other
+   users of that module are `packages/shell/src/app` and `.../components`,
+   both EXCLUDED from the engine's root tsconfig, which is how that
+   dependency has been kept out of the typechecked surface. 6.1 made the same
+   call about `faceUri` and expo-asset: the thing that needs the app's native
+   environment stays with the app. It was found by the suite failing to load,
+   not by reading — which is the argument for writing the suite first.
+
+   **What became a parameter rather than an import** — §4.3's commonest
+   answer, now applied to a group of statements rather than a declaration:
+   the store's `updateSettings` (the swatch row and the remembered font are
+   per app), this app's sentinel photo-placeholder `imageId` (6.3d left the
+   WORD with each app because the blob store keys blobs by it), and the armed
+   tool, because `useColorBlendMode` asks the session for nothing else.
+   `useEyedropper` is generic over the picker id so each app's table stays
+   typed in its own union — 6.5b.1's `ColorPickerSpecFor`, used as designed.
+   Every returned name is destructured back under the name it had, so not one
+   of the hundreds of sites downstream moved a character.
+
+   **`framingTarget` is exported and tested on its own**, and it is the one
+   thing in the eight that was re-shaped rather than lifted. It is the one
+   DECISION among them rather than plumbing, and it has a shipped bug in its
+   history: an edit routed through the raw `selectedId` died silently after
+   the live preview had been rolled back, which read as the Zoom slider
+   jumping back on release. Pulling it out of `onFraming` is what let it be
+   pinned at all.
+
+   **There is no renderer in this repo, nor in any of the three apps**
+   (`testEnvironment: 'node'` everywhere, no jsdom, no testing-library),
+   which is why 6.6b wrote `hostRoute.ts` as pure functions under thin hooks.
+   These eight are state plumbing with no such core, so **their behaviour is
+   not pinned anywhere**. That is a real gap and `shellHooks.test.ts` says so
+   at the top rather than implying otherwise. What it does pin: that the
+   modules load (which is what puts them under a typecheck at all, the root
+   tsconfig excluding `packages/editor`), that none reaches into an app, that
+   none names the `@/editor-ui` INDEX, and `framingTarget`'s resolution. Both
+   refusing pins were mutation-tested on the two modules read as TEXT, where
+   they are the only guard — on a loadable module ts-jest catches the
+   mutation first and the assertion never runs.
+
+   **The `@/editor-ui` index is a trap of the same family as 6.5b.1's
+   `PUSHDOWN_HEIGHT`**, and two of the eight hit it. Importing the index —
+   even for a TYPE — drags every `.tsx` of the chrome into the graph of
+   anything that loads the file, and the suite explodes. Each name has its
+   own `.ts` module (`SwatchRainbow` and `FramingModel` are `adapter.ts`,
+   `patternExcludedTileFamilies` is `logic/patternEdit.ts`), so all three
+   imports were respelled and a pin now refuses the index outright.
+   `useColorBlendMode` and `useRadialMenus` still reach a `.tsx` for a glyph
+   and a ref type, so those two are read as source text, as the gate requires.
+
+   **Fourteen source-text pins read the shell for wiring that is now the
+   package's, and not one was deleted.** Each is re-pointed through
+   `editorSource`, so every fact still has a test and still says where it
+   lives. Four needed more than a re-point, and each is one of §4.3's named
+   traps paying out:
+
+   · `imageFraming.test.ts` SLICED between `const onFraming = useCallback(`
+     and `const onResetFraming = useCallback(` — and after the move those two
+     markers sat in two DIFFERENT files, so `indexOf` returned -1 and the
+     slice was garbage. It went red here only because the contents were gone
+     too; the shape of the failure is exactly the soft-slice §4.3 warns of.
+     Re-cut inside the hook, and **the cut is now asserted before its
+     contents are** — bounded, one `useCallback`, under 60 lines.
+   · `colorPickerClose`, `pageColorRows` and `toolbarColorField` COUNTED
+     occurrences that are now split between the shell and a hook. The counts
+     are split the same way rather than summed, so each half still says where
+     its own fact is. One of them stopped being a count: `setColorScope`
+     occurs four times in `useColorScope.ts` but only two are SITES — the
+     other two are a doc comment and the return — so the sites are named
+     instead.
+
+   **Two orphan doc-comment bands, the seventh and eighth of this stage**,
+   both found the way §4.3 prescribes and neither by a tool. One described
+   the gradient Tint bar — whose own declarations are long gone from all
+   three shells — and sat above `framingBaseRef`, so it would have travelled
+   into `useImageEdits` describing nothing there. The other described the
+   ACTIVE colour and sat above the swatch ROW, bound for `useEyedropper`. The
+   facts they carried that nothing else did are now above
+   `svgFillSelectedStopRef` and `noteActiveColor`, two declarations that had
+   no comment at all.
+
+   **The shells' unused-import set is exactly what it was before**, checked
+   against HEAD rather than assumed: 27 names and one whole declaration went
+   dead, identically in all three, and were pruned; the pre-existing dead
+   imports (9 / 28 / 20) were left alone, because this sub-stage does not get
+   to quietly tidy what it did not touch. The first version of that check was
+   itself wrong and is worth recording: it keyed the unused set by MESSAGE
+   TEXT, and every `TS6192` ("all imports in this declaration are unused")
+   reads the same, so a new one standing next to a pre-existing one was
+   absorbed by the set comparison and hid a dead import in two of the three
+   apps. Keyed by the declaration's SPECIFIER it showed up at once. §4.3's
+   "prefer an exact set or a derived count" applies to the verification as
+   much as to the pin.
+
+   **Two bugs in the measurement tooling, and the second one matters for the
+   record.** The statement extractors this stage measures with (scratchpad
+   scripts, not in any repo) found a declaration's head line by skipping
+   `//` comments — but not `/** */`, so
+   every declaration documented with a JSDoc block was MISSING from the
+   name→statement map, and any statement reading such a name looked CLOSED
+   when it was not. Separately, the identifier scan dropped a name after `.`
+   to skip member accesses, which also dropped `...NAME` — a spread. With
+   both fixed, **the closure measurement in the entry below is overstated by
+   16 statements**: 179 of the 340 close with no allowance (not 195) and 252
+   under the four inputs (not 268). The chokepoint ranks are unchanged, and
+   so is every count that came from `body.js` itself — the 624 / 553 / 571
+   statements, the 340, the 250 runs, the render tree's numbers — because
+   those never used the broken map. The entry below is corrected in place and
+   the original figures are named here so the correction is not silent.
+   §4.3's rule earned its keep twice over: a sweep whose result surprises you
+   is to be thrown away, not tuned.
+
+   CozyJournal 672 suites / 10,928 tests; Sol 278 / 3,326; DrawBots 556 /
+   9,487; engine 403 of 404 / 7,311 (`cameraRoll`, pre-existing). Cozy's and
+   DrawBots' suite counts rose by one and their tests by 37 because their
+   jest roots include the vendored package and `shellHooks.test.ts` is now in
+   it; Sol's roots do not, so Sol's moved only by the three pins this
+   sub-stage added.
+
+   **6.5b.2+ — the measurement 6.5b.2 was planned from, and why it is
+   plural.** The shell's BODY, measured 2026-10-25 over the three apps'
+   HEAD before 6.5b.2 took the first slice out of it. This is the
+   measurement 6.0 did not have: 6.0 counted LINES (89 % of
    DrawBots' shell appears verbatim in CozyJournal's, in runs up to 730)
    and concluded "the shell moves". Counting DECLARATIONS instead says
    something the line count cannot.
@@ -2717,13 +2951,18 @@ first, then the pointer bump in each app).
      15. There is no cut that takes the shared half and leaves the rest.
 
    · *What a partial extraction costs is the context object §4.3 warned
-     of, and it is measurable.* Of the 340 identical statements, only 195
-     read nothing else in the body; allow four names as inputs — `session`,
-     `sessionRef`, `setSession` and the app's own `applyEntry` — and 268
-     of them close, 2,066 lines. The chokepoints are exactly those four:
-     58 of the excluded statements want `sessionRef`, 36 want `applyEntry`,
-     22 `session`, 15 `setSession`. So a slice is affordable, and only
-     when it is chosen for closure.
+     of, and it is measurable.* Of the 340 identical statements, only
+     **179** read nothing else in the body; allow four names as inputs —
+     `session`, `sessionRef`, `setSession` and the app's own `applyEntry`
+     — and **252** of them close, 1,987 lines. The chokepoints are
+     exactly those four: 58 of the excluded statements want `sessionRef`,
+     36 want `applyEntry`, 22 `session`, 15 `setSession`. So a slice is
+     affordable, and only when it is chosen for closure. (These two
+     figures read 195 and 268 until 6.5b.2 found two bugs in the
+     extractor — a declaration under a JSDoc block was invisible to the
+     name map, and a spread read as a member access. The entry above
+     records both. Every other number in this entry came from `body.js`
+     itself and is unaffected.)
 
    · *The render tree cannot be the package's at all yet.* It is
      1,624 / 1,169 / 1,452 lines, mounts 36 / 38 / 34 components, and
@@ -2748,19 +2987,29 @@ first, then the pointer bump in each app).
    which is 6.5a's lesson and the one that cost the most.
 
    **So 6.5b is a programme, and the order is the stage's own rule — most
-   closed first.** Proposed, for the owner:
+   closed first.** Settled by the owner 2026-10-25 (§4.3) and now one
+   sub-stage in:
 
    | | | measured |
    |---|---|---|
    | 6.5b.1 | done | the file-level leaves |
-   | 6.5b.2 | the closed clusters, as hooks | e.g. the pattern-tile chooser: 12 statements, 151 lines, 3 names in. The save pipeline: 10 statements, 104 lines, 2 names in |
-   | 6.5b.3 | the bar handlers | 1,635 lines over ten sections, drifting by 56 / 40, riding the commit pipeline — 6.0 says they do not move alone, and after 6.5b.2 that may no longer be true |
+   | 6.5b.2 | done | eight closed clusters as hooks: 56 statements, 465 lines of each app |
+   | 6.5b.3 | the bar handlers | 1,635 lines over ten sections, drifting by 56 / 40, riding the commit pipeline — 6.0 says they do not move alone, and 6.5b.2 is the test of whether that is still true |
    | 6.5b.4 | the render tree, behind an overlay seam | DrawBots' `{x.overlay}` hooks, measured across all three first |
-   | 6.5b.5 | what is left of the component | — |
+   | 6.5b.5 | what is left of the component, the 59-statement colour complex and the singletons | — |
 
-   Nothing here is settled. The one thing the measurement does settle is
-   that "the shell itself, bar handlers inside it" is not a sub-stage, and
-   §4.3 records the question it leaves the owner.
+   **What 6.5b.2 settles for 6.5b.3.** The bar handlers' case against
+   moving alone was that they would need a context object of some fifty
+   members threaded through. 6.5b.2 is that objection measured and priced
+   on a smaller subject: eight hooks, four inputs between them, and the
+   context object never appeared — because each cluster was chosen for
+   closure rather than for subject. Whether the bar handlers can be cut
+   the same way is a measurement to MAKE on them, not an inference from
+   this one; the ten sections are not components of the read graph, and
+   the thing to measure first is which of them close over what.
+
+   The one thing the measurement settles outright is that "the shell
+   itself, bar handlers inside it" was never a sub-stage.
 
    **6.2b's measurement, kept.** The measurement below is 6.2b’s, from
    2026-10-23, kept because it is what re-ordered the sub-stages: the
@@ -3324,6 +3573,48 @@ Settled by the owner, 2026-10-20:
   measurement has to cover the WRITERS of the state it takes over, not
   only the code it is replacing** — the 6.5a lesson one turn further on.
 
+- **How 6.5b is sliced — SETTLED** (by the owner, 2026-10-25, on the
+  measurement below). **Take the slicing; 6.5b.2 is the closed clusters
+  whose return is a normal hook signature, and stage 7 stays where it is.**
+  The 59-statement colour-and-effects component is HELD: a hook returning
+  fifty-odd names is the context object this plan has twice refused to
+  invent, and it waits for 6.5b.5. The singletons are held too, for 6.5b.1's
+  reason — a cluster averaging six lines has no module to belong beside.
+
+  The question the measurement put to the owner was whether stage 7 should
+  go first, and the answer the measurement itself gave is that the two were
+  never competing: the rig's 29 Cozy-only statements are in the APP-ONLY
+  bucket and block none of the 35 closed components. Stage 7 shrinks 6.5b.4
+  (two of CozyJournal's seven unique mounts and twelve of its 47 unique
+  render-tree reads are the rig's) and 6.5b.5 — not 6.5b.2. So it is still
+  doable today, still the owner's call, and no longer blocking anything.
+
+- **A closed cluster is not yet a movable one: hook ORDER is a second
+  gate** (learned at 6.5b.2, and the one thing that measurement did not
+  predict). The read graph says what a group of statements needs; it says
+  nothing about WHERE the one call that replaces them can stand. A group's
+  statements are scattered through the body, so extracting one collapses
+  them to a point that must sit after everything it reads and before
+  everything that reads it — and two of the ten components that closed had
+  no such point, in any of the three apps. Both were the same shape: a
+  `useState` read by an early effect, grouped with a handler that needs
+  `applyEntry` two hundred statements later. **Measure placement before
+  calling a cluster movable**, and measure it in all three apps: that it
+  failed identically in all three is what made it a fact about the shape
+  rather than an accident of one app.
+
+- **The package stays free of native dependencies, and that outranks a
+  clean measurement** (6.5b.2). `useChromeInsets` closed, placed in all
+  three apps and was byte-identical — and it would have been the only file
+  in `packages/editor` importing `react-native-safe-area-context`. The two
+  other users of that module in this repo sit in `packages/shell/src/app`
+  and `.../components`, both excluded from the root tsconfig, which is how
+  the dependency has been kept off the typechecked surface. It stays with
+  the apps, which is 6.1's call about `faceUri` and expo-asset a second
+  time. The general form: **a cluster that measures as shared can still be
+  refused on the package's own terms**, and the suite is what finds it —
+  this one was caught by the suite failing to load, not by reading.
+
 Still open:
 
 - **The push brush on DrawBots' bar.** Stage 5b put the gesture in the
@@ -3340,26 +3631,25 @@ Still open:
   without using it. Stage 7 makes them CozyJournal host pages, the way
   DrawBot's bot pages already are; nothing forces that earlier.
 
-- **How 6.5b is sliced — the one open question that GATES something**
-  (raised 2026-10-25 by 6.5b.2+'s measurement; the two above are product
-  calls and gate nothing, this is not). Item 6 says "the shell itself,
-  bar handlers inside it", and the declaration-level measurement says
-  that is not a sub-stage: the shared two thirds of the body lies in 85
-  runs among 250, the render tree mounts 7 / 9 / 5 components no other
-  two apps mount, and a partial extraction's context object is
-  measurable — four allowed inputs (`session`, `sessionRef`,
-  `setSession`, the app's `applyEntry`) close 268 of the 340 identical
-  statements, and nothing cheaper closes more than 195.
+- **Whether stage 7 goes before the rest of 6.5b** — what is left of the
+  question settled above, and no longer gating anything. Stage 7 is doable
+  today and would shrink 6.5b.4 and 6.5b.5; it does not touch 6.5b.3. The
+  stage-5 and 6.5b precedents are both the owner's, on the same kind of
+  evidence.
 
-  Item 6 proposes a slicing — closed clusters as hooks, then the bar
-  handlers, then the render tree behind the overlay seam DrawBots already
-  ships, then the remainder — in the stage's own order, most closed
-  first. What the owner has to decide is whether to take it, and whether
-  **stage 7 goes first**: 29 of the 82 statements only CozyJournal's
-  shell declares are the rig's, so moving the rig pages out would shrink
-  6.5b rather than reorder it out of turn. The stage-5 precedent is the
-  owner's, on the same evidence: that stage was split in two when the
-  measurement came in, and the second half in four again.
+- **No renderer, anywhere, and eight hooks now in the package because of
+  it** (raised 2026-10-25 by 6.5b.2). There is no React renderer in this
+  repo's jest (`testEnvironment: 'node'`, no jsdom, no testing-library) and
+  none in any of the three apps, which is why 6.6b wrote `hostRoute.ts` as
+  pure functions under thin hooks and why every screen fact in all four
+  repos is pinned as SOURCE TEXT. 6.5b.2 moved 465 lines of state and
+  handlers into `packages/editor` whose behaviour is therefore pinned
+  nowhere — the apps typecheck them, and the only safety argument is that
+  the text is byte-identical to what three shipped apps were already
+  running. That argument does not get stronger as more of the shell moves,
+  and 6.5b.3 and 6.5b.4 are larger. Adding a jsdom environment to the
+  engine's jest would turn it into a test; it is a tooling change in a
+  directory this work does not edit, and it is the owner's to want.
 
 ## 5. Process
 
@@ -3546,12 +3836,35 @@ commits cost, which is a second reading of the same point §5 has been
 making since 6.1 — **a cumulative prompt measures the queue, not the
 change**.
 
+**6.5b.2, the first slice of the shell, and the first per-sub-stage
+figure this stage has** (2026-10-25, measured before this record was
+written). Its OWN diff — one commit per repo, not a cumulative prompt —
+is **46 KB** (engine) / **73** (CozyJournal) / **76** (Sol) / **75**
+(DrawBots), over 9 and 16 / 15 / 16 files. That is the number §5 has been
+asking for since 6.1 and could not recover from a cumulative prompt: a
+sub-stage that moves 465 lines out of each app and 465 into the package
+costs about 75 KB of diff per app.
+
+The cumulative ranges are of course larger, and the practice §5 asked for
+— one ship per slice — was NOT kept here: no ship ran between 6.5b.1 and
+6.5b.2, so `review.js pending --prompt | wc -c` now reads **137 KB**
+(engine) / **385** (CozyJournal) / **242** (Sol) / **244** (DrawBots).
+Sol's and DrawBots' 242 and 244 are four sub-stages (6.6a, 6.6b, 6.5b.1,
+6.5b.2) plus two record commits; CozyJournal's 385 is the same plus the
+three 6.5a review-fix commits that have still never been shipped, which
+is the third time the same gap has shown up in the same place. **The
+shell's range has now been tried, and it fits**: 242 KB against the 890
+a stage-3 range passed at. What has not been tried is a range holding the
+bar handlers or the render tree.
+
 **What that does and does not say about the shell.** It does not say the
 shell's range will fit: these three sub-stages moved about 470 lines into
 the package between them, where the shell is 10,013. It does say the
 question is no longer confounded, and that a per-sub-stage figure is
 cheap to get as long as the queue is shipped between sub-stages — which
-is the practice to keep for 6.5b.2 onward, one ship per slice. The
+is the practice to keep for 6.5b.3 onward, one ship per slice, and which
+6.5b.2 shows can be had another way when it is not: the per-commit diff,
+measured directly, answers the same question without a clear queue. The
 reviewer has never been given a range holding a 10,000-line move, and on
 §4.2 item 6's measurement it never will be: the slicing that stage 6's
 remainder needs for ARCHITECTURAL reasons also keeps every range the size
