@@ -116,10 +116,19 @@ export const OBJECT_PANEL_HEIGHT = 61;
  *
  *  There is no implicit white page: a composition paints a background only
  *  if it declares one, so where it does not, THIS is the colour under
- *  everything and the colour the eye reads as "the canvas". The paint brush
- *  blends against it for exactly that reason (paintBrush's `beneath`),
- *  which is why it is a constant here rather than a literal in the canvas
- *  component. */
+ *  everything and the colour the eye reads as "the canvas".
+ *
+ *  Its one reader of the VALUE is the canvas element's own background
+ *  (`packages/editor/src/components/CanvasSurface.tsx`). It is a constant
+ *  here rather than a literal there because a second thing is pitched
+ *  against it: `FLOATING_CAPSULE_BG` is a deliberate step down from this
+ *  shade, so the capsule reads as sitting on bare canvas. Two values that
+ *  have to move together belong in one file.
+ *
+ *  The paint brush does NOT read it. A dab blends toward the colour already
+ *  under it (`@/engine/colorBlend`'s `blendColor`, and `paintBrush.ts`'s own
+ *  "A dab blends TOWARD the colour under it"), so the brush never needs to
+ *  know what the bare canvas is; `paintBrush.ts` imports no theme at all. */
 export const BG_EDITOR_CANVAS = '#efefef';
 
 /** 1 pt rules and borders — the page's own drop shadow ring, and every
