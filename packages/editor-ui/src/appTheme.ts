@@ -102,25 +102,6 @@ export const NOTEBOOK_UNSENT_BG = '#ffffff';
  *  on every card — a WIP's strip names the game and the group, and a Free
  *  Play tile has no strip at all.) */
 export const NOTEBOOK_WIP_BG = '#E7E7E4';
-/**
- * The editor canvas's own ground — the light grey behind the scene (a
- * barely-warm white, #FCFBF9, until the Sep 2026 palette).
- *
- * There is no implicit white page: a composition paints a background only if
- * it declares one, so where it does not, THIS is the colour under everything
- * and the colour the eye reads as "the canvas". The paint brush blends
- * against it for exactly that reason (see paintBrush's `beneath`), which is
- * why it is a shared constant rather than a literal in the canvas component.
- *
- * What does NOT follow it is the rig's paper (web/formats/poserRig
- * PAPER_PAGE): that colour is baked into stored subpaths and into figures
- * already drawn, so it stayed at #FCFBF9 when this moved. A figure's solid
- * volumes therefore read a shade lighter than bare canvas.
- */
-// The shared editor's own ground (editor-ui's theme): DERIVED, not
-// restated, so the canvas and this app's chrome cannot drift apart —
-// the same reason the system font stack has one home (stage 5a of
-// vendor/UnderwayEngine/docs/shared-editor.md).
 
 // Ink ramp — five faintly blue-leaning neutrals, so the words sit in the same
 // cool family as the ramp and the accent rather than against them.
@@ -147,9 +128,6 @@ export const INK_HINT = '#B9BBC1'; // light grey: the title band's italic friend
 export const ACCENT = '#39BBF8';
 
 export const ACCENT_ON = '#FFFFFF'; // text on accent
-/** 1pt rules and borders. The canvas's own hairline is the same value
- *  from the same place (editor-ui's CANVAS_HAIRLINE). */
-
 export const DANGER = '#B0382E'; // brick red: destructive actions, error lines
 
 // ── The special-CTA gradient ────────────────────────────────────────
@@ -158,7 +136,7 @@ export const DANGER = '#B0382E'; // brick red: destructive actions, error lines
 // a social game are the app asking for the next move rather than one format
 // offering itself. They wear this one
 // fixed three-stop ramp — sky → indigo → lavender — which belongs to no
-// format in FORMAT_BASE_COLOR and so can never be mistaken for one. It is
+// format at all and so can never be mistaken for one. It is
 // the LOUDEST thing on any screen BY DESIGN — that, and not a reserved range
 // of hues, is what keeps it uncontested: its stops run 83–93% HSL
 // saturation where every game fill sits at 25–69%. (The Sep 2026 ramp, blue
@@ -216,7 +194,7 @@ export const CTA_INK = '#FFFFFF';
 // It is told from a game the way the ramp above was until Oct 2026, by
 // TONE: its stops are mid-tones (48–52% HSL lightness, against every game
 // fill's 77–86% pastel) at 54–58% chroma, and none of them is a
-// FORMAT_BASE_COLOR. (The CTA ramp has since gone light and loud — 60–76%
+// format’s own base colour. (The CTA ramp has since gone light and loud — 60–76%
 // lightness at 83–93% chroma — so the two ramps no longer share a band;
 // each is kept off the games by its own figure.) Where this one does
 // better is ink — all three stops clear 5:1 against white (5.01 / 5.49 /
@@ -349,7 +327,8 @@ export const FLOATING_NAV_BOTTOM_GAP = 20;
 export const FLOATING_NAV_CLEARANCE = FLOATING_NAV_HEIGHT + 24;
 
 // ── Per-format rail card tint — "Daylight & Lamplight" ───────────────
-// Each format owns one base colour (FORMAT_BASE_COLOR) and every tone on its
+// Each format owns one base colour — each app declares its own table of
+// them — and every tone on its
 // card — both gradient stops, the thumbnail well, the tally line, the title and
 // body inks — is DERIVED from that one hex by shifting lightness in HSL. Day
 // cards use the SAME fill as the hero card; only the ghost (archive /
@@ -357,7 +336,7 @@ export const FLOATING_NAV_CLEARANCE = FLOATING_NAV_HEIGHT + 24;
 // identity, so it keys off the FORMAT, not the rail's position — two people
 // with different enabled sets still see the same colour for the same game.
 //
-// The TURN-BASED games additionally declare a second hex (FORMAT_SWEEP_COLOR)
+// A format may additionally declare a second hex (the turn-based games do)
 // and their cards sweep between the two. See {@link CardFill}.
 /**
  * A card's whole fill, ready to spread onto a `<GradientView>`
@@ -372,7 +351,7 @@ export const FLOATING_NAV_CLEARANCE = FLOATING_NAV_HEIGHT + 24;
  * the points itself — thirteen chances to get it wrong, and the exact shape of
  * duplication this file has been bitten by before.
  *
- * Built ONCE per format at module load (FORMAT_TINTS) and spread by reference,
+ * Built ONCE per format at module load, by the app, and spread by reference,
  * so a rail of cards allocates no arrays per render. The old call sites copied
  * (`colors={[...tint.heroColors]}`) on every pass.
  */

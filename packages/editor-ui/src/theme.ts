@@ -112,7 +112,14 @@ export const OBJECT_PANEL_HEIGHT = 61;
 /** The bare editor canvas behind the page — a shade darker than the page
  *  itself, so a white page reads as a sheet of paper on a surface. (A
  *  figure's solid volumes are baked against the PAGE's colour, not this
- *  one, so they read a shade lighter than bare canvas.) */
+ *  one, so they read a shade lighter than bare canvas.)
+ *
+ *  There is no implicit white page: a composition paints a background only
+ *  if it declares one, so where it does not, THIS is the colour under
+ *  everything and the colour the eye reads as "the canvas". The paint brush
+ *  blends against it for exactly that reason (paintBrush's `beneath`),
+ *  which is why it is a constant here rather than a literal in the canvas
+ *  component. */
 export const BG_EDITOR_CANVAS = '#efefef';
 
 /** 1 pt rules and borders — the page's own drop shadow ring, and every
