@@ -31,18 +31,30 @@ out, which is what makes the file counts reproducible:
 | `web/store/` | 14 | 8 | 1 | 1.1 k / 1.7 k / 3.6 k |
 | `web/fonts/` | 8 | 8 | 5 | 0.7 k each |
 
-And the same trees NOW (re-measured 2026-10-24, after 6.5a), so the table
-above stays the baseline it says it is rather than being overwritten.
-`Files` is the UNION of file names across the three apps, which is what
-makes a file that only one app has still count once:
+And the same trees NOW (re-measured 2026-10-25, after 6.6b and 6.5b.1), so
+the table above stays the baseline it says it is rather than being
+overwritten. `Files` is the UNION of file names across the three apps,
+which is what makes a file that only one app has still count once:
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
-| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 11.5 k / 17.2 k / 25.1 k |
+| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 11,342 / 17,080 / 25,030 |
 | `web/editorUi/` | — | — | — | retired at stage 1 |
-| `web/formats/` | 49 | 4 | 1 | 285 / 740 / 13.8 k |
-| `web/store/` | 12 | 6 | 0 | 504 / 1.0 k / 2.9 k |
+| `web/formats/` | 49 | 4 | 1 | 282 / 737 / 13,787 |
+| `web/store/` | 12 | 6 | 0 | 510 / 1,009 / 2,922 |
 | `web/fonts/` | 5 | 5 | 1 | 213 / 233 / 234 |
+
+The file COUNTS have not moved since 6.5a and the lines barely have, which
+is the honest reading of 6.6 and 6.5b.1: both took DECLARATIONS out of
+files that stay — each app still has an `editorQuery.ts`, an
+`EditorHost.tsx` and an `EditorShell.tsx` — where every sub-stage up to
+6.5a took whole files. Measured against each app's HEAD before 6.6a
+(Sol 102c61c, DrawBots 308e277, CozyJournal 3dd7cb10), `web/editor/` went
+11,464 → 11,342, 17,198 → 17,080 and 25,143 → 25,030: **122 / 118 / 113
+lines lighter, and not one file lighter** — 30 / 58 / 78 files before and
+after. A stage that empties files shows up in the first column;
+a stage that hollows them out shows up only in the last, and the rest of
+stage 6 is the second kind.
 
 Four rows' worth of reading, and the second is this stage's. `web/editor/`
 has lost 92 of its 193 files and two thirds of its lines — stages 1 to 6 —
@@ -1125,9 +1137,14 @@ first, then the pointer bump in each app).
    `EditorConfig`, `web/fonts/*` and the shared half of `web/store/*` move
    with them. Each app's `web/editor/` is then its extension alone.
 
-   **Where the stage stands, plainly** (2026-10-24, after 6.5a). **Stage 6
-   is NOT complete.** Every sub-stage but the last two is done, green and
-   committed in all four repos, nothing pushed:
+   **Where the stage stands, plainly** (2026-10-25, after 6.6b and
+   6.5b.1). **Stage 6 is NOT complete, and what is left of it is one
+   thing: the shell's body.** 6.6 is done. 6.0 to 6.5a are PUSHED — the
+   engine was at 7ce9a99 and Sol at 102c61c when this session began — and
+   what is unpushed is this session's work plus three review-fix commits
+   in CozyJournal (f9ce6e14..3dd7cb10) that were never shipped. (The line
+   here said "committed in all four repos, nothing pushed" until
+   2026-10-25; it had been false since the first ship.)
 
    | Sub-stage | | What it did |
    |---|---|---|
@@ -1140,27 +1157,46 @@ first, then the pointer bump in each app).
    | 6.4a | done | the app chrome's palette |
    | 6.4b | done | the host bridge — which needed no seam |
    | 6.5a | done | the shell's siblings: eleven modules and two sheets |
-   | **6.5b** | **not started** | **the shell itself, bar handlers inside it** |
-   | **6.6** | **not started** | **the host's ~200-line state machine** |
+   | 6.6a | done | the editor query's shared half — the host's prerequisite |
+   | 6.6b | done | the host's open path; each app keeps its route table |
+   | 6.5b.1 | done | two of the shell's own leaves: the pushdown, the picker row |
+   | **6.5b.2+** | **not started** | **the shell's BODY — and it is not one move** |
 
-   What is left is the two biggest movers in the plan and the two the
-   measurement has least to say about: `EditorShell.tsx` at 10,077 / 7,494 /
-   8,589 lines, and `EditorHost.tsx`, whose common part is a state machine
-   under a route table per app. Every foundation they were blocked on is in
-   place — the fonts, the store, the config, the bridge, and now the
-   siblings — so nothing stands between 6.5b and the shell but the shell.
+   **6.6 came before 6.5b, and the measurement is why.** The plan's order
+   was 6.5b then 6.6. 6.6's design was already settled (§4.3, 2026-10-23),
+   its subject is closed, and it depends on nothing in the shell — the
+   package's hook hands back a route and mounts nothing, so each app's
+   host still imports its own shell. 6.5b's is neither settled nor closed,
+   as the entry below sets out. Doing the settled one first cost nothing
+   and left 6.5b measured on a clear queue.
+
+   **What is left, re-measured 2026-10-25.** `EditorShell.tsx` at
+   10,013 / 7,431 / 8,520 lines (Cozy / Sol / DrawBots). Its body is 624 /
+   553 / 571 statements, of which 435 are declared in all three apps and
+   340 of those are byte-identical — and they do NOT come out as a block:
+   over CozyJournal's order they fall into 250 runs, the shared ones in 85
+   of them. The 6.5b.2+ entry below is that measurement in full, and the
+   conclusion it forces is that the shell is SLICED, not moved.
 
    **What stage 7 inherits, as things stand.** Stage 7 is the apps' own
    property pages (CozyJournal's rig: `rigEdit.ts`, `RigJointsBar`,
    `RigPoseBar`, `RigColorBar`), and it inherits a question that has nothing
-   to do with them: whether the shell moved. If 6.5b and 6.6 land, stage 7
-   starts with `web/editor/` holding each app's extension alone, which is
-   what item 6 promises, and the rig pages are the last app vocabulary in
-   editor-ui. If they do not, stage 7 is still DOABLE — the rig pages are
-   editor-ui's, not the shell's, and 6.5a took the last of their shared
-   leaves — but it would be the odd order: moving an app's own kind out of
-   the shared layer while the shared layer's biggest file is still three
-   copies. Stage 7 should wait on 6.5b.
+   to do with them: whether the shell moved. It has not, and on the
+   measurement below it will not move in one stage. So the choice stage 7
+   faced is now a real one rather than a wait: it is DOABLE today — the rig
+   pages are editor-ui's, not the shell's, and 6.5a took the last of their
+   shared leaves — and "wait on 6.5b" no longer names a date. Two things
+   are true of it now that were not on 2026-10-24. The host is out of the
+   way, so `EditorHost.tsx` is no longer a file stage 7 and 6.5b would both
+   be editing. And the rig is the second-largest thing standing between the
+   shell and the package: of the 82 statements only CozyJournal's shell
+   declares, **29 are the rig's** (`rigSliders`, `rigEditable`,
+   `openRigPart`, `onRigSlider`, `onRigColor`, `rigSides`, `rigCapsuleUp`
+   and twenty-two more) against 36 for its social, response, redline and
+   glyph games and 17 for everything else, and 6.5b has to answer for
+   every one of them. Taking stage 7 first
+   would SHRINK 6.5b rather than reorder it out of turn. That is the
+   owner's call and it is on the Still-open list.
 
    **6.0 — Done: measured** (2026-10-23). Three findings, and two of them
    changed the order of the rest.
@@ -2464,7 +2500,269 @@ first, then the pointer bump in each app).
    cameraRoll’s host dependency, as before — `expo-media-library` is not
    installed in this repo, and that suite fails with 6.5a stashed too.
 
-   **6.5b and 6.6 — not started.** The measurement below is 6.2b’s, from
+   **6.6a — Done: the editor query's shared half** (engine 25e58ed,
+   CozyJournal 7a1b2342, Sol 6ebb764, DrawBots 840de26; 2026-10-25). The
+   host's prerequisite, and a sub-stage of its own because the host
+   state machine reads every one of these.
+
+   | `editorQuery.ts` | Cozy | Sol | DrawBots |
+   |---|---|---|---|
+   | lines | 242 | 143 | 283 |
+   | declarations | 14 | 11 | 22 |
+   | in all three | — | **10** | — |
+   | byte-identical in all three | — | **7** | — |
+   | `QUERY_KEYS` | 28 keys | 13 | 21 |
+
+   The seven that were the same are the readers: `parseSearch`,
+   `parseQuery`, `resolveQuery`, `firstParam`, `pinEntryToLocation`,
+   `replaceLocationSearch` and the `Query` type. What differs is the KEYS,
+   and they differ because they ARE each app's routes — eleven are common
+   (`entryId`, `format`, `date`, `action`, `exportFormat`, `entryIds`, the
+   three view settings, `dev`, `warm`), CozyJournal declares seventeen
+   more for its friends, groups and games, DrawBots ten for its bots and
+   sounds, Sol two.
+
+   So the readers TAKE the key list rather than closing over one
+   (`parseSearchFor(keys, search)`), and each app keeps five thin wrappers
+   that bind them — the 6.1 arrangement, and what made this cheap: the
+   names and signatures did not change, so none of the 11 / 5 / 13 modules
+   that import `editorQuery` moved a line. `firstParam` and
+   `replaceLocationSearch` take no keys and are re-exported outright.
+
+   Two members needed a seam rather than a move. `namesAPage` asks whether
+   a query names a page at all, and CozyJournal's ors in two keys of its
+   own (`respond`, `social`) — the package holds `namesACommonPage` over
+   the three keys every app has and CozyJournal ors over it.
+   `pinnedEntrySearch` drops the keys that asked for a page to be MADE,
+   and DrawBots drops `design` beside the three. Both are the shape of a
+   base plus the app's own, which is now this plan's commonest answer.
+   `asFormatId` STAYS: three byte-identical bodies over three different
+   `OPENABLE_FORMATS`.
+
+   **DrawBots has no `namesAPage`**, which the move surfaced rather than
+   caused: a route of DrawBots' that names a page it cannot open falls to
+   the dev freeform canvas, where the other two say so. The function is in
+   the package now and DrawBots does not call it. Under §4.3's canonical
+   rule that is an oversight to fix; it is also a behaviour change in a
+   shipped app, so it is named here and not taken.
+
+   27 cases in `packages/editor/src/__tests__/editorQuery.test.ts`, driven
+   over a MADE-UP key list the way `sessionHost` and `loadPackFonts` drive
+   their seams, with a fake `window` for the three functions that touch
+   one. `COMMON_QUERY_KEYS` is pinned as an exact set, not a negative
+   match.
+
+   **6.6b — Done: the host's open path** (engine 3203f03 + c8a81f1 +
+   3f33f74, CozyJournal d7277592, Sol 8c0221f, DrawBots f01e8e8;
+   2026-10-25). The owner's call of 2026-10-23 carried out: the state
+   machine is the package's and each app keeps a ROUTE TABLE over it.
+
+   What moved is `packages/editor/src/hostRoute.ts` — two hooks, each a
+   dozen lines over plain functions, which is where the suite's 15 cases
+   are (there is no renderer in this repo's jest, so a hook is tested the
+   way `useSuppressIOSLoupe` is: its decisions are functions):
+
+   · `useEditorQuery(keys, routerParams, alsoRouteFrom?)` — the query, and
+     the two-way handshake that can replace it. The router's params over
+     the URL per key; a route arriving over the bridge replaces it WHOLE
+     and is written onto the page's own URL; the page both asks and
+     listens, because either order happens.
+   · `useResolvedRoute(q, table)` — one run of the open path: hold while
+     warm, clear what the last route left standing, let the table resolve,
+     and commit nothing if a newer query superseded it. `runRouteResolve`
+     is that sequence with no React in it.
+
+   | `EditorHost.tsx` | Cozy | Sol | DrawBots |
+   |---|---|---|---|
+   | lines before 6.6b | 1,429 | 362 | 563 |
+   | lines after | **1,397** | **325** | **526** |
+   | verbatim in Cozy's, runs of 3+, before | — | 59 % | 46 % |
+   | …after | — | **51 %** | **43 %** |
+
+   (The two verbatim rows are re-measured here and read one point above
+   6.0's 58 % / 45 %, which is the measure's own rounding, not drift.)
+
+   The percentage FALLING is the sub-stage working: what the three hosts
+   held in common is what left, so what is still here is more each app's
+   own than it was. The hosts are 32 / 37 / 37 lines shorter, for 200
+   lines of `hostRoute.ts` that all three now read — the usual arithmetic
+   of a seam, and the reason to take one is never the line count: it is
+   that the "web never saves" race, the warm hold and the superseded-run
+   guard are now written once.
+
+   **Two widenings, and the second is the lesson again.** The seam was
+   written from CozyJournal and Sol and both were wrong about DrawBots or
+   about CozyJournal:
+
+   · *A second route source.* DrawBots registers the SAME navigate handler
+     with its own in-page router (`editorQuery.routeInPage` — Redraw to a
+     bot's look page and back), so a page routed to in place resolves
+     exactly as one the host sent. One optional registrar; the other two
+     apps pass nothing. Caught by reading DrawBots' effect before writing
+     its host, which is one step earlier than 6.5a managed.
+   · *A resolved route is not write-once.* CozyJournal REVISES the route
+     it resolved, in place and without re-scaffolding the page, when a new
+     prompt is drawn for the day and when an answered page's picture
+     arrives a fetch after boot. Both guard on the entry id. The hook
+     answers `[route, setRoute]`. This one was caught by the TYPECHECK on
+     the third app, not by the measurement — the measurement counted the
+     resolve effect and never asked who else wrote the state it sets.
+
+   DrawBots also lays the web host's settings UNDER whatever the route
+   says (`withQueryFallback`), which stays its own: one `useMemo` over the
+   package's query, rather than a third parameter nobody else would pass.
+
+   The route table itself is a mechanical reading of the old effect — a
+   branch that puts an action screen up answers `null`, one that opens a
+   page answers the route, and `!cancelled` is the `alive()` the package
+   hands in. The five action-screen states, the `actionRun` chain, the
+   placeholder and the shell mount all stay the app's, as the settled call
+   says.
+
+   **Twenty-seven source pins moved with their subjects** (8 + 8 + 11
+   assertions rewritten, across 7 suites in the three apps), in the two
+   kinds 6.5a named: a read whose file is the package's now, and an
+   expected spelling that follows the file. Two of them had gone SOFT rather than failing,
+   which is the §5 lesson in its quieter form — CozyJournal's
+   "clears the action screen" pin sliced the host from `if (q.warm === '1')
+   return;` to `let cancelled = false;`, and after the move both markers
+   still matched, in two DIFFERENT effects, so the slice was most of the
+   file and the assertion could not fail. Its "a page loaded to warm
+   resolves NOTHING" neighbour matched the salvage effect's warm guard for
+   the same reason. Both now read the package for what the package
+   decides and a tight slice for what the host does.
+
+   CozyJournal 669 suites / 10,878 tests; Sol 278 / 3,323; DrawBots 553 /
+   9,437; engine 400 of 401 / 7,264. The engine's one failure is
+   cameraRoll's host dependency, as before. Sol's suite count does not
+   move with the package's, its jest roots not taking the vendored tree
+   in; the other two apps' do.
+
+   **6.5b.1 — Done: two of the shell's own leaves** (engine 2b29869,
+   CozyJournal 35a73e64, Sol fe257e6, DrawBots 3513431; 2026-10-25). The
+   first slice of the shell, and the part of it that is 6.5a-shaped: of
+   `EditorShell.tsx`'s fifteen top-level declarations that exist in all
+   three apps, nine are byte-identical, and two of those move WHOLE.
+
+   | Top-level declaration | Lines (Cozy) | identical in all 3 | moved |
+   |---|---|---|---|
+   | `ToolbarPushdown` + `PUSHDOWN_HEIGHT` | 38 | yes (but one doc word) | **yes** |
+   | `ColorPickerSpec` + `ColorPickerId` | 40 | the row, not the ids | **yes, split** |
+   | `CANVAS_OPEN_TRACE` | 11 | yes | no — reads each app's `reportOpenTrace` |
+   | `IMAGE_DEPTH` | 13 | yes | no — typed on each app's `entryRaster` |
+   | `SAVE_DEBOUNCE_MS`, `IMAGE_REFRESH_DEBOUNCE_MS` | 6 | yes | not yet — six lines, and DrawBots' CLAUDE.md names one |
+   | `FontChoice` | 8 | yes | not yet — no module it belongs beside |
+   | `TILE_LIT_INK`, `TILE_CAPSULE_STROKE_WIDTH` | 13 | yes | not yet — same |
+   | `initialCameraFor`, `TextEditOverlay`, `EditorShellProps` | 204 | no | no |
+
+   Four of the nine identical ones cannot move on their own merits, which
+   is worth stating because it is the reason this slice is small rather
+   than an oversight: two are typed or closed over each app's own modules,
+   and the other four are five constants and a type with no package module
+   they belong beside. A new module per constant is the machinery 6.2a's
+   rule is about; they wait for a slice that gives them a neighbour.
+
+   `ColorPickerSpec` is the split, and it is 6.3b's `CommonEditorConfig`
+   arrangement on a leaf: `CommonColorPickerId` is the thirteen swatches
+   all three apps open, each app adds its own (CozyJournal's `rigVolumes`
+   and `rigOutlines`, DrawBots' `botPen`), and the row type is generic over
+   the id so each app's table stays typed in ITS union — a row for an id
+   the app does not have is a compile error rather than a picker nothing
+   opens.
+
+   **The doc-comment bug, for the sixth time, and a seventh beside it.**
+   The pushdown's JSDoc describes the COMPONENT and sat above
+   `const PUSHDOWN_HEIGHT = 44;`, so the height carried the panel's whole
+   rationale and the component carried none; and DrawBots' `ColorPickerId`
+   still held "// The rig's Color page: the two colours its sketch is drawn
+   in." with no `rigVolumes` or `rigOutlines` under it — an orphan left
+   when the members were cut. Both fixed in the move. §4.3 says there is no
+   mechanical guard and the practice is to read the comment above every
+   declaration kept and every one cut; these two were found that way.
+
+   Sol's copy of the pushdown's doc comment lacked ", symmetry included".
+   CozyJournal's is canonical and is what moved — the one adoption in the
+   sub-stage.
+
+   CozyJournal 671 suites / 10,888 tests; Sol 278 / 3,323; DrawBots 555 /
+   9,447; engine 402 of 403 / 7,274.
+
+   **6.5b.2+ — not started, and the measurement says why it is plural.**
+   The shell's BODY, measured 2026-10-25 over the three apps' HEAD. This
+   is the measurement 6.0 did not have: 6.0 counted LINES (89 % of
+   DrawBots' shell appears verbatim in CozyJournal's, in runs up to 730)
+   and concluded "the shell moves". Counting DECLARATIONS instead says
+   something the line count cannot.
+
+   `EditorShell` is ONE component of 9,069 / 6,867 / 7,757 lines — 6.5b.1
+   shortened the FILE and not the component. Its body holds 624 / 553 /
+   571 statements:
+
+   | | statements | lines (Cozy) |
+   |---|---|---|
+   | named, in all three, byte-identical | **340** | 2,944 |
+   | named, in all three, differing | 95 | 2,018 |
+   | named, in CozyJournal + DrawBots only | 42 | 537 |
+   | named, in CozyJournal + Sol only | 6 | 69 |
+   | named, one app alone (Cozy 82 / Sol 58 / DrawBots 36) | 176 | 1,652 |
+   | anonymous (the effects, and the render tree) | 59 | 2,374 |
+
+   **Two thirds of the body is in all three apps, and it still does not
+   move as a file.** Three findings, each measured:
+
+   · *The shared statements do not come out as a block.* Over
+     CozyJournal's order the 624 statements fall into **250 runs** of like
+     kind — the 340 identical ones in 85 of them, the 176 app-only ones in
+     45. The longest run of consecutive all-three-identical statements is
+     15. There is no cut that takes the shared half and leaves the rest.
+
+   · *What a partial extraction costs is the context object §4.3 warned
+     of, and it is measurable.* Of the 340 identical statements, only 195
+     read nothing else in the body; allow four names as inputs — `session`,
+     `sessionRef`, `setSession` and the app's own `applyEntry` — and 268
+     of them close, 2,066 lines. The chokepoints are exactly those four:
+     58 of the excluded statements want `sessionRef`, 36 want `applyEntry`,
+     22 `session`, 15 `setSession`. So a slice is affordable, and only
+     when it is chosen for closure.
+
+   · *The render tree cannot be the package's at all yet.* It is
+     1,624 / 1,169 / 1,452 lines, mounts 36 / 38 / 34 components, and
+     reads 47 / 30 / 36 body names that are not in both other apps;
+     7 / 9 / 5 of the components it mounts are not mounted by both others
+     (CozyJournal's `RigControlsPanel`, `RigSidesCapsule`,
+     `ResponseSendModal`, `InstructionsOverlay`; Sol's `LabSheet`,
+     `StrainChips`, `PlantGrid`, `CrossbreedSheet`, `RevealOverlay`;
+     DrawBots' `DrawBotsLayer`, `SimSpeedRow`). §4.1's `capsules(session)`
+     seam covers some of the floating chrome and is still unbuilt; nothing
+     covers the rest.
+
+   **The seam DrawBots already ships, which is where the render tree's
+   answer probably lies.** DrawBots mounts four of its own screens as
+   `{lookPage.overlay}`, `{makeBot.overlay}`, `{editBot.overlay}`,
+   `{collectionPage.overlay}` — each a hook (`useLookPage`, `useMakeBot`,
+   `useEditBot`, `useBotCollectionPage`) returning a node and the handlers
+   that go with it. That is the same "adopt, don't design" the canvas hooks
+   and the commit pipeline were: one app has already built the shape the
+   other two need. It is a measurement to make, not a conclusion — the
+   claim has to cover all three apps before anything is installed on it,
+   which is 6.5a's lesson and the one that cost the most.
+
+   **So 6.5b is a programme, and the order is the stage's own rule — most
+   closed first.** Proposed, for the owner:
+
+   | | | measured |
+   |---|---|---|
+   | 6.5b.1 | done | the file-level leaves |
+   | 6.5b.2 | the closed clusters, as hooks | e.g. the pattern-tile chooser: 12 statements, 151 lines, 3 names in. The save pipeline: 10 statements, 104 lines, 2 names in |
+   | 6.5b.3 | the bar handlers | 1,635 lines over ten sections, drifting by 56 / 40, riding the commit pipeline — 6.0 says they do not move alone, and after 6.5b.2 that may no longer be true |
+   | 6.5b.4 | the render tree, behind an overlay seam | DrawBots' `{x.overlay}` hooks, measured across all three first |
+   | 6.5b.5 | what is left of the component | — |
+
+   Nothing here is settled. The one thing the measurement does settle is
+   that "the shell itself, bar handlers inside it" is not a sub-stage, and
+   §4.3 records the question it leaves the owner.
+
+   **6.2b's measurement, kept.** The measurement below is 6.2b’s, from
    2026-10-23, kept because it is what re-ordered the sub-stages: the
    stage’s own rule is to measure before planning, and that measurement
    made 6.2b a different and much smaller job than "the shared half of
@@ -2925,10 +3223,27 @@ Settled by the owner, 2026-10-20:
   Stage 6.0 measured both numbers in this paragraph and they hold: the
   handlers are 1,635 lines today (1,670 when item 4 counted them, before
   stage 5 took the canvas's share) and they drift by 56 / 40, which is the
-  95 % stated as a count. The shell is 10,077 lines, not 10,682, for the
-  same reason. Where 6.0 DIFFERS from this note is the order: it reads
+  95 % stated as a count. The shell was 10,077 lines when 6.0 measured it,
+  not 10,682, for the same reason (10,013 at 6.5b.1). Where 6.0 DIFFERS from this note is the order: it reads
   "they will fold too" as an argument for taking them WITH the shell rather
   than ahead of it, which is what §4.2 item 4 itself concluded — see item 6.
+
+  **And what the REST of stage 6 inherits, 2026-10-25, now that the host
+  is done and the shell is measured.** This note's third paragraph is
+  where it has to be read again. It says the handlers "will fold too" and
+  that the shell "is the first mover whose range may genuinely not fit",
+  and both halves have now been tested as far as they can be without
+  moving the shell. The range does not look like the problem: 6.6a, 6.6b
+  and 6.5b.1 together measure 82 KB in Sol and 85 in DrawBots on a clear
+  queue (§5), against the 890 KB a stage-3 range passed at. What IS the
+  problem is the one this note did not look at, because at 5b.4 there was
+  no reason to — the shell is not a file that can be moved and then
+  configured. §4.2 item 6's 6.5b.2+ entry has the measurement: 435 of the
+  body's 659 named statements are in all three apps, and they lie in 85
+  separate runs among 250. The props paragraph above is still right about
+  WHAT collapses when the shell is the package's; what it assumes, and
+  what the measurement denies, is that there is a single move at which
+  that happens.
 
 - **How `entryStore.ts` carries each app's own entry record** (asked at
   6.2b's measurement, answered by the owner 2026-10-23). **A base record
@@ -2977,6 +3292,38 @@ Settled by the owner, 2026-10-20:
   genuinely shared — three declarations in all three apps, longest shared
   run 33 lines against the shell's 730.
 
+- **How the editor query's keys are carried** (decided at 6.6a,
+  2026-10-25, by the measurement rather than by the owner — it needed no
+  call, and it is here because the next seam of this shape should not
+  re-derive it). **The readers take the key list; the keys stay the
+  app's.** `QUERY_KEYS` is 28 / 13 / 21 keys and they ARE each app's
+  routes, so there is nothing to unify; the seven byte-identical READERS
+  over them are the whole of the shared half, and they become
+  `parseSearchFor(keys, …)` and the rest, with five thin wrappers per app
+  binding them. Eleven keys are common and the package names them
+  (`COMMON_QUERY_KEYS`) only because the shared host state machine reads
+  exactly those.
+
+  The general form, which is now this plan's commonest answer and worth
+  stating once: where a function is shared and its DATA is not, the data
+  becomes a parameter and each app keeps a one-line binding under the old
+  name. That is 6.1's `FontPack`, 6.3b's `CommonEditorConfig`, 6.5a's
+  `overlayZ`, 6.5b.1's `ColorPickerSpec` and this. It is cheap precisely
+  because the binding keeps the old name: none of the 11 / 5 / 13 modules
+  that import `editorQuery` moved a line.
+
+- **`EditorHost.tsx` — the call of 2026-10-23 is CARRIED OUT** (6.6b,
+  2026-10-25), and two things about it were not knowable when it was
+  taken. The state machine is 200 lines of `hostRoute.ts` and each app's
+  host is its route table, as settled. The two widenings are recorded in
+  §4.2 item 6 and both say the same thing in different registers: a route
+  can arrive from a SECOND place the app owns (DrawBots' in-page router),
+  and a resolved route is not write-once (CozyJournal revises it twice).
+  Neither was in the 6.0 measurement, which counted the resolve effect
+  and never asked who else wrote the state it sets. **A seam's
+  measurement has to cover the WRITERS of the state it takes over, not
+  only the code it is replacing** — the 6.5a lesson one turn further on.
+
 Still open:
 
 - **The push brush on DrawBots' bar.** Stage 5b put the gesture in the
@@ -2992,6 +3339,27 @@ Still open:
   `RigColorBar`, `showRigOptions`), so Sol and DrawBot ship that code
   without using it. Stage 7 makes them CozyJournal host pages, the way
   DrawBot's bot pages already are; nothing forces that earlier.
+
+- **How 6.5b is sliced — the one open question that GATES something**
+  (raised 2026-10-25 by 6.5b.2+'s measurement; the two above are product
+  calls and gate nothing, this is not). Item 6 says "the shell itself,
+  bar handlers inside it", and the declaration-level measurement says
+  that is not a sub-stage: the shared two thirds of the body lies in 85
+  runs among 250, the render tree mounts 7 / 9 / 5 components no other
+  two apps mount, and a partial extraction's context object is
+  measurable — four allowed inputs (`session`, `sessionRef`,
+  `setSession`, the app's `applyEntry`) close 268 of the 340 identical
+  statements, and nothing cheaper closes more than 195.
+
+  Item 6 proposes a slicing — closed clusters as hooks, then the bar
+  handlers, then the render tree behind the overlay seam DrawBots already
+  ships, then the remainder — in the stage's own order, most closed
+  first. What the owner has to decide is whether to take it, and whether
+  **stage 7 goes first**: 29 of the 82 statements only CozyJournal's
+  shell declares are the rig's, so moving the rig pages out would shrink
+  6.5b rather than reorder it out of turn. The stage-5 precedent is the
+  owner's, on the same evidence: that stage was split in two when the
+  measurement came in, and the second half in four again.
 
 ## 5. Process
 
@@ -3149,6 +3517,35 @@ this, its range starts at 624–709 KB before the shell's own diff, and the
 owner's call, and it is the first time in this stage that the ORDER of
 shipping and moving matters to the measurement.
 
+**And with the queue clear, three sub-stages measure 82 to 157 KB**
+(2026-10-25, after 6.6a, 6.6b and 6.5b.1): Sol **82 KB**, DrawBots
+**85**, CozyJournal **157**, and the engine's own range **53**. Measured
+with `review.js pending --prompt | wc -c`, as 6.1's note says to.
+
+This is the clean answer the paragraph above asked for, and it comes from
+Sol's and DrawBots' numbers rather than CozyJournal's. Both of those
+queues were EMPTY when this session began — the ship the owner ran before
+it cleared them — so 82 and 85 KB are three sub-stages' own range and
+nothing else: a move of 200 lines into `hostRoute.ts`, 168 into
+`editorQuery.ts`, 99 into two leaf modules, the three hosts rewritten
+over them and 27 source pins re-pointed. CozyJournal's 157 KB is the same
+three sub-stages plus three review-fix commits from 6.5a that were never
+shipped; the difference between 85 and 157 is roughly what those three
+commits cost, which is a second reading of the same point §5 has been
+making since 6.1 — **a cumulative prompt measures the queue, not the
+change**.
+
+**What that does and does not say about the shell.** It does not say the
+shell's range will fit: these three sub-stages moved about 470 lines into
+the package between them, where the shell is 10,013. It does say the
+question is no longer confounded, and that a per-sub-stage figure is
+cheap to get as long as the queue is shipped between sub-stages — which
+is the practice to keep for 6.5b.2 onward, one ship per slice. The
+reviewer has never been given a range holding a 10,000-line move, and on
+§4.2 item 6's measurement it never will be: the slicing that stage 6's
+remainder needs for ARCHITECTURAL reasons also keeps every range the size
+of these.
+
 **A pin can go silently inert, and one had** (2026-10-24, DrawBots' review
 round after 6.5a). The review called a failing test: DrawBots'
 `web/sim/__tests__/sourcePin.test.ts` asserts that the simulation kernel's
@@ -3174,7 +3571,18 @@ Three things follow, and the third is the general one:
 · So: **a negative assertion that stops matching passes.** Prefer an exact
   set or a derived count to `not.toMatch` wherever the subject is small
   enough to name, and when a pin's whole job is to refuse something, check
-  once that it still refuses it. A sweep of all four repos for control bytes
+  once that it still refuses it.
+
+· **And the quieter form of it, found at 6.6b: a pin that SLICES can go
+  soft without going red.** Two of CozyJournal's read the host between two
+  markers — `if (q.warm === '1') return;` and `let cancelled = false;` —
+  and after the open path moved, both markers still matched, in two
+  DIFFERENT effects. The slice became most of the file, so every string
+  the pin looked for was in it and the assertion could no longer fail. It
+  stayed green through the move that gutted it. A positive `toContain`
+  cannot rot this way; a positive `toContain` over a slice can, and the
+  guard is to assert the slice is the one you meant (its length, or a
+  marker that exists once) before asserting anything about its contents. A sweep of all four repos for control bytes
   in source found five others, every one deliberate (NUL as a key separator
   in two files, control characters as test DATA for an emoji sanitiser) — so
   one inert pin, and it is worth re-running that sweep after any round of
