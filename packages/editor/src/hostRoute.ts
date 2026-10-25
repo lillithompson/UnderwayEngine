@@ -132,10 +132,17 @@ export async function runRouteResolve<TQuery extends RoutableQuery, TRoute>(
  *
  * `keys` is the app's `QUERY_KEYS`, a module constant — its length is what
  * fixes the size of the memo's dependency list.
+ *
+ * `alsoRouteFrom` is a SECOND place the app routes from, handed the same
+ * handler so that a page routed to in place is resolved exactly as one the
+ * host sent — DrawBots' in-page router (Redraw to a bot's look page and
+ * back) is the one caller, and it answers an unregister as `onNavigateTo`
+ * does. The other two apps pass nothing.
  */
 export function useEditorQuery<K extends string>(
   keys: readonly K[],
   routerParams: RouterParams,
+  alsoRouteFrom?: (go: (search: string) => void) => () => void,
 ): QueryOver<K> {
   const [override, setOverride] = useState<QueryOver<K> | null>(null);
   const q = useMemo(
@@ -143,13 +150,17 @@ export function useEditorQuery<K extends string>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [override, ...queryMemoDeps(keys, routerParams)],
   );
+  const alsoRef = useRef(alsoRouteFrom);
+  alsoRef.current = alsoRouteFrom;
   useEffect(() => {
-    const off = onNavigateTo((search) => {
+    const go = (search: string) => {
       replaceLocationSearch(search);
       setOverride(parseSearchFor(keys, search));
-    });
+    };
+    const off = onNavigateTo(go);
+    const offAlso = alsoRef.current?.(go);
     requestRoute();
-    return off;
+    return () => { off(); offAlso?.(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return q;
