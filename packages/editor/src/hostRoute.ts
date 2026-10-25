@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { markOpen } from '@/native-shell/openTrace';
 import { onNavigateTo, requestRoute } from '@/native-shell/bridge/webBridge';
 import {
@@ -175,11 +175,18 @@ export function useEditorQuery<K extends string>(
  * The table is read through a ref so that a route table rebuilt each
  * render — which every app's is, closing over its own state — does not
  * re-resolve the route.
+ *
+ * The SETTER comes back beside it because a route is not always
+ * write-once: CozyJournal REVISES the one it resolved, in place and
+ * without re-scaffolding the page, when a new prompt is drawn for the day
+ * and when the answered page's picture arrives a fetch after boot. Both
+ * guard on the entry id, so a revision cannot land on a page the route has
+ * since moved to.
  */
 export function useResolvedRoute<TQuery extends RoutableQuery, TRoute>(
   q: TQuery,
   table: RouteTable<TQuery, TRoute>,
-): TRoute | null {
+): [TRoute | null, Dispatch<SetStateAction<TRoute | null>>] {
   const [route, setRoute] = useState<TRoute | null>(null);
   const tableRef = useRef(table);
   tableRef.current = table;
@@ -189,5 +196,5 @@ export function useResolvedRoute<TQuery extends RoutableQuery, TRoute>(
     void runRouteResolve(q, tableRef.current, setRoute, () => !cancelled);
     return () => { cancelled = true; };
   }, [q]);
-  return route;
+  return [route, setRoute];
 }
