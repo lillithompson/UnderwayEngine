@@ -3517,10 +3517,21 @@ this, its range starts at 624–709 KB before the shell's own diff, and the
 owner's call, and it is the first time in this stage that the ORDER of
 shipping and moving matters to the measurement.
 
-**And with the queue clear, three sub-stages measure 82 to 157 KB**
-(2026-10-25, after 6.6a, 6.6b and 6.5b.1): Sol **82 KB**, DrawBots
-**85**, CozyJournal **157**, and the engine's own range **53**. Measured
-with `review.js pending --prompt | wc -c`, as 6.1's note says to.
+**And with the queue clear, three sub-stages measure 82 to 157 KB of
+CODE** (2026-10-25, after 6.6a, 6.6b and 6.5b.1, measured before this
+record was written): Sol **82 KB**, DrawBots **85**, CozyJournal **157**,
+and the engine's own range **53**. Measured with `review.js pending
+--prompt | wc -c`, as 6.1's note says to.
+
+With the record ON TOP — the entries above, §1's re-measured table, this
+paragraph's first draft and the three apps' codebase maps — the same
+four ranges are **117 / 120 / 190 / 87 KB**. So **the writing-up costs
+about 35 KB per range, every time**, which is a third of these
+sub-stages' code and more than 6.3a's whole range (23 / 29 / 32 KB). It
+is worth knowing and it is not worth avoiding: a stage whose record the
+reviewer cannot see is the thing the gate blocks on. (Editing this
+paragraph moves the number again by a little; it is not re-measured for
+that, and chasing it would never terminate.)
 
 This is the clean answer the paragraph above asked for, and it comes from
 Sol's and DrawBots' numbers rather than CozyJournal's. Both of those
