@@ -329,6 +329,9 @@ export function templateBaselineOf(state: MarkScene, options?: { withIds?: boole
   // stays exactly the shape it always was.
   const born: Record<string, string> = {};
   let anyBorn = false;
+  // Read per image rather than hoisted: `photoPlaceholderImageId()` goes
+  // through `storeKey`, which throws when no namespace is installed, and a
+  // page with no images must not need one.
   for (const img of state.images ?? []) {
     if (img.imageId === photoPlaceholderImageId()) continue;
     born[img.id] = img.imageId;
@@ -450,6 +453,9 @@ export function isTemplateEntryEdited(state: MarkScene, baseline: TemplateBaseli
   if (sceneNodeCount(state) !== baseline.nodeCount) return true;
   if ((state.paintObjects?.length ?? 0) !== (baseline.paintIslands ?? 0)) return true;
   const born = baseline.images;
+  // Read per image rather than hoisted: `photoPlaceholderImageId()` goes
+  // through `storeKey`, which throws when no namespace is installed, and a
+  // page with no images must not need one.
   for (const img of state.images ?? []) {
     if (img.imageId !== (born?.[img.id] ?? photoPlaceholderImageId())) return true;
   }

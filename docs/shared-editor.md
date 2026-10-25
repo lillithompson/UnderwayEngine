@@ -1971,12 +1971,19 @@ first, then the pointer bump in each app).
      imports nothing from it at all. Verified against the code rather than
      reasoned from the shape, which is item 5's lesson.
    · So the install lives in the CONFIG MODULES that declare the member:
-     `configs/poser.ts`, `configs/magneticPoetry.ts` and `configs/comic.ts`
-     import `web/formats/scaffoldFurniture` for the side effect. The
-     invariant is exact and local — a config that says `bornWithRig: true`
-     is the thing that needs the rig seeded, so the module that says it is
-     the module that makes the seeder exist. That one change took eighteen
-     failing suites to one.
+     `configs/poser.ts` and `configs/magneticPoetry.ts` import
+     `web/formats/scaffoldFurniture` for the side effect. The invariant is
+     exact and local — a config that says `bornWithRig: true` is the thing
+     that needs the rig seeded, so the module that says it is the module
+     that makes the seeder exist. That one change took eighteen failing
+     suites to one.
+
+     This list said `configs/comic.ts` too until CozyJournal's review round
+     after 6.5a, and that was wrong: a comic frame is born BLANK — the
+     `bornWithRig` it used to carry was furniture in the way — so the
+     install there was inert, and the derived case below never reached it to
+     say so. An install on a module that declares nothing is not a
+     harmless extra: it reads as the invariant holding where it does not.
    · And `scaffoldFurniture.test.ts`'s last case DERIVES the rest: it walks
      `web/`, `components/` and `app/`, collects every module that declares
      `bornWithRig` or `wordStickers` on a config, and fails if one of them

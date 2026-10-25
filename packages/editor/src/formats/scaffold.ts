@@ -22,16 +22,6 @@ import { makeBlankComposition } from '../blankComposition';
 import { measureTextBbox } from '@/engine/textLayout';
 import { WORLD_CELLS, pageHeightCells } from '../cameraMath';
 import { type CellBbox, sameBbox } from '../resizeMath';
-/** A rect in canonical cells. CozyJournal's `wordScatter.ts` re-exports it
- *  rather than declaring its own: the scatter's field, a page rect and a
- *  frame rect are one shape, and DrawBots — which has no word scatter —
- *  already carried this declaration verbatim. */
-export interface Rect {
-  cellX: number;
-  cellY: number;
-  cellWidth: number;
-  cellHeight: number;
-}
 
 import {
   DECOR_NAME_PREFIX,
@@ -46,6 +36,17 @@ import {
   PHOTO_PLACEHOLDER_PIXEL_W,
   photoPlaceholderImageId,
 } from './photoPlaceholder';
+
+/** A rect in canonical cells. CozyJournal's `wordScatter.ts` re-exports it
+ *  rather than declaring its own: the scatter's field, a page rect and a
+ *  frame rect are one shape, and DrawBots — which has no word scatter —
+ *  already carried this declaration verbatim. */
+export interface Rect {
+  cellX: number;
+  cellY: number;
+  cellWidth: number;
+  cellHeight: number;
+}
 
 // Scaffold construction (CozyJournal.md §4.3): each format's pre-placed
 // slots become ORDINARY engine nodes, tagged only through their `name`
@@ -846,6 +847,9 @@ export function isSlotFilled(
   switch (slot.kind) {
     case 'imageSlot': {
       const images = state.images ?? [];
+      // Per image, for the same reason as `edited.ts`: the sentinel comes
+      // through `storeKey`, which throws with no namespace installed, and a
+      // slot with no image must not need one.
       return images.some(
         (img) => (img.id === nodeId || img.name === tag) && img.imageId !== photoPlaceholderImageId(),
       );
