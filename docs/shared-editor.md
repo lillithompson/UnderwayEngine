@@ -3149,6 +3149,37 @@ this, its range starts at 624–709 KB before the shell's own diff, and the
 owner's call, and it is the first time in this stage that the ORDER of
 shipping and moving matters to the measurement.
 
+**A pin can go silently inert, and one had** (2026-10-24, DrawBots' review
+round after 6.5a). The review called a failing test: DrawBots'
+`web/sim/__tests__/sourcePin.test.ts` asserts that the simulation kernel's
+ONE allowed app import imports nothing itself, and 6.3d had made that file a
+re-export of `@/engine/seededRandom`. The reasoning was right and the verdict
+was wrong — the suite was green, and the reason is worth more than the
+finding: the assertion's regex carried a literal BACKSPACE (0x08) where a
+`\b` was meant, so it matched nothing and had never once fired. It arrived
+that way on 2026-10-08, sixteen days and nine commits before the range.
+
+Three things follow, and the third is the general one:
+
+· The check the kernel's purity rule depends on was not in force, which is
+  the review's real finding and is now fixed — the pin reads an EXACT set
+  (`['@/engine/seededRandom']`) rather than matching a negative, and was
+  mutation-tested: adding an app import to the wrapper fails it.
+
+· A quoted heredoc mangling a backslash is the hazard this plan's own
+  process note warns about ("write scripts with the Write tool"). It bit a
+  committed test, not a script, and nothing noticed because the failure mode
+  of a mangled negative assertion is silence.
+
+· So: **a negative assertion that stops matching passes.** Prefer an exact
+  set or a derived count to `not.toMatch` wherever the subject is small
+  enough to name, and when a pin's whole job is to refuse something, check
+  once that it still refuses it. A sweep of all four repos for control bytes
+  in source found five others, every one deliberate (NUL as a key separator
+  in two files, control characters as test DATA for an emoji sanitiser) — so
+  one inert pin, and it is worth re-running that sweep after any round of
+  scripted edits.
+
 Two things the first wiring taught: `git reset --hard` in a clone with
 `submodule.recurse=true` detaches the submodule's HEAD (`check-clone`
 reports it; check `main` out again before committing there), and a project
