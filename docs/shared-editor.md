@@ -1381,9 +1381,9 @@ first, then the pointer bump in each app).
 
    **Is stage 6 complete? No. Its movable part is, the judgment it was
    waiting on is made, and what is left is a GATE** (2026-10-26, after
-   6.5b.5 and the dust decision). 6.0 through 6.6 are done, and so are
-   five of 6.5b's six slices — the fifth being the two groups that would not
-   place, cut at the statement that blocked each. The dust call is taken
+   6.5b.5 and the dust decision). 6.0 through 6.6 are done BAR 6.5b,
+   five of whose six slices are — the fifth being the two groups that would
+   not place, cut at the statement that blocked each. The dust call is taken
    below, and it leaves one slice outstanding, 6.5b.6, which is blocked on
    CozyJournal being shippable rather than on anything measured.
 
@@ -4777,8 +4777,9 @@ Still open:
   finished: 6.5b.6 is one planned slice, four statements of it, and it does
   not overlap stage 7 any more than the five before it did. What is left is
   which of the two goes first — and for now neither can, because both edit
-  CozyJournal and CozyJournal's queue is closed by the round cap (§5). It never contended with any slice of 6.5b, and the
-  measurement said so at each one rather than being assumed: the rig's
+  CozyJournal and CozyJournal's queue is closed by the round cap (§5).
+  STAGE 7 never contended with any slice of 6.5b, and the measurement said
+  so at each one rather than being assumed: the rig's
   twelve render-tree reads and two unique mounts are all in the FRAME,
   which 6.5b.4 left where it was, and the app-only bucket is exactly what
   it was before the first slice (82 / 1,099 in CozyJournal, 58 / 286 in
@@ -4964,7 +4965,15 @@ So the boundary is written here rather than inferred: this consolidation
 only, for the open calls this document already poses, with the measurement
 in the entry and the decision named as the agent's on its face. A call the
 document does not already pose — a new stage, a tooling change, a rule in
-`CLAUDE.shared.md` — is not in it. The standing rules that are refusals
+`CLAUDE.shared.md` — is not in it. **And where §4.3 reserves a particular
+call for the owner in those words, that reservation OUTRANKS this
+instruction**: the two overlap otherwise (§4.3 poses the open calls and also
+says which are the owner's — whether stage 7 or 6.5b.6 goes first is one,
+DrawBots' push brush is another, as a product decision rather than a
+consolidation, and the jsdom environment is a third, "the owner's to want
+rather than the agent's to grant itself"), and an agent reading §5 alone
+would take the general permission for the particular one. The instruction
+reaches the calls §4.3 leaves unassigned, which is what the dust call was. The standing rules that are refusals
 rather than judgments are untouched by both: `accept` stays the owner's and
 TTY-only, `override` still needs a review that refused, the round cap still
 refuses round four, and no edit to `tooling/` may exist to get an agent's
