@@ -76,7 +76,7 @@ const { execFileSync, spawnSync } = require('node:child_process');
 const path = require('node:path');
 const { loadConfig } = require('./config.js');
 const {
-  lastField, passingRecord, overrideRecord, nextRound,
+  lastField, passingRecord, overrideRecord, nextRound, rangeCleared,
 } = require('./review.js');
 
 const REVIEW = path.join(__dirname, 'review.js');
@@ -304,13 +304,24 @@ function ship(argv) {
   // is a gate only while a person is reading it; a loop driving the pass will
   // go round forever on a finding it cannot fix. Refusing BEFORE the reviewer
   // starts also saves the round's cost.
-  const round = nextRound(range);
-  if (round > ROUND_CAP) {
-    refuse(
-      `this would be review round ${round} of the same base, and the cap is ${ROUND_CAP}. `
-      + 'Three rounds that did not pass means the range needs a person: report the open findings and stop.',
-      7,
-    );
+  //
+  // It asks `rangeCleared` FIRST, and that order is the whole correctness of
+  // it: an override and an owner accept both leave the review record's
+  // verdict at `changes-requested`, so the round count goes on rising on a
+  // range that is already settled. Capped without this check, ship refused
+  // round four on an OVERRIDDEN range — the one pass an override exists to
+  // make — and on an owner `accept` after three refused rounds, which was a
+  // regression in a path that predates the cap. A cap belongs on rounds that
+  // would start a reviewer, not on a range nobody will review again.
+  if (!rangeCleared(range)) {
+    const round = nextRound(range);
+    if (round > ROUND_CAP) {
+      refuse(
+        `this would be review round ${round} of the same base, and the cap is ${ROUND_CAP}. `
+        + 'Three rounds that did not pass means the range needs a person: report the open findings and stop.',
+        7,
+      );
+    }
   }
 
   const plan = shipPlan(git(['diff', '--name-only', range]).split('\n').filter(Boolean), { schema: SCHEMA, submodule: SUBMODULE });

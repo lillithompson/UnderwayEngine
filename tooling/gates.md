@@ -190,9 +190,11 @@ review's feedback. `ship` runs G1, then G2 over everything unpushed, then
 first failure with an exit code that says which (listed in the script's
 header and in the skill). Before any of it, it refuses: off `main`, with
 tracked changes not committed, behind `origin/main`, with a submodule
-commit not on its `main`, or with a change to the backend's wire schema
+commit not on its `main`, with a change to the backend's wire schema
 unless `--backend-live` says the backend is deployed — the server goes
-first.
+first — at a review round past the cap on a range nothing has cleared
+(three; exit 7), and, under `--autonomous <sha>`, with a range holding any
+commit older than the granted base.
 
 On a failed check or a `changes-requested` review, the skill fixes each
 failure or blocking finding in new commits on top — never rewriting the

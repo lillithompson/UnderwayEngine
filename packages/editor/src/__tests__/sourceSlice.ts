@@ -48,3 +48,25 @@ export function sliceBetween(
 export function declarationBody(src: string, name: string): string {
   return sliceBetween(src, `const ${name} = useCallback(`, ['\n  const ', '\n  return {']);
 }
+
+/**
+ * One component's MOUNT in a shell: `<Name` on its own line, through the
+ * `/>` that closes it. For pinning a prop on the component that actually
+ * takes it, where the same prop name is passed to several
+ * (docs/shared-editor.md §4.2 item 6: five of 6.5b.4's hand-over pins read
+ * the whole shell and so could not fail).
+ *
+ * The NEWLINE on the start marker is the whole point and is not decoration.
+ * `'<CanvasSurface'` matches `useRef<CanvasSurfaceHandle | null>` three
+ * thousand lines earlier, and because both markers are then found,
+ * `sliceBetween`'s two-ended guard does not fire — the slice silently
+ * bounds the wrong region and every assertion on it passes for the wrong
+ * reason. A tag opens a mount only at the end of a line.
+ *
+ * Mounts whose props hold nested JSX are not sliceable this way: the first
+ * `/>` would close the nested element. Every mount this is used on is a
+ * plain prop list, and a nested one would have to be bounded by hand.
+ */
+export function mountOf(src: string, name: string): string {
+  return sliceBetween(src, `<${name}\n`, '/>');
+}

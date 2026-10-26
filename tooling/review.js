@@ -631,7 +631,8 @@ function blockingFindings(text) {
 }
 
 /**
- * A range's AGENT OVERRIDE as {path, text, record, findings}, or null.
+ * A range's AGENT OVERRIDE as {path, text, recordPath, record, findings}, or
+ * null —  being the review it disagrees with, which ship quotes.
  *
  * An override is the agent's recorded disagreement with a review that ran
  * and requested changes — allowed only where the owner has granted it for a
@@ -898,6 +899,22 @@ function nextRound(spec = 'origin/main..HEAD') {
   return roundNumber(describeRange(r), null);
 }
 
+/**
+ * How `spec` is already cleared — 'passed', 'accepted by owner',
+ * 'overridden by agent', 'not needed (…)', 'each commit cleared' — or null
+ * if it is not. For ship.js, which must not refuse a range nothing more
+ * would be reviewed on: the round cap asks this FIRST, because an override
+ * (or an owner accept) leaves the record's verdict at `changes-requested`,
+ * so the round count keeps rising on a range that is already settled and
+ * the cap would refuse exactly the pass the override was written for.
+ */
+function rangeCleared(spec = 'origin/main..HEAD') {
+  locate();
+  const r = rangeOf(spec);
+  if (!r) return null;
+  return rangeState(describeRange(r));
+}
+
 /** The earlier round to brief the reviewer with, or null: its tip must be
  *  an ancestor of this one, its review must have requested changes, and
  *  its record must still be there. */
@@ -1077,6 +1094,6 @@ if (require.main === module) {
 
 module.exports = {
   needsReview, parseNumstat, parseReview, collapseRemovals, classifyCopies, classifyMoves, parseLsTree, lastField, prePushRanges, pushRevLists,
-  recordPath, passingRecord, overrideRecord, blockingFindings, nextRound,
+  recordPath, passingRecord, overrideRecord, blockingFindings, nextRound, rangeCleared,
   spliceAddendum, LINE_THRESHOLD, PROJECT_RULES, CONFIG_FILE,
 };

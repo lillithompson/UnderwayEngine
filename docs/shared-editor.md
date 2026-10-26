@@ -3564,6 +3564,24 @@ first, then the pointer bump in each app).
    Each is sliced to its own mount now and mutation-tested by dropping that
    prop from that mount; the duplicate is deleted.
 
+   **And the first attempt at that slicing was itself wrong in a way the
+   guard could not catch** — found by the next review round, and the sharpest
+   version of this stage's own lesson. `sliceBetween(SHELL, '<CanvasSurface',
+   '/>')` does not bound the canvas's mount: `'<CanvasSurface'` matches
+   `useRef<CanvasSurfaceHandle | null>` three thousand lines earlier, so the
+   slice ran from a hook declaration to the first `/>` of the whole render
+   tree. **Both markers were FOUND, so `sliceBetween`'s two-ended guard
+   never fired** — the pin passed over a region it was never meant to see,
+   and the commit message saying it was "sliced to the mount" was false.
+   A two-ended guard proves a slice is BOUNDED, not that it bounds the right
+   thing; a tag opens a mount only at the end of a line.
+   The fix is the engine's `mountOf(src, name)` beside `sliceBetween`
+   (`packages/editor/src/__tests__/sourceSlice.ts`), which spells the
+   `'<Name\n'` start once for all three apps and all five call sites, and is
+   pinned over a fixture that contains exactly the `useRef<NameHandle>` trap.
+   Where a helper's correct use has a subtlety in it, the subtlety belongs
+   inside the helper.
+
    Seventeen more are unique but name a REQUIRED prop, so `tsc` refuses the
    removal and the pin only restates it. Those stay: they can fail, they
    document the hand-over where a reader meets it, and three of the set —
@@ -4523,6 +4541,17 @@ because prose would not have carried them:
   reading it. `ship` now refuses round four on the same base (exit 7)
   before a reviewer starts. **A loop does not get tired of re-arguing a
   finding, which is exactly why the limit had to stop being advice.**
+
+  The first cut of that cap was WRONG, and the grant's own first review
+  round caught it: it asked the round number before asking whether the range
+  was already cleared. An override and an owner `accept` both leave the
+  review record at `changes-requested`, so the round count goes on rising
+  on a settled range — and ship therefore refused round four on an
+  OVERRIDDEN range, which is the one pass an override exists to make, and on
+  an owner accept after three refused rounds, a path that predates the cap
+  entirely. **A new gate is as dangerous as the thing it guards against: it
+  broke the loop the same commit documented.** The cap asks
+  `rangeCleared` first now, and two tests fail if that order is swapped.
 
 **Disagreeing with a review, under the grant.** The rule was: say so to the
 user and never work around it. With nobody to say it to between rounds,

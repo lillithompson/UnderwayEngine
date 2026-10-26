@@ -57,6 +57,11 @@ Run `npm run ship` and act on its exit code:
   first, then `npm run ship -- --backend-live` (`CLAUDE.shared.md` "The
   server goes first").
 - **6** (the push failed): STOP and report git's error.
+- **7** (the review round cap): a fourth round on the same base is refused
+  before a reviewer starts. STOP: do not push, and report every open
+  finding word for word, the record path, and what you committed. The cap
+  is not gated on who is driving the pass, so an owner-driven pass reaches
+  it too.
 
 Never run `review.js accept`, never push with `--no-verify` or by hand,
 and never edit `vendor/UnderwayEngine/tooling/`, `docs/review/`,

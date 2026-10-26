@@ -1,4 +1,4 @@
-import { declarationBody, sliceBetween } from './sourceSlice';
+import { declarationBody, mountOf, sliceBetween } from './sourceSlice';
 
 // `sliceBetween` is the one piece of LOGIC the shell's source-pinning brought
 // with it (6.5b.3, docs/shared-editor.md §4.2 item 6), and its whole purpose
@@ -91,5 +91,46 @@ describe('declarationBody', () => {
 
   it('throws for a name the source does not declare', () => {
     expect(() => declarationBody(SRC, 'epsilon')).toThrow(/slice start not found/);
+  });
+});
+
+describe('mountOf', () => {
+  // The bug this exists to stop, found by round 1 of 6.5b.4's review: a tag
+  // name without the newline matches a TYPE ARGUMENT thousands of lines
+  // earlier (`useRef<CanvasSurfaceHandle | null>`), and because both markers
+  // are then found, sliceBetween's two-ended guard never fires — the slice
+  // silently bounds the wrong region and every assertion on it passes.
+  const SHELL = [
+    '  const surfaceHandleRef = useRef<CanvasSurfaceHandle | null>(null);',
+    '  const other = 1;',
+    '  return (',
+    '    <div>',
+    '      <CanvasSurface',
+    '        colorBrushOpacity={colorBrushOpacity}',
+    '      />',
+    '      <BrushControlsGroup',
+    '        colorBrushOpacity={colorBrushOpacity}',
+    '        brushChromeUp={brushChromeUp}',
+    '      />',
+    '    </div>',
+    '  );',
+  ].join('\n');
+
+  it('bounds the mount, not a type argument with the same name', () => {
+    const mount = mountOf(SHELL, 'CanvasSurface');
+    expect(mount).toContain('colorBrushOpacity={colorBrushOpacity}');
+    expect(mount).not.toContain('useRef<CanvasSurfaceHandle');
+    expect(mount).not.toContain('brushChromeUp');
+  });
+
+  it('is what tells two mounts of the same prop apart', () => {
+    expect(mountOf(SHELL, 'BrushControlsGroup')).toContain('brushChromeUp={brushChromeUp}');
+    expect(mountOf(SHELL, 'CanvasSurface')).not.toContain('brushChromeUp={brushChromeUp}');
+    // …which the unsliced source cannot do: both mounts take the prop.
+    expect(SHELL.match(/colorBrushOpacity=\{colorBrushOpacity\}/g)).toHaveLength(2);
+  });
+
+  it('throws for a component the source does not mount', () => {
+    expect(() => mountOf(SHELL, 'NotThere')).toThrow(/slice start not found/);
   });
 });

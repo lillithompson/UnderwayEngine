@@ -2,7 +2,7 @@
 // paths asks of a ship, the checks it runs, and how a review's exit code
 // reads. The git and npm calls themselves are not run here.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { shipPlan, checkCommands, reviewExit, reviewNote, parseArgs, ROUND_CAP } = require('../ship.js');
+const { shipPlan, checkCommands, reviewExit, reviewNote, ROUND_CAP } = require('../ship.js');
 
 describe('shipPlan', () => {
   it('asks for the backend suite only when backend/ changed', () => {
@@ -382,6 +382,18 @@ describe('ship.js in a scratch repository', () => {
   // The round cap, machine-enforced (ROUND_CAP). It was prose in the /ship
   // skill, which is a gate only while a person is reading it.
   describe('the round cap', () => {
+    const recordFor = (spec: string) => execFileSync('node', ['-e',
+      `process.stdout.write(require(${JSON.stringify(path.join(__dirname, '..', 'review.js'))}).recordPath(${JSON.stringify(spec)}))`,
+    ], { cwd: dir, env: ENV, encoding: 'utf8' });
+    /** A commit that genuinely needs review (web/store/ is always reviewed),
+     *  so the round count and the cap are about something. */
+    const reviewable = (name: string) => {
+      fs.mkdirSync(path.join(dir, 'web', 'store'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'web', 'store', name), name);
+      git('add', '.');
+      git('commit', '-q', '-m', `write ${name}`);
+      return git('rev-parse', 'HEAD');
+    };
     const roundFile = (baseSha: string) => {
       const records = path.join(dir, '.git', 'sol-reviews');
       fs.mkdirSync(path.join(records, 'rounds'), { recursive: true });
@@ -398,9 +410,9 @@ describe('ship.js in a scratch repository', () => {
     };
 
     it('refuses the round after the cap, before a reviewer is started', () => {
-      commit('b.txt', 'b');
+      reviewable('b.ts');
       refusedRound(ROUND_CAP);
-      commit('c.txt', 'c');
+      reviewable('c.ts');
       const r = spawnSync('node', [SHIP], { cwd: dir, env: stubbedNpm(), encoding: 'utf8' });
       expect(r.status).toBe(7);
       expect(r.stderr).toContain(`review round ${ROUND_CAP + 1}`);
@@ -409,10 +421,45 @@ describe('ship.js in a scratch repository', () => {
       expect(r.stdout).not.toContain('==> tests');
     });
 
+    it('does NOT refuse a range an override has cleared, which is the pass it is for', () => {
+      reviewable('b.ts');
+      const baseSha = git('rev-parse', 'origin/main');
+      const tip = git('rev-parse', 'HEAD');
+      const records = path.join(dir, '.git', 'sol-reviews');
+      fs.mkdirSync(path.join(records, 'rounds'), { recursive: true });
+      // Three refused rounds, then the agent's recorded disagreement. The
+      // override leaves the record's verdict at changes-requested, so the
+      // round count still reads 4 — the cap has to ask whether anything
+      // will be reviewed again before it refuses.
+      const record = recordFor('origin/main..HEAD');
+      fs.writeFileSync(record, ['## Findings', '', '- [blocking] x.', '', 'VERDICT: changes-requested', ''].join('\n'));
+      fs.writeFileSync(path.join(records, 'rounds', `${baseSha}.json`), JSON.stringify({ round: ROUND_CAP, tip, record }));
+      fs.writeFileSync(record.replace(/\.md$/, '.overridden'), 'By: agent\nReason: the finding is wrong\n');
+      const r = spawnSync('node', [SHIP], { cwd: dir, env: stubbedNpm(), encoding: 'utf8' });
+      expect(r.status).not.toBe(7);
+      expect(r.stderr).not.toContain('round');
+      expect(r.stderr).toContain('tests failed');
+    });
+
+    it('does NOT refuse a range the owner accepted, a path older than the cap', () => {
+      reviewable('b.ts');
+      const baseSha = git('rev-parse', 'origin/main');
+      const tip = git('rev-parse', 'HEAD');
+      const records = path.join(dir, '.git', 'sol-reviews');
+      fs.mkdirSync(path.join(records, 'rounds'), { recursive: true });
+      const record = recordFor('origin/main..HEAD');
+      fs.writeFileSync(record, ['## Findings', '', '- [blocking] x.', '', 'VERDICT: changes-requested', ''].join('\n'));
+      fs.writeFileSync(path.join(records, 'rounds', `${baseSha}.json`), JSON.stringify({ round: ROUND_CAP, tip, record }));
+      fs.writeFileSync(record.replace(/\.md$/, '.accepted'), 'Reason: the owner said so\n');
+      const r = spawnSync('node', [SHIP], { cwd: dir, env: stubbedNpm(), encoding: 'utf8' });
+      expect(r.status).not.toBe(7);
+      expect(r.stderr).toContain('tests failed');
+    });
+
     it('allows the cap itself', () => {
-      commit('b.txt', 'b');
+      reviewable('b.ts');
       refusedRound(ROUND_CAP - 1);
-      commit('c.txt', 'c');
+      reviewable('c.ts');
       const r = spawnSync('node', [SHIP], { cwd: dir, env: stubbedNpm(), encoding: 'utf8' });
       expect(r.status).toBe(1);
       expect(r.stderr).toContain('tests failed');
