@@ -4673,8 +4673,11 @@ Still open:
   **And 6.5b.5 added 106 lines more**, which is the point rather than an
   aside: the argument does not strengthen with repetition, and the total
   now unpinned by anything but byte-identity and a typecheck is 465 + 640
-  + 283 + 106 lines of state, handlers and JSX across seventeen hooks and
-  eight components. 6.5b.5 is the mildest of the four — sixteen statements
+  + 286 / 284 / 293 + 106 lines of state, handlers and JSX across seventeen
+  hooks and eight components — the render tree's figure being the one that
+  differs per app, and `283` being none of the three. (It read 283 for one
+  commit, in the half of a change whose other half existed to make exactly
+  these figures current. **A number corrected in one place is not corrected.**) 6.5b.5 is the mildest of the four — sixteen statements
   of caret state and font plumbing — but it is also where a real latent
   defect got in (`rememberFont`'s empty dep list) and was caught by a
   REVIEWER rather than a test, which is exactly what this item says the
