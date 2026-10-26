@@ -41,7 +41,7 @@ against `wc -l`. That is stated because re-measuring the other way looks like
 a discrepancy and is not: at 2026-10-26 `wc -l` gives 10,005 / 15,714 / 23,623
 over 30 / 58 / 78 non-test files, which is the `web/editor/` row below
 exactly. (Those per-app file counts are not that row's `Files` column, which
-is the UNION across the three apps and so counts a shared file once.)
+is the union described above.)
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
@@ -4565,14 +4565,12 @@ Settled by the owner, 2026-10-20:
 - **The DUST — SETTLED** (2026-10-26, by the agent under the DECISIONS
   instruction of that day, not under §5's ship grant — §5 has both and says
   why they are not the same permission; on the re-measurement in §4.2 item
-  6). **Hold the 76 singletons
-  and sixteen of the 18 groups; take the other two as 6.5b.6.** The hold
-  is now closed rather than deferred: below the four largest no group
-  exceeds 17 lines, `useChromeInsets` cannot move at all on the
-  native-dependency rule, the image-flush group is typed on each app's own
-  `EntryImageDepth` (6.5b.1's reason for holding `IMAGE_DEPTH`), and two
-  of the five slices put a latent stale closure into a generated dep array
-  — a fourteen-line saving does not buy that. The two exceptions are
+  6). **Hold the 76 singletons and
+  sixteen of the 18 groups; take the other two as 6.5b.6.** The hold is now
+  CLOSED rather than deferred, on four reasons §4.2 item 6 states with the
+  measurement they were read off — size, the safe-area group's native
+  dependency, the image-flush group's dependence on each app's own
+  `EntryImageDepth`, and the dep-array risk — and the two exceptions are
   6.5b.5's size with a narrower return and place in all three apps without
   a cut, so holding them would hold them for a reason this programme has
   already rejected once. **This is the first decision in the programme
@@ -4977,19 +4975,23 @@ document does not already pose — a new stage, a tooling change, a rule in
 call for the owner, that reservation OUTRANKS this instruction**, because
 the two overlap otherwise: §4.3 poses the open calls and also says which of
 them are the owner's, so an agent reading §5 alone would take the general
-permission for the particular one. Four are reserved there as this is
-written — which of stage 7 and 6.5b.6 goes first; DrawBots' push brush, as
-a product decision rather than a consolidation; the jsdom environment ("it
-stays the owner's to want"); and widening `override` to require the grant
-("the owner's to want rather than the agent's to grant itself"). The
-instruction reaches the calls §4.3 leaves unassigned, which is what the
-dust call was.
+permission for the particular one.
 
-The standing rules that are refusals
-rather than judgments are untouched by both: `accept` stays the owner's and
-TTY-only, `override` still needs a review that refused, the round cap still
-refuses round four, and no edit to `tooling/` may exist to get an agent's
-own commit through.
+Stated as a RULE and not as a list, because a list read as exhaustive would
+do the opposite of this paragraph's job: **a product decision, a change to
+who holds a gate, and the ORDER of the programme's remaining stages are the
+owner's, whatever else is granted.** As this is written §4.3 reserves at
+least six on those grounds — DrawBots' push brush, Sol's six missing
+features and DrawBots' orphaned comment band (each a product decision
+rather than a consolidation); the jsdom environment and widening `override`
+to require the grant (each a change to a gate); and which of stage 7 and
+6.5b.6 goes first. What the instruction reaches is the calls §4.3 leaves
+unassigned, which is what the dust call was.
+
+The standing rules that are refusals rather than judgments are untouched by
+both: `accept` stays the owner's and TTY-only, `override` still needs a
+review that refused, the round cap still refuses round four, and no edit to
+`tooling/` may exist to get an agent's own commit through.
 
 **Which decisions have been taken under it, so the list is auditable:** one,
 the DUST (2026-10-26). §4.3 states it, under "The DUST — SETTLED", and §4.2
