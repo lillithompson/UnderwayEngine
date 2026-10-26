@@ -39,7 +39,9 @@ counted as the file's `split('\n')` length, which is one MORE than `wc -l`
 reports for a file ending in a newline — so a tree of 30 files reads 30 high
 against `wc -l`. That is stated because re-measuring the other way looks like
 a discrepancy and is not: at 2026-10-26 `wc -l` gives 10,005 / 15,714 / 23,623
-over 30 / 58 / 78 non-test files, which is this row exactly:
+over 30 / 58 / 78 non-test files, which is the `web/editor/` row below
+exactly. (Those per-app file counts are not that row's `Files` column, which
+is the UNION across the three apps and so counts a shared file once.)
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
@@ -1240,8 +1242,9 @@ first, then the pointer bump in each app).
    with them. Each app's `web/editor/` is then its extension alone.
 
    **Where the stage stands, plainly** (2026-10-26, after 6.5b.5 and the
-   dust call). **Stage 6's movable part has moved; the judgment it was
-   waiting on is made; what is left is ONE SLICE, blocked by a gate.** (It
+   dust call). **All but one slice of stage 6's movable part has
+   moved; the judgment it was waiting on is made; and what is left is that
+   one slice, blocked by a gate rather than by anything measured.** (It
    read "what is left is a judgment rather than a slice" until the dust call
    was taken, which made both halves of that false in the same commit — Sol
    caught it. The sentence is two lines above the decision that falsified it,
@@ -1383,8 +1386,8 @@ first, then the pointer bump in each app).
    waiting on is made, and what is left is a GATE** (2026-10-26, after
    6.5b.5 and the dust decision). 6.0 through 6.6 are done BAR 6.5b,
    five of whose six slices are — the fifth being the two groups that would
-   not place, cut at the statement that blocked each. The dust call is taken
-   below, and it leaves one slice outstanding, 6.5b.6, which is blocked on
+   not place, cut at the statement that blocked each. The dust call is taken at the
+   head of this item, and it leaves one slice outstanding, 6.5b.6, blocked on
    CozyJournal being shippable rather than on anything measured.
 
    What is left in the three shells is three things, and the first two are
@@ -1400,14 +1403,11 @@ first, then the pointer bump in each app).
      and 42 props.
    - **DUST — the call is TAKEN** (2026-10-26; the measurement and the
      reasoning are at the head of this item, under "6.5b's last call — the
-     DUST — TAKEN", and the figures are in the table there rather than
-     again here). The 76 singletons and SIXTEEN of the 18 groups are HELD,
-     closed rather than deferred, on four reasons the entry gives — size,
-     `useChromeInsets`'s native dependency, the image-flush group's
-     dependence on each app's own `EntryImageDepth`, and the dep-array risk
-     that a fourteen-line saving does not buy. The other TWO are
+     DUST — TAKEN", and the figures and the four reasons are there rather
+     than again here; §4.3 states the decision itself). Most of it is HELD
+     and closed rather than deferred again; the two exceptions are
      6.5b.5-shaped and are **6.5b.6**, which is not taken yet because
-     CozyJournal's queue is closed by the round cap and a 6.5b slice lands
+     CozyJournal's queue is closed by the round cap, and a 6.5b slice lands
      in three apps or it is not that slice.
 
    What stage 7 inherits is unchanged by all of this (see above). Whether it
@@ -3765,7 +3765,9 @@ first, then the pointer bump in each app).
    should not follow them on this evidence. See "Still open".
 
    **6.5b.5 — Done: the two groups that would not place, cut and moved**
-   (2026-10-26). The last slice of 6.5b, and it is the two components §4.2
+   (2026-10-26). The FIFTH slice of 6.5b — the last one TAKEN, and the last
+   that was planned when this was written, the dust call having since added a
+   sixth — and it is the two components §4.2
    item 6 held back TWICE — at 6.5b.2, and again on re-measurement at
    6.5b.3 — both refused for the same reason: not placeable as one hook in
    any of the three apps.
@@ -3855,7 +3857,8 @@ first, then the pointer bump in each app).
    `packages/editor` file importing `react-native-safe-area-context`, and
    that rule outranks a clean measurement.
 
-   So: **stage 6's movable part has moved.** What is left in the three
+   So: **all but one slice of stage 6's movable part has moved** — the dust
+   call below names the one. What is left in the three
    shells is the app-only bucket (82 / 58 / 36 statements, unchanged by
    every slice since 6.5b.2 — see below), the render tree's FRAME (6.5b.4's
    entry says why it stays), and dust.
@@ -4970,8 +4973,10 @@ call for the owner in those words, that reservation OUTRANKS this
 instruction**: the two overlap otherwise (§4.3 poses the open calls and also
 says which are the owner's — whether stage 7 or 6.5b.6 goes first is one,
 DrawBots' push brush is another, as a product decision rather than a
-consolidation, and the jsdom environment is a third, "the owner's to want
-rather than the agent's to grant itself"), and an agent reading §5 alone
+consolidation, and the jsdom environment is a third (that
+entry says only "it stays the owner's to want"; the sharper phrasing, "the
+owner's to want rather than the agent's to grant itself", is §4.3's
+reservation about widening `override`, which is a fourth)), and an agent reading §5 alone
 would take the general permission for the particular one. The instruction
 reaches the calls §4.3 leaves unassigned, which is what the dust call was. The standing rules that are refusals
 rather than judgments are untouched by both: `accept` stays the owner's and
@@ -4979,9 +4984,11 @@ TTY-only, `override` still needs a review that refused, the round cap still
 refuses round four, and no edit to `tooling/` may exist to get an agent's
 own commit through.
 
-**Which decisions have been taken under it, so the list is auditable:** the
-DUST (2026-10-26, §4.2 item 6 and §4.3) — hold the 76 singletons and
-sixteen of the 18 groups, take the other two as 6.5b.6.
+**Which decisions have been taken under it, so the list is auditable:** one,
+the DUST (2026-10-26). §4.3 states it, under "The DUST — SETTLED", and §4.2
+item 6 has the measurement it was taken on. The list is the audit; what was
+decided is not restated here, because a decision written in four places goes
+stale in four places and this document has paid that twice in a week.
 
 **Stage 3 made it necessary** (2026-10-20). `npm run ship` in CozyJournal
 ended at exit 4: the reviewer refused a 3,293 KB prompt ("Prompt is too
