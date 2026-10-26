@@ -4155,23 +4155,26 @@ a stage-3 range passed at. What has not been tried is a range holding the
 bar handlers or the render tree.
 
 **6.5b.3, and the figure §5 has asked for since 6.1 — twice over**
-(2026-10-26). Its OWN diff is **57 KB** (engine) / **107** (CozyJournal) /
-**108** (Sol) / **110** (DrawBots): a sub-stage that moves 640 lines out
-of each app and 640 into the package costs about 108 KB of diff per app,
-against 6.5b.2's 75 for 465 lines. Per line moved the two agree closely,
-which is the first time this stage has had two points to draw a line
-through.
+(2026-10-26, measured with the sub-stage's four commits in and before this
+record's were made — the same convention 6.5b.2's figures were taken
+under, and worth stating because the record commits move the cumulative
+numbers below and not the per-commit ones). Its OWN diff is **57 KB**
+(engine) / **107** (CozyJournal) / **108** (Sol) / **110** (DrawBots): a
+sub-stage that moves 640 lines out of each app and 640 into the package
+costs about 108 KB of diff per app, against 6.5b.2's 75 for 465 lines. Per
+line moved the two agree closely, which is the first time this stage has
+had two points to draw a line through.
 
 And the queue WAS shipped between the slices this time, so the cumulative
-figure is the per-sub-stage figure for two of the three apps:
-`review.js pending --prompt | wc -c` reads **176 KB** (CozyJournal) /
+figure was the per-sub-stage figure for two of the three apps:
+`review.js pending --prompt | wc -c` read **176 KB** (CozyJournal) /
 **177** (Sol) over ONE commit each. That is the clean per-sub-stage RANGE
 measurement §5 wanted and had never had — the thing 6.5b.2 could only
 approximate with a per-commit diff. The lower cumulative number against
 6.5b.2's 385 and 242 is not the change shrinking; it is the queue being
 empty, which is the whole argument for shipping between slices.
 
-The other two are not clean and say why: the ENGINE reads **217 KB** over
+The other two were not clean and say why: the ENGINE read **217 KB** over
 11 unpushed commits, and DrawBots **544 KB** over 9 — eight of which have
 never been reviewed at all. DrawBots is now the largest unreviewed range
 in this stage's history, and it is larger than the 465- and 640-line moves
