@@ -4983,8 +4983,8 @@ GATE — who holds it or what it checks — and the ORDER of the programme's
 remaining stages are the owner's, whatever else is granted.** As this is
 written §4.3 reserves at least six on those grounds. A product decision:
 DrawBots' push brush, Sol's six missing features, and DrawBots' orphaned
-comment band — all three being content in a shipped app rather than a
-consolidation, the band because §4.3 calls it prose in that app's shell and
+comment band — all three being a change to what a shipped app offers rather
+than a consolidation, the band because §4.3 calls it prose in that app's shell and
 'not this work's to do on its own judgment'. A change to a gate: the jsdom
 environment (what a gate checks) and widening `override` to require the
 grant (who holds one). And the order: which of stage 7 and 6.5b.6 goes
