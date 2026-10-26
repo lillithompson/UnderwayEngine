@@ -1235,7 +1235,8 @@ first, then the pointer bump in each app).
    REMAINDER of the shell's body.** 6.6 is done, and three slices are done
    — eight closed clusters (465 lines of each app), then the
    colour-and-effects complex as five hooks (640 lines), then the render
-   tree's floating chrome as eight components (283 lines). The bar handlers
+   tree's floating chrome as eight components (286 / 284 / 293 lines). The
+   bar handlers
    are no longer on that list, and neither is the render tree: 6.5b.5 is
    now the dust and nothing else.
 
@@ -3492,7 +3493,8 @@ first, then the pointer bump in each app).
    byte-identical in all three is **224, unchanged**; the closed set under
    the four allowed inputs is **136 statements / 890 lines in 96
    components, 76 singletons — unchanged**. The render tree is one
-   anonymous `return`, so 283 lines left the file without a single named
+   anonymous `return`, so 286 / 284 / 293 lines left the three files without
+   a single named
    statement moving, and 6.5b.5 inherits exactly what it inherited before.
    §1 says a stage that empties files shows in the first column and one
    that hollows them out shows only in the last; this one does not show in
@@ -4464,6 +4466,40 @@ Still open:
   shared the subject. Deleting prose from a shipped app's shell is not this
   work's to do on its own judgment, and the diff did not make it false. One
   line of the owner's time either way.
+
+- **Two deferred sweeps over the suites' source pins**, both named by
+  6.5b.4's review rounds and both deliberately not taken in them.
+
+  *Hand-spelled vendored paths.* `colorPickerOpacitySlider`,
+  `colorPickerClose` and `modalHeaderAlign` read package source by hand —
+  and in THREE different spellings across the three apps, which is the whole
+  reason `editorSource` exists. `modalHeaderAlign`'s was converted because
+  the round named it; the rest were left because converting them is a
+  multi-line edit in three differently-worded files and 6.5b.4 was at its
+  third round, with no margin for a slip in a suite nobody had asked about.
+  Eight sites, listed by the round-2 and round-3 records.
+
+  *Hand-rolled region slices outside the mount class.* The wider backlog the
+  `sliceBetween` entry already records, plus the `indexOf('<Tag')` ordering
+  assertions, which are a different shape — they compare POSITIONS rather
+  than bounding a region, so the two-ended guard does not apply to them.
+  Worth separating when the sweep happens: the dangerous ones are the
+  slices, not the comparisons.
+
+- **Whether `review.js override` should require the grant it names**
+  (raised 2026-10-26 by Sol's review of the grant itself). The round cap and
+  the `--autonomous` scope were made SCRIPT refusals on the stated
+  principle that prose is a gate only while a person is reading it — but
+  `override`'s own precondition, that the owner granted an autonomous pass
+  for this work at all, stayed prose. It needs no terminal, no
+  `--autonomous`, and no recorded grant: only a review that refused. So the
+  one path by which an agent can clear a reviewer's objection and push is
+  the one path still held open by a sentence. Tying it to the same grant
+  `ship --autonomous <sha>` already names would close that, and the
+  reviewer is right that the asymmetry is hard to defend on the principle
+  this work argued for. Not taken here: it is a change to the gate's own
+  authority, which is the owner's to want rather than the agent's to grant
+  itself in the same stretch where it first used the gate.
 
 - **The push brush on DrawBots' bar.** Stage 5b put the gesture in the
   canvas DrawBot draws on and left the app-side `DRAWBOT_PAINT_MODES`

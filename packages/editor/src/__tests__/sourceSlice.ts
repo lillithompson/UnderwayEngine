@@ -76,7 +76,33 @@ export function mountOf(src: string, name: string): string {
   const open = `<${name}\n`;
   const first = src.indexOf(open);
   if (first >= 0 && src.indexOf(open, first + open.length) >= 0) {
-    throw new Error(`${name} is mounted more than once; bound the mount you mean by hand`);
+    throw new Error(`${name} is mounted more than once; use mountsOf for every mount`);
   }
   return sliceBetween(src, open, '/>');
+}
+
+/**
+ * EVERY mount of one component, for the case `mountOf` refuses — a tag the
+ * shell mounts more than once (`SymmetryModal`: the canvas button's and the
+ * pattern bar's). Each region is bounded with both ends asserted, as
+ * `mountOf`'s is.
+ *
+ * The plural is here because the alternative was a hand-rolled
+ * `m.indexOf('/>')` per mount, whose END is not asserted: a mount that lost
+ * its self-closing slash would leave the region running to the end of the
+ * file and a positive assertion passing for the wrong reason. Telling a
+ * caller to "bound a double mount by hand" was asking for exactly the thing
+ * this module exists to stop.
+ *
+ * Throws when the component is not mounted at all — an empty list would
+ * make every assertion over it vacuously true.
+ */
+export function mountsOf(src: string, name: string): string[] {
+  const open = `<${name}\n`;
+  const out: string[] = [];
+  for (let at = src.indexOf(open); at >= 0; at = src.indexOf(open, at + open.length)) {
+    out.push(sliceBetween(src.slice(at), open, '/>'));
+  }
+  if (!out.length) throw new Error(`slice start not found: ${JSON.stringify(open)}`);
+  return out;
 }

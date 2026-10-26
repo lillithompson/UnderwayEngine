@@ -1,4 +1,4 @@
-import { declarationBody, mountOf, sliceBetween } from './sourceSlice';
+import { declarationBody, mountOf, mountsOf, sliceBetween } from './sourceSlice';
 
 // `sliceBetween` is the one piece of LOGIC the shell's source-pinning brought
 // with it (6.5b.3, docs/shared-editor.md §4.2 item 6), and its whole purpose
@@ -140,5 +140,39 @@ describe('mountOf', () => {
     const twice = [SHELL, '      <CanvasSurface', '        other={1}', '      />'].join('\n');
     expect(() => mountOf(twice, 'CanvasSurface')).toThrow(/mounted more than once/);
     expect(mountOf(twice, 'BrushControlsGroup')).toContain('brushChromeUp');
+  });
+});
+
+describe('mountsOf', () => {
+  const TWICE = [
+    '      <SymmetryModal',
+    '        bottomInset={insets.bottom}',
+    '      />',
+    '      <Other a={1} />',
+    '      <SymmetryModal',
+    '        bottomInset={insets.bottom}',
+    '        fromBar',
+    '      />',
+  ].join('\n');
+
+  it('returns every mount, each bounded by its own close', () => {
+    const mounts = mountsOf(TWICE, 'SymmetryModal');
+    expect(mounts).toHaveLength(2);
+    for (const m of mounts) expect(m).toContain('bottomInset={insets.bottom}');
+    // Each is bounded: the second mount's own prop is not in the first.
+    expect(mounts[0]).not.toContain('fromBar');
+    expect(mounts[1]).toContain('fromBar');
+    // …and neither runs past its close into the sibling between them.
+    expect(mounts[0]).not.toContain('<Other');
+  });
+
+  it('throws when the component is not mounted, rather than returning nothing', () => {
+    // An empty list would make every assertion over it vacuously true,
+    // which is the failure this module exists to stop.
+    expect(() => mountsOf(TWICE, 'NotThere')).toThrow(/slice start not found/);
+  });
+
+  it('is what mountOf points a caller at for a double mount', () => {
+    expect(() => mountOf(TWICE, 'SymmetryModal')).toThrow(/use mountsOf/);
   });
 });
