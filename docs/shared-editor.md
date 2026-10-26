@@ -31,33 +31,46 @@ out, which is what makes the file counts reproducible:
 | `web/store/` | 14 | 8 | 1 | 1.1 k / 1.7 k / 3.6 k |
 | `web/fonts/` | 8 | 8 | 5 | 0.7 k each |
 
-And the same trees NOW (re-measured 2026-10-25, after 6.5b.2), so
+And the same trees NOW (re-measured 2026-10-26, after 6.5b.3), so
 the table above stays the baseline it says it is rather than being
 overwritten. `Files` is the UNION of file names across the three apps,
 which is what makes a file that only one app has still count once:
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
-| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 10,927 / 16,665 / 24,605 |
+| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 10,318 / 16,056 / 23,985 |
 | `web/editorUi/` | — | — | — | retired at stage 1 |
 | `web/formats/` | 49 | 4 | 1 | 282 / 737 / 13,787 |
 | `web/store/` | 12 | 6 | 0 | 510 / 1,009 / 2,922 |
 | `web/fonts/` | 5 | 5 | 1 | 213 / 233 / 234 |
 
 The file COUNTS have not moved since 6.5a and the lines have, which
-is the honest reading of 6.6, 6.5b.1 and 6.5b.2: all three took
+is the honest reading of 6.6, 6.5b.1, 6.5b.2 and 6.5b.3: all four took
 DECLARATIONS and STATEMENTS out of files that stay — each app still has an
 `editorQuery.ts`, an `EditorHost.tsx` and an `EditorShell.tsx` — where
 every sub-stage up to 6.5a took whole files. Measured against each app's
 HEAD before 6.6a (Sol 102c61c, DrawBots 308e277, CozyJournal 3dd7cb10),
-`web/editor/` went 11,464 → 10,927, 17,198 → 16,665 and 25,143 → 24,605:
-**537 / 533 / 538 lines lighter, and not one file lighter** — 30 / 58 / 78
-files before and after. A stage that empties files shows up in the first
-column; a stage that hollows them out shows up only in the last, and the
-rest of stage 6 is the second kind. 6.5b.2 is four fifths of that
-movement on its own (415 / 415 / 425), which is what the first slice of a
-10,000-line component looks like from here: a quarter of the way through
-the file's shared half, and the file still exists in three copies.
+`web/editor/` went 11,464 → 10,318, 17,198 → 16,056 and 25,143 → 23,985:
+**1,146 / 1,142 / 1,158 lines lighter, and not one file lighter** — 30 /
+58 / 78 files before and after. A stage that empties files shows up in the
+first column; a stage that hollows them out shows up only in the last, and
+the rest of stage 6 is the second kind.
+
+Two sub-stages are nearly all of that movement: 6.5b.2 took 415 / 415 /
+425 and 6.5b.3 took **609 / 609 / 620**, which is 89 % of the four
+together. That is what slicing a 10,000-line component looks like from
+here — and the second slice was half again the first, so the figure is not
+a plateau. The file still exists in three copies.
+
+**And the fourth column has now moved too, for the first time since
+6.5a — downwards, which reads backwards until you see why.** Of the
+shell's body statements, the count byte-identical in all three apps went
+284 → 224: 61 of them left, and the five hook calls that replaced them are
+identical in all three but are five statements where sixty-one stood. A
+sub-stage that takes shared text out of three files necessarily lowers the
+amount of shared text left in them. "Identical in all three" is a measure
+of what is still DUPLICATED, so it falling is the point of the exercise,
+not a regression in it.
 
 Four rows' worth of reading, and the second is this stage's. `web/editor/`
 has lost 92 of its 193 files and two thirds of its lines — stages 1 to 6 —
@@ -1191,16 +1204,27 @@ first, then the pointer bump in each app).
    `EditorConfig`, `web/fonts/*` and the shared half of `web/store/*` move
    with them. Each app's `web/editor/` is then its extension alone.
 
-   **Where the stage stands, plainly** (2026-10-25, after 6.5b.2).
+   **Where the stage stands, plainly** (2026-10-26, after 6.5b.3).
    **Stage 6 is NOT complete, and what is left of it is one thing: the
-   rest of the shell's body.** 6.6 is done, and the body's first slice is
-   done — eight closed clusters, 465 lines of each app — leaving the bar
-   handlers, the render tree and the remainder. 6.0 to 6.5a are PUSHED — the
-   engine was at 7ce9a99 and Sol at 102c61c when this session began — and
-   what is unpushed is this session's work plus three review-fix commits
-   in CozyJournal (f9ce6e14..3dd7cb10) that were never shipped. (The line
-   here said "committed in all four repos, nothing pushed" until
-   2026-10-25; it had been false since the first ship.)
+   rest of the shell's body.** 6.6 is done, and two slices of the body are
+   done — eight closed clusters (465 lines of each app), then the
+   colour-and-effects complex as five hooks (640 lines) — leaving the
+   RENDER TREE and the REMAINDER. The bar handlers are no longer on that
+   list: 6.5b.3 is them, and 6.5b.5 is now the dust rather than a held
+   component.
+
+   **Nothing is pushed, and two repositories are in a state only a push
+   fixes** (checked 2026-10-26). The ENGINE is 11 commits ahead of
+   `origin/main` (7ce9a99), and `git branch -r --contains` on its HEAD
+   lists nothing. CozyJournal and Sol are each ONE commit ahead — this
+   sub-stage alone, which is what a shipped queue looks like — but the
+   commits they already pushed at 6.5b.2 carry a submodule pointer at
+   9a8f345, a commit that is on no remote branch, so a fresh clone of
+   either cannot initialise its submodule. DrawBots is 9 commits ahead and
+   has never been reviewed at all. None of that is an agent's to fix: the
+   rule is commit and stop, and the pointer order (submodule first) is the
+   ship pass's. It is recorded here because the dangling pointer is live
+   and only the owner can clear it.
 
    | Sub-stage | | What it did |
    |---|---|---|
@@ -1217,7 +1241,29 @@ first, then the pointer bump in each app).
    | 6.6b | done | the host's open path; each app keeps its route table |
    | 6.5b.1 | done | two of the shell's own leaves: the pushdown, the picker row |
    | 6.5b.2 | done | eight of the shell's closed clusters, as hooks |
-   | **6.5b.3+** | **not started** | **the bar handlers, the render tree, the remainder** |
+   | 6.5b.3 | done | the colour-and-effects complex — the bar handlers — as five hooks |
+   | **6.5b.4+** | **not started** | **the render tree, then the remainder** |
+
+   **Is stage 6 complete? No — and what is left is two sub-stages, named
+   and measured** (2026-10-26). 6.0 through 6.6 are done, and 6.5b is two
+   of its five slices short:
+
+   - **6.5b.4, the render tree**, behind an overlay seam. Not started, and
+     the largest single thing left. It is also the sub-stage the
+     no-renderer gap bears on hardest, which is why 6.5b.3's note under
+     "Still open" asks for the jsdom decision BEFORE it rather than after.
+   - **6.5b.5, the remainder.** No longer a held component: the
+     59-statement colour complex it was waiting for is 6.5b.3. What it
+     inherits is **136 closed statements / 890 lines in 96 components, 76
+     of them singletons** — plus the two mid-size groups that still refuse
+     to place (the 10-statement caret / text-selection group and the
+     5-statement default-font group, both re-measured at 6.5b.3 and both
+     still `lo > hi` in all three apps). 6.5b.3's own lesson applies to
+     them and has not been tried: a group that fails the placement gate
+     can sometimes be CUT at the statement that fails it.
+
+   What stage 7 inherits is unchanged by all of this (see above), and
+   whether it goes before those two is still the owner's call.
 
    **6.6 came before 6.5b, and the measurement is why.** The plan's order
    was 6.5b then 6.6. 6.6's design was already settled (§4.3, 2026-10-23),
@@ -1247,8 +1293,31 @@ first, then the pointer bump in each app).
    Of the named, **284** are still byte-identical in all three: the
    shared statements that did not close, or closed and would not place.
 
-   **What stage 7 inherits, as things stand** (restated 2026-10-25, after
-   6.5b.2). Stage 7 is the apps' own property pages (CozyJournal's rig:
+   **And after 6.5b.3**, which took 61 more (the 59 of the colour complex,
+   plus `fadeTargetRef` and its sync): the file is **8,968 / 6,407 /
+   7,496** — re-measured from each app's HEAD, not carried forward — and
+   `web/editor/` is another 620 / 609 / 609 lines lighter with, again, not
+   one file fewer. The body is **519 / 448 / 466** statements: 61 out and
+   FIVE back in, so 56 net each. Of those, **224** are still
+   byte-identical in all three, and the closed set under the four inputs
+   is down to **136 statements / 890 lines in 96 components, 76 of them
+   singletons** — from 196 / 1,531 / 98 / 77. The largest closed thing
+   left in the shell is the 10-statement caret group, and it still does
+   not place.
+
+   **What stage 7 inherits, as things stand** (restated 2026-10-26, after
+   6.5b.3). **6.5b.3 did not touch what stage 7 is about, and the
+   measurement says so rather than assuming it**: the APP-ONLY bucket —
+   statements a shell declares that neither other app does — is still
+   **82 statements / 1,099 lines** in CozyJournal, 58 / 286 in Sol and
+   36 / 267 in DrawBots, the same as before the slice. Two slices of the
+   shell have now been taken and every statement in both came out of the
+   SHARED bucket, which is the arrangement §4.3 described and is now
+   twice-demonstrated rather than argued. The paragraph below stands as
+   written.
+
+   (The earlier reading of this paragraph — restated 2026-10-25, after
+   6.5b.2.) Stage 7 is the apps' own property pages (CozyJournal's rig:
    `rigEdit.ts`, `RigJointsBar`, `RigPoseBar`, `RigColorBar`), and it
    inherits a question that has nothing to do with them: whether the shell
    moved. It has not, and will not move in one stage — but it is no longer
@@ -2920,6 +2989,186 @@ first, then the pointer bump in each app).
    it; Sol's roots do not, so Sol's moved only by the three pins this
    sub-stage added.
 
+   **6.5b.3 — Done: the colour-and-effects complex, as five hooks** (engine
+   bef20b0, CozyJournal 74efc974, Sol 932bec9, DrawBots 6961abf;
+   2026-10-26). 61 statements and 640 lines of each app's shell body, the
+   component §4.2 item 6 held back twice.
+
+   | hook | stmts | lines | takes in | hands out | what it is |
+   |---|---|---|---|---|---|
+   | `useBarColorState` | 19 | 84 | 1 | 30 | the active ink, the next shape's style, the picker flags |
+   | `useEffectBars` | 20 | 214 | 9 | 17 | shadow, the two glows, border, fade |
+   | `useStrokeBar` | 7 | 150 | 7 | 5 | the Stroke bar |
+   | `useFillBar` | 6 | 101 | 7 | 5 | the Fill bar |
+   | `useColorAcrossBars` | 7 | 91 | 13 | 7 | one callback apiece: the Transform ghosts, the Text ink, the tile thumb, the hue row, the eraser light |
+
+   **The question the owner was given, and the one the measurement
+   answered instead.** The programme listed the bar handlers as 6.5b.3 and
+   the held 59-statement colour component as 6.5b.5, and the handover's
+   reading was that these are largely the same subject — in which case the
+   choice was: take it as one hook with a 61-name return, find a cut
+   inside it, or skip to 6.5b.4. Measured, both halves of that framing
+   were wrong.
+
+   The subject overlap is real but PARTIAL IN BOTH DIRECTIONS. Cut at its
+   own banners the shell is 32 / 30 / 29 sections. The component's
+   statements land in eleven of them plus the preamble: it nearly consumes
+   the Stroke bar (131 of 156 lines), the Opacity bar (97 of 131) and the
+   Fill bar (42 of 55) — but **464 of its 640 lines are in the bar
+   sections, and those sections are 1,582 lines, so it is 29 % of them**.
+   The other 176 lines are preamble `useState`s (82), the super-long-press
+   handlers (61) and dust in the pattern and radial sections. Two boundary
+   facts the name-level reading had missed: 6.0's *eyedropper
+   arm-and-commit* section is ALREADY GONE (6.5b.2 took it into
+   `useEyedropper`), so 6.0's ten are nine in the file; and the Fill bar
+   section measures 55 lines now, not 6.0's 51.
+
+   And the option the question offered did not exist. **As one hook the
+   component is NOT PLACEABLE, in any of the three apps** — `lo` 200 / 155
+   / 179 against `hi` 125 / 83 / 99. It reads `applyEntry` (the commit
+   pipeline) and is read back seventy-five statements earlier by
+   `fadeTargetRef.current = fadeTarget` and the colour effects. React hook
+   order is a total order the read graph does not capture; the width of the
+   return was never the obstacle. The owner was given that measurement with
+   the cut already priced, and took all five hooks.
+
+   **The cut, and why it costs nothing.** Split at `applyEntry` the front
+   half is 19 statements placeable in (0,157) / (0,109) / (0,130) and the
+   back half 40 placeable in (200,332) / (155,332) / (179,334); split again
+   by bar, all four place with windows hundreds of statements wide. The
+   front hook takes ONE input (`session`) and hands back 30 names. And
+   every input of all four bar hooks is either one of the four allowed
+   inputs or a name `useBarColorState` returns — 19 of
+   `useColorAcrossBars`' 23 original free names are the front hook's, the
+   other four being `applyEntry`, `session`, `sessionRef`, `setSession`. So
+   **the context object §4.3 declined to invent is the front hook's own
+   return**, which is why it did not have to be invented. `shellHooks.test.ts`
+   pins that both ways: that `useBarColorState` takes none of
+   `applyEntry` / `setSession` / `sessionRef` — taking one would put it
+   behind the pipeline and then neither half places — and that no bar hook
+   takes a name from anywhere else.
+
+   **Both of those pins are mutation-tested, and the mutation had to be
+   made TYPE-VALID.** §4.3's rule says to mutation-test a pin whose job is
+   to refuse something, and to do it on a module the harness cannot load,
+   because ts-jest catches the mutation first otherwise. These modules DO
+   load, and the first attempt proved the rule exactly: adding `applyEntry`
+   to `useBarColorState`'s destructuring failed as TS2339 before any
+   assertion ran. Adding it to the type as well made the suite load, and
+   then the pin fired. The same for an invented `barContext` on
+   `useStrokeBar`. A pin verified by a mutation that does not compile is
+   not verified.
+
+   **Three sections are mis-filed, and the record should say so rather
+   than quietly regroup.** Nine effect-colour handlers — `onShadowColor`,
+   `onGlowColor`, `onPickFadeColor`, `onBorderColorConfirm` and their
+   siblings — sit under the TRANSFORM bar's banner in all three shells, and
+   four Stroke/Fill handlers under the PATTERN FILL's. The hooks group them
+   by what they do, so `useEffectBars` draws 9 of its 20 statements from
+   the Transform section. 6.0's section cut and the subject disagree at
+   those two boundaries; that is a fact about the shells, not about the
+   cut.
+
+   **What came along that the extractor could not see.** `fadeTargetRef`
+   and its sync line: a hook that owns a ref owns its sync, and the sync is
+   anonymous, so `body.js` keys it by nothing. 6.5b.2 shipped
+   `colorScopeRef`'s in BOTH the hook and all three shells for exactly this
+   reason. It is DERIVED here (`members.js` pairs an anonymous
+   `xRef.current = x` with the member on either side of it) rather than
+   listed as a literal, so the generator and the shell editor cannot
+   disagree about it — and the generator reported 61 statements where the
+   spec named 60, which is how one would notice if it had gone wrong.
+
+   `TILE_LIT_INK` and `TILE_CAPSULE_STROKE_WIDTH` moved to `tileTool.ts`,
+   which already holds the tile constants. They were module-level in all
+   three shells and byte-identical; `tileInkThumb` took both away with it
+   and the Tiles takeover still reads the first, so the shells import it
+   where they used to declare it. That is 6.5b.1's category — a file-level
+   leaf — taken because this sub-stage needed it, not as a sweep.
+
+   **A SLICE MARKER IS NOT AN ASSERTION, and this sub-stage is where that
+   finally got fixed properly.** §4.3 named the trap at 6.5b.2, fixed one
+   instance and shipped three more. 6.5b.3's sweep over MARKER POSITIONS
+   (not literals, and not call shapes) found 37 stale markers across 15
+   suites per app — **two of them stale since 6.5b.2**, slicing on
+   `onFraming` and `onReplaceImageSource`, bounding nothing, and green. The
+   guard now lives in a shared helper, `sliceBetween` in each app's
+   `web/editor/__tests__/test-utils.ts`, which throws when either end is
+   missing and seeks the end AFTER the start. Every re-pointed slice goes
+   through it.
+
+   Three assertions could NOT be re-pointed mechanically, and each is one
+   of §4.3's own warnings:
+
+   - A COUNT (`SHELL.match(/TILE_CAPSULE_STROKE_WIDTH/g)` of 3) that would
+     now count zero. Re-stated at the site that does the baking — and the
+     first attempt read 3 instead of 2 because `useColorAcrossBars`' own
+     HEADER names the constant. "A count would catch a doc comment" is in
+     §4.3 and I walked into it anyway; it counts over the code with
+     comments blanked now.
+   - A NEGATIVE assertion (`not.toContain("'#FFFFFF')")`) about a file the
+     code had left, which passes for the wrong reason. Asserted of both
+     files.
+   - An ADJACENCY pin (`'  }, [currentColor]);\n  // The tile radial'`) —
+     the thumbnailer sitting directly above the options that consume it.
+     That cannot be stated across a move at all; what it was for is the
+     memo's dep list plus the assertion already below it.
+
+   **Four tool bugs, all of the same family: a regex that spans more than
+   it should.** Worth recording because three of them wrote something
+   wrong before being caught, and the fourth was caught only by a count:
+
+   - The re-point tool's assertion matcher used `([\s\S]*?)` for a
+     quoted literal's body. A `'`- or `"`-quoted JS string cannot contain a
+     raw newline, and without saying so the match ran from one argument's
+     opening quote, past the comma a wrapped `expect(...)` leaves at the
+     end of its line, to a LATER assertion's closing quote — so the
+     "literal" was two assertions and a comma, found in no file, and a
+     dozen passing suites were reported as broken.
+   - Its anchor for a new constant was a `^const … EditorShell.tsx … );`
+     spanning newlines, which reached from the first column-0 `const` in
+     the file to a later indented declaration. `transformBar` got its
+     constant at column 0 inside an indented describe. Found by lines now.
+   - The same tool declared a constant wherever it re-pointed an
+     assertion, which in a multi-`describe` suite is sometimes a LATER
+     describe than a use: `patternTool` read `STROKE_BAR` at line 1057 and
+     declared it at 1115. These are whole-file reads with no reason to be
+     scoped at all, so they are hoisted to module scope.
+   - `prune.js` matched an import name inside its own specifier
+     (`import { omitKeys } from '@/engine/omitKeys'`), and masking every
+     quoted run to fix it blanked swathes of CozyJournal's preamble, whose
+     doc comments are full of apostrophes. Only `from '…'` is masked now.
+
+   The lesson is the one §4.3 already has in another form: **do not trust
+   your own sweeps.** Every one of these over-matched rather than
+   under-matched, so each produced confident output that was wrong.
+
+   **The dead-import sweep, keyed by specifier and diffed against HEAD.**
+   36 / 37 / 35 names and 3 / 4 / 3 whole declarations went dead in the
+   shells. One thing to record: Sol's `@/editor/colorUtils` declaration
+   became wholly dead because `rgbToHexColor` left, and removing it took
+   `parseHexColor` — which was ALREADY dead at HEAD — with it. Sol's
+   pre-existing unused-import count therefore falls by one. There was no
+   option that left the baseline untouched: keeping the declaration for a
+   name nobody uses just turns a TS6133 into a TS6192. Four more locals
+   went dead in the suites my own re-pointing touched and are removed; a
+   fifth, `patternTool`'s `model`, is PRE-EXISTING (line 942 at HEAD) and
+   is left exactly as it was.
+
+   CozyJournal 672 suites / 10,956 tests; Sol 278 / 3,327; DrawBots 556 /
+   9,515; engine 403 of 404 / 7,338 (`cameraRoll`, pre-existing — no
+   `expo-media-library` in this repo). Cozy's and DrawBots' tests rose by
+   27 and their suite counts did not: their jest roots include the vendored
+   package and `shellHooks.test.ts` was already in it. Sol's roots do not,
+   so Sol's figures are unchanged by the package's new pins.
+
+   **The gap this sub-stage widens.** There is still no renderer in any of
+   the four repos, so what pins these five hooks' BEHAVIOUR is nothing but
+   byte-identity with three shipped apps and three typechecks. That was the
+   argument at 6.5b.2 for 465 lines; it is the argument here for 640, and
+   6.5b.4 is the render tree. The suite says so at the top of itself. It
+   does not get better by being repeated — see "Still open".
+
    **6.5b.2+ — the measurement 6.5b.2 was planned from, and why it is
    plural.** The shell's BODY, measured 2026-10-25 over the three apps'
    HEAD before 6.5b.2 took the first slice out of it. This is the
@@ -2987,29 +3236,41 @@ first, then the pointer bump in each app).
    which is 6.5a's lesson and the one that cost the most.
 
    **So 6.5b is a programme, and the order is the stage's own rule — most
-   closed first.** Settled by the owner 2026-10-25 (§4.3) and now one
-   sub-stage in:
+   closed first.** Settled by the owner 2026-10-25 (§4.3) and now two
+   sub-stages in:
 
    | | | measured |
    |---|---|---|
    | 6.5b.1 | done | the file-level leaves |
    | 6.5b.2 | done | eight closed clusters as hooks: 56 statements, 465 lines of each app |
-   | 6.5b.3 | the bar handlers | 1,635 lines over ten sections, drifting by 56 / 40, riding the commit pipeline — 6.0 says they do not move alone, and 6.5b.2 is the test of whether that is still true |
+   | 6.5b.3 | done | the colour-and-effects complex as five hooks: 61 statements, 640 lines of each app, cut at the commit pipeline |
    | 6.5b.4 | the render tree, behind an overlay seam | DrawBots' `{x.overlay}` hooks, measured across all three first |
-   | 6.5b.5 | what is left of the component, the 59-statement colour complex and the singletons | — |
+   | 6.5b.5 | the remainder: 136 closed statements / 890 lines in 96 components, 76 of them singletons — and the two mid-size groups that do NOT place | — |
 
-   **What 6.5b.2 settles for 6.5b.3.** The bar handlers' case against
-   moving alone was that they would need a context object of some fifty
-   members threaded through. 6.5b.2 is that objection measured and priced
-   on a smaller subject: eight hooks, four inputs between them, and the
-   context object never appeared — because each cluster was chosen for
-   closure rather than for subject. Whether the bar handlers can be cut
-   the same way is a measurement to MAKE on them, not an inference from
-   this one; the ten sections are not components of the read graph, and
-   the thing to measure first is which of them close over what.
+   **What 6.5b.3 found, and why the objection was aimed at the wrong
+   thing.** The case against moving the bar handlers alone, twice on the
+   record, was that they would need a context object of some fifty members
+   threaded through. 6.5b.3 measured it and the objection does not survive
+   — but neither does the shape of the question.
 
-   The one thing the measurement settles outright is that "the shell
-   itself, bar handlers inside it" was never a sub-stage.
+   The obstacle is not the width of the return. It is HOOK ORDER. The
+   59-statement colour component is not placeable as one hook in ANY of
+   the three apps: it reads `applyEntry`, the shell's own commit pipeline,
+   at body statement 200 / 155 / 179, and its colour state is read back at
+   125 / 83 / 99 by the fade sync and the colour effects. `lo > hi`, so no
+   call site exists — which is 6.5b.2's placeability gate, and the same
+   failure as the caret and default-font groups. A wide return was never
+   what stood in the way; it would not have mattered how narrow it was.
+
+   Cut at the pipeline, and then by bar, and the thing the plan declined
+   to invent turns out not to need inventing. Every input of all four bar
+   hooks is either one of the four allowed inputs or a name the front half
+   already hands back: `useBarColorState`'s own documented return IS the
+   context object, so nobody had to write one. The entry for 6.5b.3 below
+   has the five hooks and their windows.
+
+   The one thing the earlier measurement settled outright still holds:
+   "the shell itself, bar handlers inside it" was never a sub-stage.
 
    **6.2b's measurement, kept.** The measurement below is 6.2b’s, from
    2026-10-23, kept because it is what re-ordered the sub-stages: the
@@ -3581,6 +3842,19 @@ Settled by the owner, 2026-10-20:
   invent, and it waits for 6.5b.5. The singletons are held too, for 6.5b.1's
   reason — a cluster averaging six lines has no module to belong beside.
 
+  **The hold on the colour component was lifted at 6.5b.3 — SETTLED** (by
+  the owner, 2026-10-26, on 6.5b.3's own measurement): **take all five
+  hooks.** The reason for the hold did not survive measuring, and not
+  because the return turned out to be narrow. As ONE hook the component is
+  not placeable in any of the three apps (hook order, not signature
+  width), and split at the commit pipeline every half places — at which
+  point every input of all four bar hooks is one of the four allowed
+  inputs or a name the front hook already returns. The context object this
+  plan twice refused to invent is `useBarColorState`'s own documented
+  return; refusing to invent it was right, and so is not having to. The
+  SINGLETONS stay held, for the reason above, and are 76 of what 6.5b.5
+  inherits.
+
   The question the measurement put to the owner was whether stage 7 should
   go first, and the answer the measurement itself gave is that the two were
   never competing: the rig's 29 Cozy-only statements are in the APP-ONLY
@@ -3602,6 +3876,19 @@ Settled by the owner, 2026-10-20:
   calling a cluster movable**, and measure it in all three apps: that it
   failed identically in all three is what made it a fact about the shape
   rather than an accident of one app.
+
+  **And it is a gate that can be OPENED, which 6.5b.2 did not see** (6.5b.3).
+  The 59-statement colour component failed it for exactly the same reason
+  as those two — pre-pipeline state grouped with post-pipeline handlers —
+  and the failure NAMES the cut: `lo` is the pipeline, so splitting there
+  gives a front half that ends before `hi` and a back half that starts
+  after `lo`. Both halves then placed with hundreds of statements of room,
+  and the back half split again by subject with no further cost. So a
+  group that does not place is not thereby immovable; where `lo` is a
+  single statement that most of the group depends on and most of the rest
+  is read before it, that statement is the seam. The two groups 6.5b.2
+  refused are still refused on re-measurement at 6.5b.3 — but they were
+  never re-tried against this, and 6.5b.5 should.
 
 - **The package stays free of native dependencies, and that outranks a
   clean measurement** (6.5b.2). `useChromeInsets` closed, placed in all
@@ -3633,23 +3920,33 @@ Still open:
 
 - **Whether stage 7 goes before the rest of 6.5b** — what is left of the
   question settled above, and no longer gating anything. Stage 7 is doable
-  today and would shrink 6.5b.4 and 6.5b.5; it does not touch 6.5b.3. The
-  stage-5 and 6.5b precedents are both the owner's, on the same kind of
-  evidence.
+  today and would shrink 6.5b.4 and 6.5b.5. It did not touch 6.5b.3, and
+  6.5b.3 has now happened, so the only sub-stages it still overlaps are the
+  two that remain: the render tree and the remainder. The stage-5 and 6.5b
+  precedents are both the owner's, on the same kind of evidence.
 
-- **No renderer, anywhere, and eight hooks now in the package because of
-  it** (raised 2026-10-25 by 6.5b.2). There is no React renderer in this
-  repo's jest (`testEnvironment: 'node'`, no jsdom, no testing-library) and
-  none in any of the three apps, which is why 6.6b wrote `hostRoute.ts` as
-  pure functions under thin hooks and why every screen fact in all four
-  repos is pinned as SOURCE TEXT. 6.5b.2 moved 465 lines of state and
-  handlers into `packages/editor` whose behaviour is therefore pinned
-  nowhere — the apps typecheck them, and the only safety argument is that
-  the text is byte-identical to what three shipped apps were already
-  running. That argument does not get stronger as more of the shell moves,
-  and 6.5b.3 and 6.5b.4 are larger. Adding a jsdom environment to the
-  engine's jest would turn it into a test; it is a tooling change in a
-  directory this work does not edit, and it is the owner's to want.
+- **No renderer, anywhere, and THIRTEEN hooks now in the package because
+  of it** (raised 2026-10-25 by 6.5b.2; sharper after 6.5b.3). There is no
+  React renderer in this repo's jest (`testEnvironment: 'node'`, no jsdom,
+  no testing-library) and none in any of the three apps, which is why 6.6b
+  wrote `hostRoute.ts` as pure functions under thin hooks and why every
+  screen fact in all four repos is pinned as SOURCE TEXT. 6.5b.2 moved 465
+  lines of state and handlers into `packages/editor` whose behaviour is
+  pinned nowhere; 6.5b.3 moved **640 more**, and they are not plumbing —
+  `applyStrokeEdit`, `applyEffectEdit`, `commitEffectColor` and the
+  confirms are the live-preview-and-commit dance for every colour the
+  editor writes. The apps typecheck them, and the only safety argument is
+  byte-identity with three shipped apps.
+
+  **It has now been said twice and the number has grown by half**, which
+  is the point: the argument does not strengthen with repetition, and
+  6.5b.4 is the render tree — the one part of the shell where "it
+  typechecks and the text is identical" is least reassuring, because what
+  a render tree does wrong it does visually. Adding a jsdom environment to
+  the engine's jest would turn byte-identity into a test. It is a tooling
+  change in a directory this work does not edit, and it is the owner's to
+  want; 6.5b.3's recommendation is that it come BEFORE 6.5b.4 rather than
+  after it.
 
 ## 5. Process
 
@@ -3857,6 +4154,31 @@ shell's range has now been tried, and it fits**: 242 KB against the 890
 a stage-3 range passed at. What has not been tried is a range holding the
 bar handlers or the render tree.
 
+**6.5b.3, and the figure §5 has asked for since 6.1 — twice over**
+(2026-10-26). Its OWN diff is **57 KB** (engine) / **107** (CozyJournal) /
+**108** (Sol) / **110** (DrawBots): a sub-stage that moves 640 lines out
+of each app and 640 into the package costs about 108 KB of diff per app,
+against 6.5b.2's 75 for 465 lines. Per line moved the two agree closely,
+which is the first time this stage has had two points to draw a line
+through.
+
+And the queue WAS shipped between the slices this time, so the cumulative
+figure is the per-sub-stage figure for two of the three apps:
+`review.js pending --prompt | wc -c` reads **176 KB** (CozyJournal) /
+**177** (Sol) over ONE commit each. That is the clean per-sub-stage RANGE
+measurement §5 wanted and had never had — the thing 6.5b.2 could only
+approximate with a per-commit diff. The lower cumulative number against
+6.5b.2's 385 and 242 is not the change shrinking; it is the queue being
+empty, which is the whole argument for shipping between slices.
+
+The other two are not clean and say why: the ENGINE reads **217 KB** over
+11 unpushed commits, and DrawBots **544 KB** over 9 — eight of which have
+never been reviewed at all. DrawBots is now the largest unreviewed range
+in this stage's history, and it is larger than the 465- and 640-line moves
+put together because of what is queued BEHIND them, not what is in them.
+**A 544 KB range is the thing §5 keeps warning about**, arrived at without
+any single change being large.
+
 **What that does and does not say about the shell.** It does not say the
 shell's range will fit: these three sub-stages moved about 470 lines into
 the package between them, where the shell is 10,013. It does say the
@@ -3864,7 +4186,9 @@ question is no longer confounded, and that a per-sub-stage figure is
 cheap to get as long as the queue is shipped between sub-stages — which
 is the practice to keep for 6.5b.3 onward, one ship per slice, and which
 6.5b.2 shows can be had another way when it is not: the per-commit diff,
-measured directly, answers the same question without a clear queue. The
+measured directly, answers the same question without a clear queue.
+(6.5b.3 kept that practice in two apps of three and the figures above are
+the payoff; DrawBots is what not keeping it looks like at nine commits.) The
 reviewer has never been given a range holding a 10,000-line move, and on
 §4.2 item 6's measurement it never will be: the slicing that stage 6's
 remainder needs for ARCHITECTURAL reasons also keeps every range the size
