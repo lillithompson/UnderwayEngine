@@ -75,6 +75,19 @@ import { buildEditPatternCells, buildReplacePattern, SessionEntry } from './edit
  *  freehand stroke's unsnapped tail forgiving without ever double-counting. */
 export const TILE_ENDPOINT_TOL_FRAC = 0.2;
 
+/** The ink a tile is baked in for a selection-blue ground — the Tiles
+ *  takeover's picked cell and Done square, the Choose capsule's lit
+ *  segment: white, whatever the active color, so the accent never hides
+ *  the tile in hand. */
+export const TILE_LIT_INK = '#FFFFFF';
+/** The line weight the Choose capsule's tile art is baked at, in the
+ *  sprite source's 256-unit space (the sources draw at 10). The capsule
+ *  shows a tile 22px wide, where the authored line comes out under a
+ *  pixel; this bakes it at about two, so the tiles read as the strokes
+ *  they will stamp. The fan's buttons and the Tiles takeover keep the
+ *  authored weight. */
+export const TILE_CAPSULE_STROKE_WIDTH = 24;
+
 /**
  * Hard ceiling on FILLED pattern cells across the whole drawing. Every
  * filled cell is live SVG (segments in the baked view, path data in the
