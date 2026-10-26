@@ -23,6 +23,16 @@ import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
 // `newShapeStyle` is an input because an outline the user sets is
 // REMEMBERED: the next shape is born wearing it, and `onAddStroke` reads
 // the remembered width back to decide what "add" means.
+//
+// **Every function prop must be STABLE.** These callbacks keep the
+// `useCallback` dep arrays they had in the shell, and of this hook's PROPS
+// only `applyEntry`, `setSession`, `noteActiveColor` and
+// `newShapeStyle.strokeWidth` ever appear in one — never either setter.
+// (`applyStrokeEdit`, the other name the arrays list, is internal.) So a
+// prop passed as an inline lambda would be captured once and never
+// refreshed. The three shells pass raw `useState` setters and `useCallback`
+// results, which is why this holds today; it is a contract of the hook, not
+// an accident of its callers.
 
 export function useStrokeBar<S extends EditorSession>({
   sessionRef, setSession, applyEntry,

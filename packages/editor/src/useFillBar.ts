@@ -11,9 +11,19 @@ import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
 
 // The Fill bar: a closed shape's interior, and the picker its swatch opens.
 // The section comment below says what it is and what it shares with the Tint
-// bar it was made from; the three statements the shell keeps under that
-// banner are the bar's own open-change handlers, which belong to the pages
-// that raise it rather than to the fill.
+// bar it was made from; what the shell keeps under that banner is
+// `onSvgPatternOpenChange` and `onSvgFillOpenChange`, which belong to the
+// pages that raise the bar rather than to the fill. (Named rather than
+// counted: a count of what stays behind is a number the next slice of the
+// shell silently invalidates.)
+//
+// **Every function prop must be STABLE.** These callbacks keep the
+// `useCallback` dep arrays they had in the shell — `applyEntry`,
+// `setSession` and `noteActiveColor`, never `setNewShapeStyle` — so any prop
+// passed as an inline lambda would be captured once and never refreshed. The
+// three shells pass raw `useState` setters and `useCallback` results, which
+// is why this holds today; it is a contract of the hook, not an accident of
+// its callers.
 
 export function useFillBar<S extends EditorSession>({
   sessionRef, setSession, applyEntry,

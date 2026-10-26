@@ -26,6 +26,15 @@ import {
 // `TILE_LIT_INK` and `TILE_CAPSULE_STROKE_WIDTH` moved to `tileTool.ts`
 // with this: they were module constants of all three shells, byte-identical,
 // and the Tiles takeover still reads the first one.
+//
+// **Every function prop must be STABLE.** These callbacks and the ghost memo
+// keep the dep arrays they had in the shell — `applyEntry`,
+// `noteActiveColor`, `currentColor`, and the four the memo reads — never the
+// setters, so any prop passed as an inline lambda would be captured once and
+// never refreshed. `onBrushHueRow` is not memoised at all, as in the shell.
+// The three shells pass raw `useState` setters and `useCallback` results,
+// which is why this holds today; it is a contract of the hook, not an
+// accident of its callers.
 
 export function useColorAcrossBars<S extends EditorSession>({
   session, sessionRef, applyEntry,

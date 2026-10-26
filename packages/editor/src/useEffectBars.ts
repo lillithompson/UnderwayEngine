@@ -33,6 +33,16 @@ import { useCallback, useRef } from 'react';
 // three shells — `onShadowColor`, `onGlowColor`, `onBorderColorConfirm`
 // and their siblings — which is one of the two places where 6.0's section cut
 // and the subject disagree. They are grouped here by what they do.
+//
+// **Every function prop must be STABLE.** These callbacks keep the
+// `useCallback` dep arrays they had in the shell, and of this hook's PROPS
+// only `applyEntry`, `setSession` and `noteActiveColor` ever appear in one —
+// never the four setters, and `currentColorRef` is a ref. (The rest of what
+// the arrays list is internal: `materializeEffect`, `applyEffectEdit`,
+// `commitEffectColor`.) So a prop passed as an inline lambda would be
+// captured once and never refreshed. The three shells pass raw `useState`
+// setters and `useCallback` results, which is why this holds today; it is a
+// contract of the hook, not an accident of its callers.
 
 export function useEffectBars<S extends EditorSession>({
   sessionRef, setSession, applyEntry,

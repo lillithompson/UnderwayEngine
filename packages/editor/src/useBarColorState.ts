@@ -28,6 +28,13 @@ import { useCallback, useRef, useState } from 'react';
 // page (AppSettings.lastColor) and the package names no app's store.
 // `config` is the format's opening style, narrowed to the two fields
 // `openingNewShapeStyle` already takes.
+//
+// **Every function prop must be STABLE.** The one callback here that takes a
+// dep (`noteActiveColor`) lists `applyActiveColor` and nothing else, as it
+// did in the shell, so `updateSettings` passed as an inline lambda would be
+// captured once and never refreshed. The three shells hand in their store's
+// own function, which is why this holds today; it is a contract of the hook
+// rather than an accident of its callers.
 
 export function useBarColorState({
   config, session, updateSettings,
@@ -44,8 +51,11 @@ export function useBarColorState({
 
   const currentColorRef = useRef<RGBColor>(DEFAULT_ACTIVE_COLOR);
 
-  // Guards the async seed below from landing on a color picked before it
-  // resolved — the same race fontTouchedRef guards for the font.
+  // Guards the async seed from landing on a color picked before it resolved.
+  // The seed is the HOST's, not this hook's: each app's shell reads this ref
+  // in its boot effect, beside the `fontTouchedRef` that guards the same race
+  // for the font. Neither is in this package, so there is no "below" here —
+  // the ref is handed out for the shell to read.
   const colorTouchedRef = useRef(false);
 
   // Adopt a color without remembering it: the seed path.
@@ -113,7 +123,7 @@ export function useBarColorState({
 
   // The Transform bar's live Create copies draft (count, offsets), or null
   // when the bar is away or its last press has just landed — what the canvas
-  // ghosts (see transformGhosts below).
+  // ghosts (`transformGhosts`, which reads this from `useColorAcrossBars`).
   const [transformCopiesDraft, setTransformCopiesDraft] = useState<TransformCopies | null>(null);
 
   const [shadowColorPickerOpen, setShadowColorPickerOpen] = useState(false);
