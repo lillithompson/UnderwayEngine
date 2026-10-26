@@ -3710,7 +3710,18 @@ first, then the pointer bump in each app).
    `useDefaultFontState`'s own documented returns, exactly as
    `useBarColorState` was for the bars.
 
-   **One deviation from byte-identity, declared** (§4.2 item 6's rule).
+   **TWO deviations from byte-identity, both declared** (§4.2 item 6's rule).
+   The second was found by Sol's review and is a real latent defect:
+   `rememberFont` kept `useCallback(…, [])` while `updateSettings` and
+   `setDefaultFontId` became PARAMETERS. In the shell both were module-scope
+   or a stable setter, so the empty list was right; as parameters they are
+   captured forever — a stale closure for any consumer whose
+   `updateSettings` is not stable. **`useBarColorState` made exactly this
+   deviation at 6.5b.3 for exactly this reason**, and recorded it; the rule
+   was one sub-stage old and this is the one place it was not applied. A
+   rule set by the previous slice is not yet a habit.
+
+   The first:
    `caretSeek`'s declaration was
    `useState<\n { start: number; end: number; seq: number } | null\n>(null)`
    and is now `useState<CaretSeek | null>(null)`, with `CaretSeek` exported
