@@ -3577,10 +3577,20 @@ first, then the pointer bump in each app).
    thing; a tag opens a mount only at the end of a line.
    The fix is the engine's `mountOf(src, name)` beside `sliceBetween`
    (`packages/editor/src/__tests__/sourceSlice.ts`), which spells the
-   `'<Name\n'` start once for all three apps and all five call sites, and is
+   `'<Name\n'` start once for every app and every call site, and is
    pinned over a fixture that contains exactly the `useRef<NameHandle>` trap.
    Where a helper's correct use has a subtlety in it, the subtlety belongs
    inside the helper.
+
+   **And putting it inside the helper paid for itself within the hour.**
+   `mountOf` also REFUSES a component mounted twice rather than bounding the
+   first silently, and the first sweep onto it hit that throw at once:
+   `SymmetryModal` is mounted twice in CozyJournal's and DrawBots' shells, so
+   `modalHeaderAlign`'s inset pin had only ever checked the FIRST of them — a
+   hand-rolled `slice(at, at + 200)` cannot tell you that, and the throw did,
+   immediately, in a suite nobody suspected. That pin asserts over every
+   mount of each tag now. **A helper that refuses what it cannot do
+   correctly finds the places that were already doing it wrong.**
 
    Seventeen more are unique but name a REQUIRED prop, so `tsc` refuses the
    removal and the pin only restates it. Those stay: they can fail, they
