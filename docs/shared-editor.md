@@ -4981,12 +4981,14 @@ Stated as a RULE and not as a list, because a list read as exhaustive would
 do the opposite of this paragraph's job: **a product decision, a change to a
 GATE — who holds it or what it checks — and the ORDER of the programme's
 remaining stages are the owner's, whatever else is granted.** As this is
-written §4.3 reserves at least six on those grounds — DrawBots' push brush
-and Sol's six missing features (each a product decision rather than a
-consolidation) and DrawBots' orphaned comment band (prose in a shipped
-app's shell, 'not this work's to do on its own judgment'); the jsdom
-environment and widening `override` to require the grant (what a gate
-checks, and who holds one); and which of stage 7 and 6.5b.6 goes first.
+written §4.3 reserves at least six on those grounds. A product decision:
+DrawBots' push brush, Sol's six missing features, and DrawBots' orphaned
+comment band — all three being content in a shipped app rather than a
+consolidation, the band because §4.3 calls it prose in that app's shell and
+'not this work's to do on its own judgment'. A change to a gate: the jsdom
+environment (what a gate checks) and widening `override` to require the
+grant (who holds one). And the order: which of stage 7 and 6.5b.6 goes
+first.
 What the instruction reaches is the calls §4.3 leaves unassigned, which is
 what the dust call was.
 
