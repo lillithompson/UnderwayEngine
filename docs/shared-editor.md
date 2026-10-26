@@ -3312,6 +3312,16 @@ first, then the pointer bump in each app).
    are now `packages/editor/src/components/*.tsx`, lifted verbatim out of
    all three apps:
 
+   (Those three app commits' own MESSAGES cite the engine at `074a203`,
+   which the engine commit then replaced with `07b033b` — an amend to
+   correct a line count in the message itself, made before any pointer was
+   pushed. The pointers reach `07b033b`, the SHA above and in each app's
+   tree; the messages were left alone rather than rebased, because by then
+   they carried a review's `REVIEWED_COMMIT` hash. **A SHA in a commit
+   message is a copy, and an amend upstream of it makes the copy wrong** —
+   cite the engine commit in the record, which can be corrected, rather
+   than relying on a message that cannot.)
+
    | component | lines (Cozy) | props |
    |---|---|---|
    | `BrushControlsGroup` | 87 | 13, one of them the seam prop |
