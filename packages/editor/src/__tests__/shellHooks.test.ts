@@ -17,9 +17,11 @@ import { useTextCaretState } from '../useTextCaretState';
 import { useTextCaretSeek } from '../useTextCaretSeek';
 import { useDefaultFontState } from '../useDefaultFontState';
 import { useDefaultFontCommit } from '../useDefaultFontCommit';
+import { usePatternRowStep } from '../usePatternRowStep';
+import { usePatternTileSets } from '../usePatternTileSets';
 
-// The SEVENTEEN hooks 6.5b.2, 6.5b.3 and 6.5b.5 took out of the three
-// EditorShell bodies (docs/shared-editor.md §4.2 item 6) — 133 statements of
+// The NINETEEN hooks 6.5b.2, 6.5b.3, 6.5b.5 and 6.5b.6 took out of the three
+// EditorShell bodies (docs/shared-editor.md §4.2 item 6) — 137 statements of
 // state and handlers that were byte-identical in all three apps. The count
 // is in ALL below, which is what every assertion here iterates: this
 // sentence has been wrong twice by being a number the list already knows.
@@ -56,6 +58,9 @@ const ALL = [
   // read, the font state before the commit pipeline.
   'useTextCaretState', 'useTextCaretSeek',
   'useDefaultFontState', 'useDefaultFontCommit',
+  // 6.5b.6 — the two groups the dust measurement separated from the rest,
+  // each of which places as ONE hook in all three apps with no cut needed.
+  'usePatternRowStep', 'usePatternTileSets',
 ];
 
 // All but two. `useColorBlendMode` and `useRadialMenus` are left
@@ -77,6 +82,7 @@ const LOADABLE = {
   useBarColorState, useEffectBars, useStrokeBar, useFillBar,
   useColorAcrossBars,
   useTextCaretState, useTextCaretSeek, useDefaultFontState, useDefaultFontCommit,
+  usePatternRowStep, usePatternTileSets,
 };
 
 const srcOf = (name: string) => readFileSync(join(__dirname, '..', `${name}.ts`), 'utf8');
@@ -218,6 +224,35 @@ describe('6.5b.3: the bar hooks invent nothing', () => {
     expect(paramsOf(front).filter((param) => behind.includes(param))).toEqual([]);
     // …and the back half does take one, or there was nothing to cut.
     expect(paramsOf(back).some((param) => behind.includes(param))).toBe(true);
+  });
+
+  // 6.5b.6's two, and the claim is a different one: each places as a single
+  // hook in all three apps, so there is no cut to pin. What is worth pinning
+  // is what the measurement actually found.
+
+  it('usePatternTileSets invents nothing at all', () => {
+    // The first group in the programme whose parameters are a SUBSET of the
+    // four allowed inputs — no app store, no sentinel, no format. That is
+    // why it was worth taking at 41 lines when the fourteen-line tail was
+    // not: there is nothing to thread through to get it.
+    expect(paramsOf('usePatternTileSets').sort()).toEqual(['applyEntry', 'sessionRef']);
+  });
+
+  it('usePatternRowStep hands back the question, not its memory', () => {
+    // The gate's ref was read nowhere else in any of the three shells, so it
+    // comes out of the shell entirely rather than being handed back — which
+    // is the one thing this hook does that the shell could not: a ref the
+    // shell declares is a ref the shell can reach.
+    expect(returnsOf('usePatternRowStep')).toEqual(['patternRowStep']);
+    expect(srcOf('usePatternRowStep')).toContain('patternRowStepRef');
+  });
+
+  it('usePatternRowStep is handed nothing', () => {
+    // No destructured parameter object at all, which `paramsOf` is entitled
+    // to throw on — so the absence is asserted rather than inferred from a
+    // thrown error being swallowed somewhere.
+    expect(srcOf('usePatternRowStep')).toContain('export function usePatternRowStep() {');
+    expect(() => paramsOf('usePatternRowStep')).toThrow('no destructured parameter object');
   });
 
   it('and every one of them is actually used by a bar', () => {
