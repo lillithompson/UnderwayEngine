@@ -3540,6 +3540,29 @@ first, then the pointer bump in each app).
    components: the rig panel READS the occupied height, the properties panel
    REPORTS it.
 
+   **And "over every survivor" was still too narrow a claim, which round 2
+   caught.** That sweep covered the pins that read text which MOVED. It did
+   not cover the pins this sub-stage WROTE — the `…and the shell hands it
+   over` half of every split fact — because those read text that is new
+   rather than relocated, so they were in no survivor set. Audited properly,
+   FIVE of them could not fail, because another call site in the shell
+   satisfies the same literal: `insets={insets}` (five of the eight
+   components take it), `patternFillSliderUp`, `patternEditIsShapeFill` and
+   `openRadialCapsule` (each a prop of two of them), and
+   `colorBrushOpacity`, which the CANVAS also takes — that last one was
+   also, character for character, an assertion already three lines below it.
+   Each is sliced to its own mount now and mutation-tested by dropping that
+   prop from that mount; the duplicate is deleted.
+
+   Seventeen more are unique but name a REQUIRED prop, so `tsc` refuses the
+   removal and the pin only restates it. Those stay: they can fail, they
+   document the hand-over where a reader meets it, and three of the set —
+   `patternEditBounce`, `tileRadialRingArt`, `paintMenuLitKeys` — name
+   OPTIONAL props, where the pin is the only thing that would notice.
+   **The rule that generalises: a pin on a prop hand-over is worth its line
+   only if the literal is unique to that mount.** Otherwise slice it to the
+   mount, or drop it and let the typechecker carry the fact.
+
    The test and suite COUNTS did not move — CozyJournal 673 / 10,965; Sol
    278 / 3,327; DrawBots 557 / 9,524; engine 404 of 405 / 7,347
    (`cameraRoll`, pre-existing — no `expo-media-library` here). No package
@@ -4323,12 +4346,21 @@ Settled by the owner, 2026-10-20:
   this one was caught by the suite failing to load, not by reading.
 
   **6.5b.4 applied it at no cost, which is the cheaper half of the same
-  rule.** Six of the eight components need the safe-area inset, and they
-  take it structurally — `insets: { bottom: number }` — rather than as an
-  `EdgeInsets` from `react-native-safe-area-context`. An `EdgeInsets`
-  satisfies that shape, so nothing at the call sites changed and no
-  package file imports the native module. Where a native type is only
-  being READ through one field, the field is the dependency.
+  rule.** FIVE of the eight components need the safe-area inset —
+  `BrushControlsGroup`, `ColorPickerStack`, `PatternFillSlider`,
+  `PatternGridActions`, `PatternRadialTarget` — and they take it
+  structurally, `insets: { bottom: number }`, rather than as an `EdgeInsets`
+  from `react-native-safe-area-context`. (`CanvasRadialMenus`,
+  `PhotoSourceInput` and `TileTransformCard` take no inset at all.) An
+  `EdgeInsets` satisfies that shape, so nothing at the call sites changed
+  and no package file imports the native module. Where a native type is
+  only being READ through one field, the field is the dependency.
+
+  This sentence said "six" until 6.5b.4's second review round — a wrong
+  count about this change's own code, in the same commit range as a
+  paragraph insisting on sites over counts. **The rule applies to the
+  sentence being written, not only to the ones being corrected**, so the
+  five are named.
 
 - **How 6.5b.4 is shaped — SETTLED** (by the owner, 2026-10-26, on the
   measurement in §4.2 item 6). **Take the long verbatim runs as package
