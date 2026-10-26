@@ -3848,8 +3848,8 @@ first, then the pointer bump in each app).
    seam being built.
 
    **So 6.5b is a programme, and the order is the stage's own rule — most
-   closed first.** Settled by the owner 2026-10-25 (§4.3) and now four
-   sub-stages in:
+   closed first.** Settled by the owner 2026-10-25 (§4.3) and now all
+   five sub-stages done:
 
    | | | measured |
    |---|---|---|
@@ -4677,7 +4677,8 @@ Still open:
   hooks and eight components — the render tree's figure being the one that
   differs per app, and `283` being none of the three. (It read 283 for one
   commit, in the half of a change whose other half existed to make exactly
-  these figures current. **A number corrected in one place is not corrected.**) 6.5b.5 is the mildest of the four — sixteen statements
+  these figures current. **A number corrected in one place is not
+  corrected.**) 6.5b.5 is the mildest of the four — sixteen statements
   of caret state and font plumbing — but it is also where a real latent
   defect got in (`rememberFont`'s empty dep list) and was caught by a
   REVIEWER rather than a test, which is exactly what this item says the
