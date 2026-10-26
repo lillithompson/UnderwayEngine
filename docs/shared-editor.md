@@ -38,7 +38,7 @@ which is what makes a file that only one app has still count once:
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
-| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 10,039 / 15,776 / 23,705 |
+| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 10,035 / 15,772 / 23,701 |
 | `web/editorUi/` | — | — | — | retired at stage 1 |
 | `web/formats/` | 49 | 4 | 1 | 282 / 737 / 13,787 |
 | `web/store/` | 12 | 6 | 0 | 510 / 1,009 / 2,922 |
@@ -51,15 +51,15 @@ still has an
 `editorQuery.ts`, an `EditorHost.tsx` and an `EditorShell.tsx` — where
 every sub-stage up to 6.5a took whole files. Measured against each app's
 HEAD before 6.6a (Sol 102c61c, DrawBots 308e277, CozyJournal 3dd7cb10),
-`web/editor/` went 11,464 → 10,039, 17,198 → 15,776 and 25,143 → 23,705:
-**1,425 / 1,422 / 1,438 lines lighter, and not one file lighter** — 30 /
+`web/editor/` went 11,464 → 10,035, 17,198 → 15,772 and 25,143 → 23,701:
+**1,429 / 1,426 / 1,442 lines lighter, and not one file lighter** — 30 /
 58 / 78 files before and after. A stage that empties files shows up in the
 first column; a stage that hollows them out shows up only in the last, and
 the rest of stage 6 is the second kind.
 
 Two sub-stages are most of that movement: 6.5b.2 took 415 / 415 / 425,
 6.5b.3 took **609 / 609 / 620**, 6.5b.4 took 178 / 179 / 179 and 6.5b.5
-took 101 / 101 / 101 — so the first two are 72 % of the six together. That is what slicing a
+took 105 / 105 / 105 — so the first two are 72 % of the six together. That is what slicing a
 10,000-line component looks like from here. The file still exists in three
 copies.
 
@@ -1238,7 +1238,7 @@ first, then the pointer bump in each app).
    shell's own leaves, eight closed clusters (465 lines of each app), the
    colour-and-effects complex as five hooks (640), the render tree's
    floating chrome as eight components (286 / 284 / 293), and the two groups
-   that would not place, cut at the statement that blocked them (102).
+   that would not place, cut at the statement that blocked them (106).
 
    What is left in the three shells is three things, and none is a slice
    waiting to be taken: the APP-ONLY bucket (82 / 58 / 36 statements, which
@@ -3680,8 +3680,11 @@ first, then the pointer bump in each app).
    | `useDefaultFontState` | 3 | the font the next text is born in, and the drag's base state |
    | `useDefaultFontCommit` | 2 | `onTextStyle`, and remembering the font it used |
 
-   **16 statements / 102 lines out of each app**, and the shells are
-   8,688 / 6,128 / 7,216 (Cozy / Sol / DrawBots).
+   **16 statements / 106 lines out of each app**, and the shells are
+   8,684 / 6,124 / 7,212 (Cozy / Sol / DrawBots). (The figures first written
+   here were 102 and four lines higher: they were measured before the double
+   blank lines the generated call sites left were taken out, which DrawBots'
+   review caught. A measurement is only as current as the last edit.)
 
    **6.5b.3's lesson is the whole of this sub-stage, and it is now proven on
    the cases it was written for.** That lesson: a group that fails the
@@ -3854,7 +3857,7 @@ first, then the pointer bump in each app).
    | 6.5b.2 | done | eight closed clusters as hooks: 56 statements, 465 lines of each app |
    | 6.5b.3 | done | the colour-and-effects complex as five hooks: 61 statements, 640 lines of each app, cut at the commit pipeline |
    | 6.5b.4 | done | the render tree's floating chrome as eight components: 286 / 284 / 293 lines, and NOT the frame |
-   | 6.5b.5 | done | the two groups that would not place — the caret and the default font — CUT at the statement that blocked each, 16 statements / 102 lines of each app |
+   | 6.5b.5 | done | the two groups that would not place — the caret and the default font — CUT at the statement that blocked each, 16 statements / 106 lines of each app |
 
    **What 6.5b.3 found, and why the objection was aimed at the wrong
    thing.** The case against moving the bar handlers alone, twice on the
