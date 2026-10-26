@@ -4644,16 +4644,19 @@ Still open:
   without using it. Stage 7 makes them CozyJournal host pages, the way
   DrawBot's bot pages already are; nothing forces that earlier.
 
-- **Whether stage 7 goes before the rest of 6.5b** — what is left of the
-  question settled above, and no longer gating anything. Stage 7 is doable
-  today. It did not touch 6.5b.3 and it did not touch 6.5b.4 either: the
-  rig's twelve render-tree reads and two unique mounts are all in the
-  FRAME, which 6.5b.4 left where it was, so the app-only bucket is exactly
-  what it was (82 / 1,099 in CozyJournal, 58 / 286 in Sol, 36 / 267 in
-  DrawBots). The only sub-stage it still overlaps is 6.5b.5. The stage-5
-  and 6.5b precedents are both the owner's, on the same kind of evidence.
+- **Whether stage 7 goes next** — the question is no longer about ORDER:
+  6.5b is finished, so there is no rest of it for stage 7 to go before and
+  no sub-stage it overlaps. What is left is simply whether stage 7 is the
+  next thing done. It never contended with any slice of 6.5b, and the
+  measurement said so at each one rather than being assumed: the rig's
+  twelve render-tree reads and two unique mounts are all in the FRAME,
+  which 6.5b.4 left where it was, and the app-only bucket is exactly what
+  it was before the first slice (82 / 1,099 in CozyJournal, 58 / 286 in
+  Sol, 36 / 267 in DrawBots) — five slices, every statement out of the
+  SHARED bucket. The stage-5 and 6.5b precedents are both the owner's, on
+  the same kind of evidence.
 
-- **No renderer, anywhere — thirteen hooks AND now eight components in the
+- **No renderer, anywhere — SEVENTEEN hooks AND eight components in the
   package because of it** (raised 2026-10-25 by 6.5b.2; sharper after
   6.5b.3; the owner's call at 6.5b.4 was to proceed without one). There is no
   React renderer in this repo's jest (`testEnvironment: 'node'`, no jsdom,
@@ -4667,9 +4670,15 @@ Still open:
   editor writes. The apps typecheck them, and the only safety argument is
   byte-identity with three shipped apps.
 
-  **It has now been said four times and the subject has reached the render
-  tree**, which is the point: the argument does not strengthen with
-  repetition. 6.5b.3's recommendation was that jsdom come BEFORE 6.5b.4,
+  **And 6.5b.5 added 106 lines more**, which is the point rather than an
+  aside: the argument does not strengthen with repetition, and the total
+  now unpinned by anything but byte-identity and a typecheck is 465 + 640
+  + 283 + 106 lines of state, handlers and JSX across seventeen hooks and
+  eight components. 6.5b.5 is the mildest of the four — sixteen statements
+  of caret state and font plumbing — but it is also where a real latent
+  defect got in (`rememberFont`'s empty dep list) and was caught by a
+  REVIEWER rather than a test, which is exactly what this item says the
+  arrangement costs. 6.5b.3's recommendation was that jsdom come BEFORE 6.5b.4,
   because a render tree is the one part of the shell where "it typechecks
   and the text is identical" reassures least — what a render tree does
   wrong, it does visually. **The owner's call was to proceed without it**
