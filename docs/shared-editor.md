@@ -3069,6 +3069,18 @@ first, then the pointer bump in each app).
    those two boundaries; that is a fact about the shells, not about the
    cut.
 
+   **The shell's line count has ONE home per app now** (DrawBots' round 2).
+   It had six in DrawBots and four different values — `CLAUDE.md` said
+   ~8,100, `docs/drawBot.md` said ~7,000 in one place and ~9,000 in another,
+   `DrawBots.md` said ~7,500 twice and 9,000 once — against an actual 7,497,
+   and two rounds of updating the numbers had drifted again within one
+   range. Sol's `CLAUDE.md` had the same class. In every one of those places
+   the digits were rhetorical — "a component big enough that a full
+   re-render matters", "too big to mount in a test" — so they are gone, and
+   the measured figure is stated only in each app's codebase map, which this
+   programme re-measures every slice. **A number that changes every
+   sub-stage should be written down once.**
+
    **What came along that the extractor could not see.** `fadeTargetRef`
    and its sync line: a hook that owns a ref owns its sync, and the sync is
    anonymous, so `body.js` keys it by nothing. 6.5b.2 shipped
@@ -3112,6 +3124,34 @@ first, then the pointer bump in each app).
    of the shell's move touches them. Recorded the way `editorSource`'s own
    fifty-suite backlog is, so that it is a decision rather than an
    oversight.
+
+   **And the helper itself was in the wrong place, which DrawBots' round 2
+   caught.** `sliceBetween` has nothing of any app in it, and the first cut
+   put a copy in all three — three copies of one guard, which is the thing
+   the guard exists to stop. It lives in the ENGINE's
+   `packages/editor/src/__tests__/test-utils.ts` now, for `FakeEl`'s reason
+   (item 5), and each app re-exports it so no suite's import had to move.
+   Its throw path was pinned nowhere; `sliceBetween.test.ts` drives both
+   refusals over a fixture rather than over a real shell, so the pin on the
+   guard cannot itself go stale when the shells move.
+
+   The same round found the pair this helper exists for: `effectAddBars`'
+   `handler` had been hardened here and `onePageAtATime`'s copy — the same
+   function, pre-hardening, unguarded end and all — was left. **A duplicate
+   of a guard is worse than no guard**, and the first round's version of
+   that lesson had been taken too literally: the duplicate was removed in
+   the file the review named and not in its twin. `sliceBetween` takes a
+   LIST of end markers now (nearest wins), which is what let `handler`
+   become a one-line adapter over a shared `declarationBody` in both.
+
+   **The one line that is deliberately not byte-identical.** `noteActiveColor`'s
+   dep array gains `updateSettings`. In the shells that name was a
+   module-level import — stable by construction, and correctly omitted;
+   here it is a parameter, and omitting it would capture the first one
+   forever. Harmless for all three apps, a latent stale closure for anyone
+   else. It is the only departure from verbatim in the 640 lines, and it is
+   named here because "byte-identical to three shipped apps" is the whole
+   safety argument and an unrecorded exception would quietly weaken it.
 
    Three assertions could NOT be re-pointed mechanically, and each is one
    of §4.3's own warnings:
@@ -3173,7 +3213,8 @@ first, then the pointer bump in each app).
 
    CozyJournal 672 suites / 10,956 tests; Sol 278 / 3,327; DrawBots 556 /
    9,515; engine 403 of 404 / 7,338 (`cameraRoll`, pre-existing — no
-   `expo-media-library` in this repo). Cozy's and DrawBots' tests rose by
+   `expo-media-library` in this repo). After round 2's fixes the engine is
+   404 of 405 / 7,347, the nine added being `sliceBetween.test.ts`. Cozy's and DrawBots' tests rose by
    27 and their suite counts did not: their jest roots include the vendored
    package and `shellHooks.test.ts` was already in it. Sol's roots do not,
    so Sol's figures are unchanged by the package's new pins.

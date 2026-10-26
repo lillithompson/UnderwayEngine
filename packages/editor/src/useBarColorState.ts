@@ -29,12 +29,14 @@ import { useCallback, useRef, useState } from 'react';
 // `config` is the format's opening style, narrowed to the two fields
 // `openingNewShapeStyle` already takes.
 //
-// **Every function prop must be STABLE.** The one callback here that takes a
-// dep (`noteActiveColor`) lists `applyActiveColor` and nothing else, as it
-// did in the shell, so `updateSettings` passed as an inline lambda would be
-// captured once and never refreshed. The three shells hand in their store's
-// own function, which is why this holds today; it is a contract of the hook
-// rather than an accident of its callers.
+// **A stable `updateSettings` is still the better thing to pass.** The one
+// callback here that takes a dep (`noteActiveColor`) now lists it, which the
+// shell's version did not have to — there it was a module-level import. So an
+// inline lambda is no longer CAPTURED, but it does rebuild `noteActiveColor`
+// on every render, and that identity is a dep of four callbacks in
+// `useEffectBars`, two in `useStrokeBar` and two in `useFillBar`. The three
+// shells pass their store's own function; anything else trades a stale
+// closure for a cascade of rebuilt callbacks.
 
 export function useBarColorState({
   config, session, updateSettings,
@@ -89,7 +91,15 @@ export function useBarColorState({
     setColorEraser(false);
     applyActiveColor(color);
     void updateSettings({ lastColor: storedActiveColor(color) });
-  }, [applyActiveColor]);
+    // `updateSettings` is in the list and was NOT in the shell's: there it
+    // was a module-level import, stable by construction, and omitting it was
+    // right. Here it is a parameter, so omitting it would capture the first
+    // one forever — harmless for all three apps, which pass their store's own
+    // function, and a latent stale closure for any consumer that does not.
+    // This is the ONE line of the 640 that 6.5b.3 moved which is not
+    // byte-identical to what the three shells were running; the deviation is
+    // deliberate and is recorded in §4.2 item 6.
+  }, [applyActiveColor, updateSettings]);
 
   // The style the next drawn shape is born in — see NewShapeStyle. Updated
   // by the Fill and Stroke bars as the user dresses a shape, so the next one
