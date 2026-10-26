@@ -1,4 +1,4 @@
-import { declarationBody, sliceBetween } from './test-utils';
+import { declarationBody, sliceBetween } from './sourceSlice';
 
 // `sliceBetween` is the one piece of LOGIC the shell's source-pinning brought
 // with it (6.5b.3, docs/shared-editor.md §4.2 item 6), and its whole purpose

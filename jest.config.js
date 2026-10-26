@@ -8,7 +8,7 @@ module.exports = {
     '<rootDir>/packages/editor/src',
     '<rootDir>/tooling',
   ],
-  testPathIgnorePatterns: ['/node_modules/', 'test-utils\\.ts$', 'facet-pipeline\\.ts$'],
+  testPathIgnorePatterns: ['/node_modules/', 'test-utils\\.ts$', 'sourceSlice\\.ts$', 'facet-pipeline\\.ts$'],
   moduleNameMapper: {
     '^@/engine/(.*)$': '<rootDir>/packages/engine/src/$1',
     '^@/native-shell/(.*)$': '<rootDir>/packages/shell/src/$1',

@@ -3069,17 +3069,26 @@ first, then the pointer bump in each app).
    those two boundaries; that is a fact about the shells, not about the
    cut.
 
-   **The shell's line count has ONE home per app now** (DrawBots' round 2).
-   It had six in DrawBots and four different values — `CLAUDE.md` said
-   ~8,100, `docs/drawBot.md` said ~7,000 in one place and ~9,000 in another,
-   `DrawBots.md` said ~7,500 twice and 9,000 once — against an actual 7,497,
-   and two rounds of updating the numbers had drifted again within one
-   range. Sol's `CLAUDE.md` had the same class. In every one of those places
-   the digits were rhetorical — "a component big enough that a full
-   re-render matters", "too big to mount in a test" — so they are gone, and
-   the measured figure is stated only in each app's codebase map, which this
-   programme re-measures every slice. **A number that changes every
+   **The shell's line count has ONE home per app now** (DrawBots' rounds 2
+   and 3). It had six in DrawBots and four different values — `CLAUDE.md`
+   said ~8,100, `docs/drawBot.md` said ~7,000 in one place and ~9,000 in
+   another, `DrawBots.md` said ~7,500 twice and 9,000 once — against an
+   actual 7,497, and two rounds of updating the numbers had drifted again
+   within one range. Sol's `CLAUDE.md` had the same class. In every one of
+   those places the digits were rhetorical — "a component big enough that a
+   full re-render matters", "too big to mount in a test" — so they are gone,
+   and the measured figure is stated only in each app's codebase map, which
+   this programme re-measures every slice. **A number that changes every
    sub-stage should be written down once.**
+
+   And "once" had to be taken literally, which took a third round: the first
+   attempt left the figure in the map TWICE — the §4.2 statement plus the
+   gotcha list's restatement — and wrote a parenthetical conceding the second
+   home, which made two other sentences the same commit wrote ("the one place
+   it is stated") false. It also cited a §12 that this map does not have; its
+   sections run 1 to 11. **A rule with a carve-out in it is not the rule**:
+   the gotcha list points at §4.2 now and states no number, and the three
+   sentences claiming one home are all true.
 
    **What came along that the extractor could not see.** `fadeTargetRef`
    and its sync line: a hook that owns a ref owns its sync, and the sync is
@@ -3128,12 +3137,24 @@ first, then the pointer bump in each app).
    **And the helper itself was in the wrong place, which DrawBots' round 2
    caught.** `sliceBetween` has nothing of any app in it, and the first cut
    put a copy in all three — three copies of one guard, which is the thing
-   the guard exists to stop. It lives in the ENGINE's
-   `packages/editor/src/__tests__/test-utils.ts` now, for `FakeEl`'s reason
-   (item 5), and each app re-exports it so no suite's import had to move.
-   Its throw path was pinned nowhere; `sliceBetween.test.ts` drives both
-   refusals over a fixture rather than over a real shell, so the pin on the
-   guard cannot itself go stale when the shells move.
+   the guard exists to stop. It lives in the engine now, for `FakeEl`'s
+   reason (item 5), and each app re-exports it so no suite's import had to
+   move. Its throw path was pinned nowhere; `sliceBetween.test.ts` drives
+   both refusals over a fixture rather than over a real shell, so the pin on
+   the guard cannot itself go stale when the shells move.
+
+   It is in `packages/editor/src/__tests__/sourceSlice.ts` rather than in the
+   engine's `test-utils.ts`, which round 3 asked for and was right about: one
+   re-export line in each app's own test-utils had been pulling the engine's
+   whole fixture module — `worldSnapshot`, `canvasPaint`, `paintObject`,
+   `formats/scaffold` and the rest — into every suite importing `./test-utils`,
+   which is 104 / 66 / 80 of them, where about sixteen want a slicer and the
+   others want `editorSource` alone. Two pure string functions with no imports
+   of their own now, so nothing travels with them. The cost is one
+   `testPathIgnorePatterns` entry per jest config that WALKS the package tree
+   (the engine's, CozyJournal's and DrawBots'; Sol's roots do not reach it, so
+   Sol's config is unchanged) — without it, jest collects a helper under
+   `__tests__` as an empty suite.
 
    The same round found the pair this helper exists for: `effectAddBars`'
    `handler` had been hardened here and `onePageAtATime`'s copy — the same
