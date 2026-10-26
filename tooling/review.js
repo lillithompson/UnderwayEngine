@@ -632,7 +632,8 @@ function blockingFindings(text) {
 
 /**
  * A range's AGENT OVERRIDE as {path, text, recordPath, record, findings}, or
- * null —  being the review it disagrees with, which ship quotes.
+ * null. `record` is that review's text and `recordPath` where it is kept —
+ * the review this disagrees with, which ship quotes on the pushed commit.
  *
  * An override is the agent's recorded disagreement with a review that ran
  * and requested changes — allowed only where the owner has granted it for a

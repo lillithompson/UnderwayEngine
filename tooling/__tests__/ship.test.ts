@@ -2,7 +2,7 @@
 // paths asks of a ship, the checks it runs, and how a review's exit code
 // reads. The git and npm calls themselves are not run here.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { shipPlan, checkCommands, reviewExit, reviewNote, ROUND_CAP } = require('../ship.js');
+const { shipPlan, checkCommands, reviewExit, reviewNote, overrideNote, ROUND_CAP } = require('../ship.js');
 
 describe('shipPlan', () => {
   it('asks for the backend suite only when backend/ changed', () => {
@@ -63,6 +63,36 @@ describe('reviewNote', () => {
   it('cuts a suggestion with no sentence end at a readable length', () => {
     const note = reviewNote(record('pass', `- [suggestion] ${'x'.repeat(300)}`), 'r.md');
     expect(note.split('\n')[2].length).toBeLessThanOrEqual(162);
+  });
+});
+
+describe('overrideNote', () => {
+  // The text that lands on a pushed commit forever, and the audit trail
+  // gates.md and skills/ship.md promise. An override is the one thing in
+  // this process that puts an agent's judgment above the reviewer's, so the
+  // note has to say that in as many words.
+  const over = {
+    text: ['Commit: abc', 'Commits: 2', 'By: agent', 'Reason: the finding names the wrong file'].join('\n'),
+    findings: ['`a.ts:1` The gate pin asserts nothing. And a second sentence.', 'Another one'],
+  };
+
+  it('names the verdict it overrode, the reason, the findings and both records', () => {
+    expect(overrideNote(over, '.git/sol-reviews/x.md', '.git/sol-reviews/x.overridden')).toBe([
+      'Review: OVERRIDDEN by agent — 2 blocking finding(s) disputed, 2 commits',
+      'Reason: the finding names the wrong file',
+      'Disputed:',
+      '- `a.ts:1` The gate pin asserts nothing.',
+      '- Another one',
+      'Record: .git/sol-reviews/x.md',
+      'Override: .git/sol-reviews/x.overridden',
+    ].join('\n'));
+  });
+
+  it('says so even when the record lost its reason', () => {
+    const note = overrideNote({ text: 'By: agent', findings: [] }, 'r.md', 'o.overridden');
+    expect(note).toContain('Review: OVERRIDDEN by agent');
+    expect(note).toContain('(no reason recorded)');
+    expect(note).not.toContain('Disputed:');
   });
 });
 

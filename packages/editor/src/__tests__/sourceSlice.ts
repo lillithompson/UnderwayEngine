@@ -66,7 +66,17 @@ export function declarationBody(src: string, name: string): string {
  * Mounts whose props hold nested JSX are not sliceable this way: the first
  * `/>` would close the nested element. Every mount this is used on is a
  * plain prop list, and a nested one would have to be bounded by hand.
+ * (Nested ARROW FUNCTIONS are fine — only nested JSX carries a `/>`.)
+ *
+ * A component mounted TWICE throws rather than silently bounding the first
+ * one, which is the same failure in a different coat: a pin meant for the
+ * second mount would read the first and pass for the wrong reason.
  */
 export function mountOf(src: string, name: string): string {
-  return sliceBetween(src, `<${name}\n`, '/>');
+  const open = `<${name}\n`;
+  const first = src.indexOf(open);
+  if (first >= 0 && src.indexOf(open, first + open.length) >= 0) {
+    throw new Error(`${name} is mounted more than once; bound the mount you mean by hand`);
+  }
+  return sliceBetween(src, open, '/>');
 }

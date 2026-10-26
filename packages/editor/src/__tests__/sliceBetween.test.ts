@@ -133,4 +133,12 @@ describe('mountOf', () => {
   it('throws for a component the source does not mount', () => {
     expect(() => mountOf(SHELL, 'NotThere')).toThrow(/slice start not found/);
   });
+
+  it('throws rather than bounding the FIRST of two mounts', () => {
+    // The same failure in a different coat: a pin meant for the second
+    // mount would read the first and pass for the wrong reason.
+    const twice = [SHELL, '      <CanvasSurface', '        other={1}', '      />'].join('\n');
+    expect(() => mountOf(twice, 'CanvasSurface')).toThrow(/mounted more than once/);
+    expect(mountOf(twice, 'BrushControlsGroup')).toContain('brushChromeUp');
+  });
 });
