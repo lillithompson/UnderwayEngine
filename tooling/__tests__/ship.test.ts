@@ -401,6 +401,19 @@ describe('ship.js in a scratch repository', () => {
       expect(r.stderr).toContain('tests failed');
     });
 
+    it('refuses a base that is not an ancestor of HEAD, which bounds nothing', () => {
+      // The hole this closes: `base..HEAD` for a sha off another branch is
+      // the whole history, so `granted` holds every unpushed commit and
+      // nothing is ever outside the grant.
+      git('checkout', '-q', '-b', 'elsewhere');
+      const offBranch = commit('other.txt', 'other');
+      git('checkout', '-q', 'main');
+      commit('mine.txt', 'mine');
+      const r = ship('--autonomous', offBranch);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain('is not an ancestor of HEAD');
+    });
+
     it('changes nothing else: the same refusals still apply', () => {
       const granted = git('rev-parse', 'HEAD');
       commit('b.txt', 'b');

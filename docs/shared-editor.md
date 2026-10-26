@@ -3594,6 +3594,17 @@ first, then the pointer bump in each app).
    mount of each tag now. **A helper that refuses what it cannot do
    correctly finds the places that were already doing it wrong.**
 
+   **The pin-idiom paragraph is a different section in each of the three
+   maps, and the commit messages named it wrong twice.** It is
+   CozyJournal.md §4.1, Sol.md §8 and DrawBots.md §4.2. The first slip
+   carried CozyJournal's §4.1 across to Sol; the second, in the very fix
+   whose stated lesson was that a section pointer has to be looked up per
+   app, called DrawBots' §4.2 "§8" — because that is where Sol's had just
+   turned out to be. **Carrying the correction across is the same mistake
+   as carrying the original.** Neither was load-bearing, since no document
+   cites either pointer and `check:doc-paths` validates paths rather than
+   section numbers; the reviewer caught both.
+
    Seventeen more are unique but name a REQUIRED prop, so `tsc` refuses the
    removal and the pin only restates it. Those stay: they can fail, they
    document the hand-over where a reader meets it, and three of the set —

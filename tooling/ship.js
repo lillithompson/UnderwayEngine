@@ -288,6 +288,16 @@ function ship(argv) {
   // of the commits after the granted base.
   if (opts.autonomousBase) {
     const base = git(['rev-parse', opts.autonomousBase]);
+    // The base must be BEHIND HEAD, or the gate passes trivially: a sha off
+    // another branch makes `base..HEAD` the whole history, `granted` holds
+    // every unpushed commit and nothing is ever "outside". A gate whose
+    // check can be satisfied by naming the wrong commit is not a gate.
+    if (spawnSync('git', ['merge-base', '--is-ancestor', base, 'HEAD']).status !== 0) {
+      refuse(
+        `--autonomous ${opts.autonomousBase} (${base.slice(0, 9)}) is not an ancestor of HEAD, `
+        + 'so it bounds nothing: the base is the last commit BEFORE the granted work, on this branch',
+      );
+    }
     const granted = new Set(git(['rev-list', `${base}..HEAD`]).split('\n').filter(Boolean));
     const outside = git(['rev-list', range]).split('\n').filter(Boolean).filter((sha) => !granted.has(sha));
     if (outside.length) {

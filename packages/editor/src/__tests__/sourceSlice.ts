@@ -103,6 +103,9 @@ export function mountsOf(src: string, name: string): string[] {
   for (let at = src.indexOf(open); at >= 0; at = src.indexOf(open, at + open.length)) {
     out.push(sliceBetween(src.slice(at), open, '/>'));
   }
-  if (!out.length) throw new Error(`slice start not found: ${JSON.stringify(open)}`);
+  // Not mounted at all: let `sliceBetween` raise its own "slice start not
+  // found", rather than a second spelling of that sentence here which could
+  // drift from the one the tests pin.
+  if (!out.length) sliceBetween(src, open, '/>');
   return out;
 }
