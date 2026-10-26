@@ -3095,7 +3095,23 @@ first, then the pointer bump in each app).
    guard now lives in a shared helper, `sliceBetween` in each app's
    `web/editor/__tests__/test-utils.ts`, which throws when either end is
    missing and seeks the end AFTER the start. Every re-pointed slice goes
-   through it.
+   through it, and every suite's own `between` is a thin adapter over it —
+   which the review had to ask for twice over, because the first pass left
+   `pageColorRows`' guarded copy standing BESIDE the new helper in a file
+   that then called both. (It was also the weaker one: it sought the end
+   marker from the start's own index rather than from after it, so a marker
+   appearing on both sides of the region could fold the slice to nothing —
+   the exact case the shared helper exists to prevent. A duplicate of a
+   guard is worse than no guard, because it reads as covered.)
+
+   **A deferred sweep, scoped out here.** Four suites under
+   `components/__tests__` in CozyJournal have their own `between` — two
+   guarded, two not — over `components/` source rather than the shell's.
+   They are the same duplication for the same reason and they are NOT in
+   this sub-stage: a different tree, a different `test-utils`, and no part
+   of the shell's move touches them. Recorded the way `editorSource`'s own
+   fifty-suite backlog is, so that it is a decision rather than an
+   oversight.
 
    Three assertions could NOT be re-pointed mechanically, and each is one
    of §4.3's own warnings:
