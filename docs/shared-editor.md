@@ -1338,9 +1338,11 @@ first, then the pointer bump in each app).
    waits on that, and not on a measurement.
 
    **Is stage 6 complete? No — and the remainder is now a gate rather than a
-   judgment.** Its movable part moved at 6.5b.1–6.5b.5 and 6.6; the last
-   call it needed is taken above; what is left of stage 6 itself is 6.5b.6's
-   two groups. What stage 7 inherits is unchanged by any of this.
+   judgment.** Its movable part moved at 6.5b.1–6.5b.5 and 6.6 BAR ONE
+   SLICE; the last call it needed is taken above; what is left of stage 6
+   itself is that slice, 6.5b.6's two groups, which are movable by this
+   item's own measurement and held up by a process gate instead. What stage
+   7 inherits is unchanged by any of this.
 
    **The queue this sub-stage started from was the clearest in the
    programme, and it is the condition §5 has been asking for since 6.1.**
@@ -1382,13 +1384,15 @@ first, then the pointer bump in each app).
    | 6.5b.5 | done | the two groups that would not place, cut and moved |
    | 6.5b.6 | planned | the two groups the dust measurement separates from the rest — blocked on CozyJournal's queue, not on a measurement |
 
-   **Is stage 6 complete? No. Its movable part is, the judgment it was
-   waiting on is made, and what is left is a GATE** (2026-10-26, after
-   6.5b.5 and the dust decision). 6.0 through 6.6 are done BAR 6.5b,
-   five of whose six slices are — the fifth being the two groups that would
-   not place, cut at the statement that blocked each. The dust call is taken at the
-   head of this item, and it leaves one slice outstanding, 6.5b.6, blocked on
-   CozyJournal being shippable rather than on anything measured.
+   **Is stage 6 complete? No. Its movable part is BAR ONE SLICE, the
+   judgment it was waiting on is made, and what holds the rest is a GATE**
+   (2026-10-26, after 6.5b.5 and the dust decision). 6.0 through 6.6 are
+   done bar 6.5b, five of whose six slices are — the fifth being the two
+   groups that would not place, cut at the statement that blocked each. The
+   dust call is taken at the head of this item, and it leaves that one slice
+   outstanding, 6.5b.6, which is MOVABLE (measured: placeable in all three
+   apps without a cut) and blocked on CozyJournal being shippable rather
+   than on anything measured.
 
    What is left in the three shells is three things, and the first two are
    settled:
@@ -4779,8 +4783,9 @@ Still open:
   question is about ORDER again, though not in the old way. 6.5b is NOT
   finished: 6.5b.6 is one planned slice, four statements of it, and it does
   not overlap stage 7 any more than the five before it did. What is left is
-  which of the two goes first — and for now neither can, because both edit
-  CozyJournal and CozyJournal's queue is closed by the round cap (§5).
+  which of the two goes first, **and that is the owner's call** — for now
+  neither can go anyway, because both edit CozyJournal and CozyJournal's
+  queue is closed by the round cap (§5).
   STAGE 7 never contended with any slice of 6.5b, and the measurement said
   so at each one rather than being assumed: the rig's
   twelve render-tree reads and two unique mounts are all in the FRAME,
@@ -4969,16 +4974,18 @@ only, for the open calls this document already poses, with the measurement
 in the entry and the decision named as the agent's on its face. A call the
 document does not already pose — a new stage, a tooling change, a rule in
 `CLAUDE.shared.md` — is not in it. **And where §4.3 reserves a particular
-call for the owner in those words, that reservation OUTRANKS this
-instruction**: the two overlap otherwise (§4.3 poses the open calls and also
-says which are the owner's — whether stage 7 or 6.5b.6 goes first is one,
-DrawBots' push brush is another, as a product decision rather than a
-consolidation, and the jsdom environment is a third (that
-entry says only "it stays the owner's to want"; the sharper phrasing, "the
-owner's to want rather than the agent's to grant itself", is §4.3's
-reservation about widening `override`, which is a fourth)), and an agent reading §5 alone
-would take the general permission for the particular one. The instruction
-reaches the calls §4.3 leaves unassigned, which is what the dust call was. The standing rules that are refusals
+call for the owner, that reservation OUTRANKS this instruction**, because
+the two overlap otherwise: §4.3 poses the open calls and also says which of
+them are the owner's, so an agent reading §5 alone would take the general
+permission for the particular one. Four are reserved there as this is
+written — which of stage 7 and 6.5b.6 goes first; DrawBots' push brush, as
+a product decision rather than a consolidation; the jsdom environment ("it
+stays the owner's to want"); and widening `override` to require the grant
+("the owner's to want rather than the agent's to grant itself"). The
+instruction reaches the calls §4.3 leaves unassigned, which is what the
+dust call was.
+
+The standing rules that are refusals
 rather than judgments are untouched by both: `accept` stays the owner's and
 TTY-only, `override` still needs a review that refused, the round cap still
 refuses round four, and no edit to `tooling/` may exist to get an agent's
