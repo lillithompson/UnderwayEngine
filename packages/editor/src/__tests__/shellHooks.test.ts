@@ -13,6 +13,10 @@ import { usePatternExcludedFamilies } from '../usePatternExcludedFamilies';
 import { usePhotoSource } from '../usePhotoSource';
 import { useShapeToolModes } from '../useShapeToolModes';
 import { useStrokeBar } from '../useStrokeBar';
+import { useTextCaretState } from '../useTextCaretState';
+import { useTextCaretSeek } from '../useTextCaretSeek';
+import { useDefaultFontState } from '../useDefaultFontState';
+import { useDefaultFontCommit } from '../useDefaultFontCommit';
 
 // The thirteen hooks 6.5b.2 and 6.5b.3 took out of the three EditorShell
 // bodies (docs/shared-editor.md §4.2 item 6) — 117 statements of state and
@@ -45,6 +49,11 @@ const ALL = [
   // 6.5b.3 — the colour state, then the bars behind the commit pipeline
   'useBarColorState', 'useEffectBars', 'useStrokeBar', 'useFillBar',
   'useColorAcrossBars',
+  // 6.5b.5 — the two groups 6.5b.2 and 6.5b.3 refused, each CUT at the
+  // statement that made it unplaceable: the caret state before the session
+  // read, the font state before the commit pipeline.
+  'useTextCaretState', 'useTextCaretSeek',
+  'useDefaultFontState', 'useDefaultFontCommit',
 ];
 
 // Eleven of the thirteen. `useColorBlendMode` and `useRadialMenus` are left
@@ -65,6 +74,7 @@ const LOADABLE = {
   usePatternExcludedFamilies, usePhotoSource, useShapeToolModes,
   useBarColorState, useEffectBars, useStrokeBar, useFillBar,
   useColorAcrossBars,
+  useTextCaretState, useTextCaretSeek, useDefaultFontState, useDefaultFontCommit,
 };
 
 const srcOf = (name: string) => readFileSync(join(__dirname, '..', `${name}.ts`), 'utf8');

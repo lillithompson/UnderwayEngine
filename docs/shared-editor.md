@@ -31,35 +31,35 @@ out, which is what makes the file counts reproducible:
 | `web/store/` | 14 | 8 | 1 | 1.1 k / 1.7 k / 3.6 k |
 | `web/fonts/` | 8 | 8 | 5 | 0.7 k each |
 
-And the same trees NOW (re-measured 2026-10-26, after 6.5b.4), so
+And the same trees NOW (re-measured 2026-10-26, after 6.5b.5), so
 the table above stays the baseline it says it is rather than being
 overwritten. `Files` is the UNION of file names across the three apps,
 which is what makes a file that only one app has still count once:
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
-| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 10,140 / 15,877 / 23,806 |
+| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 10,039 / 15,776 / 23,705 |
 | `web/editorUi/` | — | — | — | retired at stage 1 |
 | `web/formats/` | 49 | 4 | 1 | 282 / 737 / 13,787 |
 | `web/store/` | 12 | 6 | 0 | 510 / 1,009 / 2,922 |
 | `web/fonts/` | 5 | 5 | 1 | 213 / 233 / 234 |
 
 The file COUNTS have not moved since 6.5a and the lines have, which
-is the honest reading of 6.6, 6.5b.1, 6.5b.2, 6.5b.3 and 6.5b.4: all five
-took DECLARATIONS, STATEMENTS and now JSX out of files that stay — each app
+is the honest reading of 6.6 and all five slices of 6.5b: every one
+took DECLARATIONS, STATEMENTS or JSX out of files that stay — each app
 still has an
 `editorQuery.ts`, an `EditorHost.tsx` and an `EditorShell.tsx` — where
 every sub-stage up to 6.5a took whole files. Measured against each app's
 HEAD before 6.6a (Sol 102c61c, DrawBots 308e277, CozyJournal 3dd7cb10),
-`web/editor/` went 11,464 → 10,140, 17,198 → 15,877 and 25,143 → 23,806:
-**1,324 / 1,321 / 1,337 lines lighter, and not one file lighter** — 30 /
+`web/editor/` went 11,464 → 10,039, 17,198 → 15,776 and 25,143 → 23,705:
+**1,425 / 1,422 / 1,438 lines lighter, and not one file lighter** — 30 /
 58 / 78 files before and after. A stage that empties files shows up in the
 first column; a stage that hollows them out shows up only in the last, and
 the rest of stage 6 is the second kind.
 
 Two sub-stages are most of that movement: 6.5b.2 took 415 / 415 / 425,
-6.5b.3 took **609 / 609 / 620** and 6.5b.4 took 178 / 179 / 179, so the
-first two are 78 % of the five together. That is what slicing a
+6.5b.3 took **609 / 609 / 620**, 6.5b.4 took 178 / 179 / 179 and 6.5b.5
+took 101 / 101 / 101 — so the first two are 72 % of the six together. That is what slicing a
 10,000-line component looks like from here. The file still exists in three
 copies.
 
@@ -68,7 +68,9 @@ Its subject — the render tree — is one anonymous `return` statement, so it
 moved 286 lines of each app without a single named statement leaving the
 body: the statement counts (519 / 448 / 466), the count byte-identical in
 all three (224) and the closed set (136 statements in 96 components) are
-all exactly what they were before it. Three columns of this table and
+all exactly what they were before it (6.5b.5 moved them again: 519 → 503
+statements in Cozy, and 224 → 209 byte-identical). Three columns of this
+table and
 every statement-level measure in §4.2 are blind to it. A measure is only
 as good as the unit it counts, and the shell has at least three units —
 files, statements, lines — of which only the last sees all five sub-stages.
@@ -1230,15 +1232,22 @@ first, then the pointer bump in each app).
    `EditorConfig`, `web/fonts/*` and the shared half of `web/store/*` move
    with them. Each app's `web/editor/` is then its extension alone.
 
-   **Where the stage stands, plainly** (2026-10-26, after 6.5b.4).
-   **Stage 6 is NOT complete, and what is left of it is one thing: the
-   REMAINDER of the shell's body.** 6.6 is done, and three slices are done
-   — eight closed clusters (465 lines of each app), then the
-   colour-and-effects complex as five hooks (640 lines), then the render
-   tree's floating chrome as eight components (286 / 284 / 293 lines). The
-   bar handlers
-   are no longer on that list, and neither is the render tree: 6.5b.5 is
-   now the dust and nothing else.
+   **Where the stage stands, plainly** (2026-10-26, after 6.5b.5).
+   **Stage 6's movable part has moved, and what is left is a judgment rather
+   than a slice.** 6.6 is done and all five slices of 6.5b are: two of the
+   shell's own leaves, eight closed clusters (465 lines of each app), the
+   colour-and-effects complex as five hooks (640), the render tree's
+   floating chrome as eight components (286 / 284 / 293), and the two groups
+   that would not place, cut at the statement that blocked them (102).
+
+   What is left in the three shells is three things, and none is a slice
+   waiting to be taken: the APP-ONLY bucket (82 / 58 / 36 statements, which
+   is stage 7's subject and has not moved since 6.5b.2), the render tree's
+   FRAME (6.5b.4 measured why it stays), and DUST — 76 singletons and 18
+   multi-statement groups whose largest is 43 lines. The singletons are held
+   on the owner's standing call; the 18 are the same judgment one size up,
+   and 6.5b.5's entry recommends holding them too. **Whether the dust is a
+   sub-stage is the last call stage 6 needs.**
 
    **The queue this sub-stage started from was the clearest in the
    programme, and it is the condition §5 has been asking for since 6.1.**
@@ -1277,24 +1286,36 @@ first, then the pointer bump in each app).
    | 6.5b.2 | done | eight of the shell's closed clusters, as hooks |
    | 6.5b.3 | done | the colour-and-effects complex — the bar handlers — as five hooks |
    | 6.5b.4 | done | the render tree's floating chrome as eight components |
-   | **6.5b.5** | **not started** | **the remainder** |
+   | 6.5b.5 | done | the two groups that would not place, cut and moved |
 
-   **Is stage 6 complete? No — and what is left is ONE sub-stage**
-   (2026-10-26, after 6.5b.4). 6.0 through 6.6 are done, and 6.5b is one
-   of its five slices short:
+   **Is stage 6 complete? Its movable part is; what is left is one
+   JUDGMENT** (2026-10-26, after 6.5b.5). 6.0 through 6.6 are done and so
+   are all five slices of 6.5b — the last of them the two groups that would
+   not place, cut at the statement that blocked each.
 
-   - **6.5b.5, the remainder.** No longer a held component: the
-     59-statement colour complex it was waiting for is 6.5b.3. What it
-     inherits is **136 closed statements / 890 lines in 96 components, 76
-     of them singletons** — plus the two mid-size groups that still refuse
-     to place (the 10-statement caret / text-selection group and the
-     5-statement default-font group, both re-measured at 6.5b.3 and both
-     still `lo > hi` in all three apps). 6.5b.3's own lesson applies to
-     them and has not been tried: a group that fails the placement gate
-     can sometimes be CUT at the statement that fails it.
+   What is left in the three shells is three things, and the first two are
+   settled:
+
+   - **The APP-ONLY bucket** — 82 / 58 / 36 statements. That is stage 7's
+     subject, not 6.5b's, and it has not moved since 6.5b.2: every
+     statement all five slices took came out of the SHARED bucket, which
+     is now five times demonstrated rather than argued.
+   - **The render tree's FRAME.** 6.5b.4 measured why it stays: 93–95 %
+     shared text, interrupted by forty-odd one-line holes rather than a few
+     seam-shaped ones, and the two large liftable-looking regions need 48
+     and 42 props.
+   - **DUST, and this is the open call.** 121 closed statements / 766 lines
+     in 94 components: 76 singletons, held on the owner's standing call
+     since 6.5b.1, and 18 multi-statement groups whose largest is now 43
+     lines. 6.5b.5 recommends holding the 18 for the same reason as the
+     singletons — a 2-statement, 14-line hook costs an import, a call site,
+     a return type and a suite entry to save fourteen lines in three files
+     — and one of them (`useChromeInsets`) must stay regardless, on the
+     native-dependency rule. **Whether the dust is a sub-stage is the last
+     call stage 6 needs.**
 
    What stage 7 inherits is unchanged by all of this (see above), and
-   whether it goes before those two is still the owner's call.
+   whether it goes next is the owner's call.
 
    **6.6 came before 6.5b, and the measurement is why.** The plan's order
    was 6.5b then 6.6. 6.6's design was already settled (§4.3, 2026-10-23),
@@ -3646,6 +3667,89 @@ first, then the pointer bump in each app).
    of floating chrome, not the frame — but it is the reason the frame
    should not follow them on this evidence. See "Still open".
 
+   **6.5b.5 — Done: the two groups that would not place, cut and moved**
+   (2026-10-26). The last slice of 6.5b, and it is the two components §4.2
+   item 6 held back TWICE — at 6.5b.2, and again on re-measurement at
+   6.5b.3 — both refused for the same reason: not placeable as one hook in
+   any of the three apps.
+
+   | hook | statements | what it is |
+   |---|---|---|
+   | `useTextCaretState` | 7 | the caret, the anchor, the seek, the blur backstop |
+   | `useTextCaretSeek` | 4 | moving the caret, and the guard that keeps a seek from committing |
+   | `useDefaultFontState` | 3 | the font the next text is born in, and the drag's base state |
+   | `useDefaultFontCommit` | 2 | `onTextStyle`, and remembering the font it used |
+
+   **16 statements / 102 lines out of each app**, and the shells are
+   8,688 / 6,128 / 7,216 (Cozy / Sol / DrawBots).
+
+   **6.5b.3's lesson is the whole of this sub-stage, and it is now proven on
+   the cases it was written for.** That lesson: a group that fails the
+   placement gate is not thereby immovable — where `lo` is a single
+   statement most of the group depends on and most of the rest is read
+   BEFORE it, that statement is the seam. 6.5b.3 found it on the colour
+   complex, and the record said the two refused groups "were never re-tried
+   against this, and 6.5b.5 should". Re-tried, and both cut:
+
+   - The CARET group reads `sessionRef` at Cozy's body statement 114 and is
+     read back at 9 (`lo=114 hi=9`). The seam is that read: the state half
+     depends on nothing and places in (-1, 9); the handler half places in
+     (213, 220).
+   - The FONT group reads `applyEntry` at 180 and is read back at 138
+     (`lo=180 hi=138`) — the same shape, and the same seam 6.5b.3 cut the
+     colour complex at. State places in (-1, 138), commit in (309, 518).
+
+   All four halves place in all three apps. The handler half's window is
+   seven statements wide in CozyJournal and DrawBots, which is tight and is
+   the honest reading of why these two were the last to move: the room was
+   always there, but only after the cut.
+
+   And the context object did not need inventing a third time. Every input
+   of both back halves is one of the four allowed inputs or a name the
+   matching FRONT half hands back — `useTextCaretState`'s and
+   `useDefaultFontState`'s own documented returns, exactly as
+   `useBarColorState` was for the bars.
+
+   **One deviation from byte-identity, declared** (§4.2 item 6's rule).
+   `caretSeek`'s declaration was
+   `useState<\n { start: number; end: number; seq: number } | null\n>(null)`
+   and is now `useState<CaretSeek | null>(null)`, with `CaretSeek` exported
+   from `useTextCaretState`. Two reasons, the first of which is a TOOLING
+   fact worth recording: **the statement splitter every measurement in this
+   stage runs through truncates a multi-line GENERIC ARGUMENT.** It cut the
+   declaration in half and left `>(null);` orphaned in the shell — the lift
+   typechecked nowhere and the error pointed at the generated file rather
+   than at the splitter. Rather than teach `body.js` about angle brackets at
+   the end of a stage that has trusted it for four sub-stages, the
+   declaration was normalised first, identically in three apps. The second
+   reason is that the shape wanted a name anyway: the seek hook has to type
+   the setter it is handed, so spelling the shape inline in one and by name
+   in the other would be the same type twice.
+
+   **What this leaves, and whether stage 6 is complete.** The closed set
+   under the four allowed inputs is now **121 statements / 766 lines in 94
+   components, 76 of them singletons** — from 136 / 890 / 96 / 76. The
+   count byte-identical in all three went 224 → 209, for 6.5b.3's reason:
+   16 statements left and four hook calls replaced them.
+
+   What remains is **76 singletons and 18 multi-statement groups**, and the
+   largest of those is now 43 lines. The singletons are HELD on the owner's
+   standing call (§4.3, 6.5b.1's reason: a cluster averaging six lines has
+   no module to belong beside). **The 18 are the same judgment one size up,
+   and that is a recommendation rather than a decision taken here**: a
+   2-statement, 14-line hook in the package costs an import, a call site, a
+   return type and a suite entry to save fourteen lines in three files. One
+   of them must stay regardless — `insets` / `headerless` / `chromeInsets`
+   is `useChromeInsets`, refused at 6.5b.2 because it would be the only
+   `packages/editor` file importing `react-native-safe-area-context`, and
+   that rule outranks a clean measurement.
+
+   So: **stage 6's movable part has moved.** What is left in the three
+   shells is the app-only bucket (82 / 58 / 36 statements, unchanged by
+   every slice since 6.5b.2 — see below), the render tree's FRAME (6.5b.4's
+   entry says why it stays), and dust. Whether the dust is a sub-stage is
+   the owner's call and the last one stage 6 needs.
+
    **6.5b.2+ — the measurement 6.5b.2 was planned from, and why it is
    plural.** The shell's BODY, measured 2026-10-25 over the three apps'
    HEAD before 6.5b.2 took the first slice out of it. This is the
@@ -3739,7 +3843,7 @@ first, then the pointer bump in each app).
    | 6.5b.2 | done | eight closed clusters as hooks: 56 statements, 465 lines of each app |
    | 6.5b.3 | done | the colour-and-effects complex as five hooks: 61 statements, 640 lines of each app, cut at the commit pipeline |
    | 6.5b.4 | done | the render tree's floating chrome as eight components: 286 / 284 / 293 lines, and NOT the frame |
-   | 6.5b.5 | the remainder: 136 closed statements / 890 lines in 96 components, 76 of them singletons — and the two mid-size groups that do NOT place | — |
+   | 6.5b.5 | done | the two groups that would not place — the caret and the default font — CUT at the statement that blocked each, 16 statements / 102 lines of each app |
 
    **What 6.5b.3 found, and why the objection was aimed at the wrong
    thing.** The case against moving the bar handlers alone, twice on the
