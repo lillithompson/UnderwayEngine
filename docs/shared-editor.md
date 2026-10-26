@@ -1213,18 +1213,29 @@ first, then the pointer bump in each app).
    list: 6.5b.3 is them, and 6.5b.5 is now the dust rather than a held
    component.
 
-   **Nothing is pushed, and two repositories are in a state only a push
-   fixes** (checked 2026-10-26). The ENGINE is 11 commits ahead of
-   `origin/main` (7ce9a99), and `git branch -r --contains` on its HEAD
-   lists nothing. CozyJournal and Sol are each ONE commit ahead — this
-   sub-stage alone, which is what a shipped queue looks like — but the
-   commits they already pushed at 6.5b.2 carry a submodule pointer at
-   9a8f345, a commit that is on no remote branch, so a fresh clone of
-   either cannot initialise its submodule. DrawBots is 9 commits ahead and
-   has never been reviewed at all. None of that is an agent's to fix: the
-   rule is commit and stop, and the pointer order (submodule first) is the
-   ship pass's. It is recorded here because the dangling pointer is live
-   and only the owner can clear it.
+   **Nothing was pushed when this sub-stage was committed, and one
+   repository was in a state only a push fixes** (measured 2026-10-26, with
+   6.5b.3's own commits in and BEFORE any review round added to the queue —
+   the counts below are of that moment and every round since has moved
+   them, which is why §5's figures carry the same stamp).
+
+   The ENGINE was 11 commits ahead of `origin/main` (7ce9a99), and
+   `git branch -r --contains` on its HEAD listed nothing. CozyJournal and
+   Sol were each ONE commit ahead — this sub-stage alone, which is what a
+   shipped queue looks like — but the commits they had already pushed at
+   6.5b.2 carried a submodule pointer at 9a8f345, a commit on no remote
+   branch, so a fresh clone of either could not initialise its submodule.
+   DrawBots was 9 ahead and had never been reviewed at all.
+
+   **The dangling pointer is CLEARED** (re-checked after CozyJournal's ship,
+   with every remote fetched): the engine's `origin/main` reached 2f8c61a and
+   all three apps' pushed pointers are on it. Worth recording how it read
+   before that fetch, because it read WRONG: a local `origin/main` that has
+   not been fetched is stale, and reporting "the pointer is dangling" off it
+   stated as live a problem the owner had already fixed. **Fetch before
+   reporting on a remote.** None of this is an agent's to fix either way —
+   the rule is commit and stop, and the pointer order (submodule first) is
+   the ship pass's.
 
    | Sub-stage | | What it did |
    |---|---|---|
@@ -3127,12 +3138,16 @@ first, then the pointer bump in each app).
 
    **A deferred sweep, scoped out here.** Four suites under
    `components/__tests__` in CozyJournal have their own `between` — two
-   guarded, two not — over `components/` source rather than the shell's.
-   They are the same duplication for the same reason and they are NOT in
-   this sub-stage: a different tree, a different `test-utils`, and no part
-   of the shell's move touches them. Recorded the way `editorSource`'s own
+   guarded, two not — over `components/` source rather than the shell's,
+   and `packages/editor-ui/src/__tests__/dragCommit.test.ts` has a fifth
+   (`handler`, guarded start, unguarded end with a fallback) over
+   `onPanResponderX:` keys rather than declarations, which Sol's review
+   found. They are the same duplication for the same reason and they are
+   NOT in this sub-stage: other trees, other markers, and no part of the
+   shell's move touches them. Recorded the way `editorSource`'s own
    fifty-suite backlog is, so that it is a decision rather than an
-   oversight.
+   oversight — and `sliceBetween` now takes a list of end markers, so
+   whoever takes the sweep has the helper the fifth one needs.
 
    **And the helper itself was in the wrong place, which DrawBots' round 2
    caught.** `sliceBetween` has nothing of any app in it, and the first cut
