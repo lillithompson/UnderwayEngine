@@ -50,7 +50,8 @@ over 30 / 58 / 78 non-test files, which is this row exactly:
 | `web/fonts/` | 5 | 5 | 1 | 213 / 233 / 234 |
 
 The file COUNTS have not moved since 6.5a and the lines have, which
-is the honest reading of 6.6 and all five slices of 6.5b: every one
+is the honest reading of 6.6 and of the five slices of 6.5b taken so far:
+each one
 took DECLARATIONS, STATEMENTS or JSX out of files that stay — each app
 still has an
 `editorQuery.ts`, an `EditorHost.tsx` and an `EditorShell.tsx` — where
@@ -78,7 +79,8 @@ statements in Cozy, and 224 → 209 byte-identical). Three columns of this
 table and
 every statement-level measure in §4.2 are blind to it. A measure is only
 as good as the unit it counts, and the shell has at least three units —
-files, statements, lines — of which only the last sees all five sub-stages.
+files, statements, lines — of which only the last sees the five sub-stages
+taken so far.
 
 **And at 6.5b.3 the fourth column moved too, for the first time since
 6.5a — downwards, which reads backwards until you see why.** Of the
@@ -1237,9 +1239,16 @@ first, then the pointer bump in each app).
    `EditorConfig`, `web/fonts/*` and the shared half of `web/store/*` move
    with them. Each app's `web/editor/` is then its extension alone.
 
-   **Where the stage stands, plainly** (2026-10-26, after 6.5b.5).
-   **Stage 6's movable part has moved, and what is left is a judgment rather
-   than a slice.** 6.6 is done and all five slices of 6.5b are: two of the
+   **Where the stage stands, plainly** (2026-10-26, after 6.5b.5 and the
+   dust call). **Stage 6's movable part has moved; the judgment it was
+   waiting on is made; what is left is ONE SLICE, blocked by a gate.** (It
+   read "what is left is a judgment rather than a slice" until the dust call
+   was taken, which made both halves of that false in the same commit — Sol
+   caught it. The sentence is two lines above the decision that falsified it,
+   which is the whole of why this document keeps paying for the same mistake:
+   the statement nearest a change is the one not re-read.)
+
+   6.6 is done, and five of 6.5b's six slices are: two of the
    shell's own leaves, eight closed clusters (465 lines of each app), the
    colour-and-effects complex as five hooks (640), the render tree's
    floating chrome as eight components (286 / 284 / 293), and the two groups
@@ -1252,8 +1261,11 @@ first, then the pointer bump in each app).
    taken, below.
 
    **6.5b's last call — the DUST — TAKEN** (2026-10-26, by the agent under
-   §5's autonomous grant; the owner's standing call on the singletons is
-   unchanged and this does not reopen it).
+   the owner's instruction of that day to carry the programme's remaining
+   phases without checking in — §5 records it and its boundary, and it is a
+   SEPARATE thing from §5's ship grant, which reaches only who runs the ship
+   pass. The owner's standing call on the singletons is unchanged and this
+   does not reopen it.)
 
    Re-measured rather than quoted, over the three apps' HEAD after 6.5b.5:
    **121 closed statements / 766 lines in 94 components, 76 of them
@@ -1369,8 +1381,8 @@ first, then the pointer bump in each app).
 
    **Is stage 6 complete? No. Its movable part is, the judgment it was
    waiting on is made, and what is left is a GATE** (2026-10-26, after
-   6.5b.5 and the dust decision). 6.0 through 6.6 are done and so are all
-   five slices of 6.5b — the last of them the two groups that would not
+   6.5b.5 and the dust decision). 6.0 through 6.6 are done, and so are
+   five of 6.5b's six slices — the fifth being the two groups that would not
    place, cut at the statement that blocked each. The dust call is taken
    below, and it leaves one slice outstanding, 6.5b.6, which is blocked on
    CozyJournal being shippable rather than on anything measured.
@@ -1380,7 +1392,7 @@ first, then the pointer bump in each app).
 
    - **The APP-ONLY bucket** — 82 / 58 / 36 statements. That is stage 7's
      subject, not 6.5b's, and it has not moved since 6.5b.2: every
-     statement all five slices took came out of the SHARED bucket, which
+     statement the five taken slices took came out of the SHARED bucket, which
      is now five times demonstrated rather than argued.
    - **The render tree's FRAME.** 6.5b.4 measured why it stays: 93–95 %
      shared text, interrupted by forty-odd one-line holes rather than a few
@@ -1388,23 +1400,19 @@ first, then the pointer bump in each app).
      and 42 props.
    - **DUST — the call is TAKEN** (2026-10-26; the measurement and the
      reasoning are at the head of this item, under "6.5b's last call — the
-     DUST — TAKEN"). 121 closed statements / 766 lines in 94 components,
-     re-measured and unchanged from 6.5b.5. The 76 singletons
-     and SIXTEEN of the 18 groups are HELD, closed rather than deferred:
-     below the four largest no group exceeds 17 lines, one cannot move at
-     all (`useChromeInsets`, the native-dependency rule), one is typed on
-     each app's own `EntryImageDepth` — 6.5b.1's reason for holding
-     `IMAGE_DEPTH` — and a fourteen-line saving does not buy the dep-array
-     risk that has produced two latent stale closures in five slices. The
-     other TWO are 6.5b.5-shaped and are **6.5b.6**:
-     `toggleTileSetOver` + `onPatternToggleTileSet` (43 lines) and
-     `patternRowStepRef` + `patternRowStep` (34), 4 statements / 77 lines of
-     each app, placeable in all three without a cut. They are not taken yet
-     because CozyJournal's queue is closed by the round cap and a 6.5b slice
-     lands in three apps or it is not that slice.
+     DUST — TAKEN", and the figures are in the table there rather than
+     again here). The 76 singletons and SIXTEEN of the 18 groups are HELD,
+     closed rather than deferred, on four reasons the entry gives — size,
+     `useChromeInsets`'s native dependency, the image-flush group's
+     dependence on each app's own `EntryImageDepth`, and the dep-array risk
+     that a fourteen-line saving does not buy. The other TWO are
+     6.5b.5-shaped and are **6.5b.6**, which is not taken yet because
+     CozyJournal's queue is closed by the round cap and a 6.5b slice lands
+     in three apps or it is not that slice.
 
-   What stage 7 inherits is unchanged by all of this (see above), and
-   whether it goes next is the owner's call.
+   What stage 7 inherits is unchanged by all of this (see above). Whether it
+   or 6.5b.6 goes first is the owner's call, and neither can go while
+   CozyJournal is unshippable (§4.3, §5).
 
    **6.6 came before 6.5b, and the measurement is why.** The plan's order
    was 6.5b then 6.6. 6.6's design was already settled (§4.3, 2026-10-23),
@@ -3852,8 +3860,9 @@ first, then the pointer bump in each app).
    every slice since 6.5b.2 — see below), the render tree's FRAME (6.5b.4's
    entry says why it stays), and dust.
 
-   **The dust call was taken on 2026-10-26** (§4.2 item 6, by the agent
-   under §5's grant), and it went two ways rather than one: the 76
+   **The dust call was taken on 2026-10-26** (the head of this item has it,
+   under the decisions instruction §5 records), and it went two ways rather
+   than one: the 76
    singletons and sixteen of the 18 groups are HELD and closed — this
    entry's recommendation, for this entry's reasons — while the OTHER TWO
    became 6.5b.6. The re-measurement is what separated them: at 43 and 34
@@ -3947,8 +3956,8 @@ first, then the pointer bump in each app).
    seam being built.
 
    **So 6.5b is a programme, and the order is the stage's own rule — most
-   closed first.** Settled by the owner 2026-10-25 (§4.3) and now all
-   five sub-stages done:
+   closed first.** Settled by the owner 2026-10-25 (§4.3), five
+   sub-stages done and a sixth planned:
 
    | | | measured |
    |---|---|---|
@@ -3957,7 +3966,7 @@ first, then the pointer bump in each app).
    | 6.5b.3 | done | the colour-and-effects complex as five hooks: 61 statements, 640 lines of each app, cut at the commit pipeline |
    | 6.5b.4 | done | the render tree's floating chrome as eight components: 286 / 284 / 293 lines, and NOT the frame |
    | 6.5b.5 | done | the two groups that would not place — the caret and the default font — CUT at the statement that blocked each, 16 statements / 106 lines of each app |
-   | 6.5b.6 | planned | the two groups the dust measurement separates from the rest: `toggleTileSetOver` + `onPatternToggleTileSet` and `patternRowStepRef` + `patternRowStep`, 4 statements / 77 lines of each app, placeable in all three without a cut. Blocked on CozyJournal's queue, not on a measurement |
+   | 6.5b.6 | planned | the two groups the dust measurement separates from the rest — the dust decision above has them and their figures. Blocked on CozyJournal's queue, not on a measurement |
 
    **What 6.5b.3 found, and why the objection was aimed at the wrong
    thing.** The case against moving the bar handlers alone, twice on the
@@ -4546,8 +4555,10 @@ Settled by the owner, 2026-10-20:
   measurement has to cover the WRITERS of the state it takes over, not
   only the code it is replacing** — the 6.5a lesson one turn further on.
 
-- **The DUST — SETTLED** (2026-10-26, by the agent under §5's autonomous
-  grant, on the re-measurement in §4.2 item 6). **Hold the 76 singletons
+- **The DUST — SETTLED** (2026-10-26, by the agent under the DECISIONS
+  instruction of that day, not under §5's ship grant — §5 has both and says
+  why they are not the same permission; on the re-measurement in §4.2 item
+  6). **Hold the 76 singletons
   and sixteen of the 18 groups; take the other two as 6.5b.6.** The hold
   is now closed rather than deferred: below the four largest no group
   exceeds 17 lines, `useChromeInsets` cannot move at all on the
@@ -4558,8 +4569,10 @@ Settled by the owner, 2026-10-20:
   6.5b.5's size with a narrower return and place in all three apps without
   a cut, so holding them would hold them for a reason this programme has
   already rejected once. **This is the first decision in the programme
-  taken by the agent rather than the owner**, which the grant allows for
-  this work and which is recorded here so that it reads as what it is.
+  taken by the agent rather than the owner**, which is why the instruction
+  behind it is written down in §5 rather than cited from a conversation:
+  Sol's review refused the first version of this entry for citing the ship
+  grant, which does not reach a design call, and it was right to.
 
 - **How 6.5b is sliced — SETTLED** (by the owner, 2026-10-25, on the
   measurement below). **Take the slicing; 6.5b.2 is the closed clusters
@@ -4759,10 +4772,12 @@ Still open:
   without using it. Stage 7 makes them CozyJournal host pages, the way
   DrawBot's bot pages already are; nothing forces that earlier.
 
-- **Whether stage 7 goes next** — the question is no longer about ORDER:
-  6.5b is finished, so there is no rest of it for stage 7 to go before and
-  no sub-stage it overlaps. What is left is simply whether stage 7 is the
-  next thing done. It never contended with any slice of 6.5b, and the
+- **Whether stage 7 goes next** — and as of the dust call (2026-10-26) the
+  question is about ORDER again, though not in the old way. 6.5b is NOT
+  finished: 6.5b.6 is one planned slice, four statements of it, and it does
+  not overlap stage 7 any more than the five before it did. What is left is
+  which of the two goes first — and for now neither can, because both edit
+  CozyJournal and CozyJournal's queue is closed by the round cap (§5). It never contended with any slice of 6.5b, and the
   measurement said so at each one rather than being assumed: the rig's
   twelve render-tree reads and two unique mounts are all in the FRAME,
   which 6.5b.4 left where it was, and the app-only bucket is exactly what
@@ -4924,6 +4939,40 @@ reviewed once, here, and an app's review should treat a pure pointer bump
 whose engine range is already reviewed as cleared. That is the next change
 to make to the process itself — `review.js` reading the engine's own
 records through the submodule — and it is not made yet.
+
+**The consolidation also has a DECISIONS INSTRUCTION, which is not the same
+permission**
+(given by the owner, 2026-10-26, after the ship grant and in these words:
+carry all phases of the migration — complete each section, run ship on the
+sub-repos, address the feedback, begin the next section, and do not check
+in again until the whole migration is done). Taken literally that reaches
+past shipping: a section cannot be completed without settling the calls it
+is waiting on, and stage 6 was waiting on one.
+
+The two are recorded separately because they are different in kind, and
+the ship grant's own safety argument is the reason:
+
+- the SHIP grant moves who presses the button and nothing about what the
+  button checks. Every gate still runs, and two of them became script
+  refusals so that they would.
+- the DECISIONS instruction moves something the gates do not check at all.
+  No reviewer can refuse a judgment about which slice is worth taking;
+  what a reviewer can do — and did, on the dust call — is refuse a
+  decision for citing a permission that does not cover it.
+
+So the boundary is written here rather than inferred: this consolidation
+only, for the open calls this document already poses, with the measurement
+in the entry and the decision named as the agent's on its face. A call the
+document does not already pose — a new stage, a tooling change, a rule in
+`CLAUDE.shared.md` — is not in it. The standing rules that are refusals
+rather than judgments are untouched by both: `accept` stays the owner's and
+TTY-only, `override` still needs a review that refused, the round cap still
+refuses round four, and no edit to `tooling/` may exist to get an agent's
+own commit through.
+
+**Which decisions have been taken under it, so the list is auditable:** the
+DUST (2026-10-26, §4.2 item 6 and §4.3) — hold the 76 singletons and
+sixteen of the 18 groups, take the other two as 6.5b.6.
 
 **Stage 3 made it necessary** (2026-10-20). `npm run ship` in CozyJournal
 ended at exit 4: the reviewer refused a 3,293 KB prompt ("Prompt is too
