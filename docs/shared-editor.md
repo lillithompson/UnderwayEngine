@@ -34,7 +34,12 @@ out, which is what makes the file counts reproducible:
 And the same trees NOW (re-measured 2026-10-26, after 6.5b.5), so
 the table above stays the baseline it says it is rather than being
 overwritten. `Files` is the UNION of file names across the three apps,
-which is what makes a file that only one app has still count once:
+which is what makes a file that only one app has still count once. LINES are
+counted as the file's `split('\n')` length, which is one MORE than `wc -l`
+reports for a file ending in a newline — so a tree of 30 files reads 30 high
+against `wc -l`. That is stated because re-measuring the other way looks like
+a discrepancy and is not: at 2026-10-26 `wc -l` gives 10,005 / 15,714 / 23,623
+over 30 / 58 / 78 non-test files, which is this row exactly:
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
@@ -1240,14 +1245,87 @@ first, then the pointer bump in each app).
    floating chrome as eight components (286 / 284 / 293), and the two groups
    that would not place, cut at the statement that blocked them (106).
 
-   What is left in the three shells is three things, and none is a slice
-   waiting to be taken: the APP-ONLY bucket (82 / 58 / 36 statements, which
-   is stage 7's subject and has not moved since 6.5b.2), the render tree's
-   FRAME (6.5b.4 measured why it stays), and DUST — 76 singletons and 18
-   multi-statement groups whose largest is 43 lines. The singletons are held
-   on the owner's standing call; the 18 are the same judgment one size up,
-   and 6.5b.5's entry recommends holding them too. **Whether the dust is a
-   sub-stage is the last call stage 6 needs.**
+   What is left in the three shells is three things: the APP-ONLY bucket
+   (82 / 58 / 36 statements, which is stage 7's subject and has not moved
+   since 6.5b.2), the render tree's FRAME (6.5b.4 measured why it stays),
+   and DUST — about which the call stage 6 was waiting for has now been
+   taken, below.
+
+   **6.5b's last call — the DUST — TAKEN** (2026-10-26, by the agent under
+   §5's autonomous grant; the owner's standing call on the singletons is
+   unchanged and this does not reopen it).
+
+   Re-measured rather than quoted, over the three apps' HEAD after 6.5b.5:
+   **121 closed statements / 766 lines in 94 components, 76 of them
+   singletons (481 lines), and 18 multi-statement groups whose largest is 43
+   lines.** That reproduces 6.5b.5's figures exactly, which is itself worth
+   recording — the first measurement in this programme to come back
+   unchanged, because 6.5b.5 was the last slice that moved any of it.
+
+   **The 76 singletons and SIXTEEN of the 18 groups are HELD, and this
+   closes them rather than deferring them again.** Four reasons, in the
+   order of how much weight they carry:
+
+   - **Size.** Below the four largest, no group exceeds 17 lines and the
+     median of the sixteen held is 11. A 2-statement, 14-line hook costs an
+     import, a call site, a return type and a suite entry to save fourteen
+     lines in three files — 6.2a's rule about machinery, applied to the
+     smallest thing it can be applied to.
+   - **One cannot move at all.** `insets` / `headerless` / `chromeInsets`
+     (27 lines, the third largest) is `useChromeInsets`, refused at 6.5b.2
+     because it would be the only `packages/editor` file importing
+     `react-native-safe-area-context`. That rule outranks a measurement.
+   - **One is typed on each app's own type.** The six image-flush statements
+     (24 lines: `imageTimerRef`, `imageDepthRef`, `imageQueueRef`,
+     `flushEntryImagesTo`, `flushEntryImages`, `scheduleEntryImages`) hang
+     on `useRef<EntryImageDepth>`, and `EntryImageDepth` is each app's own.
+     That is exactly 6.5b.1's reason for holding `IMAGE_DEPTH`, which is
+     declared beside it in the same file. The group would need the hook
+     generic over that union, or the union shared first — a question, not a
+     candidate.
+   - **The dep-list hazard scales badly with how little is moving.** Two of
+     the five slices put a latent stale closure into a generated dependency
+     array (`useBarColorState` at 6.5b.3, `rememberFont` at 6.5b.5), both
+     caught by a REVIEWER rather than a test, because there is no renderer.
+     A fourteen-line saving does not buy that risk.
+
+   **What is NOT held: two groups, and they are 6.5b.5-shaped.**
+
+   | group | stmts | lines / app | reads | hands back |
+   |---|---|---|---|---|
+   | `toggleTileSetOver` + `onPatternToggleTileSet` | 2 | 43 | `sessionRef`, `applyEntry` | 2 |
+   | `patternRowStepRef` + `patternRowStep` | 2 | 34 | nothing | 1 |
+
+   That is **4 statements / 77 lines of each app**, against 6.5b.5's 16 /
+   106 — the same size with a narrower return, and both PLACEABLE in all
+   three apps, measured the way 6.5b.5's two were: `lo=175 / 130 / 154`,
+   `hi=280 / 280 / 282` for the first, and `lo=-1`, `hi=271 / 271 / 273` for
+   the second (Cozy / Sol / DrawBots). Neither needs a cut. If 6.5b.5 was
+   worth taking, these are, and holding them would hold them for a reason
+   the programme has already rejected once. **So they are 6.5b.6**, and the
+   table below says `planned`.
+
+   **Why 6.5b.6 is not taken in the same pass as this decision**, which is
+   not a fact about the two groups. Every sub-stage of 6.5b edits all three
+   shells BY CONSTRUCTION: the justification for moving anything is that its
+   text is byte-identical in three apps, so the change lands in three apps
+   or it is not that change. **CozyJournal cannot ship.** Its queue stands
+   on base `80062e2c` with round 3 recorded, and `ship` refuses a fourth
+   review of the same base (exit 7) — the owner's own three-round rule,
+   which §5 made a script refusal earlier in this same stage. Round 3's one
+   blocking finding was correct and is FIXED in that queue, so an override
+   would be a false record; and editing the cap to get an agent's own
+   commits through is the one thing the grant forbids outright. What the
+   grant says happens next is what is happening: the queue goes back to the
+   owner, and `review.js accept` from a terminal is the hand that clears it.
+   **Piling a further sub-stage into a repository whose queue the cap has
+   already closed is precisely what the cap exists to prevent**, so 6.5b.6
+   waits on that, and not on a measurement.
+
+   **Is stage 6 complete? No — and the remainder is now a gate rather than a
+   judgment.** Its movable part moved at 6.5b.1–6.5b.5 and 6.6; the last
+   call it needed is taken above; what is left of stage 6 itself is 6.5b.6's
+   two groups. What stage 7 inherits is unchanged by any of this.
 
    **The queue this sub-stage started from was the clearest in the
    programme, and it is the condition §5 has been asking for since 6.1.**
@@ -1287,11 +1365,15 @@ first, then the pointer bump in each app).
    | 6.5b.3 | done | the colour-and-effects complex — the bar handlers — as five hooks |
    | 6.5b.4 | done | the render tree's floating chrome as eight components |
    | 6.5b.5 | done | the two groups that would not place, cut and moved |
+   | 6.5b.6 | planned | the two groups the dust measurement separates from the rest — blocked on CozyJournal's queue, not on a measurement |
 
-   **Is stage 6 complete? Its movable part is; what is left is one
-   JUDGMENT** (2026-10-26, after 6.5b.5). 6.0 through 6.6 are done and so
-   are all five slices of 6.5b — the last of them the two groups that would
-   not place, cut at the statement that blocked each.
+   **Is stage 6 complete? No. Its movable part is, the judgment it was
+   waiting on is made, and what is left is a GATE** (2026-10-26, after
+   6.5b.5 and the dust decision). 6.0 through 6.6 are done and so are all
+   five slices of 6.5b — the last of them the two groups that would not
+   place, cut at the statement that blocked each. The dust call is taken
+   below, and it leaves one slice outstanding, 6.5b.6, which is blocked on
+   CozyJournal being shippable rather than on anything measured.
 
    What is left in the three shells is three things, and the first two are
    settled:
@@ -1304,15 +1386,22 @@ first, then the pointer bump in each app).
      shared text, interrupted by forty-odd one-line holes rather than a few
      seam-shaped ones, and the two large liftable-looking regions need 48
      and 42 props.
-   - **DUST, and this is the open call.** 121 closed statements / 766 lines
-     in 94 components: 76 singletons, held on the owner's standing call
-     since 6.5b.1, and 18 multi-statement groups whose largest is now 43
-     lines. 6.5b.5 recommends holding the 18 for the same reason as the
-     singletons — a 2-statement, 14-line hook costs an import, a call site,
-     a return type and a suite entry to save fourteen lines in three files
-     — and one of them (`useChromeInsets`) must stay regardless, on the
-     native-dependency rule. **Whether the dust is a sub-stage is the last
-     call stage 6 needs.**
+   - **DUST — the call is TAKEN** (2026-10-26; the measurement and the
+     reasoning are at the head of this item, under "6.5b's last call — the
+     DUST — TAKEN"). 121 closed statements / 766 lines in 94 components,
+     re-measured and unchanged from 6.5b.5. The 76 singletons
+     and SIXTEEN of the 18 groups are HELD, closed rather than deferred:
+     below the four largest no group exceeds 17 lines, one cannot move at
+     all (`useChromeInsets`, the native-dependency rule), one is typed on
+     each app's own `EntryImageDepth` — 6.5b.1's reason for holding
+     `IMAGE_DEPTH` — and a fourteen-line saving does not buy the dep-array
+     risk that has produced two latent stale closures in five slices. The
+     other TWO are 6.5b.5-shaped and are **6.5b.6**:
+     `toggleTileSetOver` + `onPatternToggleTileSet` (43 lines) and
+     `patternRowStepRef` + `patternRowStep` (34), 4 statements / 77 lines of
+     each app, placeable in all three without a cut. They are not taken yet
+     because CozyJournal's queue is closed by the round cap and a 6.5b slice
+     lands in three apps or it is not that slice.
 
    What stage 7 inherits is unchanged by all of this (see above), and
    whether it goes next is the owner's call.
@@ -3761,8 +3850,18 @@ first, then the pointer bump in each app).
    So: **stage 6's movable part has moved.** What is left in the three
    shells is the app-only bucket (82 / 58 / 36 statements, unchanged by
    every slice since 6.5b.2 — see below), the render tree's FRAME (6.5b.4's
-   entry says why it stays), and dust. Whether the dust is a sub-stage is
-   the owner's call and the last one stage 6 needs.
+   entry says why it stays), and dust.
+
+   **The dust call was taken on 2026-10-26** (§4.2 item 6, by the agent
+   under §5's grant), and it went two ways rather than one: the 76
+   singletons and sixteen of the 18 groups are HELD and closed — this
+   entry's recommendation, for this entry's reasons — while the OTHER TWO
+   became 6.5b.6. The re-measurement is what separated them: at 43 and 34
+   lines of each app they are this sub-stage's own size with a narrower
+   return, and they place in all three apps without a cut, so the
+   recommendation above holds for the fourteen-line tail and not for them.
+   The recommendation was right about the dust and too broad about its
+   head, which is what re-measuring a judgment is for.
 
    **6.5b.2+ — the measurement 6.5b.2 was planned from, and why it is
    plural.** The shell's BODY, measured 2026-10-25 over the three apps'
@@ -3858,6 +3957,7 @@ first, then the pointer bump in each app).
    | 6.5b.3 | done | the colour-and-effects complex as five hooks: 61 statements, 640 lines of each app, cut at the commit pipeline |
    | 6.5b.4 | done | the render tree's floating chrome as eight components: 286 / 284 / 293 lines, and NOT the frame |
    | 6.5b.5 | done | the two groups that would not place — the caret and the default font — CUT at the statement that blocked each, 16 statements / 106 lines of each app |
+   | 6.5b.6 | planned | the two groups the dust measurement separates from the rest: `toggleTileSetOver` + `onPatternToggleTileSet` and `patternRowStepRef` + `patternRowStep`, 4 statements / 77 lines of each app, placeable in all three without a cut. Blocked on CozyJournal's queue, not on a measurement |
 
    **What 6.5b.3 found, and why the objection was aimed at the wrong
    thing.** The case against moving the bar handlers alone, twice on the
@@ -4446,6 +4546,21 @@ Settled by the owner, 2026-10-20:
   measurement has to cover the WRITERS of the state it takes over, not
   only the code it is replacing** — the 6.5a lesson one turn further on.
 
+- **The DUST — SETTLED** (2026-10-26, by the agent under §5's autonomous
+  grant, on the re-measurement in §4.2 item 6). **Hold the 76 singletons
+  and sixteen of the 18 groups; take the other two as 6.5b.6.** The hold
+  is now closed rather than deferred: below the four largest no group
+  exceeds 17 lines, `useChromeInsets` cannot move at all on the
+  native-dependency rule, the image-flush group is typed on each app's own
+  `EntryImageDepth` (6.5b.1's reason for holding `IMAGE_DEPTH`), and two
+  of the five slices put a latent stale closure into a generated dep array
+  — a fourteen-line saving does not buy that. The two exceptions are
+  6.5b.5's size with a narrower return and place in all three apps without
+  a cut, so holding them would hold them for a reason this programme has
+  already rejected once. **This is the first decision in the programme
+  taken by the agent rather than the owner**, which the grant allows for
+  this work and which is recorded here so that it reads as what it is.
+
 - **How 6.5b is sliced — SETTLED** (by the owner, 2026-10-25, on the
   measurement below). **Take the slicing; 6.5b.2 is the closed clusters
   whose return is a normal hook signature, and stage 7 stays where it is.**
@@ -4758,6 +4873,42 @@ at first reading and one the agent's own sweep had already flagged and then
 skipped. An override is for a finding that is wrong, not one that is
 awkward; the record exists so that getting that judgment wrong is visible
 rather than silent.
+
+**The cap has FIRED, and this is what it looks like** (2026-10-26,
+CozyJournal). The queue on base `80062e2c` went three rounds, each round
+fixing the round before it, and the third round came back with one blocking
+finding: a count in the codebase map that the same commit had made wrong
+("six pins in five suites" — seven in six). That was fixed, which made the
+fix a FOURTH review of the same base, and `ship` refused it with exit 7.
+
+Three exits existed and two were closed by the facts rather than by the
+rules:
+
+- `override` needs a finding that is WRONG. Round 3's was right — the
+  sweep that produced the count is in the same commit — so an override
+  would have been a false record of a disagreement that does not exist.
+- raising `ROUND_CAP` is an edit to `tooling/` that would exist only to
+  get the agent's own commits through, which the shared rules forbid in
+  those words. **The one thing a loop must not be able to do is relax the
+  limit that is holding it.**
+- so: `review.js accept` from the owner's terminal, which is the exit the
+  cap was built to lead to.
+
+What that costs is worth recording honestly, because it is the first
+measured cost of the grant: **the consolidation stops where the capped
+queue stops.** Every slice of 6.5b edits all three shells by construction,
+so CozyJournal being unshippable blocks 6.5b.6 and stage 7 as surely as a
+failing test would — and nothing an agent is allowed to do shortens that.
+The alternative arrangement, where the loop re-argues a finding until a
+reviewer gives way, is worse in exactly the way the cap says.
+
+The rounds did not fail to converge, which is the other half of the
+lesson: every round closed the finding it was given. What they could not
+do was stop introducing a new one, and all three were the same KIND of
+defect — a count, in prose, about the commit being written. The durable
+remedy is not more rounds; it is the one the apps took in the end, which
+is to stop writing counts that a commit can falsify and derive them in a
+test instead.
 
 The shipping process the apps share — the review gate, the ship pass, the
 doc-path check, the hook, the CI backstop, the shared CLAUDE.md rules — is
