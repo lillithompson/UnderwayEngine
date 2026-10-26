@@ -37,7 +37,14 @@ export function useDefaultFontCommit<S extends EditorSession>({
     fontTouchedRef.current = true;
     setDefaultFontId(fontId);
     void updateSettings({ lastFontId: fontId });
-  }, []);
+    // `updateSettings` and `setDefaultFontId` join the deps, where the shell
+    // had `[]`. In the shell both were module-scope or a stable setter, so an
+    // empty list was correct; here they are PARAMETERS, and omitting them
+    // captures the first ones forever — a latent stale closure for any
+    // consumer whose `updateSettings` is not stable. This is the same
+    // deviation `useBarColorState` made at 6.5b.3 for the same reason, and it
+    // is recorded in §4.2 item 6 as 6.5b.5's second.
+  }, [updateSettings, setDefaultFontId]);
 
   const onTextStyle = useCallback((m: TextStyleModel, committed: boolean) => {
     const s = sessionRef.current;

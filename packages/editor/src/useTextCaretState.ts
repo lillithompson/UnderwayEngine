@@ -49,15 +49,6 @@ export function useTextCaretState({ editingTextId }: {
     setEditingAnchorUtf16(anchor);
   }, []);
 
-  // A single tap that settled on a scene node (after selecting it).
-  // `wasSelected` marks a re-tap — the node was already the selection before
-  // this tap. Re-tapping an editable text opens its content editor (the same
-  // flow as props-panel Edit); tapping an unset photo placeholder opens the
-  // picker to replace its pixels in place — the only way in, now that the
-  // props panel offers no Replace option — keeping the node's box/slot tag/
-  // frame membership while its sentinel imageId flips to a real one (which is
-  // what marks the slot filled).
-  // Every other node tap is a no-op.
   // A tap inside the text being edited: put the caret where the finger landed.
   // The canvas has already kept the (invisible) textarea focused, so this only
   // has to move the selection — mirrored onto the on-canvas caret, and pushed

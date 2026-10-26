@@ -18,9 +18,11 @@ import { useTextCaretSeek } from '../useTextCaretSeek';
 import { useDefaultFontState } from '../useDefaultFontState';
 import { useDefaultFontCommit } from '../useDefaultFontCommit';
 
-// The thirteen hooks 6.5b.2 and 6.5b.3 took out of the three EditorShell
-// bodies (docs/shared-editor.md §4.2 item 6) — 117 statements of state and
-// handlers that were byte-identical in all three apps.
+// The SEVENTEEN hooks 6.5b.2, 6.5b.3 and 6.5b.5 took out of the three
+// EditorShell bodies (docs/shared-editor.md §4.2 item 6) — 133 statements of
+// state and handlers that were byte-identical in all three apps. The count
+// is in ALL below, which is what every assertion here iterates: this
+// sentence has been wrong twice by being a number the list already knows.
 //
 // WHAT THIS SUITE CAN AND CANNOT DO, stated plainly because the gap is real.
 // There is no renderer in this repo's jest (`testEnvironment: 'node'`, no
@@ -56,7 +58,7 @@ const ALL = [
   'useDefaultFontState', 'useDefaultFontCommit',
 ];
 
-// Eleven of the thirteen. `useColorBlendMode` and `useRadialMenus` are left
+// All but two. `useColorBlendMode` and `useRadialMenus` are left
 // out DELIBERATELY: a `.tsx` cannot be loaded in this harness — the
 // react-native shim carries no Animated or StyleSheet, and the jsx setting
 // makes a component's own `import React` read as unused — and those two reach
@@ -110,7 +112,7 @@ describe('the loadable modules are hooks named for themselves', () => {
   });
 });
 
-describe('not one of the thirteen reaches into an app', () => {
+describe('not one of them reaches into an app', () => {
   // The invariant that makes `packages/editor` a package rather than a fourth
   // copy, and the one thing about these files that no typecheck guards: the
   // apps resolve `@/web/*`, `@/components/*` and `@figgie` and the package
@@ -192,6 +194,30 @@ describe('6.5b.3: the bar hooks invent nothing', () => {
     const available = new Set([...ALLOWED_INPUTS, ...returnsOf('useBarColorState')]);
     const invented = paramsOf(bar).filter((p) => !available.has(p));
     expect(invented).toEqual([]);
+  });
+
+  // 6.5b.5's two cuts, the same claim and the same derivation. Each back
+  // half may take only an allowed input or a name its own FRONT half hands
+  // back — plus the app store, which 6.5b.2 already settled as the one
+  // thing the package is handed rather than importing.
+  const CUTS: [string, string][] = [
+    ['useTextCaretSeek', 'useTextCaretState'],
+    ['useDefaultFontCommit', 'useDefaultFontState'],
+  ];
+
+  it.each(CUTS)('%s takes only allowed inputs and %s names', (back, front) => {
+    const available = new Set([...ALLOWED_INPUTS, 'updateSettings', ...returnsOf(front)]);
+    expect(paramsOf(back).filter((param) => !available.has(param))).toEqual([]);
+  });
+
+  it.each(CUTS)('%s is in FRONT of what blocked the group', (back, front) => {
+    // The front half must take none of the three that would put it behind
+    // the seam — that is the whole of why the cut works. The caret state
+    // takes the edited id; the font state takes the format.
+    const behind = ['applyEntry', 'setSession', 'sessionRef'];
+    expect(paramsOf(front).filter((param) => behind.includes(param))).toEqual([]);
+    // …and the back half does take one, or there was nothing to cut.
+    expect(paramsOf(back).some((param) => behind.includes(param))).toBe(true);
   });
 
   it('and every one of them is actually used by a bar', () => {
