@@ -2,7 +2,8 @@
 
 This is the shared text of every project's `/ship` skill; the project's
 `.claude/skills/ship/SKILL.md` is a stub that points here. Run it only
-when the user asks.
+when the user asks — or, for work the owner has granted an AUTONOMOUS pass
+for, as often as the loop needs ("An autonomous pass", below).
 
 Agents commit on `main` and never push (`CLAUDE.shared.md` "Independent
 review and shipping"). This is the one place pushing happens: `npm run
@@ -61,6 +62,57 @@ Never run `review.js accept`, never push with `--no-verify` or by hand,
 and never edit `vendor/UnderwayEngine/tooling/`, `docs/review/`,
 `.githooks/` or `underway.config.json` to get a range through. Clearing a
 review is the owner's call.
+
+## An autonomous pass
+
+Everything above is the owner driving the pass. Where the owner has granted
+an AUTONOMOUS pass for a named piece of work (`CLAUDE.shared.md`
+"Independent review and shipping"; for the shared editor's consolidation,
+`vendor/UnderwayEngine/docs/shared-editor.md` §5), you run the loop yourself
+and do not stop between rounds. Four things change, and nothing else does.
+
+1. **Pass the scope.** `npm run ship -- --autonomous <sha>`, where `<sha>`
+   is the last commit that is NOT the granted work — the base the grant
+   starts after. Ship refuses the pass if the range holds anything older,
+   and names it. Take that refusal at its word: a queue with someone else's
+   commit in it is not yours to push, so report it and stop.
+
+2. **Do not stop on exit 1 or 3.** Fix and run again, as above. The round
+   cap is now the SCRIPT's (exit **7**): a fourth round on the same base is
+   refused before a reviewer starts. On 7, stop and report every open
+   finding word for word — three rounds that did not pass means the range
+   needs a person, and a fourth round would be the same argument again.
+
+3. **A blocking finding you judge WRONG is overridden on the record**, not
+   worked around and not quietly left:
+
+   ```sh
+   node vendor/UnderwayEngine/tooling/review.js override <base>..<tip> <reason>
+   ```
+
+   It refuses unless a review ran and requested changes, so it is never a
+   way past a review that did not happen. Then run ship again: the range is
+   cleared, and the push carries `Review: OVERRIDDEN by agent` with your
+   reason and every finding you disputed. Before using it, re-read the
+   finding against the code — in this programme's rounds so far nearly every
+   blocking finding has been correct, including ones that looked wrong at
+   first. Override a finding that is WRONG, never one that is awkward or
+   expensive, and never one you have not checked. Prefer fixing.
+
+4. **Still never** `review.js accept` (the owner's, and it needs a
+   terminal), never `--no-verify`, never an edit to `tooling/`,
+   `docs/review/`, `.githooks/` or `underway.config.json` to get a range
+   through.
+
+Stop and ask the user, even under a grant, for: exit 2 you cannot fix
+(uncommitted work that is not yours, a submodule off `main`), exit 5 (a
+backend deploy), exit 6 (the push failed), exit 7 (the round cap), a range
+holding a commit from before the grant, or anything that would need one of
+the four "still never" items.
+
+The report is the same, plus: every round's verdict in order, and every
+override with its reason and the findings it covered, called out rather than
+folded into the list of what was pushed.
 
 ## Report
 

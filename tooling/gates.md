@@ -152,6 +152,24 @@ node vendor/UnderwayEngine/tooling/review.js accept <sha> <reason>           # o
 It asks for confirmation and refuses to run without an interactive terminal,
 which an agent's shell does not have. The reason is kept beside the review.
 
+An AGENT disagreeing has a different path, and only where the owner has
+granted an autonomous pass (`CLAUDE.shared.md` "Independent review and
+shipping"):
+
+```sh
+node vendor/UnderwayEngine/tooling/review.js override <base>..<tip> <reason>
+```
+
+The two are deliberately not the same act, and nothing reports them as
+one. `accept` needs a terminal and clears a range with **no review at
+all**; `override` needs no terminal but **refuses unless a review ran and
+requested changes**, and records every blocking finding it disagreed with.
+So an override can never be a way around the reviewer, only a way of
+disagreeing with one on the record — and `ship` puts that record on the
+pushed commit's message (`Review: OVERRIDDEN by agent`), where `git log`
+finds it forever. Three things clear a range and `review.js` names them
+apart: `passed`, `accepted by owner`, `overridden by agent`.
+
 **Cost.** One Opus session per review pass (plus one per fix round),
 however many commits accrued — not one per commit. Under a Claude login that
 counts against the plan's usage limits; with `ANTHROPIC_API_KEY` set it
@@ -160,7 +178,10 @@ prompt: run the pass often enough that the combined diff stays readable.
 
 ## Shipping
 
-Agents commit on `main` and **never push**. Changes accrue locally until
+Agents commit on `main` and **never push** — unless the owner has granted
+an autonomous pass for a named piece of work, which is the one exception
+and is described in `CLAUDE.shared.md` and recorded with the work.
+Otherwise changes accrue locally until
 the owner runs the review pass: the `/ship` skill (the project's stub in
 `.claude/skills/ship/SKILL.md`, which follows `tooling/skills/ship.md`),
 which drives `npm run ship` (`tooling/ship.js`) to a push and takes the

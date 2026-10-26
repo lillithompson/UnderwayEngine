@@ -12,10 +12,22 @@
  *
  *   npm run ship                     # check, review, push origin/main..HEAD
  *   npm run ship -- --backend-live   # …a backend schema change already deployed
+ *   npm run ship -- --autonomous <sha>
+ *                                    # an AGENT-driven pass, for work the
+ *                                    #   owner granted one: the range may
+ *                                    #   hold only commits after <sha>
  *
  * It refuses, before running anything:
  *   - off `main`, or with tracked changes not committed (the checks would
  *     test the working tree, not what is pushed);
+ *   - under `--autonomous <sha>`, a range holding any commit that is not
+ *     after `<sha>`: an agent's commits carry the owner's name, so the only
+ *     checkable reading of "the work I was granted" is the boundary it
+ *     starts at, and what gets PUSHED is the whole range either way;
+ *   - a review round past the cap (ROUND_CAP, three). The skill has always
+ *     said three; here it is a refusal, because prose is a gate only while a
+ *     person is reading it and a loop will otherwise go round again on a
+ *     finding it cannot fix;
  *   - a commit in the range that changes the backend's wire schema (the
  *     config's `backendSchema`), unless `--backend-live` says that schema is
  *     deployed (CLAUDE.shared.md "The server goes first");
@@ -44,22 +56,36 @@
  * alone; a range with no passing record (none needed, owner-accepted, or
  * cleared commit by commit) gets no note, and ship says so.
  *
+ * A range cleared by an AGENT OVERRIDE (review.js `override`) gets a
+ * different note and gets it FIRST (`overrideNote`): its record's verdict is
+ * `changes-requested`, so the passing-record path would find nothing and the
+ * push would carry no note at all — exactly the case that must not go
+ * unannounced. The note names the reason and every blocking finding
+ * disagreed with, so an override is legible from `git log` alone.
+ *
  * Untracked files are not refused (they are often someone else's), but
  * they are listed: a module the commit imports and forgot to stage passes
  * here and fails in CI.
  *
  * Exit: 0 shipped (or nothing to ship); 1 a check failed; 2 usage or a
  * refusal above; 3 the review requested changes; 4 the review could not run;
- * 5 needs the backend deployed first; 6 the push failed.
+ * 5 needs the backend deployed first; 6 the push failed; 7 the round cap.
  */
 
 const { execFileSync, spawnSync } = require('node:child_process');
 const path = require('node:path');
 const { loadConfig } = require('./config.js');
-const { lastField, passingRecord } = require('./review.js');
+const {
+  lastField, passingRecord, overrideRecord, nextRound,
+} = require('./review.js');
 
 const REVIEW = path.join(__dirname, 'review.js');
 const DEFAULTS = { schema: 'backend/src/validation.ts', submodule: 'vendor/UnderwayEngine' };
+
+// Review rounds on one base before the range needs a person. Three is the
+// number the skill has always carried in prose; it is a refusal here so that
+// a pass being driven by a loop cannot quietly go round a fourth time.
+const ROUND_CAP = 3;
 
 /** What the range's changed paths ask of a ship. Pure, for the tests. */
 function shipPlan(changedPaths, { schema, submodule } = DEFAULTS) {
@@ -100,6 +126,30 @@ function reviewNote(record, recordPath) {
   const lines = [`Review: pass (${reviewer})${commits > 1 ? `, ${commits} commits` : ''}`];
   if (notTaken.length) lines.push('Suggestions not taken:', ...notTaken);
   lines.push(`Record: ${recordPath}`);
+  return lines.join('\n');
+}
+
+/**
+ * The note an AGENT OVERRIDE leaves instead (review.js `override`): the
+ * verdict it overrode, the reason, and every blocking finding disagreed
+ * with, one per line.
+ *
+ * A pushed override has to be legible from `git log` alone. An override is
+ * the one thing in this process that puts an agent's judgment above the
+ * independent reviewer's, so the commit says so in as many words, rather
+ * than carrying the ordinary "Review:" note or none at all — which would
+ * leave it looking like a change nobody reviewed.
+ */
+function overrideNote(over, recordPath, overridePath) {
+  const reason = (over.text.match(/^Reason: (.+)$/m) || [])[1] || '(no reason recorded)';
+  const commits = Number((over.text.match(/^Commits: (\d+)$/m) || [])[1]) || 1;
+  const lines = [
+    `Review: OVERRIDDEN by agent — ${over.findings.length} blocking finding(s) disputed`
+    + `${commits > 1 ? `, ${commits} commits` : ''}`,
+    `Reason: ${reason}`,
+  ];
+  if (over.findings.length) lines.push('Disputed:', ...over.findings.map((f) => `- ${firstSentence(f)}`));
+  lines.push(`Record: ${recordPath}`, `Override: ${overridePath}`);
   return lines.join('\n');
 }
 
@@ -157,13 +207,25 @@ function noteHead() {
   const sha = git(['rev-parse', 'HEAD']);
   const message = gitRaw(['log', '-1', '--format=%B', sha]).replace(/\s+$/, '');
   if (hasReviewNote(message)) return;
-  // The gate's own record for the unpushed range, keyed by its diff (review.js).
-  const record = passingRecord('origin/main..HEAD');
   // Forward slashes whoever ships: the note goes into a COMMIT MESSAGE,
   // which is read on every platform and in every clone, and path.relative
   // hands back backslashes on Windows — so the same record was quoted two
   // ways depending on the machine that pushed.
-  const recordPath = record && path.relative(root(), record.path).split(path.sep).join('/');
+  const rel = (p) => path.relative(root(), p).split(path.sep).join('/');
+  // An agent override is checked FIRST: its range has a record whose verdict
+  // is `changes-requested`, so the passing-record path would find nothing
+  // and the push would carry no note at all — which is precisely the case
+  // that must not go unannounced.
+  const over = overrideRecord('origin/main..HEAD');
+  if (over) {
+    const note = overrideNote(over, rel(over.recordPath), rel(over.path));
+    execFileSync('git', ['commit', '--amend', '--only', '-q', '-F', '-'], { input: `${message}\n\n${note}\n` });
+    console.log(`ship: OVERRIDE note added to ${sha.slice(0, 9)} (now ${git(['rev-parse', '--short=9', 'HEAD'])})`);
+    return;
+  }
+  // The gate's own record for the unpushed range, keyed by its diff (review.js).
+  const record = passingRecord('origin/main..HEAD');
+  const recordPath = record && rel(record.path);
   const note = record && reviewNote(record.text, recordPath);
   if (!note) {
     console.log(`ship: no passing review record for ${sha.slice(0, 9)}; no review note added`);
@@ -175,8 +237,32 @@ function noteHead() {
   console.log(`ship: review note added to ${sha.slice(0, 9)} (now ${git(['rev-parse', '--short=9', 'HEAD'])})`);
 }
 
+/**
+ * What the arguments ask for. `--autonomous <sha>` is the scope gate for an
+ * agent-driven pass (CLAUDE.shared.md "Independent review and shipping"):
+ * the range may hold ONLY commits after `<sha>`, the work the owner granted
+ * the pass for. Nothing else about the pass changes — the same checks, the
+ * same review, the same refusals.
+ */
+function parseArgs(argv) {
+  const opts = { backendLive: false, autonomousBase: null };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--backend-live') { opts.backendLive = true; continue; }
+    if (arg === '--autonomous') {
+      opts.autonomousBase = argv[++i];
+      if (!opts.autonomousBase || opts.autonomousBase.startsWith('--')) {
+        refuse('--autonomous needs the commit the granted work starts after: ship --autonomous <sha>');
+      }
+      continue;
+    }
+    refuse(`unknown argument ${arg}; usage: ship [--backend-live] [--autonomous <sha>]`);
+  }
+  return opts;
+}
+
 function ship(argv) {
-  for (const arg of argv) if (arg !== '--backend-live') refuse(`unknown argument ${arg}; usage: ship [--backend-live]`);
+  const opts = parseArgs(argv);
   process.chdir(root());
   const cfg = loadConfig(process.cwd());
   const SCHEMA = cfg.backendSchema;
@@ -195,8 +281,40 @@ function ship(argv) {
   }
   if (git(['rev-list', 'HEAD..origin/main'])) refuse('origin/main has commits main does not; pull (rebase) first');
 
+  // The autonomous scope gate. The range is what gets PUSHED, not what the
+  // agent happens to have written, and an agent's commits carry the owner's
+  // name — so "only my own work" cannot be read off the authorship. What can
+  // be checked is the boundary: every commit about to be pushed must be one
+  // of the commits after the granted base.
+  if (opts.autonomousBase) {
+    const base = git(['rev-parse', opts.autonomousBase]);
+    const granted = new Set(git(['rev-list', `${base}..HEAD`]).split('\n').filter(Boolean));
+    const outside = git(['rev-list', range]).split('\n').filter(Boolean).filter((sha) => !granted.has(sha));
+    if (outside.length) {
+      const shown = outside.slice(0, 5).map((sha) => `  ${git(['log', '-1', '--format=%h %s', sha])}`);
+      refuse(
+        `--autonomous was granted from ${base.slice(0, 9)}, but ${outside.length} commit(s) in the push `
+        + `predate it:\n${shown.join('\n')}${outside.length > 5 ? `\n  …and ${outside.length - 5} more` : ''}\n`
+        + 'An autonomous pass ships only the work it was granted for. Hand this range to the owner.',
+      );
+    }
+  }
+
+  // The round cap, machine-enforced. It was prose in the `/ship` skill, which
+  // is a gate only while a person is reading it; a loop driving the pass will
+  // go round forever on a finding it cannot fix. Refusing BEFORE the reviewer
+  // starts also saves the round's cost.
+  const round = nextRound(range);
+  if (round > ROUND_CAP) {
+    refuse(
+      `this would be review round ${round} of the same base, and the cap is ${ROUND_CAP}. `
+      + 'Three rounds that did not pass means the range needs a person: report the open findings and stop.',
+      7,
+    );
+  }
+
   const plan = shipPlan(git(['diff', '--name-only', range]).split('\n').filter(Boolean), { schema: SCHEMA, submodule: SUBMODULE });
-  if (plan.schemaChange && !argv.includes('--backend-live')) {
+  if (plan.schemaChange && !opts.backendLive) {
     refuse(
       `the range changes ${SCHEMA}. A new value: deploy the backend, verify it is live, then ship --backend-live. `
       + 'A retirement goes the other way (the app ships first, the backend after) and a comment-only edit changes '
@@ -252,4 +370,6 @@ if (require.main === module) {
   }
 }
 
-module.exports = { shipPlan, checkCommands, reviewExit, reviewNote, noteHead };
+module.exports = {
+  shipPlan, checkCommands, reviewExit, reviewNote, overrideNote, noteHead, parseArgs, ROUND_CAP,
+};

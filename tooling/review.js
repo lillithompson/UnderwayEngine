@@ -27,6 +27,12 @@
  *   … review.js accept <rev|a..b> <reason…> # OWNER ONLY, from a terminal:
  *                                           #   clear a commit or range the
  *                                           #   reviewer would not pass
+ *   … review.js override <a..b> <reason…>  # the AGENT's recorded
+ *                                           #   disagreement with a review
+ *                                           #   that refused this range —
+ *                                           #   only where the owner has
+ *                                           #   granted it, and never a way
+ *                                           #   past a review that did not run
  *
  * The unit of review is a RANGE of commits judged as one combined diff:
  * agents commit on `main` without pushing, and the owner's review pass
@@ -35,8 +41,12 @@
  *
  * The pre-push hook (.githooks/pre-push) runs `check --pre-push`: it never
  * starts a review itself, it only refuses a push whose commits have no
- * passing (or owner-accepted) review — of the pushed range as a whole, or of
- * every commit in it one by one.
+ * passing review — of the pushed range as a whole, or of every commit in it
+ * one by one. Three things clear a range, and they are reported under three
+ * different names because they are not the same act: a PASS, an owner
+ * ACCEPT (`accept`, from a terminal, which needs no review to exist), and an
+ * agent OVERRIDE (`override`, which needs a review that refused and records
+ * which findings were disagreed with). `cleared` is where all three meet.
  *
  * A review is recorded under the SHA-256 of the range's combined diff, so a
  * rebase that leaves the diff alone keeps its review and any new commit or
@@ -565,6 +575,11 @@ function describeCommit(sha) {
 function cleared(hash) {
   const accepted = path.join(RECORDS, `${hash}.accepted`);
   if (fs.existsSync(accepted)) return 'accepted by owner';
+  // An AGENT override, which is not an owner accept and never reads as one:
+  // it can only be written over a review that ran and requested changes
+  // (`override` below), and it is reported under its own name everywhere so
+  // an audit can tell the two apart.
+  if (fs.existsSync(path.join(RECORDS, `${hash}.overridden`))) return 'overridden by agent';
   const record = path.join(RECORDS, `${hash}.md`);
   // Keyed by diff, not commit: a rebased range with the same diff keeps its pass.
   if (fs.existsSync(record) && lastField(fs.readFileSync(record, 'utf8'), 'VERDICT') === 'pass') return 'passed';
@@ -608,6 +623,37 @@ function passingRecord(spec = 'origin/main..HEAD') {
   if (!file || !fs.existsSync(file)) return null;
   const text = fs.readFileSync(file, 'utf8');
   return lastField(text, 'VERDICT') === 'pass' ? { path: file, text } : null;
+}
+
+/** The blocking findings a review record lists, as their first lines. */
+function blockingFindings(text) {
+  return [...text.matchAll(/^- \[blocking\] (.+)$/gm)].map((m) => m[1]);
+}
+
+/**
+ * A range's AGENT OVERRIDE as {path, text, record, findings}, or null.
+ *
+ * An override is the agent's recorded disagreement with a review that ran
+ * and requested changes — allowed only where the owner has granted it for a
+ * named piece of work (CLAUDE.shared.md "Independent review and shipping").
+ * It is deliberately NOT an owner accept: `accept` needs a terminal and
+ * clears a range with no review at all, where this needs a review that
+ * already refused, so an override can never be a way AROUND the reviewer,
+ * only a way of disagreeing with one on the record.
+ */
+function overrideRecord(spec = 'origin/main..HEAD') {
+  const file = recordPath(spec);
+  if (!file) return null;
+  const over = file.replace(/\.md$/, '.overridden');
+  if (!fs.existsSync(over)) return null;
+  const record = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+  return {
+    path: over,
+    text: fs.readFileSync(over, 'utf8'),
+    recordPath: file,
+    record,
+    findings: blockingFindings(record),
+  };
 }
 
 /** The marker in the shared brief where the project's own checks go. */
@@ -838,6 +884,20 @@ function lastRound(base) {
   }
 }
 
+/**
+ * Which round a review of `spec` would be — what `pending` is about to
+ * print, available BEFORE a reviewer is started. For ship.js, which refuses
+ * to begin a round past the cap: the cap used to be prose in the skill, and
+ * prose is not a gate once a loop is driving the pass rather than a person
+ * (docs/shared-editor.md §5).
+ */
+function nextRound(spec = 'origin/main..HEAD') {
+  locate();
+  const r = rangeOf(spec);
+  if (!r) return 0;
+  return roundNumber(describeRange(r), null);
+}
+
 /** The earlier round to brief the reviewer with, or null: its tip must be
  *  an ancestor of this one, its review must have requested changes, and
  *  its record must still be there. */
@@ -955,11 +1015,56 @@ async function cmdAccept(argv) {
   return 0;
 }
 
+/**
+ * `override <range> <reason…>` — the agent's recorded disagreement with a
+ * review that REFUSED the range. See `overrideRecord`.
+ *
+ * It refuses unless a review record for this exact diff exists and its
+ * verdict is not a pass: there is nothing to disagree with otherwise, and
+ * without that condition this would be `accept` without a terminal. Every
+ * blocking finding in that record is copied into the override, so what was
+ * overridden is on file even if the record is later cleaned up, and ship
+ * puts the same list on the pushed commit's message.
+ */
+function cmdOverride(argv) {
+  const [rev, ...reason] = argv;
+  if (!rev || !reason.length) fail('usage: override <base>..<tip> <reason…>');
+  const range = rangeOf(rev);
+  if (!range) fail(`no commits in ${rev}`);
+  const c = describeRange(range);
+  const file = path.join(RECORDS, `${c.hash}.md`);
+  if (!fs.existsSync(file)) {
+    fail(`no review of ${rev} to override; an override is a disagreement with a review that ran, not a way past one that did not`);
+  }
+  const text = fs.readFileSync(file, 'utf8');
+  if (lastField(text, 'VERDICT') === 'pass') fail(`the review of ${rev} passed; there is nothing to override`);
+  const findings = blockingFindings(text);
+  if (!findings.length) fail(`the review of ${rev} lists no blocking finding; fix the suggestions or ship as it is`);
+  fs.mkdirSync(RECORDS, { recursive: true });
+  fs.writeFileSync(path.join(RECORDS, `${c.hash}.overridden`), [
+    `Commit: ${c.sha}`,
+    `Commits: ${c.commits.length}`,
+    `Date: ${new Date().toISOString()}`,
+    'By: agent',
+    `Reason: ${reason.join(' ')}`,
+    `Record: ${file}`,
+    'Overridden:',
+    ...findings.map((f) => `- ${f}`),
+    '',
+  ].join('\n'));
+  console.log(`OVERRIDDEN by agent: ${findings.length} blocking finding(s) in ${rev} (${RECORDS})`);
+  for (const f of findings) console.log(`  - ${f}`);
+  console.log('This is on the record and goes onto the pushed commit; the owner should read it.');
+  return 0;
+}
+
 async function main() {
   const [cmd, ...argv] = process.argv.slice(2);
   locate();
-  const commands = { commit: cmdCommit, pending: cmdPending, check: cmdCheck, accept: cmdAccept };
-  if (!commands[cmd]) fail('usage: review.js pending [--force] [--dry-run | --prompt] | commit [<rev>] [--force] | check [<range>] | accept <rev|a..b> <reason…>');
+  const commands = {
+    commit: cmdCommit, pending: cmdPending, check: cmdCheck, accept: cmdAccept, override: cmdOverride,
+  };
+  if (!commands[cmd]) fail('usage: review.js pending [--force] [--dry-run | --prompt] | commit [<rev>] [--force] | check [<range>] | accept <rev|a..b> <reason…> | override <a..b> <reason…>');
   process.exitCode = await commands[cmd](argv);
 }
 
@@ -972,5 +1077,6 @@ if (require.main === module) {
 
 module.exports = {
   needsReview, parseNumstat, parseReview, collapseRemovals, classifyCopies, classifyMoves, parseLsTree, lastField, prePushRanges, pushRevLists,
-  recordPath, passingRecord, spliceAddendum, LINE_THRESHOLD, PROJECT_RULES, CONFIG_FILE,
+  recordPath, passingRecord, overrideRecord, blockingFindings, nextRound,
+  spliceAddendum, LINE_THRESHOLD, PROJECT_RULES, CONFIG_FILE,
 };

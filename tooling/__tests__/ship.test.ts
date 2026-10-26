@@ -2,7 +2,7 @@
 // paths asks of a ship, the checks it runs, and how a review's exit code
 // reads. The git and npm calls themselves are not run here.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { shipPlan, checkCommands, reviewExit, reviewNote } = require('../ship.js');
+const { shipPlan, checkCommands, reviewExit, reviewNote, parseArgs, ROUND_CAP } = require('../ship.js');
 
 describe('shipPlan', () => {
   it('asks for the backend suite only when backend/ changed', () => {
@@ -99,6 +99,16 @@ describe('ship.js in a scratch repository', () => {
     git('add', file);
     git('commit', '-q', '-m', `write ${file}`);
     return git('rev-parse', 'HEAD');
+  };
+  /** An env whose `npm` fails every check deterministically, so a test past
+   *  a refusal never depends on what npm would find above the scratch tree. */
+  const stubbedNpm = () => {
+    const stubBin = path.join(base, 'npm-stub');
+    fs.mkdirSync(stubBin, { recursive: true });
+    fs.writeFileSync(path.join(stubBin, 'npm'), ['#!/bin/sh', 'exit 7', ''].join('\n'), { mode: 0o755 });
+    fs.writeFileSync(path.join(stubBin, 'npm.cmd'), '@exit /b 7\r\n');
+    const first = `${stubBin}${path.delimiter}`;
+    return { ...ENV, PATH: first + process.env.PATH, Path: first + (process.env.Path || process.env.PATH) };
   };
 
   beforeEach(() => {
@@ -320,5 +330,92 @@ describe('ship.js in a scratch repository', () => {
     expect(r.status).toBe(1);
     expect(r.stderr).not.toContain('pointer');
     expect(r.stderr).toContain('tests failed');
+  });
+
+  // --autonomous <sha>: the scope gate for an agent-driven pass. An agent's
+  // commits carry the owner's name, so the boundary is the only checkable
+  // reading of "the work I was granted" — and the push takes the whole range
+  // either way, which is what makes the check necessary rather than polite.
+  describe('--autonomous', () => {
+    it('needs the base it was granted from', () => {
+      commit('b.txt', 'b');
+      expect([ship('--autonomous').status, ship('--autonomous').stderr])
+        .toEqual([2, expect.stringContaining('needs the commit')]);
+      expect(ship('--autonomous', '--backend-live').stderr).toContain('needs the commit');
+    });
+
+    it('refuses a range holding a commit from before the grant, and names it', () => {
+      // The base is the last commit that is NOT the granted work — the pass
+      // ships what comes AFTER it. So an unpushed commit older than the base
+      // is someone else's and stops the pass, named so the report can quote it.
+      const earlier = commit('earlier.txt', 'not mine');
+      commit('mine.txt', 'mine');
+      const r = ship('--autonomous', earlier);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain('1 commit(s) in the push predate it');
+      expect(r.stderr).toContain('write earlier.txt');
+      expect(r.stderr).not.toContain('write mine.txt');
+    });
+
+    it('lets a range entirely after the grant through to the checks', () => {
+      const granted = git('rev-parse', 'HEAD');
+      commit('mine.txt', 'mine');
+      commit('mine2.txt', 'mine too');
+      // Past the scope gate the next thing ship does is run the checks; a
+      // stub npm first on PATH fails them deterministically.
+      const r = spawnSync('node', [SHIP, '--autonomous', granted], {
+        cwd: dir, env: stubbedNpm(), encoding: 'utf8',
+      });
+      expect(r.status).toBe(1);
+      expect(r.stderr).not.toContain('predate');
+      expect(r.stderr).toContain('tests failed');
+    });
+
+    it('changes nothing else: the same refusals still apply', () => {
+      const granted = git('rev-parse', 'HEAD');
+      commit('b.txt', 'b');
+      git('checkout', '-q', '-b', 'side');
+      expect(ship('--autonomous', granted).status).toBe(2);
+    });
+  });
+
+  // The round cap, machine-enforced (ROUND_CAP). It was prose in the /ship
+  // skill, which is a gate only while a person is reading it.
+  describe('the round cap', () => {
+    const roundFile = (baseSha: string) => {
+      const records = path.join(dir, '.git', 'sol-reviews');
+      fs.mkdirSync(path.join(records, 'rounds'), { recursive: true });
+      return path.join(records, 'rounds', `${baseSha}.json`);
+    };
+    const refusedRound = (round: number) => {
+      const baseSha = git('rev-parse', 'origin/main');
+      const tip = git('rev-parse', 'HEAD');
+      const records = path.join(dir, '.git', 'sol-reviews');
+      const record = path.join(records, 'refused.md');
+      fs.mkdirSync(records, { recursive: true });
+      fs.writeFileSync(record, ['## Findings', '', '- [blocking] x.', '', 'VERDICT: changes-requested', ''].join('\n'));
+      fs.writeFileSync(roundFile(baseSha), JSON.stringify({ round, tip, record }));
+    };
+
+    it('refuses the round after the cap, before a reviewer is started', () => {
+      commit('b.txt', 'b');
+      refusedRound(ROUND_CAP);
+      commit('c.txt', 'c');
+      const r = spawnSync('node', [SHIP], { cwd: dir, env: stubbedNpm(), encoding: 'utf8' });
+      expect(r.status).toBe(7);
+      expect(r.stderr).toContain(`review round ${ROUND_CAP + 1}`);
+      expect(r.stderr).toContain('needs a person');
+      // Refused BEFORE the checks, so the pass costs nothing.
+      expect(r.stdout).not.toContain('==> tests');
+    });
+
+    it('allows the cap itself', () => {
+      commit('b.txt', 'b');
+      refusedRound(ROUND_CAP - 1);
+      commit('c.txt', 'c');
+      const r = spawnSync('node', [SHIP], { cwd: dir, env: stubbedNpm(), encoding: 'utf8' });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('tests failed');
+    });
   });
 });

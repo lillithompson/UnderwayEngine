@@ -246,6 +246,84 @@ describe('review.js check in a scratch repository', () => {
     expect(recordFor('origin/main..HEAD').split(path.sep).join('/')).toContain('/.git/sol-reviews/');
   });
 
+  // The AGENT override (review.js `override`): a recorded disagreement with
+  // a review that REFUSED, which is not the owner's `accept` and must never
+  // become a way past a review that never ran.
+  describe('override', () => {
+    const refuseText = (findings: string) =>
+      ['## Findings', '', findings, '', 'VERDICT: changes-requested', ''].join('\n');
+    const refuse = (spec: string, findings = '- [blocking] the gate pin asserts nothing.') => {
+      const file = recordFor(spec);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, refuseText(findings));
+      return file;
+    };
+    const override = (spec: string, ...reason: string[]) =>
+      spawnSync('node', [REVIEW, 'override', spec, ...reason], { cwd: dir, env: ENV, encoding: 'utf8' });
+
+    it('clears a refused range, and the push gate then lets it through', () => {
+      commit('a.ts');
+      expect(check()).toBe(1);
+      refuse('origin/main..HEAD');
+      expect(check()).toBe(1);
+      const r = override('origin/main..HEAD', 'the', 'finding', 'names', 'the', 'wrong', 'file');
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain('OVERRIDDEN by agent');
+      expect(check()).toBe(0);
+    });
+
+    it('records the reason and every blocking finding it overrode', () => {
+      commit('a.ts');
+      refuse('origin/main..HEAD', ['- [blocking] first thing.', '- [blocking] second thing.'].join('\n'));
+      override('origin/main..HEAD', 'both', 'findings', 'are', 'wrong');
+      const file = recordFor('origin/main..HEAD').replace(/\.md$/, '.overridden');
+      const text = fs.readFileSync(file, 'utf8');
+      expect(text).toContain('By: agent');
+      expect(text).toContain('Reason: both findings are wrong');
+      expect(text).toContain('- first thing.');
+      expect(text).toContain('- second thing.');
+    });
+
+    it('REFUSES a range no reviewer ever looked at — an override is not an accept', () => {
+      commit('a.ts');
+      const r = override('origin/main..HEAD', 'I', 'judge', 'it', 'fine');
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toContain('not a way past one that did not');
+      expect(check()).toBe(1);
+    });
+
+    it('refuses a range whose review PASSED, and one with no blocking finding', () => {
+      commit('a.ts');
+      pass('origin/main..HEAD');
+      expect(override('origin/main..HEAD', 'no', 'need').stderr).toContain('nothing to override');
+      const file = recordFor('origin/main..HEAD');
+      fs.writeFileSync(file, refuseText('- [suggestion] a nicety.'));
+      expect(override('origin/main..HEAD', 'the', 'suggestion', 'is', 'wrong').stderr)
+        .toContain('no blocking finding');
+    });
+
+    it('covers the range it was written for and no other: a commit on top needs its own', () => {
+      commit('a.ts');
+      refuse('origin/main..HEAD');
+      override('origin/main..HEAD', 'wrong', 'finding');
+      expect(check()).toBe(0);
+      commit('b.ts');
+      expect(check()).toBe(1);
+    });
+
+    it('is reported under its own name, never as an owner accept', () => {
+      commit('a.ts');
+      refuse('origin/main..HEAD');
+      override('origin/main..HEAD', 'wrong', 'finding');
+      const r = spawnSync('node', [REVIEW, 'check', 'origin/main..HEAD'], { cwd: dir, env: ENV, encoding: 'utf8' });
+      expect(r.status).toBe(0);
+      const state = execFileSync('node', ['-e',
+        `const r=require(${JSON.stringify(REVIEW)});const o=r.overrideRecord('origin/main..HEAD');process.stdout.write(o?o.findings.length+' '+/By: agent/.test(o.text):'none')`,
+      ], { cwd: dir, env: ENV, encoding: 'utf8' });
+      expect(state).toBe('1 true');
+    });
+  });
+
   it('clears an unpushed range by one review of its combined diff', () => {
     commit('a.ts');
     commit('b.ts');

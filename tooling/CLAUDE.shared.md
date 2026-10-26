@@ -140,6 +140,40 @@ project's own rules, so the sections around this one are what it checks.
 submodule. Commit on the current branch, run `npm test` (and `npm run
 typecheck`), and stop: unpushed commits on local `main` are the queue.
 
+**Unless the owner has granted an AUTONOMOUS PASS for a named piece of
+work**, which is the one exception and is granted per piece of work, never
+standing. Where it is granted the agent runs `npm run ship --
+--autonomous <sha>` itself and takes the review's feedback without
+stopping, round by round, to a push. The grant does not loosen the gate —
+it moves who presses the button, not what the button checks:
+
+- **Scope.** `<sha>` is the last commit that is NOT the granted work, and
+  ship refuses the pass if the range holds anything older. The whole
+  `origin/main..HEAD` range is what gets pushed, and an agent's commits
+  carry the owner's name, so the boundary is the only checkable reading of
+  "the work I was granted". A queue with someone else's commit in it goes
+  to the owner.
+- **The reviewer still decides.** Every round is a real review. `review.js
+  accept` stays the owner's, from a terminal, and no autonomous pass may
+  run it.
+- **Three rounds, refused by the script** (`ROUND_CAP`), not by prose. A
+  fourth round means the range needs a person: report every open finding
+  word for word and stop.
+- **A disputed finding is OVERRIDDEN on the record, never worked around.**
+  Where the agent judges a blocking finding wrong it may run `review.js
+  override <base>..<tip> <reason>` — which refuses unless a review actually
+  ran and refused, so it can never be a way past a review that did not
+  happen. It records the reason and every finding disputed, ship puts the
+  same on the pushed commit's message (`Review: OVERRIDDEN by agent`), and
+  the agent's report says so. An override is visible in `git log` forever;
+  use it for a finding that is wrong, not a finding that is awkward.
+- Everything else about the pass is unchanged: the same checks, the same
+  refusals, `--no-verify` still never, `tooling/` still not edited to get a
+  commit through.
+
+Which work has a grant is recorded with the work — for the shared editor's
+consolidation, `docs/shared-editor.md` §5.
+
 **The review pass is the `/ship` skill** (the project's
 `.claude/skills/ship/SKILL.md`, which follows
 `vendor/UnderwayEngine/tooling/skills/ship.md`), run when the owner asks.
@@ -161,9 +195,14 @@ Always:
 - Never run `review.js accept`, never push with `--no-verify`, and never
   edit `vendor/UnderwayEngine/tooling/`, `docs/review/`,
   `underway.config.json` or `.githooks/` to get a commit through. Clearing
-  a review is the owner's call.
+  a review is the owner's call. None of this is relaxed by an autonomous
+  pass: `accept` is the owner's whatever is granted, and the agent's own
+  disagreement has its own recorded path (`override`, above).
 - If you think a finding is wrong, say so to the user with the reason; do
-  not work around it.
+  not work around it. Under an autonomous pass, `review.js override` is
+  that sentence made auditable — the reason goes on the record and on the
+  pushed commit — and it is still never a workaround: the finding is
+  disputed in the open or it is fixed.
 
 ## Avoid duplicate and redundant code
 

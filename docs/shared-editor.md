@@ -4494,6 +4494,54 @@ Still open:
 
 ## 5. Process
 
+**The consolidation has an AUTONOMOUS SHIP GRANT** (given by the owner,
+2026-10-26). For this work, in these four repositories, the agent runs the
+ship pass itself and takes the review's feedback round by round without
+stopping — `npm run ship -- --autonomous <sha>`, where `<sha>` is the last
+commit that is not the granted work. The general rule is unchanged
+everywhere else: agents commit and stop (`tooling/CLAUDE.shared.md`
+"Independent review and shipping", which is where the exception is defined).
+
+This is the first standing grant in the programme, and what makes it safe
+is that it moves WHO PRESSES the button and nothing about what the button
+checks. Three properties hold it in place, and two of them had to be built
+because prose would not have carried them:
+
+- **The reviewer still decides every round.** `review.js accept` — the hand
+  clear — stays the owner's and refuses to run without a terminal, which an
+  agent's shell does not have. That was already true and is why the grant
+  did not need it loosened.
+- **The scope is the boundary, checked by the script.** An agent's commits
+  carry the owner's name (`git log` cannot tell them from the owner's), and
+  a push takes the whole `origin/main..HEAD` range, so "only my own work"
+  is not a property that can be read off the history. What CAN be checked
+  is where the granted work starts: `--autonomous <sha>` refuses the pass
+  if the range holds any commit older than `<sha>`, and names it. A queue
+  with someone else's commit in it goes back to the owner.
+- **The round cap is a refusal, not a sentence in a skill.** Three rounds
+  was always the rule and was always prose — a gate only while a person is
+  reading it. `ship` now refuses round four on the same base (exit 7)
+  before a reviewer starts. **A loop does not get tired of re-arguing a
+  finding, which is exactly why the limit had to stop being advice.**
+
+**Disagreeing with a review, under the grant.** The rule was: say so to the
+user and never work around it. With nobody to say it to between rounds,
+that became `review.js override <base>..<tip> <reason>` — the agent's
+recorded disagreement, which refuses unless a review actually ran and
+requested changes, so it can never be a way past a review that did not
+happen. It copies every blocking finding it disputes into its record, and
+`ship` puts the same on the pushed commit's message
+(`Review: OVERRIDDEN by agent`). `review.js` reports the three ways a range
+clears under three different names — `passed`, `accepted by owner`,
+`overridden by agent` — so no audit has to guess which happened.
+
+The honest caution to carry: across this stage's review rounds, **nearly
+every blocking finding has been correct**, including two that looked wrong
+at first reading and one the agent's own sweep had already flagged and then
+skipped. An override is for a finding that is wrong, not one that is
+awkward; the record exists so that getting that judgment wrong is visible
+rather than silent.
+
 The shipping process the apps share — the review gate, the ship pass, the
 doc-path check, the hook, the CI backstop, the shared CLAUDE.md rules — is
 `tooling/` in this repo, consumed through the submodule and parametrized by
