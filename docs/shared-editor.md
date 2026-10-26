@@ -3143,9 +3143,13 @@ first, then the pointer bump in each app).
    (not literals, and not call shapes) found 37 stale markers across 15
    suites per app — **two of them stale since 6.5b.2**, slicing on
    `onFraming` and `onReplaceImageSource`, bounding nothing, and green. The
-   guard now lives in a shared helper, `sliceBetween` in each app's
-   `web/editor/__tests__/test-utils.ts`, which throws when either end is
-   missing and seeks the end AFTER the start. Every re-pointed slice goes
+   guard now lives in ONE shared helper — `sliceBetween` in
+   `packages/editor/src/__tests__/sourceSlice.ts`, re-exported from each
+   app's `web/editor/__tests__/test-utils.ts` — which throws when either end
+   is missing and seeks the end AFTER the start. (It read "in each app's
+   test-utils" until 6.5b.4's review: that was true of the first cut and the
+   paragraphs below record the move, so the sentence a reader hits first was
+   contradicting them.) Every re-pointed slice goes
    through it, and every suite's own `between` is a thin adapter over it —
    which the review had to ask for twice over, because the first pass left
    `pageColorRows`' guarded copy standing BESIDE the new helper in a file
@@ -3156,12 +3160,22 @@ first, then the pointer bump in each app).
    guard is worse than no guard, because it reads as covered.)
 
    **A deferred sweep, scoped out here.** Four suites under
-   `components/__tests__` in CozyJournal have their own `between` — two
-   guarded, two not — over `components/` source rather than the shell's,
-   and `packages/editor-ui/src/__tests__/dragCommit.test.ts` has a fifth
+   `components/__tests__` in CozyJournal have their own `between` over
+   `components/` source rather than the shell's, and
+   `packages/editor-ui/src/__tests__/dragCommit.test.ts` has one more
    (`handler`, guarded start, unguarded end with a fallback) over
    `onPanResponderX:` keys rather than declarations, which Sol's review
-   found. They are the same duplication for the same reason and they are
+   found. **The sites, not a count** — the count read "four, two guarded,
+   two not" and was wrong twice over (6.5b.4's review said five; there are
+   six, and they are not alike):
+   `assetUpload.test.ts:17` and `sharedFreshness.test.ts:25` guard NEITHER
+   end; `friendsPersist.test.ts:15` and `notebookChurn.test.ts:24` assert
+   the start and not the end; `reactionQueue.test.ts:11` asserts the start
+   and falls back to EOF on a missing end, which is the failure mode
+   `sliceBetween` exists to stop; and `viewSettingsScreen.test.ts:48`
+   builds its slice from an `at()` that asserts BOTH needles, so it is
+   already guarded and wants only the dedupe. Where a count would catch
+   the wrong thing, name the sites. They are the same duplication for the same reason and they are
    NOT in this sub-stage: other trees, other markers, and no part of the
    shell's move touches them. Recorded the way `editorSource`'s own
    fifty-suite backlog is, so that it is a decision rather than an
@@ -3253,6 +3267,17 @@ first, then the pointer bump in each app).
    The lesson is the one §4.3 already has in another form: **do not trust
    your own sweeps.** Every one of these over-matched rather than
    under-matched, so each produced confident output that was wrong.
+
+   **6.5b.4 added the other half of it: a sweep that REPORTS is only half
+   the work, and the line that gets missed is the one next to the line that
+   gets fixed.** Its inert-pin sweep listed `tileTool.test.ts`'s dead gate
+   pin and I fixed the other flagged line in the same file, four lines
+   away; the review found it. Under-matching is not the only way a sweep
+   fails — acting on its output selectively is the commoner one, and it
+   leaves a report that reads as covered. So for a re-pointed pin the sweep
+   is the candidate list and the CHECK is a mutation: break the thing the
+   pin names and watch it go red. A pin that cannot be made to fail is not
+   a pin, whatever the sweep said about it.
 
    **The dead-import sweep, keyed by specifier and diffed against HEAD.**
    36 / 37 / 35 names and 3 / 4 / 3 whole declarations went dead in the
@@ -3489,6 +3514,31 @@ first, then the pointer bump in each app).
    `setColorPreview(null)`. Three suites spelled the vendored package path
    by hand, **three different ways across the three apps**; they use
    `editorSource` now, which is the one spelling of it.
+
+   **And the sweep still missed one, which round 1's review caught — a
+   LISTING is not a fix.** `tileTool.test.ts`'s gate pin read the shell for
+   `'{gridActionsTargetOpen'`, and the shell still contains that literal:
+   the prop pass-through `gridActionsTargetOpen={gridActionsTargetOpen}` has
+   it as a substring. So the assertion went on passing while asserting
+   nothing about the gate it names. It was IN the sweep's output and the
+   fix went to the other flagged line in the same file (`{patternRadialUp ? (`,
+   four lines down), which is the whole lesson: a sweep that reports is only
+   half the work, and the line that gets missed is the one next to the line
+   that gets fixed. Its TWIN was in DrawBots, as the rule says to expect.
+
+   The remedy is a check that cannot be read past: **a re-pointed pin is
+   mutation-tested, not eyeballed.** Breaking the gate in
+   `PatternGridActions.tsx` now fails `tileTool` in both apps that have it;
+   before the fix it failed nothing. Two more pins were caught by running
+   that check over every survivor rather than the named one:
+   `patternActionsCapsule`'s duplicate `TARGET` (identical to the
+   module-level one it shadowed) and — PRE-EXISTING, not this sub-stage's —
+   `rigParts.test.ts`'s `panelPx={panelOccludedPx}`, which five components
+   satisfied before 6.5b.4 and three do now, so deleting the rig panel's own
+   line left it green. It is sliced to the rig's own mount now, and the two
+   halves of that test are pinned apart because they live on different
+   components: the rig panel READS the occupied height, the properties panel
+   REPORTS it.
 
    The test and suite COUNTS did not move — CozyJournal 673 / 10,965; Sol
    278 / 3,327; DrawBots 557 / 9,524; engine 404 of 405 / 7,347
