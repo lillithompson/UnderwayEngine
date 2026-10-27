@@ -4353,12 +4353,19 @@ first, then the pointer bump in each app).
    **Is the consolidation finished? Yes, as this document defined it.**
    Items 1–7 of this plan are done; §4.3 holds no open call that is a
    stage. What "the package knows no app's kind of object" now means,
-   precisely: no identifier in `packages/editor-ui` or `packages/editor`
+   precisely: no identifier in either package's SOURCE — `packages/
+   editor-ui/src` outside `__tests__`, and `packages/editor/src` the same —
    names a rig, a bot, a plant or a tile; the kinds reach the shared
    editor through the seams §4.1 lists — tools, session, outline, canvas
    and (this item) property pages — and the one thing the package still
    says about any of them is in comments that use one as the worked
-   example. What it does NOT mean: that the three shells are one file
+   example. The exception, found by DrawBot's stage-7 review and stated
+   here rather than filed off: one engine TEST declares `type RigPickerId`
+   over `'rigVolumes' | 'rigOutlines'`
+   (`packages/editor/src/__tests__/colorPickerSpec.test.ts`), which is a
+   generic type exercised with a named app's ids — the test's subject is
+   `ColorPickerSpecFor<T>` taking an app's own ids, so the rig there is a
+   worked example like the comments, not a kind the package knows. What it does NOT mean: that the three shells are one file
    (§4.3 "the shell's frame" and the app-only bucket, 82 / 58 / 36
    statements, are the apps' own by design), that every pin has a
    renderer behind it (§4.3 "No renderer, anywhere" stands), or that the
@@ -5120,6 +5127,20 @@ Still open:
   was, and the app-only bucket was exactly what it was before the first
   slice (82 / 1,099 in CozyJournal, 58 / 286 in Sol, 36 / 267 in
   DrawBots) — six slices, every statement out of the SHARED bucket.)
+
+- **`onPageChange` is keyed on the page, not on the selection** (found by
+  DrawBot's stage-7 review, 2026-10-27). The panel's effect fires when the
+  open host page's KEY changes, so moving the selection to a DIFFERENT
+  object of the host's own kind that offers the same page key fires
+  nothing — a host fixing a base when its page opens would keep one
+  measured from the previous object. No live victim: CozyJournal, the only
+  app wiring it, drops the base and reseats the sliders from its own
+  per-figure effect (`EditorShell.tsx`, keyed on `selectedRig?.figureId`),
+  and DrawBot wires no `onPageChange` at all. The fix, if a second user
+  ever needs it, is to add `model.hostPages.id` to the effect's deps — the
+  panel already distinguishes selections by it, in `typeSig`. Left as a
+  flag rather than taken, because changing when a seam fires with no
+  reader needing it is a change nothing in the tree would catch.
 
 - **Two things stage 7 saw and left, flagged here rather than folded in
   (rule 9).** (1) Sol's and DrawBot's shells each carry one comment
