@@ -48,9 +48,11 @@ describe('the Copies option', () => {
     expect(pageIsWelled('opacity')).toBe(true);
     expect(submenuHeight('opacity', {})).toBe(CONTENT_PAD * 2 + BAR_CUSHION + ROW_SLIDER * 2 + ROW_GAP);
     // The sheet asks the same predicate the arithmetic does, so a page
-    // cannot be measured one way and drawn the other.
+    // cannot be measured one way and drawn the other. (A HOST page reads
+    // its own element's flag instead — HostPage.element.bare, pinned in
+    // hostPages.test — which is the same rule from the host's side.)
     const panel = read('ObjectPropertiesPanel.tsx');
-    expect(panel).toContain('welled={!displaySub || pageIsWelled(displaySub)}');
+    expect(panel).toContain('welled={!displaySub || (shownHostPage ? !shownHostPage.element?.bare : pageIsWelled(displaySub))}');
     const sheet = readFileSync(resolve(__dirname, '..', 'components', 'EditSheet.tsx'), 'utf8');
     expect(sheet).toContain('<View style={welled ? styles.well : styles.bare}>{content}</View>');
     expect(sheet).toContain('bare: { marginTop: SHEET_CONTENT_TOP },');
