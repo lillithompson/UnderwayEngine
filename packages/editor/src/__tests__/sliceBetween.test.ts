@@ -1,4 +1,8 @@
-import { declarationBody, mountOf, mountsOf, sliceBetween } from './sourceSlice';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import {
+  deadNamedImports, declarationBody, mountOf, mountsOf, sliceBetween,
+} from './sourceSlice';
 
 // `sliceBetween` is the one piece of LOGIC the shell's source-pinning brought
 // with it (6.5b.3, docs/shared-editor.md §4.2 item 6), and its whole purpose
@@ -174,5 +178,68 @@ describe('mountsOf', () => {
 
   it('is what mountOf points a caller at for a double mount', () => {
     expect(() => mountOf(TWICE, 'SymmetryModal')).toThrow(/use mountsOf/);
+  });
+});
+
+describe('deadNamedImports', () => {
+  // The fixture carries one of each shape, plus the two traps that cost a
+  // false positive and a blind spot in the sweep this helper came out of.
+  const SRC = [
+    "import { alive, deadOne } from '@/engine/types';",
+    "import { spreadOnly } from '@/engine/flags';",
+    "import { FLOATING_CAPSULE_HEIGHT } from '@/editor/components/capsule';",
+    "import { FLOATING_CAPSULE_HEIGHT as ROW_HEIGHT } from '@/editor/components/capsule';",
+    "import { ownName } from '@/web/store/entryStore';",
+    "import { type OnlyAType } from '@/engine/types';",
+    '',
+    'export function Shell() {',
+    '  const a = alive();',
+    '  const b = { ...spreadOnly };',
+    '  const c = ROW_HEIGHT;',
+    '  return [a, b, c];',
+    '}',
+  ].join('\n');
+
+  const PREFIXES = ['@/editor', '@/editor-ui', '@/engine', '@/native-shell'];
+
+  it('finds a binding nothing else mentions', () => {
+    expect(deadNamedImports(SRC, PREFIXES)).toContain('deadOne (@/engine/types)');
+  });
+
+  it('counts a SPREAD as a use', () => {
+    // `...NAME` has a dot before the name, so a lookbehind that rejects `.`
+    // makes every spread use invisible. That is not hypothetical: it called
+    // `PATTERN_SYMMETRY_OFF` dead in all three shells, where every use of
+    // it is `{ ...PATTERN_SYMMETRY_OFF }`, and only the typecheck caught it.
+    expect(deadNamedImports(SRC, PREFIXES).join(' ')).not.toContain('spreadOnly');
+  });
+
+  it('counts a type-only import that nothing names as dead', () => {
+    expect(deadNamedImports(SRC, PREFIXES)).toContain('OnlyAType (@/engine/types)');
+  });
+
+  it('is scoped to the prefixes it is given', () => {
+    // `ownName` is dead too, and deliberately out of scope: the app's own
+    // modules are not this helper's business unless it is asked for them.
+    expect(deadNamedImports(SRC, PREFIXES).join(' ')).not.toContain('ownName');
+    expect(deadNamedImports(SRC, ['@/web'])).toEqual(['ownName (@/web/store/entryStore)']);
+  });
+
+  it('cannot see an aliased duplicate, and says so in its own doc', () => {
+    // The blind spot: `FLOATING_CAPSULE_HEIGHT` is imported plainly AND as
+    // an alias from the same module, so blanking one statement leaves the
+    // name in the other and the plain one can never read as dead. Pinned so
+    // that the day it is fixed, this fails and the doc gets corrected with
+    // it.
+    expect(deadNamedImports(SRC, PREFIXES).join(' ')).not.toContain('FLOATING_CAPSULE_HEIGHT');
+    expect(readFileSync(join(__dirname, 'sourceSlice.ts'), 'utf8'))
+      .toContain('is invisible: this blanks the statement it is reading');
+  });
+
+  it('refuses a source that imports nothing from those prefixes', () => {
+    // An empty result must mean "nothing dead", never "nothing looked at" —
+    // the same reasoning as sliceBetween's two-ended guard.
+    expect(() => deadNamedImports("import { x } from './local';", PREFIXES))
+      .toThrow('no imports from');
   });
 });

@@ -4003,8 +4003,9 @@ first, then the pointer bump in each app).
    | `FLOATING_CAPSULE_INK`, `TOOL_MODE_CAPSULE_Z`, `HEADER_INK`, `STATE_ACTIVE`, `ConfettiBurst`, `sliderModeFamily` | the chrome and the package's components | stage 2 and 5b |
    | `deleteCompositionData`, `bytesToDataUri`, `colorsEqual`, `allDescendantMemberIds`, `onAppEvent`, `afterNextPaint`, `flagRefusedMarkers`, `templateBaselineOf` | `@/engine/*`, `@/native-shell/*`, `@/editor/*` | older than this programme |
 
-   So the shells are **8,622 / 6,054 / 7,146** after the sweep, and
-   `web/editor/` is 9,965 / 15,712 → 15,706 / 23,639.
+   So after the sweep the shells are **8,622 / 6,054 / 7,146** and
+   `web/editor/` is **9,965 / 15,706 / 23,639** (Sol / DrawBots / Cozy, as
+   §1's table reads it).
 
    **Two things this cost, and both are worth having on the record.**
 

@@ -109,3 +109,62 @@ export function mountsOf(src: string, name: string): string[] {
   if (!out.length) sliceBetween(src, open, '/>');
   return out;
 }
+
+/**
+ * The NAMED bindings `src` imports from a module under one of `prefixes`
+ * and never mentions again — dead imports, as `"NAME (module)"` strings.
+ *
+ * A sub-stage that takes a group of statements out of a shell leaves that
+ * group's imports behind by default, and nothing in these projects sees
+ * them: there is no eslint, the expo base config does not set
+ * `noUnusedLocals`, and a typecheck is happy to resolve an import nobody
+ * reads. 6.5b.6 left two (`PATTERN_TILE_FAMILIES` and
+ * `togglePatternTileSet`) and the sweep that followed found 33 across the
+ * three shells (docs/shared-editor.md §4.2 item 6, 6.5b.6).
+ *
+ * Here rather than in each app for `sliceBetween`'s reason: the derivation
+ * has nothing of any app in it, and a copy per shell is three copies of one
+ * guard. Each app's suite calls it with the prefixes it cares about.
+ *
+ * TWO BLIND SPOTS, both worth knowing before trusting an empty result:
+ *
+ * - a binding imported TWICE from the same module, once plainly and once
+ *   `as` an alias, is invisible: this blanks the statement it is reading
+ *   and the other statement still mentions the name, so it can never read
+ *   as dead. Sol's shell has one (`FLOATING_CAPSULE_HEIGHT`, also imported
+ *   as `SOL_ROW_HEIGHT`), live today.
+ * - it is TEXTUAL. A name mentioned only in a comment counts as used.
+ *
+ * And one trap that is NOT a blind spot, because it cost a false positive
+ * that reached the tree: `...NAME` has a dot before the name, so a
+ * lookbehind that rejects `.` to keep member accesses out makes every
+ * SPREAD use invisible. `PATTERN_SYMMETRY_OFF` read as dead in all three
+ * shells, where every use of it is `{ ...PATTERN_SYMMETRY_OFF }`, and the
+ * typecheck is what caught it. `...` is blanked below, as `clusters.js` has
+ * done since 6.5b.2.
+ */
+export function deadNamedImports(src: string, prefixes: readonly string[]): string[] {
+  // A prefix is matched as a path segment boundary rather than as a regular
+  // expression: `startsWith` plus the next character, so nothing in a
+  // prefix needs escaping and there is no pattern to get wrong.
+  const inScope = (mod: string) => prefixes.some(
+    (p) => mod === p || mod.startsWith(`${p}/`),
+  );
+  const specs = [...src.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'([^']*)'/g)]
+    .filter(([, , mod]) => inScope(mod));
+  if (!specs.length) throw new Error(`no imports from ${prefixes.join(', ')}`);
+
+  const dead: string[] = [];
+  for (const [stmt, names, mod] of specs) {
+    // Hoisted out of the per-binding loop: a shell is ~300 KB and one of
+    // these statements can carry a hundred bindings.
+    const rest = src.split(stmt).join(' ').split('...').join(' ');
+    for (const raw of names.split(',')) {
+      // `type X`, `X as Y` — the binding is the last word either way.
+      const name = raw.trim().split(/\s+/).pop();
+      if (!name || !/^[A-Za-z_$][\w$]*$/.test(name)) continue;
+      if (!new RegExp(`(?<![.\\w$])${name}(?![\\w$])`).test(rest)) dead.push(`${name} (${mod})`);
+    }
+  }
+  return dead;
+}
