@@ -38,14 +38,14 @@ which is what makes a file that only one app has still count once. LINES are
 counted as the file's `split('\n')` length, which is one MORE than `wc -l`
 reports for a file ending in a newline — so a tree of 30 files reads 30 high
 against `wc -l`. That is stated because re-measuring the other way looks like
-a discrepancy and is not: at 2026-10-26 `wc -l` gives 9,945 / 15,654 / 23,563
+a discrepancy and is not: at 2026-10-27 `wc -l` gives 9,935 / 15,648 / 23,561
 over 30 / 58 / 78 non-test files, which is the `web/editor/` row below
 exactly. (Those per-app file counts are not that row's `Files` column, which
 is the union described above.)
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
-| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 9,975 / 15,712 / 23,641 |
+| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 9,965 / 15,706 / 23,639 |
 | `web/editorUi/` | — | — | — | retired at stage 1 |
 | `web/formats/` | 49 | 4 | 1 | 282 / 737 / 13,787 |
 | `web/store/` | 12 | 6 | 0 | 510 / 1,009 / 2,922 |
@@ -59,8 +59,8 @@ still has an
 `editorQuery.ts`, an `EditorHost.tsx` and an `EditorShell.tsx` — where
 every sub-stage up to 6.5a took whole files. Measured against each app's
 HEAD before 6.6a (Sol 102c61c, DrawBots 308e277, CozyJournal 3dd7cb10),
-`web/editor/` went 11,464 → 9,975, 17,198 → 15,712 and 25,143 → 23,641:
-**1,489 / 1,486 / 1,502 lines lighter, and not one file lighter** — 30 /
+`web/editor/` went 11,464 → 9,965, 17,198 → 15,706 and 25,143 → 23,639:
+**1,499 / 1,492 / 1,504 lines lighter, and not one file lighter** — 30 /
 58 / 78 files before and after. A stage that empties files shows up in the
 first column; a stage that hollows them out shows up only in the last, and
 the rest of stage 6 is the second kind.
@@ -68,7 +68,9 @@ the rest of stage 6 is the second kind.
 Two sub-stages are most of that movement: 6.5b.2 took 415 / 415 / 425,
 6.5b.3 took **609 / 609 / 620**, 6.5b.4 took 178 / 179 / 179, 6.5b.5 took
 105 / 105 / 105 and 6.5b.6 took 60 / 60 / 60 — so the first two are 69 % of
-the seven together. That is what slicing a
+the seven together. The remaining 10 / 6 / 2 lines are not a slice: they are
+the dead IMPORTS the earlier sub-stages left, which 6.5b.6's review found
+and its entry lists. That is what slicing a
 10,000-line component looks like from here. The file still exists in three
 copies.
 
@@ -3919,7 +3921,8 @@ first, then the pointer bump in each app).
    **65 lines out of each shell, identical in all three** — 41 for the tile
    sets, 24 for the step gate. The shells went 8,684 / 6,124 / 7,212 →
    **8,624 / 6,064 / 7,152**, sixty lighter apiece: 67 lines out and 7 back
-   (two imports and two call sites).
+   (two imports and two call sites). The dead-import sweep below took them
+   to 8,622 / 6,054 / 7,146.
 
    **The dust entry said 77, and it was wrong twice over.** Both errors are
    the same kind — a figure read off a tool rather than off the text:
@@ -3976,6 +3979,62 @@ first, then the pointer bump in each app).
    satisfied by `?? []` appended to it — and that mutation is the
    refuse-the-last-set rule deleted. The pin takes the call AND the null
    check that follows it now, since the refusal is the line after.
+
+   **And the imports, which the slice forgot and the review caught.**
+   `PATTERN_TILE_FAMILIES` and `togglePatternTileSet` were
+   `toggleTileSetOver`'s only readers in each shell, so the move took the
+   reader and left the imports — and nothing in any gate could see them:
+   there is no eslint in these projects, the expo base config does not set
+   `noUnusedLocals`, and the derived hook check only covers `@/editor/use*`
+   modules. **A sub-stage that takes a group out leaves its imports behind
+   by default**, which is now a test rather than a thing to remember:
+   every named binding of every `@/editor`, `@/editor-ui`, `@/engine` or
+   `@/native-shell` import must be mentioned somewhere else in the shell
+   (`shellHookOrder.test.ts`).
+
+   That check came back red on more than this sub-stage's two, so the
+   litter went with it — **4 / 18 / 11 dead bindings, 2 / 10 / 6 lines**
+   (Cozy / Sol / DrawBots):
+
+   | binding | module | where it went |
+   |---|---|---|
+   | `PATTERN_TILE_FAMILIES`, `togglePatternTileSet` | `@/editor/patternTileFamilies`, `@/editor-ui/logic/patternEdit` | 6.5b.6, this sub-stage |
+   | `containBboxInto`, `mintNodeId`, `resolveSelectionBox`, `resolveMultiSelectionBox`, `cellBboxAroundPoints` | `@/editor/editorSession`, `@/editor/cameraMath` | stages 3–5, with the canvas and the session |
+   | `FLOATING_CAPSULE_INK`, `TOOL_MODE_CAPSULE_Z`, `HEADER_INK`, `STATE_ACTIVE`, `ConfettiBurst`, `sliderModeFamily` | the chrome and the package's components | stage 2 and 5b |
+   | `deleteCompositionData`, `bytesToDataUri`, `colorsEqual`, `allDescendantMemberIds`, `onAppEvent`, `afterNextPaint`, `flagRefusedMarkers`, `templateBaselineOf` | `@/engine/*`, `@/native-shell/*`, `@/editor/*` | older than this programme |
+
+   So the shells are **8,622 / 6,054 / 7,146** after the sweep, and
+   `web/editor/` is 9,965 / 15,712 → 15,706 / 23,639.
+
+   **Two things this cost, and both are worth having on the record.**
+
+   The first is a false positive that reached the tree: the check's
+   lookbehind rejects a `.` before a name, to keep a member access from
+   counting as a use — and `...NAME` has a dot before the name, so every
+   SPREAD use was invisible and `PATTERN_SYMMETRY_OFF` read as dead in all
+   three shells, where every use of it is `{ ...PATTERN_SYMMETRY_OFF }`. The
+   typecheck caught it. `clusters.js` has carried a comment about exactly
+   this trap since 6.5b.2 — *a spread/rest is not a member access* — which
+   is the uncomfortable half: the trap was documented in one tool and walked
+   into in another. Both now blank `...` before searching, and the pin is
+   mutation-tested in both directions: a dead import fails it, and a binding
+   used only through a spread does not.
+
+   The second is that an import line is formatted text. The first removal
+   script rebuilt each statement from its list of names, which collapsed
+   four multi-line imports onto one line — one of them a hundred bindings
+   long — and dropped the space after a brace. Sol's review caught the
+   seams. The edit is line-wise now: a binding on its own line is a deleted
+   line, a sole binding is a deleted statement, and a shared line is edited
+   in place, with every other binding of that statement asserted to survive.
+
+   **What is NOT swept, and is the owner's.** Widening the check from the
+   four prefixes to all of `@/` finds 1 / 11 / 6 more dead bindings that are
+   each app's OWN — `markDone`, `upsertEntry`, `todayIso`, `getView`,
+   `getStoredEntry`, `FormatId`, `createSimSession` and the like, from
+   `@/web/store/*`, `@/web/formats/*` and `@/web/simEditor/*`. They are
+   unrelated debt in three shipped shells, and the shared rules say to flag
+   that rather than fold it into a consolidation commit (§4.3).
 
    **What this leaves, and it is a cleaner answer than 6.5b.5's.**
    Re-measured after the move: **117 statements / 689 lines in 92
@@ -4877,6 +4936,23 @@ Still open:
   product decision rather than a consolidation: the line, its use in
   `EditorShell.tsx` and the three assertions in `hostTools.test.ts` stay
   until the owner makes it.
+
+- **Dead imports of each app's OWN modules** (found 2026-10-27 by 6.5b.6's
+  review, deliberately NOT swept). The check that sub-stage added covers
+  the four prefixes this migration moves things between — `@/editor`,
+  `@/editor-ui`, `@/engine`, `@/native-shell` — and it swept 4 / 18 / 11
+  dead bindings out of the three shells. Widened to all of `@/` it finds
+  **1 / 11 / 6 more**, and those are each app's own: `markDone`,
+  `upsertEntry`, `todayIso`, `getView`, `getStoredEntry` and `FormatId` in
+  Sol, `upsertEntry` and `createSimSession` in DrawBots, from
+  `@/web/store/*`, `@/web/formats/*` and `@/web/simEditor/*`. Nothing to
+  do with the shared editor, and deleting prose-free dead code in three
+  shipped shells is still a change to three shipped shells — the shared
+  rules say to flag debt found while doing something else rather than fold
+  it in, so it is flagged. One widened character in each suite
+  (`shellHookOrder.test.ts`) and three small commits whenever the owner
+  wants it; the check is already written and mutation-tested in both
+  directions.
 
 - **The rig's place.** This repo's editor-ui carries CozyJournal's Figgie
   rig pages (`logic/rigEdit.ts`, `RigJointsBar`, `RigPoseBar`,
