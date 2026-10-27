@@ -38,14 +38,14 @@ which is what makes a file that only one app has still count once. LINES are
 counted as the file's `split('\n')` length, which is one MORE than `wc -l`
 reports for a file ending in a newline — so a tree of 30 files reads 30 high
 against `wc -l`. That is stated because re-measuring the other way looks like
-a discrepancy and is not: at 2026-10-26 `wc -l` gives 10,005 / 15,714 / 23,623
+a discrepancy and is not: at 2026-10-26 `wc -l` gives 9,945 / 15,654 / 23,563
 over 30 / 58 / 78 non-test files, which is the `web/editor/` row below
 exactly. (Those per-app file counts are not that row's `Files` column, which
 is the union described above.)
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
-| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 10,035 / 15,772 / 23,701 |
+| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 9,975 / 15,712 / 23,641 |
 | `web/editorUi/` | — | — | — | retired at stage 1 |
 | `web/formats/` | 49 | 4 | 1 | 282 / 737 / 13,787 |
 | `web/store/` | 12 | 6 | 0 | 510 / 1,009 / 2,922 |
@@ -59,15 +59,16 @@ still has an
 `editorQuery.ts`, an `EditorHost.tsx` and an `EditorShell.tsx` — where
 every sub-stage up to 6.5a took whole files. Measured against each app's
 HEAD before 6.6a (Sol 102c61c, DrawBots 308e277, CozyJournal 3dd7cb10),
-`web/editor/` went 11,464 → 10,035, 17,198 → 15,772 and 25,143 → 23,701:
-**1,429 / 1,426 / 1,442 lines lighter, and not one file lighter** — 30 /
+`web/editor/` went 11,464 → 9,975, 17,198 → 15,712 and 25,143 → 23,641:
+**1,489 / 1,486 / 1,502 lines lighter, and not one file lighter** — 30 /
 58 / 78 files before and after. A stage that empties files shows up in the
 first column; a stage that hollows them out shows up only in the last, and
 the rest of stage 6 is the second kind.
 
 Two sub-stages are most of that movement: 6.5b.2 took 415 / 415 / 425,
-6.5b.3 took **609 / 609 / 620**, 6.5b.4 took 178 / 179 / 179 and 6.5b.5
-took 105 / 105 / 105 — so the first two are 72 % of the six together. That is what slicing a
+6.5b.3 took **609 / 609 / 620**, 6.5b.4 took 178 / 179 / 179, 6.5b.5 took
+105 / 105 / 105 and 6.5b.6 took 60 / 60 / 60 — so the first two are 69 % of
+the seven together. That is what slicing a
 10,000-line component looks like from here. The file still exists in three
 copies.
 
@@ -1241,17 +1242,18 @@ first, then the pointer bump in each app).
    `EditorConfig`, `web/fonts/*` and the shared half of `web/store/*` move
    with them. Each app's `web/editor/` is then its extension alone.
 
-   **Where the stage stands, plainly** (2026-10-26, after 6.5b.5 and the
-   dust call). **All but one slice of stage 6's movable part has
-   moved; the judgment it was waiting on is made; and what is left is that
-   one slice, blocked by a gate rather than by anything measured.** (It
-   read "what is left is a judgment rather than a slice" until the dust call
-   was taken, which made both halves of that false in the same commit — Sol
-   caught it. The sentence is two lines above the decision that falsified it,
-   which is the whole of why this document keeps paying for the same mistake:
-   the statement nearest a change is the one not re-read.)
+   **Where the stage stands, plainly** (2026-10-26, after 6.5b.6). **Stage
+   6's movable part has ALL moved, and the judgment it was waiting on is
+   made.** (This sentence has now been wrong twice in four commits — it read
+   "what is left is a judgment rather than a slice" when the dust call made
+   it a slice, and "all but one slice" when 6.5b.6 moved that one. It sits
+   two lines above the entries that falsify it, which is the whole of why
+   this document keeps paying for the same mistake: the statement nearest a
+   change is the one not re-read. It is written as of a DATE now, so that
+   reading it against a later sub-stage is reading a dated claim rather than
+   a standing one.)
 
-   6.6 is done, and five of 6.5b's six slices are: two of the
+   6.6 is done, and so are all six of 6.5b's slices: two of the
    shell's own leaves, eight closed clusters (465 lines of each app), the
    colour-and-effects complex as five hooks (640), the render tree's
    floating chrome as eight components (286 / 284 / 293), and the two groups
@@ -1337,11 +1339,16 @@ first, then the pointer bump in each app).
    already closed is precisely what the cap exists to prevent**, so 6.5b.6
    waits on that, and not on a measurement.
 
-   **Is stage 6 complete? No — and the remainder is now a gate rather than a
-   judgment.** Its movable part moved at 6.5b.1–6.5b.5 and 6.6 BAR ONE
-   SLICE; the last call it needed is taken above; what is left of stage 6
-   itself is that slice, 6.5b.6's two groups, which are movable by this
-   item's own measurement and held up by a process gate instead. What stage
+   **Is stage 6 complete? Its PROGRAMME is: 6.5b has no seventh slice and
+   6.6 is done. The stage as item 6 first wrote it is not, and what is left
+   of it is not a slice.** Every closed, byte-identical cluster the
+   measurement found has moved (6.5b.1–6.5b.6), the dust call is taken and
+   closed, and what remains in the three shells is the app-only bucket —
+   stage 7's subject — the render tree's FRAME, and the dust the call held.
+   Item 6's own sentence, "each app's `web/editor/` is then its extension
+   alone", is the part that is NOT done and would need the FRAME and the
+   app-only statements to move, which 6.5b.4 and 6.5b.2 each measured and
+   each declined on the evidence. What stage
    7 inherits is unchanged by any of this.
 
    **The queue this sub-stage started from was the clearest in the
@@ -1382,17 +1389,16 @@ first, then the pointer bump in each app).
    | 6.5b.3 | done | the colour-and-effects complex — the bar handlers — as five hooks |
    | 6.5b.4 | done | the render tree's floating chrome as eight components |
    | 6.5b.5 | done | the two groups that would not place, cut and moved |
-   | 6.5b.6 | planned | the two groups the dust measurement separates from the rest — blocked on CozyJournal's queue, not on a measurement |
+   | 6.5b.6 | done | the two groups the dust measurement separated from the rest, as two hooks with no cut: 4 statements / 65 lines of each app |
 
-   **Is stage 6 complete? No. Its movable part is BAR ONE SLICE, the
-   judgment it was waiting on is made, and what holds the rest is a GATE**
-   (2026-10-26, after 6.5b.5 and the dust decision). 6.0 through 6.6 are
-   done bar 6.5b, five of whose six slices are — the fifth being the two
-   groups that would not place, cut at the statement that blocked each. The
-   dust call is taken at the head of this item, and it leaves that one slice
-   outstanding, 6.5b.6, which is MOVABLE (measured: placeable in all three
-   apps without a cut) and blocked on CozyJournal being shippable rather
-   than on anything measured.
+   **Is stage 6 complete? Its programme is; the stage as first written is
+   not, and what is left of it is not a slice** (2026-10-26, after 6.5b.6).
+   6.0 through 6.6 are done and so are all SIX slices of 6.5b — the last of
+   them the two groups the dust call separated from the dust, neither of
+   which needed a cut. Nothing movable is outstanding: what remains is the
+   app-only bucket (stage 7's subject), the render tree's frame, and the
+   dust the call HELD, each on a measurement and a decision rather than a
+   queue.
 
    What is left in the three shells is three things, and the first two are
    settled:
@@ -3783,8 +3789,9 @@ first, then the pointer bump in each app).
    | `useDefaultFontState` | 3 | the font the next text is born in, and the drag's base state |
    | `useDefaultFontCommit` | 2 | `onTextStyle`, and remembering the font it used |
 
-   **16 statements / 106 lines out of each app**, and the shells are
-   8,684 / 6,124 / 7,212 (Cozy / Sol / DrawBots). (The figures first written
+   **16 statements / 106 lines out of each app**, and the shells were then
+   8,684 / 6,124 / 7,212 (Cozy / Sol / DrawBots; 6.5b.6 took sixty more
+   apiece). (The figures first written
    here were 102 and four lines higher: they were measured before the double
    blank lines the generated call sites left were taken out, which DrawBots'
    review caught. A measurement is only as current as the last edit.)
@@ -3844,8 +3851,9 @@ first, then the pointer bump in each app).
    in the other would be the same type twice.
 
    **What this leaves, and whether stage 6 is complete.** The closed set
-   under the four allowed inputs is now **121 statements / 766 lines in 94
-   components, 76 of them singletons** — from 136 / 890 / 96 / 76. The
+   under the four allowed inputs was then **121 statements / 766 lines in 94
+   components, 76 of them singletons** — from 136 / 890 / 96 / 76. (6.5b.6
+   has the figure after it, which is what the dust call acted on.) The
    count byte-identical in all three went 224 → 209, for 6.5b.3's reason:
    16 statements left and four hook calls replaced them.
 
@@ -3861,8 +3869,8 @@ first, then the pointer bump in each app).
    `packages/editor` file importing `react-native-safe-area-context`, and
    that rule outranks a clean measurement.
 
-   So: **all but one slice of stage 6's movable part has moved** — the dust
-   call below names the one. What is left in the three
+   So: **stage 6's movable part has moved** — all of it, as of 6.5b.6,
+   whose entry follows this one. What is left in the three
    shells is the app-only bucket (82 / 58 / 36 statements, unchanged by
    every slice since 6.5b.2 — see below), the render tree's FRAME (6.5b.4's
    entry says why it stays), and dust.
@@ -3872,12 +3880,95 @@ first, then the pointer bump in each app).
    than one: the 76
    singletons and sixteen of the 18 groups are HELD and closed — this
    entry's recommendation, for this entry's reasons — while the OTHER TWO
-   became 6.5b.6. The re-measurement is what separated them: at 43 and 34
-   lines of each app they are this sub-stage's own size with a narrower
-   return, and they place in all three apps without a cut, so the
-   recommendation above holds for the fourteen-line tail and not for them.
+   became 6.5b.6, and are moved. The re-measurement is what separated them:
+   at 41 and 24 lines of each app (the dust call's own figures for them, 43
+   and 34, were over — 6.5b.6's entry has why) they are this sub-stage's own
+   size with a narrower return, and they place in all three apps without a
+   cut, so the recommendation above holds for the fourteen-line tail and not
+   for them.
    The recommendation was right about the dust and too broad about its
    head, which is what re-measuring a judgment is for.
+
+   **6.5b.6 — Done: what a pattern is made of, and the pattern rows' step
+   gate** (engine 2a6f45a; 2026-10-26). The slice the dust call separated
+   from the rest of the dust, and the last of 6.5b. Two groups, two hooks,
+   and — unlike 6.5b.5's two — **no cut**: each places as a single hook in
+   all three apps.
+
+   | hook | what it is | stmts | reads | hands back |
+   |---|---|---|---|---|
+   | `usePatternTileSets` | the tile sets a pattern is made of, toggled over every grid named, and the Shapes page's way in | 2 | `sessionRef`, `applyEntry` | 2 |
+   | `usePatternRowStep` | the gate both pattern rows pass each drag frame through | 2 | nothing | 1 |
+
+   **65 lines out of each shell, identical in all three** — 41 for the tile
+   sets, 24 for the step gate. The shells went 8,684 / 6,124 / 7,212 →
+   **8,624 / 6,064 / 7,152**, sixty lighter apiece: 67 lines out and 7 back
+   (two imports and two call sites).
+
+   **The dust entry said 77, and it was wrong twice over.** Both errors are
+   the same kind — a figure read off a tool rather than off the text:
+
+   - `clusters.js` counts each statement's chunk INCLUDING the blank
+     separator line after it, which is two lines of the 77 that no edit
+     moves;
+   - and ten more were a comment band that is not the group's at all, which
+     is the one judgment in this sub-stage and is worth the paragraph below.
+
+   Nothing was built on the wrong figure, because the first thing this
+   sub-stage did was measure it again. That is the whole of why the rule is
+   *re-measure, do not quote* — the dust entry is eleven commits old and was
+   written by the same hand.
+
+   **The displaced band, and why the call site is where it is.** Above the
+   step gate stood a nine-line band describing `applySvgPatternSize` — which
+   stands 31 lines BELOW it with no band of its own, the gate's own band
+   having been inserted between them. The pairing is not a reading:
+   `applySvgPatternSpan`'s band opens "…and its SIZE slider", which parses
+   only as a continuation of the Resolution band above it. So the band is
+   app prose about app code and it STAYS, and the hook call goes ABOVE it
+   rather than where the group was. Taking the group out then leaves the
+   band immediately above the function it describes: **the extraction repairs
+   a displacement instead of deepening it**, which is the opposite of what
+   6.5b.4 did to DrawBots' orphaned band (§4.3) and the reason that one is
+   still the owner's to settle — there, nothing the work could do would have
+   helped.
+
+   The re-point script asserts the repair rather than trusting it, and the
+   first run failed it: cutting the group left a blank line between the band
+   and the function, which is a floating comment rather than a doc one. The
+   check is `endsWith('*/\n')` on the text between them now.
+
+   **What the hooks claim, and how it is pinned** (`shellHooks.test.ts`, all
+   three mutation-tested):
+
+   - `usePatternTileSets` **invents nothing at all** — its parameters are a
+     SUBSET of the four allowed inputs, the first group in the programme of
+     which that is true. No app store, no sentinel, no format: there is
+     nothing to thread through to get it, which is why it was worth taking
+     at 41 lines when the fourteen-line tail was not.
+   - `usePatternRowStep` **hands back the question, not its memory.** The
+     gate's ref was read nowhere else in any of the three shells, so it
+     comes out of the shell entirely rather than being returned — the one
+     thing the hook does that the shell could not, because a ref the shell
+     declares is a ref the shell can reach.
+   - and it is **handed nothing**, asserted by the absence of a destructured
+     parameter object rather than inferred from a thrown error being
+     swallowed.
+
+   The two app-side pins were re-pointed and mutation-tested per app, which
+   caught a weak one: a `toContain` of the `togglePatternTileSet(…)` call was
+   satisfied by `?? []` appended to it — and that mutation is the
+   refuse-the-last-set rule deleted. The pin takes the call AND the null
+   check that follows it now, since the refusal is the line after.
+
+   **What this leaves, and it is a cleaner answer than 6.5b.5's.**
+   Re-measured after the move: **117 statements / 689 lines in 92
+   components, 76 of them singletons, and SIXTEEN multi-statement groups
+   whose largest is 27 lines** — and that largest one is
+   `insets` / `headerless` / `chromeInsets`, the group the
+   native-dependency rule forbids outright. So what is left of the closed
+   set is held by RULE and by size, not by anything waiting on a
+   measurement: the dust call's four reasons are the whole of it.
 
    **6.5b.2+ — the measurement 6.5b.2 was planned from, and why it is
    plural.** The shell's BODY, measured 2026-10-25 over the three apps'
@@ -3973,7 +4064,7 @@ first, then the pointer bump in each app).
    | 6.5b.3 | done | the colour-and-effects complex as five hooks: 61 statements, 640 lines of each app, cut at the commit pipeline |
    | 6.5b.4 | done | the render tree's floating chrome as eight components: 286 / 284 / 293 lines, and NOT the frame |
    | 6.5b.5 | done | the two groups that would not place — the caret and the default font — CUT at the statement that blocked each, 16 statements / 106 lines of each app |
-   | 6.5b.6 | planned | the two groups the dust measurement separates from the rest — the dust decision above has them and their figures. Blocked on CozyJournal's queue, not on a measurement |
+   | 6.5b.6 | done | the two groups the dust measurement separated from the rest — `usePatternTileSets` and `usePatternRowStep`, 4 statements / 65 lines of each app, neither needing a cut |
 
    **What 6.5b.3 found, and why the objection was aimed at the wrong
    thing.** The case against moving the bar handlers alone, twice on the
@@ -4793,7 +4884,7 @@ Still open:
   SHARED bucket. The stage-5 and 6.5b precedents are both the owner's, on
   the same kind of evidence.
 
-- **No renderer, anywhere — SEVENTEEN hooks AND eight components in the
+- **No renderer, anywhere — NINETEEN hooks AND eight components in the
   package because of it** (raised 2026-10-25 by 6.5b.2; sharper after
   6.5b.3; the owner's call at 6.5b.4 was to proceed without one). There is no
   React renderer in this repo's jest (`testEnvironment: 'node'`, no jsdom,
@@ -4807,12 +4898,13 @@ Still open:
   editor writes. The apps typecheck them, and the only safety argument is
   byte-identity with three shipped apps.
 
-  **And 6.5b.5 added 106 lines more**, which is the point rather than an
-  aside: the argument does not strengthen with repetition, and the total
-  now unpinned by anything but byte-identity and a typecheck is 465 + 640
-  + 286 / 284 / 293 + 106 lines of state, handlers and JSX across seventeen
-  hooks and eight components — the render tree's figure being the one that
-  differs per app, and `283` being none of the three. (It read 283 for one
+  **And 6.5b.5 added 106 lines more, and 6.5b.6 another 65**, which is the
+  point rather than an aside: the argument does not strengthen with
+  repetition, and the total now unpinned by anything but byte-identity and a
+  typecheck is 465 + 640 + 286 / 284 / 293 + 106 + 65 lines of state,
+  handlers and JSX across nineteen hooks and eight components — the render
+  tree's figure being the one that differs per app, and `283` being none of
+  the three. (It read 283 for one
   commit, in the half of a change whose other half existed to make exactly
   these figures current. **A number corrected in one place is not
   corrected.**) 6.5b.5 is the mildest of the four — sixteen statements
