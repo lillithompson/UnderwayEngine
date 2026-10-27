@@ -31,7 +31,8 @@ out, which is what makes the file counts reproducible:
 | `web/store/` | 14 | 8 | 1 | 1.1 k / 1.7 k / 3.6 k |
 | `web/fonts/` | 8 | 8 | 5 | 0.7 k each |
 
-And the same trees NOW (re-measured 2026-10-26, after 6.5b.5), so
+And the same trees NOW (re-measured 2026-10-27, after stage 7 — the
+2026-10-26 reading after 6.5b.5 is restated under the table), so
 the table above stays the baseline it says it is rather than being
 overwritten. `Files` is the UNION of file names across the three apps,
 which is what makes a file that only one app has still count once. LINES are
@@ -45,11 +46,23 @@ is the union described above.)
 
 | Tree | Files | In all three | Identical in all three | Lines (Sol / DrawBot / Cozy) |
 |---|---|---|---|---|
-| `web/editor/` (incl. `components/`) | 101 | 26 | 1 | 9,965 / 15,706 / 23,639 |
+| `web/editor/` (incl. `components/`) | 105 | 26 | 1 | 9,965 / 15,706 / 24,296 |
 | `web/editorUi/` | — | — | — | retired at stage 1 |
 | `web/formats/` | 49 | 4 | 1 | 282 / 737 / 13,787 |
 | `web/store/` | 12 | 6 | 0 | 510 / 1,009 / 2,922 |
-| `web/fonts/` | 5 | 5 | 1 | 213 / 233 / 234 |
+| `web/fonts/` | 6 | 5 | 1 | 213 / 261 / 234 |
+
+Against the 2026-10-26 reading (`web/editor/` 101 / 26 / 1, 9,965 /
+15,706 / 23,639 over 30 / 58 / 78 files; `web/fonts/` 5 / 5 / 1, 213 /
+233 / 234) two rows moved. `web/editor/` grew in CozyJournal ALONE, by
+four files and 657 lines (78 → 82 files, 23,639 → 24,296): stage 7
+brought the rig's tables and pages home from the package
+(`rigEdit.ts`, `rigPages.ts`, `useRigPages.tsx`,
+`components/RigJointsBar.tsx`), which is the one stage of the programme
+whose direction was INTO an app — the package lost ~1,200 lines for it
+(§4.2 item 7). Sol and DrawBot did not move by a line. `web/fonts/` in
+DrawBot went 5 files / 233 lines to 6 / 261 between the two readings,
+which is DrawBot's own work and nothing of this programme's.
 
 The file COUNTS have not moved since 6.5a and the lines have, which
 is the honest reading of 6.6 and of the five slices of 6.5b taken so far:
@@ -189,11 +202,16 @@ fields pages are **host pages** — `ObjectPropertiesModel.hostPages`
 (`HostPagesModel`), pages the host describes as rows in the panel's own
 grammar (slider, segmented, switch, hue row, a stroke's width and dash, a
 line of actions, a program of cards, a row of swatches with states) or as
-the host's own element at a declared height; `hiddenCommonActions` trims the
-common row; `OutlineObject.overlayRank` draws a host's own kind of thing in
-the scene outline over the scene. This is the mechanism by which "the object
-property pages for different types" are shared: the panel renders any kind's
-pages, and an app supplies the rows for the kinds that are its own.
+the host's own element at a declared height (and, since stage 7, an element
+that is its own box stands with no well — `element.bare` — and the host can
+hear which of its pages is up — `onPageChange`); `hiddenCommonActions` trims
+the common row; `OutlineObject.overlayRank` draws a host's own kind of thing
+in the scene outline over the scene. This is the mechanism by which "the
+object property pages for different types" are shared: the panel renders
+any kind's pages, and an app supplies the rows for the kinds that are its
+own — DrawBot's bots, tiles, arena and fields, and since stage 7
+CozyJournal's rig (`web/editor/rigPages.ts`). The package itself names no
+app's kind of object in code.
 
 **`packages/editor`** holds, from stage 1, the 34 files that were identical
 in all three apps and import nothing of any app: the long-press radial menu
@@ -347,7 +365,7 @@ What the three shells wire in by hand today, named as seams:
 | Seam | Today, by hand | As an extension point |
 |---|---|---|
 | Extra tools on the bar | `ToolId` union members (`plant`, `bots`, `instructions`, `rig`, `word`, `tile`, `symmetry`) and their `TOOL_META` rows in each `toolbarMeta.ts` | **Done (stage 2).** `tools: HostTool[]` (`packages/editor/src/hostTools.ts`, the first field of `EditorExtension` in `extension.ts`) — id, label, icon (an MCI name; a shape the font lacks is drawn by the shell, as the line, arc and polygon glyphs already are), `kind` (`'tool'`, armed and lit while in hand, or `'setting'`, which toggles and never lights — symmetry), `contentMode: { gate }` (the tool rides the content group's row behind a format flag — rig, word, tile) and `modeCapsule` (a hold on the lit button recalls its capsule — plant). The standard tools stay in the package; the toolbar's functions that have to know a host tool take the registry, and each app's `web/editor/hostTools.ts` is its registry plus `TOOL_META = toolMetaFor(HOST_TOOLS)`, the whole bar's table over its own `ToolId`. |
-| Property pages for the app's kinds | DrawBot's `useSimEditor().selection`, CozyJournal's rig model, spread into the panel model in the shell | **Done (stage 4).** `hostPages` / `hiddenCommonActions` (`HostPagesModel`, `packages/editor-ui`) — per-SELECTION data, not an installed rule, so they are two fields of `PanelModelInput` (`panelModel.ts`) rather than a member of the extension, and the shell hands them in at the one place it builds the model. DrawBot's `useSimEditor().selection` IS that pair; CozyJournal's rig pages stay the chrome's until stage 7 and its shell spreads them over the built model. |
+| Property pages for the app's kinds | DrawBot's `useSimEditor().selection`, CozyJournal's rig model, spread into the panel model in the shell | **Done (stage 4).** `hostPages` / `hiddenCommonActions` (`HostPagesModel`, `packages/editor-ui`) — per-SELECTION data, not an installed rule, so they are two fields of `PanelModelInput` (`panelModel.ts`) rather than a member of the extension, and the shell hands them in at the one place it builds the model. DrawBot's `useSimEditor().selection` IS that pair, and since stage 7 so is CozyJournal's `useRigPages()` — the rig's five pages, built in `web/editor/rigPages.ts`. |
 | Scene outline rows | `sceneOutlineModel.ts` per app (tag labels, rig glyphs, bots as overlays) | **Done (stage 4).** `outline?: OutlineHost` (`outlineHost.ts`, the third field of `EditorExtension`): `nodes(state)` — the host's reading of this page's own kinds, resolved ONCE per build (a glyph instead of the kind's, `chrome` for its rendering internals: CozyJournal's rig figure wears the Rig tool's glyph and its hidden pose record is no row) — and `overlays(state, doc)` — rows for what the host's DOCUMENT holds that draws over the scene (DrawBot's bots and instruction tiles, ranked by `overlayRank`, swallowed by a lit group they ride). Installed at module scope with the session host. The tag LABELS are not here: per-format or per-document data, handed to the builders as `tagLabels` (§4.3). |
 | Layers drawn over the canvas, and the gestures a host claims | Sol's plant layers rendered by its canvas, DrawBot's `DrawBotsLayer` in a slot, CozyJournal's `RigNodeLayer` and its whole `rigPose` gesture mode | **Done (stage 5b.1, completed 5b.4).** `layers: { nodeLayer?(node), previewStandIn?(nodeId) }` plus the CANVAS HOOKS — `GestureHooks` and `CanvasSurfaceHandle` — in `packages/editor/src/components/canvasHooks.ts`, with the host's per-node RECORDS and the TWO-FINGER TWIST beside them and `canvasTwist.ts`'s `resolveTwistUnit` reading what a pair would turn. Two of the four are installed rules on `EditorExtension.canvas` (`records`, `twist`); the hooks and `layers` are PROPS of `CanvasSurface`, which is the plan's own line (§4.3) — an installed rule goes on the extension, per-render data rides as a prop, as the panel's host pages do — and both close over state only the shell holds (DrawBot's `useSimEditor()`, Sol's per-render plant plan and its rasters' oversample). **The seam already existed and was adopted, not designed** (stage 5b, settled 2026-10-22): DrawBot had shipped it in its own `web/editor/components/canvasHooks.ts`, 56 lines that CozyJournal and Sol had no copy of, and CozyJournal's rig maps onto it member for member — `beginRigPose` IS `onPointerDown` returning a CLAIM, the move case IS `onPointerMove`, `finishRigPose` IS `onPointerUp`, and the hold that abandons a pose grab (so a rig is not the one object whose radial menu will not open) IS `holdOpensMenu`. DrawBot's `claimedPointerRef` lifecycle is the lifecycle CozyJournal's gesture union member gets by hand. §4.3 records the decision, the SEVEN widenings it needed over the four halves of stage 5b, and the four members beside it. Two of the seven came at 5b.4 and are holes rather than widenings: `layers.previewStandIn`, which is `nodeLayer`'s `null` seen from the gesture side (a node the host draws nothing for has no element for a live preview to write on — Sol's plant sat still under the finger), and `HostNodeLayerInput`'s `liveIds` / `hiddenGroups`, two canvas facts a host drawing many nodes as one cannot do without and a SHELL cannot read, because both are the canvas's own state. `overlay?(session, camera)` was designed here and is **dropped**: the only thing it was for, Sol's `RevealOverlay`, is mounted by the SHELL and is stage 6, and the canvas's real overlay mechanism is the `layerSlot` + handle DrawBot ships — imperative by design, because Sol's §9.2 and DrawBot's §10.3 both forbid React state per frame. What stage 5a did first: the node layer moved with Sol's two components extracted to `web/sol/scene/`, beside the `plantLayer` policy whose DOM they are. |
 | Commit pipeline wrapper | DrawBot's `commitPipeline.ts` + `commitWrapper.ts`; Sol's `solEntry` and the index-aligned Sol undo stacks; DrawBot's bots and tiles in the selection; CozyJournal's rig in the colour dispatch, the duplicate and the brush | **Done (stage 3).** `wrapCommit?: CommitWrapper` (`commitPipeline.ts`, DrawBot's file as it was, installed with `setCommitWrapper`) and `session?: SessionHost` (`sessionHost.ts`), three optional members an app fills as it needs: `ops` — a PARALLEL DOCUMENT moved by the same undo step (`EditorSession.hostDoc`, `hostUndoStack` / `hostRedoStack` index-aligned with the engine's, `SessionEntry.hostOps`, an entry of host ops alone pushing an empty engine entry; Sol's `SolOp[]`, DrawBot's `{before, after}` of its sim document); `items` — things the host's document holds that stand in the selection beside scene nodes (`HostItems`: id spelling, box, group, lock, through-a-matrix, remove, duplicate; DrawBot's bots and instruction tiles, which the marquee, the group and every multi builder carry through the adapter); `nodes` — rules about scene nodes of the host's own kind (`HostNodeRules`: a duplicate's companion ops, a node held to its aspect, a colour target off the object, the Color brush's pass over such nodes, the outline label of a tagged node; CozyJournal's rig and seeded squiggle). Installed once per app at module scope (`installSessionHost`), the way the commit wrapper and the brush's glyph-ink probe are, because the session's builders take a state, not a session, and are called from dozens of sites; a builder that moves host items takes the document as a trailing `hostDoc?`, where DrawBot's took `sim?`. `EditorSession<TTool, TDoc, TOps>` carries the app's types through, and every function that returns a session is generic over it. |
@@ -563,8 +581,9 @@ first, then the pointer bump in each app).
    multi-selection with nothing to take it, and its host-item lock on the
    Lock button (generic through the session host's `items`, so no app
    branch). Sol's missing `onPatternMakeColorable` was an oversight and is
-   dropped. CozyJournal's rig pages stay the chrome's until stage 7: its
-   shell spreads them over the built model.
+   dropped. CozyJournal's rig pages stayed the chrome's until stage 7,
+   its shell spreading eleven rig flags over the built model; they ride
+   the same seam now (item 7).
 
    The bar HANDLERS stay in each app's shell and move with it at stage 6
    (§4.3) — 1,670 lines that are 95 % identical, and every one of them a
@@ -652,8 +671,8 @@ first, then the pointer bump in each app).
    The Sol and DrawBot columns are lines that DIFFER against CozyJournal's
    copy, counted as §1's are. Six of the eleven leaves are byte-identical
    between CozyJournal and DrawBot and absent from Sol, which gains them
-   unused — the arrangement editor-ui already has with CozyJournal's rig
-   pages (§4.3, "The rig's place").
+   unused — the arrangement editor-ui had with CozyJournal's rig pages
+   until stage 7 took them out (§4.3, "The rig's place").
 
    `regionChromeScreen.ts`'s 60 lines of DrawBot drift turned out to be a
    whole feature CozyJournal's copy has none of — the FORWARD ARROW
@@ -4233,13 +4252,13 @@ first, then the pointer bump in each app).
    than either, because most of `entryStore` never reads a field: it is key
    layout, the per-format index, the sidecar images and the settings merge,
    over a record it only stores and hands back.
-7. **Property pages for the apps' kinds, all the way — IN PROGRESS**
-   (2026-10-27). CozyJournal's rig pages, which this repo's editor-ui still
-   carries, become CozyJournal host pages; the package then knows no app's
-   kind of object at all. Taken in two halves, so the switch can be seen
-   working before the old path is gone: **7a** (done, below) puts the rig
-   on the seam while the rig's code still stands in the package; **7b**
-   (next) takes that code out.
+7. **Property pages for the apps' kinds, all the way — DONE**
+   (2026-10-27). CozyJournal's rig pages, which this repo's editor-ui
+   carried, are CozyJournal host pages, and the package knows no app's
+   kind of object. Taken in two halves, so the switch could be seen
+   working before the old path was gone: **7a** put the rig on the seam
+   while the rig's code still stood in the package; **7b** took that code
+   out. Both below, after the measurement they were shaped on.
 
    **Measured first** (2026-10-27, by IDENTIFIER — the substring "rig"
    hits 65 files of `packages/editor-ui/src`, 47 of them `right`,
@@ -4309,14 +4328,43 @@ first, then the pointer bump in each app).
    latent sheet→mode crossing, flagged in §4.3), so under rule 9 it was
    not folded in. One pin broke and was re-pointed (`transformBar.test`
    held the panel's whole `welled` line, the hostage a whole-line pin is).
-   The rig's code in editor-ui is untouched by 7a; the panel still checks
-   a host's pages before the rig flags no app sets.
+   The rig's code in editor-ui was untouched by 7a; the panel still
+   checked a host's pages before the rig flags no app set.
 
-   **7b — next**: the four files, the two tests, the adapter block, the
-   panel's twelve sites, the height cases and keys, the export line and
-   the pin lines leave the package; then the record (§1's table, §4.3's
-   "The rig's place" and "Whether stage 7 goes next", each app's map, and
-   the plain statement of whether the consolidation is finished).
+   **7b — Done** (2026-10-27; engine `6b58509`, then the three pointer
+   bumps). The four files, the two tests, the adapter's eleven members and
+   their import, the panel's twelve sites (two `useState` among them), the
+   nine `SubmenuKey` members, eight height cases, `rigCanReset` and the
+   `pageIsWelled` clause, the `index.ts` export and the pin lines in
+   `editSheet.test` and `submenuHeight.test` left the package; nothing was
+   moved, because 7a had already moved what CozyJournal reads and the
+   rest was unreachable. One comment that cited `rigEdit` as a neighbour
+   (`patternEdit.ts`) was reworded. **Re-measured after**: `packages/
+   editor-ui/src` has ZERO rig identifiers; "rig" survives in six
+   comments (`adapter.ts` on `onPageChange`, `ObjectPropertiesPanel.tsx`
+   on the host-pages branch, `effectBar.tsx`, `OpacityBar.tsx`,
+   `BrushControlsPanel.tsx`, `logic/slider.ts`) and one test comment, each
+   naming CozyJournal's rig as the example of a host's kind. `packages/
+   editor` was already at zero identifiers and stays there, with its ~40
+   files of prose. Every app's `npm test`, `npm run typecheck` and `npm
+   run check:doc-paths` green; the engine's `cameraRoll` suite fails in
+   this checkout for want of `expo-media-library`, as it did before.
+
+   **Is the consolidation finished? Yes, as this document defined it.**
+   Items 1–7 of this plan are done; §4.3 holds no open call that is a
+   stage. What "the package knows no app's kind of object" now means,
+   precisely: no identifier in `packages/editor-ui` or `packages/editor`
+   names a rig, a bot, a plant or a tile; the kinds reach the shared
+   editor through the seams §4.1 lists — tools, session, outline, canvas
+   and (this item) property pages — and the one thing the package still
+   says about any of them is in comments that use one as the worked
+   example. What it does NOT mean: that the three shells are one file
+   (§4.3 "the shell's frame" and the app-only bucket, 82 / 58 / 36
+   statements, are the apps' own by design), that every pin has a
+   renderer behind it (§4.3 "No renderer, anywhere" stands), or that the
+   debt flagged in §4.3 — the three shells' dead bindings of their own
+   modules, the two things stage 7 left — is paid. Those are not stages
+   of this plan; they are where the next one would start.
 
 ### 4.3 Decisions, and the ones still open
 
@@ -5047,25 +5095,48 @@ Still open:
   commits. The check is already written and mutation-tested in both
   directions.
 
-- **The rig's place.** This repo's editor-ui carries CozyJournal's Figgie
-  rig pages (`logic/rigEdit.ts`, `RigJointsBar`, `RigPoseBar`,
-  `RigColorBar`, `showRigOptions`), so Sol and DrawBot ship that code
-  without using it. Stage 7 makes them CozyJournal host pages, the way
-  DrawBot's bot pages already are; nothing forces that earlier.
+- **The rig's place — RESOLVED** (stage 7, 2026-10-27). This repo's
+  editor-ui carried CozyJournal's Figgie rig pages (`logic/rigEdit.ts`,
+  `RigJointsBar`, `RigPoseBar`, `RigColorBar`, `showRigOptions` and ten
+  more members of `ObjectPropertiesModel`), so Sol and DrawBot shipped
+  that code without using it. They are CozyJournal host pages now, the
+  way DrawBot's bot pages are (`web/editor/rigPages.ts`, `useRigPages.tsx`),
+  and the package carries no rig: §4.2 item 7 has the measurement before
+  and after, and what the package still says about a rig is six comments.
 
-- **Whether stage 7 goes next** — and since 6.5b.6 (2026-10-26) it is no
-  longer a question about ORDER at all: 6.5b is finished, there is no rest
-  of it for stage 7 to go before, and nothing else in the plan is
-  outstanding. What is left is simply whether stage 7 is the next thing
-  done, **and that is the owner's call**.
-  STAGE 7 never contended with any slice of 6.5b, and the measurement said
-  so at each one rather than being assumed: the rig's
-  twelve render-tree reads and two unique mounts are all in the FRAME,
-  which 6.5b.4 left where it was, and the app-only bucket is exactly what
-  it was before the first slice (82 / 1,099 in CozyJournal, 58 / 286 in
-  Sol, 36 / 267 in DrawBots) — six slices, every statement out of the
-  SHARED bucket. The stage-5 and 6.5b precedents are both the owner's, on
-  the same kind of evidence.
+- **Whether stage 7 goes next — RESOLVED** (the owner's call, taken
+  2026-10-27: go). It was the last item in the plan, and with it taken
+  **the consolidation this document plans is finished** — §4.2 item 7's
+  closing paragraph is the statement of what that does and does not
+  mean. The shape was put to the owner first, with the measurement, and
+  two design calls inside it were the owner's by that route rather than
+  the instruction's: the open/close word on the seam (`onPageChange`)
+  over a host-side part-crossing rule, and `element.bare` over letting
+  the Joints / Limbs box gain a second frame.
+  (The record of why order was never in question stands: STAGE 7 never
+  contended with any slice of 6.5b, and the measurement said so at each
+  one rather than being assumed — the rig's twelve render-tree reads and
+  two unique mounts were all in the FRAME, which 6.5b.4 left where it
+  was, and the app-only bucket was exactly what it was before the first
+  slice (82 / 1,099 in CozyJournal, 58 / 286 in Sol, 36 / 267 in
+  DrawBots) — six slices, every statement out of the SHARED bucket.)
+
+- **Two things stage 7 saw and left, flagged here rather than folded in
+  (rule 9).** (1) Sol's and DrawBot's shells each carry one comment
+  saying "`patternBarOpen` and `rigPartOpen` are declared further down";
+  neither app ever declared `rigPartOpen`, and CozyJournal no longer does.
+  One word of prose in each, in a file this stage did not otherwise
+  touch. (2) A latent crossing in CozyJournal's rig: a drag on a SHEET
+  page (Joints, say) followed by a drag on a floating-mode slider of a
+  DIFFERENT compounding part (spine-bend) with the mode unchanged — the
+  mode switch is what re-fixes the base on that path (`onRigSliderMode`),
+  and no switch happened, so the second drag shapes off a base fixed
+  before the first and swings it back. Stage 7 preserved the existing
+  rebase points exactly (`onPageChange` stands where `openRigPart`
+  stood); a part-crossing rule at the shaping site (`applyRigShape`:
+  rebase when the part differs from the last shaped) would close it and
+  subsume both existing triggers. CozyJournal's to take, on its own
+  evidence.
 
 - **No renderer, anywhere — NINETEEN hooks AND eight components in the
   package because of it** (raised 2026-10-25 by 6.5b.2; sharper after
@@ -5264,7 +5335,8 @@ than a consolidation, the band because §4.3 calls it prose in that app's shell 
 'not this work's to do on its own judgment'. A change to a gate: the jsdom
 environment (what a gate checks) and widening `override` to require the
 grant (who holds one). And the order of what is left: whether stage 7 goes
-next, 6.5b.6 having been the last of 6.5b.
+next, 6.5b.6 having been the last of 6.5b (taken by the owner 2026-10-27:
+go — and with stage 7 done there is no order left to settle).
 What the instruction reaches is the calls §4.3 leaves unassigned, which is
 what the dust call was.
 
@@ -5275,7 +5347,10 @@ review that refused, the round cap still refuses round four, and no edit to
 
 **Which decisions have been taken under it, so the list is auditable:** one,
 the DUST (2026-10-26). §4.3 states it, under "The DUST — SETTLED", and §4.2
-item 6 has the measurement it was taken on. The list is the audit; what was
+item 6 has the measurement it was taken on. Stage 7's two design calls
+(2026-10-27) are NOT on this list: they were put to the owner with the
+measurement before anything was built, and taken by the owner (§4.3,
+"Whether stage 7 goes next"). The list is the audit; what was
 decided is not restated here, because a decision written in four places goes
 stale in four places and this document has paid that twice in a week.
 
