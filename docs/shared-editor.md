@@ -3993,9 +3993,11 @@ first, then the pointer bump in each app).
    (`shellHookOrder.test.ts`, over the derivation in
    `packages/editor/src/__tests__/sourceSlice.ts` — `deadNamedImports`,
    which moved there for `sliceBetween`'s reason the round after it was
-   written, so the widening the §4.3 item leaves open is one edit in the
-   engine rather than three in three apps; its blind spots are documented
-   with it).
+   written, with the SCOPE beside it as `SHARED_IMPORT_PREFIXES` — so the
+   widening the §4.3 item leaves open is one edit rather than one per app,
+   which it was not when the prefixes were a literal in each suite and this
+   sentence first claimed otherwise; its blind spots are documented with
+   it).
 
    That check came back red on more than this sub-stage's two, so the
    litter went with it — **4 / 18 / 11 dead bindings, 2 / 10 / 6 lines**
@@ -4959,9 +4961,10 @@ Still open:
   do with the shared editor, and deleting prose-free dead code in three
   shipped shells is still a change to three shipped shells — the shared
   rules say to flag debt found while doing something else rather than fold
-  it in, so it is flagged. One widened character in each suite
-  (`shellHookOrder.test.ts`) and three small commits whenever the owner
-  wants it; the check is already written and mutation-tested in both
+  it in, so it is flagged. Whenever the owner wants it: one edit to
+  `SHARED_IMPORT_PREFIXES` in the engine (`packages/editor/src/__tests__/`
+  `sourceSlice.ts`), then the dead bindings out of each shell — three small
+  commits. The check is already written and mutation-tested in both
   directions.
 
 - **The rig's place.** This repo's editor-ui carries CozyJournal's Figgie

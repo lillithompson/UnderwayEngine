@@ -111,6 +111,20 @@ export function mountsOf(src: string, name: string): string[] {
 }
 
 /**
+ * The module prefixes a shell shares with the engine and the package — what
+ * the consolidation moves things BETWEEN, and so the scope the three shells
+ * are held to by `deadNamedImports`.
+ *
+ * Here rather than three times over so that widening it is ONE edit. An
+ * app's own trees (`@/web/*`, `@/components/*`) are deliberately out: dead
+ * bindings of those exist in all three shells and are each app's debt
+ * rather than this programme's (docs/shared-editor.md §4.3).
+ */
+export const SHARED_IMPORT_PREFIXES = [
+  '@/editor', '@/editor-ui', '@/engine', '@/native-shell',
+] as const;
+
+/**
  * The NAMED bindings `src` imports from a module under one of `prefixes`
  * and never mentions again — dead imports, as `"NAME (module)"` strings.
  *
@@ -124,7 +138,9 @@ export function mountsOf(src: string, name: string): string[] {
  *
  * Here rather than in each app for `sliceBetween`'s reason: the derivation
  * has nothing of any app in it, and a copy per shell is three copies of one
- * guard. Each app's suite calls it with the prefixes it cares about.
+ * guard. The SCOPE is here too — `SHARED_IMPORT_PREFIXES` below — so that
+ * widening it is one edit rather than one per app; a suite that wants a
+ * different scope still passes its own list.
  *
  * TWO BLIND SPOTS, both worth knowing before trusting an empty result:
  *

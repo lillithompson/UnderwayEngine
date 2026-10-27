@@ -256,6 +256,7 @@ describe('deadNamedImports', () => {
       .toThrow('expected at least 50');
     expect(deadNamedImports(SRC, PREFIXES, { atLeast: 2 })).toContain('deadOne (@/engine/types)');
   });
+
   it('refuses a source that imports nothing from those prefixes', () => {
     // An empty result must mean "nothing dead", never "nothing looked at" —
     // the same reasoning as sliceBetween's two-ended guard.
