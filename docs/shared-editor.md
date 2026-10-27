@@ -4233,10 +4233,90 @@ first, then the pointer bump in each app).
    than either, because most of `entryStore` never reads a field: it is key
    layout, the per-format index, the sidecar images and the settings merge,
    over a record it only stores and hands back.
-7. **Property pages for the apps' kinds, all the way.** CozyJournal's rig
-   pages (`rigEdit.ts`, `RigJointsBar`, `RigPoseBar`, `RigColorBar`), which
-   this repo's editor-ui still carries, become CozyJournal host pages; the
-   package then knows no app's kind of object at all.
+7. **Property pages for the apps' kinds, all the way — IN PROGRESS**
+   (2026-10-27). CozyJournal's rig pages, which this repo's editor-ui still
+   carries, become CozyJournal host pages; the package then knows no app's
+   kind of object at all. Taken in two halves, so the switch can be seen
+   working before the old path is gone: **7a** (done, below) puts the rig
+   on the seam while the rig's code still stands in the package; **7b**
+   (next) takes that code out.
+
+   **Measured first** (2026-10-27, by IDENTIFIER — the substring "rig"
+   hits 65 files of `packages/editor-ui/src`, 47 of them `right`,
+   `origin`, `trigger`, `bright`). The rig itself is in **18 files**: the
+   four §4.2 named (`logic/rigEdit.ts` 338 lines, `RigJointsBar.tsx` 66,
+   `RigPoseBar.tsx` 65, `RigColorBar.tsx` 55 — 524), two whole tests
+   (`rigOptions.test.ts` 351, `rigColorBar.test.ts` 119), and the rig's
+   own lines inside general files: ~115 of `ObjectPropertiesPanel.tsx` at
+   twelve sites (two of them `useState`, the Joints / Limbs section tabs),
+   a 49-line block of eleven members on `ObjectPropertiesModel` in
+   `adapter.ts` plus its import, ~40 of `submenuHeight.ts` (nine
+   `SubmenuKey` members, eight height cases, `rigCanReset`, one
+   `pageIsWelled` clause), one `export *` in `index.ts`, four pin lines in
+   `editSheet.test.ts` and `submenuHeight.test.ts`, and six one-line
+   comments. About 1,200 lines to leave; the six comments stay as prose.
+   `packages/editor` has NO rig identifier — it names the rig in ~40 files
+   of comments as the worked example of a host kind. Readers: CozyJournal,
+   from five source files and six tests; Sol and DrawBot, none (one stale
+   shell comment each naming `rigPartOpen`, which neither app declares —
+   flagged in §4.3, not this stage's to fix).
+
+   Four findings set the shape, and two of them were not in the plan:
+
+   · **CozyJournal did not use `hostPages` at all.** The "spread" the
+     `buildPanelModel` comment described was of ELEVEN RIG FLAGS over the
+     built model, not of pages. 7a is the seam's second user, built from
+     DrawBot's `botPropertiesModel.ts`.
+   · **All five rig tabs are the rig's own and each maps onto the seam.**
+     Figure is one `EffectButton` (an element); Joints and Limbs are one
+     tabbed `RowGroup` box each, drawn with no well (elements); Color is
+     two hue rows (`color` rows, the same `ColorSliderRow`); "Transform"
+     is the rig's OWN three spin axes (`rigRoot`), not the shared Transform
+     page — three `slider` rows, read out with the same `percentText` the
+     shared `SliderRow` defaults to.
+   · **Four of `RigPoseBar`'s five pages are dead**: Hands, Feet, Spine and
+     Head have no tab, and the shell's only setter of `rigPartOpen` was the
+     panel's own callback. Their sliders live on as CozyJournal's floating
+     modes, which read the TABLE, not the bars. So `RigPoseBar.tsx` and
+     `RigColorBar.tsx` are deleted in 7b, not moved.
+   · **Two things the seam could not say**, both load-bearing and both
+     generic: the panel told the shell when a rig page opened or closed
+     (`onRigPartOpenChange`) and the shell dropped the base its compounding
+     sliders measure from on it — crossing Joints to Limbs without that
+     swings the elbow pole back; and a host page was always welled, so the
+     Joints / Limbs box would have gained a second frame.
+
+   **7a — Done** (2026-10-27; engine `9505d37` + `35199a9`, CozyJournal and
+   the two pointer bumps on top). Two optional words added to the seam,
+   neither used by DrawBot: `HostPage.element.bare` (an element that is
+   its own box stands with no well and none counted — `HostPageBar`, the
+   panel's `welled` and `hostPageHeight` read the one flag) and
+   `HostPagesModel.onPageChange` (the host's only word of which of its
+   pages is up; read off the OPEN page, null the instant the sheet closes,
+   through a ref so a model rebuilt every render never re-fires it).
+   CozyJournal: `logic/rigEdit.ts` moved to `web/editor/rigEdit.ts` minus
+   its `SubmenuKey` coupling (`RigPartOption.sub`, `rigPartSubmenu`,
+   `rigPartOfSubmenu` — a host page is routed under its own key);
+   `RigJointsBar` moved beside it; `web/editor/rigPages.ts` (pure) builds
+   the `HostPagesModel` and `web/editor/useRigPages.tsx` draws the two
+   React pieces and holds the section tabs the panel used to; the shell
+   hands `hostPages` into `buildPanelModel` in place of the eleven spread
+   fields, and `rigPartOpen` / `openRigPart` are gone. Every height is the
+   one the panel computed (`rigPages.test.ts` pins each against
+   `submenuHeight` over the very page). The rejected alternative for the
+   open/close word — a part-crossing rule at the shaping site — needed no
+   seam change but was a behaviour change (it would also have fixed a
+   latent sheet→mode crossing, flagged in §4.3), so under rule 9 it was
+   not folded in. One pin broke and was re-pointed (`transformBar.test`
+   held the panel's whole `welled` line, the hostage a whole-line pin is).
+   The rig's code in editor-ui is untouched by 7a; the panel still checks
+   a host's pages before the rig flags no app sets.
+
+   **7b — next**: the four files, the two tests, the adapter block, the
+   panel's twelve sites, the height cases and keys, the export line and
+   the pin lines leave the package; then the record (§1's table, §4.3's
+   "The rig's place" and "Whether stage 7 goes next", each app's map, and
+   the plain statement of whether the consolidation is finished).
 
 ### 4.3 Decisions, and the ones still open
 
