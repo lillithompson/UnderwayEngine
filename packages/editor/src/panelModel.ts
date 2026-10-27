@@ -668,8 +668,7 @@ export interface PanelModelInput {
  *
  * Spread into `ObjectPropertiesPanel`'s `model` in ONE place. A host's
  * pages — DrawBot's bots, CozyJournal's rig — come through `hostPages`,
- * which the panel checks before the vectors (and, until stage 7b takes
- * them out of the chrome, before the rig flags no app sets any more).
+ * which the panel checks before the vectors.
  */
 export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
   const {

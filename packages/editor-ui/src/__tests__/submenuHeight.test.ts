@@ -158,7 +158,6 @@ describe('submenuHeight (a page’s content area)', () => {
       'tint', 'crop', 'effects', 'shadow', 'glowOuter', 'glowInner', 'border', 'opacity',
       'font', 'spacing', 'align', 'stroke', 'svgFill', 'endpoints', 'transform', 'layout', 'shape',
       'background', 'card',
-      'rigRoot', 'rigHands', 'rigFeet', 'rigSpine', 'rigHead',
       'patternTiles', 'patternTools', 'patternSymmetry',
     ];
     for (const key of ALL) {

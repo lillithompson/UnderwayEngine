@@ -3,7 +3,6 @@
 // Type-only React import (erased at build): the module stays runtime-pure so
 // node tests can import it without a renderer.
 import type React from 'react';
-import type { RigPart, RigSliderKey } from './logic/rigEdit';
 //
 // The whole point of "project agnostic": components never import engine
 // types or touch a CompositionState. They receive a normalized view model
@@ -727,61 +726,12 @@ export interface ObjectPropertiesModel {
   /** Selection is an object of the HOST's own kind (see {@link HostPagesModel}):
    *  its type options are the pages the host lists, in its order, drawn
    *  from their rows or holding the host's own element. Checked BEFORE
-   *  showRigOptions and showSvgOptions, and mutually exclusive with the
-   *  other type-option families. Absent, or with no pages, the selection
-   *  offers no host page. */
+   *  showSvgOptions (a host's thing can be an svg object underneath), and
+   *  mutually exclusive with the other type-option families. Absent, or
+   *  with no pages, the selection offers no host page. */
   hostPages?: HostPagesModel;
   /** Common-row buttons not drawn for this selection (see CommonAction). */
   hiddenCommonActions?: readonly CommonAction[];
-  /** Selection is a POSEABLE RIG (a Figgie mannequin). Its type options are
-   *  the parts a slider can shape — Rig · Hands · Feet · Spine · Head, plus
-   *  Reset — rather than the Stroke / Fill / Opacity a plain vector offers:
-   *  a rig's silhouette is baked from its pose, so those three have nothing
-   *  to act on. Mutually exclusive with the other type-option families, and
-   *  checked BEFORE showSvgOptions (a rig's figure is an svg object).
-   *  See `logic/rigEdit.ts`. */
-  showRigOptions?: boolean;
-  /** Every rig slider's position, 0..1 (see `restRigSliders`). The host owns
-   *  these: they are NOT read back from the pose — a hand posed finger by
-   *  finger has no single "fistness" — so they rest until touched, and the
-   *  host shapes the pose only when one moves. */
-  rigSliders?: Record<RigSliderKey, number>;
-  /** A rig slider moved: live while dragging (`committed=false`), once on
-   *  release (`committed=true`, one undo step). */
-  onRigSlider?(key: RigSliderKey, value: number, committed: boolean): void;
-  /** Which rig part bar is open, if any (app-owned, like the effect bars). */
-  rigPartOpen?: RigPart | null;
-  onRigPartOpenChange?(part: RigPart | null): void;
-  /** Stand the figure back up: the rest pose, facing front, and every slider
-   *  back to its rest position. It sits at the FOOT OF THE RIG BAR — the page
-   *  that is already about the figure as a whole — rather than in the options
-   *  row: the row is a row of pages to open, and an action wedged among them
-   *  opened nothing and lit nothing when pressed.
-   *
-   *  It is offered here, over the whole figure, and nowhere else. The part
-   *  bars deliberately carry no trash of their own: on an effect bar a trash
-   *  removes something that was ADDED and leaves the object itself, but every
-   *  rig slider is a posture the figure is always in, so a per-bar reset
-   *  could only mean "this part back to rest" — and it reset the sliders
-   *  nobody had touched along with it, flattening a pair of hands posed
-   *  finger by finger. Whole-figure is the one reading with no such trap: it
-   *  means what it says, and it is one undo step away. Only rendered when the
-   *  host sets it; ignored unless `showRigOptions`. */
-  onResetRig?(): void;
-  /** The rig's Color page: the two colours its sketch is drawn in — the
-   *  opaque volumes (chest, pelvis, palms, feet, head, joint circles) and
-   *  the outlines laid over them. Absent leaves the page showing the
-   *  defaults, and its rows dead: the page renders only when the host
-   *  wires `onRigColor`, exactly as the effect pages' hue rows do. */
-  rigVolumesColor?: RGBLike;
-  rigOutlinesColor?: RGBLike;
-  /** A Color row moved: live while the handle drags (`committed=false`),
-   *  once on release (`committed=true`, one undo step) — the same
-   *  coalescing every other hue row in the panel uses. */
-  onRigColor?(which: 'volumes' | 'outlines', color: RGBLike, committed: boolean): void;
-  /** A Color row's trailing circle: open the full picker on that colour,
-   *  where saturation and brightness live. */
-  onPickRigColor?(which: 'volumes' | 'outlines'): void;
   /** Selection is a vector (SVG) object: the panel's second row shows that
    *  subtype's option menu — see `svgSubtype` for which one, and
    *  `SVG_EDIT_OPTIONS` for the options each subtype offers. Mutually

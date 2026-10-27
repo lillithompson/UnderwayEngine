@@ -29,13 +29,6 @@ import {
 import { BorderBar } from './BorderBar';
 import { HostPageBar } from './HostPageBar';
 import { OpacityBar } from './OpacityBar';
-import { RigJointsBar } from './RigJointsBar';
-import { RigPoseBar } from './RigPoseBar';
-import { RigColorBar } from './RigColorBar';
-import {
-  RIG_OUTLINES_DEFAULT, RIG_PAGES, RIG_VOLUMES_DEFAULT, restRigSliders, rigPartOfSubmenu,
-  rigPartSubmenu, type RigSection,
-} from '../logic/rigEdit';
 import { CropBar } from './CropBar';
 import { ImageBar } from './ImageBar';
 import { TextBar, TextPage } from './TextBar';
@@ -256,12 +249,11 @@ const EFFECT_OF_PAGE: Partial<Record<SubmenuKey, EffectKind>> = {
 const NO_HOST_PAGES: readonly import('../adapter').HostPage[] = [];
 
 /** The pages whose open state the panel keeps itself (see `localSub`). */
-type LocalSubmenu = 'background' | 'card' | 'shape' | 'image' | 'rigColor' | 'rigFigure';
+type LocalSubmenu = 'background' | 'card' | 'shape' | 'image';
 /** A HOST's pages (adapter's HostPage) are kept the same way — the panel
  *  holds which is open, the host only the values. */
 const isLocalSubmenu = (key: SubmenuKey): key is LocalSubmenu | HostSubmenuKey =>
-  key === 'background' || key === 'card' || key === 'shape' || key === 'image' || hostPageOfSubmenu(key) !== null
-  || key === 'rigColor' || key === 'rigFigure';
+  key === 'background' || key === 'card' || key === 'shape' || key === 'image' || hostPageOfSubmenu(key) !== null;
 
 /** The common row's element keys, by the action a host withholds. */
 const COMMON_ACTION_KEY: Record<CommonAction, string> = {
@@ -367,10 +359,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // and a copy of a rectangle is the same request as a copy of a line.
   // (StickyCopies: only keys actually moved, never the count.)
   const [copiesSticky, setCopiesSticky] = useState<StickyCopies>({});
-  // …and the Joints page's own, held here for the same reason: the page's
-  // height must be known before it renders, and it is the same either way.
-  const [jointSection, setJointSection] = useState<RigSection>('elbows');
-  const [limbSection, setLimbSection] = useState<RigSection>('arms');
   const [localSheetWanted, setLocalSheetWanted] = useState(false);
   const sheetWanted = model.editOpen ?? localSheetWanted;
   const onEditOpenChange = model.onEditOpenChange;
@@ -451,7 +439,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // The host's own pages for this selection (adapter's HostPagesModel):
   // none for every engine kind.
   const hostPages = model.hostPages?.pages ?? NO_HOST_PAGES;
-  const hasTypeOptions = !!model.showImageEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showStrokeOptions || !!model.showRigOptions || hostPages.length > 0 || showUngroup || showCopies || showMultiOpacity;
+  const hasTypeOptions = !!model.showImageEdit || !!model.showTextStyle || !!model.showFrameOptions || !!model.showInvert || !!model.showSvgOptions || !!model.showPaintOptions || !!model.showPatternOptions || !!model.showStrokeOptions || hostPages.length > 0 || showUngroup || showCopies || showMultiOpacity;
   const hasMultiOptions = showLayout || showGroup || showMerge;
   const hasOptions = hasTypeOptions || hasMultiOptions;
   // Signature of the current selection's option set. It changes when the
@@ -540,17 +528,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // points own it: the Type tab opens on 'font', Spacing on 'spacing', Align
   // on 'align' (all via openSubmenu).
   const [textPage, setTextPage] = useState<TextPage>('text');
-  // The Color, Shape, Image, rig-Color and rig-Figure pages are the panel's
-  // own: they hold nothing the host has to know is open (a swatch opens the
-  // host's picker, a toggle fires its action, the Radius slider writes
-  // through onStrokeRadius as it always did, Replace is one press, Reset is
-  // one press, and the resolution is just read), so unlike the effect pages
-  // their open state lives here rather than on the model. A page NOT on this list and not
-  // wired to a host flag can never open at all — which is what left the
-  // Image tab dead, and an image's sheet landing on it empty, and what
-  // left the rig's Color tab pressable but inert: openSubmenu ran off the
-  // end of its chain (rigColor names no rig PART, so the rig branch skips
-  // it too) and set nothing, so the page could never become the open one.
+  // The Color, Shape and Image pages are the panel's own, and so is every
+  // HOST page: they hold nothing the host has to know is open (a swatch
+  // opens the host's picker, a toggle fires its action, the Radius slider
+  // writes through onStrokeRadius as it always did, Replace is one press,
+  // and the resolution is just read), so unlike the effect pages their
+  // open state lives here rather than on the model. A page NOT on this
+  // list and not wired to a host flag can never open at all — which is
+  // what left the Image tab dead, and an image's sheet landing on it
+  // empty: openSubmenu ran off the end of its chain and set nothing, so
+  // the page could never become the open one.
   const [localSub, setLocalSub] = useState<LocalSubmenu | HostSubmenuKey | null>(null);
   // ── The pages (Crop / Effects / Border / Text …) ─────────────────────
   // The open page is what the Edit sheet's well holds, and its tab is the lit
@@ -678,20 +665,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         ]
     // Vectors and patterns together: the one page they share.
     : model.showStrokeOptions ? ['stroke']
-    // A rig's pages, in RIG_PAGES' order: Figure, Joints, Limbs, Color,
-    // Transform.
-    // (The part pages Hands/Feet/Spine/Head came off the row, their
-    // sliders living on as the host's floating slider modes.) Opacity
-    // stood beside it and is gone: a figure is a POSE, and fading one is
-    // not a thing anybody reached this panel to do — it left a two-tab
-    // row where one of the tabs was a slider nobody asked for. The model
-    // and the page stand for every other kind that offers them. Checked
-    // before showSvgOptions: a rig's figure IS an svg object, and the
-    // other vector pages have nothing to act on for a baked silhouette.
     // A thing of the host's own kind: the pages the host lists, in its
-    // order. Checked before the rig and the vectors.
+    // order. Checked before the vectors: a host's thing can be an svg
+    // object underneath (CozyJournal's rig figure is one), and the vector
+    // pages have nothing to act on for it.
     : hostPages.length > 0 ? hostPages.map((p): SubmenuKey => hostSubmenu(p.key))
-    : model.showRigOptions ? RIG_PAGES.map((o) => o.sub)
     : model.showSvgOptions
       ? ([
           'stroke',
@@ -753,7 +731,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     : model.endpointsOpen ? 'endpoints'
     : model.transformOpen ? 'transform'
     : localSub ? localSub
-    : model.rigPartOpen ? rigPartSubmenu(model.rigPartOpen)
     : model.patternBarOpen ? patternActionSubmenu(model.patternBarOpen)
     : model.textStyleOpen ? textPage
     : null;
@@ -796,14 +773,12 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   const subOpen = (key: SubmenuKey) => activeSub === key;
 
   /** Pages a HOST opens with chrome of its own, which no tab row ever
-   *  offers: a rig's part sliders (Hands / Feet / Spine / Head — the row
-   *  carries none of them, see RIG_PAGES) and the pattern capsule's
-   *  Tiles and Tools bars. The fold-away rule reads the tab row, so these
-   *  have to be named: they are not the row's to take away, and a rule that
-   *  closed them would shut the capsule's own bar the frame it opened. */
+   *  offers: the pattern capsule's Tiles and Tools bars. The fold-away
+   *  rule reads the tab row, so these have to be named: they are not the
+   *  row's to take away, and a rule that closed them would shut the
+   *  capsule's own bar the frame it opened. */
   const isHostOnlyPage = (key: SubmenuKey): boolean =>
-    key === 'patternTiles' || key === 'patternTools'
-    || (rigPartOfSubmenu(key) != null && key !== 'rigRoot');
+    key === 'patternTiles' || key === 'patternTools';
 
   const openSubmenu = (key: SubmenuKey) => {
     fontSheetOpenRef.current = false;
@@ -837,7 +812,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     else if (key === 'endpoints') model.onEndpointsOpenChange?.(true);
     else if (key === 'transform') model.onTransformOpenChange?.(true);
     else if (key === 'layout') model.onLayoutOpenChange?.(true);
-    else if (rigPartOfSubmenu(key)) model.onRigPartOpenChange?.(rigPartOfSubmenu(key));
     else if (patternActionOfSubmenu(key)) model.onPatternBarOpenChange?.(patternActionOfSubmenu(key));
     else if (key === 'text' || key === 'font' || key === 'spacing' || key === 'align') {
       // The text pages ride the single textStyleOpen flag; the page state
@@ -858,7 +832,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     model.onTransformOpenChange?.(false);
     model.onLayoutOpenChange?.(false);
     model.onTextStyleOpenChange?.(false);
-    model.onRigPartOpenChange?.(null);
     model.onPatternBarOpenChange?.(null);
   };
   const dismissSubmenu = () => {
@@ -1754,59 +1727,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // A host page: its rows in the panel's own grammar, or the host's own
     // element in the well.
     activeBarEl = <HostPageBar page={shownHostPage} model={model.hostPages} />;
-  } else if (displaySub === 'rigJoints' || displaySub === 'rigLimbs') {
-    // The rig pages whose two faces are one box with tabs — the Copies
-    // page's shape, because Left and Right are one setting asked twice and
-    // elbows and knees (arms and legs) are the same question about a
-    // different pair of chains. Same slider plumbing as every other rig
-    // page beneath it.
-    const limbs = displaySub === 'rigLimbs';
-    activeBarEl = (
-      <RigJointsBar
-        part={limbs ? 'limbs' : 'joints'}
-        section={limbs ? limbSection : jointSection}
-        onSection={limbs ? setLimbSection : setJointSection}
-        values={model.rigSliders ?? restRigSliders()}
-        onChange={(key, v) => model.onRigSlider?.(key, v, false)}
-        onCommit={(key, v) => model.onRigSlider?.(key, v, true)}
-      />
-    );
-  } else if (displaySub === 'rigFigure') {
-    // The rig as an OBJECT: the one act said about the whole figure rather
-    // than about a posture. Reset stands it back up — rest pose, facing
-    // front, every slider at rest — and wears the filled button an "Add
-    // Fill" wears, because it is the same kind of thing: a page whose whole
-    // content is one act. It sat at the foot of the Transform page as a
-    // one-cell ActionRow, which is the shape the pages use for CHOOSING
-    // between states and read as a setting with a single option.
-    activeBarEl = (
-      <BarBody>
-        {model.onResetRig ? (
-          <EffectButton label="Reset" icon="restore" onPress={() => model.onResetRig?.()} />
-        ) : null}
-      </BarBody>
-    );
-  } else if (displaySub && rigPartOfSubmenu(displaySub)) {
-    activeBarEl = (
-      <RigPoseBar
-        part={rigPartOfSubmenu(displaySub)!}
-        values={model.rigSliders ?? restRigSliders()}
-        onChange={(key, v) => model.onRigSlider?.(key, v, false)}
-        onCommit={(key, v) => model.onRigSlider?.(key, v, true)}
-      />
-    );
-  } else if (displaySub === 'rigColor') {
-    // The one rig page that is not a posture: the sketch's two colours.
-    // Like every hue row in the panel it writes through the host, which
-    // owns both the live preview and the single undo step on release.
-    activeBarEl = (
-      <RigColorBar
-        volumes={model.rigVolumesColor ?? RIG_VOLUMES_DEFAULT}
-        outlines={model.rigOutlinesColor ?? RIG_OUTLINES_DEFAULT}
-        onColor={(which, color, committed) => model.onRigColor?.(which, color, committed)}
-        onOpenPicker={(which) => model.onPickRigColor?.(which)}
-      />
-    );
   } else if (displaySub === 'opacity') {
     activeBarEl = (
       <OpacityBar
@@ -1908,8 +1828,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     },
     // The Layout page grows an Arrange row exactly when the page will render it.
     layoutHasGrid: !!model.onGrid,
-    // …and the RIG page its Reset row, on the same rule.
-    rigCanReset: !!model.onResetRig,
     // The pattern Tools page grows its Sets row when the host offers a
     // tile-set filter, and its Repeat row on the same rule.
     // …and the SHAPES page is those sets, wherever they are being set —
@@ -2114,30 +2032,6 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     if (model.onUngroup) {
       typeSpecs.push({ key: 'ungroup', label: 'Ungroup', onPress: model.onUngroup });
     }
-  } else if (model.showRigOptions) {
-    // Poseable rig: the whole-figure RIG tab only — the part tabs
-    // (Hands / Feet / Spine / Head) were removed from the row; their
-    // sliders live on as the host's floating slider modes. No Stroke /
-    // Fill / Opacity: the figure's silhouette is baked from its pose, so
-    // none of the three has anything to act on. The IK switch is not a
-    // tab of its own; it lives on the RIG page, with the rest of the
-    // posing controls.
-    // Reset is NOT one of them: standing the figure back up is a thing you do
-    // to the whole rig, so it rides at the foot of the RIG page (RigPoseBar),
-    // the page that is already about the figure as a whole — rather than
-    // taking a slot in a row of pages you can open.
-    typeSpecs = RIG_PAGES.map((opt) => ({
-      key: opt.key,
-      label: opt.label,
-      sub: opt.sub,
-      onPress: () => openSubmenu(opt.sub),
-    }));
-    // …and nothing else. Opacity stood beside it — the whole figure's
-    // render opacity, through the host's objectOpacity plumbing — and is
-    // gone: a figure is a POSE, and fading one is not a thing anybody
-    // reached this panel to do. It left a two-tab row whose second tab
-    // was a slider nobody asked for. The plumbing stands for every other
-    // kind that offers the page.
   } else if (model.showSvgOptions) {
     // Vector selection: the subtype's own option menu (svgEdit.ts). Every
     // subtype offers Stroke — a path IS its stroke; the closed shapes add Fill.

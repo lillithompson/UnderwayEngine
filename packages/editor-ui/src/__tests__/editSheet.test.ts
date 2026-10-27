@@ -22,7 +22,7 @@ const BAR = SRC('components', 'effectBar.tsx');
 
 const PAGE_FILES = [
   'BorderBar.tsx', 'CropBar.tsx', 'EndpointsBar.tsx', 'LayoutBar.tsx', 'OpacityBar.tsx',
-  'EffectsBar.tsx', 'TextBar.tsx', 'TintBar.tsx', 'TransformBar.tsx', 'RigPoseBar.tsx',
+  'EffectsBar.tsx', 'TextBar.tsx', 'TintBar.tsx', 'TransformBar.tsx',
   'PatternBars.tsx',
 ];
 
@@ -344,9 +344,9 @@ describe('every page can be opened and shown', () => {
     PANEL.indexOf('const activeSub: SubmenuKey | null ='),
     PANEL.indexOf('const submenuOpen = activeSub != null;'),
   );
-  /** The two families openSubmenu dispatches through a lookup rather than
-   *  by name — their keys are covered by that call, not by a branch. */
-  const viaLookup = (key: string) => key.startsWith('rig') || key.startsWith('pattern');
+  /** The one family openSubmenu dispatches through a lookup rather than
+   *  by name — its keys are covered by that call, not by a branch. */
+  const viaLookup = (key: string) => key.startsWith('pattern');
   /** The EFFECTS family: the page that makes the tabs and the three it
    *  makes. Like the text pages they ride ONE host flag with a page state
    *  picking between them, and openSubmenu dispatches the three through
@@ -397,7 +397,6 @@ describe('every page can be opened and shown', () => {
     // named, and still leave the well empty.
     const rendered = RETIRED.includes(key)
       || PANEL.includes(`displaySub === '${key}'`)
-      || (viaLookup(key) && PANEL.includes('rigPartOfSubmenu(displaySub)'))
       // The three effect pages share one branch, picked by `shownEffect` —
       // they are the same rows with and without the offset pad.
       || (inEffectFamily(key) && PANEL.includes('} else if (shownEffect) {'));
@@ -812,7 +811,7 @@ describe('the panel drives the sheet', () => {
     // image's Border page draws a Radius row any more — the page that owns
     // the rounding draws it (an image's Image page, a shape's Shape page),
     // so BorderBar has no such row at all.
-    const stroke = PANEL.slice(PANEL.indexOf("} else if (displaySub === 'stroke') {"), PANEL.indexOf("} else if (displaySub && rigPartOfSubmenu(displaySub)) {"));
+    const stroke = PANEL.slice(PANEL.indexOf("} else if (displaySub === 'stroke') {"), PANEL.indexOf("} else if (shownHostPage && model.hostPages) {"));
     expect(stroke).toContain('labelPosition={false}');
     const border = SRC('components', 'BorderBar.tsx');
     expect(border).not.toContain('showRadius');

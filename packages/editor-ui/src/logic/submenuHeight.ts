@@ -282,22 +282,6 @@ export type SubmenuKey =
   // dark ink, or the inverse) — the one colour setting a magnet has, and not a
   // hue, so it is a toggle rather than a slider row.
   | 'card'
-  // The rig as an OBJECT rather than a posture: the Reset that stands the
-  // whole figure back up, as the one act on its own page.
-  | 'rigFigure'
-  // …and the poseable rig's parts: the whole figure's three axes, six
-  // sliders for the hands (curl / twist / spread per side), four for the
-  // feet, three for the spine, two for the head.
-  | 'rigRoot' | 'rigHands' | 'rigFeet' | 'rigSpine' | 'rigHead'
-  // …and the bends BETWEEN the ends: a page of pole sliders, elbows on one
-  // face and knees on the other.
-  | 'rigJoints'
-  // …and the whole limbs, swung forward out of the screen at the shoulder
-  // or the hip: the same tabbed box, arms on one face and legs on the other.
-  | 'rigLimbs'
-  // …and the one page of a rig that is not a posture: the two colours the
-  // sketch is drawn in — its opaque volumes and the outlines over them.
-  | 'rigColor'
   // A pattern object's pages: the Tile page (its Repeat toggle and the
   // Make Colorable button beside it), the tile menu, the grid tools, and
   // the painting-symmetry grid.
@@ -389,9 +373,6 @@ export interface SubmenuHeightContext {
   strokeRows?: { position: boolean; color?: boolean };
   /** Layout page: whether the host wired up Grid, which adds the Arrange row. */
   layoutHasGrid?: boolean;
-  /** FIGURE page: whether the host wired up Reset, which is the whole of
-   *  that page. A locked rig offers none, and the page stands empty. */
-  rigCanReset?: boolean;
   /** How many tile sets the host offers. On the Tools page a nonzero count
    *  adds the Sets row; on the SHAPES page it is what the page is, chunked
    *  into lines of PATTERN_TILE_SET_COLUMNS. */
@@ -433,8 +414,9 @@ function bareArea(rows: readonly number[], gap = ROW_GAP): number {
  * Nearly all are: the well is what separates a page's controls from the
  * tabs above them. The Copies page is not, because it brings its own boxes
  * (three RowGroups), and a well around those drew a second rectangle around
- * every section — each one framed twice, for no extra meaning. The rig's
- * Joints page brings one box of the same kind, for the same reason.
+ * every section — each one framed twice, for no extra meaning. A HOST page
+ * whose element is one box of the same kind says so itself
+ * (HostPage.element.bare), and the panel reads that instead of this.
  *
  * The EFFECTS page is not, for the opposite reason: it brings no box at
  * all. It is a grid of buttons, and a button already reads as a thing you can
@@ -445,7 +427,7 @@ function bareArea(rows: readonly number[], gap = ROW_GAP): number {
  * cannot be measured one way and drawn the other.
  */
 export function pageIsWelled(key: SubmenuKey): boolean {
-  return key !== 'transform' && key !== 'rigJoints' && key !== 'rigLimbs' && key !== 'effects';
+  return key !== 'transform' && key !== 'effects';
 }
 
 /** A GROUP of rows (effectBar's RowGroup): a shaded rounded box around rows
@@ -569,49 +551,6 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'card':
       // The word sticker's scheme: the Invert chip, one row.
       return contentArea([ROW_SEGMENTED]);
-    // The rig pages are sliders and nothing else — no hint line and no IK
-    // switch (see RigPoseBar) — so each stands exactly as tall as the
-    // controls it renders.
-    case 'rigHands':
-      // Left and Right, and a Twist, a Spread and a Bend each.
-      return contentArea([
-        ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER,
-        ROW_SLIDER, ROW_SLIDER,
-      ]);
-    case 'rigFeet':
-      // Left and Right, each with its own Twist and its ball's Bend.
-      return contentArea([
-        ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER,
-      ]);
-    case 'rigSpine':
-      // Bend / Twist / Lean.
-      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
-    case 'rigRoot':
-      // The three axes the figure stands on. (Reset used to sit under them;
-      // it is the Figure page's one act now — the page about the figure as
-      // a whole, rather than the page about how it is turned.)
-      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
-    case 'rigFigure':
-      // One act, a row tall: the Reset that puts the whole figure back at
-      // rest, in the filled button an "Add Fill" wears (EffectButton, the
-      // same ROW_SEGMENTED height the ActionRow it replaced stood). A host
-      // that wires no reset — a locked rig — leaves the page empty.
-      return contentArea(ctx.rigCanReset ? [ROW_SEGMENTED] : []);
-    case 'rigHead':
-      // Nod / Shake / Tilt.
-      return contentArea([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]);
-    case 'rigJoints':
-    case 'rigLimbs': {
-      // The Joints page (and the Limbs page, the same box): Left and Right
-      // in ONE tabbed box, its tabs switching elbows for knees (arms for legs) — the Copies page's own shape, for the
-      // same reason. Both faces are the same height (the tab row and two
-      // sliders), so the page never resizes under a tab press, and the box
-      // IS the page, so it is drawn with no well around it (pageIsWelled).
-      return bareArea([rowGroupHeight([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER])]);
-    }
-    case 'rigColor':
-      // Volumes and Outlines: two hue rows, on the slider's own proportions.
-      return contentArea([ROW_SLIDER, ROW_SLIDER]);
     case 'endpoints':
       // A marker row per end. (The Caps row went — see EndpointsBar.)
       return contentArea([ROW_SEGMENTED, ROW_SEGMENTED]);

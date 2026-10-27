@@ -500,7 +500,8 @@ export const PATTERN_EDIT_OPTIONS: readonly PatternEditOption[] = [
 ];
 
 /** The submenu key an action's bar rides under (see submenuHeight's
- *  SubmenuKey), and its inverse — the same pairing rigEdit keeps. */
+ *  SubmenuKey), and its inverse — one table read both ways, so a press
+ *  and the open bar can never disagree about which action is which. */
 export function patternActionSubmenu(
   action: PatternEditAction,
 ): 'patternTile' | 'patternTiles' | 'patternTools' | 'patternSymmetry' | 'patternShapes' {
