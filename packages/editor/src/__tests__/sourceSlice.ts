@@ -138,7 +138,7 @@ export const SHARED_IMPORT_PREFIXES = [
  *
  * Here rather than in each app for `sliceBetween`'s reason: the derivation
  * has nothing of any app in it, and a copy per shell is three copies of one
- * guard. The SCOPE is here too — `SHARED_IMPORT_PREFIXES` below — so that
+ * guard. The SCOPE is here too — `SHARED_IMPORT_PREFIXES`, above — so that
  * widening it is one edit rather than one per app; a suite that wants a
  * different scope still passes its own list.
  *
