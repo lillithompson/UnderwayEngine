@@ -236,10 +236,30 @@ describe('deadNamedImports', () => {
       .toContain('is invisible: this blanks the statement it is reading');
   });
 
+  it('examines the named bindings of a default-plus-named import', () => {
+    // Reported as a third blind spot and fixed rather than documented: the
+    // statement went unmatched, so NONE of its named bindings was examined
+    // — a silent pass, which is worse than a wrong answer.
+    const src = [
+      "import Default, { alsoDead } from '@/engine/types';",
+      "import { kept } from '@/engine/other';",
+      'export const use = kept;',
+    ].join('\n');
+    expect(deadNamedImports(src, PREFIXES)).toEqual(['alsoDead (@/engine/types)']);
+  });
+
+  it('refuses fewer in-scope statements than the caller says there are', () => {
+    // The floor the app suites pass: a pattern that quietly stops matching
+    // returns an empty list, and an empty list from this reads as "nothing
+    // dead". Same reasoning as the two-ended slice.
+    expect(() => deadNamedImports(SRC, PREFIXES, { atLeast: 50 }))
+      .toThrow('expected at least 50');
+    expect(deadNamedImports(SRC, PREFIXES, { atLeast: 2 })).toContain('deadOne (@/engine/types)');
+  });
   it('refuses a source that imports nothing from those prefixes', () => {
     // An empty result must mean "nothing dead", never "nothing looked at" —
     // the same reasoning as sliceBetween's two-ended guard.
     expect(() => deadNamedImports("import { x } from './local';", PREFIXES))
-      .toThrow('no imports from');
+      .toThrow('0 imports from @/editor, @/editor-ui, @/engine, @/native-shell');
   });
 });

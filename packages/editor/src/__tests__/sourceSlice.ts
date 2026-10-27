@@ -135,6 +135,19 @@ export function mountsOf(src: string, name: string): string[] {
  *   as `SOL_ROW_HEIGHT`), live today.
  * - it is TEXTUAL. A name mentioned only in a comment counts as used.
  *
+ * A THIRD was reported as a blind spot and is fixed instead: a statement
+ * that brings a default binding in beside the braces (`import Foo, { bar }
+ * from …`) went unmatched, so none of its named bindings was examined — a
+ * silent pass rather than a wrong answer, which is worse. The default
+ * binding is optional in the pattern now and is not itself examined, since
+ * this is about named bindings.
+ *
+ * `atLeast` is the floor on how many in-scope statements must be found, and
+ * exists for the same reason the two-ended slice does: a pattern that
+ * quietly stops matching returns an empty list, and an empty list from this
+ * reads as "nothing dead". A caller that knows its shell has a hundred
+ * should say so.
+ *
  * And one trap that is NOT a blind spot, because it cost a false positive
  * that reached the tree: `...NAME` has a dot before the name, so a
  * lookbehind that rejects `.` to keep member accesses out makes every
@@ -143,16 +156,24 @@ export function mountsOf(src: string, name: string): string[] {
  * typecheck is what caught it. `...` is blanked below, as `clusters.js` has
  * done since 6.5b.2.
  */
-export function deadNamedImports(src: string, prefixes: readonly string[]): string[] {
+export function deadNamedImports(
+  src: string, prefixes: readonly string[], opts: { atLeast?: number } = {},
+): string[] {
   // A prefix is matched as a path segment boundary rather than as a regular
   // expression: `startsWith` plus the next character, so nothing in a
   // prefix needs escaping and there is no pattern to get wrong.
   const inScope = (mod: string) => prefixes.some(
     (p) => mod === p || mod.startsWith(`${p}/`),
   );
-  const specs = [...src.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*'([^']*)'/g)]
-    .filter(([, , mod]) => inScope(mod));
-  if (!specs.length) throw new Error(`no imports from ${prefixes.join(', ')}`);
+  const specs = [...src.matchAll(
+    /import\s+(?:type\s+)?(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s*from\s*'([^']*)'/g,
+  )].filter(([, , mod]) => inScope(mod));
+  const atLeast = Math.max(1, opts.atLeast ?? 1);
+  if (specs.length < atLeast) {
+    throw new Error(
+      `${specs.length} imports from ${prefixes.join(', ')}, expected at least ${atLeast}`,
+    );
+  }
 
   const dead: string[] = [];
   for (const [stmt, names, mod] of specs) {

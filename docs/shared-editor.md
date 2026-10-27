@@ -3990,7 +3990,12 @@ first, then the pointer bump in each app).
    by default**, which is now a test rather than a thing to remember:
    every named binding of every `@/editor`, `@/editor-ui`, `@/engine` or
    `@/native-shell` import must be mentioned somewhere else in the shell
-   (`shellHookOrder.test.ts`).
+   (`shellHookOrder.test.ts`, over the derivation in
+   `packages/editor/src/__tests__/sourceSlice.ts` — `deadNamedImports`,
+   which moved there for `sliceBetween`'s reason the round after it was
+   written, so the widening the §4.3 item leaves open is one edit in the
+   engine rather than three in three apps; its blind spots are documented
+   with it).
 
    That check came back red on more than this sub-stage's two, so the
    litter went with it — **4 / 18 / 11 dead bindings, 2 / 10 / 6 lines**
@@ -4003,9 +4008,13 @@ first, then the pointer bump in each app).
    | `FLOATING_CAPSULE_INK`, `TOOL_MODE_CAPSULE_Z`, `HEADER_INK`, `STATE_ACTIVE`, `ConfettiBurst`, `sliderModeFamily` | the chrome and the package's components | stage 2 and 5b |
    | `deleteCompositionData`, `bytesToDataUri`, `colorsEqual`, `allDescendantMemberIds`, `onAppEvent`, `afterNextPaint`, `flagRefusedMarkers`, `templateBaselineOf` | `@/engine/*`, `@/native-shell/*`, `@/editor/*` | older than this programme |
 
-   So after the sweep the shells are **8,622 / 6,054 / 7,146** and
-   `web/editor/` is **9,965 / 15,706 / 23,639** (Sol / DrawBots / Cozy, as
-   §1's table reads it).
+   So after the sweep the shells are **8,622 / 6,054 / 7,146** (Cozy / Sol
+   / DrawBots, as the sweep's own figures above read) and `web/editor/` is
+   **9,965 / 15,706 / 23,639** (Sol / DrawBots / Cozy, as §1's table reads
+   it). The two triples run in different orders, which is this document's
+   oldest reading hazard and why each is labelled: the first version of this
+   sentence carried one label for both and so said Sol's shell was 8,622
+   lines.
 
    **Two things this cost, and both are worth having on the record.**
 
