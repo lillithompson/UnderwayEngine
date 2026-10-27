@@ -1256,8 +1256,9 @@ first, then the pointer bump in each app).
    6.6 is done, and so are all six of 6.5b's slices: two of the
    shell's own leaves, eight closed clusters (465 lines of each app), the
    colour-and-effects complex as five hooks (640), the render tree's
-   floating chrome as eight components (286 / 284 / 293), and the two groups
-   that would not place, cut at the statement that blocked them (106).
+   floating chrome as eight components (286 / 284 / 293), the two groups
+   that would not place, cut at the statement that blocked them (106), and
+   the two the dust call separated from the dust, needing no cut (65).
 
    What is left in the three shells is three things: the APP-ONLY bucket
    (82 / 58 / 36 statements, which is stage 7's subject and has not moved
@@ -1310,34 +1311,48 @@ first, then the pointer bump in each app).
 
    | group | stmts | lines / app | reads | hands back |
    |---|---|---|---|---|
-   | `toggleTileSetOver` + `onPatternToggleTileSet` | 2 | 43 | `sessionRef`, `applyEntry` | 2 |
-   | `patternRowStepRef` + `patternRowStep` | 2 | 34 | nothing | 1 |
+   | `toggleTileSetOver` + `onPatternToggleTileSet` | 2 | 43 → **41** | `sessionRef`, `applyEntry` | 2 |
+   | `patternRowStepRef` + `patternRowStep` | 2 | 34 → **24** | nothing | 1 |
 
-   That is **4 statements / 77 lines of each app**, against 6.5b.5's 16 /
+   (The second figure in each row is what 6.5b.6 actually took out, and it
+   is the one to quote. The first is what this decision was taken on: it
+   came from the cluster tool, which counts each statement's blank separator
+   line, and for the step gate it counted a nine-line comment band that
+   belongs to app code and stayed. 6.5b.6's entry has both corrections. The
+   decision does not turn on the difference — it was *these are a sub-stage's
+   size, not the tail's* either way — which is why the figures are shown
+   corrected rather than quietly replaced.)
+
+   That is **4 statements / 77 lines of each app** as measured here (65 as
+   it turned out — above), against 6.5b.5's 16 /
    106 — the same size with a narrower return, and both PLACEABLE in all
    three apps, measured the way 6.5b.5's two were: `lo=175 / 130 / 154`,
    `hi=280 / 280 / 282` for the first, and `lo=-1`, `hi=271 / 271 / 273` for
    the second (Cozy / Sol / DrawBots). Neither needs a cut. If 6.5b.5 was
    worth taking, these are, and holding them would hold them for a reason
-   the programme has already rejected once. **So they are 6.5b.6**, and the
-   table below says `planned`.
+   the programme has already rejected once. **So they are 6.5b.6**, which was
+   taken the same day — its entry is below, and the table says `done`.
 
-   **Why 6.5b.6 is not taken in the same pass as this decision**, which is
-   not a fact about the two groups. Every sub-stage of 6.5b edits all three
-   shells BY CONSTRUCTION: the justification for moving anything is that its
-   text is byte-identical in three apps, so the change lands in three apps
-   or it is not that change. **CozyJournal cannot ship.** Its queue stands
-   on base `80062e2c` with round 3 recorded, and `ship` refuses a fourth
-   review of the same base (exit 7) — the owner's own three-round rule,
-   which §5 made a script refusal earlier in this same stage. Round 3's one
-   blocking finding was correct and is FIXED in that queue, so an override
-   would be a false record; and editing the cap to get an agent's own
-   commits through is the one thing the grant forbids outright. What the
-   grant says happens next is what is happening: the queue goes back to the
-   owner, and `review.js accept` from a terminal is the hand that clears it.
-   **Piling a further sub-stage into a repository whose queue the cap has
-   already closed is precisely what the cap exists to prevent**, so 6.5b.6
-   waits on that, and not on a measurement.
+   **Why 6.5b.6 did not go in the same pass as this decision, and what that
+   cost** (recorded because it is the first time the cap priced a slice).
+   Every sub-stage of 6.5b edits all three shells BY CONSTRUCTION: the
+   justification for moving anything is that its text is byte-identical in
+   three apps, so the change lands in three apps or it is not that change.
+   And on the day of the decision CozyJournal could not ship — its queue
+   stood on base `80062e2c` with round 3 recorded, and `ship` refuses a
+   fourth review of the same base (exit 7). Round 3's one blocking finding
+   was correct and was fixed in that queue, so an override would have been a
+   false record; and editing the cap to get an agent's own commits through
+   is the one thing the grant forbids outright. **Piling a further sub-stage
+   into a repository whose queue the cap has already closed is precisely
+   what the cap exists to prevent**, so the decision was recorded and the
+   slice waited.
+
+   The owner cleared that queue the same day and 6.5b.6 followed
+   immediately. So the cost was one round trip to a person, which is what
+   the cap is for and is the whole of what it cost: nothing was built on the
+   decision in the meantime, and the slice was measured again before it was
+   taken (which is how the dust call's figure for it turned out to be over).
 
    **Is stage 6 complete? Its PROGRAMME is: 6.5b has no seventh slice and
    6.6 is done. The stage as item 6 first wrote it is not, and what is left
@@ -1405,8 +1420,8 @@ first, then the pointer bump in each app).
 
    - **The APP-ONLY bucket** — 82 / 58 / 36 statements. That is stage 7's
      subject, not 6.5b's, and it has not moved since 6.5b.2: every
-     statement the five taken slices took came out of the SHARED bucket, which
-     is now five times demonstrated rather than argued.
+     statement all SIX slices took came out of the SHARED bucket, which is
+     now six times demonstrated rather than argued.
    - **The render tree's FRAME.** 6.5b.4 measured why it stays: 93–95 %
      shared text, interrupted by forty-odd one-line holes rather than a few
      seam-shaped ones, and the two large liftable-looking regions need 48
@@ -1416,13 +1431,13 @@ first, then the pointer bump in each app).
      DUST — TAKEN", and the figures and the four reasons are there rather
      than again here; §4.3 states the decision itself). Most of it is HELD
      and closed rather than deferred again; the two exceptions are
-     6.5b.5-shaped and are **6.5b.6**, which is not taken yet because
-     CozyJournal's queue is closed by the round cap, and a 6.5b slice lands
-     in three apps or it is not that slice.
+     6.5b.5-shaped and are **6.5b.6**, which was taken the same day, once
+     the owner had cleared CozyJournal: a 6.5b slice lands in three apps or
+     it is not that slice.
 
-   What stage 7 inherits is unchanged by all of this (see above). Whether it
-   or 6.5b.6 goes first is the owner's call, and neither can go while
-   CozyJournal is unshippable (§4.3, §5).
+   What stage 7 inherits is unchanged by all of this (see above). With
+   6.5b.6 taken, stage 7 is the only thing left in the plan, and whether it
+   goes next is the owner's call (§4.3).
 
    **6.6 came before 6.5b, and the measurement is why.** The plan's order
    was 6.5b then 6.6. 6.6's design was already settled (§4.3, 2026-10-23),
@@ -3857,8 +3872,9 @@ first, then the pointer bump in each app).
    count byte-identical in all three went 224 → 209, for 6.5b.3's reason:
    16 statements left and four hook calls replaced them.
 
-   What remains is **76 singletons and 18 multi-statement groups**, and the
-   largest of those is now 43 lines. The singletons are HELD on the owner's
+   What remained was **76 singletons and 18 multi-statement groups**, the
+   largest of those 43 lines (6.5b.6 took two of them; 16 are left and the
+   largest is now 27). The singletons are HELD on the owner's
    standing call (§4.3, 6.5b.1's reason: a cluster averaging six lines has
    no module to belong beside). **The 18 are the same judgment one size up,
    and that is a recommendation rather than a decision taken here**: a
@@ -4868,19 +4884,17 @@ Still open:
   without using it. Stage 7 makes them CozyJournal host pages, the way
   DrawBot's bot pages already are; nothing forces that earlier.
 
-- **Whether stage 7 goes next** — and as of the dust call (2026-10-26) the
-  question is about ORDER again, though not in the old way. 6.5b is NOT
-  finished: 6.5b.6 is one planned slice, four statements of it, and it does
-  not overlap stage 7 any more than the five before it did. What is left is
-  which of the two goes first, **and that is the owner's call** — for now
-  neither can go anyway, because both edit CozyJournal and CozyJournal's
-  queue is closed by the round cap (§5).
+- **Whether stage 7 goes next** — and since 6.5b.6 (2026-10-26) it is no
+  longer a question about ORDER at all: 6.5b is finished, there is no rest
+  of it for stage 7 to go before, and nothing else in the plan is
+  outstanding. What is left is simply whether stage 7 is the next thing
+  done, **and that is the owner's call**.
   STAGE 7 never contended with any slice of 6.5b, and the measurement said
   so at each one rather than being assumed: the rig's
   twelve render-tree reads and two unique mounts are all in the FRAME,
   which 6.5b.4 left where it was, and the app-only bucket is exactly what
   it was before the first slice (82 / 1,099 in CozyJournal, 58 / 286 in
-  Sol, 36 / 267 in DrawBots) — five slices, every statement out of the
+  Sol, 36 / 267 in DrawBots) — six slices, every statement out of the
   SHARED bucket. The stage-5 and 6.5b precedents are both the owner's, on
   the same kind of evidence.
 
@@ -5011,8 +5025,9 @@ rules:
 What that costs is worth recording honestly, because it is the first
 measured cost of the grant: **the consolidation stops where the capped
 queue stops.** Every slice of 6.5b edits all three shells by construction,
-so CozyJournal being unshippable blocks 6.5b.6 and stage 7 as surely as a
-failing test would — and nothing an agent is allowed to do shortens that.
+so CozyJournal being unshippable blocked 6.5b.6 and stage 7 as surely as a
+failing test would — and nothing an agent is allowed to do shortened it.
+What ended it was the owner, the same day, with `review.js accept`.
 The alternative arrangement, where the loop re-argues a finding until a
 reviewer gives way, is worse in exactly the way the cap says.
 
@@ -5079,8 +5094,8 @@ comment band — all three being a change to what a shipped app offers rather
 than a consolidation, the band because §4.3 calls it prose in that app's shell and
 'not this work's to do on its own judgment'. A change to a gate: the jsdom
 environment (what a gate checks) and widening `override` to require the
-grant (who holds one). And the order: which of stage 7 and 6.5b.6 goes
-first.
+grant (who holds one). And the order of what is left: whether stage 7 goes
+next, 6.5b.6 having been the last of 6.5b.
 What the instruction reaches is the calls §4.3 leaves unassigned, which is
 what the dust call was.
 
