@@ -277,6 +277,19 @@ describe('a host page', () => {
     expect(submenuHeight('host:processes', { hostPage: { elementHeight: 310 } })).toBe(element + 10);
   });
 
+  it('counts no well round an element that is its own box (bare), like the Copies page', () => {
+    // A bare element pays none of the well's padding — there is no well —
+    // just the cushion: the Copies page's own arithmetic (bareArea), so a
+    // host's boxed page stands exactly as the panel's would.
+    const welled = submenuHeight('host:joints', { hostPage: { elementHeight: 120 } });
+    const bare = submenuHeight('host:joints', { hostPage: { elementHeight: 120, bare: true } });
+    expect(bare).toBe(120 + BAR_CUSHION);
+    expect(welled).toBe(bare + CONTENT_PAD * 2);
+    // …and the flag means nothing to a page of rows.
+    expect(submenuHeight('host:pen', { hostPage: { rows: [{ kind: 'slider' }], bare: true } }))
+      .toBe(submenuHeight('host:pen', { hostPage: { rows: [{ kind: 'slider' }] } }));
+  });
+
   it('reads a row’s shape off the very model it renders', () => {
     expect(hostRowShape({ kind: 'slider', key: 'k', label: 'K', value: 0.5, readout: '1' })).toEqual({ kind: 'slider', colored: false });
     expect(hostRowShape({ kind: 'stroke', key: 'pen', width: 1, dash: 0 })).toEqual({ kind: 'stroke', colored: false });

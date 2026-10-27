@@ -340,10 +340,12 @@ export function hostRowShape(row: HostRowModel): HostRowShape {
 }
 
 /** A host page as its height counts it: the shapes of its rows, or the
- *  height the host's own element stands (HostPage.element.height). */
+ *  height the host's own element stands (HostPage.element.height) — and
+ *  whether that element is its own box, drawn with no well (`bare`). */
 export interface HostPageShape {
   rows?: readonly HostRowShape[];
   elementHeight?: number;
+  bare?: boolean;
 }
 
 export interface SubmenuHeightContext {
@@ -712,11 +714,14 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
   }
 }
 
-/** A host page's height: the host's element at the height it declares, or
- *  its rows each by its kind — a page with no rows still stands one
- *  segmented row tall so the sheet is never empty. */
+/** A host page's height: the host's element at the height it declares
+ *  (with no well's padding when it is its own box — `bare`, the Copies
+ *  page's arrangement), or its rows each by its kind — a page with no rows
+ *  still stands one segmented row tall so the sheet is never empty. */
 export function hostPageHeight(page: HostPageShape | undefined): number {
-  if (page?.elementHeight !== undefined) return contentArea([page.elementHeight]);
+  if (page?.elementHeight !== undefined) {
+    return page.bare ? bareArea([page.elementHeight]) : contentArea([page.elementHeight]);
+  }
   if (!page?.rows || page.rows.length === 0) return contentArea([ROW_SEGMENTED]);
   return contentArea(hostRowHeights(page.rows));
 }

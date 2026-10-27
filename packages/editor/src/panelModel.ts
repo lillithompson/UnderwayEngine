@@ -53,9 +53,8 @@ import { defaultBorderEffect } from './activeColor';
 //    (`ObjectPropertiesModel`, @/editor-ui). The HOST's pages are its one
 //    seam — `hostPages` / `hiddenCommonActions`, spread in one place
 //    (§4.1, "Property pages for the app's kinds"): DrawBot's bots, tiles,
-//    arena and fields pages reach the panel through it. An app whose own
-//    kind still has pages in the chrome (CozyJournal's Figgie rig, until
-//    stage 7) spreads those over the result in its shell.
+//    arena and fields pages reach the panel through it, and so do
+//    CozyJournal's Figgie rig pages (stage 7a, `web/editor/rigPages.ts`).
 //
 // The HANDLERS stay in each app's shell: every one of them is a
 // `useCallback` over the shell's commit pipeline, its tool state and its
@@ -667,10 +666,10 @@ export interface PanelModelInput {
  * Lay out the object-properties panel: the pages this selection may open,
  * seeded from what it is, with the shell's handlers behind them.
  *
- * Spread into `ObjectPropertiesPanel`'s `model` in ONE place. An app whose
- * own kind still has pages in the chrome spreads those over the result
- * (CozyJournal's rig, until stage 7); a host's pages come through
- * `hostPages`, which the panel checks before the rig and the vectors.
+ * Spread into `ObjectPropertiesPanel`'s `model` in ONE place. A host's
+ * pages — DrawBot's bots, CozyJournal's rig — come through `hostPages`,
+ * which the panel checks before the vectors (and, until stage 7b takes
+ * them out of the chrome, before the rig flags no app sets any more).
  */
 export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
   const {
@@ -1037,8 +1036,8 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     // The HOST's own pages for this selection, and the common-row
     // buttons it withholds — the one seam of this builder
     // (docs/shared-editor.md §4.1): DrawBot's bots, instruction tiles,
-    // arena and fields pages reach the panel through it. The panel checks
-    // them before the rig's and the vectors'.
+    // arena and fields pages reach the panel through it, and CozyJournal's
+    // rig pages. The panel checks them before the vectors'.
     hostPages,
     hiddenCommonActions,
     // Frame options (background / shadow / border / ungroup). Gated on an

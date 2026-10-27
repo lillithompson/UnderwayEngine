@@ -27,9 +27,11 @@ import { SwatchStateRow } from './SwatchStateRow';
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
-/** One host page: the host's element, or its rows. */
+/** One host page: the host's element, or its rows. A `bare` element is
+ *  its own box and stands alone, as the panel's own un-welled pages do
+ *  (the Copies page's groups); any other element sits in a body of rows. */
 export function HostPageBar({ page, model }: { page: HostPage; model: HostPagesModel }) {
-  if (page.element) return <BarBody>{page.element.node}</BarBody>;
+  if (page.element) return page.element.bare ? <>{page.element.node}</> : <BarBody>{page.element.node}</BarBody>;
   const rows = page.rows ?? [];
   // Consecutive plain rows share one body; a stroke row stands as its own
   // bar between them.

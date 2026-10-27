@@ -102,8 +102,12 @@ export interface HostPage {
    *  sheet stands tall for it (the host counts what it draws, as the panel
    *  counts its own rows); `scrolls` says the element scrolls in place —
    *  it is taller than it shows — so the sheet's downward dismiss drag
-   *  stands down over it. Outranks `rows`. */
-  element?: { node: React.ReactNode; height: number; scrolls?: boolean };
+   *  stands down over it. Outranks `rows`. `bare` says the element is its
+   *  own box (a shaded RowGroup, say), so the sheet draws no well round it
+   *  and counts none — a box inside the well framed it twice, for no extra
+   *  meaning; see submenuHeight's pageIsWelled for the panel's own pages
+   *  that stand the same way. */
+  element?: { node: React.ReactNode; height: number; scrolls?: boolean; bare?: boolean };
 }
 
 /**
@@ -120,6 +124,13 @@ export interface HostPagesModel {
   id: string;
   /** The pages offered, in tab order. */
   pages: readonly HostPage[];
+  /** Which of these pages is SHOWING, or null when none is: fired when one
+   *  opens, when another replaces it, and when the sheet closes or folds.
+   *  The panel keeps the open page itself (as it does its own pages'), so
+   *  this is the host's only word of it — for a host whose page edits
+   *  measure from a base it fixes while the page is up and drops when it
+   *  goes (CozyJournal's rig sliders). Most hosts need none. */
+  onPageChange?(page: string | null): void;
   onRowSlider?(page: string, key: string, t: number, committed: boolean): void;
   /** The slider position a number typed into a slider row's readout lands
    *  on, in the row's own unit; null for a row that takes none. A host

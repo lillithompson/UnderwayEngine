@@ -758,6 +758,17 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     : model.textStyleOpen ? textPage
     : null;
   const submenuOpen = activeSub != null;
+  // The host's word of which of ITS pages is up (HostPagesModel's
+  // onPageChange): the panel keeps a host page's open state itself, so this
+  // is the one place the host hears a page open, change or go. Read off
+  // `activeSub`, which is null the instant the sheet closes — not
+  // `displaySub`, which keeps the page through the slide down.
+  const openHostPage = activeSub ? hostPageOfSubmenu(activeSub) : null;
+  const hostPagesRef = useRef(model.hostPages);
+  hostPagesRef.current = model.hostPages;
+  useEffect(() => {
+    hostPagesRef.current?.onPageChange?.(openHostPage);
+  }, [openHostPage]);
 
   // The sheet is up while it has been asked for OR a page is open (a host
   // can open a page itself — the pattern capsule's Tools — and the sheet
@@ -1865,7 +1876,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     cropMode: framingForBar.mode,
     // A host page is measured by what the host put on it.
     hostPage: shownHostPage
-      ? { rows: shownHostPage.rows?.map(hostRowShape), elementHeight: shownHostPage.element?.height }
+      ? {
+          rows: shownHostPage.rows?.map(hostRowShape),
+          elementHeight: shownHostPage.element?.height,
+          bare: shownHostPage.element?.bare,
+        }
       : undefined,
     // …counted exactly where the page will render it, on that same rule.
     opacityFade: !!model.onPickFadeColor,
@@ -2313,7 +2328,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
           <EditSheet
             tabs={tabs}
             content={activeBarEl}
-            welled={!displaySub || pageIsWelled(displaySub)}
+            // …and a host element that is its own box stands with no well,
+            // as the panel's own boxed pages do (HostPage.element.bare).
+            welled={!displaySub || (shownHostPage ? !shownHostPage.element?.bare : pageIsWelled(displaySub))}
             remove={removeAction}
             safeBottom={safeBottom}
           />
