@@ -41,9 +41,9 @@
  *
  * The pre-push hook (.githooks/pre-push) runs `check --pre-push`: it never
  * starts a review itself, it only refuses an AGENT's push whose commits have
- * no passing review (`agentPush`: the owner pushing by hand is never
- * stopped; agents never push, and `/ship` is how the owner has one push) — of the pushed range as a whole, or of every commit in it
- * one by one. Three things clear a range, and they are reported under three
+ * no passing review — of the pushed range as a whole, or of every commit in
+ * it one by one. The owner pushing by hand is never stopped (`agentPush`);
+ * `/ship` is how the owner pushes reviewed. Three things clear a range, and they are reported under three
  * different names because they are not the same act: a PASS, an owner
  * ACCEPT (`accept`, from a terminal, which needs no review to exist), and an
  * agent OVERRIDE (`override`, which needs a review that refused and records
