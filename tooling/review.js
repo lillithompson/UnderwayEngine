@@ -43,11 +43,12 @@
  * starts a review itself, it only refuses an AGENT's push whose commits have
  * no passing review — of the pushed range as a whole, or of every commit in
  * it one by one. The owner pushing by hand is never stopped (`agentPush`);
- * `/ship` is how the owner pushes reviewed. Three things clear a range, and they are reported under three
- * different names because they are not the same act: a PASS, an owner
- * ACCEPT (`accept`, from a terminal, which needs no review to exist), and an
- * agent OVERRIDE (`override`, which needs a review that refused and records
- * which findings were disagreed with). `cleared` is where all three meet.
+ * `/ship` is how the owner pushes reviewed. Three things clear a range, and
+ * they are reported under three different names because they are not the
+ * same act: a PASS, an owner ACCEPT (`accept`, from a terminal, which needs
+ * no review to exist), and an agent OVERRIDE (`override`, which needs a
+ * review that refused and records which findings were disagreed with).
+ * `cleared` is where all three meet.
  *
  * A review is recorded under the SHA-256 of the range's combined diff, so a
  * rebase that leaves the diff alone keeps its review and any new commit or
