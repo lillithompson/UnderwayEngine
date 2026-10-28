@@ -5,7 +5,7 @@
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const {
-  needsReview, parseNumstat, parseReview, lastField, prePushRanges, pushRevLists, LINE_THRESHOLD,
+  needsReview, parseNumstat, parseReview, lastField, prePushRanges, pushRevLists, agentPush, LINE_THRESHOLD,
   collapseRemovals, classifyCopies, parseLsTree, spliceAddendum, PROJECT_RULES,
 } = require('../review.js');
 const { loadConfig } = require('../config.js');
@@ -166,6 +166,18 @@ describe('prePushRanges', () => {
   });
 });
 
+describe('agentPush (whom the pre-push gate stops)', () => {
+  it('is an agent’s shell when Claude Code or an AI_AGENT-convention agent runs it', () => {
+    expect(agentPush({ CLAUDECODE: '1' })).toBe(true);
+    expect(agentPush({ AI_AGENT: 'claude-code' })).toBe(true);
+  });
+
+  it('is the owner otherwise, from a terminal or a Git client', () => {
+    expect(agentPush({})).toBe(false);
+    expect(agentPush({ CLAUDECODE: '', AI_AGENT: '' })).toBe(false);
+  });
+});
+
 describe('pushRevLists', () => {
   it('lists theirs..local when the remote tip is known, else everything not on the remote', () => {
     const known = (sha: string) => sha === 'b';
@@ -244,6 +256,22 @@ describe('review.js check in a scratch repository', () => {
   it('keeps its records in the directory the config names', () => {
     commit('a.ts');
     expect(recordFor('origin/main..HEAD').split(path.sep).join('/')).toContain('/.git/sol-reviews/');
+  });
+
+  // The hook's own question: an agent's push is refused without a review,
+  // the owner's push by hand never is.
+  it('refuses an unreviewed pre-push from an agent and lets the owner push', () => {
+    const sha = commit('a.ts');
+    const prePush = (env: NodeJS.ProcessEnv) => spawnSync('node', [REVIEW, 'check', '--pre-push', 'origin'], {
+      cwd: dir, env, encoding: 'utf8', input: `refs/heads/main ${sha} refs/heads/main ${git('rev-parse', 'origin/main')}\n`,
+    }).status;
+    const owner: NodeJS.ProcessEnv = { ...ENV };
+    delete owner.CLAUDECODE;
+    delete owner.AI_AGENT;
+    expect(prePush({ ...owner, CLAUDECODE: '1' })).toBe(1);
+    expect(prePush(owner)).toBe(0);
+    pass('origin/main..HEAD');
+    expect(prePush({ ...owner, CLAUDECODE: '1' })).toBe(0);
   });
 
   // The AGENT override (review.js `override`): a recorded disagreement with

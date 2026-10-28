@@ -139,6 +139,9 @@ project's own rules, so the sections around this one are what it checks.
 **Agents never push.** Not `git push`, not `npm run ship`, not the
 submodule. Commit on the current branch, run `npm test` (and `npm run
 typecheck`), and stop: unpushed commits on local `main` are the queue.
+The pre-push gate holds agents to this (it refuses an unreviewed push from
+an agent's shell); the owner pushing by hand is never stopped by it —
+`/ship` is how the owner pushes reviewed, not the only way they may push.
 
 **Unless the owner has granted an AUTONOMOUS PASS for a named piece of
 work**, which is the one exception and is granted per piece of work, never

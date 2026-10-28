@@ -40,8 +40,9 @@
  * single commit is a one-commit range.
  *
  * The pre-push hook (.githooks/pre-push) runs `check --pre-push`: it never
- * starts a review itself, it only refuses a push whose commits have no
- * passing review — of the pushed range as a whole, or of every commit in it
+ * starts a review itself, it only refuses an AGENT's push whose commits have
+ * no passing review (`agentPush`: the owner pushing by hand is never
+ * stopped; agents never push, and `/ship` is how the owner has one push) — of the pushed range as a whole, or of every commit in it
  * one by one. Three things clear a range, and they are reported under three
  * different names because they are not the same act: a PASS, an owner
  * ACCEPT (`accept`, from a terminal, which needs no review to exist), and an
@@ -987,9 +988,21 @@ async function cmdPending(argv) {
   return code;
 }
 
+/**
+ * Whether a push comes from an agent's shell. The gate is for agents: they
+ * never push but by the review pass (CLAUDE.shared.md), and the owner may
+ * push by hand whenever they choose, from a terminal or a Git client alike.
+ * Claude Code sets CLAUDECODE in every shell it runs, and AI_AGENT names the
+ * agent in the shells of the ones that follow that convention.
+ */
+function agentPush(env) {
+  return Boolean(env.CLAUDECODE || env.AI_AGENT);
+}
+
 function cmdCheck(argv) {
   let ranges;
   if (argv[0] === '--pre-push') {
+    if (!agentPush(process.env)) return 0;
     // git passes a URL instead of a name for `git push <url>`; --remotes needs a name.
     const named = argv[1] && tryGit(['config', '--get', `remote.${argv[1]}.url`], { cwd: ROOT }) !== null;
     const remote = named ? argv[1] : 'origin';
@@ -1094,7 +1107,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  needsReview, parseNumstat, parseReview, collapseRemovals, classifyCopies, classifyMoves, parseLsTree, lastField, prePushRanges, pushRevLists,
+  needsReview, parseNumstat, parseReview, collapseRemovals, classifyCopies, classifyMoves, parseLsTree, lastField, prePushRanges, pushRevLists, agentPush,
   recordPath, passingRecord, overrideRecord, blockingFindings, nextRound, rangeCleared,
   spliceAddendum, LINE_THRESHOLD, PROJECT_RULES, CONFIG_FILE,
 };
