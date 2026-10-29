@@ -23,7 +23,6 @@ import {
   PatternObject,
   RGBColor,
   SVGObject,
-  SVGSubpath,
 } from './types';
 import {
   buildPatternLayerView,
@@ -33,8 +32,8 @@ import {
 import { shapePatternGrid } from './shapePatternFill';
 import { SVG_UNITS_PER_L0_CELL } from './svgExport';
 import {
+  coloredSegmentsBody,
   convertCachedSVGToColoredSegments,
-  ColoredSegments,
 } from './figureToPaths';
 import { figureSVGFromLayers, type CachedFigureSVG } from './svgFigureBuilders';
 import { normalizeClosedSegments } from './compositionArcMath';
@@ -189,24 +188,16 @@ function buildPatternSVGView(p: PatternObject): SVGObject | null {
     mirrorV: p.mirrorV ?? false,
   } as CompositionFigure;
 
-  const groups = convertCachedSVGToColoredSegments(cached, bakeFig)
-    .filter((g: ColoredSegments) => g.segments.length > 0);
-  if (groups.length === 0) return null;
-  const allSegments = normalizeClosedSegments(groups.flatMap((g) => g.segments));
+  const body = coloredSegmentsBody(convertCachedSVGToColoredSegments(cached, bakeFig));
+  if (!body) return null;
+  const allSegments = normalizeClosedSegments(body.segments);
   if (allSegments.length === 0) return null;
-
-  const subpaths = groups.map((g) => {
-    const sub: SVGSubpath = { segments: g.segments, color: g.color };
-    if (g.isFill) sub.fill = true;
-    return sub;
-  });
 
   const view: SVGObject = {
     id: p.id,
     name: p.name,
+    ...body,
     segments: allSegments,
-    color: groups[0].color,
-    subpaths,
     cellX: p.cellX,
     cellY: p.cellY,
     cellWidth: p.cellWidth,

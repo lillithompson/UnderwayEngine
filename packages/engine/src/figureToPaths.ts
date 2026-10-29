@@ -66,20 +66,13 @@ export function figureToTiledSVGObject(
   const baked = cached
     ? convertCachedSVGToColoredSegments(cached, bakeFig)
     : bakeFigureToColoredSegments(bakeFig);
-  if (!baked || baked.length === 0) return null;
-  const colorGroups = tintColoredSegments(baked, fig);
-
-  const primary = colorGroups[0];
-  const allSegments = colorGroups.flatMap(g => g.segments);
-  const subpaths = colorGroups.length > 1
-    ? colorGroups.map(g => ({ segments: g.segments, color: g.color }))
-    : undefined;
+  if (!baked) return null;
+  const body = coloredSegmentsBody(tintColoredSegments(baked, fig));
+  if (!body) return null;
 
   return {
     id: newId,
-    segments: allSegments,
-    color: primary.color,
-    subpaths,
+    ...body,
     name: fig.name,
     cellX: fig.cellX, cellY: fig.cellY, cellWidth: fig.cellWidth, cellHeight: fig.cellHeight,
     tileMode: 'repeat',
@@ -88,6 +81,32 @@ export function figureToTiledSVGObject(
     ...(offX !== 0 ? { tileOffsetXL0: offX } : {}),
     ...(offY !== 0 ? { tileOffsetYL0: offY } : {}),
     ...(fig.groupId ? { groupId: fig.groupId } : {}),
+  };
+}
+
+/**
+ * The vector body an object draws from colour groups: every drawn group's
+ * segments as the object's own, one subpath per group — a fill group
+ * flagged `fill`, so colour cells paint as filled rects and sprite art as
+ * strokes — and the first group's colour as the object's. The ONE place a
+ * baked figure's groups become an SVGObject's fields (the flat bake, the
+ * tiled bake and a pattern's view); a group with no segments is left out,
+ * and with nothing drawn there is no body. The caller adds the id, the box
+ * and the bookkeeping.
+ */
+export function coloredSegmentsBody(
+  groups: readonly ColoredSegments[],
+): Pick<SVGObject, 'segments' | 'color' | 'subpaths'> | null {
+  const drawn = groups.filter((g) => g.segments.length > 0);
+  if (drawn.length === 0) return null;
+  return {
+    segments: drawn.flatMap((g) => g.segments),
+    color: drawn[0].color,
+    subpaths: drawn.map((g) => {
+      const sub: SVGSubpath = { segments: g.segments, color: g.color };
+      if (g.isFill) sub.fill = true;
+      return sub;
+    }),
   };
 }
 
@@ -161,22 +180,9 @@ export function bakeFigureToSVGObject(
     const tiled = figureToTiledSVGObject(fig, id, cached);
     if (tiled) return dress(tiled);
   }
-  const groups = tintColoredSegments(
-    convertCachedSVGToColoredSegments(cached, fig).filter((g) => g.segments.length > 0), fig);
-  if (groups.length === 0) return null;
-  const segments = groups.flatMap((g) => g.segments);
-  const subpaths = groups.map((g) => {
-    const sub: SVGSubpath = { segments: g.segments, color: g.color };
-    if (g.isFill) sub.fill = true;
-    return sub;
-  });
-  return dress({
-    id,
-    segments,
-    color: groups[0].color,
-    subpaths,
-    ...computeSVGBbox(segments),
-  });
+  const body = coloredSegmentsBody(tintColoredSegments(convertCachedSVGToColoredSegments(cached, fig), fig));
+  if (!body) return null;
+  return dress({ id, ...body, ...computeSVGBbox(body.segments) });
 }
 
 /**

@@ -1569,10 +1569,17 @@ export async function importCompositionBundle(
   let bakedSVGs: SVGObject[] = [];
   let filesToStore = embeddedFiles;
   if (opts?.bakeFigures) {
+    // Dynamic on purpose, like the format import above: figureToPaths
+    // reaches svgFigureCache, which imports this module, so a static import
+    // here would close a cycle at load time.
     const { bakeFiguresToSVGObjects } = await import('./figureToPaths');
     const { figureSVGFromLayers } = await import('./svgFigureBuilders');
+    // Only the files a figure names are read — a file nothing places has
+    // nothing to bake — and each one's art is held only until the bake.
+    const named = new Set(meta.figures.map((f) => f.fileId));
     const svgByFileId = new Map<string, CachedFigureSVG>();
     for (const ef of embeddedFiles) {
+      if (!named.has(ef.id)) continue;
       const fileMeta = deserializeFile(ef.data);
       svgByFileId.set(ef.id, figureSVGFromLayers(metaToLayersLite(fileMeta), {
         id: ef.id,

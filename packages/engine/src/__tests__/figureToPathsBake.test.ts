@@ -139,16 +139,32 @@ describe('bakeFigureToSVGObject', () => {
     expect(bakeFigureToSVGObject(fig(), { elements: [], svgWidth: 512, svgHeight: 512 }, S)).toBeNull();
   });
 
-  test('a repeating figure bakes as the tiled object figureToTiledSVGObject makes of the same art', () => {
+  test('a repeating figure bakes as a tiled object: one tile of geometry, the region box, fills kept', () => {
     const repeat = fig({ tileMode: 'repeat', tileWidthL0: 4, tileHeightL0: 4, cellWidth: 12, cellHeight: 8, name: 'tile', locked: true });
     const svg = bakeFigureToSVGObject(repeat, ART, S)!;
-    const direct = figureToTiledSVGObject(repeat, 'fig1', ART)!;
     expect(svg.tileMode).toBe('repeat');
     expect(svg.tileWidthL0).toBe(4);
-    expect(svg.segments).toEqual(direct.segments);
+    expect(svg.tileHeightL0).toBe(4);
+    // One 4×4 tile of the 2-cell art at the region's anchor, like the flat
+    // bake of a 4×4 figure there.
+    expect(svg.segments).toEqual(bakeFigureToSVGObject(fig(), ART, S)!.segments);
     expect([svg.cellX, svg.cellY, svg.cellWidth, svg.cellHeight]).toEqual([10, 20, 12, 8]);
     expect(svg.locked).toBe(true);
     expect(svg.name).toBe('tile');
+    expect(svg.stroke).toEqual({ width: 40 / 256 });
+    // The fill flag survives the tiled path too — colour cells tile as
+    // filled rects, not outlines at the stroke width.
+    expect(svg.subpaths!.map((s) => s.fill === true)).toEqual([true, false]);
+    expect(figureToTiledSVGObject(repeat, 'fig1', ART)!.subpaths!.map((s) => s.fill === true)).toEqual([true, false]);
+  });
+
+  test('a repeating figure of colour cells alone tiles as fills, with its one group still a subpath', () => {
+    const fills: CachedFigureSVG = { elements: [ART.elements[0]], svgWidth: 512, svgHeight: 512 };
+    const repeat = fig({ tileMode: 'repeat', tileWidthL0: 4, tileHeightL0: 4, cellWidth: 12, cellHeight: 8 });
+    const svg = bakeFigureToSVGObject(repeat, fills, S)!;
+    expect(svg.tileMode).toBe('repeat');
+    expect(svg.subpaths).toEqual([{ segments: svg.segments, color: { r: 200, g: 40, b: 40 }, fill: true }]);
+    expect(svg).not.toHaveProperty('stroke');
   });
 });
 
