@@ -6,8 +6,8 @@
  */
 
 import {
-  buildVectorEraseEntry, createVectorEraseState, eraseVectorDab, segmentCircleCover,
-  subtractIntervals, vectorErasable,
+  buildVectorEraseEntry, createVectorEraseState, cutVectorTarget, eraseVectorDab, keptPieces,
+  segmentCircleCover, subtractIntervals, vectorErasable, vectorEraseTarget,
 } from '../vectorEraser';
 import { makeBlankComposition } from '@/editor/blankComposition';
 import { applyCompOps, revertCompOps } from '@/engine/compositionOps';
@@ -187,5 +187,24 @@ describe('eraseVectorDab + buildVectorEraseEntry', () => {
     expect(erase(state, [[5, 0]], 1, new Set(['svg_f', 'svg_l'])).entry).toBeNull();
     const { entry } = erase(state, [[5, 0]], 1);
     expect(entry!.map((op) => ('svgId' in op ? op.svgId : null))).toEqual(['svg_o']);
+  });
+
+  // DrawBots' Erase effect (bug 9a6bd320) cuts a filled shape's outline
+  // too, and takes the fill off what is left itself.
+  it('cuts a filled shape that draws an outline only when asked to', () => {
+    const filled = hline('svg_f', { fillColor: BLACK });
+    expect(vectorErasable(filled, true)).toBe(true);
+    expect(vectorErasable({ ...filled, stroke: { width: 0 } }, true)).toBe(false);
+    expect(vectorErasable({ ...filled, patternFill: {} as SVGObject['patternFill'] }, true)).toBe(false);
+    expect(vectorErasable(hline('svg_r', { tileMode: 'repeat' }), true)).toBe(false);
+    expect(vectorEraseTarget(stateWith([filled]), filled)).toBeNull();
+    const t = vectorEraseTarget(stateWith([filled]), filled, true)!;
+    expect(cutVectorTarget(t, 5, 3, 1)).toBe(false);
+    expect(cutVectorTarget(t, 5, 0, 1)).toBe(true);
+    expect(t.rev).toBe(1);
+    const pieces = keptPieces(t, filled.segments)[0];
+    expect(pieces).toHaveLength(2);
+    close(pieces[0].end[0], 4);
+    close(pieces[1].start[0], 6);
   });
 });
