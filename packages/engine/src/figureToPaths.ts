@@ -7,10 +7,13 @@
  * placement (cellX/Y/Width/Height) maps the SVG viewport onto the canvas.
  */
 
-import { CompositionFigure, PathSegment, RGBColor, SVGObject } from './types';
+import { CompositionFigure, PathSegment, RGBColor, SVGObject, SVGSubpath } from './types';
 import { getFigureSVGSync, CachedFigureSVG } from './svgFigureCache';
 import { blendColor, recolorPixel } from './colorBlend';
 import { figureArtLayout, figureArtPoint, rotateMirrorAround } from './figureArtLayout';
+import { computeSVGBbox } from './sceneGraph';
+import { maxStrokeWidth, SVG_UNITS_PER_L0_CELL } from './svgExport';
+import { effectiveStrokeMultiplier } from './strokeScale';
 
 export interface ColoredSegments {
   color: RGBColor;
@@ -35,8 +38,14 @@ export interface ColoredSegments {
  * Returns null when: the figure isn't a `repeat` tile, its tile dims are
  * missing, it's rotated/mirrored (caller should fall back to flat expansion —
  * the tiled-SVG rotation convention differs), or its SVG isn't cached yet.
+ *
+ * `cached` is the figure's art when the caller holds it already — an
+ * import baking a file it has not stored ({@link bakeFiguresToSVGObjects});
+ * left out, the art is the cache's.
  */
-export function figureToTiledSVGObject(fig: CompositionFigure, newId: string): SVGObject | null {
+export function figureToTiledSVGObject(
+  fig: CompositionFigure, newId: string, cached?: CachedFigureSVG,
+): SVGObject | null {
   if (fig.tileMode !== 'repeat' || !fig.tileWidthL0 || !fig.tileHeightL0) return null;
   if ((fig.rotation ?? 0) !== 0 || fig.mirrorH || fig.mirrorV) return null;
 
@@ -54,30 +63,16 @@ export function figureToTiledSVGObject(fig: CompositionFigure, newId: string): S
     cellX: anchorX, cellY: anchorY,
     cellWidth: tileW, cellHeight: tileH,
   };
-  let colorGroups = bakeFigureToColoredSegments(bakeFig);
-  if (!colorGroups || colorGroups.length === 0) return null;
-
-  // Bake the figure's colorOverride tint into the segment colors (same recipe
-  // as the flat expand path) so the converted object looks identical.
-  const baseline = fig.colorOverride;
-  if (baseline) {
-    const bakeMode = fig.colorOverrideBlendMode;
-    const tint = (base: RGBColor) =>
-      bakeMode != null ? blendColor(base, baseline, bakeMode, 1) : recolorPixel(base, baseline);
-    colorGroups = colorGroups.map(g => ({ color: tint(g.color), segments: g.segments }));
-  }
-
-  const primary = colorGroups[0];
-  const allSegments = colorGroups.flatMap(g => g.segments);
-  const subpaths = colorGroups.length > 1
-    ? colorGroups.map(g => ({ segments: g.segments, color: g.color }))
-    : undefined;
+  const baked = cached
+    ? convertCachedSVGToColoredSegments(cached, bakeFig)
+    : bakeFigureToColoredSegments(bakeFig);
+  if (!baked) return null;
+  const body = coloredSegmentsBody(tintColoredSegments(baked, fig));
+  if (!body) return null;
 
   return {
     id: newId,
-    segments: allSegments,
-    color: primary.color,
-    subpaths,
+    ...body,
     name: fig.name,
     cellX: fig.cellX, cellY: fig.cellY, cellWidth: fig.cellWidth, cellHeight: fig.cellHeight,
     tileMode: 'repeat',
@@ -87,6 +82,132 @@ export function figureToTiledSVGObject(fig: CompositionFigure, newId: string): S
     ...(offY !== 0 ? { tileOffsetYL0: offY } : {}),
     ...(fig.groupId ? { groupId: fig.groupId } : {}),
   };
+}
+
+/**
+ * The vector body an object draws from colour groups: every drawn group's
+ * segments as the object's own, one subpath per group — a fill group
+ * flagged `fill`, so colour cells paint as filled rects and sprite art as
+ * strokes — and the first group's colour as the object's. The ONE place a
+ * baked figure's groups become an SVGObject's fields (the flat bake, the
+ * tiled bake and a pattern's view); a group with no segments is left out,
+ * and with nothing drawn there is no body. The caller adds the id, the box
+ * and the bookkeeping.
+ */
+export function coloredSegmentsBody(
+  groups: readonly ColoredSegments[],
+): Pick<SVGObject, 'segments' | 'color' | 'subpaths'> | null {
+  const drawn = groups.filter((g) => g.segments.length > 0);
+  if (drawn.length === 0) return null;
+  return {
+    segments: drawn.flatMap((g) => g.segments),
+    color: drawn[0].color,
+    subpaths: drawn.map((g) => {
+      const sub: SVGSubpath = { segments: g.segments, color: g.color };
+      if (g.isFill) sub.fill = true;
+      return sub;
+    }),
+  };
+}
+
+/**
+ * The figure's `colorOverride` tint baked into each group's colour — the
+ * recolour the renderer would apply at draw time, applied to the data
+ * instead, so a baked copy looks the same as the figure did. A figure with
+ * no override comes back as it went in. Fill flags survive.
+ */
+export function tintColoredSegments(groups: ColoredSegments[], fig: CompositionFigure): ColoredSegments[] {
+  const baseline = fig.colorOverride;
+  if (!baseline) return groups;
+  const bakeMode = fig.colorOverrideBlendMode;
+  const tint = (base: RGBColor) =>
+    bakeMode != null ? blendColor(base, baseline, bakeMode, 1) : recolorPixel(base, baseline);
+  return groups.map((g) => ({ ...g, color: tint(g.color) }));
+}
+
+/**
+ * The width a figure's sprite strokes are drawn at, in world cells: the
+ * art's own stroke-width (SVG units, 256 per cell) under the legacy ×200
+ * multiplier every figure renderer and the SVG export apply to the
+ * composition's `strokeScale` (compositionSVGCore: "figures keep the
+ * legacy ×200"), the same at every placement scale because
+ * buildFigureSVGContent compensates the art's widths for it. Undefined when
+ * the art strokes nothing — colour cells alone, which fill.
+ *
+ * The svg node layer reads the SAME stored `strokeScale` as base pixels
+ * (svgStrokeWidthUnits: 5 × strokeScale px at 16 px per cell), so a baked
+ * figure left to the composition-wide width would draw at 1/12.5 of the
+ * line it had — a Facet file's 0.04 came out as a 0.2 px hairline.
+ */
+export function figureStrokeWidthCells(cached: CachedFigureSVG, strokeScale: number): number | undefined {
+  const art = maxStrokeWidth(cached.elements);
+  if (art <= 0) return undefined;
+  return art * effectiveStrokeMultiplier(strokeScale) / SVG_UNITS_PER_L0_CELL;
+}
+
+/**
+ * A figure as the SVGObject that draws the same thing: its art placed,
+ * turned and mirrored into the figure's box by the one layout every reader
+ * of a figure shares (convertCachedSVGToColoredSegments), one subpath per
+ * colour (colour cells as fills, sprite art as strokes), the override tint
+ * baked in, the box the segments' own AABB (the invariant every svg reader
+ * holds — not the figure's placement box, which its ink need not fill),
+ * and the stroke width the figure was drawn at ({@link
+ * figureStrokeWidthCells}, from the composition's `strokeScale`) as the
+ * object's own. Scene bookkeeping (name, group, locked, hidden) carries
+ * over.
+ *
+ * For a canvas with no figure render path — the shared editor draws
+ * svgObjects, images, texts, paint and patterns, and a `CompositionFigure`
+ * nowhere (CanvasSurface's renderNode) — this is how a figure becomes
+ * visible at all. Null when the art has no drawable element: there is
+ * nothing to show, in this editor or the one that wrote it.
+ */
+export function bakeFigureToSVGObject(
+  fig: CompositionFigure, cached: CachedFigureSVG, strokeScale: number, id: string = fig.id,
+): SVGObject | null {
+  const dress = (obj: SVGObject): SVGObject => {
+    if (fig.name != null) obj.name = fig.name;
+    if (fig.groupId) obj.groupId = fig.groupId;
+    if (fig.preGroupName != null) obj.preGroupName = fig.preGroupName;
+    if (fig.locked) obj.locked = true;
+    if (fig.hidden) obj.hidden = true;
+    const width = figureStrokeWidthCells(cached, strokeScale);
+    if (width != null) obj.stroke = { width };
+    return obj;
+  };
+  if (fig.tileMode === 'repeat') {
+    const tiled = figureToTiledSVGObject(fig, id, cached);
+    if (tiled) return dress(tiled);
+  }
+  const body = coloredSegmentsBody(tintColoredSegments(convertCachedSVGToColoredSegments(cached, fig), fig));
+  if (!body) return null;
+  return dress({ id, ...body, ...computeSVGBbox(body.segments) });
+}
+
+/**
+ * Every figure whose file is in `svgByFileId` baked ({@link
+ * bakeFigureToSVGObject}) under its own id, so a scene order and a group
+ * that named the figure name the svg; the rest — an atlas-sprite figure, a
+ * file the bundle did not carry — stay figures. A figure whose art is
+ * empty is dropped: it drew nothing where it came from either.
+ * `strokeScale` is the composition's stored one, which sets the width the
+ * figures' strokes were drawn at.
+ */
+export function bakeFiguresToSVGObjects(
+  figures: readonly CompositionFigure[],
+  svgByFileId: ReadonlyMap<string, CachedFigureSVG>,
+  strokeScale: number,
+): { figures: CompositionFigure[]; svgObjects: SVGObject[] } {
+  const kept: CompositionFigure[] = [];
+  const svgObjects: SVGObject[] = [];
+  for (const fig of figures) {
+    const cached = fig.fileId ? svgByFileId.get(fig.fileId) : undefined;
+    if (!cached) { kept.push(fig); continue; }
+    const svg = bakeFigureToSVGObject(fig, cached, strokeScale);
+    if (svg) svgObjects.push(svg);
+  }
+  return { figures: kept, svgObjects };
 }
 
 /**

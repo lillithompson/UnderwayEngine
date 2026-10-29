@@ -1,7 +1,6 @@
 import { CompositionFigure, FileConfig } from './types';
-import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { loadFileStateLite, loadClipBox } from './persistence';
-import { simplifySVG } from './simplifySVG';
+import { figureSVGFromLayers } from './svgFigureBuilders';
 
 // Pure SVG builders live in `./svgFigureBuilders` so the build-time
 // composition-thumbnail script can use them without dragging in
@@ -62,8 +61,6 @@ export async function getFigureSVG(fig: CompositionFigure): Promise<CachedFigure
 }
 
 async function loadFigureSVG(fig: CompositionFigure, key: string): Promise<CachedFigureSVG | null> {
-  const U = SVG_UNITS_PER_L0_CELL;
-
   if (fig.fileId) {
     const [fileState, clipBox] = await Promise.all([
       loadFileStateLite(fig.fileId),
@@ -83,12 +80,7 @@ async function loadFigureSVG(fig: CompositionFigure, key: string): Promise<Cache
     // exportLayersToSVGInner handles clip box internally — when clipBox
     // is set on fileConfig, it skips cells outside the clip region and
     // returns clip-relative coordinates and clip dimensions.
-    const result = exportLayersToSVGInner(fileState.layers, fileConfig);
-    const entry: CachedFigureSVG = {
-      elements: simplifySVG(result.elements),
-      svgWidth: result.widthL0 * U,
-      svgHeight: result.heightL0 * U,
-    };
+    const entry = figureSVGFromLayers(fileState.layers, fileConfig);
     cache.set(key, entry);
     return entry;
   }

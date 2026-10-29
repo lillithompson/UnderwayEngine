@@ -10,8 +10,9 @@
  * plus a pre-rendered SVG element list and emit SVG markup.
  */
 
-import { BlendMode, CompositionFigure, RGBColor } from './types';
-import { SVG_UNITS_PER_L0_CELL, SVG_STROKE_WIDTH, multiplyStrokeWidths, maxStrokeWidth } from './svgExport';
+import { BlendMode, CompositionFigure, FileConfig, Layer, RGBColor } from './types';
+import { SVG_UNITS_PER_L0_CELL, SVG_STROKE_WIDTH, exportLayersToSVGInner, multiplyStrokeWidths, maxStrokeWidth } from './svgExport';
+import { simplifySVG } from './simplifySVG';
 import { blendColor, recolorPixel } from './colorBlend';
 import { figureArtLayout, unswapQuarter, uniformArtScale } from './figureArtLayout';
 
@@ -22,6 +23,24 @@ export interface CachedFigureSVG {
   svgWidth: number;
   /** Figure content height in SVG units */
   svgHeight: number;
+}
+
+/**
+ * A figure file's layers in cached-figure-SVG form: the exporter's elements
+ * (simplified), in SVG units (256 per L0 cell), with the content size the
+ * exporter measured — clipped to `fileConfig.clipBox` when it has one, in
+ * which case the coordinates and the size are the clip's. The ONE recipe
+ * behind the storage-backed cache (svgFigureCache), a pattern's bake
+ * (patternObjectRender) and an import's figure bake (persistence); an
+ * empty file yields no elements, which each caller reads its own way.
+ */
+export function figureSVGFromLayers(layers: Layer[], fileConfig: FileConfig): CachedFigureSVG {
+  const result = exportLayersToSVGInner(layers, fileConfig);
+  return {
+    elements: simplifySVG(result.elements),
+    svgWidth: result.widthL0 * SVG_UNITS_PER_L0_CELL,
+    svgHeight: result.heightL0 * SVG_UNITS_PER_L0_CELL,
+  };
 }
 
 /**

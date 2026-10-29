@@ -23,7 +23,6 @@ import {
   PatternObject,
   RGBColor,
   SVGObject,
-  SVGSubpath,
 } from './types';
 import {
   buildPatternLayerView,
@@ -31,13 +30,12 @@ import {
   PATTERN_CELL_L0,
 } from './patternObject';
 import { shapePatternGrid } from './shapePatternFill';
-import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
-import { simplifySVG } from './simplifySVG';
+import { SVG_UNITS_PER_L0_CELL } from './svgExport';
 import {
+  coloredSegmentsBody,
   convertCachedSVGToColoredSegments,
-  ColoredSegments,
 } from './figureToPaths';
-import type { CachedFigureSVG } from './svgFigureBuilders';
+import { figureSVGFromLayers, type CachedFigureSVG } from './svgFigureBuilders';
 import { normalizeClosedSegments } from './compositionArcMath';
 import { buildSVGObjectContent, withSVGObjectStrokeColor, type TileExpansion } from './svgPathBuilder';
 import { strokeScaleForUnits } from './svgStroke';
@@ -135,13 +133,8 @@ export function bakePatternElements(p: PatternObject): CachedFigureSVG | null {
     widthL0: p.cols * PATTERN_CELL_L0,
     heightL0: p.rows * PATTERN_CELL_L0,
   };
-  const result = exportLayersToSVGInner([layer], fileConfig);
-  if (result.elements.length === 0) return null;
-  return {
-    elements: simplifySVG(result.elements),
-    svgWidth: result.widthL0 * SVG_UNITS_PER_L0_CELL,
-    svgHeight: result.heightL0 * SVG_UNITS_PER_L0_CELL,
-  };
+  const cached = figureSVGFromLayers([layer], fileConfig);
+  return cached.elements.length === 0 ? null : cached;
 }
 
 /**
@@ -195,24 +188,16 @@ function buildPatternSVGView(p: PatternObject): SVGObject | null {
     mirrorV: p.mirrorV ?? false,
   } as CompositionFigure;
 
-  const groups = convertCachedSVGToColoredSegments(cached, bakeFig)
-    .filter((g: ColoredSegments) => g.segments.length > 0);
-  if (groups.length === 0) return null;
-  const allSegments = normalizeClosedSegments(groups.flatMap((g) => g.segments));
+  const body = coloredSegmentsBody(convertCachedSVGToColoredSegments(cached, bakeFig));
+  if (!body) return null;
+  const allSegments = normalizeClosedSegments(body.segments);
   if (allSegments.length === 0) return null;
-
-  const subpaths = groups.map((g) => {
-    const sub: SVGSubpath = { segments: g.segments, color: g.color };
-    if (g.isFill) sub.fill = true;
-    return sub;
-  });
 
   const view: SVGObject = {
     id: p.id,
     name: p.name,
+    ...body,
     segments: allSegments,
-    color: groups[0].color,
-    subpaths,
     cellX: p.cellX,
     cellY: p.cellY,
     cellWidth: p.cellWidth,

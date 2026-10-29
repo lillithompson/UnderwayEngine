@@ -13,6 +13,7 @@ import { normalizeStrokeScale } from './strokeScale';
 import { normalizeComposition } from './compositionNormalize';
 import { fromBase64, toBase64 } from './pngcodec';
 import { holdImageAssets, imageAssetKey, loadImageAssets, purgeImageAssets, rememberImageAsset, sweepImageAssets } from './imageAssetStore';
+import type { CachedFigureSVG } from './svgFigureBuilders';
 
 // ── Storage Keys ────────────────────────────────────────────────────
 
@@ -630,6 +631,19 @@ export interface CompositionIOOptions {
    * verbatim.
    */
   normalize?: boolean;
+  /**
+   * Bake every figure the imported bundle carries the file for into the
+   * SVGObject that draws the same thing
+   * (figureToPaths.bakeFiguresToSVGObjects), under the figure's own id,
+   * and store neither the figure nor its file. For a host whose canvas has
+   * no figure render path: the shared editor draws svgObjects, images,
+   * texts, paint and patterns, and a `CompositionFigure` nowhere
+   * (CanvasSurface's renderNode), so a Facet `.tile` imported there listed
+   * its letters in the outline over an empty canvas (2026-10-29). A figure
+   * the bundle has no file for (an atlas sprite) stays a figure. Read by
+   * importCompositionBundle only; the editor's PAGE_IO sets it.
+   */
+  bakeFigures?: boolean;
 }
 
 export async function saveCompositionState(
@@ -1546,11 +1560,49 @@ export async function importCompositionBundle(
     ? fileName.replace(/\.(tile|json)$/i, '')
     : meta.name;
 
+  // A host whose canvas draws no figures takes them as svgs (bakeFigures):
+  // each embedded file's art is read from the bundle's bytes, never stored
+  // and never thumbnail-baked, and every figure it backs becomes the
+  // SVGObject that draws the same thing. Only a file a figure still names
+  // afterwards (one the bake left alone) goes into storage.
+  let figures = meta.figures;
+  let bakedSVGs: SVGObject[] = [];
+  let filesToStore = embeddedFiles;
+  if (opts?.bakeFigures) {
+    // Dynamic on purpose, like the format import above: figureToPaths
+    // reaches svgFigureCache, which imports this module, so a static import
+    // here would close a cycle at load time.
+    const { bakeFiguresToSVGObjects } = await import('./figureToPaths');
+    const { figureSVGFromLayers } = await import('./svgFigureBuilders');
+    // Only the files a figure names are read — a file nothing places has
+    // nothing to bake — and each one's art is held only until the bake.
+    const named = new Set(meta.figures.map((f) => f.fileId));
+    const svgByFileId = new Map<string, CachedFigureSVG>();
+    for (const ef of embeddedFiles) {
+      if (!named.has(ef.id)) continue;
+      const fileMeta = deserializeFile(ef.data);
+      svgByFileId.set(ef.id, figureSVGFromLayers(metaToLayersLite(fileMeta), {
+        id: ef.id,
+        name: ef.name,
+        widthL0: fileMeta.widthL0 ?? ef.widthL0,
+        heightL0: fileMeta.heightL0 ?? ef.heightL0,
+        originL0X: fileMeta.originL0X ?? 0,
+        originL0Y: fileMeta.originL0Y ?? 0,
+        clipBox: fileMeta.clipBox ?? undefined,
+      }));
+    }
+    const baked = bakeFiguresToSVGObjects(meta.figures, svgByFileId, normalizeStrokeScale(meta.strokeScale));
+    figures = baked.figures;
+    bakedSVGs = baked.svgObjects;
+    const stillNamed = new Set(figures.map((f) => f.fileId));
+    filesToStore = embeddedFiles.filter((ef) => stillNamed.has(ef.id));
+  }
+
   // Import embedded files with new IDs (sequential to avoid OOM)
-  const idRemap = await importEmbeddedFigureFiles(embeddedFiles);
+  const idRemap = await importEmbeddedFigureFiles(filesToStore);
 
   // Remap figure references
-  const remappedFigures = meta.figures.map(fig => {
+  const remappedFigures = figures.map(fig => {
     const updated = { ...fig };
     if (updated.fileId && idRemap.has(updated.fileId)) {
       const oldId = updated.fileId;
@@ -1563,7 +1615,7 @@ export async function importCompositionBundle(
 
   // Create new composition
   const compId = Date.now().toString();
-  const svgObjects: SVGObject[] = meta.svgObjects ?? [];
+  const svgObjects: SVGObject[] = [...(meta.svgObjects ?? []), ...bakedSVGs];
   const images = meta.images ?? [];
   const texts = meta.texts ?? [];
   // Re-mint paint island ids: their tile bytes land in per-id binary keys
