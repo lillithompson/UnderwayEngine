@@ -840,6 +840,14 @@ describe('the panel drives the sheet', () => {
     expect(submenuHeight('border')).toBe(submenuHeight('border', { borderRows: { position: true } }));
   });
 
+  it('a SegmentedRow given a height draws its control that tall, the row never shorter than ROW_SEGMENTED', () => {
+    // A host's own page may want the control taller (DrawBots' collision
+    // page); the sheet's pages pass none, so their arithmetic is untouched.
+    const eb = SRC('components', 'effectBar.tsx');
+    expect(eb).toContain('<View style={[styles.segmentedRow, height !== undefined && { height: Math.max(ROW_SEGMENTED, height) }]}>');
+    expect(eb).toContain('<View style={[styles.segmented, height !== undefined && { height }]}>');
+  });
+
   it('sub-tabs head their box as one solid line, edge to edge', () => {
     // A page with SECTIONS (Pattern's Tile / Symmetry / Stroke, Copies'
     // four faces) wears SectionTabs, not the inset SegmentedRow a property

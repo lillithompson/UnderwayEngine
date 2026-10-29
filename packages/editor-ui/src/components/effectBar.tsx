@@ -571,17 +571,21 @@ export function SwitchRow({ label, value, mixed, onValueChange }: {
  *  Selection applies immediately. An option may carry an `icon` (MCI glyph)
  *  to render in place of its text label (the align row), keeping its `label`
  *  for accessibility. Without a `label` the control spans the whole row
- *  (the Crop page's Fill / Fit / Crop / Tile, which names itself). */
-export function SegmentedRow<T extends string>({ label, options, value, onChange }: {
+ *  (the Crop page's Fill / Fit / Crop / Tile, which names itself). A
+ *  `height` sets the control's own height, the row growing to hold it
+ *  (DrawBots' collision page draws its kinds taller); without one the
+ *  control is as tall as its text and the row `ROW_SEGMENTED`. */
+export function SegmentedRow<T extends string>({ label, options, value, onChange, height }: {
   label?: string;
   options: readonly { value: T; label: string; icon?: MCIName }[];
   value: T;
   onChange: (v: T) => void;
+  height?: number;
 }) {
   return (
-    <View style={styles.segmentedRow}>
+    <View style={[styles.segmentedRow, height !== undefined && { height: Math.max(ROW_SEGMENTED, height) }]}>
       {label ? <Text style={styles.segLabel}>{label}</Text> : null}
-      <View style={styles.segmented}>
+      <View style={[styles.segmented, height !== undefined && { height }]}>
         {options.map((o) => {
           const active = o.value === value;
           return (
