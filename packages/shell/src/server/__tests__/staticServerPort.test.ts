@@ -73,14 +73,34 @@ describe('the move to a new port brings the saved work along', () => {
     expect(SWIFT).toContain('private let legacyPort: UInt? = {');
   });
 
-  it('copies through a hidden page GIVEN the old origin, so the old port need not be free', () => {
-    expect(SWIFT).toContain('webView.loadHTMLString(Self.parentPage(legacyPort: legacyPort, port: port), baseURL: URL(string: "http://localhost:\\(legacyPort)/"))');
-    // …into an iframe this server serves on the new origin.
-    expect(SWIFT).toContain('static let childPath = "/__underway/origin-migration"');
-    expect(SWIFT).toContain('server.addHandler(forMethod: "GET", path: OriginMigrationRun.childPath, request: GCDWebServerRequest.self)');
+  it('reads through a hidden page GIVEN the old origin, so the old port need not be free', () => {
+    expect(SWIFT).toContain('webView.loadHTMLString(Self.exporterPage(legacyPort: legacyPort), baseURL: URL(string: "http://localhost:\\(legacyPort)/"))');
     // The same data store as the app's page, or it would copy between the
     // wrong origins.
     expect(SWIFT).toContain('configuration.websiteDataStore = WKWebsiteDataStore.default()');
+  });
+
+  it('writes through a TOP-LEVEL page this server serves on the new origin — never a frame', () => {
+    // WebKit keys a cross-origin frame's storage by (top origin, frame
+    // origin) and keeps it in memory: an importer in an iframe reported 745
+    // records copied and the journal opened empty (2026-10-29). So the same
+    // web view is navigated to the importer page once the export is spooled.
+    expect(SWIFT).toContain('static let importerPath = "/__underway/origin-migration"');
+    expect(SWIFT).toContain('server.addHandler(forMethod: "GET", path: OriginMigrationRun.importerPath, request: GCDWebServerRequest.self)');
+    expect(SWIFT).toContain('case (.exporting, "exported"):');
+    expect(SWIFT).toContain('webView?.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))');
+    expect(SWIFT).not.toContain('iframe');
+    expect(SCRIPT).not.toContain('createElement(\'iframe\')');
+    // …and the script itself refuses to run as anything but the top document
+    // of the origin it was meant for, on both sides.
+    expect(SCRIPT).toContain("if (options.isTop !== true) {");
+    expect(SCRIPT).toContain('isTop: self.top === self,');
+    // The messages cross native as JSON through a reply-capable handler,
+    // spooled to disk between the pages so the process holds none of them.
+    expect(SWIFT).toContain('final class OriginMigrationRun: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDelegate');
+    expect(SWIFT).toContain('configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: Self.handlerName)');
+    expect(SWIFT).toContain('try data.write(to: spoolURL(spooled), options: .atomic)');
+    expect(SWIFT).toContain('try? FileManager.default.removeItem(at: spoolDirectory)');
   });
 
   it('marks the install done only on a verified copy, or when there was nothing to copy', () => {
@@ -88,8 +108,9 @@ describe('the move to a new port brings the saved work along', () => {
     expect(adopt.match(/UserDefaults\.standard\.set\(true, forKey: flagKey\)/g)).toHaveLength(2);
     // Nothing stored on the install (a fresh one): done without a copy.
     expect(adopt).toContain('let stored = records.contains { $0.displayName == "localhost" }');
-    // Copied: done on the page's `done`, which the script sends only after
-    // the counts on both sides agree. Any failure rejects, and marks nothing.
+    // Copied: done on the importer page's `done`, which the script sends
+    // only after what it counted on the new origin agrees with what the
+    // exporter read. Any failure rejects, and marks nothing.
     expect(adopt).toContain('case .success(let totals):');
     expect(adopt).toContain('promise.reject("E_MIGRATION_FAILED", String(describing: error))');
     // The old origin's data is never deleted — a wrong copy must stay recoverable.
@@ -99,7 +120,8 @@ describe('the move to a new port brings the saved work along', () => {
   it('gives up on silence and on a dead content process, never hangs', () => {
     expect(SWIFT).toContain('static let idleTimeout: TimeInterval = 120');
     expect(SWIFT).toContain('func webViewWebContentProcessDidTerminate(_ webView: WKWebView)');
-    const handler = SWIFT.slice(SWIFT.indexOf('case "progress":'), SWIFT.indexOf('case "done":'));
+    // Every message re-arms it: the watchdog measures silence, in either phase.
+    const handler = SWIFT.slice(SWIFT.indexOf('didReceive message: WKScriptMessage,'), SWIFT.indexOf('switch (phase, type) {'));
     expect(handler).toContain('armWatchdog()');
   });
 
@@ -112,8 +134,8 @@ describe('the move to a new port brings the saved work along', () => {
     expect(SCRIPT).not.toContain('"""' + '#');
     // Both pages run the embedded script, then their bootstrap.
     expect(SWIFT).toContain('+ originMigrationScript');
-    expect(SWIFT).toContain('UnderwayOriginMigration.runParentInPage({');
-    expect(SWIFT).toContain('UnderwayOriginMigration.runChildInPage({');
+    expect(SWIFT).toContain('UnderwayOriginMigration.runExporterInPage({');
+    expect(SWIFT).toContain('UnderwayOriginMigration.runImporterInPage({');
   });
 
   it('is the step between the server coming up and the page being ready', () => {

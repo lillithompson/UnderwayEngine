@@ -30,7 +30,12 @@ port without stranding its installs' data — unless it also names the port
 it is leaving, in which case the first start on the new port copies the
 saved work across (`UnderwayStaticServerLegacyPort`; the copy is
 `modules/static-server/web/originMigration.js`, run by
-`StaticServerModule.swift`'s `adoptLegacyOrigin`). Every app names its own
+`StaticServerModule.swift`'s `adoptLegacyOrigin`). The copy runs as two
+TOP-LEVEL pages in one hidden web view, the old origin's exporting to
+native and the new origin's importing from it: WebKit keeps a cross-origin
+frame's storage in a memory-only partition, so a copy made through an
+iframe reports success and leaves the journal empty (seen 2026-10-29). A
+port move is verified on a device, not only under jest. Every app names its own
 port in `app.json` (`UnderwayStaticServerPort`), and a new app takes the
 next free one here:
 

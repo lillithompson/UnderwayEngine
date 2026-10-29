@@ -3,9 +3,11 @@ import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 // The copy of one origin's saved work to another (modules/static-server/
 // web/originMigration.js), the piece of the port move that decides whether
 // an install keeps its journal. Driven here over fake-indexeddb — two
-// factories stand for the two origins — and stand-in windows for the
-// postMessage glue; the real pages are the Swift module's
-// (StaticServerModule.swift `adoptLegacyOrigin`).
+// factories stand for the two origins — and a stand-in native side that
+// spools what the exporter posts and hands it to the importer, as the Swift
+// module does (StaticServerModule.swift `OriginMigrationRun`). The real
+// pages are the Swift module's; what WebKit does with a frame's storage is
+// not modelled here, which is why the script runs no frame at all.
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 // A plain script, not a module: it embeds in Swift as it is.
@@ -13,8 +15,11 @@ const migration = require('../../../modules/static-server/web/originMigration.js
   exportOrigin: (idb: IDBFactory, storage: StorageLike | null, send: (m: Message) => Promise<unknown>, options?: { pageSize?: number }) => Promise<Totals>;
   createImporter: (idb: IDBFactory, storage: StorageLike | null) => { handle: (m: Message) => Promise<unknown> };
   readSchema: (db: IDBDatabase) => Schema;
-  runParent: (options: ParentOptions) => Promise<void>;
-  runChild: (options: ChildOptions) => void;
+  encodeValue: (value: unknown) => Promise<unknown>;
+  decodeValue: (data: unknown) => unknown;
+  verifyCounts: (sent: Record<string, Record<string, number>>, localStorage: number, got: unknown) => void;
+  runExporter: (options: PageOptions) => Promise<void>;
+  runImporter: (options: PageOptions) => Promise<void>;
 };
 
 (globalThis as unknown as { IDBKeyRange: unknown }).IDBKeyRange = IDBKeyRange;
@@ -33,34 +38,14 @@ interface StorageLike {
   setItem(k: string, v: string): void;
   clear(): void;
 }
-interface FakeWindow {
-  addEventListener(type: 'message', fn: (event: MessageEvent) => void): void;
-  removeEventListener(type: 'message', fn: (event: MessageEvent) => void): void;
-  postMessage(data: unknown, targetOrigin: string): void;
-}
-interface ParentOptions {
+interface PageOptions {
   idb: IDBFactory | null;
   storage: StorageLike | null;
   origin: string;
+  isTop: boolean;
   expectedOrigin: string;
-  childUrl: string;
-  childOrigin: string;
-  document: { createElement(tag: string): FakeIframe; body: { appendChild(el: FakeIframe): void } };
-  window: FakeWindow;
-  report: (m: Message) => void;
+  post: (m: Message) => Promise<unknown>;
   pageSize?: number;
-}
-interface ChildOptions {
-  idb: IDBFactory | null;
-  storage: StorageLike | null;
-  parentOrigin: string;
-  window: FakeWindow;
-  parent: { postMessage(data: unknown, targetOrigin: string): void };
-}
-interface FakeIframe {
-  contentWindow: FakeWindow | null;
-  style: Record<string, string>;
-  setAttribute(name: string, value: string): void;
 }
 
 function fakeStorage(): StorageLike {
@@ -98,6 +83,24 @@ function done(tx: IDBTransaction): Promise<void> {
   });
 }
 
+/**
+ * A stored value as plain data: bytes as number arrays, dates as ISO strings.
+ * fake-indexeddb's clones live in node's own realm while the script's
+ * decoded values live in jest's, and jest cannot compare typed arrays
+ * across realms — so a dump holds neither.
+ */
+function plain(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  const tag = Object.prototype.toString.call(value);
+  if (tag === '[object ArrayBuffer]') return { buffer: Array.from(new Uint8Array(value as ArrayBuffer)) };
+  if (ArrayBuffer.isView(value)) return { [tag.slice(8, -1)]: Array.from(new Uint8Array((value as ArrayBufferView).buffer, (value as ArrayBufferView).byteOffset, (value as ArrayBufferView).byteLength)) };
+  if (tag === '[object Date]') return { date: (value as Date).toISOString() };
+  if (Array.isArray(value)) return value.map(plain);
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(value as object)) out[k] = plain((value as Record<string, unknown>)[k]);
+  return out;
+}
+
 /** Everything in a factory, as plain data a test can compare. */
 async function dump(idb: IDBFactory): Promise<Record<string, { schema: Schema; data: Record<string, Array<[unknown, unknown]>> }>> {
   const out: Record<string, { schema: Schema; data: Record<string, Array<[unknown, unknown]>> }> = {};
@@ -110,7 +113,7 @@ async function dump(idb: IDBFactory): Promise<Record<string, { schema: Schema; d
       const tx = db.transaction(store.name, 'readonly');
       const keys = await req(tx.objectStore(store.name).getAllKeys());
       const values = await req(tx.objectStore(store.name).getAll());
-      data[store.name] = keys.map((k, i) => [k, values[i]]);
+      data[store.name] = keys.map((k, i) => [plain(k), plain(values[i])]);
     }
     db.close();
     out[info.name as string] = { schema, data };
@@ -162,13 +165,16 @@ async function seedSource(idb: IDBFactory, storage: StorageLike): Promise<void> 
   storage.setItem('empty', '');
 }
 
-/** The whole copy, source to target, through the importer directly. */
+/** What the native side does with a message: nothing but JSON survives it. */
+const overTheWire = (m: Message): Message => JSON.parse(JSON.stringify(m)) as Message;
+
+/** The whole copy, source to target, through the importer directly — every message crossing as JSON. */
 function copy(source: IDBFactory, sourceStorage: StorageLike, target: IDBFactory, targetStorage: StorageLike, options?: { pageSize?: number; tap?: (m: Message) => Message }) {
   const importer = migration.createImporter(target, targetStorage);
   const messages: Message[] = [];
   const send = (m: Message) => {
     messages.push(m);
-    return importer.handle(options?.tap ? options.tap(m) : m);
+    return importer.handle(overTheWire(options?.tap ? options.tap(m) : m));
   };
   return migration.exportOrigin(source, sourceStorage, send, { pageSize: options?.pageSize }).then((totals) => ({ totals, messages }));
 }
@@ -197,7 +203,11 @@ describe('originMigration: one origin copied to another', () => {
     ]);
     expect(after.entries.schema.stores.find((s) => s.name === 'composite')!.keyPath).toEqual(['day', 'slot']);
     const thumb = after['keyval-store'].data.keyval.find(([k]) => k === 'cozy:thumb:a')!;
-    expect(thumb[1]).toEqual(bytes(0x89, 0x50, 0x4e, 0x47, 1, 2, 3));
+    expect(thumb[1]).toEqual({ Uint8Array: [0x89, 0x50, 0x4e, 0x47, 1, 2, 3] });
+    const buffer = after['keyval-store'].data.keyval.find(([k]) => k === 'cozy:thumb:b')!;
+    expect(buffer[1]).toEqual({ buffer: [7, 7, 7] });
+    const entry = after['keyval-store'].data.keyval.find(([k]) => k === 'cozy:entry:a')!;
+    expect((entry[1] as { at: unknown }).at).toEqual({ date: new Date(2026, 9, 1).toISOString() });
     expect(sb.length).toBe(3);
     expect(sb.getItem('editor:theme')).toBe('dark');
     expect(sb.getItem('empty')).toBe('');
@@ -216,9 +226,9 @@ describe('originMigration: one origin copied to another', () => {
   });
 
   it('pages through a store in key order, growing the page while records are small', async () => {
-    const a = new IDBFactory(); const b = new IDBFactory();
-    await seedSource(a, fakeStorage());
-    const { messages } = await copy(a, fakeStorage(), b, fakeStorage(), { pageSize: 2 });
+    const a = new IDBFactory(); const sa = fakeStorage(); const b = new IDBFactory();
+    await seedSource(a, sa);
+    const { messages } = await copy(a, sa, b, fakeStorage(), { pageSize: 2 });
     const pages = messages.filter((m) => m.type === 'records' && m.store === 'rows') as unknown as Array<{ keys: number[] }>;
     // 2, then 4 (small records double the page), then the last 1.
     expect(pages.map((p) => p.keys.length)).toEqual([2, 4, 1]);
@@ -228,6 +238,11 @@ describe('originMigration: one origin copied to another', () => {
     expect(messages.some((m) => m.type === 'records' && m.store === 'empty')).toBe(false);
     expect(messages.filter((m) => m.type === 'database').length).toBe(2);
     expect(messages.map((m) => m.type).slice(-2)).toEqual(['localStorage', 'finish']);
+    // The last message carries what was read, for the importer to hold its
+    // own counts against on the other origin.
+    const finish = messages[messages.length - 1];
+    expect(finish.sent).toEqual({ 'keyval-store': { keyval: 7 }, entries: { composite: 2, empty: 0, rows: 7 } });
+    expect(finish.localStorage).toBe(3);
   });
 
   it('refuses a copy whose counts disagree, record or localStorage', async () => {
@@ -277,104 +292,193 @@ describe('originMigration: one origin copied to another', () => {
   });
 });
 
-// Two stand-in windows wired as a parent and its iframe: postMessage
-// delivers asynchronously, stamped with the sender's origin.
-function pairWindows(parentOrigin: string, childOrigin: string) {
-  type Listener = (event: MessageEvent) => void;
-  function makeWindow(origin: string) {
-    const listeners = new Set<Listener>();
-    const w = {
-      origin,
-      peer: null as unknown as { deliver(data: unknown, from: string, source: unknown): void; origin: string },
-      listeners,
-      addEventListener(_: 'message', fn: Listener) { listeners.add(fn); },
-      removeEventListener(_: 'message', fn: Listener) { listeners.delete(fn); },
-      // As the browser does: a message posted to this window reaches this
-      // window's listeners, from the other window, if the target origin is
-      // this window's.
-      postMessage(data: unknown, targetOrigin: string) {
-        if (targetOrigin !== '*' && targetOrigin !== origin) return;
-        const snapshot = structuredClone(data);
-        setTimeout(() => w.deliver(snapshot, w.peer.origin, w.peer), 0);
-      },
-      deliver(data: unknown, from: string, source: unknown) {
-        for (const fn of Array.from(listeners)) fn({ data, origin: from, source } as unknown as MessageEvent);
-      },
+// The native side carries JSON and nothing else, so every key and value
+// crosses encoded; what comes back must be what went in, bytes and all.
+describe('originMigration: the wire encoding', () => {
+  const roundTrip = async (value: unknown) => migration.decodeValue(JSON.parse(JSON.stringify(await migration.encodeValue(value))));
+
+  it('passes JSON\'s own types through as they are', async () => {
+    const plain = { s: 'x', n: 1.5, b: true, z: null, list: [1, 'two', { three: 3 }] };
+    expect(await migration.encodeValue(plain)).toEqual(plain);
+    expect(await roundTrip(plain)).toEqual(plain);
+  });
+
+  it('carries what structured clone carries and JSON does not', async () => {
+    const view = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const value = {
+      when: new Date(1760000000000),
+      nothing: undefined,
+      nan: NaN,
+      inf: -Infinity,
+      big: 2n ** 70n,
+      bytes: view,
+      buffer: new Uint8Array([7, 7, 7]).buffer,
+      floats: new Float32Array([1.5, -2]),
+      pattern: /a+b/gi,
+      map: new Map<unknown, unknown>([['k', new Date(5)], [1, [1, 2]]]),
+      set: new Set([1, 'two']),
+      tagged: { $u: 'date', v: 1 },
     };
-    return w;
-  }
-  const parent = makeWindow(parentOrigin);
-  const child = makeWindow(childOrigin);
-  parent.peer = child;
-  child.peer = parent;
-  return { parent, child };
+    const back = await roundTrip(value) as typeof value;
+    expect(back.when).toEqual(new Date(1760000000000));
+    expect('nothing' in back && back.nothing === undefined).toBe(true);
+    expect(back.nan).toBeNaN();
+    expect(back.inf).toBe(-Infinity);
+    expect(back.big).toBe(2n ** 70n);
+    expect(back.bytes).toEqual(view);
+    expect(back.buffer).toBeInstanceOf(ArrayBuffer);
+    expect(new Uint8Array(back.buffer)).toEqual(new Uint8Array([7, 7, 7]));
+    expect(back.floats).toEqual(new Float32Array([1.5, -2]));
+    expect(back.pattern).toEqual(/a+b/gi);
+    expect(back.map).toEqual(new Map<unknown, unknown>([['k', new Date(5)], [1, [1, 2]]]));
+    expect(back.set).toEqual(new Set([1, 'two']));
+    // A plain object that owns the tag key is still that object.
+    expect(back.tagged).toEqual({ $u: 'date', v: 1 });
+  });
+
+  it('carries a Blob as its bytes and type', async () => {
+    const blob = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' });
+    const back = await roundTrip(blob) as Blob;
+    expect(back).toBeInstanceOf(Blob);
+    expect(back.type).toBe('image/png');
+    expect(new Uint8Array(await back.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it('is the only form a record takes on the wire: a page of records is plain JSON', async () => {
+    const a = new IDBFactory();
+    await seedSource(a, fakeStorage());
+    const messages: Message[] = [];
+    await migration.exportOrigin(a, fakeStorage(), async (m) => { messages.push(m); return null; });
+    for (const m of messages) {
+      // JSON round-trips to itself, so nothing was lost to it.
+      expect(JSON.parse(JSON.stringify(m))).toEqual(m);
+      if (m.type === 'records') {
+        for (const v of m.values as unknown[]) expect(v === null || ['string', 'number', 'boolean', 'object'].includes(typeof v)).toBe(true);
+      }
+    }
+  });
+});
+
+// The native side between the two pages: it spools what the exporter posts
+// and hands the spool to the importer one message at a time — as the Swift
+// module does, through its reply-capable message handler — and remembers
+// what each page reported. Everything crosses as JSON.
+function fakeNative(options: { tamper?: (m: Message, index: number) => Message } = {}) {
+  const spool: string[] = [];
+  const reports: Message[] = [];
+  let delivered = 0;
+  return {
+    spool,
+    reports,
+    exporterPost: async (m: Message): Promise<unknown> => {
+      if (m.type === 'progress' || m.type === 'exported' || m.type === 'error') {
+        reports.push(overTheWire(m));
+        return null;
+      }
+      spool.push(JSON.stringify(m));
+      return null;
+    },
+    importerPost: async (m: Message): Promise<unknown> => {
+      if (m.type === 'next') {
+        if (delivered >= spool.length) return { type: 'end' };
+        const next = JSON.parse(spool[delivered]) as Message;
+        return options.tamper ? options.tamper(next, delivered++) : (delivered++, next);
+      }
+      reports.push(overTheWire(m));
+      return null;
+    },
+  };
 }
 
-describe('originMigration: the two pages', () => {
+describe('originMigration: the two top-level pages', () => {
   const OLD = 'http://localhost:18730';
   const NEW = 'http://localhost:18750';
 
-  function parentOptions(windows: ReturnType<typeof pairWindows>, a: IDBFactory, sa: StorageLike, b: IDBFactory, sb: StorageLike, report: (m: Message) => void, origin = OLD): ParentOptions {
-    const iframe: FakeIframe = {
-      contentWindow: null,
-      style: {},
-      setAttribute(name, value) {
-        expect(name).toBe('src');
-        expect(value).toBe(`${NEW}/__underway/origin-migration`);
-      },
-    };
-    return {
-      idb: a, storage: sa, origin, expectedOrigin: OLD,
-      childUrl: `${NEW}/__underway/origin-migration`, childOrigin: NEW,
-      document: {
-        createElement(tag) { expect(tag).toBe('iframe'); return iframe; },
-        body: {
-          appendChild(el) {
-            expect(el).toBe(iframe);
-            // The iframe "loads": the child page starts on the new origin.
-            iframe.contentWindow = windows.child;
-            setTimeout(() => migration.runChild({ idb: b, storage: sb, parentOrigin: OLD, window: windows.child, parent: windows.parent }), 0);
-          },
-        },
-      },
-      window: windows.parent,
-      report,
-      pageSize: 2,
-    };
+  function exporterOptions(a: IDBFactory, sa: StorageLike, native: ReturnType<typeof fakeNative>, overrides: Partial<PageOptions> = {}): PageOptions {
+    return { idb: a, storage: sa, origin: OLD, isTop: true, expectedOrigin: OLD, post: native.exporterPost, pageSize: 2, ...overrides };
+  }
+  function importerOptions(b: IDBFactory, sb: StorageLike, native: ReturnType<typeof fakeNative>, overrides: Partial<PageOptions> = {}): PageOptions {
+    return { idb: b, storage: sb, origin: NEW, isTop: true, expectedOrigin: NEW, post: native.importerPost, ...overrides };
   }
 
-  it('exports through the iframe and reports progress, then done with the totals', async () => {
+  it('exports to the spool with progress, then the importer writes it on the new origin and reports done', async () => {
     const a = new IDBFactory(); const sa = fakeStorage();
     const b = new IDBFactory(); const sb = fakeStorage();
     await seedSource(a, sa);
-    const reports: Message[] = [];
-    await migration.runParent(parentOptions(pairWindows(OLD, NEW), a, sa, b, sb, (m) => reports.push(m)));
+    const native = fakeNative();
 
-    expect(reports[reports.length - 1]).toEqual({ type: 'done', databases: 2, records: 16, localStorage: 3 });
-    const progress = reports.filter((m) => m.type === 'progress').map((m) => m.records);
+    await migration.runExporter(exporterOptions(a, sa, native));
+    expect(native.reports[native.reports.length - 1]).toEqual({ type: 'exported', databases: 2, records: 16, localStorage: 3 });
+    const progress = native.reports.filter((m) => m.type === 'progress').map((m) => m.records as number);
     expect(progress[progress.length - 1]).toBe(16);
-    expect(progress).toEqual([...progress].sort((x, y) => (x as number) - (y as number)));
+    expect(progress).toEqual([...progress].sort((x, y) => x - y));
+    // Nothing has been written anywhere yet: the spool is the only copy.
+    expect(await b.databases()).toEqual([]);
+    expect(native.spool.length).toBeGreaterThan(3);
+
+    await migration.runImporter(importerOptions(b, sb, native));
+    expect(native.reports[native.reports.length - 1]).toEqual({ type: 'done', databases: 2, records: 16, localStorage: 3 });
     expect(await dump(b)).toEqual(await dump(a));
     expect(sb.getItem('editor:theme')).toBe('dark');
   });
 
-  it('reports an error and touches nothing when the page did not get the old origin', async () => {
-    const a = new IDBFactory(); const b = new IDBFactory();
+  it('refuses to export from a page that did not get the old origin, and touches nothing', async () => {
+    const a = new IDBFactory();
     await seedSource(a, fakeStorage());
-    const reports: Message[] = [];
-    const windows = pairWindows('about:blank', NEW);
-    const options = parentOptions(windows, a, fakeStorage(), b, fakeStorage(), (m) => reports.push(m), 'null');
-    options.document.createElement = () => { throw new Error('no iframe should be made'); };
-    await migration.runParent(options);
-    expect(reports).toEqual([{ type: 'error', message: `origin mismatch: this page is null, expected ${OLD}` }]);
-    expect(await b.databases()).toEqual([]);
+    const native = fakeNative();
+    await migration.runExporter(exporterOptions(a, fakeStorage(), native, { origin: 'null' }));
+    expect(native.reports).toEqual([{ type: 'error', message: `origin mismatch: this page is null, expected ${OLD}` }]);
+    expect(native.spool).toEqual([]);
   });
 
-  it('reports the importer\'s failure as an error', async () => {
+  it('refuses to import into a page that is not the top document, or not on the new origin', async () => {
+    // A frame's storage is partitioned and transient on WebKit: the lesson
+    // of 2026-10-29, when the importer was an iframe and 745 records went
+    // into a partition the app never read.
+    const b = new IDBFactory();
+    const framed = fakeNative();
+    await migration.runImporter(importerOptions(b, fakeStorage(), framed, { isTop: false }));
+    expect(framed.reports).toEqual([{ type: 'error', message: 'not a top-level document: a frame\'s storage is not the origin\'s' }]);
+
+    const elsewhere = fakeNative();
+    await migration.runImporter(importerOptions(b, fakeStorage(), elsewhere, { origin: OLD }));
+    expect(elsewhere.reports).toEqual([{ type: 'error', message: `origin mismatch: this page is ${OLD}, expected ${NEW}` }]);
+    expect(await b.databases()).toEqual([]);
+
+    const exporterFramed = fakeNative();
+    await migration.runExporter(exporterOptions(new IDBFactory(), fakeStorage(), exporterFramed, { isTop: false }));
+    expect(exporterFramed.reports[0].type).toBe('error');
+  });
+
+  it('counts on the NEW origin, and a spool that lost a record is an error, not a copy', async () => {
     const a = new IDBFactory(); const sa = fakeStorage();
     await seedSource(a, sa);
-    const reports: Message[] = [];
-    const windows = pairWindows(OLD, NEW);
+    // One record lost from the first page of the keyval store.
+    let dropped = false;
+    const native = fakeNative({
+      tamper: (m) => {
+        if (dropped || m.type !== 'records' || m.store !== 'keyval') return m;
+        dropped = true;
+        return { ...m, keys: (m.keys as unknown[]).slice(0, -1), values: (m.values as unknown[]).slice(0, -1) };
+      },
+    });
+    await migration.runExporter(exporterOptions(a, sa, native));
+    const b = new IDBFactory();
+    await migration.runImporter(importerOptions(b, fakeStorage(), native));
+    expect(native.reports[native.reports.length - 1]).toEqual({ type: 'error', message: 'count mismatch in keyval-store/keyval: sent 7, imported 6' });
+  });
+
+  it('reports a spool that ends before finish, and an importer that cannot write', async () => {
+    const a = new IDBFactory(); const sa = fakeStorage();
+    await seedSource(a, sa);
+    const cut = fakeNative();
+    await migration.runExporter(exporterOptions(a, sa, cut));
+    cut.spool.pop(); // the finish message never made it to disk
+    await migration.runImporter(importerOptions(new IDBFactory(), fakeStorage(), cut));
+    expect(cut.reports[cut.reports.length - 1]).toEqual({ type: 'error', message: 'the spool ended before finish' });
+
+    const native = fakeNative();
+    await migration.runExporter(exporterOptions(a, sa, native));
     // A target whose databases cannot be dropped.
     const broken = {
       deleteDatabase() {
@@ -383,25 +487,7 @@ describe('originMigration: the two pages', () => {
         return r;
       },
     } as unknown as IDBFactory;
-    await migration.runParent(parentOptions(windows, a, sa, broken, fakeStorage(), (m) => reports.push(m)));
-    expect(reports).toEqual([{ type: 'error', message: 'disk full' }]);
-  });
-
-  it('hears only the other page\'s origin, on both sides', async () => {
-    const a = new IDBFactory(); const sa = fakeStorage();
-    const b = new IDBFactory(); const sb = fakeStorage();
-    await seedSource(a, sa);
-    const windows = pairWindows(OLD, NEW);
-    // An intruder on the child's listeners: an ack for a message never sent,
-    // from a third origin, and a records message to the child from a
-    // third origin. Neither must be acted on.
-    const reports: Message[] = [];
-    const run = migration.runParent(parentOptions(windows, a, sa, b, sb, (m) => reports.push(m)));
-    await new Promise((r) => setTimeout(r, 5));
-    windows.parent.deliver({ type: 'fail', id: 1, message: 'forged' }, 'http://evil.example', windows.child);
-    windows.child.deliver({ type: 'database', id: 999, schema: { name: 'forged', version: 1, stores: [] } }, 'http://evil.example', windows.parent);
-    await run;
-    expect(reports[reports.length - 1].type).toBe('done');
-    expect((await b.databases()).map((d) => d.name).sort()).toEqual(['entries', 'keyval-store']);
+    await migration.runImporter(importerOptions(broken, fakeStorage(), native));
+    expect(native.reports[native.reports.length - 1]).toEqual({ type: 'error', message: 'disk full' });
   });
 });

@@ -235,7 +235,7 @@ public class StaticServerModule: Module {
       promise.reject("E_MIGRATION_RUNNING", "an origin migration is already running")
       return
     }
-    // The child page is served by this server, on the new origin.
+    // The importer page is served by this server, on the new origin.
     let serving = self.serverQueue.sync { self.server?.isRunning ?? false }
     guard serving else {
       promise.reject("E_SERVER_DOWN", "the static server is not running")
@@ -351,11 +351,14 @@ public class StaticServerModule: Module {
       return response
     }
 
-    // The copy's child page, on this origin (`adoptLegacyOrigin`). Added
-    // after the catch-all, which GCDWebServer therefore consults second.
-    if let legacy = self.legacyPort {
-      server.addHandler(forMethod: "GET", path: OriginMigrationRun.childPath, request: GCDWebServerRequest.self) { _ -> GCDWebServerResponse? in
-        let response = GCDWebServerDataResponse(html: OriginMigrationRun.childPage(legacyPort: legacy))
+    // The copy's importer page, on this origin (`adoptLegacyOrigin`): the
+    // top-level document that writes the saved work where this app's own
+    // page will read it. Added after the catch-all, which GCDWebServer
+    // therefore consults second.
+    if self.legacyPort != nil {
+      let port = self.port
+      server.addHandler(forMethod: "GET", path: OriginMigrationRun.importerPath, request: GCDWebServerRequest.self) { _ -> GCDWebServerResponse? in
+        let response = GCDWebServerDataResponse(html: OriginMigrationRun.importerPage(port: port))
         response?.cacheControlMaxAge = 0
         return response
       }
@@ -396,54 +399,86 @@ struct StaticServerPortUnavailable: Error, CustomStringConvertible {
 /// One copy of an install's saved work from the origin of `legacyPort` to the
 /// origin of `port` (StaticServerModule `adoptLegacyOrigin`). The work is the
 /// embedded script's (OriginMigrationScript.swift, from
-/// web/originMigration.js); this runs its two pages:
+/// web/originMigration.js); this runs its two pages one after the other, each
+/// as the TOP document of one hidden WKWebView:
 ///
-///  - the PARENT, a hidden WKWebView given the OLD origin through
-///    `loadHTMLString(_:baseURL:)` — WebKit grants a document the origin of
-///    its base URL, so the page reads the old origin's IndexedDB and
-///    localStorage and no server need listen on the old port, which another
-///    app may well hold (the reason for the move);
-///  - the CHILD, an iframe in it on the NEW origin, served by this app's
-///    server (`childPath`), which writes what the parent sends.
+///  - the EXPORTER, given the OLD origin through `loadHTMLString(_:baseURL:)`
+///    — WebKit grants a document the origin of its base URL, so the page
+///    reads the old origin's IndexedDB and localStorage and no server need
+///    listen on the old port, which another app may well hold (the reason
+///    for the move). It posts every message here, and each is spooled to a
+///    file under the temporary directory before its post is answered, so
+///    the page holds one message in flight and the process holds none;
+///  - the IMPORTER, served by this app's server on the NEW origin
+///    (`importerPath`) and loaded into the same web view once the exporter
+///    has said `exported`. It asks for the spool one message at a time
+///    (`next`, answered with the message or `end`), writes, counts what is
+///    now on its own origin against what the exporter read, and says `done`
+///    with the totals or `error`.
 ///
-/// The parent reports to `handlerName`: progress (which re-arms the
-/// watchdog), then `done` with the counts — only after the child's counts
-/// matched its own — or `error`. A page that did not get the old origin
-/// reports an error before touching anything. The caller marks the install
-/// migrated only on success; a failure, a dead content process or a silence
-/// longer than `idleTimeout` leaves it unmarked for the next launch to try
-/// again, and the old origin's data is never deleted.
-final class OriginMigrationRun: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
+/// Both are top-level documents, and the script refuses to run as anything
+/// else. The importer used to be an IFRAME in the exporter's page: WebKit
+/// keys a cross-origin frame's storage by (top origin, frame origin) and
+/// keeps that partition in memory, so the frame's writes went nowhere the
+/// app's own page would read while its counts agreed and the install was
+/// marked done over an empty journal (2026-10-29). The messages are plain
+/// JSON — WKScriptMessageHandlerWithReply carries nothing else — and the
+/// script encodes bytes, dates and the rest itself.
+///
+/// The caller marks the install migrated only on `done`; a failure, a dead
+/// content process or a silence longer than `idleTimeout` leaves it
+/// unmarked for the next launch to try again. The spool is removed either
+/// way, and the old origin's data is never deleted.
+final class OriginMigrationRun: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDelegate {
   struct Totals {
     let databases: Int
     let records: Int
     let localStorage: Int
   }
 
-  static let childPath = "/__underway/origin-migration"
+  static let importerPath = "/__underway/origin-migration"
   static let handlerName = "underwayOriginMigration"
   static let idleTimeout: TimeInterval = 120
+
+  private enum Phase: String {
+    case exporting
+    case importing
+  }
 
   private let legacyPort: UInt
   private let port: UInt
   private let completion: (Result<Totals, Error>) -> Void
+  private let spoolDirectory: URL
   private var webView: WKWebView?
   private var watchdog: DispatchWorkItem?
   private var finished = false
+  private var phase: Phase = .exporting
+  /// Messages the exporter has handed over, each in its own file.
+  private var spooled = 0
+  /// …and how many of them the importer has taken back.
+  private var delivered = 0
 
   init(legacyPort: UInt, port: UInt, completion: @escaping (Result<Totals, Error>) -> Void) {
     self.legacyPort = legacyPort
     self.port = port
     self.completion = completion
+    self.spoolDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("underway-origin-migration-\(UUID().uuidString)", isDirectory: true)
   }
 
   /// Main thread.
   func start() {
+    do {
+      try FileManager.default.createDirectory(at: spoolDirectory, withIntermediateDirectories: true)
+    } catch {
+      finish(.failure(error))
+      return
+    }
     let configuration = WKWebViewConfiguration()
     // The default data store: the one react-native-webview gives the app's
     // page, so this reads and writes the same origins it does.
     configuration.websiteDataStore = WKWebsiteDataStore.default()
-    configuration.userContentController.add(self, name: Self.handlerName)
+    configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: Self.handlerName)
     let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: configuration)
     webView.navigationDelegate = self
     // In a window, behind everything: a view WebKit considers invisible
@@ -453,7 +488,7 @@ final class OriginMigrationRun: NSObject, WKScriptMessageHandler, WKNavigationDe
     }
     self.webView = webView
     armWatchdog()
-    webView.loadHTMLString(Self.parentPage(legacyPort: legacyPort, port: port), baseURL: URL(string: "http://localhost:\(legacyPort)/"))
+    webView.loadHTMLString(Self.exporterPage(legacyPort: legacyPort), baseURL: URL(string: "http://localhost:\(legacyPort)/"))
   }
 
   private static func keyWindow() -> UIWindow? {
@@ -477,35 +512,99 @@ final class OriginMigrationRun: NSObject, WKScriptMessageHandler, WKNavigationDe
     watchdog?.cancel()
     watchdog = nil
     if let webView = webView {
-      webView.configuration.userContentController.removeScriptMessageHandler(forName: Self.handlerName)
+      webView.configuration.userContentController.removeScriptMessageHandler(forName: Self.handlerName, contentWorld: .page)
       webView.navigationDelegate = nil
       webView.stopLoading()
       webView.removeFromSuperview()
     }
     webView = nil
+    try? FileManager.default.removeItem(at: spoolDirectory)
     completion(result)
   }
 
-  // MARK: WKScriptMessageHandler
+  // MARK: The spool
 
-  func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-    guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
-    switch type {
-    case "progress":
-      armWatchdog()
+  private func spoolURL(_ index: Int) -> URL {
+    return spoolDirectory.appendingPathComponent("\(index).json")
+  }
+
+  private func spool(_ body: [String: Any]) throws {
+    let data = try JSONSerialization.data(withJSONObject: body)
+    try data.write(to: spoolURL(spooled), options: .atomic)
+    spooled += 1
+  }
+
+  private func unspool(_ index: Int) throws -> Any {
+    let data = try Data(contentsOf: spoolURL(index))
+    return try JSONSerialization.jsonObject(with: data)
+  }
+
+  // MARK: WKScriptMessageHandlerWithReply
+
+  func userContentController(
+    _ userContentController: WKUserContentController,
+    didReceive message: WKScriptMessage,
+    replyHandler: @escaping (Any?, String?) -> Void
+  ) {
+    guard let body = message.body as? [String: Any], let type = body["type"] as? String else {
+      replyHandler(nil, "not a migration message")
+      return
+    }
+    guard !finished else {
+      replyHandler(nil, "the migration has finished")
+      return
+    }
+    // Every message is progress of a kind: the watchdog measures silence.
+    armWatchdog()
+    switch (phase, type) {
+    case (_, "error"):
+      replyHandler(nil, nil)
+      finish(.failure(OriginMigrationError.page(body["message"] as? String ?? "unknown")))
+    case (.exporting, "progress"):
       if let records = body["records"] as? Int {
-        staticServerLog.log("[server] origin migration: \(records, privacy: .public) records so far")
+        staticServerLog.log("[server] origin migration: \(records, privacy: .public) records read so far")
       }
-    case "done":
+      replyHandler(nil, nil)
+    case (.exporting, "database"), (.exporting, "records"), (.exporting, "localStorage"), (.exporting, "finish"):
+      do {
+        try spool(body)
+        replyHandler(nil, nil)
+      } catch {
+        replyHandler(nil, String(describing: error))
+        finish(.failure(error))
+      }
+    case (.exporting, "exported"):
+      staticServerLog.log("[server] origin migration: read \(body["records"] as? Int ?? 0, privacy: .public) records on localhost:\(self.legacyPort, privacy: .public); writing them on localhost:\(self.port, privacy: .public)")
+      phase = .importing
+      replyHandler(nil, nil)
+      guard let url = URL(string: "http://localhost:\(port)\(Self.importerPath)") else {
+        finish(.failure(OriginMigrationError.page("bad importer URL")))
+        return
+      }
+      webView?.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+    case (.importing, "next"):
+      guard delivered < spooled else {
+        replyHandler(["type": "end"], nil)
+        return
+      }
+      do {
+        let next = try unspool(delivered)
+        delivered += 1
+        replyHandler(next, nil)
+      } catch {
+        replyHandler(nil, String(describing: error))
+        finish(.failure(error))
+      }
+    case (.importing, "done"):
+      replyHandler(nil, nil)
       finish(.success(Totals(
         databases: body["databases"] as? Int ?? 0,
         records: body["records"] as? Int ?? 0,
         localStorage: body["localStorage"] as? Int ?? 0
       )))
-    case "error":
-      finish(.failure(OriginMigrationError.page(body["message"] as? String ?? "unknown")))
     default:
-      break
+      replyHandler(nil, "unexpected \(type) while \(phase.rawValue)")
+      finish(.failure(OriginMigrationError.page("unexpected message \(type) while \(phase.rawValue)")))
     }
   }
 
@@ -533,18 +632,25 @@ final class OriginMigrationRun: NSObject, WKScriptMessageHandler, WKNavigationDe
       + "\n</script></body></html>"
   }
 
-  static func parentPage(legacyPort: UInt, port: UInt) -> String {
-    let bootstrap = "UnderwayOriginMigration.runParentInPage({"
+  /// `post(message)` returns the handler's reply as a promise
+  /// (WKScriptMessageHandlerWithReply): the spool's acknowledgement for the
+  /// exporter, the next spooled message for the importer.
+  private static let postFunction = "function (message) { return window.webkit.messageHandlers.\(handlerName).postMessage(message); }"
+
+  static func exporterPage(legacyPort: UInt) -> String {
+    let bootstrap = "UnderwayOriginMigration.runExporterInPage({"
       + " expectedOrigin: \"http://localhost:\(legacyPort)\","
-      + " childUrl: \"http://localhost:\(port)\(childPath)\","
-      + " childOrigin: \"http://localhost:\(port)\","
-      + " report: function (message) { window.webkit.messageHandlers.\(handlerName).postMessage(message); }"
+      + " post: \(postFunction)"
       + " });"
     return page(bootstrap: bootstrap)
   }
 
-  static func childPage(legacyPort: UInt) -> String {
-    return page(bootstrap: "UnderwayOriginMigration.runChildInPage({ parentOrigin: \"http://localhost:\(legacyPort)\" });")
+  static func importerPage(port: UInt) -> String {
+    let bootstrap = "UnderwayOriginMigration.runImporterInPage({"
+      + " expectedOrigin: \"http://localhost:\(port)\","
+      + " post: \(postFunction)"
+      + " });"
+    return page(bootstrap: bootstrap)
   }
 }
 
