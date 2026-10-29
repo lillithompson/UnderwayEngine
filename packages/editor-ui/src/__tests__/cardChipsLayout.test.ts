@@ -2,7 +2,8 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 // Source pins for the card-program chips (a host page's `cards` row): a
-// program of any length is a sideways strip of fixed-width chips. Under
+// program of any length is fixed-width chips that wrap into rows (they
+// were a sideways strip; DrawBots report e1e58a56). Under
 // react-native-web a `flex: 0` chip is written as CSS `flex: 0` — a 0%
 // basis that ignores its width — so every chip shrank to nothing and the
 // glyphs piled on one another. Nothing here can mount a View, so the
