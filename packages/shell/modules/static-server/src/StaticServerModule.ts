@@ -1,8 +1,21 @@
 import { requireNativeModule } from 'expo-modules-core';
 
+/**
+ * What adoptLegacyOrigin found: no port to adopt from (`none`), adopted on
+ * an earlier launch (`done`), nothing was ever stored on this install
+ * (`fresh`), or copied just now, with what was copied (`migrated`).
+ */
+export interface LegacyOriginAdoption {
+  status: 'none' | 'done' | 'fresh' | 'migrated';
+  databases?: number;
+  records?: number;
+  localStorage?: number;
+}
+
 interface StaticServerModuleInterface {
   startServer(documentRoot: string): Promise<string>;
   stopServer(): Promise<void>;
+  adoptLegacyOrigin(): Promise<LegacyOriginAdoption>;
   getPort(): number;
   getWebBundlePath(): string | null;
   getPackagerHost(): string | null;
@@ -18,6 +31,18 @@ export function startServer(documentRoot: string): Promise<string> {
 /** Stop the running server. */
 export function stopServer(): Promise<void> {
   return NativeModule.stopServer();
+}
+
+/**
+ * Bring the install's saved work from the port this app used to serve on
+ * (Info.plist `UnderwayStaticServerLegacyPort`) to the one it serves on now,
+ * once; a no-op for an app that never moved. Call after startServer and
+ * BEFORE the page loads — a page that opens on the new origin first finds
+ * an empty journal. Rejects when the copy could not be completed; nothing
+ * is marked then, and the next call starts over.
+ */
+export function adoptLegacyOrigin(): Promise<LegacyOriginAdoption> {
+  return NativeModule.adoptLegacyOrigin();
 }
 
 /** Return the port the server is listening on (0 if not started). */

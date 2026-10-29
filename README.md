@@ -20,6 +20,27 @@ npm test            # jest — the suite extracted with the engine
 npm run typecheck   # tsc --noEmit
 ```
 
+## Loopback ports
+
+In release every app on `packages/shell` serves its web bundle from a
+local server on `http://localhost:<port>`, and that origin keys everything
+the page stores (IndexedDB, localStorage). The port is device-wide, so two
+apps on one port can never both be up, and a shipped app cannot change its
+port without stranding its installs' data — unless it also names the port
+it is leaving, in which case the first start on the new port copies the
+saved work across (`UnderwayStaticServerLegacyPort`; the copy is
+`modules/static-server/web/originMigration.js`, run by
+`StaticServerModule.swift`'s `adoptLegacyOrigin`). Every app names its own
+port in `app.json` (`UnderwayStaticServerPort`), and a new app takes the
+next free one here:
+
+| Port | App | Note |
+|---|---|---|
+| 18730 | Tileodile (Facet) | The engine's default, kept for the app that shipped on it. Facet's own copy of the module also falls back to 18731–18732. |
+| 18740 | Inklings (DrawBot) | |
+| 18750 | Mmoment (CozyJournal) | Moved from 18730 (October 2026); legacy port 18730. |
+| 18760 | Sol | Moved from 18730 (October 2026); legacy port 18730. |
+
 ## Boundaries & conventions
 
 - **The engine ships no content.** Apps register bundled samples/tutorials via `registerBuiltInContent()` (`src/content.ts`) and serve the files themselves.

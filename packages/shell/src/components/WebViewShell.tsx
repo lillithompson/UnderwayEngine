@@ -109,7 +109,7 @@ export default function WebViewShell({
   // the host passes a new function.
   const onRecoveryEventRef = useRef(onRecoveryEvent);
   onRecoveryEventRef.current = onRecoveryEvent;
-  const { url, ready, failed: serverFailed, retry: retryServer } = useLocalServer();
+  const { url, ready, failed: serverFailed, failure: serverFailure, migrating, retry: retryServer } = useLocalServer();
   const [webReady, setWebReady] = useState(false);
   // What the page was LOADED with. The WebView's source must not change
   // after that: a new source is a fresh load, which is the cost this is
@@ -355,13 +355,17 @@ export default function WebViewShell({
           />
           {serverFailed ? (
             // The local server could not take its port, and there is no
-            // other port that holds this app's data (useLocalServer).
+            // other port that holds this app's data — or the saved work
+            // could not be brought to this port from the one earlier builds
+            // used, and the page must not open without it (useLocalServer).
             <View style={styles.failurePanel}>
               <Text style={styles.failureText}>
                 Couldn't open your saved work.
               </Text>
               <Text style={styles.failureText}>
-                Another app may be using its connection. Close other apps and try again.
+                {serverFailure === 'migration'
+                  ? 'Your saved work is being moved to this version and the move did not finish. Nothing is lost. Try again.'
+                  : 'Another app may be using its connection. Close other apps and try again.'}
               </Text>
               <TouchableOpacity onPress={retryServer} style={styles.retryButton}>
                 <Text style={styles.retryButtonText}>Try again</Text>
@@ -380,7 +384,16 @@ export default function WebViewShell({
               </TouchableOpacity>
             </View>
           ) : (
-            <ActivityIndicator size="small" color={ACCENT_SECONDARY} style={styles.loadingSpinner} />
+            <>
+              <ActivityIndicator size="small" color={ACCENT_SECONDARY} style={styles.loadingSpinner} />
+              {migrating && (
+                // The one-time copy of the saved work to this port: seconds
+                // for a full journal, which must not read as a hang.
+                <Text style={[styles.failureText, styles.migratingText]}>
+                  Preparing your saved work…
+                </Text>
+              )}
+            </>
           )}
         </View>
       )}
@@ -417,6 +430,9 @@ const styles = StyleSheet.create({
   },
   loadingSpinner: {
     marginTop: 32,
+  },
+  migratingText: {
+    marginTop: 16,
   },
   failurePanel: {
     marginTop: 32,

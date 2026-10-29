@@ -2,6 +2,7 @@ import ExpoModulesCore
 import GCDWebServer
 import os
 import UIKit
+import WebKit
 
 // COLD-START diag — Use os.Logger instead of NSLog. In iOS Release builds,
 // third-party app NSLog output is fully redacted to <private> in unified
@@ -26,21 +27,43 @@ public class StaticServerModule: Module {
   // port is retried, and when it stays busy the start FAILS and the shell
   // says so — an app that cannot open its journal must not open another.
   //
-  // Every app on this shell shares the default, and the loopback port is
-  // device-wide — so the server lets go of it whenever the app goes to the
-  // background and takes it back on foreground (`handleBackgroundTransition`).
-  // Holding it while suspended made two of these apps mutually exclusive:
-  // a backgrounded Mmoment kept 18730 and DrawBots could not open
-  // (2026-10-09). Only two apps on screen at once (iPad split view) still
-  // contend. An app may also name its own port (Info.plist
-  // `UnderwayStaticServerPort`); changing it for an app that has shipped
-  // strands that app's data, exactly as a fallback would.
+  // The loopback port is device-wide, so EVERY APP NAMES ITS OWN (Info.plist
+  // `UnderwayStaticServerPort`; who holds which is the engine README's
+  // "Loopback ports"). Two apps on one port can never both be up: a
+  // backgrounded Mmoment kept 18730 and DrawBots could not open
+  // (2026-10-09), and with Tileodile and Mmoment both on screen (iPad
+  // multitasking) the second to start failed outright (2026-10-28). The
+  // default is Tileodile's, the port the first app on this shell shipped
+  // with, and it is kept for that app only.
+  //
+  // Changing a shipped app's port strands its installs' data on the old
+  // origin, exactly as a fallback would — unless the app also names the
+  // port it is leaving (`legacyPort`), in which case the first start on the
+  // new port copies the saved work across before any page loads.
+  //
+  // The server still lets go of its port in the background and takes it
+  // back on foreground (`handleBackgroundTransition`): the socket does not
+  // reliably survive suspension anyway, and a port nobody holds while
+  // suspended is one fewer way for two apps to collide.
   private let port: UInt = {
     if let n = Bundle.main.object(forInfoDictionaryKey: "UnderwayStaticServerPort") as? NSNumber, n.uintValue > 0 {
       return n.uintValue
     }
     return 18730
   }()
+  // The port this app's EARLIER builds bound (Info.plist
+  // `UnderwayStaticServerLegacyPort`), whose origin may hold an install's
+  // saved work. Set when an app moves off a port it has shipped on; nil for
+  // an app that never moved. See `adoptLegacyOrigin`.
+  private let legacyPort: UInt? = {
+    if let n = Bundle.main.object(forInfoDictionaryKey: "UnderwayStaticServerLegacyPort") as? NSNumber, n.uintValue > 0 {
+      return n.uintValue
+    }
+    return nil
+  }()
+  // The copy in flight, if any — held so its hidden WKWebView lives until it
+  // reports. Main thread only.
+  private var originMigration: OriginMigrationRun?
   // How long a busy port is retried before the start gives up: a listener
   // that is going away (a restart's old socket, a dying instance) lets go
   // well inside this.
@@ -116,6 +139,21 @@ public class StaticServerModule: Module {
       }
     }
 
+    // Bring an install's saved work from `legacyPort`'s origin to `port`'s,
+    // once. The shell calls this after startServer and before it loads the
+    // page: a page that opened on the new origin first would find an empty
+    // journal, and the editor, finding nothing, wipes the native lists too.
+    // Resolves `{ status }` — "none" (no legacy port), "done" (copied on an
+    // earlier launch), "fresh" (nothing was ever stored on this install),
+    // "migrated" (copied now, with its counts) — and rejects when the copy
+    // could not be completed, in which case nothing is marked and the next
+    // call starts it over.
+    AsyncFunction("adoptLegacyOrigin") { (promise: Promise) in
+      DispatchQueue.main.async {
+        self.adoptLegacyOrigin(promise)
+      }
+    }
+
     Function("getPort") { () -> Int in
       return Int(self.server?.port ?? 0)
     }
@@ -180,6 +218,62 @@ public class StaticServerModule: Module {
       } catch {
         staticServerLog.error("[server] foreground restart failed: \(String(describing: error), privacy: .public)")
       }
+    }
+  }
+
+  private func adoptLegacyOrigin(_ promise: Promise) {
+    guard let legacy = self.legacyPort, legacy != self.port else {
+      promise.resolve(["status": "none"])
+      return
+    }
+    let flagKey = "UnderwayStaticServer.adopted.\(legacy).\(self.port)"
+    if UserDefaults.standard.bool(forKey: flagKey) {
+      promise.resolve(["status": "done"])
+      return
+    }
+    if self.originMigration != nil {
+      promise.reject("E_MIGRATION_RUNNING", "an origin migration is already running")
+      return
+    }
+    // The child page is served by this server, on the new origin.
+    let serving = self.serverQueue.sync { self.server?.isRunning ?? false }
+    guard serving else {
+      promise.reject("E_SERVER_DOWN", "the static server is not running")
+      return
+    }
+    // A fresh install has nothing to bring: no record for localhost in the
+    // data store the app's WKWebView uses (react-native-webview's default).
+    // The record names the host only, never the port, which is why the
+    // copy itself must still verify the origin it was given.
+    let types: Set<String> = [WKWebsiteDataTypeIndexedDBDatabases, WKWebsiteDataTypeLocalStorage]
+    WKWebsiteDataStore.default().fetchDataRecords(ofTypes: types) { records in
+      let stored = records.contains { $0.displayName == "localhost" }
+      guard stored else {
+        staticServerLog.log("[server] origin migration: nothing stored on this install — marking \(legacy, privacy: .public) → \(self.port, privacy: .public) done")
+        UserDefaults.standard.set(true, forKey: flagKey)
+        promise.resolve(["status": "fresh"])
+        return
+      }
+      staticServerLog.log("[server] origin migration: copying localhost:\(legacy, privacy: .public) → localhost:\(self.port, privacy: .public)")
+      let run = OriginMigrationRun(legacyPort: legacy, port: self.port) { [weak self] result in
+        self?.originMigration = nil
+        switch result {
+        case .success(let totals):
+          staticServerLog.log("[server] origin migration: done — \(totals.databases, privacy: .public) databases, \(totals.records, privacy: .public) records, \(totals.localStorage, privacy: .public) localStorage entries")
+          UserDefaults.standard.set(true, forKey: flagKey)
+          promise.resolve([
+            "status": "migrated",
+            "databases": totals.databases,
+            "records": totals.records,
+            "localStorage": totals.localStorage,
+          ])
+        case .failure(let error):
+          staticServerLog.error("[server] origin migration failed: \(String(describing: error), privacy: .public)")
+          promise.reject("E_MIGRATION_FAILED", String(describing: error))
+        }
+      }
+      self.originMigration = run
+      run.start()
     }
   }
 
@@ -257,6 +351,16 @@ public class StaticServerModule: Module {
       return response
     }
 
+    // The copy's child page, on this origin (`adoptLegacyOrigin`). Added
+    // after the catch-all, which GCDWebServer therefore consults second.
+    if let legacy = self.legacyPort {
+      server.addHandler(forMethod: "GET", path: OriginMigrationRun.childPath, request: GCDWebServerRequest.self) { _ -> GCDWebServerResponse? in
+        let response = GCDWebServerDataResponse(html: OriginMigrationRun.childPage(legacyPort: legacy))
+        response?.cacheControlMaxAge = 0
+        return response
+      }
+    }
+
     // The one port, retried while it is busy — never another (see `port`).
     var lastError: Error?
     for attempt in 1...self.bindAttempts {
@@ -287,4 +391,173 @@ public class StaticServerModule: Module {
 struct StaticServerPortUnavailable: Error, CustomStringConvertible {
   let port: UInt
   var description: String { "static server port \(port) is in use" }
+}
+
+/// One copy of an install's saved work from the origin of `legacyPort` to the
+/// origin of `port` (StaticServerModule `adoptLegacyOrigin`). The work is the
+/// embedded script's (OriginMigrationScript.swift, from
+/// web/originMigration.js); this runs its two pages:
+///
+///  - the PARENT, a hidden WKWebView given the OLD origin through
+///    `loadHTMLString(_:baseURL:)` — WebKit grants a document the origin of
+///    its base URL, so the page reads the old origin's IndexedDB and
+///    localStorage and no server need listen on the old port, which another
+///    app may well hold (the reason for the move);
+///  - the CHILD, an iframe in it on the NEW origin, served by this app's
+///    server (`childPath`), which writes what the parent sends.
+///
+/// The parent reports to `handlerName`: progress (which re-arms the
+/// watchdog), then `done` with the counts — only after the child's counts
+/// matched its own — or `error`. A page that did not get the old origin
+/// reports an error before touching anything. The caller marks the install
+/// migrated only on success; a failure, a dead content process or a silence
+/// longer than `idleTimeout` leaves it unmarked for the next launch to try
+/// again, and the old origin's data is never deleted.
+final class OriginMigrationRun: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
+  struct Totals {
+    let databases: Int
+    let records: Int
+    let localStorage: Int
+  }
+
+  static let childPath = "/__underway/origin-migration"
+  static let handlerName = "underwayOriginMigration"
+  static let idleTimeout: TimeInterval = 120
+
+  private let legacyPort: UInt
+  private let port: UInt
+  private let completion: (Result<Totals, Error>) -> Void
+  private var webView: WKWebView?
+  private var watchdog: DispatchWorkItem?
+  private var finished = false
+
+  init(legacyPort: UInt, port: UInt, completion: @escaping (Result<Totals, Error>) -> Void) {
+    self.legacyPort = legacyPort
+    self.port = port
+    self.completion = completion
+  }
+
+  /// Main thread.
+  func start() {
+    let configuration = WKWebViewConfiguration()
+    // The default data store: the one react-native-webview gives the app's
+    // page, so this reads and writes the same origins it does.
+    configuration.websiteDataStore = WKWebsiteDataStore.default()
+    configuration.userContentController.add(self, name: Self.handlerName)
+    let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: configuration)
+    webView.navigationDelegate = self
+    // In a window, behind everything: a view WebKit considers invisible
+    // may not load at all.
+    if let window = Self.keyWindow() {
+      window.insertSubview(webView, at: 0)
+    }
+    self.webView = webView
+    armWatchdog()
+    webView.loadHTMLString(Self.parentPage(legacyPort: legacyPort, port: port), baseURL: URL(string: "http://localhost:\(legacyPort)/"))
+  }
+
+  private static func keyWindow() -> UIWindow? {
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    let windows = scenes.flatMap { $0.windows }
+    return windows.first { $0.isKeyWindow } ?? windows.first
+  }
+
+  private func armWatchdog() {
+    watchdog?.cancel()
+    let item = DispatchWorkItem { [weak self] in
+      self?.finish(.failure(OriginMigrationError.timedOut(Self.idleTimeout)))
+    }
+    watchdog = item
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.idleTimeout, execute: item)
+  }
+
+  private func finish(_ result: Result<Totals, Error>) {
+    guard !finished else { return }
+    finished = true
+    watchdog?.cancel()
+    watchdog = nil
+    if let webView = webView {
+      webView.configuration.userContentController.removeScriptMessageHandler(forName: Self.handlerName)
+      webView.navigationDelegate = nil
+      webView.stopLoading()
+      webView.removeFromSuperview()
+    }
+    webView = nil
+    completion(result)
+  }
+
+  // MARK: WKScriptMessageHandler
+
+  func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+    guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+    switch type {
+    case "progress":
+      armWatchdog()
+      if let records = body["records"] as? Int {
+        staticServerLog.log("[server] origin migration: \(records, privacy: .public) records so far")
+      }
+    case "done":
+      finish(.success(Totals(
+        databases: body["databases"] as? Int ?? 0,
+        records: body["records"] as? Int ?? 0,
+        localStorage: body["localStorage"] as? Int ?? 0
+      )))
+    case "error":
+      finish(.failure(OriginMigrationError.page(body["message"] as? String ?? "unknown")))
+    default:
+      break
+    }
+  }
+
+  // MARK: WKNavigationDelegate
+
+  func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    finish(.failure(error))
+  }
+
+  func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    finish(.failure(error))
+  }
+
+  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    finish(.failure(OriginMigrationError.contentProcessTerminated))
+  }
+
+  // MARK: The pages
+
+  private static func page(bootstrap: String) -> String {
+    return "<!doctype html><html><head><meta charset=\"utf-8\"><title>Underway origin migration</title></head><body><script>\n"
+      + originMigrationScript
+      + "\n</script><script>\n"
+      + bootstrap
+      + "\n</script></body></html>"
+  }
+
+  static func parentPage(legacyPort: UInt, port: UInt) -> String {
+    let bootstrap = "UnderwayOriginMigration.runParentInPage({"
+      + " expectedOrigin: \"http://localhost:\(legacyPort)\","
+      + " childUrl: \"http://localhost:\(port)\(childPath)\","
+      + " childOrigin: \"http://localhost:\(port)\","
+      + " report: function (message) { window.webkit.messageHandlers.\(handlerName).postMessage(message); }"
+      + " });"
+    return page(bootstrap: bootstrap)
+  }
+
+  static func childPage(legacyPort: UInt) -> String {
+    return page(bootstrap: "UnderwayOriginMigration.runChildInPage({ parentOrigin: \"http://localhost:\(legacyPort)\" });")
+  }
+}
+
+enum OriginMigrationError: Error, CustomStringConvertible {
+  case page(String)
+  case timedOut(TimeInterval)
+  case contentProcessTerminated
+
+  var description: String {
+    switch self {
+    case .page(let message): return "origin migration: \(message)"
+    case .timedOut(let seconds): return "origin migration: no progress for \(Int(seconds)) s"
+    case .contentProcessTerminated: return "origin migration: the content process was terminated"
+    }
+  }
 }
