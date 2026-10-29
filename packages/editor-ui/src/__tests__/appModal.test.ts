@@ -106,6 +106,12 @@ describe('the unified takeover chrome (AppModal)', () => {
     expect(shell).toContain('onRequestClose={onClose}');
   });
 
+  it('lets a host set its own title type on either header, the colour still the header ink', () => {
+    const src = read('AppModal.tsx');
+    expect(src).toContain('titleStyle?: object;');
+    expect(src.split('<Text style={[styles.title, titleStyle, { color: headerForeground }]} numberOfLines={1}>').length).toBe(3);
+  });
+
   it('carries the standard Done button, in the Set Color layout', () => {
     // AppModalDoneButton is THE way out of a takeover whose picks don't
     // dismiss it: full content width, 44pt, bold 15 label, the selection

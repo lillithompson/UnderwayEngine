@@ -64,6 +64,7 @@ export function AppModal({
   headerStyle,
   headerForeground = PANEL_INK,
   headerBackground,
+  titleStyle,
   background,
   floatingClose = false,
   page = false,
@@ -87,6 +88,9 @@ export function AppModal({
   headerForeground?: string;
   /** Node painted absolutely behind the header row (e.g. checkerboard). */
   headerBackground?: React.ReactNode;
+  /** Type override for the header's title (a host's own page-title face
+   *  and size); the colour stays `headerForeground`. */
+  titleStyle?: object;
   /** Sheet color behind the body. Default is the light panel surface; the
    *  color picker passes the dark modal grey (its swatches and wheel read
    *  against dark, like Facet's original picker sheet). */
@@ -186,7 +190,7 @@ export function AppModal({
             >
               <MaterialCommunityIcons name="chevron-left" size={32} color={headerForeground} />
             </Pressable>
-            <Text style={[styles.title, { color: headerForeground }]} numberOfLines={1}>
+            <Text style={[styles.title, titleStyle, { color: headerForeground }]} numberOfLines={1}>
               {title}
             </Text>
             {headerRight}
@@ -204,7 +208,7 @@ export function AppModal({
             ]}
           >
             {headerBackground}
-            <Text style={[styles.title, { color: headerForeground }]} numberOfLines={1}>
+            <Text style={[styles.title, titleStyle, { color: headerForeground }]} numberOfLines={1}>
               {title}
             </Text>
             <View style={styles.headerActions}>

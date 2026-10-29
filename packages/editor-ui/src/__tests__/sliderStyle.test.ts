@@ -23,8 +23,23 @@ describe('the shared Slider', () => {
     expect(SRC).toContain("end={{ x: 1, y: 0 }}");
     expect(SRC).toMatch(/track:\s*\{\s*height:\s*SLIDER_TRACK,\s*borderRadius:\s*SLIDER_TRACK \/ 2,\s*overflow:\s*'hidden'/);
     // The ramp is the whole track, not a fill that resizes per move: the
-    // only per-drag style change is the thumb's `left`.
-    expect(SRC).not.toMatch(/width:\s*thumbLeft/);
+    // only per-drag style change is the thumb's `left`. (The slim dress,
+    // below, is the one that fills.)
+    const ramp = SRC.slice(SRC.indexOf('  if (slim) {'));
+    const rampDress = ramp.slice(ramp.indexOf('\n  return ('));
+    expect(rampDress).toContain('<LinearGradient');
+    expect(rampDress).not.toMatch(/width:\s*thumbLeft/);
+  });
+
+  it('has a slim dress for a host’s own sheet: a thin track filled to a white, ringed thumb, on the same gesture', () => {
+    expect(SRC).toContain('slim?: { ring: string };');
+    expect(SRC).toContain('const thumb = slim ? SLIM_THUMB : SLIDER_THUMB;');
+    const slim = SRC.slice(SRC.indexOf('  if (slim) {'), SRC.indexOf('\n  return (', SRC.indexOf('  if (slim) {')));
+    expect(slim).toContain('{...pan.panHandlers}');
+    expect(slim).toContain('<View style={[styles.slimFill, { width: thumbLeft + thumb / 2, backgroundColor: accent }]} />');
+    expect(slim).toContain('<View style={[styles.slimThumb, { left: thumbLeft, borderColor: slim.ring }]} />');
+    expect(slim).not.toContain('LinearGradient');
+    expect(SRC).toMatch(/slimThumb:\s*\{[^}]*backgroundColor:\s*'#ffffff'/);
   });
 
   it('shows the alpha checker under the ramp only when asked (an opacity slider)', () => {
@@ -36,8 +51,8 @@ describe('the shared Slider', () => {
     expect(SRC).toMatch(/borderWidth:\s*THUMB_RING,\s*borderColor:\s*'#ffffff'/);
     // The thumb's center runs over trackW − thumb (the brush slider's
     // mapping), so at 100% it sits flush with the track's end.
-    expect(SRC).toContain('brushSliderValueFromX(x, trackWRef.current, SLIDER_THUMB, dragRef.current)');
-    expect(SRC).toContain('const thumbLeft = clamped * Math.max(0, trackW - SLIDER_THUMB);');
+    expect(SRC).toContain('brushSliderValueFromX(x, trackWRef.current, thumbRef.current, dragRef.current)');
+    expect(SRC).toContain('const thumbLeft = clamped * Math.max(0, trackW - thumb);');
     expect(SRC).toContain('export const SLIDER_THUMB = SLIDER_TRACK');
   });
 

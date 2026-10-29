@@ -24,6 +24,11 @@ import { CheckerboardFill } from './ColorSwatch';
 // moves the thumb to the touch; `onChange` fires live and `onCommit` on
 // release. Built on PanResponder (as the sub-panel swipe is) so it needs no
 // slider dep.
+//
+// `slim` is the second dress, for a host's own sheet that says its value
+// in words above the control (DrawBots' making flow): a thin track in
+// `trackColor`, filled in `accent` up to a white thumb with a hairline
+// ring. The gesture is the same one.
 
 /** The pill track's height — and the height of the value box beside it. */
 export const SLIDER_TRACK = 28;
@@ -31,7 +36,13 @@ export const SLIDER_TRACK = 28;
 export const SLIDER_THUMB = SLIDER_TRACK;
 const THUMB_RING = 3;
 
-export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, trackColor = PANEL_TRACK, checker, ramp: rampOverride }: {
+/** The slim dress's track and thumb. */
+export const SLIM_TRACK = 6;
+export const SLIM_THUMB = 26;
+
+export function Slider({
+  value, onChange, onCommit, accent = STATE_ACTIVE, trackColor = PANEL_TRACK, checker, ramp: rampOverride, slim,
+}: {
   value: number;
   onChange: (v: number) => void;
   onCommit: (v: number) => void;
@@ -47,6 +58,8 @@ export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, track
    *  slider's rainbow, where the value is a POSITION on a scale rather than
    *  more-or-less of one colour. Two stops at least. */
   ramp?: readonly string[];
+  /** The slim dress (see the note up top): its thumb's ring colour. */
+  slim?: { ring: string };
 }) {
   const [trackW, setTrackW] = useState(0);
   const trackWRef = useRef(0);
@@ -71,8 +84,11 @@ export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, track
   cbRef.current = { onChange, onCommit };
 
   /** Track the touch, remembering where it left the value. */
+  const thumb = slim ? SLIM_THUMB : SLIDER_THUMB;
+  const thumbRef = useRef(thumb);
+  thumbRef.current = thumb;
   const track = (x: number) => {
-    dragRef.current = brushSliderValueFromX(x, trackWRef.current, SLIDER_THUMB, dragRef.current);
+    dragRef.current = brushSliderValueFromX(x, trackWRef.current, thumbRef.current, dragRef.current);
     return dragRef.current;
   };
 
@@ -125,7 +141,23 @@ export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, track
   const accentRamp = useMemo(() => sliderRampColors(accent), [accent]);
   const ramp = rampOverride && rampOverride.length >= 2 ? rampOverride : accentRamp;
   const clamped = Math.max(0, Math.min(1, value));
-  const thumbLeft = clamped * Math.max(0, trackW - SLIDER_THUMB);
+  const thumbLeft = clamped * Math.max(0, trackW - thumb);
+  if (slim) {
+    return (
+      <View
+        style={styles.hit}
+        onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+        accessibilityRole="adjustable"
+        accessibilityValue={{ min: 0, max: 100, now: Math.round(clamped * 100) }}
+        {...pan.panHandlers}
+      >
+        <View style={[styles.slimTrack, { backgroundColor: trackColor }]}>
+          <View style={[styles.slimFill, { width: thumbLeft + thumb / 2, backgroundColor: accent }]} />
+        </View>
+        <View style={[styles.slimThumb, { left: thumbLeft, borderColor: slim.ring }]} />
+      </View>
+    );
+  }
   return (
     <View
       style={styles.hit}
@@ -151,6 +183,22 @@ export function Slider({ value, onChange, onCommit, accent = STATE_ACTIVE, track
 }
 
 const styles = StyleSheet.create({
+  slimTrack: { height: SLIM_TRACK, borderRadius: SLIM_TRACK / 2, overflow: 'hidden' },
+  slimFill: { height: SLIM_TRACK },
+  slimThumb: {
+    position: 'absolute',
+    top: (SLIDER_CONTROL - SLIM_THUMB) / 2,
+    width: SLIM_THUMB,
+    height: SLIM_THUMB,
+    borderRadius: SLIM_THUMB / 2,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    shadowColor: 'rgb(40, 30, 20)',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
   // touch-action: none, so iOS never turns the drag into a scroll and cancels
   // it under the thumb (logic/slider VALUE_DRAG_SURFACE).
   hit: { height: SLIDER_CONTROL, justifyContent: 'center', ...VALUE_DRAG_SURFACE },
