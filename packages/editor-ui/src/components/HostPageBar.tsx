@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { HostPage, HostPagesModel, HostRowModel } from '../adapter';
@@ -155,11 +155,12 @@ export function HostRow({ row, page, model }: { row: HostRowModel; page: string;
  * the host marks current ringed. A tap opens the picker: a sheet of the
  * row's cards under their headings plus Remove, the slot's own value lit.
  *
- * A program is any length, so the row is a strip: fixed 56 pt chips that
- * scroll sideways, ending in a + chip whose picker appends one (and offers
- * no Remove). The strip follows a slot it has just appended to the end.
- * The sheet it sits in claims only downward drags, so the strip's
- * sideways scroll is its own. `row.addLabel` is the + chip's word.
+ * A program is any length, so the chips FLOW: fixed 56 pt chips that wrap
+ * into as many rows as the width takes (DrawBots report e1e58a56; it was
+ * a strip that scrolled sideways, which hid the cards past the edge),
+ * ending in a + chip whose picker appends one (and offers no Remove). The
+ * sheet it sits in scrolls down past them. `row.addLabel` is the + chip's
+ * word.
  *
  * Disabled (dimmed, inert) while the host says so.
  */
@@ -168,25 +169,13 @@ export function CardSlotsRow({ row, onPick }: {
   onPick: (slot: number, card: string | null) => void;
 }) {
   const [open, setOpen] = useState<number | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
-  const appendedRef = useRef(false);
   const adding = open === row.slots.length;
   const current = open !== null && !adding ? row.slots[open] : null;
   return (
     <View style={styles.cardsRow}>
       <Text style={styles.cardsLabel}>{row.label}</Text>
       <View style={row.disabled && styles.chipsDisabled} pointerEvents={row.disabled ? 'none' : 'auto'}>
-        <ScrollView
-          ref={scrollRef}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chips}
-          onContentSizeChange={() => {
-            if (!appendedRef.current) return;
-            appendedRef.current = false;
-            scrollRef.current?.scrollToEnd({ animated: true });
-          }}
-        >
+        <View style={styles.chips}>
           {row.slots.map((slot, k) => (
             <Pressable
               key={k}
@@ -206,7 +195,7 @@ export function CardSlotsRow({ row, onPick }: {
           >
             <MaterialCommunityIcons name={'plus' as MCIName} size={24} color={PANEL_INK} />
           </Pressable>
-        </ScrollView>
+        </View>
       </View>
       <AppModal
         visible={open !== null}
@@ -225,10 +214,7 @@ export function CardSlotsRow({ row, onPick }: {
                   accessibilityRole="button"
                   accessibilityLabel={opt.label}
                   onPress={() => {
-                    if (open !== null) {
-                      if (adding) appendedRef.current = true;
-                      onPick(open, opt.card);
-                    }
+                    if (open !== null) onPick(open, opt.card);
                     setOpen(null);
                   }}
                   style={[styles.pickerRow, lit && styles.pickerRowLit]}
@@ -250,15 +236,15 @@ export function CardSlotsRow({ row, onPick }: {
 const styles = StyleSheet.create({
   cardsRow: { paddingVertical: 2 },
   cardsLabel: { color: PANEL_INK_LABEL, fontSize: 12, marginBottom: 4 },
-  chips: { flexDirection: 'row', gap: 8 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chipsDisabled: { opacity: 0.4 },
   chip: {
     height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
     backgroundColor: PANEL_TRACK, borderWidth: 1, borderColor: PANEL_SHEET_BORDER,
   },
-  // Every chip keeps its size and the strip scrolls instead. Not
-  // `flex: 0`: react-native-web writes that as CSS `flex: 0` — a 0% basis
-  // that ignores the width — and every chip shrinks to nothing, the glyphs
+  // Every chip keeps its size and the row wraps instead. Not `flex: 0`:
+  // react-native-web writes that as CSS `flex: 0` — a 0% basis that
+  // ignores the width — and every chip shrinks to nothing, the glyphs
   // piled on one another.
   chipFixed: { width: 56, flexShrink: 0 },
   chipAdd: { borderStyle: 'dashed', backgroundColor: 'transparent' },
