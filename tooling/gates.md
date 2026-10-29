@@ -129,17 +129,25 @@ are suggestions.
 **Enforced by** the `pre-push` hook (the project's `.githooks/pre-push`,
 a stub `init.js` writes: it names the gate's path in the vendored engine
 once, refuses the push in a sentence when the engine submodule is not
-checked out, and otherwise execs `tooling/review.js check --pre-push`). It
-starts no review; it refuses the push unless the pushed range has a pass as
-a whole, or every commit in it that needs a review has one of its own (so
-per-commit records and accepts from before ranges still clear). Commit by
-commit, the commits not cleared by their own record are judged together:
-several small commits that add up to the line threshold need a review,
-though none alone would. `npm install` turns it on for the clone
-(`postinstall` sets `core.hooksPath=.githooks`); `npm run check:clone`
-reports a clone that skipped it. Nothing on the server re-runs the review:
-it is a local gate, and `git push --no-verify` gets past it. Agents never
-use `--no-verify`.
+checked out, and otherwise execs `tooling/review.js check --pre-push`).
+It gates **agents' pushes only**: a push from a shell that is not an
+agent's (`agentPush` in `tooling/review.js`: neither `CLAUDECODE` nor
+`AI_AGENT` is set) goes through unchecked, because the owner may push by
+hand whenever they choose, and `/ship` is the owner's way to push
+reviewed. For an agent's push it starts no review; it refuses the push
+unless the pushed range has a pass as a whole, or every commit in it
+that needs a review has one of its own (so per-commit records and
+accepts from before ranges still clear). Commit by commit, the commits
+not cleared by their own record are judged together: several small
+commits that add up to the line threshold need a review, though none
+alone would. `npm install` turns it on for the clone (`postinstall` sets
+`core.hooksPath=.githooks`); `npm run check:clone` reports a clone that
+skipped it. Nothing on the server re-runs the review: it is a local
+gate, and `git push --no-verify` gets past it. Agents never use
+`--no-verify`. It is a guardrail, not a security boundary: it reads the
+pushing shell's environment, so an agent that unset `CLAUDECODE` would
+get past it too — the rule that agents never push is what holds them,
+and the hook catches the honest mistake.
 
 **Disagreeing with a review.** Reviewers are wrong sometimes. The owner,
 and only the owner, clears a commit by hand from a terminal:
