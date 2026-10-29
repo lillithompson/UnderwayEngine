@@ -16,5 +16,13 @@ import type { CompositionIOOptions } from '@/engine/persistence';
  *
  * One constant, every caller: the engine normalizes each step independently,
  * so opting one out alone accomplishes nothing.
+ *
+ * `bakeFigures`: this editor's canvas draws svgObjects, images, texts, paint
+ * and patterns, and a `CompositionFigure` nowhere (CanvasSurface's
+ * renderNode — the GL pass that drew figures is the grid alone now), so an
+ * import keeps no figures: each one the bundle carries the file for lands
+ * as the SVGObject that draws the same thing, and the file is never stored.
+ * Without it a Facet `.tile` imported into CozyJournal listed every letter
+ * in the outline over an empty canvas (2026-10-29). Read by the import only.
  */
-export const PAGE_IO: CompositionIOOptions = { normalize: false };
+export const PAGE_IO: CompositionIOOptions = { normalize: false, bakeFigures: true };

@@ -55,7 +55,7 @@ jest.mock('../cells', () => {
 });
 
 // Import after mocks
-import { importCompositionBundle } from '../persistence';
+import { importCompositionBundle, loadCompositionState } from '../persistence';
 
 function makeFigure(overrides: Partial<CompositionFigure> & { id: string; figureKey: string }): CompositionFigure {
   return {
@@ -226,6 +226,98 @@ describe('importCompositionBundle memory behavior', () => {
   });
 });
 
+// ── bakeFigures: a host whose canvas draws no figures ───────────────
+//
+// The shared editor renders svgObjects, images, texts, paint and patterns
+// and a CompositionFigure nowhere, so its PAGE_IO asks the import to bake
+// every figure the bundle carries the file for into the svg that draws the
+// same thing — from the bundle's bytes, with nothing of the file stored.
+
+/** A level-2 (8×8) file whose top-left cell is a red colour cell: one
+ *  filled rect, 4 L0 cells on a side. */
+function makeColorFileBytes(fileId: string): Uint8Array {
+  const cells = Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => null as any));
+  cells[0][0] = { type: 'color', r: 200, g: 40, b: 40, transform: { rotation: 0, mirrorH: false, mirrorV: false } };
+  const layers = [{
+    id: `${fileId}_l0`, name: 'Layer', level: 2 as const, visible: true, opacity: 1, order: 0, cells,
+  }];
+  return serializeFile(layers as any, layers[0].id, 32, 32, fileId);
+}
+
+async function figureBundle(figures: CompositionFigure[], files: EmbeddedFile[], extra?: object): Promise<Uint8Array> {
+  return compressTile(serializeComposition({
+    name: 'Letters',
+    gridLevel: 1 as const,
+    strokeScale: 8, gridIntensity: 0.5,
+    camera: { offsetX: 0, offsetY: 0, zoom: 1 },
+    figures,
+    ...extra,
+  }, files));
+}
+
+describe('importCompositionBundle with bakeFigures', () => {
+  const red: EmbeddedFile = { id: 'red', name: 'R', widthL0: 32, heightL0: 32, data: makeColorFileBytes('red') };
+
+  test('every file-backed figure lands as an svg under its own id, and the file is never stored', async () => {
+    const bytes = await figureBundle([
+      makeFigure({ id: 'a', figureKey: 'file_red_L0', fileId: 'red', cellX: 0, cellY: 0, cellWidth: 32, cellHeight: 32, name: 'R', locked: true }),
+      makeFigure({ id: 'b', figureKey: 'file_red_L0', fileId: 'red', cellX: 16, cellY: 16, cellWidth: 16, cellHeight: 16, colorOverride: { r: 0, g: 0, b: 255 } }),
+    ], [red], { sceneOrder: ['b', 'a'] });
+    const id = await importCompositionBundle(bytes, 'Letters.tile', undefined, { normalize: false, bakeFigures: true });
+    const state = (await loadCompositionState(id, { normalize: false }))!;
+
+    expect(state.figures).toEqual([]);
+    expect(state.svgObjects!.map((o) => o.id)).toEqual(['a', 'b']);
+    expect(state.sceneOrder).toEqual(['b', 'a']);
+    // The 32-cell file's one level-2 cell is 4 L0 cells; placed over a
+    // 32-cell box it is 4 cells, over a 16-cell box 2.
+    const a = state.svgObjects![0];
+    expect(a.subpaths).toHaveLength(1);
+    expect(a.subpaths![0].fill).toBe(true);
+    expect(a.subpaths![0].color).toEqual({ r: 200, g: 40, b: 40 });
+    expect([a.cellX, a.cellY, a.cellWidth, a.cellHeight]).toEqual([0, 0, 4, 4]);
+    expect(a.name).toBe('R');
+    expect(a.locked).toBe(true);
+    const b = state.svgObjects![1];
+    expect([b.cellX, b.cellY, b.cellWidth, b.cellHeight]).toEqual([16, 16, 2, 2]);
+    expect(b.color).not.toEqual({ r: 200, g: 40, b: 40 });
+
+    // Nothing of the file: no meta record, no bake, no entry in the file list.
+    expect(Object.keys(storage).filter((k) => k.startsWith('file_meta_'))).toEqual([]);
+    expect(bakeFileMock).not.toHaveBeenCalled();
+    expect(JSON.parse((storage['files'] as string) ?? '[]')).toEqual([]);
+  });
+
+  test('a figure the bundle has no file for stays a figure, and only its file is stored', async () => {
+    const other: EmbeddedFile = { id: 'other', name: 'O', widthL0: 32, heightL0: 32, data: makeColorFileBytes('other') };
+    const bytes = await figureBundle([
+      makeFigure({ id: 'baked', figureKey: 'file_red_L0', fileId: 'red' }),
+      makeFigure({ id: 'sprite', figureKey: 'all_L0:3' }),
+      makeFigure({ id: 'orphan', figureKey: 'file_gone_L0', fileId: 'gone' }),
+    ], [red, other]);
+    const id = await importCompositionBundle(bytes, 'Mixed.tile', undefined, { bakeFigures: true });
+    const state = (await loadCompositionState(id))!;
+    expect(state.svgObjects!.map((o) => o.id)).toEqual(['baked']);
+    expect(state.figures!.map((f) => f.id)).toEqual(['sprite', 'orphan']);
+    // `other` backs no figure after the bake and `red` was baked away: no
+    // file is stored at all, and no bake runs.
+    expect(Object.keys(storage).filter((k) => k.startsWith('file_meta_'))).toEqual([]);
+    expect(bakeFileMock).not.toHaveBeenCalled();
+  });
+
+  test('without the option figures and their files import as before', async () => {
+    const bytes = await figureBundle([
+      makeFigure({ id: 'a', figureKey: 'file_red_L0', fileId: 'red' }),
+    ], [red]);
+    const id = await importCompositionBundle(bytes, 'Letters.tile', undefined, { normalize: false });
+    const state = (await loadCompositionState(id, { normalize: false }))!;
+    expect(state.svgObjects).toEqual([]);
+    expect(state.figures).toHaveLength(1);
+    expect(Object.keys(storage).filter((k) => k.startsWith('file_meta_'))).toHaveLength(1);
+    expect(bakeFileMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 // ── Host-data chunks (format v70) through the store ──────────────────
 //
 // The engine carries a host's chunks and never reads them: in with an
@@ -235,7 +327,7 @@ describe('importCompositionBundle memory behavior', () => {
 
 import { deserializeComposition } from '../compositionBinaryFormat';
 import { decompressTile } from '../tileIO';
-import { exportCompositionBundle, loadCompositionState } from '../persistence';
+import { exportCompositionBundle } from '../persistence';
 
 describe('host-data chunks through the store', () => {
   const sol = new Uint8Array([1, 2, 3]);

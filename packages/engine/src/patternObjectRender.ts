@@ -31,13 +31,12 @@ import {
   PATTERN_CELL_L0,
 } from './patternObject';
 import { shapePatternGrid } from './shapePatternFill';
-import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
-import { simplifySVG } from './simplifySVG';
+import { SVG_UNITS_PER_L0_CELL } from './svgExport';
 import {
   convertCachedSVGToColoredSegments,
   ColoredSegments,
 } from './figureToPaths';
-import type { CachedFigureSVG } from './svgFigureBuilders';
+import { figureSVGFromLayers, type CachedFigureSVG } from './svgFigureBuilders';
 import { normalizeClosedSegments } from './compositionArcMath';
 import { buildSVGObjectContent, withSVGObjectStrokeColor, type TileExpansion } from './svgPathBuilder';
 import { strokeScaleForUnits } from './svgStroke';
@@ -135,13 +134,8 @@ export function bakePatternElements(p: PatternObject): CachedFigureSVG | null {
     widthL0: p.cols * PATTERN_CELL_L0,
     heightL0: p.rows * PATTERN_CELL_L0,
   };
-  const result = exportLayersToSVGInner([layer], fileConfig);
-  if (result.elements.length === 0) return null;
-  return {
-    elements: simplifySVG(result.elements),
-    svgWidth: result.widthL0 * SVG_UNITS_PER_L0_CELL,
-    svgHeight: result.heightL0 * SVG_UNITS_PER_L0_CELL,
-  };
+  const cached = figureSVGFromLayers([layer], fileConfig);
+  return cached.elements.length === 0 ? null : cached;
 }
 
 /**

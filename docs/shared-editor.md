@@ -11,7 +11,14 @@ toolbar and the object property pages for every kind of object — and
 differs only in the data that is its own (Sol's strains and plants,
 DrawBot's inklings, CozyJournal's games and its Figgie rig). A `.tile`
 imported from one app into another must be editable with the standard
-affordances.
+affordances. One kind needs translating on the way in: the shared canvas
+draws svgObjects, images, texts, paint and patterns and a
+`CompositionFigure` nowhere (the GL pass that drew figures is the grid
+alone now), so the import bakes every figure the file carries into the
+svg that draws the same thing — `PAGE_IO.bakeFigures`,
+`figureToPaths.bakeFiguresToSVGObjects` — at the stroke width the figure
+was drawn at. A Facet file of placed letters imported into CozyJournal
+listed them in the outline over an empty canvas until it did (2026-10-29).
 
 This document records where that stands and how the rest is to be done. It
 is the engine's; the apps' codebase maps (`Sol.md`, `DrawBots.md`,
