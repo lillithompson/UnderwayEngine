@@ -27,8 +27,10 @@ import { CheckerboardFill } from './ColorSwatch';
 //
 // `slim` is the second dress, for a host's own sheet that says its value
 // in words above the control (DrawBots' making flow): a thin track in
-// `trackColor`, filled in `accent` up to a white thumb with a hairline
-// ring. The gesture is the same one.
+// `trackColor`, filled in `accent` up to a round thumb with a ring. The
+// host may size the track (a highlighter band) and the thumb and colour
+// the thumb and its ring, and draws anything else (a ruler's ticks)
+// behind it. The gesture is the same one.
 
 /** The pill track's height — and the height of the value box beside it. */
 export const SLIDER_TRACK = 28;
@@ -58,8 +60,10 @@ export function Slider({
    *  slider's rainbow, where the value is a POSITION on a scale rather than
    *  more-or-less of one colour. Two stops at least. */
   ramp?: readonly string[];
-  /** The slim dress (see the note up top): its thumb's ring colour. */
-  slim?: { ring: string };
+  /** The slim dress (see the note up top): its thumb's ring colour, and
+   *  optionally the ring's width, the thumb's fill and size, and the
+   *  track's height and corner. */
+  slim?: { ring: string; ringWidth?: number; thumbFill?: string; thumb?: number; track?: number; trackRadius?: number };
 }) {
   const [trackW, setTrackW] = useState(0);
   const trackWRef = useRef(0);
@@ -84,7 +88,7 @@ export function Slider({
   cbRef.current = { onChange, onCommit };
 
   /** Track the touch, remembering where it left the value. */
-  const thumb = slim ? SLIM_THUMB : SLIDER_THUMB;
+  const thumb = slim ? slim.thumb ?? SLIM_THUMB : SLIDER_THUMB;
   const thumbRef = useRef(thumb);
   thumbRef.current = thumb;
   const track = (x: number) => {
@@ -151,10 +155,18 @@ export function Slider({
         accessibilityValue={{ min: 0, max: 100, now: Math.round(clamped * 100) }}
         {...pan.panHandlers}
       >
-        <View style={[styles.slimTrack, { backgroundColor: trackColor }]}>
-          <View style={[styles.slimFill, { width: thumbLeft + thumb / 2, backgroundColor: accent }]} />
+        <View
+          style={[styles.slimTrack, { backgroundColor: trackColor }, slim.track != null ? {
+            height: slim.track, borderRadius: slim.trackRadius ?? slim.track / 2,
+          } : null]}
+        >
+          <View style={[styles.slimFill, { width: thumbLeft + thumb / 2, backgroundColor: accent }, slim.track != null ? { height: slim.track } : null]} />
         </View>
-        <View style={[styles.slimThumb, { left: thumbLeft, borderColor: slim.ring }]} />
+        <View
+          style={[styles.slimThumb, { left: thumbLeft, borderColor: slim.ring }, slim.thumb != null ? {
+            width: thumb, height: thumb, borderRadius: thumb / 2, top: (SLIDER_CONTROL - thumb) / 2,
+          } : null, slim.ringWidth != null ? { borderWidth: slim.ringWidth } : null, slim.thumbFill ? { backgroundColor: slim.thumbFill } : null]}
+        />
       </View>
     );
   }

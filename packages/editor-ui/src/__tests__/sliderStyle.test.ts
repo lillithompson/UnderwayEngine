@@ -32,12 +32,12 @@ describe('the shared Slider', () => {
   });
 
   it('has a slim dress for a host’s own sheet: a thin track filled to a white, ringed thumb, on the same gesture', () => {
-    expect(SRC).toContain('slim?: { ring: string };');
-    expect(SRC).toContain('const thumb = slim ? SLIM_THUMB : SLIDER_THUMB;');
+    expect(SRC).toContain('slim?: { ring: string; ringWidth?: number; thumbFill?: string; thumb?: number; track?: number; trackRadius?: number };');
+    expect(SRC).toContain('const thumb = slim ? slim.thumb ?? SLIM_THUMB : SLIDER_THUMB;');
     const slim = SRC.slice(SRC.indexOf('  if (slim) {'), SRC.indexOf('\n  return (', SRC.indexOf('  if (slim) {')));
     expect(slim).toContain('{...pan.panHandlers}');
-    expect(slim).toContain('<View style={[styles.slimFill, { width: thumbLeft + thumb / 2, backgroundColor: accent }]} />');
-    expect(slim).toContain('<View style={[styles.slimThumb, { left: thumbLeft, borderColor: slim.ring }]} />');
+    expect(slim).toContain('{ width: thumbLeft + thumb / 2, backgroundColor: accent }');
+    expect(slim).toContain('style={[styles.slimThumb, { left: thumbLeft, borderColor: slim.ring }');
     expect(slim).not.toContain('LinearGradient');
     expect(SRC).toMatch(/slimThumb:\s*\{[^}]*backgroundColor:\s*'#ffffff'/);
   });
