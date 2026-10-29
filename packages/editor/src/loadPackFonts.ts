@@ -38,6 +38,9 @@ import { settleFaces } from './settleFaces';
 export interface PackFace {
   cssFamily: string;
   uri: string;
+  /** The face's weight, for a family registered at several (a host's
+   *  own chrome faces); absent, the rule names none, as a pack face's. */
+  weight?: number;
 }
 
 /** One font an app's pack offers. */
@@ -74,7 +77,7 @@ export const PACK_FONTS_STYLE_ID = 'underway-pack-fonts';
  */
 export function packFontFaceCss(faces: readonly PackFace[]): string {
   return faces
-    .map((f) => `@font-face{font-family:${JSON.stringify(f.cssFamily)};src:url(${JSON.stringify(f.uri)});font-display:auto}`)
+    .map((f) => `@font-face{font-family:${JSON.stringify(f.cssFamily)};${f.weight != null ? `font-weight:${f.weight};` : ''}src:url(${JSON.stringify(f.uri)});font-display:auto}`)
     .join('\n');
 }
 

@@ -110,6 +110,10 @@ describe('the @font-face rules', () => {
       '@font-face{font-family:"Dial Sans";src:url("asset://dial.woff2");font-display:auto}\n'
       + '@font-face{font-family:"Peg Serif";src:url("asset://peg.woff2");font-display:auto}',
     );
+    // A face at its own weight names it: one family at several weights.
+    expect(packFontFaceCss([{ cssFamily: 'Dial Sans', uri: 'asset://dial-700.woff2', weight: 700 }])).toBe(
+      '@font-face{font-family:"Dial Sans";font-weight:700;src:url("asset://dial-700.woff2");font-display:auto}',
+    );
   });
 
   it('go onto the page synchronously, once, under one style element', () => {
