@@ -18,6 +18,13 @@ describe('CardSlotsRow', () => {
     expect(ROW.indexOf("name={'plus' as MCIName}")).toBeGreaterThan(ROW.indexOf('{row.slots.map((slot, k) => ('));
   });
 
+  it('rings the slot the host marks current and lights the one it marks flash (DrawBots report 84f7ee66)', () => {
+    expect(ROW).toContain('slot.current && styles.chipCurrent, slot.flash && styles.chipFlash');
+    expect(SRC).toContain('chipFlash: { backgroundColor: STATE_ACTIVE },');
+    const ADAPTER = readFileSync(resolve(__dirname, '..', 'adapter.ts'), 'utf8');
+    expect(ADAPTER).toContain('slots: readonly { icon: string; label: string; current: boolean; flash?: boolean }[];');
+  });
+
   it('scrolls nothing sideways of its own: the sheet it sits in scrolls down past it', () => {
     const chips = ROW.slice(0, ROW.indexOf('<AppModal'));
     expect(chips).not.toContain('horizontal');

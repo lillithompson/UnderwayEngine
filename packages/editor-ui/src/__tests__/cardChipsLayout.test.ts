@@ -34,11 +34,11 @@ describe('card program chips', () => {
     expect(styleBody('chip')).not.toMatch(/\bflex\b/);
   });
 
-  it('every program row is one fixed-chip strip, the + chip included', () => {
+  it('every program row is fixed chips that wrap, the + chip included, the current one ringed and the flashed one lit', () => {
     // No row shares a fixed number of chips across the width (`chipEven`).
     expect(BARS).not.toContain('chipEven');
     // No greyed chip: a card is held or it is not in the program.
-    expect(BARS).toContain('style={[styles.chip, styles.chipFixed, slot.current && styles.chipCurrent]}');
+    expect(BARS).toContain('style={[styles.chip, styles.chipFixed, slot.current && styles.chipCurrent, slot.flash && styles.chipFlash]}');
     expect(BARS).not.toContain('chipGreyed');
     expect(BARS).toContain('style={[styles.chip, styles.chipFixed, styles.chipAdd]}');
   });

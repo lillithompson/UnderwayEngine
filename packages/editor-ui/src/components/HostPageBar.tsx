@@ -152,7 +152,8 @@ export function HostRow({ row, page, model }: { row: HostRowModel; page: string;
 
 /**
  * A program of cards: a chip per slot showing its card's glyph, the slot
- * the host marks current ringed. A tap opens the picker: a sheet of the
+ * the host marks current ringed, the slot it marks `flash` lit (a
+ * preview stepping through the cards). A tap opens the picker: a sheet of the
  * row's cards under their headings plus Remove, the slot's own value lit.
  *
  * A program is any length, so the chips FLOW: fixed 56 pt chips that wrap
@@ -182,7 +183,7 @@ export function CardSlotsRow({ row, onPick }: {
               accessibilityRole="button"
               accessibilityLabel={`Slot ${k + 1}: ${slot.label}`}
               onPress={() => setOpen(k)}
-              style={[styles.chip, styles.chipFixed, slot.current && styles.chipCurrent]}
+              style={[styles.chip, styles.chipFixed, slot.current && styles.chipCurrent, slot.flash && styles.chipFlash]}
             >
               <MaterialCommunityIcons name={slot.icon as MCIName} size={24} color={PANEL_INK} />
             </Pressable>
@@ -249,6 +250,7 @@ const styles = StyleSheet.create({
   chipFixed: { width: 56, flexShrink: 0 },
   chipAdd: { borderStyle: 'dashed', backgroundColor: 'transparent' },
   chipCurrent: { borderColor: STATE_ACTIVE, borderWidth: 2 },
+  chipFlash: { backgroundColor: STATE_ACTIVE },
   pickerBody: { padding: 12, gap: 6 },
   pickerRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 14,

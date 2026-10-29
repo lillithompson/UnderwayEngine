@@ -58,7 +58,10 @@ export type HostRowModel =
    *  options arrive grouped, and one with none (Remove) has no heading.
    *  Disabled while the host says so (a run is live). */
   | { kind: 'cards'; key: string; label: string;
-      slots: readonly { icon: string; label: string; current: boolean }[];
+      /** `current`: the slot the host marks as what plays next, ringed;
+       *  `flash`: the slot the host is pointing at this moment, lit (a
+       *  preview stepping through the cards; DrawBots report 84f7ee66). */
+      slots: readonly { icon: string; label: string; current: boolean; flash?: boolean }[];
       disabled: boolean;
       addLabel: string;
       picker: readonly { card: string | null; icon: string; label: string; group?: string }[] }
