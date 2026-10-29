@@ -192,6 +192,7 @@ import {
 } from '../editableRegion';
 import { triggerHaptic } from '@/native-shell/bridge/webBridge';
 import { collectPaintGuards, pointInPaintGuard } from '../paintGuards';
+import { type UnderlayShape, underlayPathAttrs } from '../pageUnderlay';
 import {
   type ForwardArrow, MARKER_POP_KEYFRAMES, type RegionMarker, writeForwardArrow, writeRegionChrome,
 } from '../regionChromeScreen';
@@ -424,6 +425,10 @@ interface CanvasSurfaceProps {
    *  when there is no region, which a page with an arrow and no region is
    *  (regionChromeScreen.writeForwardArrow). */
   forwardArrow?: ForwardArrow;
+  /** The page's underlay (`EditorConfig.underlay`, pageUnderlay.ts): a
+   *  drawing under every object, in world cells, that no tool can touch.
+   *  Drawn once into the world layer, so the camera carries it. */
+  underlay?: readonly UnderlayShape[];
   /**
    * A world rect the camera should GLIDE to frame, and the `key` of the
    * ask that wants it framed: CozyJournal's Creature turn refused over a
@@ -1037,7 +1042,7 @@ export function CanvasSurface({
   onLongPress, onLongPressMove, onLongPressUp,
   onSuperLongPress, onSuperLongPressMove, onSuperLongPressUp,
   ghosts,
-  editableRegion, regionChrome, markers, forwardArrow, veiledIds, revealRect,
+  editableRegion, regionChrome, markers, forwardArrow, underlay, veiledIds, revealRect,
   onCanvasPointerDown,
   hostTools, openTrace, gestures, layers, surfaceHandle,
 }: CanvasSurfaceProps) {
@@ -7053,6 +7058,23 @@ export function CanvasSurface({
               boxShadow: `0 0 0 1px ${CANVAS_HAIRLINE}, 0 2px 16px rgba(58, 53, 50, 0.10)`,
             }}
           />
+        ) : null}
+        {/* The page's underlay (EditorConfig.underlay, pageUnderlay.ts): a
+            drawing under every object that no tool can touch — DrawBot's
+            Inkling figure under the user's own strokes. One static <svg>
+            in world cells; the world layer's transform carries it, so
+            nothing is written per camera frame. */}
+        {underlay && underlay.length > 0 ? (
+          <svg
+            data-page-underlay=""
+            aria-hidden
+            width={WORLD_CELLS * BASE_CELL_PX}
+            height={pageCellsH * BASE_CELL_PX}
+            viewBox={`0 0 ${WORLD_CELLS} ${pageCellsH}`}
+            style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none', display: 'block' }}
+          >
+            {underlay.map((shape, k) => <path key={k} {...underlayPathAttrs(shape)} />)}
+          </svg>
         ) : null}
         {renderScene()}
         {/* Ghost previews (the Transform bar's copies-to-be): the same node
