@@ -50,6 +50,14 @@ import { cancelCrossTouchMoves, claims, landing } from '../logic/swipeRow';
  * from: opening a second closes the first, through a module-level handle
  * on whichever is out.
  *
+ * The buttons are a GROUP WITH THE LINE, not a block bolted to it:
+ * `endCorner` rounds the outer edge of the last one the way the line's own
+ * corners are rounded, and `onOpen` tells the owner the once that the
+ * buttons are showing, so the line can square the edge they come out of
+ * (DrawBots' pen motion cards, report e93f7e2c). One call an opening and
+ * one a closing — never per move, so the list the note above is about is
+ * still not rebuilt by the gesture.
+ *
  * And the row has to argue with the way OUT OF THE PAGE as well as with
  * the list. On the WEB a sideways drag that reaches the end of a scroller
  * chains into the browser's own history gesture, so a row dragged back to
@@ -104,7 +112,7 @@ export function useSwipeScrollLock(): { onGrab: (held: boolean) => void; scrollE
   return { onGrab: setSwiping, scrollEnabled: !swiping };
 }
 
-export function SwipeRow({ actions, children, onGrab, actionWidth = SWIPE_ACTION_WIDTH, labelFont, iconOnly = false }: {
+export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIPE_ACTION_WIDTH, labelFont, iconOnly = false, endCorner }: {
   /** Left to right as they come in, so the LAST is the one at the screen's
    *  edge — the first thing the thumb reaches, and by that convention the
    *  heaviest. Empty means the line does not move. */
@@ -121,6 +129,17 @@ export function SwipeRow({ actions, children, onGrab, actionWidth = SWIPE_ACTION
   labelFont?: string;
   /** The buttons show their icon alone, the label read out only. */
   iconOnly?: boolean;
+  /** Called with true the moment the buttons START SHOWING — the drag
+   *  that claims the row, or another row's opening — and false as the row
+   *  settles shut again. ONE call an opening, one a closing: never per
+   *  move, so a line that wants to change shape while its buttons are out
+   *  (DrawBots' pen motion cards square their right corners against them)
+   *  costs a render a gesture, not a render a frame. */
+  onOpen?: (open: boolean) => void;
+  /** The right corners of the LAST button — the one at the row's edge —
+   *  so an open row reads as one shape with the line it came out of
+   *  rather than a square block bolted to it. Square with none. */
+  endCorner?: { top: number; bottom: number };
 }) {
   const width = actions.length * actionWidth;
   const x = useRef(new Animated.Value(0)).current;
@@ -141,11 +160,23 @@ export function SwipeRow({ actions, children, onGrab, actionWidth = SWIPE_ACTION
     held.current = now;
     onGrabRef.current?.(now);
   }, []);
+  // Whether the buttons are showing at all, told to the owner the once
+  // either way (`onOpen`): the same idempotent pair as `grab`, so a drag
+  // that wanders reports nothing twice.
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
+  const out = useRef(false);
+  const show = useCallback((now: boolean) => {
+    if (out.current === now) return;
+    out.current = now;
+    onOpenRef.current?.(now);
+  }, []);
 
   const settle = useCallback((to: number) => {
     // The list scrolls again from the moment the finger is off it: the
     // spring that follows is the row's own and moves nothing else.
     grab(false);
+    show(to !== 0);
     at.current = to;
     if (to === 0 && openRow !== null) openRow = null;
     Animated.spring(x, {
@@ -154,7 +185,7 @@ export function SwipeRow({ actions, children, onGrab, actionWidth = SWIPE_ACTION
       bounciness: 0,
       speed: 18,
     }).start();
-  }, [x, grab]);
+  }, [x, grab, show]);
 
   const close = useCallback(() => settle(0), [settle]);
 
@@ -165,6 +196,8 @@ export function SwipeRow({ actions, children, onGrab, actionWidth = SWIPE_ACTION
   useEffect(() => () => {
     if (openRow !== null && at.current !== 0) openRow = null;
     if (held.current) { held.current = false; onGrabRef.current?.(false); }
+    // Nothing is told a gone row's shape: the owner's state goes with it.
+    out.current = false;
   }, []);
 
   // In a browser, a touch whose first move goes mostly across is the
@@ -225,7 +258,7 @@ export function SwipeRow({ actions, children, onGrab, actionWidth = SWIPE_ACTION
       // finger that lands on one and then drags UP is still scrolling the
       // list. `grab` is idempotent, so a drag that wanders back towards
       // vertical does not let go of the lock mid-swipe.
-      if (claims(g.dx, g.dy, at.current, widthRef.current)) grab(true);
+      if (claims(g.dx, g.dy, at.current, widthRef.current)) { grab(true); show(true); }
       // Clamped at both ends: the line never pulls past its buttons, and
       // never swings right of where it started.
       x.setValue(Math.max(-widthRef.current, Math.min(0, at.current + g.dx)));
@@ -258,6 +291,11 @@ export function SwipeRow({ actions, children, onGrab, actionWidth = SWIPE_ACTION
               style={({ pressed }) => [
                 styles.action,
                 { width: actionWidth, backgroundColor: action.color },
+                // The row's outer edge, rounded as the line it came out
+                // of is, so the group is one shape (`endCorner`).
+                endCorner && action === actions[actions.length - 1]
+                  ? { borderTopRightRadius: endCorner.top, borderBottomRightRadius: endCorner.bottom }
+                  : null,
                 pressed && styles.actionPressed,
               ]}
             >

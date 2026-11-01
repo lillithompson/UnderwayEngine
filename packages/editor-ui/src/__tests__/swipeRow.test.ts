@@ -111,6 +111,20 @@ describe('SwipeRow.tsx', () => {
     expect(ROW).toContain("if (Platform.OS !== 'web' || !el || typeof el.addEventListener !== 'function' || width === 0) return undefined;");
   });
 
+  it('tells its owner the once that the buttons are showing, and rounds the outer edge of the last one as the line is rounded', () => {
+    // The claim that starts the swipe says the buttons are out, and the
+    // settle says whether they still are: one call either way, never per
+    // move (the list is not rebuilt by the gesture).
+    expect(ROW).toContain('if (claims(g.dx, g.dy, at.current, widthRef.current)) { grab(true); show(true); }');
+    expect(ROW).toContain('show(to !== 0);');
+    expect(ROW).toMatch(/const show = useCallback\(\(now: boolean\) => \{\s*if \(out\.current === now\) return;/);
+    expect(ROW).toContain('onOpenRef.current?.(now);');
+    // The group's outer corners are the caller's radii, on the last
+    // button alone — the one at the row's edge.
+    expect(ROW).toContain('endCorner && action === actions[actions.length - 1]');
+    expect(ROW).toContain('? { borderTopRightRadius: endCorner.top, borderBottomRightRadius: endCorner.bottom }');
+  });
+
   it('offers icon-only buttons, the label still read out, at a width of the app\'s choosing', () => {
     expect(ROW).toContain('accessibilityLabel={action.label}');
     expect(ROW).toContain('{iconOnly ? null : (');
