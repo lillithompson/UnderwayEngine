@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { RGBLike } from '../adapter';
@@ -10,7 +10,7 @@ import {
   PANEL_BG, PANEL_BG_CLEAR, PANEL_CONTENT_WELL, PANEL_INK, PANEL_INK_MUTED,
   PANEL_SWATCH_BORDER, STATE_ACTIVE,
 } from '../theme';
-import { scrollToShowTab } from '../logic/tabScroll';
+import { useSelectedTabInView } from './useSelectedTabInView';
 import { ColorSwatchFill } from './ColorSwatch';
 
 // The Edit sheet: the type-specific half of the object-properties panel,
@@ -115,41 +115,31 @@ function EditTab({ tab, onBox }: { tab: EditTabSpec; onBox: (box: { x: number; w
  *  offset — and held as the two booleans they decide, so a scroll re-renders
  *  the row only when a fade actually appears or goes.
  *
- *  The SELECTED tab is kept in view (logic/tabScroll): when the lit tab
+ *  The SELECTED tab is kept in view (useSelectedTabInView over
+ *  logic/tabScroll): when the lit tab
  *  changes — a press on one half under the fade, or a sheet opening on a
  *  remembered tab far along the row — the row scrolls just far enough to
  *  show it with the next one peeking. The tabs' boxes and the offset ride
  *  in refs, so measuring and scrolling render nothing. */
 export function EditTabs({ tabs }: { tabs: readonly EditTabSpec[] }) {
-  const [viewW, setViewW] = useState(0);
-  const [contentW, setContentW] = useState(0);
+  const selected = tabs.find((t) => t.selected)?.key ?? null;
+  const inView = useSelectedTabInView(selected);
+  const { viewW, contentW } = inView;
   const [scrollX, setScrollX] = useState(0);
   const overflow = contentW > viewW + 1;
   const fadeRight = overflow && scrollX < contentW - viewW - 1;
   const fadeLeft = overflow && scrollX > 1;
-  const scrollView = useRef<ScrollView>(null);
-  const scrollRef = useRef(0);
-  const boxes = useRef(new Map<string, { x: number; width: number }>());
-  const selected = tabs.find((t) => t.selected)?.key ?? null;
-  // Measured late (a first layout), the tab is shown once it is known.
-  const [measured, setMeasured] = useState(0);
-  useEffect(() => {
-    const box = selected === null ? undefined : boxes.current.get(selected);
-    if (!box) return;
-    const to = scrollToShowTab(box, viewW, scrollRef.current, contentW);
-    if (to !== null) scrollView.current?.scrollTo({ x: to, animated: true });
-  }, [selected, viewW, contentW, measured]);
   return (
-    <View style={styles.tabs} onLayout={(e) => setViewW(e.nativeEvent.layout.width)}>
+    <View style={styles.tabs} onLayout={(e) => inView.onViewWidth(e.nativeEvent.layout.width)}>
       <ScrollView
-        ref={scrollView}
+        ref={inView.scrollView}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tabsContent}
-        onContentSizeChange={(w) => setContentW(w)}
+        onContentSizeChange={(w) => inView.onContentWidth(w)}
         onScroll={(e) => {
           const x = e.nativeEvent.contentOffset.x;
-          scrollRef.current = x;
+          inView.onScrollX(x);
           // Only the edges matter; a scroll that changes neither is not a
           // render.
           setScrollX((prev) => {
@@ -163,10 +153,7 @@ export function EditTabs({ tabs }: { tabs: readonly EditTabSpec[] }) {
         {tabs.map((t) => (
           <EditTab
             key={t.key} tab={t}
-            onBox={(box) => {
-              boxes.current.set(t.key, box);
-              if (t.key === selected) setMeasured((n) => n + 1);
-            }}
+            onBox={(box) => inView.onTabBox(t.key, box)}
           />
         ))}
       </ScrollView>

@@ -32,9 +32,15 @@ describe('scrollToShowTab: the selected tab is kept in view', () => {
     expect(scrollToShowTab({ x: 400, width: 250 }, view, 0, content)).toBe(400 - 25);
   });
 
-  it('is what the Edit sheet’s tab row scrolls by', () => {
-    const sheet = fs.readFileSync(path.join(__dirname, '..', 'components', 'EditSheet.tsx'), 'utf8');
-    expect(sheet).toContain("import { scrollToShowTab } from '../logic/tabScroll';");
-    expect(sheet).toContain('const to = scrollToShowTab(box, viewW, scrollRef.current, contentW);');
+  it('is what the Edit sheet’s tab row scrolls by, through the one hook every tab row shares', () => {
+    const src = (f: string) => fs.readFileSync(path.join(__dirname, '..', 'components', f), 'utf8');
+    const hook = src('useSelectedTabInView.ts');
+    expect(hook).toContain("import { scrollToShowTab } from '../logic/tabScroll';");
+    expect(hook).toContain('const to = scrollToShowTab(box, viewW, scrollX.current, contentW);');
+    const sheet = src('EditSheet.tsx');
+    expect(sheet).toContain('const inView = useSelectedTabInView(selected);');
+    expect(sheet).toContain('ref={inView.scrollView}');
+    expect(sheet).toContain('onBox={(box) => inView.onTabBox(t.key, box)}');
+    expect(sheet).not.toContain('scrollToShowTab');
   });
 });
