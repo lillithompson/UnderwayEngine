@@ -163,7 +163,7 @@ describe('SwipeRow.tsx', () => {
     // The buttons' block slides its own whole width over the line's
     // travel, so it comes from the page's edge and lands flush; with no
     // bleed it is the line's own value, untouched.
-    expect(ROW).toContain('const slide = side === 0 ? x : x.interpolate({ inputRange: [-travel, 0], outputRange: [-width, 0] });');
+    expect(ROW).toContain('() => (side === 0 ? x : x.interpolate({ inputRange: [-travel, 0], outputRange: [-width, 0] })),');
     expect(ROW).toContain('{ width, right: -width, transform: [{ translateX: slide }] }');
   });
 

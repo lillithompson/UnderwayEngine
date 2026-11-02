@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated, PanResponder, Platform, Pressable, StyleSheet, Text, View,
   type ViewStyle,
@@ -63,6 +63,9 @@ import { cancelCrossTouchMoves, claims, landing, rowBleed } from '../logic/swipe
  * further out, so open, the line's trailing edge and the block's leading
  * edge meet exactly — the block slides by its own whole width over the
  * line's `travel`, which is the one thing here that moves at its own rate.
+ * The drag area grows with the row: the pan handlers sit on the view the
+ * bleed's padding is on, so the margin either side of the line is the
+ * row's to swipe too, which is what it now is.
  *
  * The buttons are a GROUP WITH THE LINE, not a block bolted to it:
  * `endCorner` rounds the outer edge of the last one the way the line's own
@@ -264,7 +267,10 @@ export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIP
   // ahead of the line and land flush against it (the note at the top).
   // With no bleed the two are the same value and the block rides the
   // line's translation exactly, as it always did.
-  const slide = side === 0 ? x : x.interpolate({ inputRange: [-travel, 0], outputRange: [-width, 0] });
+  const slide = useMemo(
+    () => (side === 0 ? x : x.interpolate({ inputRange: [-travel, 0], outputRange: [-width, 0] })),
+    [x, side, travel, width],
+  );
 
   const pan = useRef(PanResponder.create({
     // A finger landing on an OPEN row is closing it, not opening whatever
