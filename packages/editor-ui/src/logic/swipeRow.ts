@@ -8,7 +8,9 @@
 //
 // `at` throughout is where the line is RESTING — 0 shut, `-width` open —
 // and `dx` the live drag over it. `width` is the row's whole travel: the
-// buttons' block, exactly.
+// buttons' block, less whatever BLEED the page gives the row
+// (`rowBleed`, below), since over a bleed the buttons come in from
+// further out than the line's own end.
 
 /** Past this much of the actions' width, the release opens rather than
  *  springs back — a drag half-committed reads as committed. */
@@ -41,6 +43,15 @@ export function landing(dx: number, vx: number, at: number, width: number): numb
   // to have to press.
   if (Math.abs(dx) < CLAIM_SLOP) return 0;
   return at + dx < -width * OPEN_FRACTION ? -width : 0;
+}
+
+/** How much of a wanted BLEED a row can take: the margin its page sets
+ *  the row in from the page's own edge, which the line slides out over
+ *  rather than being cut at (components/SwipeRow's `bleed`). None unless
+ *  the buttons are wider than it — the line's travel is their block LESS
+ *  the bleed, and a row has to be left somewhere to go. */
+export function rowBleed(width: number, bleed: number): number {
+  return bleed > 0 && width > bleed ? bleed : 0;
 }
 
 /** Which way a touch drag is going, from its first move's travel `dx`,

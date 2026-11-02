@@ -4,7 +4,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { cancelCrossTouchMoves, claims, landing } from '../logic/swipeRow';
+import { cancelCrossTouchMoves, claims, landing, rowBleed } from '../logic/swipeRow';
 
 /**
  * A list line you can drag LEFT to uncover its actions, the way every
@@ -49,6 +49,20 @@ import { cancelCrossTouchMoves, claims, landing } from '../logic/swipeRow';
  * Only ONE row stands open at a time, like the chat lists this borrows
  * from: opening a second closes the first, through a module-level handle
  * on whichever is out.
+ *
+ * A row INSET BY A MARGIN — the chat lists this came from run the screen's
+ * full width, but DrawBots' pen motion cards sit in a page's side padding
+ * — is clipped at its own box, so the line's end was cut a margin short of
+ * the screen and the buttons arrived a margin in from it, with a strip of
+ * page beyond each (DrawBots, report 66c56514). {@link bleed} is that
+ * margin, handed down by the screen that knows it: the row then reaches
+ * over it (a negative margin, the padding given back inside so the line
+ * stays where it was), the line slides off the PAGE's edge and the buttons
+ * come in from the page's edge. They stay ONE shape doing it: the line
+ * travels a bleed LESS than the buttons' block, which starts that bleed
+ * further out, so open, the line's trailing edge and the block's leading
+ * edge meet exactly — the block slides by its own whole width over the
+ * line's `travel`, which is the one thing here that moves at its own rate.
  *
  * The buttons are a GROUP WITH THE LINE, not a block bolted to it:
  * `endCorner` rounds the outer edge of the last one the way the line's own
@@ -112,7 +126,7 @@ export function useSwipeScrollLock(): { onGrab: (held: boolean) => void; scrollE
   return { onGrab: setSwiping, scrollEnabled: !swiping };
 }
 
-export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIPE_ACTION_WIDTH, labelFont, iconOnly = false, endCorner }: {
+export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIPE_ACTION_WIDTH, labelFont, iconOnly = false, endCorner, bleed = 0 }: {
   /** Left to right as they come in, so the LAST is the one at the screen's
    *  edge — the first thing the thumb reaches, and by that convention the
    *  heaviest. Empty means the line does not move. */
@@ -140,14 +154,28 @@ export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIP
    *  so an open row reads as one shape with the line it came out of
    *  rather than a square block bolted to it. Square with none. */
   endCorner?: { top: number; bottom: number };
+  /** The margin the page sets this row in from its own edge (the note
+   *  above): the row reaches over it, so the line slides off the page's
+   *  edge instead of being cut at its margin and the buttons come in
+   *  from the page's edge. None (the default) for a row that already
+   *  runs the page's full width, which has nothing to reach over. */
+  bleed?: number;
 }) {
   const width = actions.length * actionWidth;
+  /** The bleed actually taken (`rowBleed`): none where the buttons are
+   *  no wider than it, which would leave the line nowhere to travel. */
+  const side = rowBleed(width, bleed);
+  /** What the LINE travels, which is what the gesture and `at` are in:
+   *  the buttons' block less the bleed, so its trailing edge comes to
+   *  rest exactly on the block's leading edge (which began a bleed
+   *  further out, off the page's edge). */
+  const travel = width - side;
   const x = useRef(new Animated.Value(0)).current;
-  /** Where the line is RESTING — 0 shut, -width open. The live drag is
+  /** Where the line is RESTING — 0 shut, -travel open. The live drag is
    *  this plus the gesture's dx, which is what every decision reads. */
   const at = useRef(0);
-  const widthRef = useRef(width);
-  widthRef.current = width;
+  const travelRef = useRef(travel);
+  travelRef.current = travel;
   // Read through a ref because the responder below is built once and would
   // otherwise hold the first render's callback for ever. `held` keeps the
   // two edges paired: one true per gesture, one false to close it, however
@@ -231,6 +259,13 @@ export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIP
     };
   }, [width]);
 
+  // The BUTTONS' own slide: their whole block's width over the line's
+  // travel, so over a bleed they come in from the page's edge a touch
+  // ahead of the line and land flush against it (the note at the top).
+  // With no bleed the two are the same value and the block rides the
+  // line's translation exactly, as it always did.
+  const slide = side === 0 ? x : x.interpolate({ inputRange: [-travel, 0], outputRange: [-width, 0] });
+
   const pan = useRef(PanResponder.create({
     // A finger landing on an OPEN row is closing it, not opening whatever
     // the line leads to — so that one touch is taken at the start, and
@@ -240,8 +275,8 @@ export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIP
     // Both passes, and the CAPTURE one is the load-bearing half: the
     // line's own Pressable is already the responder by the time a finger
     // moves, and a bubbling handler never gets asked.
-    onMoveShouldSetPanResponderCapture: (_e, g) => claims(g.dx, g.dy, at.current, widthRef.current),
-    onMoveShouldSetPanResponder: (_e, g) => claims(g.dx, g.dy, at.current, widthRef.current),
+    onMoveShouldSetPanResponderCapture: (_e, g) => claims(g.dx, g.dy, at.current, travelRef.current),
+    onMoveShouldSetPanResponder: (_e, g) => claims(g.dx, g.dy, at.current, travelRef.current),
     // The list would otherwise take the gesture back the moment it saw it
     // move, which aborted the swipe halfway and sprang the row shut.
     onPanResponderTerminationRequest: () => false,
@@ -258,29 +293,34 @@ export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIP
       // finger that lands on one and then drags UP is still scrolling the
       // list. `grab` is idempotent, so a drag that wanders back towards
       // vertical does not let go of the lock mid-swipe.
-      if (claims(g.dx, g.dy, at.current, widthRef.current)) { grab(true); show(true); }
+      if (claims(g.dx, g.dy, at.current, travelRef.current)) { grab(true); show(true); }
       // Clamped at both ends: the line never pulls past its buttons, and
       // never swings right of where it started.
-      x.setValue(Math.max(-widthRef.current, Math.min(0, at.current + g.dx)));
+      x.setValue(Math.max(-travelRef.current, Math.min(0, at.current + g.dx)));
     },
-    onPanResponderRelease: (_e, g) => settle(landing(g.dx, g.vx, at.current, widthRef.current)),
+    onPanResponderRelease: (_e, g) => settle(landing(g.dx, g.vx, at.current, travelRef.current)),
     // Settled on the drag, not thrown away: a termination we could not
     // refuse still happened at a place the finger chose.
-    onPanResponderTerminate: (_e, g) => settle(landing(g.dx, g.vx, at.current, widthRef.current)),
+    onPanResponderTerminate: (_e, g) => settle(landing(g.dx, g.vx, at.current, travelRef.current)),
   })).current;
 
   return (
-    <View ref={wrapRef} style={[styles.wrap, SWIPE_ROW_SURFACE]}>
-      {/* The buttons sit just OFF the right edge and ride in on the same
-          translation as the line, rather than waiting underneath it: a
-          line opaque enough to hide them would be a flat band over the
-          ground behind it. Their block is exactly as wide as the row's
-          travel, and `wrap` clips it, so at rest they are nowhere at all.
-          Drawn BEFORE the line so that a shadow or a press state on the
-          line stays over them. */}
+    // Over the page's margin either side, where the page gives it one
+    // (`bleed`): the clip is the PAGE's edges, so the line slides off
+    // them rather than being cut short of them, and the buttons wait
+    // off the page's own right edge. The padding inside puts the line
+    // back exactly where it was.
+    <View ref={wrapRef} style={[styles.wrap, SWIPE_ROW_SURFACE, side ? { marginHorizontal: -side } : null]}>
+      {/* The buttons sit just OFF the right edge and ride in behind the
+          line, rather than waiting underneath it: a line opaque enough to
+          hide them would be a flat band over the ground behind it. Their
+          block is exactly as wide as the line's travel and the bleed
+          together, and `wrap` clips it, so at rest they are nowhere at
+          all. Drawn BEFORE the line so that a shadow or a press state on
+          the line stays over them. */}
       {actions.length > 0 && (
         <Animated.View
-          style={[styles.actions, { width, right: -width, transform: [{ translateX: x }] }]}
+          style={[styles.actions, { width, right: -width, transform: [{ translateX: slide }] }]}
         >
           {actions.map((action) => (
             <Pressable
@@ -308,7 +348,7 @@ export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIP
         </Animated.View>
       )}
       <Animated.View
-        style={{ transform: [{ translateX: x }] }}
+        style={[side ? { paddingHorizontal: side } : null, { transform: [{ translateX: x }] }]}
         {...pan.panHandlers}
       >
         {children}
@@ -321,7 +361,8 @@ const styles = StyleSheet.create({
   wrap: {
     position: 'relative',
     // Clips the buttons while they are still off the right edge, and the
-    // line's left end once it has been dragged past it.
+    // line's left end once it has been dragged past it — at the PAGE's
+    // edges where the row is given its margin to reach over (`bleed`).
     overflow: 'hidden',
   },
   actions: {

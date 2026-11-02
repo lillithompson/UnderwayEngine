@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join, resolve } from 'path';
-import { cancelCrossTouchMoves, CLAIM_SLOP, claims, FLICK_VELOCITY, HORIZONTAL_BIAS, landing, OPEN_FRACTION, swipeAxis } from '../logic/swipeRow';
+import { cancelCrossTouchMoves, CLAIM_SLOP, claims, FLICK_VELOCITY, HORIZONTAL_BIAS, landing, OPEN_FRACTION, rowBleed, swipeAxis } from '../logic/swipeRow';
 
 // A list line dragged left to uncover its actions (lifted from
 // CozyJournal's group lines; DrawBots' pen motions delete with it). The
@@ -39,6 +39,35 @@ describe('landing', () => {
     expect(landing(-(W * OPEN_FRACTION + 1), 0, 0, W)).toBe(-W);
     expect(landing(-(W * OPEN_FRACTION - 1), 0, 0, W)).toBe(0);
     expect(landing(-60, 0, 0, 0)).toBe(0);
+  });
+});
+
+describe('rowBleed', () => {
+  it('is the page\'s margin where the buttons are wider than it, and nothing where they are not', () => {
+    expect(rowBleed(128, 20)).toBe(20);
+    // The line would be left nowhere to travel.
+    expect(rowBleed(20, 20)).toBe(0);
+    expect(rowBleed(12, 20)).toBe(0);
+    // A row with no buttons, and a page that asks for none.
+    expect(rowBleed(0, 20)).toBe(0);
+    expect(rowBleed(128, 0)).toBe(0);
+    expect(rowBleed(128, -8)).toBe(0);
+  });
+
+  it('leaves the line a travel that lands its end where the buttons begin', () => {
+    // The buttons' block starts a bleed further out than the line's own
+    // end (off the page's edge) and slides its whole width; the line
+    // slides the rest, so open, the two meet. DrawBots' pen motion
+    // cards: two 64 buttons in a page 20 in from the screen's edge.
+    const width = 128;
+    const side = rowBleed(width, 20);
+    const travel = width - side;
+    expect(travel).toBe(108);
+    // A card [20, 400] of a 420 page, open: its end and the block's
+    // start are the same place, and the block ends on the page's edge.
+    expect(400 - travel).toBe(420 - width);
+    expect(landing(-travel, 0, 0, travel)).toBe(-travel);
+    expect(claims(-(CLAIM_SLOP + 1), 0, 0, travel)).toBe(true);
   });
 });
 
@@ -91,10 +120,10 @@ describe('SwipeRow.tsx', () => {
   const ROW = read('components', 'SwipeRow.tsx');
 
   it('takes the drag back on the capture pass, refuses to hand it over, and settles a termination on the drag', () => {
-    expect(ROW).toContain('onMoveShouldSetPanResponderCapture: (_e, g) => claims(g.dx, g.dy, at.current, widthRef.current),');
+    expect(ROW).toContain('onMoveShouldSetPanResponderCapture: (_e, g) => claims(g.dx, g.dy, at.current, travelRef.current),');
     expect(ROW).toContain('onPanResponderTerminationRequest: () => false,');
-    expect(ROW).toContain('onPanResponderTerminate: (_e, g) => settle(landing(g.dx, g.vx, at.current, widthRef.current)),');
-    expect(ROW).toContain('x.setValue(Math.max(-widthRef.current, Math.min(0, at.current + g.dx)));');
+    expect(ROW).toContain('onPanResponderTerminate: (_e, g) => settle(landing(g.dx, g.vx, at.current, travelRef.current)),');
+    expect(ROW).toContain('x.setValue(Math.max(-travelRef.current, Math.min(0, at.current + g.dx)));');
     // One row open at a time.
     expect(ROW).toContain('if (openRow !== null && at.current === 0) openRow();');
   });
@@ -115,7 +144,7 @@ describe('SwipeRow.tsx', () => {
     // The claim that starts the swipe says the buttons are out, and the
     // settle says whether they still are: one call either way, never per
     // move (the list is not rebuilt by the gesture).
-    expect(ROW).toContain('if (claims(g.dx, g.dy, at.current, widthRef.current)) { grab(true); show(true); }');
+    expect(ROW).toContain('if (claims(g.dx, g.dy, at.current, travelRef.current)) { grab(true); show(true); }');
     expect(ROW).toContain('show(to !== 0);');
     expect(ROW).toMatch(/const show = useCallback\(\(now: boolean\) => \{\s*if \(out\.current === now\) return;/);
     expect(ROW).toContain('onOpenRef.current?.(now);');
@@ -123,6 +152,19 @@ describe('SwipeRow.tsx', () => {
     // button alone — the one at the row's edge.
     expect(ROW).toContain('endCorner && action === actions[actions.length - 1]');
     expect(ROW).toContain('? { borderTopRightRadius: endCorner.top, borderBottomRightRadius: endCorner.bottom }');
+  });
+
+  it('reaches over the page\'s margin where it is given one: the clip, the line put back by the padding, and the buttons from the page\'s edge', () => {
+    expect(ROW).toContain('const side = rowBleed(width, bleed);');
+    expect(ROW).toContain('const travel = width - side;');
+    // The row's box over the margin, and the line back inside it.
+    expect(ROW).toContain('style={[styles.wrap, SWIPE_ROW_SURFACE, side ? { marginHorizontal: -side } : null]}');
+    expect(ROW).toContain('style={[side ? { paddingHorizontal: side } : null, { transform: [{ translateX: x }] }]}');
+    // The buttons' block slides its own whole width over the line's
+    // travel, so it comes from the page's edge and lands flush; with no
+    // bleed it is the line's own value, untouched.
+    expect(ROW).toContain('const slide = side === 0 ? x : x.interpolate({ inputRange: [-travel, 0], outputRange: [-width, 0] });');
+    expect(ROW).toContain('{ width, right: -width, transform: [{ translateX: slide }] }');
   });
 
   it('offers icon-only buttons, the label still read out, at a width of the app\'s choosing', () => {
