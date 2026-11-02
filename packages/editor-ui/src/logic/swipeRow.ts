@@ -54,6 +54,15 @@ export function rowBleed(width: number, bleed: number): number {
   return bleed > 0 && width > bleed ? bleed : 0;
 }
 
+/** How far a PEEKING row's line travels before its first button's icon
+ *  is fully in (components/SwipeRow's `peek`): at rest the button's
+ *  colour already fills the bleed beyond the line, its icon hidden, and
+ *  the icon fades in over the rest of the button's width. Never less
+ *  than a pixel, so the fade always has a span to run over. */
+export function peekReveal(actionWidth: number, side: number): number {
+  return Math.max(1, actionWidth - side);
+}
+
 /** Which way a touch drag is going, from its first move's travel `dx`,
  *  `dy` (px): 'x' mostly across — a swipe, so the page does not scroll
  *  under it — 'y' up or down (a tie too: a scroll), null not yet moved.

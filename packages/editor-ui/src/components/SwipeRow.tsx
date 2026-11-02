@@ -4,7 +4,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { cancelCrossTouchMoves, claims, landing, rowBleed } from '../logic/swipeRow';
+import { cancelCrossTouchMoves, claims, landing, peekReveal, rowBleed } from '../logic/swipeRow';
 
 /**
  * A list line you can drag LEFT to uncover its actions, the way every
@@ -66,6 +66,14 @@ import { cancelCrossTouchMoves, claims, landing, rowBleed } from '../logic/swipe
  * The drag area grows with the row: the pan handlers sit on the view the
  * bleed's padding is on, so the margin either side of the line is the
  * row's to swipe too, which is what it now is.
+ *
+ * A row can PEEK over its bleed instead ({@link peek}; DrawBots' pen
+ * motion cards, where an empty margin beside a square edge read as a
+ * gap): the block then starts at the line's own end and rides the line
+ * exactly, so at rest its first button's colour runs from the line to
+ * the page's edge, its icon hidden until the line slides
+ * (`peekReveal`). Open, the two still meet, and the block still ends on
+ * the page's edge.
  *
  * The buttons are a GROUP WITH THE LINE, not a block bolted to it:
  * `endCorner` rounds the outer edge of the last one the way the line's own
@@ -129,7 +137,7 @@ export function useSwipeScrollLock(): { onGrab: (held: boolean) => void; scrollE
   return { onGrab: setSwiping, scrollEnabled: !swiping };
 }
 
-export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIPE_ACTION_WIDTH, labelFont, iconOnly = false, endCorner, bleed = 0 }: {
+export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIPE_ACTION_WIDTH, labelFont, iconOnly = false, endCorner, bleed = 0, peek = false }: {
   /** Left to right as they come in, so the LAST is the one at the screen's
    *  edge — the first thing the thumb reaches, and by that convention the
    *  heaviest. Empty means the line does not move. */
@@ -163,6 +171,10 @@ export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIP
    *  from the page's edge. None (the default) for a row that already
    *  runs the page's full width, which has nothing to reach over. */
   bleed?: number;
+  /** Over a bleed, the first button's colour fills it at rest, from the
+   *  line's end to the page's edge, its icon hidden until the line
+   *  slides (the note above). Nothing without a bleed to fill. */
+  peek?: boolean;
 }) {
   const width = actions.length * actionWidth;
   /** The bleed actually taken (`rowBleed`): none where the buttons are
@@ -267,9 +279,17 @@ export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIP
   // ahead of the line and land flush against it (the note at the top).
   // With no bleed the two are the same value and the block rides the
   // line's translation exactly, as it always did.
+  // A peeking row's block starts at the line's end instead, so it rides
+  // the line exactly too, its first `side` showing at rest (`peek`).
+  const peeking = peek && side > 0;
   const slide = useMemo(
-    () => (side === 0 ? x : x.interpolate({ inputRange: [-travel, 0], outputRange: [-width, 0] })),
-    [x, side, travel, width],
+    () => (side === 0 || peeking ? x : x.interpolate({ inputRange: [-travel, 0], outputRange: [-width, 0] })),
+    [x, side, peeking, travel, width],
+  );
+  // …and its first icon fades in as the line uncovers the rest of it.
+  const peekIcon = useMemo(
+    () => (peeking ? x.interpolate({ inputRange: [-peekReveal(actionWidth, side), 0], outputRange: [1, 0], extrapolate: 'clamp' }) : null),
+    [x, peeking, actionWidth, side],
   );
 
   const pan = useRef(PanResponder.create({
@@ -326,7 +346,7 @@ export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIP
           the line stays over them. */}
       {actions.length > 0 && (
         <Animated.View
-          style={[styles.actions, { width, right: -width, transform: [{ translateX: slide }] }]}
+          style={[styles.actions, { width, right: peeking ? -travel : -width, transform: [{ translateX: slide }] }]}
         >
           {actions.map((action) => (
             <Pressable
@@ -345,10 +365,12 @@ export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIP
                 pressed && styles.actionPressed,
               ]}
             >
-              <MaterialCommunityIcons name={action.icon as never} size={iconOnly ? 26 : 20} color="#FFFFFF" />
-              {iconOnly ? null : (
-                <Text style={[styles.actionLabel, labelFont ? { fontFamily: labelFont } : null]} numberOfLines={2}>{action.label}</Text>
-              )}
+              <Animated.View style={[styles.actionFace, peekIcon && action === actions[0] ? { opacity: peekIcon } : null]}>
+                <MaterialCommunityIcons name={action.icon as never} size={iconOnly ? 26 : 20} color="#FFFFFF" />
+                {iconOnly ? null : (
+                  <Text style={[styles.actionLabel, labelFont ? { fontFamily: labelFont } : null]} numberOfLines={2}>{action.label}</Text>
+                )}
+              </Animated.View>
             </Pressable>
           ))}
         </Animated.View>
@@ -385,6 +407,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
     paddingHorizontal: 6,
+  },
+  // The icon and its label, one piece so a peeking row fades both.
+  actionFace: {
+    alignItems: 'center',
+    gap: 4,
   },
   actionPressed: {
     opacity: 0.8,

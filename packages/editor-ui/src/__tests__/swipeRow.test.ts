@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join, resolve } from 'path';
-import { cancelCrossTouchMoves, CLAIM_SLOP, claims, FLICK_VELOCITY, HORIZONTAL_BIAS, landing, OPEN_FRACTION, rowBleed, swipeAxis } from '../logic/swipeRow';
+import { cancelCrossTouchMoves, CLAIM_SLOP, claims, FLICK_VELOCITY, HORIZONTAL_BIAS, landing, OPEN_FRACTION, peekReveal, rowBleed, swipeAxis } from '../logic/swipeRow';
 
 // A list line dragged left to uncover its actions (lifted from
 // CozyJournal's group lines; DrawBots' pen motions delete with it). The
@@ -68,6 +68,38 @@ describe('rowBleed', () => {
     expect(400 - travel).toBe(420 - width);
     expect(landing(-travel, 0, 0, travel)).toBe(-travel);
     expect(claims(-(CLAIM_SLOP + 1), 0, 0, travel)).toBe(true);
+  });
+});
+
+describe('peekReveal', () => {
+  it('is the rest of the first button past the bleed it already fills', () => {
+    // DrawBots' pen motion cards: a 64 mute peeking 20 across the margin.
+    expect(peekReveal(64, 20)).toBe(44);
+    // Never a fade of no span.
+    expect(peekReveal(20, 20)).toBe(1);
+    expect(peekReveal(12, 20)).toBe(1);
+  });
+
+  it('starts a peeking block at the line\'s end, riding it, its first icon faded in by the line', () => {
+    const row = read('components', 'SwipeRow.tsx');
+    expect(row).toContain('const peeking = peek && side > 0;');
+    expect(row).toContain('(side === 0 || peeking ? x : x.interpolate(');
+    expect(row).toContain('right: peeking ? -travel : -width');
+    expect(row).toContain("inputRange: [-peekReveal(actionWidth, side), 0], outputRange: [1, 0], extrapolate: 'clamp'");
+    expect(row).toContain('peekIcon && action === actions[0] ? { opacity: peekIcon } : null');
+  });
+
+  it('meets the line open and ends on the page\'s edge, filling the bleed at rest', () => {
+    // A card [20, 400] of a 420 page, two 64 buttons: the block's left
+    // edge at rest is the card's end, and open it is still the card's.
+    const width = 128;
+    const side = rowBleed(width, 20);
+    const travel = width - side;
+    const right = -travel;
+    const restLeft = 420 - right - width;
+    expect(restLeft).toBe(400);
+    expect(restLeft - travel).toBe(400 - travel);
+    expect(restLeft - travel + width).toBe(420);
   });
 });
 
@@ -163,8 +195,8 @@ describe('SwipeRow.tsx', () => {
     // The buttons' block slides its own whole width over the line's
     // travel, so it comes from the page's edge and lands flush; with no
     // bleed it is the line's own value, untouched.
-    expect(ROW).toContain('() => (side === 0 ? x : x.interpolate({ inputRange: [-travel, 0], outputRange: [-width, 0] })),');
-    expect(ROW).toContain('{ width, right: -width, transform: [{ translateX: slide }] }');
+    expect(ROW).toContain('() => (side === 0 || peeking ? x : x.interpolate({ inputRange: [-travel, 0], outputRange: [-width, 0] })),');
+    expect(ROW).toContain('{ width, right: peeking ? -travel : -width, transform: [{ translateX: slide }] }');
   });
 
   it('offers icon-only buttons, the label still read out, at a width of the app\'s choosing', () => {
