@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 // writeup refuses. Nothing here opens a browser.
 
 /* eslint-disable @typescript-eslint/no-var-requires */
-const { clearFrames, createHarness, fileFor, filmstrip } = require('../case_studies/harness.js');
+const { clearFrames, createHarness, fileFor, filmstrip, labelled, SHOWN, TAPPABLE } = require('../case_studies/harness.js');
 const { caseStudyPaths } = require('../case_studies/paths.js');
 const { fillTemplate, scriptJson, validate } = require('../case_studies/build-writeup.js');
 /* eslint-enable @typescript-eslint/no-var-requires */
@@ -59,6 +59,35 @@ describe('case study capture', () => {
     await b('second');
     await a('third');
     expect(frames).toEqual([['a', 1, 'first'], ['b', 2, 'second'], ['a', 3, 'third']]);
+  });
+
+  describe('labelled: the one check tap and until share', () => {
+    // It runs in the page; here a document of plain objects stands in.
+    const el = (tag: string, label: string, rect: Partial<{ width: number; height: number; top: number; bottom: number }> = {}) => ({
+      tag, getAttribute: (k: string) => (k === 'aria-label' ? label : null), innerText: '',
+      getBoundingClientRect: () => ({ width: 10, height: 10, top: 10, bottom: 20, ...rect }),
+    });
+    const page = (els: ReturnType<typeof el>[]) => {
+      const g = globalThis as unknown as { document: unknown; innerHeight: number };
+      g.document = { querySelectorAll: (sel: string) => els.filter((e) => sel.split(',').some((s) => (s === 'input') === (e.tag === 'input'))) };
+      g.innerHeight = 800;
+    };
+    afterEach(() => { delete (globalThis as { document?: unknown }).document; });
+
+    it('finds the visible elements with exactly that label, and null for none', () => {
+      const a = el('button', 'Next');
+      page([a, el('button', 'Next', { width: 0 }), el('button', 'Next', { top: 900, bottom: 910 }), el('button', 'Next page')]);
+      expect(labelled({ wanted: 'Next', selector: TAPPABLE })).toEqual([a]);
+      expect(labelled({ wanted: 'Back', selector: TAPPABLE })).toBeNull();
+    });
+
+    it('until waits for a field too; tap presses no field', () => {
+      expect(SHOWN).toBe(`${TAPPABLE},input`);
+      const field = el('input', 'Name it');
+      page([field]);
+      expect(labelled({ wanted: 'Name it', selector: SHOWN })).toEqual([field]);
+      expect(labelled({ wanted: 'Name it', selector: TAPPABLE })).toBeNull();
+    });
   });
 
   it('createHarness opens nothing until asked, so a project can load it without playwright', () => {

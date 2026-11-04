@@ -88,7 +88,8 @@ node scripts/case_studies/flow-<slug>.js [stopAfterFrame]
   redundant code").
 - Drive the app the way a person does: `h.tap(label)` real clicks, and
   `h.draw(points)` real touch strokes. Wait for UI, not for fixed times, where
-  you can.
+  you can: `h.until(label)` waits for the element `tap` would find (a field
+  too), by the same check.
 - Iterate with the stop-after-frame argument, which prints the screen's text and
   buttons. Restart any backend between runs.
 - **Look at every frame**

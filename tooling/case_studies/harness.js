@@ -68,6 +68,26 @@ function clearFrames(dir) {
   for (const f of fs.readdirSync(dir)) if (f.endsWith('.png')) fs.rmSync(path.join(dir, f));
 }
 
+/** What `tap` presses, and what `until` waits for (an input too: a field
+ *  is waited for by its label, as the Name it step's is). */
+const TAPPABLE = '[role=button],button,a,[aria-label],div,span';
+const SHOWN = `${TAPPABLE},input`;
+
+/**
+ * IN THE PAGE: the visible elements matching `selector` whose label or text
+ * is exactly `wanted`, or null for none — the one check `tap` and `until`
+ * share. Self-contained, as `evaluate` and `waitForFunction` need: it is
+ * run in the page, not here.
+ */
+function labelled({ wanted, selector }) {
+  const els = [...document.querySelectorAll(selector)].filter((e) => {
+    const t = (e.getAttribute('aria-label') || e.innerText || '').trim();
+    const r = e.getBoundingClientRect();
+    return t === wanted && r.width > 0 && r.height > 0 && r.top < innerHeight && r.bottom > 0;
+  });
+  return els.length ? els : null;
+}
+
 function createHarness({ rewrites = [], handle = null, signIn = null, web = null } = {}) {
   const webDir = web || process.env.CAPTURE_WEB || path.join(caseStudyPaths().captureDir, 'web');
 
@@ -143,19 +163,21 @@ function createHarness({ rewrites = [], handle = null, signIn = null, web = null
       },
       /** A real click on the visible element whose text or label is exactly `label`. */
       async tap(label) {
-        const box = await page.evaluate((wanted) => {
-          const els = [...document.querySelectorAll('[role=button],button,a,[aria-label],div,span')].filter((e) => {
-            const t = (e.getAttribute('aria-label') || e.innerText || '').trim();
-            const r = e.getBoundingClientRect();
-            return t === wanted && r.width > 0 && r.height > 0 && r.top < innerHeight && r.bottom > 0;
-          });
-          const e = els[els.length - 1];
+        const found = await page.evaluateHandle(labelled, { wanted: label, selector: TAPPABLE });
+        const box = await found.evaluate((els) => {
+          const e = els && els[els.length - 1];
           if (!e) return null;
           const r = e.getBoundingClientRect();
           return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-        }, label);
+        });
+        await found.dispose();
         if (!box) throw new Error(`no element: ${label}`);
         await page.mouse.click(box.x, box.y);
+      },
+      /** Wait until an element — a field too — whose label or text is
+       *  exactly `label` shows. */
+      async until(label, timeout = 10000) {
+        await page.waitForFunction(labelled, { wanted: label, selector: SHOWN }, { timeout });
       },
     };
   }
@@ -163,4 +185,4 @@ function createHarness({ rewrites = [], handle = null, signIn = null, web = null
   return { open, filmstrip, clearFrames, ORIGIN };
 }
 
-module.exports = { CHROME, ORIGIN, clearFrames, createHarness, fileFor, filmstrip };
+module.exports = { CHROME, ORIGIN, SHOWN, TAPPABLE, clearFrames, createHarness, fileFor, filmstrip, labelled };
