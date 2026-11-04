@@ -5,7 +5,7 @@ import type { LineStyleGlyphKind, LineStyleModel } from '../adapter';
 import { GROUP_PAD, SHADOW_PAD_SIZE } from '../logic/submenuHeight';
 import {
   LINE_STYLE_GLYPH_OPTIONS, LINE_STYLE_SECTIONS, MAX_GLYPH_ROTATION, MAX_GLYPH_SIZE, MIN_GLYPH_SIZE,
-  type LineStyleSection, padPointFromTouch, padPolylines, strokesAfterDraw,
+  type LineStyleSection, padGlyphPathD, padPointFromTouch, padPolylinePathD, strokesAfterDraw,
 } from '../logic/lineStyle';
 import {
   BarBody, CONTROL_ACCENT, GroupedBody, RowGroup, SECTION_TABS_GROUP_RADIUS, SectionTabs, SliderRow,
@@ -57,39 +57,27 @@ const PAD_BORDER = 'rgba(42,42,42,0.16)';
 
 const degText = (deg: number) => `${Math.round(deg)}°`;
 
-/** One polyline as views: a hairline per piece, turned to lie along it.
- *  React Native has no path primitive, and a pad of a few dozen short
- *  rotated views is cheap. */
-function Polyline({ points, color }: { points: readonly [number, number][]; color: string }) {
-  const pieces: React.ReactNode[] = [];
-  for (let i = 1; i < points.length; i++) {
-    const [x0, y0] = points[i - 1];
-    const [x1, y1] = points[i];
-    const dx = (x1 - x0) * PAD_SIZE;
-    const dy = (y1 - y0) * PAD_SIZE;
-    const len = Math.hypot(dx, dy);
-    if (len < 0.01) continue;
-    const mx = (x0 + x1) / 2 * PAD_SIZE;
-    const my = (y0 + y1) / 2 * PAD_SIZE;
-    const angle = Math.atan2(dy, dx);
-    pieces.push(
-      <View
-        key={i}
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          left: mx - len / 2,
-          top: my - PREVIEW_STROKE / 2,
-          width: len,
-          height: PREVIEW_STROKE,
-          borderRadius: PREVIEW_STROKE / 2,
-          backgroundColor: color,
-          transform: [{ rotate: `${angle}rad` }],
-        }}
-      />,
-    );
-  }
-  return <>{pieces}</>;
+/** The pad's drawing: one inline `<svg>` over the pad, a path for the
+ *  glyph and one for the stroke under the finger. A plain DOM svg rather
+ *  than views turned to lie along the curve (which left a gap at every
+ *  join) for the reason the toolbar's shape icons are (ToolIcons.tsx): the
+ *  shared editor is a DOM tree, react-native-svg is no app's dependency,
+ *  and this chrome is only ever mounted on the web target. */
+function PadInk({ glyphD, strokeD }: { glyphD: string; strokeD: string | null }) {
+  return (
+    <svg
+      width={PAD_SIZE}
+      height={PAD_SIZE}
+      viewBox={`0 0 ${PAD_SIZE} ${PAD_SIZE}`}
+      fill="none"
+      style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}
+    >
+      <path d={glyphD} stroke={PANEL_INK} strokeWidth={PREVIEW_STROKE} strokeLinecap="round" strokeLinejoin="round" />
+      {strokeD ? (
+        <path d={strokeD} stroke={CONTROL_ACCENT} strokeWidth={PREVIEW_STROKE} strokeLinecap="round" strokeLinejoin="round" />
+      ) : null}
+    </svg>
+  );
 }
 
 /** The pad: the glyph, drawn; and a surface to draw one on. `onClear` is
@@ -130,7 +118,6 @@ function GlyphPad({ style, onDraw, onClear }: {
       onPanResponderTerminate: () => finish(),
     }),
   ).current;
-  const drawn = padPolylines(style);
   return (
     <View style={styles.padHolder}>
       <View
@@ -139,8 +126,10 @@ function GlyphPad({ style, onDraw, onClear }: {
         accessibilityLabel="Glyph pad: draw here to make your own glyph"
         {...pan.panHandlers}
       >
-        {drawn.map((poly, i) => <Polyline key={i} points={poly} color={PANEL_INK} />)}
-        {drawing ? <Polyline points={drawing} color={CONTROL_ACCENT} /> : null}
+        <PadInk
+          glyphD={padGlyphPathD(style, PAD_SIZE)}
+          strokeD={drawing ? padPolylinePathD(drawing, PAD_SIZE) : null}
+        />
       </View>
       {onClear ? (
         <Pressable

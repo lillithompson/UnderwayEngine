@@ -1,5 +1,5 @@
 import type { LineStyleGlyphKind, LineStyleModel } from '../adapter';
-import { lineStyleGlyphPreview } from '@/engine/lineStyle';
+import { lineStyleGlyphCommands } from '@/engine/lineStyle';
 import { clamp01 } from '../appTheme';
 
 // The Style page's pure parts: its three faces, what its glyph row offers,
@@ -59,14 +59,40 @@ export function strokesAfterDraw(
   return style.glyph === 'custom' && style.custom ? [...style.custom, copy] : [copy];
 }
 
-/** What the pad draws: a drawn glyph as it was drawn, in pad units; a
- *  built-in one from its unit box, spanning PREVIEW_SPAN of the pad. Draw
- *  with nothing drawn yet shows the circle it will stamp. */
-export function padPolylines(style: LineStyleModel): [number, number][][] {
-  if (style.glyph === 'custom' && style.custom && style.custom.length > 0) return style.custom;
-  return lineStyleGlyphPreview({
+const fmt = (v: number): number => Math.round(v * 100) / 100;
+
+/** A run of pad-unit points as a path's `d`, in pad pixels — the live
+ *  stroke under the finger, and each stroke of a drawn glyph. */
+export function padPolylinePathD(points: readonly (readonly [number, number])[], padSize: number): string {
+  return points
+    .map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${fmt(x * padSize)},${fmt(y * padSize)}`)
+    .join(' ');
+}
+
+/** What the pad draws, as one path's `d` in pad pixels: a drawn glyph as
+ *  it was drawn; a built-in one from its unit box, spanning PREVIEW_SPAN of
+ *  the pad — its CURVES kept as curves (the engine's own commands, which is
+ *  what the path will stamp), so a circle previews as the circle it is and
+ *  not as a chain of pieces. Draw with nothing drawn yet shows the circle it
+ *  will stamp. */
+export function padGlyphPathD(style: LineStyleModel, padSize: number): string {
+  if (style.glyph === 'custom' && style.custom && style.custom.length > 0) {
+    return style.custom.map((stroke) => padPolylinePathD(stroke, padSize)).join(' ');
+  }
+  const px = (x: number, y: number): string =>
+    `${fmt((0.5 + x * PREVIEW_SPAN) * padSize)},${fmt((0.5 + y * PREVIEW_SPAN) * padSize)}`;
+  const parts: string[] = [];
+  for (const c of lineStyleGlyphCommands({
     glyph: style.glyph === 'custom' ? 'circle' : style.glyph,
     density: style.density, size: style.size, rotation: 0,
     randomPlacement: 0, randomRotation: 0, randomSize: 0,
-  }).map((poly) => poly.map(([x, y]): [number, number] => [0.5 + x * PREVIEW_SPAN, 0.5 + y * PREVIEW_SPAN]));
+  })) {
+    switch (c[0]) {
+      case 'M': parts.push(`M ${px(c[1], c[2])}`); break;
+      case 'L': parts.push(`L ${px(c[1], c[2])}`); break;
+      case 'C': parts.push(`C ${px(c[1], c[2])} ${px(c[3], c[4])} ${px(c[5], c[6])}`); break;
+      case 'Z': parts.push('Z'); break;
+    }
+  }
+  return parts.join(' ');
 }

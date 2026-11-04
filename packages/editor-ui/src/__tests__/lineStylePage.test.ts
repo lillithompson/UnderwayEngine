@@ -12,7 +12,7 @@ import { join } from 'path';
 import type { LineStyleModel } from '../adapter';
 import {
   LINE_STYLE_GLYPH_OPTIONS, LINE_STYLE_SECTIONS, MAX_GLYPH_ROTATION, MAX_GLYPH_SIZE, MIN_GLYPH_SIZE,
-  padPointFromTouch, padPolylines, strokesAfterDraw,
+  padGlyphPathD, padPointFromTouch, padPolylinePathD, strokesAfterDraw,
 } from '../logic/lineStyle';
 import {
   BAR_CUSHION, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, SECTION_TABS_ROW, SHADOW_PAD_SIZE, pageIsWelled,
@@ -136,23 +136,28 @@ describe('the pad', () => {
     expect(BAR).toContain("if (custom) set({ glyph: 'custom', custom }, true);");
   });
 
-  it('draws a drawn glyph as drawn, and a built-in one from its unit box', () => {
-    const custom: [number, number][][] = [[[0.1, 0.2], [0.3, 0.4]]];
-    expect(padPolylines(model({ glyph: 'custom', custom }))).toBe(custom);
-    const [dash] = padPolylines(model({ glyph: 'line' }));
-    expect(dash[0][1]).toBeCloseTo(0.5);
-    expect(dash[0][0]).toBeLessThan(0.5);
-    expect(dash[1][0]).toBeGreaterThan(0.5);
-    for (const poly of padPolylines(model({ glyph: 'heart' }))) {
-      for (const [x, y] of poly) {
-        expect(x).toBeGreaterThanOrEqual(0);
-        expect(x).toBeLessThanOrEqual(1);
-        expect(y).toBeGreaterThanOrEqual(0);
-        expect(y).toBeLessThanOrEqual(1);
-      }
-    }
+  it('draws a drawn glyph as drawn, and a built-in one from its unit box with its curves kept', () => {
+    const custom: [number, number][][] = [[[0.1, 0.2], [0.3, 0.4]], [[0.5, 0.5], [1, 1]]];
+    expect(padGlyphPathD(model({ glyph: 'custom', custom }), 100))
+      .toBe('M 10,20 L 30,40 M 50,50 L 100,100');
+    // The dash runs across the middle of the pad, 70% of its width.
+    expect(padGlyphPathD(model({ glyph: 'line' }), 100)).toBe('M 15,50 L 85,50');
+    // A circle is its four curves — not a chain of pieces, which drew as a
+    // dashed ring.
+    const circle = padGlyphPathD(model({ glyph: 'circle' }), 100);
+    expect(circle.match(/ C /g)).toHaveLength(4);
+    expect(circle).not.toContain(' L ');
+    expect(circle.endsWith(' Z')).toBe(true);
+    expect(padGlyphPathD(model({ glyph: 'heart' }), 100)).toContain(' C ');
+    expect(padGlyphPathD(model({ glyph: 'sparkle' }), 100)).toContain(' C ');
     // Draw with nothing drawn yet shows the circle it will stamp.
-    expect(padPolylines(model({ glyph: 'custom' }))).toEqual(padPolylines(model({ glyph: 'circle' })));
+    expect(padGlyphPathD(model({ glyph: 'custom' }), 100)).toBe(circle);
+    // …and the stroke under the finger is the same arithmetic.
+    expect(padPolylinePathD([[0, 0], [0.5, 0.25]], 148)).toBe('M 0,0 L 74,37');
+    // Drawn as ONE svg path, the toolbar's shape icons' way, not as views.
+    expect(BAR).toContain('<svg');
+    expect(BAR).toContain('<path d={glyphD}');
+    expect(BAR).not.toContain('transform: [{ rotate:');
   });
 
   it('Clear takes the drawing away and the glyph goes back to the circle', () => {

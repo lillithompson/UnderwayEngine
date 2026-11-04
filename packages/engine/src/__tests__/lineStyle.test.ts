@@ -6,7 +6,7 @@
  */
 
 import {
-  LINE_STYLE_GLYPHS, lineStyleGlyphCommands, lineStyleGlyphPreview, lineStyleMarkup, lineStyleOf,
+  LINE_STYLE_GLYPHS, lineStyleGlyphCommands, lineStyleMarkup, lineStyleOf,
   lineStylePathD, lineStylePlacements, lineStyleReachCells, lineStyleSeed, lineStyleSpacing,
 } from '../lineStyle';
 import { buildSVGObjectContent, svgStrokePresentation, svgStrokesMarkup } from '../svgPathBuilder';
@@ -167,11 +167,8 @@ describe('the glyphs', () => {
     expect(LINE_STYLE_GLYPHS).toEqual(['line', 'circle', 'sparkle', 'heart', 'custom']);
     for (const glyph of LINE_STYLE_GLYPHS) {
       if (glyph === 'custom') continue;
-      for (const poly of lineStyleGlyphPreview(style({ glyph }))) {
-        for (const [x, y] of poly) {
-          expect(Math.abs(x)).toBeLessThanOrEqual(0.5 + 1e-9);
-          expect(Math.abs(y)).toBeLessThanOrEqual(0.5 + 1e-9);
-        }
+      for (const c of lineStyleGlyphCommands(style({ glyph }))) {
+        for (let i = 1; i < c.length; i++) expect(Math.abs(c[i] as number)).toBeLessThanOrEqual(0.5 + 1e-9);
       }
     }
     // The dash is the one open glyph; the others close.
@@ -202,15 +199,6 @@ describe('the glyphs', () => {
     expect(lineStyleGlyphCommands(style({ glyph: 'custom', custom: [] }))).toBe(circle);
     expect(lineStyleGlyphCommands(style({ glyph: 'custom', custom: [[[0.5, 0.5]]] }))).toBe(circle);
     expect(lineStyleGlyphCommands(style({ glyph: 'custom', custom: [[[0.5, 0.5], [0.5, 0.5]]] }))).toBe(circle);
-  });
-
-  it('the preview flattens curves and closes closed glyphs', () => {
-    const [circle] = lineStyleGlyphPreview(style({ glyph: 'circle' }));
-    expect(circle.length).toBe(1 + 4 * 10 + 1);
-    expect(circle[0]).toEqual(circle[circle.length - 1]);
-    for (const [x, y] of circle) expect(Math.hypot(x, y)).toBeCloseTo(0.5, 1);
-    const [dash] = lineStyleGlyphPreview(style({ glyph: 'line' }));
-    expect(dash).toEqual([[-0.5, 0], [0.5, 0]]);
   });
 });
 
