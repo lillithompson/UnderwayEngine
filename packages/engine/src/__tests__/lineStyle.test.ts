@@ -6,13 +6,17 @@
  */
 
 import {
-  LINE_STYLE_GLYPHS, lineStyleGlyphCommands, lineStyleMarkup, lineStyleOf,
+  glyphCommandsPathD, lineStyleGlyphCommands, lineStyleMarkup, lineStyleOf,
   lineStylePathD, lineStylePlacements, lineStyleReachCells, lineStyleSeed, lineStyleSpacing,
 } from '../lineStyle';
 import { buildSVGObjectContent, svgStrokePresentation, svgStrokesMarkup } from '../svgPathBuilder';
 import { computeCircleSegments } from '../compositionArcMath';
 import { SVG_UNITS_PER_L0_CELL } from '../svgExport';
-import { LineStyleEffect, PathSegment, SVGObject } from '../types';
+import { LineStyleEffect, LineStyleGlyph, PathSegment, SVGObject } from '../types';
+
+/** Every glyph a style can name — the union, spelled out so the loop below
+ *  cannot silently skip one. */
+const EVERY_GLYPH: readonly LineStyleGlyph[] = ['line', 'circle', 'sparkle', 'heart', 'custom'];
 
 const line = (start: [number, number], end: [number, number]): PathSegment =>
   ({ kind: 'line', start, end });
@@ -163,9 +167,8 @@ describe('the random sliders', () => {
 });
 
 describe('the glyphs', () => {
-  it('every built-in glyph fits its unit box, and the row offers them all', () => {
-    expect(LINE_STYLE_GLYPHS).toEqual(['line', 'circle', 'sparkle', 'heart', 'custom']);
-    for (const glyph of LINE_STYLE_GLYPHS) {
+  it('every built-in glyph fits its unit box', () => {
+    for (const glyph of EVERY_GLYPH) {
       if (glyph === 'custom') continue;
       for (const c of lineStyleGlyphCommands(style({ glyph }))) {
         for (let i = 1; i < c.length; i++) expect(Math.abs(c[i] as number)).toBeLessThanOrEqual(0.5 + 1e-9);
@@ -203,6 +206,35 @@ describe('the glyphs', () => {
 });
 
 describe('the markup', () => {
+  it('walks the commands once for every reader, each with its own point mapper', () => {
+    const cmds = lineStyleGlyphCommands(style({ glyph: 'line' }));
+    expect(glyphCommandsPathD(cmds, (x, y) => [x * 10, y * 10 + 1])).toBe('M -5,1 L 5,1');
+    expect(glyphCommandsPathD([['M', 0, 0], ['C', 1, 1, 2, 2, 3, 3], ['Z']], (x, y) => [x, y]))
+      .toBe('M 0,0 C 1,1 2,2 3,3 Z');
+    expect(glyphCommandsPathD([['M', 1 / 3, 0]], (x, y) => [x, y])).toBe('M 0.333,0');
+  });
+
+  it('a long chain is walked once, not once per stamp: the cursor lands every stamp where a scan would', () => {
+    // A thousand-piece freehand chain along x, stamped densely: every stamp
+    // must sit on the chain (y = 0) at its evenly spaced x, which a stale
+    // cursor would miss.
+    const chain: PathSegment[] = [];
+    for (let i = 0; i < 1000; i++) chain.push(line([i * 0.1, 0], [(i + 1) * 0.1, 0]));
+    const stamps = lineStylePlacements(chain, style({ size: 0.5, density: 1 }), 3);
+    expect(stamps.length).toBeGreaterThan(200);
+    stamps.forEach((p, i) => {
+      expect(p.y).toBeCloseTo(0, 9);
+      expect(p.x).toBeCloseTo(i * (100 / (stamps.length - 1)), 9);
+    });
+    // …and scattered stamps, which can step backwards a little, still land
+    // on the chain.
+    for (const p of lineStylePlacements(chain, style({ size: 0.5, density: 1, randomPlacement: 1 }), 3)) {
+      expect(Math.abs(p.y)).toBeLessThanOrEqual(0.5 * 0.75 + 1e-9);
+      expect(p.x).toBeGreaterThanOrEqual(-1e-9);
+      expect(p.x).toBeLessThanOrEqual(100 + 1e-9);
+    }
+  });
+
   it('places, turns and scales each glyph into SVG units, as one path', () => {
     const d = lineStylePathD([line([0, 0], [0.4, 0])], style({ glyph: 'line', size: 1 }), 1);
     // One dash centred at x = 0.2 cells, a unit wide: (0.2 ± 0.5) × 256.

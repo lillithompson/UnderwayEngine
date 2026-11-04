@@ -1,5 +1,5 @@
 import type { LineStyleGlyphKind, LineStyleModel } from '../adapter';
-import { lineStyleGlyphCommands } from '@/engine/lineStyle';
+import { type GlyphCommand, glyphCommandsPathD, lineStyleGlyphCommands } from '@/engine/lineStyle';
 import { clamp01 } from '../appTheme';
 
 // The Style page's pure parts: its three faces, what its glyph row offers,
@@ -39,6 +39,10 @@ export const MAX_GLYPH_ROTATION = 360;
 
 /** How much of the pad a built-in glyph's preview spans. */
 const PREVIEW_SPAN = 0.7;
+/** The least a stroke has to span, in pad units, to be a drawing: under
+ *  this it is a tap or a tremor — and a tremor fitted to its own bounds
+ *  would stamp as a full-size dash at whatever angle the finger shook. */
+export const MIN_DRAW_EXTENT = 0.03;
 
 /** The pad's own point for a touch: pad units, 0…1 each way, clamped to the
  *  square so a finger that runs off the edge keeps drawing along it. */
@@ -47,26 +51,39 @@ export function padPointFromTouch(x: number, y: number, size: number): [number, 
   return [clamp01(x / size), clamp01(y / size)];
 }
 
+/** How far a stroke reaches, in pad units: the longer side of its box. */
+function strokeExtent(stroke: readonly (readonly [number, number])[]): number {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of stroke) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return stroke.length ? Math.max(maxX - minX, maxY - minY) : 0;
+}
+
 /** The strokes a lifted finger commits: the new stroke after the ones a
  *  drawn glyph already holds, or on its own when the glyph was a built-in
  *  one — a first stroke starts a new drawing rather than adding to the
- *  sketch Draw remembered. A stroke of one point (a tap) draws nothing. */
+ *  sketch Draw remembered. A stroke that spans less than
+ *  {@link MIN_DRAW_EXTENT} — a tap, a tremor — draws nothing: the pad
+ *  always holds a point where the finger landed, so a point count cannot
+ *  tell a tap from a line. */
 export function strokesAfterDraw(
   style: LineStyleModel, stroke: readonly [number, number][],
 ): [number, number][][] | null {
-  if (stroke.length < 2) return null;
+  if (stroke.length < 2 || strokeExtent(stroke) < MIN_DRAW_EXTENT) return null;
   const copy = stroke.map(([x, y]): [number, number] => [x, y]);
   return style.glyph === 'custom' && style.custom ? [...style.custom, copy] : [copy];
 }
 
-const fmt = (v: number): number => Math.round(v * 100) / 100;
-
 /** A run of pad-unit points as a path's `d`, in pad pixels — the live
- *  stroke under the finger, and each stroke of a drawn glyph. */
+ *  stroke under the finger, and each stroke of a drawn glyph. The engine's
+ *  own command walk, fed lines. */
 export function padPolylinePathD(points: readonly (readonly [number, number])[], padSize: number): string {
-  return points
-    .map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${fmt(x * padSize)},${fmt(y * padSize)}`)
-    .join(' ');
+  const commands: GlyphCommand[] = points.map(([x, y], i) => [i === 0 ? 'M' : 'L', x, y]);
+  return glyphCommandsPathD(commands, (x, y) => [x * padSize, y * padSize]);
 }
 
 /** What the pad draws, as one path's `d` in pad pixels: a drawn glyph as
@@ -79,20 +96,12 @@ export function padGlyphPathD(style: LineStyleModel, padSize: number): string {
   if (style.glyph === 'custom' && style.custom && style.custom.length > 0) {
     return style.custom.map((stroke) => padPolylinePathD(stroke, padSize)).join(' ');
   }
-  const px = (x: number, y: number): string =>
-    `${fmt((0.5 + x * PREVIEW_SPAN) * padSize)},${fmt((0.5 + y * PREVIEW_SPAN) * padSize)}`;
-  const parts: string[] = [];
-  for (const c of lineStyleGlyphCommands({
+  const commands = lineStyleGlyphCommands({
     glyph: style.glyph === 'custom' ? 'circle' : style.glyph,
     density: style.density, size: style.size, rotation: 0,
     randomPlacement: 0, randomRotation: 0, randomSize: 0,
-  })) {
-    switch (c[0]) {
-      case 'M': parts.push(`M ${px(c[1], c[2])}`); break;
-      case 'L': parts.push(`L ${px(c[1], c[2])}`); break;
-      case 'C': parts.push(`C ${px(c[1], c[2])} ${px(c[3], c[4])} ${px(c[5], c[6])}`); break;
-      case 'Z': parts.push('Z'); break;
-    }
-  }
-  return parts.join(' ');
+  });
+  return glyphCommandsPathD(commands, (x, y) => [
+    (0.5 + x * PREVIEW_SPAN) * padSize, (0.5 + y * PREVIEW_SPAN) * padSize,
+  ]);
 }

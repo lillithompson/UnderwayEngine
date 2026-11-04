@@ -371,6 +371,31 @@ describe('generateCompositionSVGCore — node effects', () => {
     expect(svg).toContain(`dx="${0.5 * U}"`);
   });
 
+  it('a styled line’s filter region is grown by its glyphs’ reach', async () => {
+    // A filter region CLIPS what it misses, and a line style's glyphs stand
+    // past the path — so past the box the region is sized from. The region
+    // of a styled line reaches further than the same line's does bare.
+    const shadow = { dx: 0.5, dy: 0.5, blur: 1, color: { r: 0, g: 0, b: 0 }, alpha: 0.5 };
+    const lineStyle = { glyph: 'heart' as const, density: 0.5, size: 2, rotation: 0, randomPlacement: 1, randomRotation: 0, randomSize: 1 };
+    const region = (markup: string) => {
+      const m = /<filter id="fx_svg_a"[^>]*\sx="(-?[\d.]+)"[^>]*\sy="(-?[\d.]+)"[^>]*\swidth="([\d.]+)"[^>]*\sheight="([\d.]+)"/.exec(markup);
+      expect(m).not.toBeNull();
+      return m!.slice(1, 5).map(Number);
+    };
+    const bare = region((await generateCompositionSVGCore(makeInputs({
+      svgObjects: [makeSquareSvg({ effects: { shadow } })],
+    })))!);
+    const styled = region((await generateCompositionSVGCore(makeInputs({
+      svgObjects: [makeSquareSvg({ effects: { shadow, lineStyle } })],
+    })))!);
+    // lineStyleReachCells: 2 × 1.75 × √½ + 0.75 × 2 ≈ 3.975 cells, × 256.
+    const reach = (2 * 1.75 * Math.SQRT1_2 + 0.75 * 2) * U;
+    expect(styled[0]).toBeCloseTo(bare[0] - reach, 0);
+    expect(styled[1]).toBeCloseTo(bare[1] - reach, 0);
+    expect(styled[2]).toBeCloseTo(bare[2] + reach * 2, 0);
+    expect(styled[3]).toBeCloseTo(bare[3] + reach * 2, 0);
+  });
+
   it('an UNFILLED shape dilates its outline before blurring it', async () => {
     // The reported bug: a shadow is the silhouette, blurred, and an
     // unfilled shape's silhouette is its outline — a hairline beside the

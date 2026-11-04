@@ -80,9 +80,6 @@ const GLYPHS: Record<Exclude<LineStyleGlyph, 'custom'>, readonly GlyphCommand[]>
   ],
 };
 
-/** Every glyph the Style page offers, in the order its row stands. */
-export const LINE_STYLE_GLYPHS: readonly LineStyleGlyph[] = ['line', 'circle', 'sparkle', 'heart', 'custom'];
-
 const EPS = 1e-9;
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -191,15 +188,22 @@ function measurePath(segments: readonly PathSegment[]): PathWalk {
   return { segments: kept, cumulative, total, closed };
 }
 
-/** The point a distance along the walk, and the direction of travel there. */
-function sampleWalk(walk: PathWalk, distance: number): { at: [number, number]; dir: [number, number] } {
+/** The point a distance along the walk, and the direction of travel
+ *  there. `cursor` is the piece the last sample fell in: the stamps come
+ *  in order along the path (scattered a little either way), so the search
+ *  steps from there rather than from the start, and a run of stamps over a
+ *  long freehand chain costs the chain's length once, not once per stamp. */
+function sampleWalk(
+  walk: PathWalk, distance: number, cursor: { k: number },
+): { at: [number, number]; dir: [number, number] } {
   const d = Math.max(0, Math.min(walk.total, distance));
   // The piece this distance falls in — the last whose start is at or before
   // it, so the very end of the path samples the last piece at f = 1.
-  let k = walk.segments.length - 1;
-  for (let i = 0; i < walk.segments.length; i++) {
-    if (d < walk.cumulative[i + 1]) { k = i; break; }
-  }
+  const last = walk.segments.length - 1;
+  let k = Math.max(0, Math.min(last, cursor.k));
+  while (k > 0 && d < walk.cumulative[k]) k--;
+  while (k < last && d >= walk.cumulative[k + 1]) k++;
+  cursor.k = k;
   const seg = walk.segments[k];
   const len = walk.cumulative[k + 1] - walk.cumulative[k];
   const f = Math.max(0, Math.min(1, (d - walk.cumulative[k]) / len));
@@ -253,6 +257,7 @@ export function lineStylePlacements(
   }
 
   const out: GlyphPlacement[] = [];
+  const cursor = { k: 0 };
   for (let i = 0; i < count; i++) {
     const along = (rng() * 2 - 1) * 0.5 * (step || spacing) * placement;
     const across = (rng() * 2 - 1) * 0.75 * style.size * placement;
@@ -260,7 +265,7 @@ export function lineStylePlacements(
     const grow = 1 + (rng() * 2 - 1) * 0.75 * sizing;
     let distance = start + i * step + along;
     if (walk.closed) distance = ((distance % walk.total) + walk.total) % walk.total;
-    const { at, dir } = sampleWalk(walk, distance);
+    const { at, dir } = sampleWalk(walk, distance, cursor);
     // The left-hand normal (y down), the way across the path.
     const nx = -dir[1], ny = dir[0];
     out.push({
@@ -276,6 +281,33 @@ export function lineStylePlacements(
 const fmt = (v: number): number => Math.round(v * 1e3) / 1e3;
 
 /**
+ * Glyph commands as a path's `d`, every point put through `point` — the one
+ * walk over {@link GlyphCommand} for every reader of one: the stamps along
+ * a path (below, placed, turned, scaled and projected) and the Style page's
+ * pad (editor-ui's `padGlyphPathD`, scaled into the pad). Numbers are
+ * trimmed to a thousandth, enough for SVG units and for pad pixels alike.
+ */
+export function glyphCommandsPathD(
+  commands: readonly GlyphCommand[],
+  point: (x: number, y: number) => readonly [number, number],
+): string {
+  const px = (x: number, y: number): string => {
+    const [px0, py0] = point(x, y);
+    return `${fmt(px0)},${fmt(py0)}`;
+  };
+  const parts: string[] = [];
+  for (const c of commands) {
+    switch (c[0]) {
+      case 'M': parts.push(`M ${px(c[1], c[2])}`); break;
+      case 'L': parts.push(`L ${px(c[1], c[2])}`); break;
+      case 'C': parts.push(`C ${px(c[1], c[2])} ${px(c[3], c[4])} ${px(c[5], c[6])}`); break;
+      case 'Z': parts.push('Z'); break;
+    }
+  }
+  return parts.join(' ');
+}
+
+/**
  * Every stamp of a style along a chain as ONE path's `d`, in the SVG-unit
  * space the engine's path markup is emitted in (`buildPathD`'s projection):
  * each glyph's commands placed, turned and scaled into world cells, then
@@ -288,22 +320,14 @@ export function lineStylePathD(
   const glyph = lineStyleGlyphCommands(style);
   const stamps = lineStylePlacements(segments, style, seed);
   if (stamps.length === 0 || glyph.length === 0) return '';
-  const parts: string[] = [];
-  for (const s of stamps) {
+  return stamps.map((s) => {
     const cos = Math.cos(s.angle) * s.scale;
     const sin = Math.sin(s.angle) * s.scale;
-    const px = (gx: number, gy: number): string =>
-      `${fmt((s.x + gx * cos - gy * sin) * unitsPerCell)},${fmt((s.y + gx * sin + gy * cos) * unitsPerCell)}`;
-    for (const c of glyph) {
-      switch (c[0]) {
-        case 'M': parts.push(`M ${px(c[1], c[2])}`); break;
-        case 'L': parts.push(`L ${px(c[1], c[2])}`); break;
-        case 'C': parts.push(`C ${px(c[1], c[2])} ${px(c[3], c[4])} ${px(c[5], c[6])}`); break;
-        case 'Z': parts.push('Z'); break;
-      }
-    }
-  }
-  return parts.join(' ');
+    return glyphCommandsPathD(glyph, (gx, gy) => [
+      (s.x + gx * cos - gy * sin) * unitsPerCell,
+      (s.y + gx * sin + gy * cos) * unitsPerCell,
+    ]);
+  }).join(' ');
 }
 
 /**

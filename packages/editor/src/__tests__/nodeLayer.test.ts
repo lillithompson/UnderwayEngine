@@ -54,3 +54,17 @@ describe('SvgNodeLayer takes a host’s own marking as children', () => {
 // nowhere yet — every `<SvgNodeLayer` in the three trees is an app's canvas,
 // and each app pins its own (Sol's seed marker is `plantLayerWiring.test`).
 // The canvas arrives at stage 5b, and the caller-side case arrives with it.
+
+describe('an outline cast keeps the line style', () => {
+  it('so a shadow under a run of hearts is a run of hearts', () => {
+    // The cast is the object restroked in the effect's ink, every other
+    // effect dropped — but the LINE STYLE is the shape of the silhouette
+    // itself, so it stays, under the same id (and so the same seed).
+    const from = NODE_LAYER.indexOf('function outlineCastObject');
+    expect(from).toBeGreaterThanOrEqual(0);
+    const fn = NODE_LAYER.slice(from, NODE_LAYER.indexOf('\n}\n', from));
+    expect(fn).toContain('delete out.effects;');
+    expect(fn).toContain('if (object.effects?.lineStyle) out.effects = { lineStyle: object.effects.lineStyle };');
+    expect(fn.indexOf('delete out.effects;')).toBeLessThan(fn.indexOf('out.effects = { lineStyle:'));
+  });
+});

@@ -21,7 +21,8 @@ import {
 } from '@/engine/types';
 import { useCallback, useRef } from 'react';
 
-// The effect bars: the drop shadow, the two glows, the border and the fade.
+// The effect bars: the drop shadow, the two glows, a vector's line style,
+// the border and the fade.
 // Every one of them is the same shape of edit — materialize a default so a
 // freshly opened bar has something to show, preview live off a snapshot,
 // commit one undo step on release — and every one of their rows opens the
@@ -100,10 +101,11 @@ export function useEffectBars<S extends EditorSession>({
 
   // …and a LINE STYLE, the Effects page's Style button over a vector: the
   // path's stroke replaced by a run of glyphs. It lands on the same effects
-  // block as the three, materialized only on the kinds that carry one (a
-  // frame routes it to its boundary rect like the rest, where the engine
-  // leaves it inert — only a vector has a path to lay glyphs along, and
-  // the panel offers the button only there).
+  // block as the three, materialized only on the kinds that carry one. The
+  // panel offers the button only where the model carries the handler — a
+  // vector, which has a path to lay glyphs along (panelModel's
+  // `svgEditable`); a frame is never offered it, so the frame branch above
+  // is not reached from here.
   const onAddLineStyle = useCallback(() => {
     materializeEffect('lineStyle', DEFAULT_LINE_STYLE_EFFECT);
   }, [materializeEffect]);

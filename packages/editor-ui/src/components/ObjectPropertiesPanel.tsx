@@ -476,16 +476,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // sliders (color still comes from the model — it's changed externally via
   // the full-screen picker).
   //
-  // The Effects family holds THREE of them — the shadow and a glow each way
-  // — and seeds all three when the family opens rather than on each tab
-  // press: moving between the effect tabs is a look at another effect, not
-  // an edit, and re-seeding as a tab is pressed would let a half-dragged
-  // value on one of them be written by another.
+  // The Effects family holds FOUR of them — the shadow, a glow each way and
+  // a vector's line style — and seeds all four when the family opens rather
+  // than on each tab press: moving between the effect tabs is a look at
+  // another effect, not an edit, and re-seeding as a tab is pressed would
+  // let a half-dragged value on one of them be written by another.
   const [shadowDraft, setShadowDraft] = useState<ShadowModel | null>(null);
   const [glowDrafts, setGlowDrafts] = useState<Partial<Record<GlowKind, GlowModel>>>({});
   const [lineStyleDraft, setLineStyleDraft] = useState<LineStyleModel | null>(null);
   /** Which of the Effects family's pages is showing — the Add / Remove
-   *  buttons, or one effect's controls. The four share ONE host flag
+   *  buttons, or one effect's controls. The five share ONE host flag
    *  (`effectsOpen`), exactly as the four text pages share `textStyleOpen`,
    *  and this picks between them. Held HERE because the sheet's height is
    *  worked out before the page renders. */
@@ -587,7 +587,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     : kind === 'lineStyle'
       ? model.lineStylePresent === true
       : model.glowPresent?.[kind] === true);
-  /** Which of the three the page OFFERS.
+  /** Which of the kinds the page OFFERS.
    *
    *  An inner glow is light gathered inside the object's own area, and an
    *  open path — a line, an arc, a pencil stroke — has no inside. The engine
@@ -1658,10 +1658,11 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       />
     );
   } else if (displaySub === 'effects') {
-    // Three buttons, one per effect — four over an image, which can also
-    // carry a TINT, or a shape that can wear a PATTERN — lit for the ones the
-    // object wears, and a press either way. No Remove line: every button IS
-    // one. Two to a line, and the sheet was measured from this same list.
+    // One button per effect the selection is offered — the cast three, a
+    // vector's line style, and over an image its TINT or over a shape its
+    // PATTERN — lit for the ones the object wears, and a press either way.
+    // No Remove line: every button IS one. Two to a line, and the sheet was
+    // measured from this same list.
     activeBarEl = <EffectsBar {...effectsBarProps} />;
   } else if (shownEffect === 'lineStyle') {
     // The Style page: one tabbed box — the glyph (its row, Density and

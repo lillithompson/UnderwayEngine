@@ -129,3 +129,25 @@ describe('v71: the line style block', () => {
     expect(parsed.meta.svgObjects![0].effects!.lineStyle).toBeUndefined();
   });
 });
+
+describe('v71: a corrupt file is refused, not misread', () => {
+  test('a stroke whose point count claims more bytes than remain throws a clear error', () => {
+    const custom: [number, number][][] = [[[0.1, 0.1], [0.9, 0.9]]];
+    const bytes = serializeComposition(makeBundle([makeSVG('a', {
+      effects: { lineStyle: { glyph: 'custom', custom, density: 0.5, size: 0.5, rotation: 0, randomPlacement: 0, randomRotation: 0, randomSize: 0 } },
+    })]), []);
+    // The one stroke's u16 point count sits two bytes after the u8 stroke
+    // count; find the block by its bytes (glyph 4 = custom … strokeCount 1,
+    // pointCount 2) and inflate the count past the file's end.
+    const idx = (() => {
+      for (let i = 0; i < bytes.length - 3; i++) {
+        if (bytes[i] === 1 && bytes[i + 1] === 2 && bytes[i + 2] === 0 && bytes[i + 3] === Math.round(0.1 * 255)) return i;
+      }
+      return -1;
+    })();
+    expect(idx).toBeGreaterThan(0);
+    const corrupt = new Uint8Array(bytes);
+    new DataView(corrupt.buffer).setUint16(idx + 1, 0xffff, true);
+    expect(() => deserializeComposition(corrupt)).toThrow(/Corrupt \.tile: line style stroke 0\/1 claims 65535 points/);
+  });
+});

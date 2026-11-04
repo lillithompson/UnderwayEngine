@@ -147,12 +147,12 @@ describe('the defaults an Add button materializes', () => {
 });
 
 describe('line style', () => {
-  test('round-trips, the sliders clamped to 0–1 and the size to nothing at least', () => {
+  test('round-trips, the sliders clamped to 0–1 and the size to the Size row’s floor', () => {
     expect(lineStyleModelToEffect(lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT)))
       .toEqual(DEFAULT_LINE_STYLE_EFFECT);
     const m = lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT);
     expect(lineStyleModelToEffect({ ...m, density: 2, size: -1, rotation: -90, randomPlacement: -1, randomRotation: 7, randomSize: 0.5 }))
-      .toMatchObject({ density: 1, size: 0, rotation: 270, randomPlacement: 0, randomRotation: 1, randomSize: 0.5 });
+      .toMatchObject({ density: 1, size: 0.125, rotation: 270, randomPlacement: 0, randomRotation: 1, randomSize: 0.5 });
   });
 
   test('the default is a visible run of circles with nothing random', () => {

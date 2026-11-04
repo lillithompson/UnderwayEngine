@@ -1953,7 +1953,17 @@ function readEffects(
     const strokeCount = data[pos++];
     const custom: [number, number][][] = [];
     for (let i = 0; i < strokeCount; i++) {
+      // A `.tile` is imported from outside, so the counts are untrusted:
+      // Uint8Array indexing past the end reads undefined, not an error, and
+      // a bogus count would desynchronize every record after this one. The
+      // same guard the subpath reader keeps (readSVGSubpaths).
+      if (pos + 2 > data.byteLength) {
+        throw new Error(`Corrupt .tile: line style stroke ${i}/${strokeCount} header runs past file end.`);
+      }
       const pointCount = view.getUint16(pos, true); pos += 2;
+      if (pointCount * 2 > data.byteLength - pos) {
+        throw new Error(`Corrupt .tile: line style stroke ${i}/${strokeCount} claims ${pointCount} points but only ${data.byteLength - pos} bytes remain.`);
+      }
       const stroke: [number, number][] = [];
       for (let j = 0; j < pointCount; j++) {
         stroke.push([data[pos] / 255, data[pos + 1] / 255]);

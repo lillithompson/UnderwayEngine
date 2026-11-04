@@ -800,9 +800,11 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
       onAddLineStyle,
       onLineStyle,
     } : {
-      // Worn but not offered — a vector the shell cannot style — still
-      // reports presence, so the tab stays reachable and the style can be
-      // taken off.
+      // Worn but not offered — a vector in a shell that has not wired the
+      // handlers — still reports presence, so the Style tab the file
+      // brought with it stands on the row and says the style is there.
+      // Nothing on that tab can write (there is no handler), so removing
+      // it waits for the shell to wire `onLineStyle`.
       lineStylePresent: effectPresent('lineStyle'),
     }),
     borderOpen: borderOpen && (imageEditable || frameEditable),

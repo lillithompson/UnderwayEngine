@@ -114,7 +114,10 @@ function GlyphPad({ style, onDraw, onClear }: {
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => { beginValueDrag(); strokeRef.current = []; add(e); },
       onPanResponderMove: (e) => add(e),
-      onPanResponderRelease: (e) => { add(e); finish(); },
+      // The release adds no point: its location is not where the finger
+      // let go (see the Slider's and the XYPad's release handlers), and the
+      // last move already is.
+      onPanResponderRelease: () => finish(),
       onPanResponderTerminate: () => finish(),
     }),
   ).current;

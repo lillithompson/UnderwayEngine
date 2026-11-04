@@ -81,18 +81,17 @@ export const EFFECT_KINDS: readonly EffectKind[] = ['shadow', 'outer', 'inner', 
  *  places, so the button you press and the tab you land on say the same
  *  word. */
 /** …and what the image TINT's button is called. Not an EffectKind: the
- *  three above each open a page of controls, and a tint has none of its
- *  own — the colour brush is what lays it on. One name here for the
- *  button and for anything that speaks it. */
+ *  kinds each open a page of controls, and a tint has none of its own —
+ *  the colour brush is what lays it on. One name here for the button and
+ *  for anything that speaks it. */
 export const TINT_EFFECT_LABEL = 'Tint';
 
 /** …and what a closed shape's PATTERN FILL is called on this page. Not an
- *  EffectKind either — the kinds are the three that share one set of
- *  controls (EffectBar), and a pattern's page is nothing like them — but it
- *  is the same KIND of thing as they are: cloth cast over the shape's own
- *  paint, added here and taken off here. Its tab, unlike a tint's absent
- *  one, appears only once the button has been pressed, exactly as the three
- *  effects' tabs do. */
+ *  EffectKind either — a kind is worn by the node's own effects block, and a
+ *  pattern is the shape's fill — but it is the same KIND of thing as they
+ *  are: cloth cast over the shape's own paint, added here and taken off
+ *  here. Its tab, unlike a tint's absent one, appears only once the button
+ *  has been pressed, exactly as the effects' tabs do. */
 export const PATTERN_EFFECT_LABEL = 'Pattern';
 
 export function effectLabel(kind: EffectKind): string {
@@ -106,7 +105,7 @@ export function effectLabel(kind: EffectKind): string {
  *  given ARE the list of buttons, so the sheet's height and the page's grid
  *  count the same thing (see {@link effectButtonCount}). */
 export interface EffectsBarProps {
-  /** Which of the three the selection is offered, in the order their buttons
+  /** Which of the kinds the selection is offered, in the order their buttons
    *  stand and their tabs follow. Defaults to all of them
    *  ({@link EFFECT_KINDS}); a host drops the ones its selection has no use
    *  for — an INNER glow off an open path, which has no inside for light to

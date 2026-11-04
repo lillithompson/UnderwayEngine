@@ -5,6 +5,7 @@ import type {
   BorderModel, EndpointsModel, FramingModel, GlowKind, GlowModel, LineStyleModel, ShadowModel,
   TintModel,
 } from '@/editor-ui';
+import { MIN_GLYPH_SIZE } from '@/editor-ui/logic/lineStyle';
 
 // The property panel's models ↔ the engine's records, and the defaults an
 // Add button materializes. The halves of each pair live together because
@@ -48,14 +49,15 @@ export const DEFAULT_LINE_STYLE_EFFECT: LineStyleEffect = {
 /** LineStyleModel (editor-ui) ↔ LineStyleEffect (engine). The two have the
  *  same fields — the model mirrors the record rather than translating it —
  *  so the pair is a clamp each way: the sliders' 0–1, a size no smaller
- *  than nothing, a rotation brought round into 0–360. The drawn glyph rides through as it is, and only when the
- *  glyph is the drawn one or a drawing exists to remember. */
+ *  than the Size row's own floor (a size of nothing stamps nothing, and the
+ *  path would vanish), a rotation brought round into 0–360. A drawing
+ *  rides through as it is, when there is one. */
 export function lineStyleModelToEffect(m: LineStyleModel): LineStyleEffect {
   return {
     glyph: m.glyph,
     ...(m.custom && m.custom.length > 0 ? { custom: m.custom } : {}),
     density: Math.max(0, Math.min(1, m.density)),
-    size: Math.max(0, m.size),
+    size: Math.max(MIN_GLYPH_SIZE, m.size),
     rotation: ((m.rotation % 360) + 360) % 360,
     randomPlacement: Math.max(0, Math.min(1, m.randomPlacement)),
     randomRotation: Math.max(0, Math.min(1, m.randomRotation)),

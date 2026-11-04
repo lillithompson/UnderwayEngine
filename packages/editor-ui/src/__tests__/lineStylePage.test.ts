@@ -11,8 +11,8 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { LineStyleModel } from '../adapter';
 import {
-  LINE_STYLE_GLYPH_OPTIONS, LINE_STYLE_SECTIONS, MAX_GLYPH_ROTATION, MAX_GLYPH_SIZE, MIN_GLYPH_SIZE,
-  padGlyphPathD, padPointFromTouch, padPolylinePathD, strokesAfterDraw,
+  LINE_STYLE_GLYPH_OPTIONS, LINE_STYLE_SECTIONS, MAX_GLYPH_ROTATION, MAX_GLYPH_SIZE, MIN_DRAW_EXTENT,
+  MIN_GLYPH_SIZE, padGlyphPathD, padPointFromTouch, padPolylinePathD, strokesAfterDraw,
 } from '../logic/lineStyle';
 import {
   BAR_CUSHION, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, SECTION_TABS_ROW, SHADOW_PAD_SIZE, pageIsWelled,
@@ -131,9 +131,22 @@ describe('the pad', () => {
     expect(strokesAfterDraw(model({ glyph: 'custom', custom: first }), stroke)).toEqual([...first, stroke]);
     // …and the strokes are copies, not the pad's own buffer.
     expect(strokesAfterDraw(model(), stroke)![0]).not.toBe(stroke);
-    // A tap draws nothing.
-    expect(strokesAfterDraw(model(), [[0.5, 0.5]])).toBeNull();
     expect(BAR).toContain("if (custom) set({ glyph: 'custom', custom }, true);");
+  });
+
+  it('a tap or a tremor draws nothing: the guard is the stroke’s extent, not its point count', () => {
+    // The pad holds a point from the moment the finger lands, so a tap IS a
+    // stroke of points — all at one place. Fitted to its own bounds, a
+    // tremor would stamp as a full-size dash at whatever angle it shook.
+    expect(strokesAfterDraw(model(), [[0.5, 0.5]])).toBeNull();
+    expect(strokesAfterDraw(model(), [[0.5, 0.5], [0.5, 0.5]])).toBeNull();
+    expect(strokesAfterDraw(model(), [[0.5, 0.5], [0.507, 0.503], [0.5, 0.5]])).toBeNull();
+    expect(MIN_DRAW_EXTENT).toBe(0.03);
+    expect(strokesAfterDraw(model(), [[0.5, 0.5], [0.5 + MIN_DRAW_EXTENT, 0.5]])).toHaveLength(1);
+    // …and the release adds no point of its own: its location is not where
+    // the finger let go.
+    expect(BAR).toContain('onPanResponderRelease: () => finish(),');
+    expect(BAR).not.toContain('onPanResponderRelease: (e) => { add(e); finish(); },');
   });
 
   it('draws a drawn glyph as drawn, and a built-in one from its unit box with its curves kept', () => {
