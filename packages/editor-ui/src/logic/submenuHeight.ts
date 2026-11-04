@@ -263,10 +263,10 @@ export function effectButtonGridHeight(count: number): number {
  *  pad, and the two measure the same. */
 export type SubmenuKey =
   | 'tint' | 'crop' | 'effects' | 'shadow' | 'glowOuter' | 'glowInner' | 'border' | 'opacity'
-  // A vector's LINE STYLE: the fourth tab the Effects page can make — the
-  // glyph row, then the drawing pad beside the five sliders (density, size
-  // and the three random ones), the pad standing in the aside column the
-  // Shadow page's offset pad stands in.
+  // A vector's LINE STYLE: the fourth tab the Effects page can make — one
+  // tabbed box, the Copies page's shape, whose faces are the glyph (its
+  // row, Density and Scatter beside the drawing pad), its rotation and its
+  // scale.
   | 'lineStyle'
   | 'image'
   | 'text' | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
@@ -432,7 +432,7 @@ function bareArea(rows: readonly number[], gap = ROW_GAP): number {
  * cannot be measured one way and drawn the other.
  */
 export function pageIsWelled(key: SubmenuKey): boolean {
-  return key !== 'transform' && key !== 'effects';
+  return key !== 'transform' && key !== 'effects' && key !== 'lineStyle';
 }
 
 /** A GROUP of rows (effectBar's RowGroup): a shaded rounded box around rows
@@ -650,13 +650,15 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       return contentArea(ctx.effectColor ? [block, ROW_SLIDER] : [block]);
     }
     case 'lineStyle': {
-      // The glyph row, then the five sliders (Density, Size, and the three
-      // random ones) with the drawing pad beside them — the same square the
-      // Shadow page's pad is, and shorter than five rows, so the block is
-      // the sliders' and the page never changes height with the glyph. No
-      // colour row: the glyphs wear the Stroke page's ink.
-      const block = Math.max(stack([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]), SHADOW_PAD_SIZE);
-      return contentArea([ROW_SEGMENTED, block]);
+      // The Style page: ONE tabbed box, the Copies page's shape — the tab
+      // row, then the face. Every face is as tall as the Glyph face, whose
+      // drawing pad (the Shadow page's square) stands beside its three
+      // rows, so the page never resizes under a tab press. Its group IS its
+      // box, so it is drawn with no well around it (pageIsWelled) and
+      // measured without the well's padding. No colour row: the glyphs
+      // wear the Stroke page's ink.
+      const face = Math.max(stack([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER]), SHADOW_PAD_SIZE);
+      return bareArea([rowGroupHeight([SECTION_TABS_ROW, face])], GROUP_GAP);
     }
     default: {
       // Exhaustiveness guard: adding a SubmenuKey without giving it rows here

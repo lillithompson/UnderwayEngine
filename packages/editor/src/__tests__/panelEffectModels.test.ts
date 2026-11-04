@@ -151,13 +151,13 @@ describe('line style', () => {
     expect(lineStyleModelToEffect(lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT)))
       .toEqual(DEFAULT_LINE_STYLE_EFFECT);
     const m = lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT);
-    expect(lineStyleModelToEffect({ ...m, density: 2, size: -1, randomPlacement: -1, randomRotation: 7, randomSize: 0.5 }))
-      .toMatchObject({ density: 1, size: 0, randomPlacement: 0, randomRotation: 1, randomSize: 0.5 });
+    expect(lineStyleModelToEffect({ ...m, density: 2, size: -1, rotation: -90, randomPlacement: -1, randomRotation: 7, randomSize: 0.5 }))
+      .toMatchObject({ density: 1, size: 0, rotation: 270, randomPlacement: 0, randomRotation: 1, randomSize: 0.5 });
   });
 
   test('the default is a visible run of circles with nothing random', () => {
     expect(DEFAULT_LINE_STYLE_EFFECT).toEqual({
-      glyph: 'circle', density: 0.5, size: 1, randomPlacement: 0, randomRotation: 0, randomSize: 0,
+      glyph: 'circle', density: 0.5, size: 1, rotation: 0, randomPlacement: 0, randomRotation: 0, randomSize: 0,
     });
   });
 

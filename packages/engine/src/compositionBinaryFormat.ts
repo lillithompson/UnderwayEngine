@@ -175,8 +175,9 @@ import { signedDeg } from './sceneTransform';
 //                 + spread f32
 //   v71 block follows that:
 //   lineStyle:    glyph u8 (0 line, 1 circle, 2 sparkle, 3 heart, 4 custom)
-//                 + density u8 + size f32 + randomPlacement u8
-//                 + randomRotation u8 + randomSize u8 (the u8s quantized /255)
+//                 + density u8 + size f32 + rotation f32 (degrees)
+//                 + randomPlacement u8 + randomRotation u8 + randomSize u8
+//                 (the u8s quantized /255)
 //                 + strokeCount u8, then per stroke pointCount u16 and
 //                   that many x u8 + y u8 (unit square, quantized /255) —
 //                   zero strokes unless the glyph is custom
@@ -637,7 +638,7 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      path (engine/lineStyle.ts), with its density, size and the three
 //      random sliders, and the glyph itself when the user drew one. It
 //      rides the effects payload's LAST spare presence bit (0x80) and
-//      sits after the v68 blocks: six scalars, then the drawn glyph's
+//      sits after the v68 blocks: seven scalars, then the drawn glyph's
 //      polylines as u8 points in the pad's unit square (a built-in glyph
 //      writes a zero stroke count and no points).
 //
@@ -1754,7 +1755,7 @@ function lineStyleStrokes(ls: LineStyleEffect): [number, number][][] {
 }
 
 function lineStyleBinarySize(ls: LineStyleEffect): number {
-  let size = 1 + 1 + 4 + 3; // glyph, density, size f32, the three random u8s
+  let size = 1 + 1 + 4 + 4 + 3; // glyph, density, size f32, rotation f32, the three random u8s
   size += 1; // strokeCount
   for (const stroke of lineStyleStrokes(ls)) size += 2 + stroke.length * 2;
   return size;
@@ -1859,6 +1860,7 @@ function writeEffects(view: DataView, out: Uint8Array, pos: number, fx: NodeEffe
     out[pos++] = LINE_STYLE_GLYPH_TO_BYTE[ls.glyph] ?? 1;
     out[pos++] = quantize255(ls.density);
     view.setFloat32(pos, ls.size, true); pos += 4;
+    view.setFloat32(pos, ls.rotation, true); pos += 4;
     out[pos++] = quantize255(ls.randomPlacement);
     out[pos++] = quantize255(ls.randomRotation);
     out[pos++] = quantize255(ls.randomSize);
@@ -1944,6 +1946,7 @@ function readEffects(
     const glyph = BYTE_TO_LINE_STYLE_GLYPH[data[pos++]] ?? 'circle';
     const density = data[pos++] / 255;
     const size = view.getFloat32(pos, true); pos += 4;
+    const rotation = view.getFloat32(pos, true); pos += 4;
     const randomPlacement = data[pos++] / 255;
     const randomRotation = data[pos++] / 255;
     const randomSize = data[pos++] / 255;
@@ -1959,7 +1962,7 @@ function readEffects(
       custom.push(stroke);
     }
     effects.lineStyle = {
-      glyph, density, size, randomPlacement, randomRotation, randomSize,
+      glyph, density, size, rotation, randomPlacement, randomRotation, randomSize,
       ...(custom.length > 0 ? { custom } : {}),
     };
   }

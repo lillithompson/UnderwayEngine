@@ -501,7 +501,7 @@ describe('buildPanelModel', () => {
 
 describe('the Style page — a vector’s line style', () => {
   const style = {
-    glyph: 'heart' as const, density: 0.25, size: 0.5,
+    glyph: 'heart' as const, density: 0.25, size: 0.5, rotation: 30,
     randomPlacement: 0, randomRotation: 0.5, randomSize: 0,
   };
   const withStyle = (h: PanelHandlers & { calls: string[] }): PanelHandlers => ({

@@ -2,11 +2,22 @@ import type { LineStyleGlyphKind, LineStyleModel } from '../adapter';
 import { lineStyleGlyphPreview } from '@/engine/lineStyle';
 import { clamp01 } from '../appTheme';
 
-// The Style page's pure parts: what its glyph row offers, the Size row's
-// range, and the drawing pad's arithmetic — a touch in pad units, the
-// strokes a lifted finger commits, and what the pad draws. The component
-// (components/LineStyleBar.tsx) is React Native and holds the views; these
-// are what a node test can reach.
+// The Style page's pure parts: its three faces, what its glyph row offers,
+// the Size and Rotation rows' ranges, and the drawing pad's arithmetic — a
+// touch in pad units, the strokes a lifted finger commits, and what the
+// pad draws. The component (components/LineStyleBar.tsx) is React Native
+// and holds the views; these are what a node test can reach.
+
+/** The page's three faces, the Copies page's inner tabs over again: which
+ *  glyph and how it is laid (with the pad), how it is turned, how big it
+ *  is. One section, one at a time. */
+export type LineStyleSection = 'glyph' | 'rotation' | 'scale';
+
+export const LINE_STYLE_SECTIONS: readonly { value: LineStyleSection; label: string }[] = [
+  { value: 'glyph', label: 'Glyph' },
+  { value: 'rotation', label: 'Rotation' },
+  { value: 'scale', label: 'Scale' },
+];
 
 /** The glyph row's choices, in the order they stand. Icons are names from
  *  the Material Community set the segmented rows draw. */
@@ -23,6 +34,8 @@ export const LINE_STYLE_GLYPH_OPTIONS: readonly { value: LineStyleGlyphKind; lab
 export const MIN_GLYPH_SIZE = 0.125;
 /** …and the largest: 64pt. */
 export const MAX_GLYPH_SIZE = 4;
+/** The Rotation row runs a full turn, in degrees. */
+export const MAX_GLYPH_ROTATION = 360;
 
 /** How much of the pad a built-in glyph's preview spans. */
 const PREVIEW_SPAN = 0.7;
@@ -53,7 +66,7 @@ export function padPolylines(style: LineStyleModel): [number, number][][] {
   if (style.glyph === 'custom' && style.custom && style.custom.length > 0) return style.custom;
   return lineStyleGlyphPreview({
     glyph: style.glyph === 'custom' ? 'circle' : style.glyph,
-    density: style.density, size: style.size,
+    density: style.density, size: style.size, rotation: 0,
     randomPlacement: 0, randomRotation: 0, randomSize: 0,
   }).map((poly) => poly.map(([x, y]): [number, number] => [0.5 + x * PREVIEW_SPAN, 0.5 + y * PREVIEW_SPAN]));
 }

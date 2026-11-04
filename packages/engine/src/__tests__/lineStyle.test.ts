@@ -25,7 +25,7 @@ const square = (): PathSegment[] => [
 ];
 
 const style = (extras: Partial<LineStyleEffect> = {}): LineStyleEffect => ({
-  glyph: 'circle', density: 0.5, size: 0.5,
+  glyph: 'circle', density: 0.5, size: 0.5, rotation: 0,
   randomPlacement: 0, randomRotation: 0, randomSize: 0,
   ...extras,
 });
@@ -86,6 +86,14 @@ describe('placement along the path', () => {
       expect(Math.abs(rx * tx + ry * ty)).toBeLessThan(1e-6);
       expect(Math.hypot(rx, ry)).toBeCloseTo(2, 6);
     }
+  });
+
+  it('a rotation turns every glyph from the path’s direction by the same angle', () => {
+    const stamps = lineStylePlacements(straight(), style({ rotation: 90 }), 1);
+    for (const p of stamps) expect(p.angle).toBeCloseTo(Math.PI / 2);
+    const d = lineStylePathD([line([0, 0], [0.4, 0])], style({ glyph: 'line', size: 1, rotation: 90 }), 1);
+    // A dash turned a quarter turn stands across the path.
+    expect(d).toBe(`M ${0.2 * 256},${-0.5 * 256} L ${0.2 * 256},${0.5 * 256}`);
   });
 
   it('density runs from sparse to touching, and nothing is stamped on nothing', () => {

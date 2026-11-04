@@ -1458,6 +1458,9 @@ export interface LineStyleEffect {
   /** A glyph's size in world cells — the side of the box it is drawn
    *  into (design pt ÷ 16). */
   size: number;
+  /** How far every glyph is turned from the path's direction, in degrees
+   *  clockwise, 0…360 (0 = facing along the path). */
+  rotation: number;
   /** How far a glyph may stray from its place on the path, 0…1: along the
    *  path and across it, as a fraction of its spacing and its size. */
   randomPlacement: number;

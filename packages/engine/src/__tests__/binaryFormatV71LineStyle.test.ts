@@ -45,7 +45,7 @@ function roundTrip(svgs: SVGObject[]): SVGObject[] {
 describe('v71: the line style block', () => {
   test('a built-in glyph round-trips, its 0…1 sliders to the nearest 1/255', () => {
     const lineStyle: LineStyleEffect = {
-      glyph: 'heart', density: 0.4, size: 0.625,
+      glyph: 'heart', density: 0.4, size: 0.625, rotation: 45,
       randomPlacement: 0.2, randomRotation: 1, randomSize: 0.6,
     };
     const [back] = roundTrip([makeSVG('a', { effects: { lineStyle } })]);
@@ -53,6 +53,7 @@ describe('v71: the line style block', () => {
     expect(got).toBeDefined();
     expect(got!.glyph).toBe('heart');
     expect(got!.size).toBeCloseTo(0.625, 6);
+    expect(got!.rotation).toBe(45);
     expect(got!.density).toBeCloseTo(0.4, 2);
     expect(got!.randomPlacement).toBeCloseTo(0.2, 2);
     expect(got!.randomRotation).toBe(1);
@@ -64,7 +65,7 @@ describe('v71: the line style block', () => {
   test('every glyph keeps its name', () => {
     const glyphs: LineStyleEffect['glyph'][] = ['line', 'circle', 'sparkle', 'heart', 'custom'];
     const svgs = glyphs.map((glyph, i) => makeSVG(`g${i}`, {
-      effects: { lineStyle: { glyph, density: 0.5, size: 0.5, randomPlacement: 0, randomRotation: 0, randomSize: 0 } },
+      effects: { lineStyle: { glyph, density: 0.5, size: 0.5, rotation: 0, randomPlacement: 0, randomRotation: 0, randomSize: 0 } },
     }));
     expect(roundTrip(svgs).map((s) => s.effects?.lineStyle?.glyph)).toEqual(glyphs);
   });
@@ -75,7 +76,7 @@ describe('v71: the line style block', () => {
       [[0.5, 0.5], [0.9, 0.95]],
     ];
     const lineStyle: LineStyleEffect = {
-      glyph: 'custom', custom, density: 0.5, size: 0.5,
+      glyph: 'custom', custom, density: 0.5, size: 0.5, rotation: 0,
       randomPlacement: 0, randomRotation: 0, randomSize: 0,
     };
     const [back] = roundTrip([makeSVG('a', { effects: { lineStyle } })]);
@@ -93,7 +94,7 @@ describe('v71: the line style block', () => {
 
   test('a built-in glyph writes no strokes even if a drawing is remembered beside it', () => {
     const lineStyle: LineStyleEffect = {
-      glyph: 'circle', custom: [[[0, 0], [1, 1]]], density: 0.5, size: 0.5,
+      glyph: 'circle', custom: [[[0, 0], [1, 1]]], density: 0.5, size: 0.5, rotation: 0,
       randomPlacement: 0, randomRotation: 0, randomSize: 0,
     };
     const [back] = roundTrip([makeSVG('a', { effects: { lineStyle } })]);
@@ -104,7 +105,7 @@ describe('v71: the line style block', () => {
     const shadow = { dx: 0.5, dy: 0.25, blur: 1, color: { r: 0, g: 0, b: 0 }, alpha: 0.5 };
     const innerGlow = { radius: 1, color: { r: 255, g: 255, b: 255 }, alpha: 0.6, spread: 0.25 };
     const lineStyle: LineStyleEffect = {
-      glyph: 'sparkle', density: 1, size: 1, randomPlacement: 0, randomRotation: 0, randomSize: 0,
+      glyph: 'sparkle', density: 1, size: 1, rotation: 0, randomPlacement: 0, randomRotation: 0, randomSize: 0,
     };
     const [styled, plain] = roundTrip([
       makeSVG('a', { effects: { shadow, innerGlow, lineStyle } }),

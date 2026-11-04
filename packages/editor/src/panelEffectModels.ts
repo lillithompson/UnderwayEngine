@@ -42,13 +42,13 @@ export type ColoredEffectKey = Exclude<EffectKey, 'lineStyle'>;
 // (16pt), every other stamp, nothing random — a visible run of glyphs to
 // edit, in the path's own ink and width.
 export const DEFAULT_LINE_STYLE_EFFECT: LineStyleEffect = {
-  glyph: 'circle', density: 0.5, size: 1, randomPlacement: 0, randomRotation: 0, randomSize: 0,
+  glyph: 'circle', density: 0.5, size: 1, rotation: 0, randomPlacement: 0, randomRotation: 0, randomSize: 0,
 };
 
 /** LineStyleModel (editor-ui) ↔ LineStyleEffect (engine). The two have the
  *  same fields — the model mirrors the record rather than translating it —
- *  so the pair is a clamp each way: the sliders' 0–1 and a size no smaller
- *  than nothing. The drawn glyph rides through as it is, and only when the
+ *  so the pair is a clamp each way: the sliders' 0–1, a size no smaller
+ *  than nothing, a rotation brought round into 0–360. The drawn glyph rides through as it is, and only when the
  *  glyph is the drawn one or a drawing exists to remember. */
 export function lineStyleModelToEffect(m: LineStyleModel): LineStyleEffect {
   return {
@@ -56,6 +56,7 @@ export function lineStyleModelToEffect(m: LineStyleModel): LineStyleEffect {
     ...(m.custom && m.custom.length > 0 ? { custom: m.custom } : {}),
     density: Math.max(0, Math.min(1, m.density)),
     size: Math.max(0, m.size),
+    rotation: ((m.rotation % 360) + 360) % 360,
     randomPlacement: Math.max(0, Math.min(1, m.randomPlacement)),
     randomRotation: Math.max(0, Math.min(1, m.randomRotation)),
     randomSize: Math.max(0, Math.min(1, m.randomSize)),
@@ -68,6 +69,7 @@ export function lineStyleEffectToModel(e: LineStyleEffect): LineStyleModel {
     ...(e.custom ? { custom: e.custom } : {}),
     density: e.density,
     size: e.size,
+    rotation: e.rotation ?? 0,
     randomPlacement: e.randomPlacement,
     randomRotation: e.randomRotation,
     randomSize: e.randomSize,

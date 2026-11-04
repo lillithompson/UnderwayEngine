@@ -390,6 +390,9 @@ export interface LineStyleModel {
   density: number;
   /** A glyph's size in cells — the side of the box it is drawn into. */
   size: number;
+  /** How far every glyph is turned from the path's direction, degrees
+   *  clockwise, 0–360. */
+  rotation: number;
   /** The three random sliders, 0–1 each: how far a glyph may stray from
    *  its place on the path, turn from the path's direction, and vary in
    *  size. */

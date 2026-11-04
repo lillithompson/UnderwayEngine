@@ -24,6 +24,7 @@ import {
 } from '../logic/panelLayout';
 import type { EffectsBarProps } from './EffectsBar';
 import { LineStyleBar } from './LineStyleBar';
+import type { LineStyleSection } from '../logic/lineStyle';
 import {
   EffectBar, EffectsBar, effectButtonCount, EFFECT_KINDS, effectLabel,
 } from './EffectsBar';
@@ -122,7 +123,7 @@ const DEFAULT_GLOW_MODEL: GlowModel = {
 // …and a line style's: circles a cell across, every other stamp, nothing
 // random. Only a fallback for the frame before the host reports its own.
 const DEFAULT_LINE_STYLE_MODEL: LineStyleModel = {
-  glyph: 'circle', density: 0.5, size: 1, randomPlacement: 0, randomRotation: 0, randomSize: 0,
+  glyph: 'circle', density: 0.5, size: 1, rotation: 0, randomPlacement: 0, randomRotation: 0, randomSize: 0,
 };
 // Design default endpoints: bare ends, round caps — how every path has always
 // been drawn. Only a fallback for the transient frame before model.endpoints
@@ -358,6 +359,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // sheet's height is computed ahead of the render. (Every face stands the
   // same height, so the sheet never moves under a tab press.)
   const [copiesSection, setCopiesSection] = useState<CopiesSection>('copies');
+  // …and which face the Style page's box shows — the glyph, its rotation
+  // or its scale — held here for the same reason.
+  const [lineStyleSection, setLineStyleSection] = useState<LineStyleSection>('glyph');
   // …and what that page was last SET to, minus the count — held here for the
   // same reason, and outliving a selection the same way. The bar is seeded
   // per mount and unmounts with the page, so this is what carries an offset
@@ -1660,14 +1664,16 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // one. Two to a line, and the sheet was measured from this same list.
     activeBarEl = <EffectsBar {...effectsBarProps} />;
   } else if (shownEffect === 'lineStyle') {
-    // The Style page: the glyph row, the drawing pad beside the five
-    // sliders. No colour row — the glyphs wear the Stroke page's ink. The
-    // page reads the draft while one is held (the sliders keep tracking),
-    // else the model: a glyph choice commits at once and the host reports
-    // it back.
+    // The Style page: one tabbed box — the glyph (its row, Density and
+    // Scatter beside the drawing pad), its rotation, its scale. No colour
+    // row — the glyphs wear the Stroke page's ink. The page reads the
+    // draft while one is held (the sliders keep tracking), else the model:
+    // a glyph choice commits at once and the host reports it back.
     activeBarEl = (
       <LineStyleBar
         style={lineStyleDraft ?? model.lineStyle ?? DEFAULT_LINE_STYLE_MODEL}
+        section={lineStyleSection}
+        onSection={setLineStyleSection}
         onChange={(s) => applyLineStyle(s, false)}
         onCommit={(s) => applyLineStyle(s, true)}
       />

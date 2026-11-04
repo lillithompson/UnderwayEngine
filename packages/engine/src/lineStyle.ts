@@ -219,10 +219,11 @@ function sampleWalk(walk: PathWalk, distance: number): { at: [number, number]; d
  * A closed path takes its stamps evenly all the way round, so the last gap
  * is the same as every other; an open one stands a glyph at each end and
  * spaces the rest evenly between them. A path shorter than half a spacing
- * gets one glyph at its middle. The random sliders then move each stamp
- * from its place: along the path and across it (placement), about its
- * centre (rotation) and in size — each drawn once per stamp in that order,
- * so the sliders are independent of one another.
+ * gets one glyph at its middle. Every stamp faces along the path, turned
+ * by the style's `rotation`; the random sliders then move each from its
+ * place: along the path and across it (placement), about its centre
+ * (rotation) and in size — each drawn once per stamp in that order, so the
+ * sliders are independent of one another.
  */
 export function lineStylePlacements(
   segments: readonly PathSegment[], style: LineStyleEffect, seed: number,
@@ -231,6 +232,7 @@ export function lineStylePlacements(
   const spacing = lineStyleSpacing(style);
   if (walk.total <= EPS || !(spacing > EPS) || !(style.size > 0)) return [];
   const rng = mulberry32(seed);
+  const baseTurn = (style.rotation || 0) * Math.PI / 180;
   const placement = clamp01(style.randomPlacement);
   const rotation = clamp01(style.randomRotation);
   const sizing = clamp01(style.randomSize);
@@ -264,7 +266,7 @@ export function lineStylePlacements(
     out.push({
       x: at[0] + nx * across,
       y: at[1] + ny * across,
-      angle: Math.atan2(dir[1], dir[0]) + turn,
+      angle: Math.atan2(dir[1], dir[0]) + baseTurn + turn,
       scale: style.size * grow,
     });
   }

@@ -2,12 +2,15 @@ import React, { useRef, useState } from 'react';
 import { GestureResponderEvent, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { LineStyleGlyphKind, LineStyleModel } from '../adapter';
-import { ROW_GAP, SHADOW_PAD_SIZE } from '../logic/submenuHeight';
+import { GROUP_PAD, SHADOW_PAD_SIZE } from '../logic/submenuHeight';
 import {
-  LINE_STYLE_GLYPH_OPTIONS, MAX_GLYPH_SIZE, MIN_GLYPH_SIZE, padPointFromTouch, padPolylines,
-  strokesAfterDraw,
+  LINE_STYLE_GLYPH_OPTIONS, LINE_STYLE_SECTIONS, MAX_GLYPH_ROTATION, MAX_GLYPH_SIZE, MIN_GLYPH_SIZE,
+  type LineStyleSection, padPointFromTouch, padPolylines, strokesAfterDraw,
 } from '../logic/lineStyle';
-import { BarBody, CONTROL_ACCENT, SliderRow, SegmentedRow } from './effectBar';
+import {
+  BarBody, CONTROL_ACCENT, GroupedBody, RowGroup, SECTION_TABS_GROUP_RADIUS, SectionTabs, SliderRow,
+  SegmentedRow,
+} from './effectBar';
 import { beginValueDrag, endValueDrag, VALUE_DRAG_SURFACE } from '../logic/slider';
 import { PANEL_INK, PANEL_INK_DIM } from '../theme';
 import { clamp01 } from '../appTheme';
@@ -16,21 +19,26 @@ import { clamp01 } from '../appTheme';
 // the path — the fourth tab the Effects page can make, and the one page of
 // that family with a face of its own.
 //
-// The glyph row leads: a dash (which makes a dashed line), a circle, a
-// sparkle, a heart, and Draw. Under it the page takes the Shadow page's
-// shape — a square pad in the aside column, the sliders beside it — with
-// the PAD doing two jobs: it shows the glyph the path is wearing, and a
-// finger drawn across it draws a new one. Drawing is what chooses Draw;
-// there is no empty box to be sent to first. Each stroke lifted is a
-// commit, so a two-stroke glyph is two undo steps and the second stroke
-// lands on the first. Clear, under the pad, takes the drawing away and the
-// glyph goes back to the circle.
+// It takes the Copies page's shape: ONE shaded box whose tabs switch the
+// rows under them, so the three questions a style answers each get a face
+// and one place on the page. GLYPH leads — which glyph, how closely they
+// stand (Density) and how far each may stray from its place (Scatter) —
+// with the drawing pad beside those rows, where the Shadow page's offset
+// pad stands: it shows the glyph the path is wearing, and a finger drawn
+// across it draws a new one. Drawing is what chooses Draw; there is no
+// empty box to be sent to first. Each stroke lifted is a commit, so a
+// two-stroke glyph is two undo steps and the second stroke lands on the
+// first. Clear, in the pad's corner while there is a drawing, takes it
+// away and the glyph goes back to the circle. ROTATION is how far every
+// glyph is turned from the path's direction, and how far each may turn on
+// its own (Spin). SCALE is the glyph's Size, and how much each may vary
+// from it.
 //
-// Five sliders: Density and Size, then the three random ones — where a
-// glyph stands (Scatter), which way it faces (Spin), how big it is (Vary).
-// No colour row: the glyphs are outlined in the Stroke page's ink, width
-// and dash, which is what makes them the LINE's style rather than a
-// decoration laid over it.
+// Every face stands the same height — the Glyph face's, which the pad sets
+// — so the page never resizes under a tab press, as the Copies page's
+// doesn't. No colour row: the glyphs are outlined in the Stroke page's
+// ink, width and dash, which is what makes them the LINE's style rather
+// than a decoration laid over it.
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -47,6 +55,7 @@ const PREVIEW_STROKE = 2;
 const PAD_FILL = 'rgba(42,42,42,0.08)';
 const PAD_BORDER = 'rgba(42,42,42,0.16)';
 
+const degText = (deg: number) => `${Math.round(deg)}°`;
 
 /** One polyline as views: a hairline per piece, turned to lie along it.
  *  React Native has no path primitive, and a pad of a few dozen short
@@ -83,10 +92,13 @@ function Polyline({ points, color }: { points: readonly [number, number][]; colo
   return <>{pieces}</>;
 }
 
-/** The pad: the glyph, drawn; and a surface to draw one on. */
-function GlyphPad({ style, onDraw }: {
+/** The pad: the glyph, drawn; and a surface to draw one on. `onClear` is
+ *  given while there is a drawing to clear, and stands as a small word in
+ *  the pad's corner. */
+function GlyphPad({ style, onDraw, onClear }: {
   style: LineStyleModel;
   onDraw: (stroke: readonly [number, number][]) => void;
+  onClear?: () => void;
 }) {
   const cbRef = useRef(onDraw);
   cbRef.current = onDraw;
@@ -120,14 +132,26 @@ function GlyphPad({ style, onDraw }: {
   ).current;
   const drawn = padPolylines(style);
   return (
-    <View
-      style={styles.pad}
-      accessibilityRole="image"
-      accessibilityLabel="Glyph pad: draw here to make your own glyph"
-      {...pan.panHandlers}
-    >
-      {drawn.map((poly, i) => <Polyline key={i} points={poly} color={PANEL_INK} />)}
-      {drawing ? <Polyline points={drawing} color={CONTROL_ACCENT} /> : null}
+    <View style={styles.padHolder}>
+      <View
+        style={styles.pad}
+        accessibilityRole="image"
+        accessibilityLabel="Glyph pad: draw here to make your own glyph"
+        {...pan.panHandlers}
+      >
+        {drawn.map((poly, i) => <Polyline key={i} points={poly} color={PANEL_INK} />)}
+        {drawing ? <Polyline points={drawing} color={CONTROL_ACCENT} /> : null}
+      </View>
+      {onClear ? (
+        <Pressable
+          onPress={onClear}
+          accessibilityRole="button"
+          accessibilityLabel="Clear drawing"
+          style={styles.clear}
+        >
+          <Text style={styles.clearLabel}>Clear</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -137,9 +161,13 @@ function GlyphPad({ style, onDraw }: {
  *
  * A glyph choice and a lifted stroke commit at once; the sliders fire live
  * (`onChange`) and commit on release, the contract every other page keeps.
+ * Which face shows is the panel's (`section` / `onSection`), as the Copies
+ * page's is: the sheet's height is computed ahead of the render.
  */
-export function LineStyleBar({ style, onChange, onCommit }: {
+export function LineStyleBar({ style, section, onSection, onChange, onCommit }: {
   style: LineStyleModel;
+  section: LineStyleSection;
+  onSection: (section: LineStyleSection) => void;
   onChange: (s: LineStyleModel) => void;
   onCommit: (s: LineStyleModel) => void;
 }) {
@@ -148,63 +176,80 @@ export function LineStyleBar({ style, onChange, onCommit }: {
   const sizeT = (style.size - MIN_GLYPH_SIZE) / (MAX_GLYPH_SIZE - MIN_GLYPH_SIZE);
   const drawn = style.glyph === 'custom' && !!style.custom && style.custom.length > 0;
   return (
-    <View style={styles.page}>
-      <SegmentedRow
-        label="Glyph"
-        options={GLYPH_OPTIONS}
-        value={style.glyph}
-        onChange={(glyph) => set({ glyph }, true)}
-      />
-      <BarBody
-        spread
-        aside={(
-          <View style={styles.asideColumn}>
-            <GlyphPad
-              style={style}
-              onDraw={(stroke) => {
-                const custom = strokesAfterDraw(style, stroke);
-                if (custom) set({ glyph: 'custom', custom }, true);
-              }}
-            />
-            {/* Clear stands under the pad only while there is a drawing to
-                clear; the glyph goes back to the circle. */}
-            <Pressable
-              onPress={() => set({ glyph: 'circle', custom: undefined }, true)}
-              disabled={!drawn}
-              accessibilityRole="button"
-              accessibilityLabel="Clear drawing"
-              style={[styles.clear, !drawn && styles.clearHidden]}
-            >
-              <Text style={styles.clearLabel}>Clear</Text>
-            </Pressable>
-          </View>
-        )}
-      >
-        <SliderRow label="Density" value={clamp01(style.density)} apply={(t, c) => set({ density: t }, c)} />
-        <SliderRow
-          label="Size"
-          value={clamp01(sizeT)}
-          apply={(t, c) => set({ size: MIN_GLYPH_SIZE + t * (MAX_GLYPH_SIZE - MIN_GLYPH_SIZE) }, c)}
+    <GroupedBody>
+      <RowGroup>
+        <SectionTabs
+          options={LINE_STYLE_SECTIONS}
+          value={section}
+          onChange={onSection}
+          pad={GROUP_PAD}
+          radius={SECTION_TABS_GROUP_RADIUS}
         />
-        {/* The random three: where a glyph stands, which way it faces, how
-            big it is. */}
-        <SliderRow label="Scatter" value={clamp01(style.randomPlacement)} apply={(t, c) => set({ randomPlacement: t }, c)} />
-        <SliderRow label="Spin" value={clamp01(style.randomRotation)} apply={(t, c) => set({ randomRotation: t }, c)} />
-        <SliderRow label="Vary" value={clamp01(style.randomSize)} apply={(t, c) => set({ randomSize: t }, c)} />
-      </BarBody>
-    </View>
+        {/* Every face is as tall as the pad, so the sheet never moves under
+            a tab press; the rows of a face without the pad spread to that
+            same height. */}
+        <View style={styles.face}>
+          {section === 'glyph' ? (
+            <BarBody
+              spread
+              aside={(
+                <GlyphPad
+                  style={style}
+                  onDraw={(stroke) => {
+                    const custom = strokesAfterDraw(style, stroke);
+                    if (custom) set({ glyph: 'custom', custom }, true);
+                  }}
+                  onClear={drawn ? () => set({ glyph: 'circle', custom: undefined }, true) : undefined}
+                />
+              )}
+            >
+              <SegmentedRow
+                options={GLYPH_OPTIONS}
+                value={style.glyph}
+                onChange={(glyph) => set({ glyph }, true)}
+              />
+              <SliderRow label="Density" value={clamp01(style.density)} apply={(t, c) => set({ density: t }, c)} />
+              <SliderRow label="Scatter" value={clamp01(style.randomPlacement)} apply={(t, c) => set({ randomPlacement: t }, c)} />
+            </BarBody>
+          ) : section === 'rotation' ? (
+            <BarBody spread>
+              <SliderRow
+                label="Rotation"
+                value={clamp01(style.rotation / MAX_GLYPH_ROTATION)}
+                apply={(t, c) => set({ rotation: Math.round(t * MAX_GLYPH_ROTATION) }, c)}
+                readout={{
+                  text: degText(style.rotation),
+                  commit: (n) => set({ rotation: Math.round(clamp01(n / MAX_GLYPH_ROTATION) * MAX_GLYPH_ROTATION) }, true),
+                }}
+              />
+              <SliderRow label="Spin" value={clamp01(style.randomRotation)} apply={(t, c) => set({ randomRotation: t }, c)} />
+            </BarBody>
+          ) : (
+            <BarBody spread>
+              <SliderRow
+                label="Size"
+                value={clamp01(sizeT)}
+                apply={(t, c) => set({ size: MIN_GLYPH_SIZE + t * (MAX_GLYPH_SIZE - MIN_GLYPH_SIZE) }, c)}
+              />
+              <SliderRow label="Vary" value={clamp01(style.randomSize)} apply={(t, c) => set({ randomSize: t }, c)} />
+            </BarBody>
+          )}
+        </View>
+      </RowGroup>
+    </GroupedBody>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { gap: ROW_GAP },
-  asideColumn: { alignItems: 'center', gap: 6 },
+  face: { height: PAD_SIZE, justifyContent: 'center' },
+  padHolder: { width: PAD_SIZE, height: PAD_SIZE },
   pad: {
     width: PAD_SIZE, height: PAD_SIZE, borderRadius: 12, backgroundColor: PAD_FILL,
     borderWidth: 1, borderColor: PAD_BORDER, overflow: 'hidden',
     ...VALUE_DRAG_SURFACE,
   },
-  clear: { paddingVertical: 4, paddingHorizontal: 10 },
-  clearHidden: { opacity: 0 },
-  clearLabel: { color: PANEL_INK_DIM, fontSize: 13, fontWeight: '600' },
+  // Clear sits in the pad's top-right corner, over it, so the pad keeps
+  // the whole of the face's height.
+  clear: { position: 'absolute', top: 2, right: 2, paddingVertical: 4, paddingHorizontal: 8 },
+  clearLabel: { color: PANEL_INK_DIM, fontSize: 12, fontWeight: '600' },
 });

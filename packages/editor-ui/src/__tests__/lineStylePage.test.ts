@@ -11,12 +11,12 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { LineStyleModel } from '../adapter';
 import {
-  LINE_STYLE_GLYPH_OPTIONS, MAX_GLYPH_SIZE, MIN_GLYPH_SIZE, padPointFromTouch, padPolylines,
-  strokesAfterDraw,
+  LINE_STYLE_GLYPH_OPTIONS, LINE_STYLE_SECTIONS, MAX_GLYPH_ROTATION, MAX_GLYPH_SIZE, MIN_GLYPH_SIZE,
+  padPointFromTouch, padPolylines, strokesAfterDraw,
 } from '../logic/lineStyle';
 import {
-  BAR_CUSHION, CONTENT_PAD, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, SHADOW_PAD_SIZE, pageIsWelled,
-  submenuHeight,
+  BAR_CUSHION, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, SECTION_TABS_ROW, SHADOW_PAD_SIZE, pageIsWelled,
+  rowGroupHeight, submenuHeight,
 } from '../logic/submenuHeight';
 
 const SRC = join(__dirname, '..');
@@ -27,7 +27,7 @@ const EFFECTS = read('components', 'EffectsBar.tsx');
 const ADAPTER = read('adapter.ts');
 
 const model = (extras: Partial<LineStyleModel> = {}): LineStyleModel => ({
-  glyph: 'circle', density: 0.5, size: 1, randomPlacement: 0, randomRotation: 0, randomSize: 0,
+  glyph: 'circle', density: 0.5, size: 1, rotation: 0, randomPlacement: 0, randomRotation: 0, randomSize: 0,
   ...extras,
 });
 
@@ -60,21 +60,47 @@ describe('the Style tab is one of the Effects family', () => {
 });
 
 describe('the page', () => {
-  it('is the glyph row, then five sliders with the pad beside them, and never changes height', () => {
-    const rows = [ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER];
-    const block = Math.max(rows.reduce((a, b) => a + b, 0) + ROW_GAP * 4, SHADOW_PAD_SIZE);
-    expect(submenuHeight('lineStyle')).toBe(CONTENT_PAD * 2 + ROW_SEGMENTED + ROW_GAP + block + BAR_CUSHION);
-    // The pad is the Shadow page's square, shorter than five rows, so the
-    // sliders set the height whatever glyph is showing.
-    expect(block).toBeGreaterThan(SHADOW_PAD_SIZE);
-    expect(pageIsWelled('lineStyle')).toBe(true);
-    expect(BAR.match(/<SliderRow/g)).toHaveLength(5);
-    expect(BAR).toContain('<SegmentedRow');
-    expect(BAR).toContain('label="Density"');
-    expect(BAR).toContain('label="Size"');
-    expect(BAR).toContain('label="Scatter"');
-    expect(BAR).toContain('label="Spin"');
-    expect(BAR).toContain('label="Vary"');
+  it('is one tabbed box, the Copies page’s shape: Glyph, Rotation, Scale', () => {
+    expect(LINE_STYLE_SECTIONS.map((s) => s.value)).toEqual(['glyph', 'rotation', 'scale']);
+    expect(LINE_STYLE_SECTIONS.map((s) => s.label)).toEqual(['Glyph', 'Rotation', 'Scale']);
+    expect(BAR).toContain('<GroupedBody>');
+    expect(BAR).toContain('<RowGroup>');
+    expect(BAR).toContain('options={LINE_STYLE_SECTIONS}');
+    expect(BAR).toContain('pad={GROUP_PAD}');
+    expect(BAR).toContain('radius={SECTION_TABS_GROUP_RADIUS}');
+    // The face is the panel's, as the Copies page's is.
+    expect(PANEL).toContain("const [lineStyleSection, setLineStyleSection] = useState<LineStyleSection>('glyph');");
+    expect(PANEL).toContain('section={lineStyleSection}');
+    expect(PANEL).toContain('onSection={setLineStyleSection}');
+  });
+
+  it('each face holds its own rows: the glyph with the pad, the turn, the size', () => {
+    const glyph = BAR.slice(BAR.indexOf("section === 'glyph' ?"), BAR.indexOf("section === 'rotation' ?"));
+    const rotation = BAR.slice(BAR.indexOf("section === 'rotation' ?"), BAR.indexOf('label="Size"'));
+    const scale = BAR.slice(BAR.indexOf('label="Size"'));
+    expect(glyph).toContain('<GlyphPad');
+    expect(glyph).toContain('<SegmentedRow');
+    expect(glyph).toContain('label="Density"');
+    expect(glyph).toContain('label="Scatter"');
+    expect(rotation).toContain('label="Rotation"');
+    expect(rotation).toContain('label="Spin"');
+    expect(rotation).not.toContain('<GlyphPad');
+    expect(scale).toContain('label="Size"');
+    expect(scale).toContain('label="Vary"');
+    expect(BAR.match(/<SliderRow/g)).toHaveLength(6);
+  });
+
+  it('is bare, and every face stands the pad’s height, so a tab press never resizes the sheet', () => {
+    const face = Math.max(ROW_SEGMENTED + ROW_SLIDER * 2 + ROW_GAP * 2, SHADOW_PAD_SIZE);
+    expect(face).toBe(SHADOW_PAD_SIZE);
+    expect(submenuHeight('lineStyle')).toBe(rowGroupHeight([SECTION_TABS_ROW, face]) + BAR_CUSHION);
+    expect(pageIsWelled('lineStyle')).toBe(false);
+    expect(BAR).toContain('face: { height: PAD_SIZE, justifyContent: \'center\' },');
+  });
+
+  it('turns glyphs a full turn in degrees', () => {
+    expect(MAX_GLYPH_ROTATION).toBe(360);
+    expect(BAR).toContain('apply={(t, c) => set({ rotation: Math.round(t * MAX_GLYPH_ROTATION) }, c)}');
   });
 
   it('offers the four glyphs and Draw, in that order', () => {
@@ -130,7 +156,6 @@ describe('the pad', () => {
   });
 
   it('Clear takes the drawing away and the glyph goes back to the circle', () => {
-    expect(BAR).toContain("onPress={() => set({ glyph: 'circle', custom: undefined }, true)}");
-    expect(BAR).toContain('disabled={!drawn}');
+    expect(BAR).toContain("onClear={drawn ? () => set({ glyph: 'circle', custom: undefined }, true) : undefined}");
   });
 });
