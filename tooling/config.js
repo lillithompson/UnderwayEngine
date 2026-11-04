@@ -18,6 +18,8 @@
  *                     spliced into the shared reviewer brief
  *   backendSchema     the wire schema a deployed backend shares with the
  *                     app (ship refuses to push a change to it unpushed)
+ *   caseStudies       where /build-ux-flow's frames and writeups go, relative
+ *                     to the repository root (case_studies/paths.js)
  *   docPaths          check-doc-paths' lists: `docs` (the files it reads),
  *                     `generated` (names correct to write and absent from a
  *                     clean checkout), `prose` (regex strings for words that
@@ -87,6 +89,7 @@ function loadConfig(root) {
     copySources: raw.copySources || null,
     reviewerAddendum: raw.reviewerAddendum || null,
     backendSchema: raw.backendSchema || 'backend/src/validation.ts',
+    caseStudies: raw.caseStudies || '../Portfolio/case_studies',
   };
   cfg.alwaysReview = [...sharedAlwaysReview(cfg), ...(raw.alwaysReview || []).map((s) => new RegExp(s))];
   const dp = raw.docPaths || {};

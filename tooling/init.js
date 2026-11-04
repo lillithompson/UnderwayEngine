@@ -16,6 +16,8 @@
  *                                  directory name) — only if absent
  *   .githooks/pre-push             the hook (tooling/pre-push), executable
  *   .claude/skills/ship/SKILL.md   a stub that follows tooling/skills/ship.md
+ *   .claude/skills/build-ux-flow/SKILL.md   a stub that follows
+ *                                  tooling/skills/build-ux-flow.md
  *   .github/workflows/submodule-pointer-check.yml
  *   package.json                   the scripts review, review:pending,
  *                                  review:check, ship, check:doc-paths,
@@ -54,6 +56,23 @@ Follow \`${TOOLING}/skills/ship.md\` — the shared skill text, which this
 stub exists to point at (a skill has to live in the project's own
 \`.claude/skills/\`). The project's values the pass reads are in
 \`${CONFIG_FILE}\`.
+`;
+
+const UX_FLOW_STUB = `---
+name: build-ux-flow
+description: Film a described user flow in the case-study harness (phone-sized screenshots), publish its writeup as an artifact, and fold what it turned up into docs/ux_suggestions.md (dropping emptied sections and renumbering). Only when the user asks, e.g. "/build-ux-flow start a new thing, change it, and share it".
+argument-hint: <the flow to film, in plain words>
+disable-model-invocation: true
+---
+
+# Build a UX flow capture
+
+The flow to film: **$ARGUMENTS**
+
+Follow \`${TOOLING}/skills/build-ux-flow.md\` — the shared skill text, which
+this stub exists to point at (a skill has to live in the project's own
+\`.claude/skills/\`). The project's values are in
+\`scripts/case_studies/README.md\`.
 `;
 
 function root() {
@@ -102,6 +121,7 @@ function init(argv, dir = root()) {
   put(dir, CONFIG_FILE, `${JSON.stringify({ ...example, name }, null, 2)}\n`, { keep: true });
   put(dir, '.githooks/pre-push', fs.readFileSync(path.join(__dirname, 'pre-push'), 'utf8'), { mode: 0o755 });
   put(dir, '.claude/skills/ship/SKILL.md', SKILL_STUB);
+  put(dir, '.claude/skills/build-ux-flow/SKILL.md', UX_FLOW_STUB);
   put(dir, '.github/workflows/submodule-pointer-check.yml',
     fs.readFileSync(path.join(__dirname, 'workflows', 'submodule-pointer-check.yml'), 'utf8'));
   const pkgFile = path.join(dir, 'package.json');
@@ -117,4 +137,4 @@ function init(argv, dir = root()) {
 
 if (require.main === module) process.exitCode = init(process.argv.slice(2));
 
-module.exports = { init, packageJsonWith, SCRIPTS, SKILL_STUB, TOOLING };
+module.exports = { init, packageJsonWith, SCRIPTS, SKILL_STUB, TOOLING, UX_FLOW_STUB };

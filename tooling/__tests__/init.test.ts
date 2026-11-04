@@ -65,6 +65,7 @@ describe('init', () => {
       expect(hook).toContain('exec node "$gate" check --pre-push "$1"');
       expect(hook).toContain('git submodule update --init');
       expect(readFileSync(join(dir, '.claude', 'skills', 'ship', 'SKILL.md'), 'utf8')).toContain(`${TOOLING}/skills/ship.md`);
+      expect(readFileSync(join(dir, '.claude', 'skills', 'build-ux-flow', 'SKILL.md'), 'utf8')).toContain(`${TOOLING}/skills/build-ux-flow.md`);
       expect(existsSync(join(dir, '.github', 'workflows', 'submodule-pointer-check.yml'))).toBe(true);
       expect(JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).scripts.ship).toBe(SCRIPTS.ship);
       // The project's config is its own: a second run with another name keeps it.
@@ -73,7 +74,7 @@ describe('init', () => {
       init(['--name', 'other'], dir);
       expect(JSON.parse(readFileSync(join(dir, 'underway.config.json'), 'utf8')).name).toBe('kept');
       const said = log.mock.calls.map((c) => String(c[0]));
-      expect(said.filter((s) => s.includes('same'))).toHaveLength(4);   // hook, skill, workflow, package.json
+      expect(said.filter((s) => s.includes('same'))).toHaveLength(5);   // hook, both skills, workflow, package.json
       expect(said.some((s) => s.includes('kept'))).toBe(true);
     } finally {
       log.mockRestore();

@@ -24,6 +24,7 @@ describe('loadConfig', () => {
     expect(cfg.copySources).toBeNull();
     expect(cfg.reviewerAddendum).toBeNull();
     expect(cfg.backendSchema).toBe('backend/src/validation.ts');
+    expect(cfg.caseStudies).toBe('../Portfolio/case_studies');
     expect(cfg.docPaths).toEqual({ ...DEFAULT_DOC_PATHS, prose: [] });
   });
 

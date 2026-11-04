@@ -2,7 +2,7 @@
 
 One implementation of the review gate, the ship pass, the doc-path check,
 the pre-push hook, the CI backstop, the ship skill and the shared CLAUDE.md
-rules, consumed by every project through the engine submodule it already
+rules (and the UX flow capture, beside them), consumed by every project through the engine submodule it already
 vendors. A project keeps only stubs that point here and one small
 `underway.config.json` with its own values. The copies Sol and DrawBot
 carried under `scripts/` had drifted by hundreds of lines; CozyJournal had
@@ -17,6 +17,8 @@ none. That is what this replaces.
 | `reviewer.md` | The shared reviewer brief; the project's checks are spliced in under "Project rules" |
 | `gates.md` | What the gates are and why |
 | `skills/ship.md` | The `/ship` skill's text; the project's `.claude/skills/ship/SKILL.md` points here |
+| `skills/build-ux-flow.md` | The `/build-ux-flow` skill's text; the project's `.claude/skills/build-ux-flow/SKILL.md` points here |
+| `case_studies/` | What that skill films and builds with: `harness.js` (`createHarness`, phone-sized headless Chrome over a web build), `sheet.js` (contact sheet), `build-writeup.js` and `writeup.template.html` (the published page), `paths.js` (where the output goes) |
 | `CLAUDE.shared.md` | The rules every project's `CLAUDE.md` imports |
 | `pre-push` | The hook `init.js` writes to a project's `.githooks/pre-push`: the gate's path once, a sentence when the engine submodule is not checked out, else the gate |
 | `workflows/submodule-pointer-check.yml` | The CI backstop for an unpushed submodule pointer |
@@ -35,6 +37,8 @@ It writes (and keeps in step, run it again any time):
 - `underway.config.json` — only if absent; edit it (below);
 - `.githooks/pre-push` — the hook (executable);
 - `.claude/skills/ship/SKILL.md` — a stub that follows `skills/ship.md`;
+- `.claude/skills/build-ux-flow/SKILL.md` — a stub that follows
+  `skills/build-ux-flow.md`;
 - `.github/workflows/submodule-pointer-check.yml`;
 - `package.json` scripts: `review`, `review:pending`, `review:check`,
   `ship`, `check:doc-paths`, `check:clone`, and the
@@ -56,6 +60,11 @@ Then, by hand, once:
 - `jest.config.js`: drop `scripts/` from the roots if nothing else is
   tested there.
 
+- `scripts/case_studies/`, when the project is going to film flows: a
+  `harness.js` calling `createHarness` with its own routes, and a `README.md`
+  that holds the values `skills/build-ux-flow.md` lists under "The project's
+  values".
+
 A project that copies the submodule guards into its README should point at
 `npm run check:clone` instead.
 
@@ -72,6 +81,7 @@ Every field is optional; the defaults are in `config.js`.
 | `copySources` | none | A JSON file naming repositories this one copied from: `[{ "name", "repo" (a sibling checkout), "commit" }]` (`gates.md` "Copies") |
 | `reviewerAddendum` | none | A markdown file of the project's own review checks, spliced into `reviewer.md` under "Project rules" |
 | `backendSchema` | `backend/src/validation.ts` | The wire schema a deployed backend shares with the app |
+| `caseStudies` | `../Portfolio/case_studies` | Where `/build-ux-flow`'s frames and writeups go, relative to the repository root. Projects that share a folder give each its own, so their flow names cannot collide |
 | `docPaths.docs` | `["README.md", "CLAUDE.md"]` | The docs `check-doc-paths` reads: the codebase map and the design documents belong here |
 | `docPaths.generated` | adds to `ios`, `dist`, `web-bundle`, `node_modules`, `.expo`, `expo-env.d.ts` | Names correct to write and absent from a clean checkout |
 | `docPaths.prose` | `[]` | Regex strings for the project's words that look like paths and are not: its IndexedDB key prefix (`^myapp:`), its node-name tags (`^(seed\|plant):`) |
