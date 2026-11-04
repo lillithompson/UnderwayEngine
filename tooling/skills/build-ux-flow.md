@@ -30,7 +30,9 @@ a branch.
 `scripts/case_studies/harness.js` is missing, stop and say the project is not
 wired yet (`<tooling>/README.md`, "Wiring a project"). The README says:
 
-- **Web build**: the command that exports the web build to film.
+- **Web build**: the command that exports the web build to film, with `--clear`:
+  Metro's cache can carry another project's config into the bundle, and the app
+  then runs against the wrong settings with no error.
 - **Backend**: how to start a local API before each run and where its log is,
   or that the project has none to start.
 - **People**: the regulars to film as, and how to sign in and seed them. A
