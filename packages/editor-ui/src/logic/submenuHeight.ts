@@ -263,6 +263,11 @@ export function effectButtonGridHeight(count: number): number {
  *  pad, and the two measure the same. */
 export type SubmenuKey =
   | 'tint' | 'crop' | 'effects' | 'shadow' | 'glowOuter' | 'glowInner' | 'border' | 'opacity'
+  // A vector's LINE STYLE: the fourth tab the Effects page can make — the
+  // glyph row, then the drawing pad beside the five sliders (density, size
+  // and the three random ones), the pad standing in the aside column the
+  // Shadow page's offset pad stands in.
+  | 'lineStyle'
   | 'image'
   | 'text' | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
   // A closed shape's PATTERN fill: the square tile it repeats inside its
@@ -643,6 +648,15 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
       // resizes the sheet.
       const block = Math.max(stack([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]), SHADOW_PAD_SIZE);
       return contentArea(ctx.effectColor ? [block, ROW_SLIDER] : [block]);
+    }
+    case 'lineStyle': {
+      // The glyph row, then the five sliders (Density, Size, and the three
+      // random ones) with the drawing pad beside them — the same square the
+      // Shadow page's pad is, and shorter than five rows, so the block is
+      // the sliders' and the page never changes height with the glyph. No
+      // colour row: the glyphs wear the Stroke page's ink.
+      const block = Math.max(stack([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]), SHADOW_PAD_SIZE);
+      return contentArea([ROW_SEGMENTED, block]);
     }
     default: {
       // Exhaustiveness guard: adding a SubmenuKey without giving it rows here

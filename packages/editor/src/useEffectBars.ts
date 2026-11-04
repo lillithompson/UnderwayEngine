@@ -5,17 +5,18 @@ import {
   isFrameGroupId, withState, type EditorSession, type SessionEntry,
 } from './editorSession';
 import {
-  DEFAULT_GLOW_EFFECT, DEFAULT_SHADOW_EFFECT, borderModelToEffect,
-  glowEffectKey, glowModelToEffect, shadowModelToEffect, type EffectKey,
+  DEFAULT_GLOW_EFFECT, DEFAULT_LINE_STYLE_EFFECT, DEFAULT_SHADOW_EFFECT, borderModelToEffect,
+  glowEffectKey, glowModelToEffect, lineStyleModelToEffect, shadowModelToEffect,
+  type ColoredEffectKey, type EffectKey,
 } from './panelEffectModels';
 import { effectTargetIds } from './panelModel';
 import {
-  BorderModel, GlowKind, GlowModel, ShadowModel,
+  BorderModel, GlowKind, GlowModel, LineStyleModel, ShadowModel,
 } from '@/editor-ui/adapter';
 import { applyCompOps, findItem } from '@/engine/compositionOps';
 import { omitKeys } from '@/engine/omitKeys';
 import {
-  BorderEffect, CompositionState, GlowEffect, NodeEffects, RGBColor,
+  BorderEffect, CompositionState, GlowEffect, LineStyleEffect, NodeEffects, RGBColor,
   ShadowEffect,
 } from '@/engine/types';
 import { useCallback, useRef } from 'react';
@@ -63,7 +64,7 @@ export function useEffectBars<S extends EditorSession>({
   // Materialize a default effect on the effect target(s) (images or frame
   // boundary rect) so a freshly opened bar has a visible effect to edit; a
   // no-op for targets that already have one.
-  const materializeEffect = useCallback((key: EffectKey, def: ShadowEffect | BorderEffect | GlowEffect) => {
+  const materializeEffect = useCallback((key: EffectKey, def: ShadowEffect | BorderEffect | GlowEffect | LineStyleEffect) => {
     const s = sessionRef.current;
     if (!s) return;
     // A frame materializes the effect on its boundary rect AND un-hides it
@@ -95,6 +96,16 @@ export function useEffectBars<S extends EditorSession>({
   // A first border starts in the active color, like every other new stroke.
   const onAddBorder = useCallback(() => {
     materializeEffect('border', defaultBorderEffect(currentColorRef.current));
+  }, [materializeEffect]);
+
+  // …and a LINE STYLE, the Effects page's Style button over a vector: the
+  // path's stroke replaced by a run of glyphs. It lands on the same effects
+  // block as the three, materialized only on the kinds that carry one (a
+  // frame routes it to its boundary rect like the rest, where the engine
+  // leaves it inert — only a vector has a path to lay glyphs along, and
+  // the panel offers the button only there).
+  const onAddLineStyle = useCallback(() => {
+    materializeEffect('lineStyle', DEFAULT_LINE_STYLE_EFFECT);
   }, [materializeEffect]);
 
   /** The Effects page's fourth button, over an image: its TINT — the wash
@@ -188,12 +199,21 @@ export function useEffectBars<S extends EditorSession>({
     }, committed);
   }, [applyEffectEdit]);
 
+  // The Style page: the same live preview / commit, one undo step on
+  // release — and a glyph choice or a lifted stroke commits at once.
+  const onLineStyle = useCallback((m: LineStyleModel | null, committed: boolean) => {
+    applyEffectEdit((existing) => {
+      if (m) return { ...existing, lineStyle: lineStyleModelToEffect(m) };
+      return omitKeys<NodeEffects>(existing ?? {}, ['lineStyle']);
+    }, committed);
+  }, [applyEffectEdit]);
+
   // An effect color swatch opens the same full-screen picker as the toolbar
   // color tool; confirming commits the new color as one undo step.
   // `alpha` lands on the shadow's own `alpha` field; a border has no alpha
   // channel, so its picker never offers the slider and nothing is passed here.
   const commitEffectColor = useCallback((
-    key: EffectKey, color: RGBColor, alpha?: number, colorTouched = true,
+    key: ColoredEffectKey, color: RGBColor, alpha?: number, colorTouched = true,
   ) => {
     if (colorTouched) noteActiveColor(color);
     const s = sessionRef.current;
@@ -286,8 +306,8 @@ export function useEffectBars<S extends EditorSession>({
   }, [commitEffectColor]);
 
   return {
-    commitEffectColor, onAddBorder, onAddGlow, onAddShadow, onBorder, onBorderColor,
-    onBorderColorConfirm, onFadeColorConfirm, onGlow, onGlowColor,
+    commitEffectColor, onAddBorder, onAddGlow, onAddLineStyle, onAddShadow, onBorder, onBorderColor,
+    onBorderColorConfirm, onFadeColorConfirm, onGlow, onGlowColor, onLineStyle,
     onPickBorderColor, onPickFadeColor, onPickShadowColor, onShadow, onShadowColor,
     onShadowColorConfirm, onToggleImageTint,
   };

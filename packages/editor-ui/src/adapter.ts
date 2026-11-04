@@ -364,9 +364,39 @@ export interface ShadowModel extends GlowModel {
  *  object's edge, or the band of light inside it. */
 export type GlowKind = 'outer' | 'inner';
 
-/** The three effects the Effects page holds, and the faces it shows: the
- *  drop shadow, and a glow each way. */
-export type EffectKind = 'shadow' | GlowKind;
+/** The effects the Effects page holds, and the faces it shows: the drop
+ *  shadow, a glow each way — the three that share one set of rows — and a
+ *  vector's LINE STYLE, whose page is its own (see {@link LineStyleModel}). */
+export type EffectKind = 'shadow' | GlowKind | 'lineStyle';
+
+/** Which glyph a line style stamps along the path. Mirrors the engine's
+ *  `LineStyleGlyph` without importing it. `custom` is the one the user drew
+ *  on the Style page's pad. */
+export type LineStyleGlyphKind = 'line' | 'circle' | 'sparkle' | 'heart' | 'custom';
+
+/** Editable LINE STYLE — a vector's stroke replaced by a run of glyphs laid
+ *  along the path (the panel maps these to slider positions; the app maps
+ *  them to the engine's LineStyleEffect, which has the same fields). The
+ *  glyphs are outlined in the path's own ink, width and dash, so this page
+ *  carries no colour of its own: the Stroke page dresses them. */
+export interface LineStyleModel {
+  glyph: LineStyleGlyphKind;
+  /** The drawn glyph, read when `glyph` is 'custom': polylines in the unit
+   *  square of the Style page's pad ((0,0) top-left → (1,1) bottom-right),
+   *  as drawn. Kept when a built-in glyph is chosen over it, so Draw brings
+   *  the sketch back. */
+  custom?: [number, number][][];
+  /** How closely the glyphs stand, 0–1 (0 sparse, 1 touching). */
+  density: number;
+  /** A glyph's size in cells — the side of the box it is drawn into. */
+  size: number;
+  /** The three random sliders, 0–1 each: how far a glyph may stray from
+   *  its place on the path, turn from the path's direction, and vary in
+   *  size. */
+  randomPlacement: number;
+  randomRotation: number;
+  randomSize: number;
+}
 
 /** Stroke alignment relative to the node bbox edge. */
 export type BorderPosition = 'inside' | 'center' | 'outside';
@@ -1083,6 +1113,22 @@ export interface ObjectPropertiesModel {
   /** Open the full-screen color picker for that glow's colour — the hue
    *  row's trailing circle. */
   onPickGlowColor?(kind: GlowKind): void;
+  /** The selected vector's current LINE STYLE (defaulted by the app when it
+   *  carries none yet), seeding the Style page — the fourth face of the
+   *  Effects family, offered only when {@link onAddLineStyle} is: a vector
+   *  has a path to lay glyphs along, and nothing else does. */
+  lineStyle?: LineStyleModel;
+  /** Whether the selection actually CARRIES a line style — what lights the
+   *  Effects page's Style button and puts the Style tab on the row. See
+   *  {@link shadowPresent}. */
+  lineStylePresent?: boolean;
+  /** Create the default line style — the Style button's one press, one undo
+   *  step. Absent → the Effects page offers no Style button. */
+  onAddLineStyle?(): void;
+  /** Style-page callback: fires live while dragging (`committed=false`) and
+   *  once on release (`committed=true`, one undo step). A glyph choice and
+   *  a finished drawing commit at once. `style=null` removes it. */
+  onLineStyle?(style: LineStyleModel | null, committed: boolean): void;
   /** Whether the selection carries an image TINT — the wash of colour the
    *  colour brush lays over a photo. Read by the Effects page's fourth
    *  button, which is offered only when {@link onToggleImageTint} is. */

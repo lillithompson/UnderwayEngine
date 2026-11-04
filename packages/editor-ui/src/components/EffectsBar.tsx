@@ -68,11 +68,13 @@ const CENTER_DOT = 'rgba(42,42,42,0.34)';
 const PAD_SIZE = SHADOW_PAD_SIZE;
 const PAD_HANDLE = 26;
 
-/** The three effects, in the order the buttons stand and the tabs follow:
- *  the shadow first — the effect this page has always held, and the one
- *  with somewhere to fall — then the glow that leaves the object and the
- *  glow that stays inside it. */
-export const EFFECT_KINDS: readonly EffectKind[] = ['shadow', 'outer', 'inner'];
+/** The effects, in the order the buttons stand and the tabs follow: the
+ *  shadow first — the effect this page has always held, and the one with
+ *  somewhere to fall — then the glow that leaves the object and the glow
+ *  that stays inside it, then a vector's line STYLE, which only a kind with
+ *  a path is offered (the panel drops it elsewhere, as it drops the inner
+ *  glow off an open path). */
+export const EFFECT_KINDS: readonly EffectKind[] = ['shadow', 'outer', 'inner', 'lineStyle'];
 
 /** What one effect is called — on its button, on the tab it creates, and in
  *  the Remove line at the foot of that tab's page. ONE name for all three
@@ -94,7 +96,10 @@ export const TINT_EFFECT_LABEL = 'Tint';
 export const PATTERN_EFFECT_LABEL = 'Pattern';
 
 export function effectLabel(kind: EffectKind): string {
-  return kind === 'shadow' ? 'Shadow' : kind === 'outer' ? 'Outer Glow' : 'Inner Glow';
+  return kind === 'shadow' ? 'Shadow'
+    : kind === 'outer' ? 'Outer Glow'
+    : kind === 'inner' ? 'Inner Glow'
+    : 'Style';
 }
 
 /** What the Effects page holds, whoever is asking: the props the page is

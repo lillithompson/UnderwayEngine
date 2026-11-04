@@ -10,6 +10,7 @@ import { shapePatternFillIsEmpty } from './shapePatternFill';
 import { inkedPatternCell } from './patternObject';
 import { PaintOverlaySlot, shapePaintClipId, shapePaintClipMarkup, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { svgEndpointsMarkup } from './svgEndpoints';
+import { lineStyleMarkup, lineStyleOf, lineStyleSeed } from './lineStyle';
 import {
   roundPathCorners,
   svgDefIdSafe,
@@ -899,8 +900,10 @@ export function svgStrokePresentation(
   // stroke is drawn at DOUBLE width and then clipped (inside) or masked
   // (outside) against the filled path — exact for any closed path, and no
   // geometry offsetting to go wrong. 'center' (and every open path) skips all
-  // of this and strokes plainly.
-  const align = svgStrokeAlignment(obj);
+  // of this and strokes plainly. So does a LINE STYLE: its glyphs stand on
+  // the path, not inside or outside it, and clipping them to the interior
+  // would cut every stamp in half.
+  const align = lineStyleOf(obj) ? 'center' : svgStrokeAlignment(obj);
   let defs = '';
   let alignAttr = '';
   let strokeWidth = sw;
@@ -1207,7 +1210,6 @@ function svgObjectParts(
   unitsPerCell: number,
   opts?: { nonScaling?: boolean; patternFillMarkup?: string; closedOutline?: boolean },
 ): SVGObjectParts {
-  const radius = svgStrokeRadiusCells(obj);
   const { defs, attrs, segments } = svgStrokePresentation(obj, strokeScale, unitsPerCell, { nonScaling: opts?.nonScaling ?? true });
 
   // Fill path — rendered before strokes so the outline sits on top, and
@@ -1229,22 +1231,59 @@ function svgObjectParts(
   // and it is the clip that makes them a FILL.
   const patternMarkup = shapePatternFillMarkup(obj, patternTiles, closedD);
 
+  const strokes = svgStrokesMarkup(obj, segments, attrs, svgStrokeWidthCells(obj, strokeScale, unitsPerCell));
   if (Array.isArray(obj.subpaths) && obj.subpaths.length > 0) {
-    const strokes = buildSubpathsMarkup(obj.subpaths, attrs, (segs) => buildPathD(segs),
-      radius > 0 ? (segs) => roundPathCorners(segs, radius) : undefined);
     return { strokeDefs: defs, fillMarkup, closedD, patternMarkup, strokes, glowBand: '' };
   }
+  return {
+    strokeDefs: defs, fillMarkup, closedD, patternMarkup, strokes,
+    glowBand: strokes ? svgInnerGlowBandMarkup(obj, segments, unitsPerCell) : '',
+  };
+}
 
+/**
+ * Everything a vector object draws as its STROKES: its subpaths (fills under
+ * strokes, each same-coloured run one compound path), or its one path with
+ * the endpoint decorations on top of it — or, when the object wears a LINE
+ * STYLE, the glyphs that stand in for the stroke, outlined in the same ink
+ * and wearing the same stroke attrs (width, dash, caps) the line would have.
+ *
+ * ONE builder for the live DOM node layer ({@link buildSVGObjectContent})
+ * and the SVG export, the rule every other piece of a shape's markup
+ * follows, so a styled line cannot stamp one way on the canvas and another
+ * in the file. `segments` is the chain the stroke is drawn from (corner-
+ * rounded, if it is) and `strokeWidthCells` its width in world cells, which
+ * sizes the endpoint decorations.
+ *
+ * A styled path has no line to cap, so its ends go undecorated; a styled
+ * object's FILL subpaths are drawn as they always were — a style replaces
+ * strokes, and a fill is an area.
+ */
+export function svgStrokesMarkup(
+  obj: SVGObject,
+  segments: readonly PathSegment[],
+  attrs: string,
+  strokeWidthCells: number,
+): string {
+  const radius = svgStrokeRadiusCells(obj);
+  const round = radius > 0 ? (segs: readonly PathSegment[]) => roundPathCorners(segs, radius) : undefined;
+  const style = lineStyleOf(obj);
+  if (Array.isArray(obj.subpaths) && obj.subpaths.length > 0) {
+    if (!style) return buildSubpathsMarkup(obj.subpaths, attrs, (segs) => buildPathD(segs), round);
+    let out = buildSubpathsMarkup(obj.subpaths.filter((sub) => sub.fill), attrs, (segs) => buildPathD(segs), round);
+    obj.subpaths.forEach((sub, i) => {
+      if (sub.fill) return;
+      out += lineStyleMarkup(round ? round(sub.segments) : sub.segments, style, lineStyleSeed(obj.id, i + 1), attrs, sub.color);
+    });
+    return out;
+  }
+  if (style) return lineStyleMarkup(segments, style, lineStyleSeed(obj.id), attrs, obj.color);
   const d = buildPathD(segments);
-  if (!d) return { strokeDefs: defs, fillMarkup, closedD, patternMarkup, strokes: '', glowBand: '' };
+  if (!d) return '';
   const { r: cr, g: cg, b: cb } = obj.color;
-  let strokes = `<path d="${d}" ${attrs} stroke="rgb(${cr},${cg},${cb})" />`;
   // Endpoint decorations last, so they sit on top of the stroke they cap. They
   // are sized off the stroke's width in CELLS, which is what makes them match
   // the line in whichever space this markup lands in.
-  strokes += svgEndpointsMarkup(obj, segments, svgStrokeWidthCells(obj, strokeScale, unitsPerCell));
-  return {
-    strokeDefs: defs, fillMarkup, closedD, patternMarkup, strokes,
-    glowBand: svgInnerGlowBandMarkup(obj, segments, unitsPerCell),
-  };
+  return `<path d="${d}" ${attrs} stroke="rgb(${cr},${cg},${cb})" />`
+    + svgEndpointsMarkup(obj, segments, strokeWidthCells);
 }

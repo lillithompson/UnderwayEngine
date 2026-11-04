@@ -5,6 +5,7 @@ import {
   buildPlaceLineShape,
   buildPlaceShape,
   buildPlaceText,
+  buildSetEffects,
   buildToggleLock,
   commitEntry,
   createEditorSession,
@@ -495,5 +496,58 @@ describe('buildPanelModel', () => {
     const { session, shapeId } = populated();
     expect(modelOf(select(session, shapeId)).onPickFadeColor).toBeDefined();
     expect(modelOf(session).onPickFadeColor).toBeUndefined();
+  });
+});
+
+describe('the Style page — a vector’s line style', () => {
+  const style = {
+    glyph: 'heart' as const, density: 0.25, size: 0.5,
+    randomPlacement: 0, randomRotation: 0.5, randomSize: 0,
+  };
+  const withStyle = (h: PanelHandlers & { calls: string[] }): PanelHandlers => ({
+    ...h,
+    onAddLineStyle: () => { h.calls.push('onAddLineStyle'); },
+    onLineStyle: () => { h.calls.push('onLineStyle'); },
+  });
+
+  test('offered on a vector the shell can style, and on nothing else', () => {
+    const { session, lineId, shapeId, imageId, textId } = populated();
+    const h = withStyle(handlers());
+    for (const id of [lineId, shapeId]) {
+      const m = modelOf(select(session, id), { handlers: h });
+      expect(m.onAddLineStyle).toBeDefined();
+      expect(m.onLineStyle).toBeDefined();
+      // Seeded from the default the button would create.
+      expect(m.lineStyle).toMatchObject({ glyph: 'circle', size: 1 });
+      expect(m.lineStylePresent).toBe(false);
+    }
+    for (const id of [imageId, textId]) {
+      const m = modelOf(select(session, id), { handlers: h });
+      expect(m.onAddLineStyle).toBeUndefined();
+      expect(m.onLineStyle).toBeUndefined();
+      expect(m.lineStyle).toBeUndefined();
+    }
+  });
+
+  test('a shell that has not wired the handlers offers no button, but still reports a worn style', () => {
+    const { session, lineId } = populated();
+    const styled = commitEntry(session, buildSetEffects(session.state, lineId, { lineStyle: style })!);
+    const m = modelOf(select(styled, lineId));
+    expect(m.onAddLineStyle).toBeUndefined();
+    expect(m.lineStylePresent).toBe(true);
+  });
+
+  test('a worn style is read off the object, and presence follows the record', () => {
+    const { session, lineId, shapeId } = populated();
+    const styled = commitEntry(session, buildSetEffects(session.state, lineId, { lineStyle: style })!);
+    const m = modelOf(select(styled, lineId), { handlers: withStyle(handlers()) });
+    expect(m.lineStylePresent).toBe(true);
+    expect(m.lineStyle).toEqual(style);
+    // A multi-selection reports presence only when every member wears
+    // one, and seeds the page by the same rule the shadow follows.
+    const both = selectMany(styled, [lineId, shapeId]);
+    const multi = modelOf(both, { handlers: withStyle(handlers()) });
+    expect(multi.lineStyle === undefined).toBe(multi.shadow === undefined);
+    expect(multi.lineStylePresent).toBe(false);
   });
 });

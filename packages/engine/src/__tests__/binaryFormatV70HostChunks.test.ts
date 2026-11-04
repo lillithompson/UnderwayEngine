@@ -72,11 +72,11 @@ describe('v70 host-data chunks', () => {
     expect(chunk.byteLength).toBe(3);
   });
 
-  it('writes version 70 and sets flags bit 0x02 only when there is a chunk', () => {
+  it('writes the current version (71 since the line style) and sets flags bit 0x02 only when there is a chunk', () => {
     const bare = serializeComposition(makeBundle(), []);
     const chunky = serializeComposition(makeBundle({ sol: bytesOf(1) }), []);
-    expect(new DataView(bare.buffer).getUint16(VERSION_AT, true)).toBe(70);
-    expect(new DataView(chunky.buffer).getUint16(VERSION_AT, true)).toBe(70);
+    expect(new DataView(bare.buffer).getUint16(VERSION_AT, true)).toBe(71);
+    expect(new DataView(chunky.buffer).getUint16(VERSION_AT, true)).toBe(71);
     expect(bare[FLAGS_AT] & FLAG_HAS_HOST_CHUNKS).toBe(0);
     expect(chunky[FLAGS_AT] & FLAG_HAS_HOST_CHUNKS).toBe(FLAG_HAS_HOST_CHUNKS);
   });

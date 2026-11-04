@@ -23,9 +23,9 @@ import { SYSTEM_FAMILY_STACK, effectiveFontWeight } from './fontWeight';
 import { toBase64 } from './pngcodec';
 import { exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { buildFigureSVGContent, buildBlockSVGContent, wrapWithColorOverride, type CachedFigureSVG } from './svgFigureBuilders';
-import { buildPathD, buildClosedFillPathD, buildSubpathsMarkup, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgDrawsOwnInnerGlow, svgFillPresentation, svgInnerGlowBandMarkup, svgIsFilled, svgObjectFillFlooded, svgObjectStrokesOnly, svgStrokePresentation, wearOrWrap, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
-import { roundPathCorners, strokeScaleForUnits, svgStrokeRadiusCells, svgStrokeWidthCells } from './svgStroke';
-import { svgEndpointsMarkup } from './svgEndpoints';
+import { buildClosedFillPathD, buildTiledSVGObjectRegionMarkup, shapePatternFillMarkup, svgDrawsOwnInnerGlow, svgFillPresentation, svgInnerGlowBandMarkup, svgIsFilled, svgObjectFillFlooded, svgObjectStrokesOnly, svgStrokePresentation, svgStrokesMarkup, wearOrWrap, withSVGObjectStrokeColor, wrapSVGObjectOpacity } from './svgPathBuilder';
+import { strokeScaleForUnits, svgStrokeWidthCells } from './svgStroke';
+import { lineStyleOf, lineStyleReachCells } from './lineStyle';
 import { arcBoundingBox } from './compositionArcHitTest';
 import { buildActiveMaskMap, clipRectToNodeMasks } from './compositionMask';
 import { frameGroupIdForNode } from './compositionFrame';
@@ -2149,24 +2149,14 @@ export async function generateCompositionSVGCore(
     fillElement += shapePatternFillMarkup(svg, patternTiles, closedD);
 
     let paths = strokeDefs + fillElement;
-    if (Array.isArray(svg.subpaths) && svg.subpaths.length > 0) {
-      const radius = svgStrokeRadiusCells(svg);
-      // Same markup as the live DOM layer (buildSVGObjectContent): fills
-      // under strokes, and each same-colored run ONE compound path — a
-      // merged object exports as the one shape it is, not its sources.
-      paths += buildSubpathsMarkup(svg.subpaths, attrs, (segs) => buildPathD(segs),
-        radius > 0 ? (segs) => roundPathCorners(segs, radius) : undefined);
-    } else {
-      const d = buildPathD(strokeSegments);
-      if (d) {
-        const { r, g, b } = svg.color;
-        paths += `<path d="${d}" ${attrs} stroke="rgb(${r},${g},${b})" />`;
-      }
-    }
-    // Endpoint decorations last, on top of the stroke they cap. Same helper
-    // the live DOM layer uses, so an arrow can't point one way on the canvas
-    // and another in the export.
-    paths += svgEndpointsMarkup(svg, strokeSegments, svgStrokeWidthCells(svg, svgStrokeScale, U));
+    // The strokes — the subpaths (fills under strokes, each same-coloured
+    // run ONE compound path, so a merged object exports as the one shape it
+    // is), or the path with its endpoint decorations on top, or a line
+    // style's glyphs in the stroke's place. The same builder the live DOM
+    // layer draws them through (buildSVGObjectContent), so an arrow can't
+    // point one way on the canvas and another in the export, and a styled
+    // line can't stamp two ways.
+    paths += svgStrokesMarkup(svg, strokeSegments, attrs, svgStrokeWidthCells(svg, svgStrokeScale, U));
     // Whole-object opacity + edge soften (the Opacity bar) wrap everything
     // the object drew, INSIDE the node effects so a drop shadow is cast by
     // the already-faded shape. Same helper as the live DOM layer.
@@ -2185,8 +2175,17 @@ export async function generateCompositionSVGCore(
       // The band above IS the inner glow for a shape that has no interior of
       // its own; the node filter must not light it a second time.
       if (svgDrawsOwnInnerGlow(svg)) effects = { ...effects, innerGlow: undefined };
+      // A styled line's glyphs reach past the path — and so past the box
+      // the filter region is sized from, which CLIPS what it misses. The
+      // region is grown by the furthest a stamp can stand from the path.
+      const style = lineStyleOf(svg);
+      const reach = style ? lineStyleReachCells(style) : 0;
+      const paintBox = reach > 0 ? {
+        cellX: svg.cellX - reach, cellY: svg.cellY - reach,
+        cellWidth: svg.cellWidth + reach * 2, cellHeight: svg.cellHeight + reach * 2,
+      } : undefined;
       posedAndClipped(entry.id, entry, posed.transform,
-        applyNodeEffects(paths, effects, entry.id, svg, U, outlineCastWidth(svg, svgStrokeScale)));
+        applyNodeEffects(paths, effects, entry.id, svg, U, outlineCastWidth(svg, svgStrokeScale), paintBox));
     }
   }
 

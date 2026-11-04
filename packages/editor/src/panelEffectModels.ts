@@ -1,8 +1,9 @@
 import type {
-  BorderEffect, GlowEffect, ImageFraming, ImageTintFill, ShadowEffect, SVGObject,
+  BorderEffect, GlowEffect, ImageFraming, ImageTintFill, LineStyleEffect, ShadowEffect, SVGObject,
 } from '@/engine/types';
 import type {
-  BorderModel, EndpointsModel, FramingModel, GlowKind, GlowModel, ShadowModel, TintModel,
+  BorderModel, EndpointsModel, FramingModel, GlowKind, GlowModel, LineStyleModel, ShadowModel,
+  TintModel,
 } from '@/editor-ui';
 
 // The property panel's models ↔ the engine's records, and the defaults an
@@ -31,7 +32,47 @@ export function glowEffectKey(kind: GlowKind): 'glow' | 'innerGlow' {
 
 /** Every effect the Effects and Border pages can materialize, edit or
  *  recolour — the keys of NodeEffects they write. */
-export type EffectKey = 'shadow' | 'border' | 'glow' | 'innerGlow';
+export type EffectKey = 'shadow' | 'border' | 'glow' | 'innerGlow' | 'lineStyle';
+/** …and the ones that carry an INK of their own, which the colour picker
+ *  and the hue rows write. A line style has none: its glyphs wear the
+ *  path's. */
+export type ColoredEffectKey = Exclude<EffectKey, 'lineStyle'>;
+
+// The default line style the Style button creates: circles a cell across
+// (16pt), every other stamp, nothing random — a visible run of glyphs to
+// edit, in the path's own ink and width.
+export const DEFAULT_LINE_STYLE_EFFECT: LineStyleEffect = {
+  glyph: 'circle', density: 0.5, size: 1, randomPlacement: 0, randomRotation: 0, randomSize: 0,
+};
+
+/** LineStyleModel (editor-ui) ↔ LineStyleEffect (engine). The two have the
+ *  same fields — the model mirrors the record rather than translating it —
+ *  so the pair is a clamp each way: the sliders' 0–1 and a size no smaller
+ *  than nothing. The drawn glyph rides through as it is, and only when the
+ *  glyph is the drawn one or a drawing exists to remember. */
+export function lineStyleModelToEffect(m: LineStyleModel): LineStyleEffect {
+  return {
+    glyph: m.glyph,
+    ...(m.custom && m.custom.length > 0 ? { custom: m.custom } : {}),
+    density: Math.max(0, Math.min(1, m.density)),
+    size: Math.max(0, m.size),
+    randomPlacement: Math.max(0, Math.min(1, m.randomPlacement)),
+    randomRotation: Math.max(0, Math.min(1, m.randomRotation)),
+    randomSize: Math.max(0, Math.min(1, m.randomSize)),
+  };
+}
+
+export function lineStyleEffectToModel(e: LineStyleEffect): LineStyleModel {
+  return {
+    glyph: e.glyph,
+    ...(e.custom ? { custom: e.custom } : {}),
+    density: e.density,
+    size: e.size,
+    randomPlacement: e.randomPlacement,
+    randomRotation: e.randomRotation,
+    randomSize: e.randomSize,
+  };
+}
 
 // The default glow (world-cell units) the Add button creates: the shadow's
 // own softness with nowhere to fall, in white rather than black — a glow is

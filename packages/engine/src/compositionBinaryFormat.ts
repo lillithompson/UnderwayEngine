@@ -1,4 +1,4 @@
-﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CellState, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, PatternObject, PatternSymmetry, ShapePatternFill, RGBColor, TextObject, TextStyle, TextAlign, TextVAlign, FontWeight, Paint, GradientStop, NodeEffects, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
+﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CellState, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, PatternObject, PatternSymmetry, ShapePatternFill, RGBColor, TextObject, TextStyle, TextAlign, TextVAlign, FontWeight, Paint, GradientStop, NodeEffects, LineStyleEffect, LineStyleGlyph, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
 import { normalizeCanvasPaintIslands } from './canvasPaint';
 import { FADE_DEFAULT_COLOR, hasFade, type FadeSpec } from './fade';
 import { bakeStoredFades } from './fadeBake';
@@ -157,7 +157,8 @@ import { signedDeg } from './sceneTransform';
 // EFFECTS PAYLOAD (v29+, shared by SVG, image, and text records)
 //   presenceMask: u8 (0x01 shadow, 0x02 glow, 0x04 border,
 //                 v44+: 0x08 shadow spread, 0x10 border extension,
-//                 v68+: 0x20 glow spread, 0x40 inner glow)
+//                 v68+: 0x20 glow spread, 0x40 inner glow,
+//                 v71+: 0x80 line style)
 //   shadow:       dx f32 + dy f32 + blur f32 + r u8 + g u8 + b u8
 //                 + alpha u8 (0-255 quantized /255)
 //   glow:         radius f32 + r u8 + g u8 + b u8 + alpha u8 (quantized)
@@ -172,6 +173,13 @@ import { signedDeg } from './sceneTransform';
 //   glowSpread:   spread f32 (written only when non-zero)
 //   innerGlow:    radius f32 + r u8 + g u8 + b u8 + alpha u8 (quantized)
 //                 + spread f32
+//   v71 block follows that:
+//   lineStyle:    glyph u8 (0 line, 1 circle, 2 sparkle, 3 heart, 4 custom)
+//                 + density u8 + size f32 + randomPlacement u8
+//                 + randomRotation u8 + randomSize u8 (the u8s quantized /255)
+//                 + strokeCount u8, then per stroke pointCount u16 and
+//                   that many x u8 + y u8 (unit square, quantized /255) —
+//                   zero strokes unless the glyph is custom
 //
 // EMBEDDED FILES
 //   fileCount:   u16 LE
@@ -624,7 +632,18 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      not depend on how the map was built. The u16 count guard every
 //      section has applies to the count and to a key's length; a chunk's
 //      bytes are capped by the u32.
-const FORMAT_VERSION = 70;
+// v71: A PATH CAN BE DRAWN AS A RUN OF GLYPHS. `NodeEffects.lineStyle` —
+//      the Style page: the stroke replaced by a glyph stamped along the
+//      path (engine/lineStyle.ts), with its density, size and the three
+//      random sliders, and the glyph itself when the user drew one. It
+//      rides the effects payload's LAST spare presence bit (0x80) and
+//      sits after the v68 blocks: six scalars, then the drawn glyph's
+//      polylines as u8 points in the pad's unit square (a built-in glyph
+//      writes a zero stroke count and no points).
+//
+//      The bit was always written 0 before, so every v70 file reads back
+//      byte for byte.
+const FORMAT_VERSION = 71;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 /** v70+: the file ends in a host-data chunk section. */
@@ -1394,6 +1413,13 @@ const BORDER_EXT_HAS_ALPHA = 0x04;
 // is byte-identical.
 const EFFECT_HAS_GLOW_SPREAD = 0x20;
 const EFFECT_HAS_INNER_GLOW = 0x40;
+// v71: the line style block — the mask's last bit.
+const EFFECT_HAS_LINE_STYLE = 0x80;
+
+const LINE_STYLE_GLYPH_TO_BYTE: Record<LineStyleGlyph, number> = {
+  line: 0, circle: 1, sparkle: 2, heart: 3, custom: 4,
+};
+const BYTE_TO_LINE_STYLE_GLYPH: LineStyleGlyph[] = ['line', 'circle', 'sparkle', 'heart', 'custom'];
 
 // v29+ paint kind byte.
 const PAINT_KIND_SOLID = 0;
@@ -1719,6 +1745,21 @@ function hasGlowSpread(fx: NodeEffects): boolean {
   return !!fx.glow && fx.glow.spread != null && fx.glow.spread !== 0;
 }
 
+/** The drawn glyph's strokes as the file holds them: at most 255 strokes
+ *  of at most 65535 points each, every point inside the unit square. A
+ *  built-in glyph has none. */
+function lineStyleStrokes(ls: LineStyleEffect): [number, number][][] {
+  if (ls.glyph !== 'custom' || !ls.custom) return [];
+  return ls.custom.slice(0, 255).map((stroke) => stroke.slice(0, 0xffff));
+}
+
+function lineStyleBinarySize(ls: LineStyleEffect): number {
+  let size = 1 + 1 + 4 + 3; // glyph, density, size f32, the three random u8s
+  size += 1; // strokeCount
+  for (const stroke of lineStyleStrokes(ls)) size += 2 + stroke.length * 2;
+  return size;
+}
+
 function effectsBinarySize(fx: NodeEffects): number {
   let size = 1; // presenceMask
   if (fx.shadow) size += 12 + 4;            // dx,dy,blur f32 + r,g,b,alpha u8
@@ -1735,6 +1776,8 @@ function effectsBinarySize(fx: NodeEffects): number {
   // …then the v68 blocks, in the same mask-bit order.
   if (hasGlowSpread(fx)) size += 4;         // spread f32
   if (fx.innerGlow) size += 4 + 4 + 4;      // radius f32 + rgba u8 + spread f32
+  // …then the v71 block.
+  if (fx.lineStyle) size += lineStyleBinarySize(fx.lineStyle);
   return size;
 }
 
@@ -1747,6 +1790,7 @@ function writeEffects(view: DataView, out: Uint8Array, pos: number, fx: NodeEffe
   if (hasBorderExt(fx)) mask |= EFFECT_HAS_BORDER_EXT;
   if (hasGlowSpread(fx)) mask |= EFFECT_HAS_GLOW_SPREAD;
   if (fx.innerGlow) mask |= EFFECT_HAS_INNER_GLOW;
+  if (fx.lineStyle) mask |= EFFECT_HAS_LINE_STYLE;
   out[pos++] = mask;
   if (fx.shadow) {
     view.setFloat32(pos, fx.shadow.dx, true); pos += 4;
@@ -1807,6 +1851,26 @@ function writeEffects(view: DataView, out: Uint8Array, pos: number, fx: NodeEffe
     // Written unconditionally, unlike the outer glow's: this whole block is
     // new, so there is no older layout for a default to stay compatible with.
     view.setFloat32(pos, ig.spread ?? 0, true); pos += 4;
+  }
+  // …and the v71 line style after the inner glow, so a v70 reader stopping
+  // there sees exactly the bytes it expects.
+  if (fx.lineStyle) {
+    const ls = fx.lineStyle;
+    out[pos++] = LINE_STYLE_GLYPH_TO_BYTE[ls.glyph] ?? 1;
+    out[pos++] = quantize255(ls.density);
+    view.setFloat32(pos, ls.size, true); pos += 4;
+    out[pos++] = quantize255(ls.randomPlacement);
+    out[pos++] = quantize255(ls.randomRotation);
+    out[pos++] = quantize255(ls.randomSize);
+    const strokes = lineStyleStrokes(ls);
+    out[pos++] = strokes.length;
+    for (const stroke of strokes) {
+      view.setUint16(pos, stroke.length, true); pos += 2;
+      for (const [x, y] of stroke) {
+        out[pos++] = quantize255(x);
+        out[pos++] = quantize255(y);
+      }
+    }
   }
   return pos;
 }
@@ -1873,6 +1937,31 @@ function readEffects(
     const alpha = data[pos++] / 255;
     const spread = view.getFloat32(pos, true); pos += 4;
     effects.innerGlow = { radius, color: { r, g, b }, alpha, spread };
+  }
+  // v71: the line style, on the same rule — the bit was always written 0
+  // before.
+  if (version >= 71 && (mask & EFFECT_HAS_LINE_STYLE)) {
+    const glyph = BYTE_TO_LINE_STYLE_GLYPH[data[pos++]] ?? 'circle';
+    const density = data[pos++] / 255;
+    const size = view.getFloat32(pos, true); pos += 4;
+    const randomPlacement = data[pos++] / 255;
+    const randomRotation = data[pos++] / 255;
+    const randomSize = data[pos++] / 255;
+    const strokeCount = data[pos++];
+    const custom: [number, number][][] = [];
+    for (let i = 0; i < strokeCount; i++) {
+      const pointCount = view.getUint16(pos, true); pos += 2;
+      const stroke: [number, number][] = [];
+      for (let j = 0; j < pointCount; j++) {
+        stroke.push([data[pos] / 255, data[pos + 1] / 255]);
+        pos += 2;
+      }
+      custom.push(stroke);
+    }
+    effects.lineStyle = {
+      glyph, density, size, randomPlacement, randomRotation, randomSize,
+      ...(custom.length > 0 ? { custom } : {}),
+    };
   }
   return { effects, pos };
 }

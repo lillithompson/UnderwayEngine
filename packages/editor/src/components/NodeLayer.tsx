@@ -391,7 +391,12 @@ function outlineCastObject(
   };
   if (object.subpaths) out.subpaths = object.subpaths.map((sp) => ({ ...sp, color: effect.color }));
   delete out.segmentOverrides;
+  // The cast keeps nothing of the effects but the LINE STYLE: a styled
+  // line's silhouette is its glyphs, and a shadow under a run of hearts has
+  // to be a run of hearts (the same seed — the object's id — so it lands
+  // under the very stamps it shadows).
   delete out.effects;
+  if (object.effects?.lineStyle) out.effects = { lineStyle: object.effects.lineStyle };
   delete out.paintOverlay;
   delete out.fill;
   delete out.fillPaint;

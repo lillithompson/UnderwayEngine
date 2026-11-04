@@ -162,7 +162,7 @@ describe('three buttons, and the tabs they make', () => {
     expect(PANEL).toContain('const innerGlowable = !model.showSvgOptions || svgFillable;');
     expect(PANEL).toContain('const effectKinds = EFFECT_KINDS.filter(');
     expect(PANEL).toContain(
-      "    (kind) => kind !== 'inner' || innerGlowable || effectWorn('inner'),",
+      "    (kind) => (kind !== 'inner' || innerGlowable || effectWorn('inner'))",
     );
     // The buttons, the TABS and the height all read that one list, so a
     // shape cannot be shown a button for a page it has no tab to, or
@@ -202,8 +202,8 @@ describe('three buttons, and the tabs they make', () => {
     expect(ADAPTER).toContain('onToggleImageTint?(add: boolean): void;');
     // It is NOT an EffectKind: the kinds are what the tab run is built
     // from, and a tint has no page to open.
-    expect(BAR).toContain("export const EFFECT_KINDS: readonly EffectKind[] = ['shadow', 'outer', 'inner'];");
-    expect(ADAPTER).toContain("export type EffectKind = 'shadow' | GlowKind;");
+    expect(BAR).toContain("export const EFFECT_KINDS: readonly EffectKind[] = ['shadow', 'outer', 'inner', 'lineStyle'];");
+    expect(ADAPTER).toContain("export type EffectKind = 'shadow' | GlowKind | 'lineStyle';");
   });
 
   it('adding opens the new tab at once', () => {
@@ -255,9 +255,10 @@ describe('a closed shape gets a fourth button: its PATTERN, which DOES make a ta
       + ' () => pattern.onToggle(!pattern.present),\n      ) : null}',
     );
     expect(BAR).toContain('pattern?: { present: boolean; onToggle: (add: boolean) => void };');
-    // Like the tint, it is NOT an EffectKind: the kinds are the three that
-    // share one set of controls, and a pattern's page is its own.
-    expect(BAR).toContain("export const EFFECT_KINDS: readonly EffectKind[] = ['shadow', 'outer', 'inner'];");
+    // Like the tint, it is NOT an EffectKind — though the line style, whose
+    // page is its own too, IS one: a style is worn by the path itself and
+    // its tab comes and goes with it exactly as a shadow's does.
+    expect(BAR).toContain("export const EFFECT_KINDS: readonly EffectKind[] = ['shadow', 'outer', 'inner', 'lineStyle'];");
   });
 
   it('offered only where the host can lay cloth — and on a shape that encloses one', () => {

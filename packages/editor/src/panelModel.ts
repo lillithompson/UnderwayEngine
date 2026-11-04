@@ -13,7 +13,7 @@ import {
 } from '@/engine/shapePatternFill';
 import type {
   BorderModel, CommonAction, EndpointsModel, FramingModel, GlowKind, GlowModel, HostPagesModel,
-  ObjectPropertiesModel, OpacityModel, ShadowModel, SVGSubtypeKind, TextFontOption,
+  LineStyleModel, ObjectPropertiesModel, OpacityModel, ShadowModel, SVGSubtypeKind, TextFontOption,
   TextStyleModel, TintModel,
 } from '@/editor-ui/adapter';
 import { type SVGEditAction, svgHasFill, svgStrokeRemovable } from '@/editor-ui/logic/svgEdit';
@@ -30,9 +30,9 @@ import { imageFramingTarget } from './canvasTap';
 import { PATTERN_TILE_FAMILIES } from './patternTileFamilies';
 import { textStyleToModel } from './textStyleModel';
 import {
-  DEFAULT_GLOW_EFFECT, DEFAULT_SHADOW_EFFECT, type EffectKey, borderEffectToModel,
-  endpointsModelOf, framingEffectToModel, glowEffectToModel, shadowEffectToModel,
-  tintFillToModel,
+  DEFAULT_GLOW_EFFECT, DEFAULT_LINE_STYLE_EFFECT, DEFAULT_SHADOW_EFFECT, type EffectKey,
+  borderEffectToModel, endpointsModelOf, framingEffectToModel, glowEffectToModel,
+  lineStyleEffectToModel, shadowEffectToModel, tintFillToModel,
 } from './panelEffectModels';
 import { defaultBorderEffect } from './activeColor';
 
@@ -561,6 +561,11 @@ export interface PanelHandlers {
   onPickGlowColor(kind: GlowKind): void;
   onGlowColor(kind: GlowKind, color: RGBColor, committed: boolean): void;
   onToggleImageTint(add: boolean): void;
+  /** The Effects page's Style button over a vector, and the Style page's
+   *  rows — optional, so a shell that has not wired them offers no Style
+   *  button rather than failing to build. */
+  onAddLineStyle?(): void;
+  onLineStyle?(m: LineStyleModel | null, committed: boolean): void;
   onAddBorder(): void;
   onBorderOpenChange(open: boolean): void;
   onBorder(m: BorderModel | null, committed: boolean): void;
@@ -686,7 +691,8 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
   const {
     onEditOpenChange, onCornerRadius, onEffectsOpenChange, onAddShadow, onShadow,
     onPickShadowColor, onShadowColor, onAddGlow, onGlow, onPickGlowColor, onGlowColor,
-    onToggleImageTint, onAddBorder, onBorderOpenChange, onBorder, onPickBorderColor,
+    onToggleImageTint, onAddLineStyle, onLineStyle,
+    onAddBorder, onBorderOpenChange, onBorder, onPickBorderColor,
     onBorderColor, onCropOpenChange, onFraming, onResetFraming, onReplaceImageSource,
     onAddStroke, onStrokeOpenChange, onStroke, onStrokeRadius, onPickStrokeColor,
     onStrokeColor, onAddSvgFill, onSvgFillOpenChange, onSvgFill, onPickSvgFillColor,
@@ -780,6 +786,25 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     onAddGlow,
     onGlow,
     onPickGlowColor,
+    // …and a vector's LINE STYLE, the fourth face of the same family:
+    // offered only where there is a path to lay glyphs along (and the
+    // shell wired the handlers), seeded from the object's own or from the
+    // default the Style button would create. The record is read off the
+    // same effects host the shadow is, so a multi-selection of vectors
+    // reads the first and writes to all, as every effect page does.
+    ...(svgEditable && onAddLineStyle && onLineStyle ? {
+      lineStyle: effectsHost
+        ? lineStyleEffectToModel(effectsHost.effects?.lineStyle ?? DEFAULT_LINE_STYLE_EFFECT)
+        : undefined,
+      lineStylePresent: effectPresent('lineStyle'),
+      onAddLineStyle,
+      onLineStyle,
+    } : {
+      // Worn but not offered — a vector the shell cannot style — still
+      // reports presence, so the tab stays reachable and the style can be
+      // taken off.
+      lineStylePresent: effectPresent('lineStyle'),
+    }),
     borderOpen: borderOpen && (imageEditable || frameEditable),
     border: selected?.kind === 'image'
       ? borderEffectToModel(selected.item.effects?.border ?? defaultBorderEffect(currentColor))

@@ -347,12 +347,12 @@ describe('every page can be opened and shown', () => {
   /** The one family openSubmenu dispatches through a lookup rather than
    *  by name — its keys are covered by that call, not by a branch. */
   const viaLookup = (key: string) => key.startsWith('pattern');
-  /** The EFFECTS family: the page that makes the tabs and the three it
+  /** The EFFECTS family: the page that makes the tabs and the four it
    *  makes. Like the text pages they ride ONE host flag with a page state
-   *  picking between them, and openSubmenu dispatches the three through
+   *  picking between them, and openSubmenu dispatches the four through
    *  EFFECT_OF_PAGE rather than naming them. Exempted the same way — the
    *  lookup itself is what these assert. */
-  const EFFECT_FAMILY = ['effects', 'shadow', 'glowOuter', 'glowInner'];
+  const EFFECT_FAMILY = ['effects', 'shadow', 'glowOuter', 'glowInner', 'lineStyle'];
   const inEffectFamily = (key: string) => EFFECT_FAMILY.includes(key);
   /** RETIRED pages: keys still in the union with nothing left to offer
    *  them. `tint` is the image Tint page, which came off the options row
@@ -397,8 +397,10 @@ describe('every page can be opened and shown', () => {
     // named, and still leave the well empty.
     const rendered = RETIRED.includes(key)
       || PANEL.includes(`displaySub === '${key}'`)
-      // The three effect pages share one branch, picked by `shownEffect` —
-      // they are the same rows with and without the offset pad.
+      // The three cast-effect pages share one branch, picked by
+      // `shownEffect` — they are the same rows with and without the offset
+      // pad; the Style page has rows of its own and a branch of its own.
+      || (key === 'lineStyle' && PANEL.includes("} else if (shownEffect === 'lineStyle') {"))
       || (inEffectFamily(key) && PANEL.includes('} else if (shownEffect) {'));
     expect([key, rendered]).toEqual([key, true]);
   });

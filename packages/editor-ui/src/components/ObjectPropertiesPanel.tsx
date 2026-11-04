@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import type { AlignEdge, BorderModel, CommonAction, EffectKind, EndpointsModel, FramingModel, GlowKind, GlowModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
+import type { AlignEdge, BorderModel, CommonAction, EffectKind, EndpointsModel, FramingModel, GlowKind, GlowModel, LineStyleModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, isSingleImageAction, swipeDismissDirection } from '../logic/imageEdit';
 import { PAINT_EDIT_OPTIONS } from '../logic/paintEdit';
 import {
@@ -23,6 +23,7 @@ import {
   objectPanelPages,
 } from '../logic/panelLayout';
 import type { EffectsBarProps } from './EffectsBar';
+import { LineStyleBar } from './LineStyleBar';
 import {
   EffectBar, EffectsBar, effectButtonCount, EFFECT_KINDS, effectLabel,
 } from './EffectsBar';
@@ -117,6 +118,11 @@ const DEFAULT_SHADOW_MODEL: ShadowModel = {
 // other page's default.
 const DEFAULT_GLOW_MODEL: GlowModel = {
   blur: 1.125, spread: 0.125, color: { r: 255, g: 255, b: 255 }, opacity: 0.6,
+};
+// …and a line style's: circles a cell across, every other stamp, nothing
+// random. Only a fallback for the frame before the host reports its own.
+const DEFAULT_LINE_STYLE_MODEL: LineStyleModel = {
+  glyph: 'circle', density: 0.5, size: 1, randomPlacement: 0, randomRotation: 0, randomSize: 0,
 };
 // Design default endpoints: bare ends, round caps — how every path has always
 // been drawn. Only a fallback for the transient frame before model.endpoints
@@ -240,10 +246,10 @@ function GridButton({ label, icon, iconColor, onPress, compact }: {
  *  what put them there and take them away. One map for both directions, so
  *  the tab a button makes and the page that tab opens can never disagree. */
 const EFFECT_PAGE: Record<EffectKind, SubmenuKey> = {
-  shadow: 'shadow', outer: 'glowOuter', inner: 'glowInner',
+  shadow: 'shadow', outer: 'glowOuter', inner: 'glowInner', lineStyle: 'lineStyle',
 };
 const EFFECT_OF_PAGE: Partial<Record<SubmenuKey, EffectKind>> = {
-  shadow: 'shadow', glowOuter: 'outer', glowInner: 'inner',
+  shadow: 'shadow', glowOuter: 'outer', glowInner: 'inner', lineStyle: 'lineStyle',
 };
 
 const NO_HOST_PAGES: readonly import('../adapter').HostPage[] = [];
@@ -473,6 +479,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // value on one of them be written by another.
   const [shadowDraft, setShadowDraft] = useState<ShadowModel | null>(null);
   const [glowDrafts, setGlowDrafts] = useState<Partial<Record<GlowKind, GlowModel>>>({});
+  const [lineStyleDraft, setLineStyleDraft] = useState<LineStyleModel | null>(null);
   /** Which of the Effects family's pages is showing — the Add / Remove
    *  buttons, or one effect's controls. The four share ONE host flag
    *  (`effectsOpen`), exactly as the four text pages share `textStyleOpen`,
@@ -573,7 +580,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // that reports nothing may not have.
   const effectWorn = (kind: EffectKind): boolean => (kind === 'shadow'
     ? model.shadowPresent === true
-    : model.glowPresent?.[kind] === true);
+    : kind === 'lineStyle'
+      ? model.lineStylePresent === true
+      : model.glowPresent?.[kind] === true);
   /** Which of the three the page OFFERS.
    *
    *  An inner glow is light gathered inside the object's own area, and an
@@ -593,8 +602,13 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
    *  Every other kind has an interior by construction (a photo, a frame, a
    *  word, a pattern's cloth), so only a VECTOR is ever asked. */
   const innerGlowable = !model.showSvgOptions || svgFillable;
+  // …and a line STYLE is offered where the host can make one — a vector,
+  // which has a path to lay glyphs along — or is already worn, on the same
+  // rule as the inner glow: a tab that exists must stay reachable.
+  const lineStylable = !!model.onAddLineStyle;
   const effectKinds = EFFECT_KINDS.filter(
-    (kind) => kind !== 'inner' || innerGlowable || effectWorn('inner'),
+    (kind) => (kind !== 'inner' || innerGlowable || effectWorn('inner'))
+      && (kind !== 'lineStyle' || lineStylable || effectWorn('lineStyle')),
   );
   const wornEffects = effectKinds.filter(effectWorn);
   /** …and the same reading for a closed shape's PATTERN FILL, which is put
@@ -873,7 +887,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
    *  shadow stands in where nothing is showing, so the values below are
    *  always something coherent. */
   const shownEffect: EffectKind | null = displaySub ? (EFFECT_OF_PAGE[displaySub] ?? null) : null;
-  const effectKind: EffectKind = shownEffect ?? 'shadow';
+  /** …and which of the three CAST effects the shared rows read: the shadow
+   *  or a glow. The line style has rows of its own (LineStyleBar), so it
+   *  never reaches these. */
+  const effectKind: 'shadow' | GlowKind = shownEffect && shownEffect !== 'lineStyle' ? shownEffect : 'shadow';
 
   /** Pop the sheet up. Asking is ALL it does: the landing effect below sees
    *  a sheet with no page and opens the tab it lands on (the remembered one
@@ -998,9 +1015,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         outer: model.glows?.outer ?? DEFAULT_GLOW_MODEL,
         inner: model.glows?.inner ?? DEFAULT_GLOW_MODEL,
       });
+      setLineStyleDraft(model.lineStyle ?? DEFAULT_LINE_STYLE_MODEL);
     }
     prevEffectsOpen.current = !!model.effectsOpen;
-  }, [model.effectsOpen, model.shadow, model.glows]);
+  }, [model.effectsOpen, model.shadow, model.glows, model.lineStyle]);
   useEffect(() => {
     if (model.borderOpen && !prevBorderOpen.current) {
       setBorderDraft(model.border ?? DEFAULT_BORDER_MODEL);
@@ -1110,8 +1128,15 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
    *  goes some other way.) */
   const removeEffect = (kind: EffectKind) => {
     if (kind === 'shadow') model.onShadow?.(null, true);
+    else if (kind === 'lineStyle') model.onLineStyle?.(null, true);
     else model.onGlow?.(kind, null, true);
     setEffectsPage('effects');
+  };
+  // The Style page's rows and pad → the same live preview / commit; the
+  // draft keeps the sliders tracking.
+  const applyLineStyle = (s: LineStyleModel, committed: boolean) => {
+    setLineStyleDraft(s);
+    model.onLineStyle?.(s, committed);
   };
   /** The Effects page's buttons: one press each way.
    *
@@ -1125,6 +1150,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     if (kind === 'shadow') {
       setShadowDraft(null);
       model.onAddShadow?.();
+    } else if (kind === 'lineStyle') {
+      setLineStyleDraft(null);
+      model.onAddLineStyle?.();
     } else {
       setGlowDrafts((d) => ({ ...d, [kind]: undefined }));
       model.onAddGlow?.(kind);
@@ -1631,6 +1659,23 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // object wears, and a press either way. No Remove line: every button IS
     // one. Two to a line, and the sheet was measured from this same list.
     activeBarEl = <EffectsBar {...effectsBarProps} />;
+  } else if (shownEffect === 'lineStyle') {
+    // The Style page: the glyph row, the drawing pad beside the five
+    // sliders. No colour row — the glyphs wear the Stroke page's ink. The
+    // page reads the draft while one is held (the sliders keep tracking),
+    // else the model: a glyph choice commits at once and the host reports
+    // it back.
+    activeBarEl = (
+      <LineStyleBar
+        style={lineStyleDraft ?? model.lineStyle ?? DEFAULT_LINE_STYLE_MODEL}
+        onChange={(s) => applyLineStyle(s, false)}
+        onCommit={(s) => applyLineStyle(s, true)}
+      />
+    );
+    removeAction = {
+      label: `Remove ${effectLabel(shownEffect).toLowerCase()}`,
+      onPress: () => removeEffect(shownEffect),
+    };
   } else if (shownEffect) {
     const glowKind: GlowKind | null = shownEffect === 'shadow' ? null : shownEffect;
     activeBarEl = (

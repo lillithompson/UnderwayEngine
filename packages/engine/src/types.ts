@@ -1422,6 +1422,51 @@ export interface NodeEffects {
    *  it. Independent of {@link glow} — a node can wear both. */
   innerGlow?: GlowEffect;
   border?: BorderEffect;
+  /** A LINE STYLE (v71+): the path's stroke replaced by a run of glyphs
+   *  laid along it. Read on an {@link SVGObject} only — the one kind with a
+   *  path to lay them along; inert on an image, a text or a frame rect.
+   *  See {@link LineStyleEffect} and engine/lineStyle.ts. */
+  lineStyle?: LineStyleEffect;
+}
+
+/** Which glyph a line style stamps along the path. `line` is a short dash
+ *  aligned with the path (a dashed line, in effect); `custom` is the one
+ *  the user drew ({@link LineStyleEffect.custom}). */
+export type LineStyleGlyph = 'line' | 'circle' | 'sparkle' | 'heart' | 'custom';
+
+/**
+ * A line style: the path is not stroked; instead a glyph is stamped along
+ * it, each stamp aligned with the path's direction where it stands. The
+ * glyph is OUTLINED, never filled, in the path's own ink and with the
+ * path's own stroke width and dash — the Stroke page's settings dress the
+ * glyphs exactly as they dressed the line they replace.
+ *
+ * Placement is deterministic: the random sliders draw from a PRNG seeded
+ * by the object's id (engine/lineStyle.ts), so a page reopens with every
+ * glyph where it was, and the canvas and the export agree.
+ */
+export interface LineStyleEffect {
+  glyph: LineStyleGlyph;
+  /** The drawn glyph, read only when `glyph` is 'custom': polylines in the
+   *  unit square the drawing pad spans ((0,0) top-left → (1,1) bottom-
+   *  right). Fitted to its own bounds at render, so a small sketch in one
+   *  corner of the pad stamps as large as one across the whole of it. */
+  custom?: [number, number][][];
+  /** How closely the glyphs stand, 0…1: 0 is sparse (a gap of three
+   *  glyph-widths between stamps), 1 has them touching. */
+  density: number;
+  /** A glyph's size in world cells — the side of the box it is drawn
+   *  into (design pt ÷ 16). */
+  size: number;
+  /** How far a glyph may stray from its place on the path, 0…1: along the
+   *  path and across it, as a fraction of its spacing and its size. */
+  randomPlacement: number;
+  /** How far a glyph may turn from the path's direction, 0…1 (1 = any
+   *  angle at all). */
+  randomRotation: number;
+  /** How much a glyph's size may vary from `size`, 0…1 (1 = a quarter to
+   *  one and three-quarters of it). */
+  randomSize: number;
 }
 
 export type ImageTintMode = 'tint' | 'duotone' | 'wash';

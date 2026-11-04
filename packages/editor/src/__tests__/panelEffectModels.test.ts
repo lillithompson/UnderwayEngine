@@ -2,6 +2,7 @@ import type { BorderEffect, GlowEffect, ImageFraming, ImageTintFill, ShadowEffec
 import {
   DEFAULT_GLOW_EFFECT,
   DEFAULT_IMAGE_FRAMING,
+  DEFAULT_LINE_STYLE_EFFECT,
   DEFAULT_SHADOW_EFFECT,
   borderEffectToModel,
   borderModelToEffect,
@@ -11,6 +12,8 @@ import {
   glowEffectKey,
   glowEffectToModel,
   glowModelToEffect,
+  lineStyleEffectToModel,
+  lineStyleModelToEffect,
   shadowEffectToModel,
   shadowModelToEffect,
   tintFillToModel,
@@ -140,5 +143,30 @@ describe('the defaults an Add button materializes', () => {
     expect(glow.spread).toBe(DEFAULT_SHADOW_EFFECT.spread);
     expect(glow.color).toEqual({ r: 255, g: 255, b: 255 });
     expect(DEFAULT_SHADOW_EFFECT.color).toEqual({ r: 0, g: 0, b: 0 });
+  });
+});
+
+describe('line style', () => {
+  test('round-trips, the sliders clamped to 0–1 and the size to nothing at least', () => {
+    expect(lineStyleModelToEffect(lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT)))
+      .toEqual(DEFAULT_LINE_STYLE_EFFECT);
+    const m = lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT);
+    expect(lineStyleModelToEffect({ ...m, density: 2, size: -1, randomPlacement: -1, randomRotation: 7, randomSize: 0.5 }))
+      .toMatchObject({ density: 1, size: 0, randomPlacement: 0, randomRotation: 1, randomSize: 0.5 });
+  });
+
+  test('the default is a visible run of circles with nothing random', () => {
+    expect(DEFAULT_LINE_STYLE_EFFECT).toEqual({
+      glyph: 'circle', density: 0.5, size: 1, randomPlacement: 0, randomRotation: 0, randomSize: 0,
+    });
+  });
+
+  test('a drawing rides through both ways, and an empty one is dropped', () => {
+    const custom: [number, number][][] = [[[0, 0], [1, 1]]];
+    const m = { ...lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT), glyph: 'custom' as const, custom };
+    expect(lineStyleModelToEffect(m).custom).toBe(custom);
+    expect(lineStyleEffectToModel(lineStyleModelToEffect(m)).custom).toBe(custom);
+    expect('custom' in lineStyleModelToEffect({ ...m, custom: [] })).toBe(false);
+    expect('custom' in lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT)).toBe(false);
   });
 });
