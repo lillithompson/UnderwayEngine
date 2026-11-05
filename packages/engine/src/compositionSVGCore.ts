@@ -1589,9 +1589,13 @@ export async function generateCompositionSVGCore(
     // recipes are unaffected. A plain page export keeps the geometric bounds:
     // its frame is already the page, and padding it would move every existing
     // freeform export's viewBox — an export that instead frames on its content
-    // opts in via frameInkExtents.
+    // opts in via frameInkExtents. A line style's glyphs stand further out
+    // than its stroke ever did, and the canvas draws them whole, so an inked
+    // frame takes their reach too.
+    const inkStyle = inkFramed ? lineStyleOf(object) : null;
     const pad = inkFramed
       ? svgStrokeWidthCells(object, svgStrokeScale, SVG_UNITS_PER_L0_CELL) / 2
+        + (inkStyle ? lineStyleReachCells(inkStyle) : 0)
       : 0;
     const raw = object.tileMode === 'repeat'
       ? { minX: object.cellX, minY: object.cellY,
