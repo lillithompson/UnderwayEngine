@@ -408,6 +408,14 @@ export function rotateSegmentsAbout(
  * the viewer sees it — a merge baking its sources, a collision index, a
  * bake of a drawn look — folds the angle in here, by the one rule. The same
  * array when there is no angle to fold.
+ *
+ * The angle ONLY: a leaf's `shear` (the lean a group scaled off its axes
+ * put on a turned member, v63+) is layered at render time too
+ * (`sceneGraph.leafNodeFromLegacy`, `vectorEraser.erasedSvg`: `localMatrix`
+ * with the angle and the shear about the same centre) and is not folded
+ * here, so a sheared leaf reads where it is drawn only through the scene
+ * graph's `worldSegments`. Folding it in would go through `mapSegments`,
+ * which flattens arcs under a shear as the renderer does.
  */
 export function segmentsAsDrawn(svg: SVGObject, segments: PathSegment[]): PathSegment[];
 export function segmentsAsDrawn(svg: SVGObject, segments?: readonly PathSegment[]): readonly PathSegment[];
