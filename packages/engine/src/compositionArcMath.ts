@@ -400,6 +400,23 @@ export function rotateSegmentsAbout(
 }
 
 /**
+ * `segments` (by default `svg`'s own) in the space they are DRAWN in. A
+ * quarter turn or a mirror is baked into an object's points by the op that
+ * sets it; its free rotation (`angleDeg`, the Rotate slider's) is layered
+ * at render time, turned about the centre of its STORED box
+ * (`sceneGraph.leafNodeFromLegacy`). Everything that reads the geometry as
+ * the viewer sees it — a merge baking its sources, a collision index, a
+ * bake of a drawn look — folds the angle in here, by the one rule. The same
+ * array when there is no angle to fold.
+ */
+export function segmentsAsDrawn(svg: SVGObject, segments: PathSegment[]): PathSegment[];
+export function segmentsAsDrawn(svg: SVGObject, segments?: readonly PathSegment[]): readonly PathSegment[];
+export function segmentsAsDrawn(svg: SVGObject, segments: readonly PathSegment[] = svg.segments): readonly PathSegment[] {
+  if (!svg.angleDeg) return segments;
+  return rotateSegmentsAbout(segments, svg.cellX + svg.cellWidth / 2, svg.cellY + svg.cellHeight / 2, svg.angleDeg);
+}
+
+/**
  * Segments through an arbitrary point WARP — a map that need not be affine,
  * which is what the push brush is: every point moves by a falloff that
  * depends on where it is, so one end of a segment can travel while the other

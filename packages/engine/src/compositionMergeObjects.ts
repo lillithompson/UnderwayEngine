@@ -6,7 +6,7 @@ import {
   SVGObject,
   SVGSubpath,
 } from './types';
-import { rotateSegmentsAbout } from './compositionArcMath';
+import { segmentsAsDrawn } from './compositionArcMath';
 import {
   applyCompOps,
   buildRemoveObjectOps,
@@ -60,22 +60,13 @@ import { tintFillToPaint } from './imageTintFill';
  * merge that quietly left one behind would read as a bug.
  */
 
-/** A source's segments in the space they are DRAWN in.
- *
- *  Discrete rotation / mirror is already baked into `segments` by the ops that
- *  set it, but free rotation (`angleDeg`) is layered at render time about the
- *  bbox center. The merged object has one geometry and no per-source angle to
- *  layer, so the angle is baked here — otherwise a twisted shape would snap
- *  upright the moment it merged. */
+/** A source's segments in the space they are DRAWN in (`segmentsAsDrawn`:
+ *  free rotation is layered at render time about the bbox center). The
+ *  merged object has one geometry and no per-source angle to layer, so the
+ *  angle is baked here — otherwise a twisted shape would snap upright the
+ *  moment it merged. Fresh copies, the merge's to keep. */
 function drawnSegments(svg: SVGObject, segments: readonly PathSegment[]): PathSegment[] {
-  const cloned = segments.map(clonePathSegment);
-  if (!svg.angleDeg) return cloned;
-  return rotateSegmentsAbout(
-    cloned,
-    svg.cellX + svg.cellWidth / 2,
-    svg.cellY + svg.cellHeight / 2,
-    svg.angleDeg,
-  );
+  return segmentsAsDrawn(svg, segments.map(clonePathSegment));
 }
 
 /** The colored sub-paths one source contributes. Its solid fill comes first
