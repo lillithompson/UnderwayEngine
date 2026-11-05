@@ -56,7 +56,8 @@ export type HostRowModel =
    *  option removes a slot (the + chip's leaves it off). `addLabel` is the
    *  + chip's word. An option's `group` is the heading it sits under;
    *  options arrive grouped, and one with none (Remove) has no heading.
-   *  Disabled while the host says so (a run is live). */
+   *  Disabled while the host says so (a run is live). `full`: no room for
+   *  another card, so no + chip, whose pick would write nothing. */
   | { kind: 'cards'; key: string; label: string;
       /** `current`: the slot the host marks as what plays next, ringed;
        *  `flash`: the slot the host is pointing at this moment, lit (a
@@ -64,6 +65,7 @@ export type HostRowModel =
       slots: readonly { icon: string; label: string; current: boolean; flash?: boolean }[];
       disabled: boolean;
       addLabel: string;
+      full?: boolean;
       picker: readonly { card: string | null; icon: string; label: string; group?: string }[] }
   /** A row of colour swatches each in one of a few states (SwatchStateRow),
    *  with a one-sentence caption under them; a tap asks the host for the

@@ -188,14 +188,16 @@ export function CardSlotsRow({ row, onPick }: {
               <MaterialCommunityIcons name={slot.icon as MCIName} size={24} color={PANEL_INK} />
             </Pressable>
           ))}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={row.addLabel}
-            onPress={() => setOpen(row.slots.length)}
-            style={[styles.chip, styles.chipFixed, styles.chipAdd]}
-          >
-            <MaterialCommunityIcons name={'plus' as MCIName} size={24} color={PANEL_INK} />
-          </Pressable>
+          {row.full ? null : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={row.addLabel}
+              onPress={() => setOpen(row.slots.length)}
+              style={[styles.chip, styles.chipFixed, styles.chipAdd]}
+            >
+              <MaterialCommunityIcons name={'plus' as MCIName} size={24} color={PANEL_INK} />
+            </Pressable>
+          )}
         </View>
       </View>
       <AppModal
