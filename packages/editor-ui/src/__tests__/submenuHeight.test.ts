@@ -126,8 +126,8 @@ describe('submenuHeight (a page’s content area)', () => {
       .toBe(pageOf([ROW_SLIDER, ROW_SLIDER, ROW_SLIDER]));
     expect(submenuHeight('glowOuter')).toBe(submenuHeight('shadow'));
     expect(submenuHeight('glowInner')).toBe(submenuHeight('shadow'));
-    const effects = readFileSync(resolve(__dirname, '..', 'components', 'EffectsBar.tsx'), 'utf8');
-    expect(effects).toContain('width: PAD_SIZE, height: PAD_SIZE,');
+    const effects = readFileSync(resolve(__dirname, '..', 'components', 'effectBar.tsx'), 'utf8');
+    expect(effects).toContain('width: SHADOW_PAD_SIZE, height: SHADOW_PAD_SIZE,');
   });
 
   test('a slider row is its caption, the gap under it, and the control line', () => {

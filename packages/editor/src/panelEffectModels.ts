@@ -5,7 +5,7 @@ import type {
   BorderModel, EndpointsModel, FramingModel, GlowKind, GlowModel, LineStyleModel, ShadowModel,
   TintModel,
 } from '@/editor-ui';
-import { MIN_GLYPH_SIZE } from '@/editor-ui/logic/lineStyle';
+import { clampGlyphSize } from '@/engine/lineStyle';
 
 // The property panel's models ↔ the engine's records, and the defaults an
 // Add button materializes. The halves of each pair live together because
@@ -57,7 +57,7 @@ export function lineStyleModelToEffect(m: LineStyleModel): LineStyleEffect {
     glyph: m.glyph,
     ...(m.custom && m.custom.length > 0 ? { custom: m.custom } : {}),
     density: Math.max(0, Math.min(1, m.density)),
-    size: Math.max(MIN_GLYPH_SIZE, m.size),
+    size: clampGlyphSize(m.size),
     rotation: ((m.rotation % 360) + 360) % 360,
     randomPlacement: Math.max(0, Math.min(1, m.randomPlacement)),
     randomRotation: Math.max(0, Math.min(1, m.randomRotation)),

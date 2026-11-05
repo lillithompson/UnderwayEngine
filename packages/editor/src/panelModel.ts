@@ -788,11 +788,13 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
     onPickGlowColor,
     // …and a vector's LINE STYLE, the fourth face of the same family:
     // offered only where there is a path to lay glyphs along (and the
-    // shell wired the handlers), seeded from the object's own or from the
-    // default the Style button would create. The record is read off the
-    // same effects host the shadow is, so a multi-selection of vectors
-    // reads the first and writes to all, as every effect page does.
-    ...(svgEditable && onAddLineStyle && onLineStyle ? {
+    // shell wired the handlers) — so never on a repeat-mode vector, which
+    // draws one authored tile across a region and which `lineStyleOf`
+    // strokes plainly. Seeded from the object's own or from the default the
+    // Style button would create. The record is read off the same effects
+    // host the shadow is, so a multi-selection of vectors reads the first
+    // and writes to all, as every effect page does.
+    ...(svgEditable && !targetRefs.some(isRepeatTarget) && onAddLineStyle && onLineStyle ? {
       lineStyle: effectsHost
         ? lineStyleEffectToModel(effectsHost.effects?.lineStyle ?? DEFAULT_LINE_STYLE_EFFECT)
         : undefined,
@@ -804,8 +806,9 @@ export function buildPanelModel(input: PanelModelInput): ObjectPropertiesModel {
       // handlers — still reports presence, so the Style tab the file
       // brought with it stands on the row and says the style is there.
       // Nothing on that tab can write (there is no handler), so removing
-      // it waits for the shell to wire `onLineStyle`.
-      lineStylePresent: effectPresent('lineStyle'),
+      // it waits for the shell to wire `onLineStyle`. A repeat-mode vector
+      // reports none: its record draws nothing until repeat is turned off.
+      lineStylePresent: !targetRefs.some(isRepeatTarget) && effectPresent('lineStyle'),
     }),
     borderOpen: borderOpen && (imageEditable || frameEditable),
     border: selected?.kind === 'image'

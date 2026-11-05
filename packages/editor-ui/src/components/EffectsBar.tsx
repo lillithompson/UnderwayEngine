@@ -4,6 +4,7 @@ import type { EffectKind, RGBLike, ShadowModel } from '../adapter';
 import { ROW_GAP, SHADOW_PAD_SIZE } from '../logic/submenuHeight';
 import {
   BarBody, ColorSliderRow, CONTROL_ACCENT, EffectButton, EffectButtonRow, SliderRow,
+  PAD_WELL_STYLE,
 } from './effectBar';
 import { beginValueDrag, endValueDrag, padOffsetFromTouch, VALUE_DRAG_SURFACE } from '../logic/slider';
 import { rgbCss, withAlpha } from '../logic/hsv';
@@ -58,10 +59,8 @@ const MAX_BLUR = 3.75; // 0…60pt
 const MIN_SPREAD = -0.75; // −12pt
 const MAX_SPREAD = 1.5; // 24pt
 
-// The pad is a recessed well on the light page: a faint dark wash with a
-// slightly stronger edge, its guides darker still so they stay readable.
-const PAD_FILL = 'rgba(42,42,42,0.08)';
-const PAD_BORDER = 'rgba(42,42,42,0.16)';
+// The pad's guides, darker than its well (PAD_WELL_STYLE) so they stay
+// readable.
 const CROSSHAIR = 'rgba(42,42,42,0.16)';
 const CENTER_DOT = 'rgba(42,42,42,0.34)';
 
@@ -322,11 +321,7 @@ const styles = StyleSheet.create({
   // The two-column block, then the colour row beneath it — the same gap the
   // rows inside the block keep, so the page reads as one stack.
   page: { gap: ROW_GAP },
-  pad: {
-    width: PAD_SIZE, height: PAD_SIZE, borderRadius: 12, backgroundColor: PAD_FILL,
-    borderWidth: 1, borderColor: PAD_BORDER,
-    ...VALUE_DRAG_SURFACE,
-  },
+  pad: { ...PAD_WELL_STYLE, ...VALUE_DRAG_SURFACE },
   padCrossV: { position: 'absolute', left: PAD_SIZE / 2, top: 0, bottom: 0, width: 1, backgroundColor: CROSSHAIR },
   padCrossH: { position: 'absolute', top: PAD_SIZE / 2, left: 0, right: 0, height: 1, backgroundColor: CROSSHAIR },
   padCenter: {

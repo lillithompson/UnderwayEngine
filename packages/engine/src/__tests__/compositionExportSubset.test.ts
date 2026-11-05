@@ -9,6 +9,7 @@
 import { generateCompositionSVGCore, type CompositionSVGInputs } from '../compositionSVGCore';
 import { DEFAULT_LINE_HEIGHT, layoutText, measureTextBbox } from '../textLayout';
 import { STICKER_SHADOW_CELLS } from '../stickerStyle';
+import { lineStyleReachCells } from '../lineStyle';
 import { CellState, DEFAULT_TRANSFORM, GroupNode, ImageObject, PaintObject, PathSegment, PatternObject, RGBColor, SVGObject, TextObject } from '../types';
 import { commitCanvasPaint, createCanvasPaintWorking, flattenPaintTiles, stampCanvasPaint } from '../canvasPaint';
 import { overlayPngDataUri } from '../imagePaintOverlay';
@@ -1361,5 +1362,38 @@ describe('solidFills — the objects whose own fill takes the override ink', () 
     }));
     expect(svg).toContain('fill="rgb(255,255,255)"');
     expect(svg).not.toContain('linearGradient');
+  });
+});
+
+describe('an inked frame holds a line style’s glyphs', () => {
+  // The default style's size on a line whose stroke is a quarter of a cell:
+  // the stamps stand far past the half-width an inked frame used to grow by.
+  const lineStyle = {
+    glyph: 'circle' as const, density: 0.5, size: 1, rotation: 0,
+    randomPlacement: 0, randomRotation: 0, randomSize: 0,
+  };
+  const styledLine = (effects?: SVGObject['effects']): SVGObject => ({
+    id: 'svg_a',
+    segments: [{ kind: 'line', start: [0, 0], end: [10, 0] }],
+    color: { r: 10, g: 20, b: 30 },
+    cellX: 0, cellY: 0, cellWidth: 10, cellHeight: 0,
+    stroke: { width: 0.25 },
+    ...(effects ? { effects } : {}),
+  });
+  const box = async (svg: SVGObject, frameInkExtents: boolean) => viewBoxOf(
+    (await generateCompositionSVGCore(makeInputs({ svgObjects: [svg], frameInkExtents })))!,
+  );
+
+  it('grows by the glyphs’ reach, so a saved page does not crop them', async () => {
+    const bare = await box(styledLine(), true);
+    const styled = await box(styledLine({ lineStyle }), true);
+    const grown = lineStyleReachCells(lineStyle) * U;
+    expect(styled[3]).toBeCloseTo(bare[3] + 2 * grown, 3);
+    // A stamp's half-height is half its size, and all of it is inside.
+    expect(styled[3] / 2).toBeGreaterThanOrEqual(0.5 * U);
+  });
+
+  it('leaves a frame that is not inked where it was', async () => {
+    expect(await box(styledLine({ lineStyle }), false)).toEqual(await box(styledLine(), false));
   });
 });

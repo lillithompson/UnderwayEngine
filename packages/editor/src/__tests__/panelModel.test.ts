@@ -537,6 +537,27 @@ describe('the Style page — a vector’s line style', () => {
     expect(m.lineStylePresent).toBe(true);
   });
 
+  test('a repeat-mode vector is not offered it: its tile has no path, and nothing would draw', () => {
+    const { session, lineId, shapeId } = populated();
+    const styled = commitEntry(session, buildSetEffects(session.state, shapeId, { lineStyle: style })!);
+    const repeating = {
+      ...styled,
+      state: {
+        ...styled.state,
+        svgObjects: styled.state.svgObjects.map((o) => (
+          o.id === shapeId ? { ...o, tileMode: 'repeat' as const } : o
+        )),
+      },
+    };
+    const m = modelOf(select(repeating, shapeId), { handlers: withStyle(handlers()) });
+    expect(m.onAddLineStyle).toBeUndefined();
+    expect(m.onLineStyle).toBeUndefined();
+    expect(m.lineStylePresent).toBe(false);
+    // One repeating member keeps the page off the whole selection.
+    const mixed = modelOf(selectMany(repeating, [lineId, shapeId]), { handlers: withStyle(handlers()) });
+    expect(mixed.onAddLineStyle).toBeUndefined();
+  });
+
   test('a worn style is read off the object, and presence follows the record', () => {
     const { session, lineId, shapeId } = populated();
     const styled = commitEntry(session, buildSetEffects(session.state, lineId, { lineStyle: style })!);

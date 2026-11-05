@@ -7,7 +7,8 @@
 
 import {
   glyphCommandsPathD, lineStyleGlyphCommands, lineStyleMarkup, lineStyleOf,
-  lineStylePathD, lineStylePlacements, lineStyleReachCells, lineStyleSeed, lineStyleSpacing,
+  clampGlyphSize, lineStylePathD, lineStylePlacements, lineStyleReachCells, lineStyleSeed, lineStyleSpacing,
+  MAX_DRAWN_GLYPH_POINTS, MAX_GLYPH_SIZE, MAX_LINE_STYLE_COMMANDS, MAX_LINE_STYLE_STAMPS, MIN_GLYPH_SIZE,
 } from '../lineStyle';
 import { buildSVGObjectContent, svgStrokePresentation, svgStrokesMarkup } from '../svgPathBuilder';
 import { computeCircleSegments } from '../compositionArcMath';
@@ -308,5 +309,51 @@ describe('the markup', () => {
     expect(lineStyleOf(obj({ effects: { lineStyle: style() } }))).toEqual(style());
     expect(lineStyleOf(obj({ tileMode: 'repeat', effects: { lineStyle: style() } }))).toBeNull();
     expect(lineStyleOf(obj({ effects: { shadow: { dx: 0, dy: 0, blur: 1, color: { r: 0, g: 0, b: 0 }, alpha: 1 } } }))).toBeNull();
+  });
+});
+
+describe('what one styled path may cost', () => {
+  const longLine = (cells: number) => [line([0, 0], [cells, 0])];
+
+  test('a tiny size from outside cannot ask for millions of stamps', () => {
+    const stamps = lineStylePlacements(longLine(10), style({ size: 1e-6, density: 1 }), 1);
+    expect(stamps.length).toBe(MAX_LINE_STYLE_STAMPS);
+  });
+
+  test('past the budget the stamps spread over the whole path, ends included', () => {
+    const stamps = lineStylePlacements(longLine(1000), style({ size: MIN_GLYPH_SIZE, density: 1 }), 1);
+    expect(stamps.length).toBe(MAX_LINE_STYLE_STAMPS);
+    expect(stamps[0].x).toBeCloseTo(0);
+    expect(stamps[stamps.length - 1].x).toBeCloseTo(1000);
+  });
+
+  test('under the budget nothing changes', () => {
+    const s = style({ size: 1, density: 1 });
+    expect(lineStylePlacements(longLine(30), s, 1).length).toBe(Math.round(30 / lineStyleSpacing(s)) + 1);
+  });
+
+  test('a long drawn glyph stamps with a bounded number of points, its stroke ends kept', () => {
+    const stroke: [number, number][] = Array.from({ length: 5000 }, (_, i) => [i / 4999, (i % 2) / 2]);
+    const commands = lineStyleGlyphCommands(style({ glyph: 'custom', custom: [stroke] }));
+    expect(commands.length).toBeLessThanOrEqual(MAX_DRAWN_GLYPH_POINTS + 2);
+    expect(commands[0][1]).toBeCloseTo(-0.5);
+    expect(commands[commands.length - 1][1]).toBeCloseTo(0.5);
+  });
+
+  test('stamps of a drawn glyph stay inside the command budget, whatever the drawing', () => {
+    const strokes: [number, number][][] = Array.from({ length: 255 }, (_, k) => (
+      Array.from({ length: 40 }, (_, i): [number, number] => [i / 39, k / 254])
+    ));
+    const s = style({ glyph: 'custom', custom: strokes, size: MIN_GLYPH_SIZE, density: 1 });
+    const stamps = lineStylePlacements(longLine(1000), s, 1).length;
+    expect(stamps).toBeGreaterThanOrEqual(2);
+    expect(stamps * lineStyleGlyphCommands(s).length).toBeLessThanOrEqual(MAX_LINE_STYLE_COMMANDS);
+  });
+
+  test('clampGlyphSize holds a size to the range, and a non-finite one to the floor', () => {
+    expect(clampGlyphSize(1e-6)).toBe(MIN_GLYPH_SIZE);
+    expect(clampGlyphSize(1e9)).toBe(MAX_GLYPH_SIZE);
+    expect(clampGlyphSize(1)).toBe(1);
+    expect(clampGlyphSize(NaN)).toBe(MIN_GLYPH_SIZE);
   });
 });

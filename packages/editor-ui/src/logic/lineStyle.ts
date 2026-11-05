@@ -30,10 +30,8 @@ export const LINE_STYLE_GLYPH_OPTIONS: readonly { value: LineStyleGlyphKind; lab
 ];
 
 // ── Ranges (world cells; design pt ÷ 16) ─────────────────────────────
-/** The smallest glyph the Size row offers: 2pt — a dot. */
-export const MIN_GLYPH_SIZE = 0.125;
-/** …and the largest: 64pt. */
-export const MAX_GLYPH_SIZE = 4;
+/** The Size row's ends are the engine's (the reader holds a file to them). */
+export { MAX_GLYPH_SIZE, MIN_GLYPH_SIZE } from '@/engine/lineStyle';
 /** The Rotation row runs a full turn, in degrees. */
 export const MAX_GLYPH_ROTATION = 360;
 

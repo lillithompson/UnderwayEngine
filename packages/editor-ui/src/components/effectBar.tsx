@@ -4,7 +4,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import {
   ASIDE_GAP, CONTENT_PAD, EFFECT_BUTTON_COLUMNS, EFFECT_BUTTON_GAP, GROUP_GAP, GROUP_PAD, ROW_GAP,
   ROW_SECTION_TABS, ROW_SEGMENTED, ROW_SLIDER,
-  ROW_SWITCH, SLIDER_CONTROL, SLIDER_LABEL, SLIDER_LABEL_GAP,
+  ROW_SWITCH, SHADOW_PAD_SIZE, SLIDER_CONTROL, SLIDER_LABEL, SLIDER_LABEL_GAP,
 } from '../logic/submenuHeight';
 import { percentText, percentToValue } from '../logic/slider';
 import {
@@ -27,6 +27,15 @@ import { SLIDER_TRACK, Slider } from './Slider';
 import { ColorSwatchFill } from './ColorSwatch';
 import { hueRampColors, hueSliderSV, rgbCss, rgbToHsv, withHue } from '../logic/hsv';
 import type { RGBLike } from '../adapter';
+
+/** The pad a page's finger draws on: a square recessed well on the light
+ *  page, a faint dark wash with a slightly stronger edge. The Shadow page's
+ *  direction pad and the Style page's drawing pad both stand in it. */
+export const PAD_WELL_STYLE = {
+  width: SHADOW_PAD_SIZE, height: SHADOW_PAD_SIZE, borderRadius: 12,
+  backgroundColor: 'rgba(42,42,42,0.08)',
+  borderWidth: 1, borderColor: 'rgba(42,42,42,0.16)',
+} as const;
 
 // Shared grammar for the property pages (Drop Shadow, Border, Crop, …) that
 // the Edit sheet shows in its content area: the row grammar (a slider row is
