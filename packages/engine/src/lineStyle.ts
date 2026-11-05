@@ -1,6 +1,6 @@
 import type { LineStyleEffect, LineStyleGlyph, PathSegment, RGBColor, SVGObject } from './types';
 import { arcMotionAt, piecePointAt, segLength } from './compositionArcMath';
-import { fnv1a32, mulberry32 } from './seededRandom';
+import { fnv1a32, mulberry32At } from './seededRandom';
 import { SVG_UNITS_PER_L0_CELL } from './svgExport';
 
 // A LINE STYLE: the path is not stroked; a glyph is stamped along it instead
@@ -188,6 +188,40 @@ export function lineStyleSeed(objectId: string, subpath = 0): number {
   return fnv1a32(objectId) ^ (subpath * 0x9e3779b9);
 }
 
+/** How the random sliders move one stamp from its place: along the path
+ *  and across it (world cells), about its centre (radians) and in size (a
+ *  factor of the style's `size`). */
+export interface StampJitter {
+  along: number;
+  across: number;
+  turn: number;
+  grow: number;
+}
+
+/**
+ * Stamp `i`'s share of the random sliders, written into `out` (and
+ * returned): its four draws are the seed's stream at `4i … 4i + 3`, in that
+ * fixed order — placement along, placement across, rotation, size — so the
+ * sliders are independent of one another and a stamp's draws do not depend
+ * on how many stamps stand before it. `gap` is the distance between stamps
+ * where it stands, which is what the placement along is a share of.
+ *
+ * The one rule for {@link lineStylePlacements} and for a reader that lays
+ * a style's stamps along a path it is still drawing (a canvas layer that
+ * may not allocate, which is why this takes its result as a parameter): the
+ * same seed and index give the same glyph, turned and sized the same.
+ */
+export function lineStyleStampJitter(
+  style: LineStyleEffect, seed: number, i: number, gap: number, out: StampJitter,
+): StampJitter {
+  const placement = clamp01(style.randomPlacement);
+  out.along = (mulberry32At(seed, 4 * i) * 2 - 1) * 0.5 * gap * placement;
+  out.across = (mulberry32At(seed, 4 * i + 1) * 2 - 1) * 0.75 * style.size * placement;
+  out.turn = (mulberry32At(seed, 4 * i + 2) * 2 - 1) * Math.PI * clamp01(style.randomRotation);
+  out.grow = 1 + (mulberry32At(seed, 4 * i + 3) * 2 - 1) * 0.75 * clamp01(style.randomSize);
+  return out;
+}
+
 interface PathWalk {
   segments: PathSegment[];
   cumulative: number[];
@@ -262,11 +296,7 @@ export function lineStylePlacements(
   const walk = measurePath(segments);
   const spacing = lineStyleSpacing(style);
   if (walk.total <= EPS || !(spacing > EPS) || !(style.size > 0)) return [];
-  const rng = mulberry32(seed);
   const baseTurn = (style.rotation || 0) * Math.PI / 180;
-  const placement = clamp01(style.randomPlacement);
-  const rotation = clamp01(style.randomRotation);
-  const sizing = clamp01(style.randomSize);
 
   // Two stamps at the least, so an open path keeps a glyph at each end.
   const limit = Math.max(2, Math.min(
@@ -290,11 +320,9 @@ export function lineStylePlacements(
 
   const out: GlyphPlacement[] = [];
   const cursor = { k: 0 };
+  const jitter: StampJitter = { along: 0, across: 0, turn: 0, grow: 1 };
   for (let i = 0; i < count; i++) {
-    const along = (rng() * 2 - 1) * 0.5 * (step || spacing) * placement;
-    const across = (rng() * 2 - 1) * 0.75 * style.size * placement;
-    const turn = (rng() * 2 - 1) * Math.PI * rotation;
-    const grow = 1 + (rng() * 2 - 1) * 0.75 * sizing;
+    const { along, across, turn, grow } = lineStyleStampJitter(style, seed, i, step || spacing, jitter);
     let distance = start + i * step + along;
     if (walk.closed) distance = ((distance % walk.total) + walk.total) % walk.total;
     const { at, dir } = sampleWalk(walk, distance, cursor);

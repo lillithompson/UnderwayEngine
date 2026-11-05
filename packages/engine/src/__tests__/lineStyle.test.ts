@@ -8,10 +8,12 @@
 import {
   glyphCommandsPathD, lineStyleGlyphCommands, lineStyleMarkup, lineStyleOf,
   clampGlyphSize, lineStylePathD, lineStylePlacements, lineStyleReachCells, lineStyleSeed, lineStyleSpacing,
+  lineStyleStampJitter,
   MAX_DRAWN_GLYPH_POINTS, MAX_GLYPH_SIZE, MAX_LINE_STYLE_COMMANDS, MAX_LINE_STYLE_STAMPS, MIN_GLYPH_SIZE,
 } from '../lineStyle';
 import { buildSVGObjectContent, svgStrokePresentation, svgStrokesMarkup } from '../svgPathBuilder';
 import { computeCircleSegments } from '../compositionArcMath';
+import { mulberry32 } from '../seededRandom';
 import { SVG_UNITS_PER_L0_CELL } from '../svgExport';
 import { LineStyleEffect, LineStyleGlyph, PathSegment, SVGObject } from '../types';
 
@@ -118,6 +120,40 @@ describe('the random sliders', () => {
     const c = lineStylePlacements(straight(), s, 43);
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
+  });
+
+  it('a stamp\'s draws are the seed\'s stream four at a time, addressable by its index', () => {
+    // `lineStyleStampJitter` is the one rule for the builder and for a
+    // layer that lays stamps along a path still being drawn (DrawBots'
+    // sim canvas): stamp i reads draws 4i … 4i + 3 of `mulberry32(seed)`,
+    // along, across, turn, size — the order the placements have always
+    // drawn in, so no saved page's glyphs move.
+    const s = style({ randomPlacement: 0.6, randomRotation: 0.4, randomSize: 0.8, size: 0.5 });
+    const rng = mulberry32(42);
+    const out = { along: 0, across: 0, turn: 0, grow: 1 };
+    for (let i = 0; i < 12; i++) {
+      const along = (rng() * 2 - 1) * 0.5 * 1.25 * 0.6;
+      const across = (rng() * 2 - 1) * 0.75 * 0.5 * 0.6;
+      const turn = (rng() * 2 - 1) * Math.PI * 0.4;
+      const grow = 1 + (rng() * 2 - 1) * 0.75 * 0.8;
+      expect(lineStyleStampJitter(s, 42, i, 1.25, out)).toBe(out);
+      expect(out).toEqual({ along, across, turn, grow });
+    }
+    // …and the placements are those draws: stamp i stands `along` off its
+    // even place, `across` off the path, turned and sized by the rest.
+    const stamps = lineStylePlacements(straight(), s, 42);
+    const step = 10 / (stamps.length - 1);
+    stamps.forEach((p, i) => {
+      const j = lineStyleStampJitter(s, 42, i, step, { along: 0, across: 0, turn: 0, grow: 1 });
+      expect(p.x).toBeCloseTo(Math.max(0, Math.min(10, i * step + j.along)), 12);
+      expect(p.y).toBeCloseTo(j.across, 12);
+      expect(p.angle).toBeCloseTo(j.turn, 12);
+      expect(p.scale).toBeCloseTo(0.5 * j.grow, 12);
+    });
+    // With every slider at rest a stamp is not moved at all (a draw
+    // below a half times nothing is −0, which is no move either).
+    const rest = lineStyleStampJitter(style(), 42, 3, 1, out);
+    expect([Math.abs(rest.along), Math.abs(rest.across), Math.abs(rest.turn), rest.grow]).toEqual([0, 0, 0, 1]);
   });
 
   it('each slider moves only its own quantity, within its range', () => {

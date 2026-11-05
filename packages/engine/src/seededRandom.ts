@@ -44,16 +44,36 @@ export function fnv1a32(str: string, seed: number = FNV1A32_OFFSET_BASIS): numbe
   return hash >>> 0;
 }
 
+/** mulberry32's step: how far its counter moves on every draw. */
+const MULBERRY_STEP = 0x6d2b79f5;
+
+/** mulberry32's output for a counter value: the stream is a counter put
+ *  through this, which is what makes a draw addressable by its index. */
+function mulberryMix(a: number): number {
+  let t = a;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
 /** mulberry32: tiny deterministic PRNG. Returns a () => [0, 1) stream. */
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    a = (a + MULBERRY_STEP) >>> 0;
+    return mulberryMix(a);
   };
+}
+
+/**
+ * Draw `index` (0 for the first) of `mulberry32(seed)`'s stream, without
+ * the stream: the same number the closure's `index + 1`-th call returns.
+ * For a reader that needs one draw out of the middle — a line style's
+ * stamp `i`, whose four draws are `4i … 4i + 3` (lineStyle.ts) — and for
+ * one that may not allocate a closure to get it (a canvas layer's frame).
+ */
+export function mulberry32At(seed: number, index: number): number {
+  return mulberryMix(((seed >>> 0) + Math.imul(index + 1, MULBERRY_STEP)) >>> 0);
 }
 
 /** Fisher-Yates shuffle driven by mulberry32(seed). Pure — returns a copy. */

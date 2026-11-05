@@ -1,4 +1,4 @@
-import { FNV1A32_OFFSET_BASIS, fnv1a32, mulberry32, seededShuffle } from '../seededRandom';
+import { FNV1A32_OFFSET_BASIS, fnv1a32, mulberry32, mulberry32At, seededShuffle } from '../seededRandom';
 
 // The deterministic PRNG primitives (seededRandom.ts). They had no suite in
 // either app that carried a copy of them — their behaviour was covered only
@@ -45,6 +45,31 @@ describe('fnv1a32', () => {
   it('sees a one-character change, and the ORDER of the characters', () => {
     expect(fnv1a32('abc')).not.toBe(fnv1a32('abd'));
     expect(fnv1a32('abc')).not.toBe(fnv1a32('cba'));
+  });
+});
+
+describe('mulberry32At', () => {
+  it('is the stream\'s own draw at that index, for any seed', () => {
+    // A line style's stamps are placed off the stream by the SVG builder
+    // and off the index by a canvas layer that may not allocate the
+    // closure (lineStyle.ts's `lineStyleStampJitter`): the two must be the
+    // same numbers, or a glyph moves when one hands over to the other.
+    for (const seed of [0, 1, 42, 0x7fffffff, 0xffffffff, 0x9e3779b9]) {
+      const stream = Array.from({ length: 64 }, mulberry32(seed));
+      stream.forEach((n, i) => expect(mulberry32At(seed, i)).toBe(n));
+    }
+    expect(mulberry32At(42, 0)).toBe(0.6011037519201636);
+  });
+
+  it('wraps in 32 bits far along the stream, as the counter does', () => {
+    const rng = mulberry32(7);
+    let last = 0;
+    for (let i = 0; i <= 5000; i++) last = rng();
+    expect(mulberry32At(7, 5000)).toBe(last);
+    // An index whose product with the step is far past 2^53.
+    const n = mulberry32At(7, 0x7ffffff0);
+    expect(n).toBeGreaterThanOrEqual(0);
+    expect(n).toBeLessThan(1);
   });
 });
 
