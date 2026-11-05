@@ -117,6 +117,12 @@ describe('the page', () => {
 });
 
 describe('the pad', () => {
+  test('stands in the one pad well the Shadow page does, with no fill of its own', () => {
+    expect(BAR).toContain('...PAD_WELL_STYLE');
+    expect(EFFECTS).toContain('...PAD_WELL_STYLE');
+    expect(BAR).not.toContain('rgba(42,42,42');
+  });
+
   it('reads a touch in its own units, clamped to the square', () => {
     expect(padPointFromTouch(74, 37, 148)).toEqual([0.5, 0.25]);
     expect(padPointFromTouch(-10, 200, 148)).toEqual([0, 1]);

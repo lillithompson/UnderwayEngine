@@ -118,19 +118,30 @@ describe('v71: the line style block', () => {
     expect(plain.effects!.shadow).toMatchObject({ dx: 0.5 });
   });
 
-  test('an unstyled file is byte-identical to its v70 form but for the version field', () => {
+  test('an unstyled file is written at v71 and reads back with no line style', () => {
     const bytes = serializeComposition(makeBundle([makeSVG('a', {
       effects: { shadow: { dx: 0.5, dy: 0.25, blur: 1, color: { r: 0, g: 0, b: 0 }, alpha: 0.5 } },
     })]), []);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     expect(view.getUint16(4, true)).toBe(71);
-    // The effects mask byte never sets the line style bit when there is none.
     const parsed = deserializeComposition(bytes);
     expect(parsed.meta.svgObjects![0].effects!.lineStyle).toBeUndefined();
   });
 });
 
 describe('v71: a corrupt file is refused, not misread', () => {
+  test('a size or a turn from outside is held to what the page could have written', () => {
+    const lineStyle = {
+      glyph: 'circle' as const, density: 1, size: 1e-6, rotation: Number.NaN,
+      randomPlacement: 0, randomRotation: 0, randomSize: 0,
+    };
+    const read = deserializeComposition(serializeComposition(
+      makeBundle([makeSVG('a', { effects: { lineStyle } })]), [],
+    )).meta.svgObjects![0].effects!.lineStyle!;
+    expect(read.size).toBe(0.125);
+    expect(read.rotation).toBe(0);
+  });
+
   test('a stroke whose point count claims more bytes than remain throws a clear error', () => {
     const custom: [number, number][][] = [[[0.1, 0.1], [0.9, 0.9]]];
     const bytes = serializeComposition(makeBundle([makeSVG('a', {

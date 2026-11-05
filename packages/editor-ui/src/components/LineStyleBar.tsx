@@ -9,7 +9,7 @@ import {
 } from '../logic/lineStyle';
 import {
   BarBody, CONTROL_ACCENT, GroupedBody, RowGroup, SECTION_TABS_GROUP_RADIUS, SectionTabs, SliderRow,
-  SegmentedRow,
+  PAD_WELL_STYLE, SegmentedRow,
 } from './effectBar';
 import { beginValueDrag, endValueDrag, VALUE_DRAG_SURFACE } from '../logic/slider';
 import { PANEL_INK, PANEL_INK_DIM } from '../theme';
@@ -50,10 +50,6 @@ const GLYPH_OPTIONS: readonly { value: LineStyleGlyphKind; label: string; icon: 
 
 const PAD_SIZE = SHADOW_PAD_SIZE;
 const PREVIEW_STROKE = 2;
-
-// The pad is the Shadow page's recessed well.
-const PAD_FILL = 'rgba(42,42,42,0.08)';
-const PAD_BORDER = 'rgba(42,42,42,0.16)';
 
 const degText = (deg: number) => `${Math.round(deg)}°`;
 
@@ -235,11 +231,7 @@ export function LineStyleBar({ style, section, onSection, onChange, onCommit }: 
 const styles = StyleSheet.create({
   face: { height: PAD_SIZE, justifyContent: 'center' },
   padHolder: { width: PAD_SIZE, height: PAD_SIZE },
-  pad: {
-    width: PAD_SIZE, height: PAD_SIZE, borderRadius: 12, backgroundColor: PAD_FILL,
-    borderWidth: 1, borderColor: PAD_BORDER, overflow: 'hidden',
-    ...VALUE_DRAG_SURFACE,
-  },
+  pad: { ...PAD_WELL_STYLE, overflow: 'hidden', ...VALUE_DRAG_SURFACE },
   // Clear sits in the pad's top-right corner, over it, so the pad keeps
   // the whole of the face's height.
   clear: { position: 'absolute', top: 2, right: 2, paddingVertical: 4, paddingHorizontal: 8 },

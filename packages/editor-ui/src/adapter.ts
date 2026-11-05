@@ -383,8 +383,9 @@ export interface LineStyleModel {
   glyph: LineStyleGlyphKind;
   /** The drawn glyph, read when `glyph` is 'custom': polylines in the unit
    *  square of the Style page's pad ((0,0) top-left → (1,1) bottom-right),
-   *  as drawn. Kept when a built-in glyph is chosen over it, so Draw brings
-   *  the sketch back. */
+   *  as drawn. Kept while the object is being edited when a built-in glyph
+   *  is chosen over it, so Draw brings the sketch back; a saved file holds
+   *  it only while `glyph` is 'custom'. */
   custom?: [number, number][][];
   /** How closely the glyphs stand, 0–1 (0 sparse, 1 touching). */
   density: number;

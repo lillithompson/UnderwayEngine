@@ -84,6 +84,32 @@ const EPS = 1e-9;
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
+// ── Ranges and budgets ───────────────────────────────────────────────
+/** The smallest glyph a style can stamp, in world cells: 2pt, a dot. */
+export const MIN_GLYPH_SIZE = 0.125;
+/** …and the largest: 64pt. */
+export const MAX_GLYPH_SIZE = 4;
+
+/** A glyph size held to the range: the Size row's floor and ceiling, and
+ *  the reader's, because a `.tile` comes from outside and carries a raw f32. */
+export function clampGlyphSize(size: number): number {
+  if (!Number.isFinite(size)) return MIN_GLYPH_SIZE;
+  return Math.min(MAX_GLYPH_SIZE, Math.max(MIN_GLYPH_SIZE, size));
+}
+
+// A styled path is one `d` string, rebuilt whenever the object changes (a
+// slider's every step), so what it may hold is bounded here: past a budget
+// the stamps spread out evenly over the whole path and a drawing loses
+// points, rather than the WebView paying for it. The floor on the size does
+// not bound this by itself, since a stamp count grows with the path's length.
+/** The most stamps one path draws. */
+export const MAX_LINE_STYLE_STAMPS = 512;
+/** The most path commands one path's stamps may come to, whatever the glyph. */
+export const MAX_LINE_STYLE_COMMANDS = 8192;
+/** The most points a drawn glyph stamps with, the ends of each stroke apart.
+ *  The pad records a point per finger move; the file keeps them all. */
+export const MAX_DRAWN_GLYPH_POINTS = 64;
+
 /**
  * A drawn glyph fitted to its own bounds: the polylines' box is centred on
  * the origin and its longer side scaled to 1, so a sketch in one corner of
@@ -110,14 +136,14 @@ function fittedCustomGlyph(custom: LineStyleEffect['custom']): readonly GlyphCom
   if (span <= EPS) return null;
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
+  const stride = Math.ceil(points / MAX_DRAWN_GLYPH_POINTS);
   const out: GlyphCommand[] = [];
   for (const stroke of custom) {
-    let first = true;
-    for (const [x, y] of stroke) {
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      out.push([first ? 'M' : 'L', (x - cx) / span, (y - cy) / span]);
-      first = false;
-    }
+    const finite = stroke.filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+    finite.forEach(([x, y], i) => {
+      if (i % stride !== 0 && i !== finite.length - 1) return;
+      out.push([i === 0 ? 'M' : 'L', (x - cx) / span, (y - cy) / span]);
+    });
   }
   return out;
 }
@@ -227,7 +253,8 @@ function sampleWalk(
  * by the style's `rotation`; the random sliders then move each from its
  * place: along the path and across it (placement), about its centre
  * (rotation) and in size — each drawn once per stamp in that order, so the
- * sliders are independent of one another.
+ * sliders are independent of one another. A path that would take more than
+ * the budget's stamps takes the budget's, spaced evenly over all of it.
  */
 export function lineStylePlacements(
   segments: readonly PathSegment[], style: LineStyleEffect, seed: number,
@@ -241,6 +268,11 @@ export function lineStylePlacements(
   const rotation = clamp01(style.randomRotation);
   const sizing = clamp01(style.randomSize);
 
+  // Two stamps at the least, so an open path keeps a glyph at each end.
+  const limit = Math.max(2, Math.min(
+    MAX_LINE_STYLE_STAMPS,
+    Math.floor(MAX_LINE_STYLE_COMMANDS / Math.max(1, lineStyleGlyphCommands(style).length)),
+  ));
   let count: number;
   let step: number;
   let start = 0;
@@ -249,10 +281,10 @@ export function lineStylePlacements(
     step = 0;
     start = walk.total / 2;
   } else if (walk.closed) {
-    count = Math.max(1, Math.round(walk.total / spacing));
+    count = Math.min(limit, Math.max(1, Math.round(walk.total / spacing)));
     step = walk.total / count;
   } else {
-    count = Math.max(2, Math.round(walk.total / spacing) + 1);
+    count = Math.min(limit, Math.max(2, Math.round(walk.total / spacing) + 1));
     step = walk.total / (count - 1);
   }
 
