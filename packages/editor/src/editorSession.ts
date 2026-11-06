@@ -7327,12 +7327,12 @@ export function buildRecolorSVGWithOpacity(
  *  color by its own rule (a line its stroke, a shape its fill, a text its
  *  font color, an image its tint) in ONE undo entry.
  *
- *  Members with no color rule are skipped rather than vetoing the rest —
- *  and skipping them is what keeps `selectedId: null` from reaching
- *  buildApplyColor, whose null case paints the page BACKGROUND. Locked
- *  members are skipped for the same reason the multi move skips them: the
- *  commit lock-guard rejects a whole ENTRY that touches one, so a single
- *  locked member would otherwise silently swallow everyone else's color. */
+ *  Members with no color rule (a group id, a word sticker) are skipped
+ *  rather than vetoing the rest: the members that can take the color do.
+ *  Locked members are skipped for the same reason the multi move skips
+ *  them: the commit lock-guard rejects a whole ENTRY that touches one, so a
+ *  single locked member would otherwise silently swallow everyone else's
+ *  color. */
 export function buildApplyColorMulti(
   state: CompositionState,
   ids: readonly string[],
@@ -7404,12 +7404,15 @@ export function selectionColorAlpha(
   selectedId: string | null,
   scope: ColorScope = DEFAULT_COLOR_SCOPE,
 ): number {
-  const selected = selectedId ? findItem(state, selectedId) : null;
   // Nothing selected → the page background, whose Paint carries the alpha.
-  if (!selected) {
+  if (selectedId === null) {
     const bg = state.background;
     return bg?.kind === 'solid' ? (bg.alpha ?? 1) : 1;
   }
+  // A selection that resolves to no scene node takes no colour at all
+  // (buildApplyColor answers null), so there is no channel to report.
+  const selected = findItem(state, selectedId);
+  if (!selected) return 1;
   switch (selected.kind) {
     case 'svg':
       // The host's own is opaque by definition (see selectionTakesAlpha),
@@ -7437,13 +7440,18 @@ export function selectionColorAlpha(
  *  ink is an RGB stroke, and the host's colours are its own to make opaque
  *  (a rig's two are both painted opaque by its sketch shader) — so the
  *  picker hides its Opacity slider on all three rather than offering one
- *  whose value would be dropped. */
+ *  whose value would be dropped. False too for a selection that resolves to
+ *  no scene node (a host item, a sheet sentinel, a frame's group id): the
+ *  dispatch applies no colour there, so there is nothing for an alpha to
+ *  land on. True with nothing selected — the page background's Paint
+ *  carries one. */
 export function selectionTakesAlpha(
   state: CompositionState,
   selectedId: string | null,
 ): boolean {
-  const ref = selectedId ? findItem(state, selectedId) : null;
-  if (!ref) return true;
+  if (selectedId === null) return true;
+  const ref = findItem(state, selectedId);
+  if (!ref) return false;
   if (ref.kind === 'svg') return !hostColorTarget(state, ref.item.id);
   return ref.kind !== 'text' && ref.kind !== 'pattern';
 }
