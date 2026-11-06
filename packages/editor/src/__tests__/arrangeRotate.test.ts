@@ -70,8 +70,9 @@ describe('the row itself', () => {
     expect(ROW).not.toMatch(/\/ 360|\* 360|- 0\.5|\+ 0\.5/);
   });
 
-  it('stands in the floating slider row’s own slot', () => {
-    expect(ROW).toContain('FLOATING_SLIDER_BOTTOM');
+  it('stands in the floating slider row’s own slot, on the slot’s one seat', () => {
+    expect(ROW).toContain("import { floatingSlotAnchor } from '../floatingSlot';");
+    expect(ROW).toContain('const anchor = floatingSlotAnchor(panelPx, safeBottom);');
     expect(ROW).toContain('FloatingSliderRow');
   });
 });

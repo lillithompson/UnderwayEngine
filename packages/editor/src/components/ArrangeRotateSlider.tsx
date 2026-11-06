@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet } from 'react-native';
-import { FLOATING_SLIDER_BOTTOM, FloatingSliderRow } from '@/editor-ui';
+import { FloatingSliderRow } from '@/editor-ui';
 import { PANEL_ANIM_MS } from '@/editor-ui/theme';
 import { angleFromSlider, seatAfterCommit, sliderFromAngle } from '../arrangeRotate';
+import { floatingSlotAnchor } from '../floatingSlot';
 
 // The selection tool's Rotate slider (arrangeRotate.ts): the rig Turn
 // slider's own row and seat — the same FloatingSliderRow, lifted clear of
@@ -11,9 +12,6 @@ import { angleFromSlider, seatAfterCommit, sliderFromAngle } from '../arrangeRot
 // snapshot), one commit as it is let go (onRotate(…, true): one undo step
 // for the whole drag), then the row reseats on `seatDeg` — the object's
 // committed angle, or zero for a group's delta.
-
-/** Clear air between the panel's top edge and the row (the Turn slider's). */
-const ROW_GAP = 12;
 
 export function ArrangeRotateSlider({ mode, seatDeg, safeBottom, panelPx, onRotate }: {
   /** How the row reads: `absolute` (one object turns TO the angle it shows)
@@ -54,7 +52,9 @@ export function ArrangeRotateSlider({ mode, seatDeg, safeBottom, panelPx, onRota
     if (!draggingRef.current) setSlider(sliderFromAngle(seatDeg));
   }, [seatDeg]);
 
-  const anchor = Math.max(panelPx + ROW_GAP, safeBottom + FLOATING_SLIDER_BOTTOM);
+  // The slot's one seat (floatingSlot.ts): clear air over the panel's top
+  // edge, never below the slider row's own line.
+  const anchor = floatingSlotAnchor(panelPx, safeBottom);
   const lift = useRef(new Animated.Value(-anchor)).current;
   useEffect(() => {
     const anim = Animated.timing(lift, { toValue: -anchor, duration: PANEL_ANIM_MS, useNativeDriver: true });

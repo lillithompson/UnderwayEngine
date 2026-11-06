@@ -41,6 +41,17 @@ export const ROW_PILL = 36;
 export const ROW_SWITCH = ROW_SEGMENTED;
 /** Space between rows inside a page's `controls` stack. */
 export const ROW_GAP = 2;
+
+/**
+ * How far the BOTTOM floating slider stands off the safe area — the seat
+ * of the whole floating-slider look (BrushControlsPanel, which re-exports
+ * it): the Poser stage's own column (Turn, Push) stands on the same line,
+ * so switching between the paint brush and a rig leaves the slider under
+ * the thumb exactly where it was; the floating slot's anchor
+ * (`@/editor/floatingSlot`) never seats a pill below it. Here, in a module
+ * with no component in it, so a pure layout module can read it.
+ */
+export const FLOATING_SLIDER_BOTTOM = 20;
 /** A label + a row of card-slot chips (a host page's program of cards):
  *  the caption line, then chips a touch target tall. */
 export const ROW_CARDS = 20 + 48;

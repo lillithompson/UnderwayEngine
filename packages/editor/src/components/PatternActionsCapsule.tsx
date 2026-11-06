@@ -3,8 +3,8 @@ import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { triggerHaptic } from '@/native-shell/bridge/webBridge';
 import { CAPSULE_BG, CAPSULE_EDGE_MARGIN, STATE_ACTIVE } from '@/editor-ui/theme';
-import { FLOATING_SLIDER_BOTTOM } from '@/editor-ui';
 import { PatternGridAction, patternGridActionsFor } from '@/editor-ui/logic/patternEdit';
+import { floatingSlotAnchor } from '../floatingSlot';
 import { FLOATING_SEGMENT_GLYPH_WIDTH, FLOATING_SEGMENT_WIDTH } from '../floatingCapsuleSize';
 import {
   FLOATING_CAPSULE_BG,
@@ -35,24 +35,17 @@ import {
 // the same list the pattern pushdown's Tools bar renders — so the capsule
 // can never offer an action the pushdown doesn't, or name one differently.
 
-/** Clearance between the capsule and whatever it floats above — the rig
- *  slider's own gap (RigControlsPanel.TURN_GAP). */
-const GAP = 12;
-
 /** Matches PANEL_ANIM_MS — the ride up and down keeps pace with the panel
  *  it stands on. Exported so everything sharing the slot rides at the
  *  same speed. */
 export const FLOATING_SLOT_ANIM_MS = 180;
 
-/** The floating slot's seat: above whatever the object-properties panel
- *  claims (`panelPx`, its onOccludedHeight report), never below the
- *  slider row's own bottom line. ONE formula for everything standing in
- *  the slot — this capsule, the rig's slider row, and the lower-right
- *  radial target — so they rise together and stay aligned when the panel
- *  pushes up. */
-export function floatingSlotAnchor(panelPx: number, safeBottom: number): number {
-  return Math.max(panelPx + GAP, safeBottom + FLOATING_SLIDER_BOTTOM);
-}
+/** The floating slot's seat (floatingSlot.ts): ONE formula for everything
+ *  standing in the slot — this capsule, the rig's slider row, the
+ *  selection tool's Rotate slider and the lower-right radial target — so
+ *  they rise together and stay aligned when the panel pushes up. Still
+ *  exported from here, where it was first written. */
+export { floatingSlotAnchor };
 
 /** A hugging segment's side margin around its word (hugLabel). */
 const HUG_PAD = 14;

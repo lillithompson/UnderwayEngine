@@ -82,15 +82,24 @@ describe('the pattern actions capsule', () => {
 
   test('floats in the bottom slot, riding the properties panel', () => {
     // Above whatever the panel claims, never below the brush's own bottom
-    // line, lifted on the compositor. The formula is EXPORTED
-    // (floatingSlotAnchor) so the radial target shares it exactly.
-    expect(CAPSULE).toContain(
+    // line, lifted on the compositor. The formula is the slot's own module
+    // (floatingSlot.ts), re-exported here, so the radial target, the Rotate
+    // slider and a host's pill share it exactly.
+    const SLOT = readFileSync(resolve(__dirname, '..', '..', 'floatingSlot.ts'), 'utf8');
+    expect(SLOT).toContain(
       'export function floatingSlotAnchor(panelPx: number, safeBottom: number): number {',
     );
-    expect(CAPSULE).toContain(
-      'return Math.max(panelPx + GAP, safeBottom + FLOATING_SLIDER_BOTTOM);',
+    expect(SLOT).toContain(
+      'return Math.max(panelPx + FLOATING_SLOT_GAP, safeBottom + FLOATING_SLIDER_BOTTOM);',
     );
+    expect(SLOT).toContain('export const FLOATING_SLOT_GAP = 12;');
+    expect(CAPSULE).toContain("import { floatingSlotAnchor } from '../floatingSlot';");
+    expect(CAPSULE).toContain('export { floatingSlotAnchor };');
+    expect(CAPSULE).not.toContain('const GAP = 12;');
     expect(CAPSULE).toContain('const anchor = floatingSlotAnchor(panelPx, safeBottom);');
+    const ROTATE = readFileSync(resolve(__dirname, '..', 'ArrangeRotateSlider.tsx'), 'utf8');
+    expect(ROTATE).toContain('const anchor = floatingSlotAnchor(panelPx, safeBottom);');
+    expect(ROTATE).not.toContain('const ROW_GAP = 12;');
     expect(CAPSULE).toContain('duration: FLOATING_SLOT_ANIM_MS,');
     expect(CAPSULE).toContain('zIndex: 205,');
   });
