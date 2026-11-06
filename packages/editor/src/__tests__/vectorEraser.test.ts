@@ -9,6 +9,7 @@ import {
   buildVectorEraseEntry, createVectorEraseState, cutVectorTarget, eraseVectorDab, keptPieces,
   segmentCircleCover, subtractIntervals, vectorErasable, vectorEraseTarget,
 } from '../vectorEraser';
+import { type LineCover, lineCircleCover } from '@/engine/segmentCircleCut';
 import { makeBlankComposition } from '@/editor/blankComposition';
 import { applyCompOps, revertCompOps } from '@/engine/compositionOps';
 import { arcRadius } from '@/engine/compositionArcMath';
@@ -71,6 +72,34 @@ describe('segmentCircleCover', () => {
     // The cut angle is where a circle of radius 1 about the midpoint meets
     // the radius-5 arc: chord 1 subtends 2·asin(1/10).
     close((f1 - f0) * (Math.PI / 2), 4 * Math.asin(1 / 10));
+  });
+});
+
+describe('lineCircleCover', () => {
+  const out: LineCover = { t0: 0, t1: 0 };
+  const cover = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number, r: number) =>
+    (lineCircleCover(ax, ay, bx, by, cx, cy, r, out) ? [[out.t0, out.t1]] : []);
+
+  it("is segmentCircleCover's answer for a line, written into the caller's two numbers", () => {
+    const cases: [number, number, number, number, number, number, number][] = [
+      [0, 0, 10, 0, 5, 0, 1],        // a run in the middle
+      [0, 0, 10, 0, 5, 3, 1],        // a miss
+      [0, 0, 1, 0, 0.5, 0, 5],       // swallowed
+      [0, 0, 10, 0, 0, 0, 2],        // an end
+      [0, 0, 10, 0, 10, 0.5, 1],     // the other end, off the line
+      [3, 3, 3, 3, 3, 3, 1],         // a point inside
+      [3, 3, 3, 3, 5, 3, 1],         // a point outside
+      [0, 0, 10, 0, 5, 1, 1],        // tangent: the arithmetic decides, the two agree
+    ];
+    for (const [ax, ay, bx, by, cx, cy, r] of cases) {
+      expect(cover(ax, ay, bx, by, cx, cy, r)).toEqual(segmentCircleCover(line([ax, ay], [bx, by]), cx, cy, r));
+    }
+  });
+
+  it('writes nothing when there is no run', () => {
+    out.t0 = 7; out.t1 = 8;
+    expect(lineCircleCover(0, 0, 10, 0, 5, 3, 1, out)).toBe(false);
+    expect(out).toEqual({ t0: 7, t1: 8 });
   });
 });
 

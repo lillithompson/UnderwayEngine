@@ -18,39 +18,79 @@ export const MIN_ERASE_PIECE_CELLS = 1e-3;
 
 const EPS = 1e-9;
 
+/** One run of a line segment a circle covers, as fractions of it
+ *  (`lineCircleCover` writes it): [t0, t1], t0 < t1. */
+export interface LineCover { t0: number; t1: number }
+
+/**
+ * The fractions of the LINE from (ax, ay) to (bx, by) that lie INSIDE the
+ * circle (cx, cy, r), written to `out` — at most one run, so the answer is
+ * two numbers and nothing is allocated. True when there is one. The ends
+ * are the exact crossings of the circle with the segment, clamped to it,
+ * so what is kept meets what is cut on the disc's edge; a run shorter
+ * than EPS is no run. The rule `segmentCircleCover` applies to a line,
+ * and the one a renderer applies per frame to a line it is drawing
+ * (DrawBots' trail layers, which cut a trail as a bot erases it).
+ */
+export function lineCircleCover(
+  ax: number, ay: number, bx: number, by: number, cx: number, cy: number, r: number, out: LineCover,
+): boolean {
+  const rSq = r * r;
+  if (pointToLineSegmentDistSq(cx, cy, ax, ay, bx, by) >= rSq) return false;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const a = dx * dx + dy * dy;
+  if (a > EPS) {
+    const fx = ax - cx;
+    const fy = ay - cy;
+    const b = 2 * (fx * dx + fy * dy);
+    const c = fx * fx + fy * fy - rSq;
+    const disc = b * b - 4 * a * c;
+    if (disc > 0) {
+      const s = Math.sqrt(disc);
+      const t0 = Math.max(0, (-b - s) / (2 * a));
+      const t1 = Math.min(1, (-b + s) / (2 * a));
+      if (t1 - t0 < EPS) return false;
+      out.t0 = t0;
+      out.t1 = t1;
+      return true;
+    }
+  }
+  // No crossing inside the segment (a point, or a circle the arithmetic
+  // puts tangent): the whole of it, when its middle is inside.
+  const mx = ax + dx / 2;
+  const my = ay + dy / 2;
+  if ((mx - cx) * (mx - cx) + (my - cy) * (my - cy) >= rSq) return false;
+  out.t0 = 0;
+  out.t1 = 1;
+  return true;
+}
+
+/** `lineCircleCover`'s answer for `segmentCircleCover`'s line case. */
+const lineScratch: LineCover = { t0: 0, t1: 0 };
+
 /**
  * The fractions of `seg` that lie INSIDE the circle (cx, cy, r), as sorted,
  * disjoint intervals. The boundaries are the exact crossings of the circle
  * with the segment — the cut vertices — so the kept remainder meets the
- * erased part on the disc's edge.
+ * erased part on the disc's edge. A line has at most one such run
+ * (`lineCircleCover`); an arc is walked crossing by crossing.
  */
 export function segmentCircleCover(
   seg: PathSegment, cx: number, cy: number, r: number,
 ): SegmentInterval[] {
+  if (seg.kind === 'line') {
+    return lineCircleCover(seg.start[0], seg.start[1], seg.end[0], seg.end[1], cx, cy, r, lineScratch)
+      ? [[lineScratch.t0, lineScratch.t1]]
+      : [];
+  }
   const rSq = r * r;
-  const dSq = seg.kind === 'arc'
-    ? pointToArcSegmentDistSq(cx, cy, seg)
-    : pointToLineSegmentDistSq(cx, cy, seg.start[0], seg.start[1], seg.end[0], seg.end[1]);
+  const dSq = pointToArcSegmentDistSq(cx, cy, seg);
   if (dSq >= rSq) return [];
 
-  // Every crossing of the circle with the segment, as a fraction.
+  // Every crossing of the circle with the arc, as a fraction of its sweep.
   const cuts: number[] = [0, 1];
-  if (seg.kind === 'line') {
-    const dx = seg.end[0] - seg.start[0];
-    const dy = seg.end[1] - seg.start[1];
-    const fx = seg.start[0] - cx;
-    const fy = seg.start[1] - cy;
-    const a = dx * dx + dy * dy;
-    if (a > EPS) {
-      const b = 2 * (fx * dx + fy * dy);
-      const c = fx * fx + fy * fy - rSq;
-      const disc = b * b - 4 * a * c;
-      if (disc > 0) {
-        const s = Math.sqrt(disc);
-        cuts.push((-b - s) / (2 * a), (-b + s) / (2 * a));
-      }
-    }
-  } else {
+  {
     // Circle–circle: the brush disc against the arc's own circle.
     const [ax, ay] = seg.center;
     const R = arcRadius(seg);
