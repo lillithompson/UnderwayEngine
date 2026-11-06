@@ -7218,7 +7218,15 @@ function hostColorTarget(state: CompositionState, nodeId: string) {
  *  invert toggle (buildToggleWordInvert), not a colour laid on its glyphs. The
  *  recolour brush already passes them by (paintBrush's text pass skips
  *  `sticker`); this is the same rule on the dispatch, so no route colours a
- *  word the brush would not. */
+ *  word the brush would not.
+ *
+ *  Only an EMPTY selection (`selectedId` null) paints the background. An id
+ *  that is selected but resolves to no scene node — a host item (DrawBot's
+ *  `bot_…` and `tile_…`), a host's sheet sentinel (its arena, its Fields
+ *  page), a frame's group id — is something in hand that takes no colour,
+ *  and the answer is null, as for a word sticker. It used to fall into the
+ *  background case: picking a colour with a bot selected laid a coloured
+ *  rectangle under the page the user had never asked for. */
 export function buildApplyColor(
   state: CompositionState,
   selectedId: string | null,
@@ -7226,8 +7234,9 @@ export function buildApplyColor(
   alpha?: number,
   scope: ColorScope = DEFAULT_COLOR_SCOPE,
 ): SessionEntry | null {
-  const selected = selectedId ? findItem(state, selectedId) : null;
-  if (!selected) return buildSetBackground(state, solidPaint(color, alpha ?? 1));
+  if (selectedId === null) return buildSetBackground(state, solidPaint(color, alpha ?? 1));
+  const selected = findItem(state, selectedId);
+  if (!selected) return null;
   switch (selected.kind) {
     case 'svg': {
       // The host's own before anything else: its colour is not on the
