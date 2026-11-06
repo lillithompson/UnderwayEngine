@@ -21,7 +21,8 @@ import { findItem } from '@/engine/compositionOps';
 import { makeBlankComposition } from '@/editor/blankComposition';
 import {
   buildGroupSelectedMulti, buildPlacePattern, buildPlacePhotoPlaceholder, buildPlaceSVGObject,
-  buildPlaceShape, buildPlaceText, commitEntry, createEditorSession,
+  buildPlaceShape, buildPlaceText, buildRecolorSVG, buildRemoveSelected, buildReorder, commitEntry,
+  createEditorSession,
 } from '../editorSession';
 import { resizeBox, twistAbout } from '../transformGestures';
 import {
@@ -245,6 +246,63 @@ describe('drawnLeaves — identity for a leaf nothing moved', () => {
     expect(after.get(aId)).not.toBe(before.get(aId));
     expect(after.get(imgId)).toBe(before.get(imgId));
     for (const id of [aId, bId, imgId]) expectFrameMatchesGraph(after.get(id)!);
+  });
+
+  // A change to the scene's SHAPE reads the whole graph in again
+  // (regraphChangedLeaves → fromLegacy): every node is a new object. The
+  // leaves nothing touched must still be the drawn leaves they were, or
+  // every layer on the page re-renders for one new line.
+  test('placing an object replaces no other leaf, though every node is read afresh', () => {
+    const { session, aId, bId, imgId } = scene();
+    const before = drawnLeaves(session.state.graph!);
+    const c = buildPlaceShape('rect', { cellX: 8, cellY: 8, cellWidth: 2, cellHeight: 2 }, INK);
+    const placed = commitEntry(session, c);
+    // The premise: the graph did not keep its nodes.
+    expect(placed.state.graph!.nodes.get(aId)).not.toBe(session.state.graph!.nodes.get(aId));
+    const after = drawnLeaves(placed.state.graph!, before);
+    for (const id of [aId, bId, imgId]) expect(after.get(id)).toBe(before.get(id));
+    expect(after.get(c.id!)).toBeDefined();
+    for (const id of [aId, bId, imgId, c.id!]) expectFrameMatchesGraph(after.get(id)!);
+  });
+
+  test('deleting an object, and reordering one, replace no other leaf', () => {
+    const { session, aId, bId, imgId } = scene();
+    const before = drawnLeaves(session.state.graph!);
+    const reordered = commitEntry(session, buildReorder(session.state, aId, 'front')!);
+    const afterReorder = drawnLeaves(reordered.state.graph!, before);
+    for (const id of [aId, bId, imgId]) expect(afterReorder.get(id)).toBe(before.get(id));
+    const removed = commitEntry(reordered, buildRemoveSelected(reordered.state, bId)!);
+    const afterRemove = drawnLeaves(removed.state.graph!, afterReorder);
+    expect(afterRemove.has(bId)).toBe(false);
+    expect(afterRemove.get(aId)).toBe(before.get(aId));
+    expect(afterRemove.get(imgId)).toBe(before.get(imgId));
+  });
+
+  test('a leaf whose record changed is replaced, across a shape change too', () => {
+    const { session, aId, bId, imgId } = scene();
+    const before = drawnLeaves(session.state.graph!);
+    const recolored = commitEntry(session, buildRecolorSVG(session.state, aId, { r: 200, g: 10, b: 10 })!);
+    const c = buildPlaceShape('rect', { cellX: 8, cellY: 8, cellWidth: 2, cellHeight: 2 }, INK);
+    const placed = commitEntry(recolored, c);
+    // One read over both changes, as a render that saw neither alone.
+    const after = drawnLeaves(placed.state.graph!, before);
+    expect(after.get(aId)).not.toBe(before.get(aId));
+    expect((after.get(aId)!.node.content as SVGObject).color).toEqual({ r: 200, g: 10, b: 10 });
+    expect(after.get(bId)).toBe(before.get(bId));
+    expect(after.get(imgId)).toBe(before.get(imgId));
+  });
+
+  test('a leaf moved and then joined by a new object is replaced once, and drawn where it is', () => {
+    const { session, aId, bId } = scene();
+    const before = drawnLeaves(session.state.graph!);
+    const moved = commitEntry(session, { entry: twistAbout(session.state, [aId], [1, 1], 30)! });
+    const c = buildPlaceShape('rect', { cellX: 8, cellY: 8, cellWidth: 2, cellHeight: 2 }, INK);
+    const placed = commitEntry(moved, c);
+    const afterMove = drawnLeaves(moved.state.graph!, before);
+    const after = drawnLeaves(placed.state.graph!, afterMove);
+    expect(afterMove.get(aId)).not.toBe(before.get(aId));
+    expect(after.get(bId)).toBe(before.get(bId));
+    for (const id of [aId, bId, c.id!]) expectFrameMatchesGraph(after.get(id)!);
   });
 
   test('a member of a stretched bound group is drawn with its exact shear', () => {

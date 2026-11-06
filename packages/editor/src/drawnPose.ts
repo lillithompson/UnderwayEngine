@@ -63,6 +63,16 @@ export const EPS_CELLS = 0.05;
  * untouched by an op is the same object (the graph is copy-on-write), and
  * its world matrix is compared entry-wise — a member of a group the op
  * did not move has a new matrix object with the same numbers.
+ *
+ * A change to the scene's SHAPE — a node placed, deleted, reordered or
+ * reparented — is not copy-on-write: the graph is read in again whole
+ * (`regraphChangedLeaves` falls back to `fromLegacy`), and every node in
+ * it is a new object. Identity alone then called the whole page changed,
+ * so placing one line re-rendered every layer and set every node's markup
+ * again: a stroke cost the page, not the stroke. So a node read afresh
+ * from the SAME legacy leaf, under the same parent, at the same world
+ * matrix, is the leaf it was ({@link sameDrawnNode}): the old drawn leaf
+ * is handed back, old node and all, and its layer is skipped.
  */
 export function drawnLeaves(
   graph: SceneGraph, prev?: ReadonlyMap<string, DrawnLeaf>,
@@ -71,9 +81,27 @@ export function drawnLeaves(
   for (const node of flattenLeaves(graph)) {
     const world = worldMatrix(graph, node.id);
     const was = prev?.get(node.id);
-    out.set(node.id, was && was.node === node && matEquals(was.world, world) ? was : { node, world });
+    out.set(node.id, was && sameDrawnNode(was.node, node) && matEquals(was.world, world) ? was : { node, world });
   }
   return out;
+}
+
+/**
+ * True when `node` is the leaf `was` is, for a layer's purposes: the very
+ * node, or one read from the same legacy leaf (`content`, an immutable
+ * record, so the same object is the same content) under the same parent.
+ * With the world matrix equal as well, which the caller checks,
+ * everything a layer reads off the node is equal: its local geometry is
+ * that leaf's seen through that matrix.
+ *
+ * A node an op moved in place keeps the `content` it was read from while
+ * the page's leaf is a new record, so a re-read of it has a different
+ * `content` and is rightly a new leaf.
+ */
+function sameDrawnNode(was: SceneNode, node: SceneNode): boolean {
+  if (was === node) return true;
+  return was.content !== undefined && was.content === node.content
+    && was.kind === node.kind && was.parentId === node.parentId;
 }
 
 /** One leaf of `graph` as drawn, or undefined for a group or an unknown
