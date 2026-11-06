@@ -6,7 +6,7 @@
  */
 
 import {
-  buildVectorEraseEntry, createVectorEraseState, cutVectorTarget, eraseVectorDab, keptPieces,
+  buildVectorEraseEntry, createVectorEraseState, cutVectorTarget, eraseVectorDab, keptPieces, keptPiecesOfSegment,
   segmentCircleCover, subtractIntervals, vectorErasable, vectorEraseTarget,
 } from '../vectorEraser';
 import { type LineCover, lineCircleCover } from '@/engine/segmentCircleCut';
@@ -100,6 +100,36 @@ describe('lineCircleCover', () => {
     out.t0 = 7; out.t1 = 8;
     expect(lineCircleCover(0, 0, 10, 0, 5, 3, 1, out)).toBe(false);
     expect(out).toEqual({ t0: 7, t1: 8 });
+  });
+});
+
+describe('cutVectorTarget', () => {
+  it('records the flat indices a dab changed, for a preview to redraw those chunks alone', () => {
+    const svg: SVGObject = {
+      id: 'svg_p', color: BLACK, cellX: 0, cellY: 0, cellWidth: 30, cellHeight: 0,
+      segments: [line([0, 0], [10, 0]), line([10, 0], [20, 0]), line([20, 0], [30, 0])],
+    };
+    const t = vectorEraseTarget(stateWith([svg]), svg)!;
+    expect(t.changed).toEqual([]);
+    expect(cutVectorTarget(t, 25, 0, 1)).toBe(true);
+    expect(t.changed).toEqual([2]);
+    // A miss changes nothing; a dab on the joint changes both sides.
+    expect(cutVectorTarget(t, 15, 5, 1)).toBe(false);
+    expect(cutVectorTarget(t, 10, 0, 1)).toBe(true);
+    expect(t.changed).toEqual([2, 0, 1]);
+    // A dab over a segment already cut away whole is not a change.
+    const whole = vectorEraseTarget(stateWith([svg]), svg)!;
+    cutVectorTarget(whole, 5, 0, 20);
+    whole.changed.length = 0;
+    expect(cutVectorTarget(whole, 5, 0, 1)).toBe(false);
+    expect(whole.changed).toEqual([]);
+    // Per index, what keptPieces gives for all.
+    const pieces = keptPieces(t, svg.segments);
+    svg.segments.forEach((seg, i) => expect(keptPiecesOfSegment(t, i, seg)).toEqual(pieces[i]));
+    // An uncut segment comes back as the very object.
+    const fresh = vectorEraseTarget(stateWith([svg]), svg)!;
+    expect(keptPiecesOfSegment(fresh, 1, svg.segments[1])).toEqual([svg.segments[1]]);
+    expect(keptPiecesOfSegment(fresh, 1, svg.segments[1])[0]).toBe(svg.segments[1]);
   });
 });
 

@@ -470,6 +470,12 @@ describe('the seam’s declarations', () => {
     expect(SRC).not.toContain('pixelHitAt?(');
   });
 
+  test('the handle offers live cuts: a node cut with no commit, and shown whole again', () => {
+    expect(SRC).toContain('liveCuts: {');
+    expect(SRC).toContain('cut(id: string, x: number, y: number, r: number): boolean;');
+    expect(SRC).toContain('reset(id?: string): void;');
+  });
+
   // Every member of an interface adopted whole from a non-canonical copy
   // (§4.2 item 5's rule, which 5a learnt the hard way) is used here, so
   // deleting one fails this file's compile rather than passing silently.
@@ -497,6 +503,7 @@ describe('the seam’s declarations', () => {
       getViewport: () => makeViewport(100, 100),
       pixelHitAt: () => null,
       layerSlot: null,
+      liveCuts: { cut: () => false, reset() {} },
     };
     expect(hooks.claimAt).toBe('grab');
     expect(hooks.onPointerDown!(1, 2, {} as never)).toBe(claim);
@@ -524,6 +531,8 @@ describe('the seam’s declarations', () => {
     expect(hooks.beforePick!(5, 6)).toBeNull();
     expect(handle.pixelHitAt(0, 0)).toBeNull();
     expect(handle.layerSlot).toBeNull();
+    expect(handle.liveCuts.cut('sq_1', 0, 0, 1)).toBe(false);
+    handle.liveCuts.reset();
     expect(handle.getLiveCamera().zoom).toBe(makeBlankComposition('x').camera.zoom);
     expect(handle.getViewport().width).toBe(100);
     expect(prior.selectedIds).toEqual([]);
@@ -680,6 +689,20 @@ describe('the surface’s half of the claim', () => {
     expect(SRC).toContain('getLiveCamera: () => liveCameraRef.current,');
     expect(SRC).toContain('pixelHitAt: (x, y) => pixelHitTestAt({ x, y })?.id ?? null,');
     expect(SRC).toContain('layerSlot: layerSlotRef.current,');
+  });
+
+  test("the Color brush's eraser preview and the handle's live cuts are one implementation (vectorErasePreview.ts)", () => {
+    expect(SRC).toContain("from '../vectorErasePreview'");
+    // Two instances of the one module, nothing drawn by hand here any more.
+    expect(SRC).toContain('gesture: createVectorErasePreview(');
+    expect(SRC).toContain('live: createVectorErasePreview(');
+    expect(SRC).toContain('erasePreviews().gesture.update(es);');
+    expect(SRC).toContain('cut: (id, x, y, r) => erasePreviews().live.cut(stateRef.current, id, x, y, r),');
+    expect(SRC).toContain('reset: (id) => erasePreviews().live.reset(id),');
+    expect(SRC).not.toMatch(/keptPieces\(/);
+    // …and a commit re-cuts a shown node from its new record before paint.
+    expect(SRC).toContain('erasePreviewsRef.current?.live.refresh(stateRef.current);');
+    expect(SRC).toContain('}, [state.svgObjects]);');
   });
 });
 

@@ -54,6 +54,10 @@ export interface VectorEraseTarget {
   kept: SegmentInterval[][];
   /** Bumped on every dab that cut something — what the preview redraws on. */
   rev: number;
+  /** The flat indices the dabs have changed since a preview last drew the
+   *  target (`vectorErasePreview` empties it), so a cut redraws the chunks
+   *  it touched and not the path. A caller with no preview never reads it. */
+  changed: number[];
 }
 
 export interface VectorEraseState {
@@ -101,6 +105,7 @@ export function vectorEraseTarget(
     lengthScale: frame?.lengthScale ?? 1,
     kept: stored.map(() => [[0, 1]]),
     rev: 0,
+    changed: [],
   };
 }
 
@@ -124,12 +129,22 @@ export function cutVectorTarget(
   let cutHere = false;
   for (let i = 0; i < t.local.length; i++) {
     if (t.kept[i].length === 0) continue;
-    const cover = segmentCircleCover(t.local[i], lx, ly, r);
+    const seg = t.local[i];
+    // A line both of whose ends lie more than r past the disc on one
+    // side cannot meet it: the common case on a long path, settled with
+    // four compares and no arithmetic (an arc's bulge needs the cover).
+    if (seg.kind === 'line') {
+      const x0 = seg.start[0], y0 = seg.start[1], x1 = seg.end[0], y1 = seg.end[1];
+      if ((x0 < lx - r && x1 < lx - r) || (x0 > lx + r && x1 > lx + r)
+        || (y0 < ly - r && y1 < ly - r) || (y0 > ly + r && y1 > ly + r)) continue;
+    }
+    const cover = segmentCircleCover(seg, lx, ly, r);
     if (cover.length === 0) continue;
     const next = subtractIntervals(t.kept[i], cover);
     if (next.length === t.kept[i].length
       && next.every((iv, k) => iv[0] === t.kept[i][k][0] && iv[1] === t.kept[i][k][1])) continue;
     t.kept[i] = next;
+    t.changed.push(i);
     cutHere = true;
   }
   if (cutHere) t.rev += 1;
@@ -161,25 +176,29 @@ export function eraseVectorDab(
   return changed;
 }
 
-/** The segments left of one flat segment list, by the target's kept
- *  fractions — per flat index, in order. `flat` is that same path in any
- *  rigidly-related frame, in cells (the drawn frame for a preview, the
- *  stored world segments for the commit). Slivers under
- *  {@link MIN_ERASE_PIECE_CELLS} drop out. */
+/** The segments left of flat segment `i`, by the target's kept fractions
+ *  of it: `seg` is that segment in any rigidly-related frame, in cells
+ *  (the drawn frame for a preview, the stored world segment for the
+ *  commit). The whole segment, as the very object, when nothing has cut
+ *  it. Slivers under {@link MIN_ERASE_PIECE_CELLS} drop out. */
+export function keptPiecesOfSegment(t: VectorEraseTarget, i: number, seg: PathSegment): PathSegment[] {
+  const kept = t.kept[i] ?? [[0, 1]];
+  if (kept.length === 1 && kept[0][0] === 0 && kept[0][1] === 1) return [seg];
+  const len = segLength(seg);
+  const out: PathSegment[] = [];
+  for (const [f0, f1] of kept) {
+    if ((f1 - f0) * len < MIN_ERASE_PIECE_CELLS) continue;
+    out.push(subSegment(seg, f0, f1));
+  }
+  return out;
+}
+
+/** The segments left of one flat segment list — `keptPiecesOfSegment` per
+ *  flat index, in order. */
 export function keptPieces(
   t: VectorEraseTarget, flat: readonly PathSegment[],
 ): PathSegment[][] {
-  return flat.map((seg, i) => {
-    const kept = t.kept[i] ?? [[0, 1]];
-    if (kept.length === 1 && kept[0][0] === 0 && kept[0][1] === 1) return [seg];
-    const len = segLength(seg);
-    const out: PathSegment[] = [];
-    for (const [f0, f1] of kept) {
-      if ((f1 - f0) * len < MIN_ERASE_PIECE_CELLS) continue;
-      out.push(subSegment(seg, f0, f1));
-    }
-    return out;
-  });
+  return flat.map((seg, i) => keptPiecesOfSegment(t, i, seg));
 }
 
 /**

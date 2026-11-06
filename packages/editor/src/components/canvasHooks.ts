@@ -215,6 +215,22 @@ export interface CanvasSurfaceHandle {
   /** The screen-space element a host layer mounts into: the container's
    *  last child, over the world layer, pointer-inert. */
   layerSlot: HTMLDivElement | null;
+  /** A node cut live, with no commit, as the Color brush's eraser previews
+   *  one (`vectorErasePreview.ts`): hidden where it stands, what the discs
+   *  leave of it drawn in a `<svg>` parked after it, a chunk's `d` per cut.
+   *  For a host whose own machinery cuts the document while something
+   *  runs (DrawBots' Erase effect, docs/live_edit.md §3.2): the picture
+   *  changes per event with no render, and the commit that later writes
+   *  the cuts shows the same picture. */
+  liveCuts: {
+    /** Cut a disc of `r` world cells at world (x, y) out of node `id`,
+     *  now. False when the node is not in the scene, may not be cut, or
+     *  is not mounted. */
+    cut(id: string, x: number, y: number, r: number): boolean;
+    /** Show node `id` (every node) as the document has it again — after
+     *  the commit that carries the cuts. */
+    reset(id?: string): void;
+  };
 }
 
 /** One scene node as the host's layer hook is asked about it: everything

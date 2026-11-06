@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { GLView } from 'expo-gl';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
@@ -212,8 +212,9 @@ import {
 } from '../paintBrush';
 import type { RandomColorWalk } from '../paintBrush';
 import {
-  type VectorEraseState, buildVectorEraseEntry, createVectorEraseState, eraseVectorDab, keptPieces,
+  type VectorEraseState, buildVectorEraseEntry, createVectorEraseState, eraseVectorDab,
 } from '../vectorEraser';
+import { createVectorErasePreview, type ErasePreviewDom, type VectorErasePreview } from '../vectorErasePreview';
 import { buildSceneOcclusion } from '../sceneOcclusion';
 import { subscribeTurnLive } from '../turnLive';
 import { subscribeRotateLive } from '../rotateLive';
@@ -1104,14 +1105,15 @@ export function CanvasSurface({
   // the layer's own CSS transform carries pan and zoom, so a preview stays
   // glued to its shape without a per-frame rewrite.
   const paintSvgLayersRef = useRef(new Map<string, SVGSVGElement>());
-  // The Color brush's Eraser preview, per path it has cut: the node it hid
-  // (and the visibility to give back), one preview <path> per colour drawn
-  // in that node's own world-layer <svg> (ensureSvgPaintLayer), and the
-  // cut revision they were last drawn from.
-  const vectorErasePreviewRef = useRef(new Map<string, {
-    node: HTMLElement; prevVisibility: string;
-    paths: Map<string, SVGPathElement>; rev: number;
-  }>());
+  // A path cut live with no commit (vectorErasePreview.ts): the node hidden,
+  // what the cuts leave drawn in its own world-layer <svg>. Two instances
+  // of the one implementation — the Color brush's Eraser, whose parked svgs
+  // ride `paintSvgLayersRef` and go with the stroke's other previews, and
+  // the host's live cuts (`CanvasSurfaceHandle.liveCuts`), whose parked svgs
+  // are their own (`liveCutLayersRef`) and outlive any gesture. Made on
+  // first use: they read helpers declared further down.
+  const erasePreviewsRef = useRef<{ gesture: VectorErasePreview; live: VectorErasePreview } | null>(null);
+  const liveCutLayersRef = useRef(new Map<string, SVGSVGElement>());
   // Shapes whose own content markup a fill preview has re-mounted, and the
   // colour each is wearing — the dedupe (one re-mount per shape per colour,
   // not one per pointer move) and the restore list (clearPaintOverlay).
@@ -1786,6 +1788,12 @@ export function CanvasSurface({
       getViewport: () => stateRef.current.viewport,
       pixelHitAt: (x, y) => pixelHitTestAt({ x, y })?.id ?? null,
       layerSlot: layerSlotRef.current,
+      // The host's live cuts: the eraser preview's own implementation, on
+      // the document as it stands (vectorErasePreview.ts).
+      liveCuts: {
+        cut: (id, x, y, r) => erasePreviews().live.cut(stateRef.current, id, x, y, r),
+        reset: (id) => erasePreviews().live.reset(id),
+      },
     };
     return () => { handle.current = null; };
     // The ref identity is the dependency; the getters read live refs.
@@ -2634,6 +2642,16 @@ export function CanvasSurface({
     if (cached) return cached.firstElementChild as SVGGElement;
     const node = nodeEl(svgId);
     if (!node) return null;
+    const el = parkPreviewSvg(node, svgId, frame);
+    paintSvgLayersRef.current.set(svgId, el);
+    return el.firstElementChild as SVGGElement;
+  };
+
+  /** The world-layer `<svg>` a node's imperative previews draw in, parked
+   *  right after the node's element so the stack is undisturbed: a `<g>`
+   *  under the frame's transform (the node's matrix into world px) holding
+   *  the node's stroke defs. The element alone; the caller keeps it. */
+  const parkPreviewSvg = (node: HTMLElement, svgId: string, frame: ShapeStrokePreviewFrame): SVGSVGElement => {
     const el = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
     el.setAttribute('data-paint-preview', svgId);
     el.setAttribute('aria-hidden', 'true');
@@ -2652,9 +2670,71 @@ export function CanvasSurface({
     if (frame.defs) group.innerHTML = frame.defs;
     el.appendChild(group);
     node.insertAdjacentElement('afterend', el);
-    paintSvgLayersRef.current.set(svgId, el);
-    return group;
+    return el;
   };
+
+  /** What a live-cut preview needs of this surface (vectorErasePreview.ts
+   *  `ErasePreviewDom`), over the map its parked svgs live in. */
+  const erasePreviewDom = (
+    park: ErasePreviewDom['park'], addPath: ErasePreviewDom['addPath'], unpark: ErasePreviewDom['unpark'],
+  ): ErasePreviewDom => ({
+    nodeEl,
+    frameOf: (id) => {
+      const s = stateRef.current;
+      const d = drawnLeaf(graphOf(s), id);
+      return d ? shapeStrokePreviewFrame(d, s.strokeScale, BASE_CELL_PX) : null;
+    },
+    park,
+    addPath,
+    unpark,
+    hostOf: (id) => nodeEl(id)?.querySelector<HTMLElement>('[data-paint-host]') ?? null,
+    drawnOf: (id) => drawnLeaf(graphOf(stateRef.current), id) ?? null,
+    strokeScale: () => stateRef.current.strokeScale,
+  });
+
+  const addPreviewPath = (layers: Map<string, SVGSVGElement>, id: string): SVGPathElement | null => {
+    const group = layers.get(id)?.firstElementChild;
+    if (!group) return null;
+    const path = document.createElementNS(SVG_NS, 'path') as SVGPathElement;
+    group.appendChild(path);
+    return path;
+  };
+
+  /** The two eraser previews, made on first use. */
+  const erasePreviews = (): { gesture: VectorErasePreview; live: VectorErasePreview } => {
+    if (!erasePreviewsRef.current) {
+      erasePreviewsRef.current = {
+        // The gesture's parked svgs are the stroke's (`paintSvgLayersRef`):
+        // clearPaintOverlay removes them, so unpark is nothing.
+        gesture: createVectorErasePreview(erasePreviewDom(
+          (id, frame) => ensureSvgPaintLayer(id, frame) !== null,
+          (id) => addPreviewPath(paintSvgLayersRef.current, id),
+          () => {},
+        )),
+        live: createVectorErasePreview(erasePreviewDom(
+          (id, frame) => {
+            const node = nodeEl(id);
+            if (!node) return false;
+            liveCutLayersRef.current.set(id, parkPreviewSvg(node, id, frame));
+            return true;
+          },
+          (id) => addPreviewPath(liveCutLayersRef.current, id),
+          (id) => {
+            liveCutLayersRef.current.get(id)?.remove();
+            liveCutLayersRef.current.delete(id);
+          },
+        )),
+      };
+    }
+    return erasePreviewsRef.current;
+  };
+
+  // A commit re-rendered the canvas: a live-cut node whose record changed
+  // is cut again from the new one, before the browser paints the old
+  // overlay over new content (vectorErasePreview.ts, 3.).
+  useLayoutEffect(() => {
+    erasePreviewsRef.current?.live.refresh(stateRef.current);
+  }, [state.svgObjects]);
 
   /** A painted shape's preview frame — its flat (segment, colour) list in
    *  its own local units (the flat indices are the stable identity the
@@ -2676,50 +2756,12 @@ export function CanvasSurface({
   /** Live-preview the Color brush's ERASER: each path it has cut is hidden
    *  and redrawn, in its own world-layer <svg> (ensureSvgPaintLayer — the
    *  node's matrix and stroke presentation, so the pieces land where and as
-   *  wide as the node draws them), from what the stroke has left of it.
-   *  A path cut by this dab costs one `d` per colour it carries; a path the
-   *  dab missed costs a revision compare. Effects the node draws round its
-   *  path (a shadow, end caps' arrowheads) sit out until the release. */
+   *  wide as the node draws them), from what the stroke has left of it
+   *  (vectorErasePreview.ts, the implementation the handle's live cuts
+   *  share). A path cut by this dab costs the `d` of the chunks it changed;
+   *  a path the dab missed costs a revision compare. */
   const updateVectorErasePreview = (es: VectorEraseState) => {
-    const cache = vectorErasePreviewRef.current;
-    for (const [svgId, t] of es.targets) {
-      if (!t || t.rev === 0) continue;
-      const seen = cache.get(svgId);
-      if (seen && seen.rev === t.rev) continue;
-      const frame = paintPreviewFrame(svgId);
-      if (!frame) continue;
-      let entry = seen;
-      if (!entry) {
-        const node = nodeEl(svgId);
-        const own = node ? ensureSvgPaintLayer(svgId, frame) : null;
-        if (!node || !own) continue;
-        entry = { node, prevVisibility: node.style.visibility, paths: new Map(), rev: 0 };
-        node.style.visibility = 'hidden';
-        cache.set(svgId, entry);
-      }
-      const pieces = keptPieces(t, frame.flat.map((f) => f.segment));
-      const byColor = new Map<string, PathSegment[]>();
-      frame.flat.forEach((f, i) => {
-        const css = rgbCss(f.color);
-        const list = byColor.get(css);
-        if (list) list.push(...pieces[i]);
-        else byColor.set(css, [...pieces[i]]);
-      });
-      const own = paintSvgLayersRef.current.get(svgId)?.firstElementChild;
-      for (const [css, segs] of byColor) {
-        let path = entry.paths.get(css);
-        if (!path) {
-          if (!own) continue;
-          path = document.createElementNS(SVG_NS, 'path') as SVGPathElement;
-          for (const [name, value] of frame.attrs) path.setAttribute(name, value);
-          path.setAttribute('stroke', css);
-          own.appendChild(path);
-          entry.paths.set(css, path);
-        }
-        path.setAttribute('d', buildPathD(segs));
-      }
-      entry.rev = t.rev;
-    }
+    erasePreviews().gesture.update(es);
   };
 
   /** Mount the gradient brush cursor at the touch point (stroke start). */
@@ -3065,10 +3107,7 @@ export function CanvasSurface({
   const clearPaintOverlay = () => {
     // The Eraser's hidden nodes come back first (their preview <svg>s go
     // with the other world-layer previews just below).
-    for (const p of vectorErasePreviewRef.current.values()) {
-      p.node.style.visibility = p.prevVisibility;
-    }
-    vectorErasePreviewRef.current.clear();
+    erasePreviewsRef.current?.gesture.reset();
     const layer = paintLayerRef.current;
     if (layer) while (layer.firstChild) layer.removeChild(layer.firstChild);
     // The recoloured shapes' own world-layer previews: whole elements this
