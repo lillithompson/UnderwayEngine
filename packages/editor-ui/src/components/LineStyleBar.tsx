@@ -1,5 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { GestureResponderEvent, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  GestureResponderEvent, PanResponder, Pressable, type StyleProp, StyleSheet, Text, type TextStyle, View, type ViewStyle,
+} from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { LineStyleGlyphKind, LineStyleModel } from '../adapter';
 import { GROUP_PAD, SHADOW_PAD_SIZE } from '../logic/submenuHeight';
@@ -53,24 +55,49 @@ const PREVIEW_STROKE = 2;
 
 const degText = (deg: number) => `${Math.round(deg)}°`;
 
+/**
+ * How a {@link GlyphPad} is dressed: its side, its inks and the styles of
+ * its square and its Clear. The pad is one component for every host that
+ * shows a line style's glyph and takes a drawing of one — this page, in the
+ * panel's own dress ({@link PANEL_GLYPH_PAD}), and a host's own page in the
+ * host's (DrawBots' Changes style effect, in its Notebook skin) — so a host
+ * hands over a skin, never a second pad.
+ */
+export interface GlyphPadSkin {
+  /** The pad's side, px. */
+  size: number;
+  /** The glyph's ink, and the stroke under the finger's. */
+  ink: string;
+  accent: string;
+  /** The inks' width, px. */
+  strokeWidth: number;
+  /** The square itself: its ground and its edge, `size` each way. */
+  pad: StyleProp<ViewStyle>;
+  /** Clear, in the pad's corner, and its word. */
+  clear: StyleProp<ViewStyle>;
+  clearLabel: StyleProp<TextStyle>;
+  /** Over the whole pad while it is locked. */
+  locked?: StyleProp<ViewStyle>;
+}
+
 /** The pad's drawing: one inline `<svg>` over the pad, a path for the
  *  glyph and one for the stroke under the finger. A plain DOM svg rather
  *  than views turned to lie along the curve (which left a gap at every
  *  join) for the reason the toolbar's shape icons are (ToolIcons.tsx): the
  *  shared editor is a DOM tree, react-native-svg is no app's dependency,
  *  and this chrome is only ever mounted on the web target. */
-function PadInk({ glyphD, strokeD }: { glyphD: string; strokeD: string | null }) {
+function PadInk({ glyphD, strokeD, skin }: { glyphD: string; strokeD: string | null; skin: GlyphPadSkin }) {
   return (
     <svg
-      width={PAD_SIZE}
-      height={PAD_SIZE}
-      viewBox={`0 0 ${PAD_SIZE} ${PAD_SIZE}`}
+      width={skin.size}
+      height={skin.size}
+      viewBox={`0 0 ${skin.size} ${skin.size}`}
       fill="none"
       style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}
     >
-      <path d={glyphD} stroke={PANEL_INK} strokeWidth={PREVIEW_STROKE} strokeLinecap="round" strokeLinejoin="round" />
+      <path d={glyphD} stroke={skin.ink} strokeWidth={skin.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
       {strokeD ? (
-        <path d={strokeD} stroke={CONTROL_ACCENT} strokeWidth={PREVIEW_STROKE} strokeLinecap="round" strokeLinejoin="round" />
+        <path d={strokeD} stroke={skin.accent} strokeWidth={skin.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
       ) : null}
     </svg>
   );
@@ -78,18 +105,43 @@ function PadInk({ glyphD, strokeD }: { glyphD: string; strokeD: string | null })
 
 /** The pad: the glyph, drawn; and a surface to draw one on. `onClear` is
  *  given while there is a drawing to clear, and stands as a small word in
- *  the pad's corner. */
-function GlyphPad({ style, onDraw, onClear }: {
+ *  the pad's corner.
+ *
+ *  Exported for a host's own page of a line style (see {@link GlyphPadSkin}),
+ *  with the two things such a page may need that this one does not:
+ *  `locked` — the pad inert, its Clear gone, dressed in the skin's `locked`
+ *  (a host whose page can be read but not written, as DrawBots' is while a
+ *  run is live) — and `touch: 'box'`, which reads the pad's box ONCE as a
+ *  stroke is claimed and places every move in it, where the default reads
+ *  each event's own `locationX`/`locationY` (which the web target answers
+ *  from the element's box per event). A stroke's every other rule is the
+ *  same for both: a lifted finger commits, a terminated stroke commits what
+ *  it had, the release adds no point. */
+export function GlyphPad({ style, onDraw, onClear, skin = PANEL_GLYPH_PAD, locked = false, touch = 'location' }: {
   style: LineStyleModel;
   onDraw: (stroke: readonly [number, number][]) => void;
   onClear?: () => void;
+  skin?: GlyphPadSkin;
+  locked?: boolean;
+  touch?: 'location' | 'box';
 }) {
   const cbRef = useRef(onDraw);
   cbRef.current = onDraw;
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
+  const touchRef = useRef(touch);
+  touchRef.current = touch;
+  const sizeRef = useRef(skin.size);
+  sizeRef.current = skin.size;
+  const padRef = useRef<HTMLElement | null>(null);
+  const boxRef = useRef<{ left: number; top: number; side: number } | null>(null);
   const strokeRef = useRef<[number, number][]>([]);
   const [drawing, setDrawing] = useState<[number, number][] | null>(null);
   const add = (e: GestureResponderEvent) => {
-    const p = padPointFromTouch(e.nativeEvent.locationX, e.nativeEvent.locationY, PAD_SIZE);
+    const box = boxRef.current;
+    const p = box
+      ? padPointFromTouch(e.nativeEvent.pageX - box.left, e.nativeEvent.pageY - box.top, box.side)
+      : padPointFromTouch(e.nativeEvent.locationX, e.nativeEvent.locationY, sizeRef.current);
     if (!p) return;
     strokeRef.current.push(p);
     setDrawing(strokeRef.current.slice());
@@ -98,17 +150,25 @@ function GlyphPad({ style, onDraw, onClear }: {
     endValueDrag();
     const stroke = strokeRef.current;
     strokeRef.current = [];
+    boxRef.current = null;
     setDrawing(null);
     cbRef.current(stroke);
   };
   const pan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponder: () => !lockedRef.current,
+      onMoveShouldSetPanResponder: () => !lockedRef.current,
       // Keep the touch once the pad is grabbed so the sheet's swipe-to-dismiss
       // can't steal it mid-stroke (see Slider for the same guard).
       onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (e) => { beginValueDrag(); strokeRef.current = []; add(e); },
+      onPanResponderGrant: (e) => {
+        beginValueDrag();
+        strokeRef.current = [];
+        // The box once per stroke, never per move, for a host that asks.
+        const r = touchRef.current === 'box' ? padRef.current?.getBoundingClientRect?.() : undefined;
+        boxRef.current = r && r.width > 0 ? { left: r.left, top: r.top, side: r.width } : null;
+        add(e);
+      },
       onPanResponderMove: (e) => add(e),
       // The release adds no point: its location is not where the finger
       // let go (see the Slider's and the XYPad's release handlers), and the
@@ -118,26 +178,29 @@ function GlyphPad({ style, onDraw, onClear }: {
     }),
   ).current;
   return (
-    <View style={styles.padHolder}>
+    <View style={[{ width: skin.size, height: skin.size }, locked ? skin.locked : null]}>
       <View
-        style={styles.pad}
+        ref={(el) => { padRef.current = el as unknown as HTMLElement | null; }}
+        style={skin.pad}
         accessibilityRole="image"
         accessibilityLabel="Glyph pad: draw here to make your own glyph"
+        pointerEvents={locked ? 'none' : 'auto'}
         {...pan.panHandlers}
       >
         <PadInk
-          glyphD={padGlyphPathD(style, PAD_SIZE)}
-          strokeD={drawing ? padPolylinePathD(drawing, PAD_SIZE) : null}
+          glyphD={padGlyphPathD(style, skin.size)}
+          strokeD={drawing ? padPolylinePathD(drawing, skin.size) : null}
+          skin={skin}
         />
       </View>
-      {onClear ? (
+      {onClear && !locked ? (
         <Pressable
           onPress={onClear}
           accessibilityRole="button"
           accessibilityLabel="Clear drawing"
-          style={styles.clear}
+          style={skin.clear}
         >
-          <Text style={styles.clearLabel}>Clear</Text>
+          <Text style={skin.clearLabel}>Clear</Text>
         </Pressable>
       ) : null}
     </View>
@@ -230,10 +293,16 @@ export function LineStyleBar({ style, section, onSection, onChange, onCommit }: 
 
 const styles = StyleSheet.create({
   face: { height: PAD_SIZE, justifyContent: 'center' },
-  padHolder: { width: PAD_SIZE, height: PAD_SIZE },
   pad: { ...PAD_WELL_STYLE, overflow: 'hidden', ...VALUE_DRAG_SURFACE },
   // Clear sits in the pad's top-right corner, over it, so the pad keeps
   // the whole of the face's height.
   clear: { position: 'absolute', top: 2, right: 2, paddingVertical: 4, paddingHorizontal: 8 },
   clearLabel: { color: PANEL_INK_DIM, fontSize: 12, fontWeight: '600' },
 });
+
+/** The pad as this page wears it: the Shadow page's pad well, the panel's
+ *  ink for the glyph and the controls' accent for the stroke in hand. */
+export const PANEL_GLYPH_PAD: GlyphPadSkin = {
+  size: PAD_SIZE, ink: PANEL_INK, accent: CONTROL_ACCENT, strokeWidth: PREVIEW_STROKE,
+  pad: styles.pad, clear: styles.clear, clearLabel: styles.clearLabel,
+};

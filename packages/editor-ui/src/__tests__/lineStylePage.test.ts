@@ -179,6 +179,42 @@ describe('the pad', () => {
     expect(BAR).not.toContain('transform: [{ rotate:');
   });
 
+  it('is one pad for every host: exported, dressed by a skin, the Style page in the panel\'s', () => {
+    // A host with a page of its own for a line style (DrawBots' Changes
+    // style effect) hands the pad a skin; it never writes a second pad.
+    expect(BAR).toContain('export interface GlyphPadSkin {');
+    expect(BAR).toContain("export function GlyphPad({ style, onDraw, onClear, skin = PANEL_GLYPH_PAD, locked = false, touch = 'location' }: {");
+    expect(BAR).toContain('export const PANEL_GLYPH_PAD: GlyphPadSkin = {');
+    expect(BAR).toContain('size: PAD_SIZE, ink: PANEL_INK, accent: CONTROL_ACCENT, strokeWidth: PREVIEW_STROKE,');
+    expect(BAR).toContain('pad: styles.pad, clear: styles.clear, clearLabel: styles.clearLabel,');
+    // Everything it draws comes from the skin.
+    expect(BAR).toContain('glyphD={padGlyphPathD(style, skin.size)}');
+    expect(BAR).toContain('<path d={glyphD} stroke={skin.ink} strokeWidth={skin.strokeWidth}');
+    expect(BAR).toContain('<path d={strokeD} stroke={skin.accent} strokeWidth={skin.strokeWidth}');
+    expect(BAR).toContain('style={skin.pad}');
+    // The Style page asks for neither host option: the pad as it always was.
+    const page = BAR.slice(BAR.indexOf('export function LineStyleBar'));
+    expect(page).not.toContain('locked=');
+    expect(page).not.toContain('touch=');
+    expect(page).not.toContain('skin=');
+  });
+
+  it('a host may lock it, and may have its box read once a stroke', () => {
+    expect(BAR).toContain('onStartShouldSetPanResponder: () => !lockedRef.current,');
+    expect(BAR).toContain('onMoveShouldSetPanResponder: () => !lockedRef.current,');
+    expect(BAR).toContain("pointerEvents={locked ? 'none' : 'auto'}");
+    expect(BAR).toContain('{onClear && !locked ? (');
+    expect(BAR).toContain('locked ? skin.locked : null');
+    // By default each event's own location, as ever; `touch: 'box'` reads
+    // the pad's box as the stroke is claimed and places every move in it.
+    expect(BAR).toContain(': padPointFromTouch(e.nativeEvent.locationX, e.nativeEvent.locationY, sizeRef.current);');
+    expect(BAR).toContain("const r = touchRef.current === 'box' ? padRef.current?.getBoundingClientRect?.() : undefined;");
+    expect(BAR).toContain('? padPointFromTouch(e.nativeEvent.pageX - box.left, e.nativeEvent.pageY - box.top, box.side)');
+    expect(BAR.match(/getBoundingClientRect/g)).toHaveLength(1);
+    // A terminated stroke commits what it had, as a lifted one does.
+    expect(BAR).toContain('onPanResponderTerminate: () => finish(),');
+  });
+
   it('Clear takes the drawing away and the glyph goes back to the circle', () => {
     expect(BAR).toContain("onClear={drawn ? () => set({ glyph: 'circle', custom: undefined }, true) : undefined}");
   });
