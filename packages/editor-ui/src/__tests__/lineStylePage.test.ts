@@ -15,7 +15,8 @@ import {
   MIN_GLYPH_SIZE, padGlyphPathD, padPointFromTouch, padPolylinePathD, strokesAfterDraw,
 } from '../logic/lineStyle';
 import {
-  BAR_CUSHION, ROW_GAP, ROW_SEGMENTED, ROW_SLIDER, SECTION_TABS_ROW, SHADOW_PAD_SIZE, pageIsWelled,
+  ASIDE_GAP, BAR_CUSHION, GLYPH_BUTTON, GLYPH_GRID_GAP, GLYPH_GRID_LINES_MAX, GROUP_PAD, PATTERN_TILE_GRID_GAP, ROW_GAP,
+  ROW_SLIDER, SECTION_TABS_ROW, SHADOW_PAD_SIZE, SHEET_PAD_HORIZONTAL, glyphGridHeight, pageIsWelled,
   rowGroupHeight, submenuHeight,
 } from '../logic/submenuHeight';
 
@@ -60,9 +61,9 @@ describe('the Style tab is one of the Effects family', () => {
 });
 
 describe('the page', () => {
-  it('is one tabbed box, the Copies page’s shape: Glyph, Rotation, Scale', () => {
-    expect(LINE_STYLE_SECTIONS.map((s) => s.value)).toEqual(['glyph', 'rotation', 'scale']);
-    expect(LINE_STYLE_SECTIONS.map((s) => s.label)).toEqual(['Glyph', 'Rotation', 'Scale']);
+  it('is one tabbed box, the Copies page’s shape: Glyph, Placement, Rotation, Scale (DrawBots report 99b5fb2e)', () => {
+    expect(LINE_STYLE_SECTIONS.map((s) => s.value)).toEqual(['glyph', 'placement', 'rotation', 'scale']);
+    expect(LINE_STYLE_SECTIONS.map((s) => s.label)).toEqual(['Glyph', 'Placement', 'Rotation', 'Scale']);
     expect(BAR).toContain('<GroupedBody>');
     expect(BAR).toContain('<RowGroup>');
     expect(BAR).toContain('options={LINE_STYLE_SECTIONS}');
@@ -74,14 +75,20 @@ describe('the page', () => {
     expect(PANEL).toContain('onSection={setLineStyleSection}');
   });
 
-  it('each face holds its own rows: the glyph with the pad, the turn, the size', () => {
-    const glyph = BAR.slice(BAR.indexOf("section === 'glyph' ?"), BAR.indexOf("section === 'rotation' ?"));
+  it('each face holds its own rows: the glyph grid with the pad, the placement, the turn, the size', () => {
+    const glyph = BAR.slice(BAR.indexOf("section === 'glyph' ?"), BAR.indexOf("section === 'placement' ?"));
+    const placement = BAR.slice(BAR.indexOf("section === 'placement' ?"), BAR.indexOf("section === 'rotation' ?"));
     const rotation = BAR.slice(BAR.indexOf("section === 'rotation' ?"), BAR.indexOf('label="Size"'));
     const scale = BAR.slice(BAR.indexOf('label="Size"'));
     expect(glyph).toContain('<GlyphPad');
-    expect(glyph).toContain('<SegmentedRow');
-    expect(glyph).toContain('label="Density"');
-    expect(glyph).toContain('label="Scatter"');
+    expect(glyph).toContain('<GlyphGrid value={style.glyph} onChange={(glyph) => set({ glyph }, true)} />');
+    // Which glyph alone: Density and Scatter are the Placement face's
+    // (DrawBots report 99b5fb2e), and the row the glyphs stood in is gone.
+    expect(glyph).not.toContain('<SliderRow');
+    expect(BAR).not.toContain('<SegmentedRow');
+    expect(placement).toContain('label="Density"');
+    expect(placement).toContain('label="Scatter"');
+    expect(placement).not.toContain('<GlyphPad');
     expect(rotation).toContain('label="Rotation"');
     expect(rotation).toContain('label="Spin"');
     expect(rotation).not.toContain('<GlyphPad');
@@ -91,7 +98,7 @@ describe('the page', () => {
   });
 
   it('is bare, and every face stands the pad’s height, so a tab press never resizes the sheet', () => {
-    const face = Math.max(ROW_SEGMENTED + ROW_SLIDER * 2 + ROW_GAP * 2, SHADOW_PAD_SIZE);
+    const face = Math.max(glyphGridHeight(GLYPH_GRID_LINES_MAX), ROW_SLIDER * 2 + ROW_GAP, SHADOW_PAD_SIZE);
     expect(face).toBe(SHADOW_PAD_SIZE);
     expect(submenuHeight('lineStyle')).toBe(rowGroupHeight([SECTION_TABS_ROW, face]) + BAR_CUSHION);
     expect(pageIsWelled('lineStyle')).toBe(false);
@@ -108,6 +115,30 @@ describe('the page', () => {
     expect(LINE_STYLE_GLYPH_OPTIONS.map((o) => o.label)).toEqual(['Dash', 'Circle', 'Sparkle', 'Heart', 'Draw']);
     // A choice commits at once.
     expect(BAR).toContain("onChange={(glyph) => set({ glyph }, true)}");
+  });
+
+  it('lays the glyphs as a grid of square buttons beside the pad, which wraps and never outgrows the pad (DrawBots report 99b5fb2e)', () => {
+    const grid = BAR.slice(BAR.indexOf('function GlyphGrid('), BAR.indexOf('export function LineStyleBar('));
+    expect(grid).toContain('{GLYPH_OPTIONS.map((o) => {');
+    expect(grid).toContain('style={[styles.gridCell, active && styles.gridCellActive]}');
+    expect(grid).toContain('accessibilityState={{ selected: active }}');
+    expect(grid).toContain('<MaterialCommunityIcons name={o.icon} size={GLYPH_ICON} color={active ? PANEL_INK : PANEL_INK_DIM} />');
+    // Fixed squares, the pattern pages' square dress, wrapping and centred
+    // in the face's height.
+    expect(BAR).toContain("grid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignContent: 'center', gap: GLYPH_GRID_GAP },");
+    expect(BAR).toContain('gridCell: { width: GLYPH_BUTTON, height: GLYPH_BUTTON, ...SQUARE_BUTTON_STYLE },');
+    expect(BAR).toContain('gridCellActive: SQUARE_BUTTON_ON_STYLE,');
+    expect(GLYPH_BUTTON).toBe(44);
+    expect(GLYPH_GRID_GAP).toBe(PATTERN_TILE_GRID_GAP);
+    // Three squares fit the column beside the pad on the narrowest sheet
+    // (an SE's 375), so the five glyphs are two lines there…
+    const column = 375 - 2 * SHEET_PAD_HORIZONTAL - 2 * GROUP_PAD - SHADOW_PAD_SIZE - ASIDE_GAP;
+    expect(3 * GLYPH_BUTTON + 2 * GLYPH_GRID_GAP).toBeLessThanOrEqual(column);
+    expect(4 * GLYPH_BUTTON + 3 * GLYPH_GRID_GAP).toBeGreaterThan(column);
+    // …and even three lines stand inside the pad's height, which the face
+    // is fixed at.
+    expect(glyphGridHeight(GLYPH_GRID_LINES_MAX)).toBeLessThanOrEqual(SHADOW_PAD_SIZE);
+    expect(glyphGridHeight(2)).toBe(2 * GLYPH_BUTTON + GLYPH_GRID_GAP);
   });
 
   it('sizes glyphs from a dot to 64pt', () => {
@@ -169,8 +200,12 @@ describe('the pad', () => {
     expect(circle.endsWith(' Z')).toBe(true);
     expect(padGlyphPathD(model({ glyph: 'heart' }), 100)).toContain(' C ');
     expect(padGlyphPathD(model({ glyph: 'sparkle' }), 100)).toContain(' C ');
-    // Draw with nothing drawn yet shows the circle it will stamp.
-    expect(padGlyphPathD(model({ glyph: 'custom' }), 100)).toBe(circle);
+    // Draw with nothing drawn yet is a BLANK pad (DrawBots report
+    // 99b5fb2e): the square is empty for the drawing it asks for, and a
+    // drawing emptied the same (the path keeps stamping its circle in the
+    // meantime — the engine's rule for a drawn glyph with nothing to fit).
+    expect(padGlyphPathD(model({ glyph: 'custom' }), 100)).toBe('');
+    expect(padGlyphPathD(model({ glyph: 'custom', custom: [] }), 100)).toBe('');
     // …and the stroke under the finger is the same arithmetic.
     expect(padPolylinePathD([[0, 0], [0.5, 0.25]], 148)).toBe('M 0,0 L 74,37');
     // Drawn as ONE svg path, the toolbar's shape icons' way, not as views.

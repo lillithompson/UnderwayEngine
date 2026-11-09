@@ -1665,8 +1665,9 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
     // measured from this same list.
     activeBarEl = <EffectsBar {...effectsBarProps} />;
   } else if (shownEffect === 'lineStyle') {
-    // The Style page: one tabbed box — the glyph (its row, Density and
-    // Scatter beside the drawing pad), its rotation, its scale. No colour
+    // The Style page: one tabbed box — the glyph (its grid of squares
+    // beside the drawing pad), its placement (Density and Scatter), its
+    // rotation, its scale. No colour
     // row — the glyphs wear the Stroke page's ink. The page reads the
     // draft while one is held (the sliders keep tracking), else the model:
     // a glyph choice commits at once and the host reports it back.

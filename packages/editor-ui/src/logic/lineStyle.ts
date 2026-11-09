@@ -8,13 +8,16 @@ import { clamp01 } from '../appTheme';
 // pad draws. The component (components/LineStyleBar.tsx) is React Native
 // and holds the views; these are what a node test can reach.
 
-/** The page's three faces, the Copies page's inner tabs over again: which
- *  glyph and how it is laid (with the pad), how it is turned, how big it
- *  is. One section, one at a time. */
-export type LineStyleSection = 'glyph' | 'rotation' | 'scale';
+/** The page's four faces, the Copies page's inner tabs over again: which
+ *  glyph (with the pad), how the glyphs are placed along the path
+ *  (Placement — Density and Scatter, a face of their own since DrawBots
+ *  report 99b5fb2e; they stood under the glyph row until then), how each
+ *  is turned, how big it is. One section, one at a time. */
+export type LineStyleSection = 'glyph' | 'placement' | 'rotation' | 'scale';
 
 export const LINE_STYLE_SECTIONS: readonly { value: LineStyleSection; label: string }[] = [
   { value: 'glyph', label: 'Glyph' },
+  { value: 'placement', label: 'Placement' },
   { value: 'rotation', label: 'Rotation' },
   { value: 'scale', label: 'Scale' },
 ];
@@ -88,14 +91,20 @@ export function padPolylinePathD(points: readonly (readonly [number, number])[],
  *  it was drawn; a built-in one from its unit box, spanning PREVIEW_SPAN of
  *  the pad — its CURVES kept as curves (the engine's own commands, which is
  *  what the path will stamp), so a circle previews as the circle it is and
- *  not as a chain of pieces. Draw with nothing drawn yet shows the circle it
- *  will stamp. */
+ *  not as a chain of pieces. Draw with nothing drawn yet is a BLANK pad
+ *  (DrawBots report 99b5fb2e; it showed the circle the path stamps in the
+ *  meantime until then): the square is empty for the drawing it asks for.
+ *  The PATH still stamps its circle until a stroke lands — the engine's
+ *  rule for a drawn glyph with nothing to fit (`lineStyleGlyphCommands`),
+ *  so a line never vanishes under a tap on Draw. */
 export function padGlyphPathD(style: LineStyleModel, padSize: number): string {
-  if (style.glyph === 'custom' && style.custom && style.custom.length > 0) {
-    return style.custom.map((stroke) => padPolylinePathD(stroke, padSize)).join(' ');
+  if (style.glyph === 'custom') {
+    return style.custom && style.custom.length > 0
+      ? style.custom.map((stroke) => padPolylinePathD(stroke, padSize)).join(' ')
+      : '';
   }
   const commands = lineStyleGlyphCommands({
-    glyph: style.glyph === 'custom' ? 'circle' : style.glyph,
+    glyph: style.glyph,
     density: style.density, size: style.size, rotation: 0,
     randomPlacement: 0, randomRotation: 0, randomSize: 0,
   });

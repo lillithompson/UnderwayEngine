@@ -193,6 +193,28 @@ export const PATTERN_TILE_GRID_GAP = 6;
 export const PATTERN_TILE_GRID =
   PATTERN_TILE_BUTTON * 2 + PATTERN_TILE_GRID_GAP;
 
+/** One square button of the Style page's GLYPH GRID (DrawBots report
+ *  99b5fb2e; the glyphs were a segmented row until then), and the gap
+ *  between them — the pattern grids' own gap, so the sheet's grids keep
+ *  one rhythm. A touch target carrying an icon alone, so smaller than
+ *  the family square's word. The grid WRAPS beside the drawing pad: on
+ *  the narrowest sheet there is the column beside the pad is 375 − 2×16
+ *  sheet padding − 2×10 group padding − the pad − its gap = 159, which
+ *  three squares fit (3×44 + 2×6 = 144), so the five glyphs are two
+ *  lines there and one line on a tablet. */
+export const GLYPH_BUTTON = 44;
+export const GLYPH_GRID_GAP = PATTERN_TILE_GRID_GAP;
+/** The most lines the grid is measured for: three, which stands inside
+ *  the pad's height (3×44 + 2×6 = 144 under 148) with room for a sixth
+ *  glyph at two to a line; the face is as tall as the pad whatever the
+ *  grid wraps to. */
+export const GLYPH_GRID_LINES_MAX = 3;
+
+/** How tall `lines` lines of the glyph grid stand, one gap between. */
+export function glyphGridHeight(lines: number): number {
+  return lines * GLYPH_BUTTON + (lines - 1) * GLYPH_GRID_GAP;
+}
+
 /** One square button of the Shapes page's family grid. A shade wider than
  *  the arming square beside it because it carries a WORD rather than
  *  artwork, and the longest family word there is ("Craftsman") needs the
@@ -276,8 +298,8 @@ export type SubmenuKey =
   | 'tint' | 'crop' | 'effects' | 'shadow' | 'glowOuter' | 'glowInner' | 'border' | 'opacity'
   // A vector's LINE STYLE: the fourth tab the Effects page can make — one
   // tabbed box, the Copies page's shape, whose faces are the glyph (its
-  // row, Density and Scatter beside the drawing pad), its rotation and its
-  // scale.
+  // grid of squares beside the drawing pad), its placement (Density and
+  // Scatter), its rotation and its scale.
   | 'lineStyle'
   | 'image'
   | 'text' | 'font' | 'spacing' | 'align' | 'stroke' | 'svgFill' | 'endpoints' | 'transform' | 'layout'
@@ -663,12 +685,15 @@ export function submenuHeight(key: SubmenuKey, ctx: SubmenuHeightContext = {}): 
     case 'lineStyle': {
       // The Style page: ONE tabbed box, the Copies page's shape — the tab
       // row, then the face. Every face is as tall as the Glyph face, whose
-      // drawing pad (the Shadow page's square) stands beside its three
-      // rows, so the page never resizes under a tab press. Its group IS its
-      // box, so it is drawn with no well around it (pageIsWelled) and
-      // measured without the well's padding. No colour row: the glyphs
-      // wear the Stroke page's ink.
-      const face = Math.max(stack([ROW_SEGMENTED, ROW_SLIDER, ROW_SLIDER]), SHADOW_PAD_SIZE);
+      // drawing pad (the Shadow page's square) stands beside its grid of
+      // glyph squares (which wraps to at most GLYPH_GRID_LINES_MAX lines,
+      // inside the pad's height); the other faces are two sliders each
+      // (Placement's Density and Scatter, Rotation's, Scale's), so the
+      // page never resizes under a tab press. Its group IS its box, so it
+      // is drawn with no well around it (pageIsWelled) and measured
+      // without the well's padding. No colour row: the glyphs wear the
+      // Stroke page's ink.
+      const face = Math.max(glyphGridHeight(GLYPH_GRID_LINES_MAX), stack([ROW_SLIDER, ROW_SLIDER]), SHADOW_PAD_SIZE);
       return bareArea([rowGroupHeight([SECTION_TABS_ROW, face])], GROUP_GAP);
     }
     default: {

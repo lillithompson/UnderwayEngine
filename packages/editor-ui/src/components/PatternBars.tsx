@@ -18,9 +18,9 @@ import {
   rotatePatternTileTransform,
 } from '../logic/patternEdit';
 import type { PatternTileSetRow } from '../logic/patternEdit';
-import { PANEL_BORDER, PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
+import { PANEL_INK, PANEL_INK_DIM, PANEL_TRACK, STATE_ACTIVE } from '../theme';
 import {
-  ActionRow, BarBody, EffectButton, SegmentedRow, SwitchRow,
+  ActionRow, BarBody, EffectButton, SegmentedRow, SQUARE_BUTTON_ON_STYLE, SQUARE_BUTTON_STYLE, SwitchRow,
 } from './effectBar';
 import { PatternSetsModal } from './PatternSetsModal';
 import { PatternTileModal } from './PatternTileModal';
@@ -523,17 +523,15 @@ const styles = StyleSheet.create({
   setCell: {
     width: PATTERN_TILE_SET_BUTTON,
     height: PATTERN_TILE_SET_BUTTON,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
     paddingHorizontal: 3,
-    borderWidth: 1.5,
     // At rest: no ground, a grey ring — the hairline the pages' own
-    // outlined button wears (effectBar addButtonBordered).
-    borderColor: PANEL_BORDER,
+    // outlined button wears (effectBar addButtonBordered): the sheet's
+    // one square button (effectBar's SQUARE_BUTTON_STYLE, the Style
+    // page's glyph squares' too).
+    ...SQUARE_BUTTON_STYLE,
   },
   // On: the grey ground and the lit border.
-  setCellActive: { backgroundColor: PANEL_TRACK, borderColor: STATE_ACTIVE },
+  setCellActive: SQUARE_BUTTON_ON_STYLE,
   // The grid's 9pt caption, as the arming and symmetry cells wear it — here
   // it is the whole cell, a family having no glyph of its own.
   setWord: { color: PANEL_INK_DIM, fontSize: 9, fontWeight: '600', textAlign: 'center' },

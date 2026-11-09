@@ -366,8 +366,14 @@ describe('the Shapes page', () => {
     // hairline. On: the grey ground and the lit blue border.
     const setCell = BARS.slice(BARS.indexOf('  setCell: {'), BARS.indexOf('  setCellActive:'));
     expect(setCell).not.toContain('backgroundColor');
-    expect(setCell).toContain('borderColor: PANEL_BORDER,');
-    expect(BARS).toContain('setCellActive: { backgroundColor: PANEL_TRACK, borderColor: STATE_ACTIVE },');
+    // The dress is the sheet's one square button (effectBar's
+    // SQUARE_BUTTON_STYLE), which the Style page's glyph squares wear too
+    // (DrawBots report 99b5fb2e), so the two grids cannot drift.
+    expect(setCell).toContain('...SQUARE_BUTTON_STYLE,');
+    expect(BARS).toContain('setCellActive: SQUARE_BUTTON_ON_STYLE,');
+    const EFFECT_BAR = readFileSync(resolve(__dirname, '..', 'components', 'effectBar.tsx'), 'utf8');
+    expect(EFFECT_BAR).toContain("borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: PANEL_BORDER,");
+    expect(EFFECT_BAR).toContain('export const SQUARE_BUTTON_ON_STYLE = { backgroundColor: PANEL_TRACK, borderColor: STATE_ACTIVE } as const;');
   });
 
   it('serves the pattern OBJECT s page and the shape fill s section from one component', () => {
@@ -910,7 +916,7 @@ describe('Repeat is the Tile page, and a row of the Tools bar', () => {
     expect(effects).toContain(
       "return layout === 'block' ? <View style={styles.emptyControls}>{button}</View> : button;",
     );
-    expect(BARS).toContain('  ActionRow, BarBody, EffectButton, SegmentedRow, SwitchRow,\n');
+    expect(BARS).toContain('  ActionRow, BarBody, EffectButton, SegmentedRow, SQUARE_BUTTON_ON_STYLE, SQUARE_BUTTON_STYLE, SwitchRow,\n');
   });
 
   it('takes the act as a host callback, so a host can withhold it', () => {

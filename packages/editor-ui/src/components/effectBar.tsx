@@ -28,6 +28,18 @@ import { ColorSwatchFill } from './ColorSwatch';
 import { hueRampColors, hueSliderSV, rgbCss, rgbToHsv, withHue } from '../logic/hsv';
 import type { RGBLike } from '../adapter';
 
+/** A SQUARE BUTTON of a page's grid — the pattern pages' family squares
+ *  (PatternBars' Shapes grid) and the Style page's glyph squares
+ *  (LineStyleBar's GlyphGrid) — less its size, which each grid sets: a
+ *  rounded square outlined in the hairline the pages' own outlined button
+ *  wears (addButtonBordered), no ground at rest; ON, the grey ground and
+ *  the lit border (`SQUARE_BUTTON_ON_STYLE`), so a grid reads by which
+ *  squares are filled. One dress, so the sheet's grids cannot drift. */
+export const SQUARE_BUTTON_STYLE = {
+  borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: PANEL_BORDER,
+} as const;
+export const SQUARE_BUTTON_ON_STYLE = { backgroundColor: PANEL_TRACK, borderColor: STATE_ACTIVE } as const;
+
 /** The pad a page's finger draws on: a square recessed well on the light
  *  page, a faint dark wash with a slightly stronger edge. The Shadow page's
  *  direction pad and the Style page's drawing pad both stand in it. */

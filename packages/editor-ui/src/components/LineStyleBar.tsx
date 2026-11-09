@@ -4,14 +4,14 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { LineStyleGlyphKind, LineStyleModel } from '../adapter';
-import { GROUP_PAD, SHADOW_PAD_SIZE } from '../logic/submenuHeight';
+import { GLYPH_BUTTON, GLYPH_GRID_GAP, GROUP_PAD, SHADOW_PAD_SIZE } from '../logic/submenuHeight';
 import {
   LINE_STYLE_GLYPH_OPTIONS, LINE_STYLE_SECTIONS, MAX_GLYPH_ROTATION, MAX_GLYPH_SIZE, MIN_GLYPH_SIZE,
   type LineStyleSection, padGlyphPathD, padPointFromTouch, padPolylinePathD, strokesAfterDraw,
 } from '../logic/lineStyle';
 import {
   BarBody, CONTROL_ACCENT, GroupedBody, RowGroup, SECTION_TABS_GROUP_RADIUS, SectionTabs, SliderRow,
-  PAD_WELL_STYLE, SegmentedRow,
+  PAD_WELL_STYLE, SQUARE_BUTTON_ON_STYLE, SQUARE_BUTTON_STYLE,
 } from './effectBar';
 import { beginValueDrag, endValueDrag, VALUE_DRAG_SURFACE } from '../logic/slider';
 import { PANEL_INK, PANEL_INK_DIM } from '../theme';
@@ -22,19 +22,24 @@ import { clamp01 } from '../appTheme';
 // that family with a face of its own.
 //
 // It takes the Copies page's shape: ONE shaded box whose tabs switch the
-// rows under them, so the three questions a style answers each get a face
-// and one place on the page. GLYPH leads — which glyph, how closely they
-// stand (Density) and how far each may stray from its place (Scatter) —
-// with the drawing pad beside those rows, where the Shadow page's offset
-// pad stands: it shows the glyph the path is wearing, and a finger drawn
-// across it draws a new one. Drawing is what chooses Draw; there is no
-// empty box to be sent to first. Each stroke lifted is a commit, so a
-// two-stroke glyph is two undo steps and the second stroke lands on the
-// first. Clear, in the pad's corner while there is a drawing, takes it
-// away and the glyph goes back to the circle. ROTATION is how far every
-// glyph is turned from the path's direction, and how far each may turn on
-// its own (Spin). SCALE is the glyph's Size, and how much each may vary
-// from it.
+// rows under them, so the four questions a style answers each get a face
+// and one place on the page. GLYPH leads — which glyph, as a grid of
+// square buttons (the four built-in shapes and Draw; a segmented row until
+// DrawBots report 99b5fb2e) — with the drawing pad beside the grid, where
+// the Shadow page's offset pad stands: it shows the glyph the path is
+// wearing, and a finger drawn across it draws a new one. Drawing is what
+// chooses Draw; a press on Draw itself leaves the pad BLANK for the drawing
+// it asks for (the same report; it showed the circle the path stamps in
+// the meantime until then), and shows a drawing already made. Each stroke
+// lifted is a commit, so a two-stroke glyph is two undo steps and the
+// second stroke lands on the first. Clear, in the pad's corner while there
+// is a drawing, takes it away and the glyph goes back to the circle.
+// PLACEMENT is how closely the glyphs stand (Density) and how far each may
+// stray from its place (Scatter) — a face of their own since the same
+// report; they stood under the glyph row until then. ROTATION is how far
+// every glyph is turned from the path's direction, and how far each may
+// turn on its own (Spin). SCALE is the glyph's Size, and how much each may
+// vary from it.
 //
 // Every face stands the same height — the Glyph face's, which the pad sets
 // — so the page never resizes under a tab press, as the Copies page's
@@ -52,8 +57,39 @@ const GLYPH_OPTIONS: readonly { value: LineStyleGlyphKind; label: string; icon: 
 
 const PAD_SIZE = SHADOW_PAD_SIZE;
 const PREVIEW_STROKE = 2;
+/** A glyph square's icon, px: the segmented row's 18 a shade larger, the
+ *  square having the room. */
+const GLYPH_ICON = 22;
 
 const degText = (deg: number) => `${Math.round(deg)}°`;
+
+/** The Glyph face's grid: one square button a glyph (DrawBots report
+ *  99b5fb2e), fixed squares (`GLYPH_BUTTON`) that WRAP beside the pad —
+ *  three to a line on the narrowest sheet, all five on a tablet — and
+ *  stand centred in the face's height whatever they wrap to. The one
+ *  chosen is filled with the lit border, the pattern pages' square
+ *  (`SQUARE_BUTTON_STYLE`), the rest outlined. A choice commits at once. */
+function GlyphGrid({ value, onChange }: { value: LineStyleGlyphKind; onChange: (glyph: LineStyleGlyphKind) => void }) {
+  return (
+    <View style={styles.grid}>
+      {GLYPH_OPTIONS.map((o) => {
+        const active = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            style={[styles.gridCell, active && styles.gridCellActive]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={o.label}
+          >
+            <MaterialCommunityIcons name={o.icon} size={GLYPH_ICON} color={active ? PANEL_INK : PANEL_INK_DIM} />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
 
 /**
  * How a {@link GlyphPad} is dressed: its side, its inks and the styles of
@@ -242,7 +278,6 @@ export function LineStyleBar({ style, section, onSection, onChange, onCommit }: 
         <View style={styles.face}>
           {section === 'glyph' ? (
             <BarBody
-              spread
               aside={(
                 <GlyphPad
                   style={style}
@@ -254,11 +289,10 @@ export function LineStyleBar({ style, section, onSection, onChange, onCommit }: 
                 />
               )}
             >
-              <SegmentedRow
-                options={GLYPH_OPTIONS}
-                value={style.glyph}
-                onChange={(glyph) => set({ glyph }, true)}
-              />
+              <GlyphGrid value={style.glyph} onChange={(glyph) => set({ glyph }, true)} />
+            </BarBody>
+          ) : section === 'placement' ? (
+            <BarBody spread>
               <SliderRow label="Density" value={clamp01(style.density)} apply={(t, c) => set({ density: t }, c)} />
               <SliderRow label="Scatter" value={clamp01(style.randomPlacement)} apply={(t, c) => set({ randomPlacement: t }, c)} />
             </BarBody>
@@ -293,6 +327,11 @@ export function LineStyleBar({ style, section, onSection, onChange, onCommit }: 
 
 const styles = StyleSheet.create({
   face: { height: PAD_SIZE, justifyContent: 'center' },
+  // The glyph grid: fixed squares that wrap, the lines centred in the
+  // column's height (the pad's), one grid gap apart each way.
+  grid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignContent: 'center', gap: GLYPH_GRID_GAP },
+  gridCell: { width: GLYPH_BUTTON, height: GLYPH_BUTTON, ...SQUARE_BUTTON_STYLE },
+  gridCellActive: SQUARE_BUTTON_ON_STYLE,
   pad: { ...PAD_WELL_STYLE, overflow: 'hidden', ...VALUE_DRAG_SURFACE },
   // Clear sits in the pad's top-right corner, over it, so the pad keeps
   // the whole of the face's height.
