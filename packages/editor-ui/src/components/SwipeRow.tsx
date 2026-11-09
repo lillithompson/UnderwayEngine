@@ -118,7 +118,7 @@ export interface SwipeAction {
   label: string;
   /** MaterialCommunityIcons name. */
   icon: string;
-  /** The button's own fill. */
+  /** The button's own fill — or, on a `bare` row, its icon's ink. */
   color: string;
   onPress: () => void;
 }
@@ -137,7 +137,7 @@ export function useSwipeScrollLock(): { onGrab: (held: boolean) => void; scrollE
   return { onGrab: setSwiping, scrollEnabled: !swiping };
 }
 
-export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIPE_ACTION_WIDTH, labelFont, iconOnly = false, endCorner, bleed = 0, peek = false }: {
+export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIPE_ACTION_WIDTH, labelFont, iconOnly = false, bare = false, endCorner, bleed = 0, peek = false }: {
   /** Left to right as they come in, so the LAST is the one at the screen's
    *  edge — the first thing the thumb reaches, and by that convention the
    *  heaviest. Empty means the line does not move. */
@@ -154,6 +154,13 @@ export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIP
   labelFont?: string;
   /** The buttons show their icon alone, the label read out only. */
   iconOnly?: boolean;
+  /** The buttons BARE (DrawBots' Pen Motion rows and colour rows, report
+   *  f35d5d52): no fill behind them — the page shows through — and each
+   *  icon in its action's `color`, a size up, so a ✕ is a bold red ✕ on
+   *  the paper rather than white on a red block; a label, where one is
+   *  shown, takes the colour too, and a press dims the icon rather than
+   *  a block. A `peek` has nothing to show at rest on a bare row. */
+  bare?: boolean;
   /** Called with true the moment the buttons START SHOWING — the drag
    *  that claims the row, or another row's opening — and false as the row
    *  settles shut again. ONE call an opening, one a closing: never per
@@ -356,19 +363,25 @@ export function SwipeRow({ actions, children, onGrab, onOpen, actionWidth = SWIP
               accessibilityLabel={action.label}
               style={({ pressed }) => [
                 styles.action,
-                { width: actionWidth, backgroundColor: action.color },
+                { width: actionWidth, backgroundColor: bare ? 'transparent' : action.color },
                 // The row's outer edge, rounded as the line it came out
                 // of is, so the group is one shape (`endCorner`).
                 endCorner && action === actions[actions.length - 1]
                   ? { borderTopRightRadius: endCorner.top, borderBottomRightRadius: endCorner.bottom }
                   : null,
-                pressed && styles.actionPressed,
+                pressed && (bare ? styles.actionPressedBare : styles.actionPressed),
               ]}
             >
               <Animated.View style={[styles.actionFace, peekIcon && action === actions[0] ? { opacity: peekIcon } : null]}>
-                <MaterialCommunityIcons name={action.icon as never} size={iconOnly ? 26 : 20} color="#FFFFFF" />
+                {/* Bare: the icon is the button, in the action's own ink
+                    and a size up, so it reads as boldly as a block did. */}
+                <MaterialCommunityIcons
+                  name={action.icon as never}
+                  size={bare ? (iconOnly ? 30 : 24) : (iconOnly ? 26 : 20)}
+                  color={bare ? action.color : '#FFFFFF'}
+                />
                 {iconOnly ? null : (
-                  <Text style={[styles.actionLabel, labelFont ? { fontFamily: labelFont } : null]} numberOfLines={2}>{action.label}</Text>
+                  <Text style={[styles.actionLabel, labelFont ? { fontFamily: labelFont } : null, bare ? { color: action.color } : null]} numberOfLines={2}>{action.label}</Text>
                 )}
               </Animated.View>
             </Pressable>
@@ -415,6 +428,11 @@ const styles = StyleSheet.create({
   },
   actionPressed: {
     opacity: 0.8,
+  },
+  // A bare button has no block to dim, so its icon dims further to be
+  // seen to.
+  actionPressedBare: {
+    opacity: 0.5,
   },
   actionLabel: {
     fontSize: 12,

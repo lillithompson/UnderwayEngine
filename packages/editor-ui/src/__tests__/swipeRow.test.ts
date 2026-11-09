@@ -206,4 +206,16 @@ describe('SwipeRow.tsx', () => {
     // No app's theme in the engine: the font is the caller's.
     expect(ROW).not.toMatch(/from '\.\/theme'|FONT_BODY/);
   });
+
+  it('offers BARE buttons (DrawBots report f35d5d52): no fill, the icon in the action\'s colour a size up, a label the colour too, the press dimming the icon', () => {
+    expect(ROW).toContain('bare = false, endCorner, bleed = 0, peek = false }: {');
+    expect(ROW).toContain("{ width: actionWidth, backgroundColor: bare ? 'transparent' : action.color },");
+    expect(ROW).toContain("color={bare ? action.color : '#FFFFFF'}");
+    expect(ROW).toContain('size={bare ? (iconOnly ? 30 : 24) : (iconOnly ? 26 : 20)}');
+    expect(ROW).toContain("bare ? { color: action.color } : null]} numberOfLines={2}>{action.label}</Text>");
+    expect(ROW).toContain('pressed && (bare ? styles.actionPressedBare : styles.actionPressed),');
+    expect(ROW).toMatch(/actionPressedBare: \{\s*opacity: 0\.5,\s*\}/);
+    // A filled row is as it was: white on the action's colour.
+    expect(ROW).toContain('actionPressed: {\n    opacity: 0.8,\n  },');
+  });
 });
