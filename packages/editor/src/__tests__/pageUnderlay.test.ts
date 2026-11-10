@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { underlayPathAttrs } from '../pageUnderlay';
+import { underlayMaskId, underlayPathAttrs } from '../pageUnderlay';
 
 // The page's underlay (`EditorConfig.underlay`): a drawing under every
 // object, in world cells, that no tool can touch, drawn once into the
@@ -38,8 +38,26 @@ describe('the surface draws it', () => {
     const svg = SRC.slice(at, SRC.indexOf('</svg>', at));
     expect(svg).toContain('viewBox={`0 0 ${WORLD_CELLS} ${pageCellsH}`}');
     expect(svg).toContain("pointerEvents: 'none'");
-    expect(svg).toContain('{underlay.map((shape, k) => <path key={k} {...underlayPathAttrs(shape)} />)}');
+    expect(svg).toContain("<path key={k} {...underlayPathAttrs(shape)} {...(shape.mask ? { mask: `url(#${underlayMaskId(k)})` } : {})} />");
     // Nothing per camera frame: no writer, no ref.
     expect(SRC).not.toMatch(/underlayRef|writeUnderlay/);
+  });
+});
+
+describe('a shape seen only where other shapes paint (UnderlayShape.mask)', () => {
+  const SRC = fs.readFileSync(path.join(__dirname, '..', 'components', 'CanvasSurface.tsx'), 'utf8');
+
+  test('is drawn through an SVG mask of the shape’s index, defined in the same <svg>, over the page and a page’s reach around it', () => {
+    expect(underlayMaskId(3)).toBe('page-underlay-mask-3');
+    const at = SRC.indexOf('data-page-underlay=""');
+    const svg = SRC.slice(at, SRC.indexOf('</svg>', at));
+    expect(svg).toContain('{underlay.some((shape) => shape.mask) ? (');
+    expect(svg).toContain('id={underlayMaskId(k)}');
+    expect(svg).toContain('maskUnits="userSpaceOnUse"');
+    expect(svg).toContain('x={-WORLD_CELLS}');
+    expect(svg).toContain('width={3 * WORLD_CELLS}');
+    expect(svg).toContain('{shape.mask.map((m, j) => <path key={j} {...underlayPathAttrs(m)} />)}');
+    // The mask's shapes are drawn with the same attributes: the host paints them white.
+    expect(underlayPathAttrs({ d: 'M0 0', fill: '#fff' })).toEqual({ d: 'M0 0', fill: '#fff', stroke: 'none' });
   });
 });

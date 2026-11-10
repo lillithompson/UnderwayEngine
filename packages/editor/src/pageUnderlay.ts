@@ -31,6 +31,18 @@ export interface UnderlayShape {
   readonly dash?: readonly number[];
   readonly cap?: 'butt' | 'round' | 'square';
   readonly join?: 'miter' | 'round' | 'bevel';
+  /** Shapes this one is seen through, and nowhere else: an SVG mask over
+   *  the page, luminance — paint them WHITE (fill or stroke) where the
+   *  shape should show. DrawBot's look page draws the eraser's strokes
+   *  masked by the body and the ink strokes they erase, so a cut shows
+   *  only over the black it takes away. */
+  readonly mask?: readonly UnderlayShape[];
+}
+
+/** The id a masked underlay shape's `<mask>` is defined and referenced
+ *  by: the shape's index in the underlay, which is one `<svg>`. */
+export function underlayMaskId(k: number): string {
+  return `page-underlay-mask-${k}`;
 }
 
 /** The attributes of the `<path>` that draws `shape`: what is given, and

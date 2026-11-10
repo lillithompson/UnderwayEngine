@@ -192,7 +192,7 @@ import {
 } from '../editableRegion';
 import { triggerHaptic } from '@/native-shell/bridge/webBridge';
 import { collectPaintGuards, pointInPaintGuard } from '../paintGuards';
-import { type UnderlayShape, underlayPathAttrs } from '../pageUnderlay';
+import { type UnderlayShape, underlayMaskId, underlayPathAttrs } from '../pageUnderlay';
 import {
   type ForwardArrow, MARKER_POP_KEYFRAMES, type RegionMarker, writeForwardArrow, writeRegionChrome,
 } from '../regionChromeScreen';
@@ -7112,7 +7112,29 @@ export function CanvasSurface({
             viewBox={`0 0 ${WORLD_CELLS} ${pageCellsH}`}
             style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none', display: 'block' }}
           >
-            {underlay.map((shape, k) => <path key={k} {...underlayPathAttrs(shape)} />)}
+            {/* A masked shape's mask (UnderlayShape.mask): over the whole
+                page and a page's reach around it, so a stroke that runs off
+                the page is masked there too, not cut at its edge. */}
+            {underlay.some((shape) => shape.mask) ? (
+              <defs>
+                {underlay.map((shape, k) => (shape.mask ? (
+                  <mask
+                    key={k}
+                    id={underlayMaskId(k)}
+                    maskUnits="userSpaceOnUse"
+                    x={-WORLD_CELLS}
+                    y={-pageCellsH}
+                    width={3 * WORLD_CELLS}
+                    height={3 * pageCellsH}
+                  >
+                    {shape.mask.map((m, j) => <path key={j} {...underlayPathAttrs(m)} />)}
+                  </mask>
+                ) : null))}
+              </defs>
+            ) : null}
+            {underlay.map((shape, k) => (
+              <path key={k} {...underlayPathAttrs(shape)} {...(shape.mask ? { mask: `url(#${underlayMaskId(k)})` } : {})} />
+            ))}
           </svg>
         ) : null}
         {renderScene()}
