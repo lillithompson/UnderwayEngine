@@ -33,9 +33,11 @@ export interface UnderlayShape {
   readonly join?: 'miter' | 'round' | 'bevel';
   /** Shapes this one is seen through, and nowhere else: an SVG mask over
    *  the page, luminance — paint them WHITE (fill or stroke) where the
-   *  shape should show. DrawBot's look page draws the eraser's strokes
-   *  masked by the body and the ink strokes they erase, so a cut shows
-   *  only over the black it takes away. */
+   *  shape should show and BLACK where it should not. DrawBot's look page
+   *  draws its body and every stroke through a mask that is the page in
+   *  white and each later stroke of the eraser in black, so an erased
+   *  stroke is a hole with one edge, and the eraser's own stroke is
+   *  drawn by nothing. */
   readonly mask?: readonly UnderlayShape[];
 }
 

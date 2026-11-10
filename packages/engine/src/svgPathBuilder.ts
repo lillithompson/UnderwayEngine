@@ -62,6 +62,11 @@ export interface PathProjection {
   length(v: number): number;
 }
 
+/** Cells straight through: the segments' own units, for a caller whose
+ *  context already carries the world transform (a canvas painting a
+ *  floor in cells) or whose SVG is in cells (a page's underlay). */
+export const CELL_PROJECTION: PathProjection = { point: (x, y) => [x, y], length: (v) => v };
+
 /** The default: L0-cell space scaled by SVG_UNITS_PER_L0_CELL, which is what
  *  every SVG-markup caller (export, thumbnails, node layers) wants. */
 const SVG_UNIT_PROJECTION: PathProjection = {
