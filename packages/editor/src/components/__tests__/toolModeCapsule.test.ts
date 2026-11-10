@@ -220,3 +220,10 @@ describe('a segment answers a double tap and a long press', () => {
     expect(CAPSULE).toContain('if (!onDoubleTap) {\n      onPick(key);\n      return;\n    }');
   });
 });
+
+describe('a capsule seated at the foot (`bottom`)', () => {
+  test('stands its bottom edge up from the screen’s bottom instead of its top under the toolbar, when a host passes one', () => {
+    expect(CAPSULE).toContain('  bottom?: number;');
+    expect(CAPSULE).toContain("position: 'absolute', left: 0, right: 0, ...(bottom !== undefined ? { bottom } : { top }),");
+  });
+});

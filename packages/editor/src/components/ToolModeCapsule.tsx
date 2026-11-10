@@ -214,11 +214,17 @@ export interface ToolModeCapsuleOption<K extends string> {
 }
 
 export function ToolModeCapsule<K extends string>({
-  top, options, current, onPick, onDoubleTap, onLongPress, mutedKey, bounce, leading, leadingInline,
+  top, bottom, options, current, onPick, onDoubleTap, onLongPress, mutedKey, bounce, leading, leadingInline,
   onSwipe, canCycle,
 }: {
   /** Screen px the capsule's top edge sits at — under the toolbar. */
   top: number;
+  /** Seat the capsule at the FOOT instead: screen px its bottom edge sits
+   *  up from the screen's bottom (the floating slot's anchor,
+   *  `floatingSlot.ts`, is the number a host passes), `top` then unread.
+   *  For a radio capsule that stands where the momentary pills do
+   *  (DrawBot's look page's ink capsule, in its transport pill's seat). */
+  bottom?: number;
   options: readonly ToolModeCapsuleOption<K>[];
   /** The lit segment; null lights none (no mode in force). */
   current: K | null;
@@ -345,7 +351,10 @@ export function ToolModeCapsule<K extends string>({
   return (
     <View
       pointerEvents="box-none"
-      style={{ position: 'absolute', left: 0, right: 0, top, alignItems: 'center', zIndex: TOOL_MODE_CAPSULE_Z }}
+      style={{
+        position: 'absolute', left: 0, right: 0, ...(bottom !== undefined ? { bottom } : { top }),
+        alignItems: 'center', zIndex: TOOL_MODE_CAPSULE_Z,
+      }}
     >
       {/* The arrows flank the centred content, one each side, and are the
           same width — so the capsule stays exactly where it was centred
