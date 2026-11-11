@@ -1,4 +1,4 @@
-import { exportCompositionImage, exportCompositionImageSized } from '../compositionExport';
+import { exportCompositionImage, exportCompositionImageSized, rootSvgViewBox } from '../compositionExport';
 
 // The encoder-by-alpha export: framed like every raster export, encoded by
 // rasterizeSvgToImageDataUri with the caller's JPEG quality.
@@ -115,5 +115,23 @@ describe('the export master, against the raster actually being drawn', () => {
     const svg = rasterizeSvgToImageDataUri.mock.calls[0][0] as string;
     expect(svg).toContain(originalB64);
     expect(svg).not.toContain(displayB64);
+  });
+});
+
+describe('rootSvgViewBox: the page rectangle a document shows', () => {
+  it("reads the root svg element's viewBox, and only the root's", () => {
+    const svg = '<?xml version="1.0"?>\n<svg id="c" xmlns="http://www.w3.org/2000/svg" width="12" height="8" '
+      + 'viewBox="-3.5 2 120 80" fill="none"><svg x="0" viewBox="0 0 4 4"/></svg>';
+    expect(rootSvgViewBox(svg)).toEqual({ x: -3.5, y: 2, width: 120, height: 80 });
+    expect(rootSvgViewBox('<svg viewBox="0,0,10,5"/>')).toEqual({ x: 0, y: 0, width: 10, height: 5 });
+  });
+
+  it('is null for no svg, no viewBox, or a box with nothing in it', () => {
+    expect(rootSvgViewBox('')).toBeNull();
+    expect(rootSvgViewBox('<svg width="1" height="1"></svg>')).toBeNull();
+    expect(rootSvgViewBox('<svg viewBox="0 0 0 10"></svg>')).toBeNull();
+    expect(rootSvgViewBox('<svg viewBox="0 0 10"></svg>')).toBeNull();
+    expect(rootSvgViewBox('<svg viewBox="a b c d"></svg>')).toBeNull();
+    expect(rootSvgViewBox('<svg viewBox="0 0 1 1"')).toBeNull();
   });
 });

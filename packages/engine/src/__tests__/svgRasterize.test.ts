@@ -216,6 +216,23 @@ describe('rasterizeSvgToImageDataUri', () => {
     expect(fillRect).not.toHaveBeenCalled();
   });
 
+  test('a host paint draws over the frame after the document and before the probe and the encode', async () => {
+    const paint = jest.fn();
+    await rasterizeSvgToImageDataUri('<svg>page</svg>', 4, 2, 0.9, paint);
+    expect(paint).toHaveBeenCalledTimes(1);
+    expect(paint).toHaveBeenCalledWith(mockCtx, 4, 2);
+    const at = paint.mock.invocationCallOrder[0];
+    expect(mockCtx.drawImage.mock.invocationCallOrder[0]).toBeLessThan(at);
+    expect(mockCtx.getImageData.mock.invocationCallOrder[0]).toBeGreaterThan(at);
+    expect(mockCanvas.toDataURL.mock.invocationCallOrder[0]).toBeGreaterThan(at);
+  });
+
+  test('a paint that throws reports null, the backing store released', async () => {
+    expect(await rasterizeSvgToImageDataUri('<svg></svg>', 4, 4, 0.9, () => { throw new Error('no'); })).toBeNull();
+    expect(mockCanvas.width).toBe(0);
+    expect(mockCanvas.height).toBe(0);
+  });
+
   test('releases the backing store and reports null on failure like its siblings', async () => {
     mockCanvas.getContext.mockReturnValueOnce(null);
     expect(await rasterizeSvgToImageDataUri('<svg></svg>', 4, 4, 0.9)).toBeNull();

@@ -88,6 +88,18 @@ export function rasterizeSvgToPngDataUri(
 }
 
 /**
+ * A host's own layer over a rasterized frame: called with the canvas
+ * context once the SVG is drawn and before the frame is probed or
+ * encoded, with the pixel box the document was drawn into. For what a
+ * page's record does not hold but the page is seen with — a host's
+ * sprites laid over its document, say — so a picture of the page carries
+ * them without the SVG generator learning what they are. Synchronous,
+ * and nothing it draws is written back anywhere; the context is the
+ * pooled canvas's, and it is released when the encode is done.
+ */
+export type RasterPaint = (ctx: CanvasRenderingContext2D, width: number, height: number) => void;
+
+/**
  * Rasterize an SVG to the data URI its own pixels call for: PNG, alpha
  * intact, when any pixel of the frame is short of opaque (exactly
  * {@link rasterizeSvgToPngDataUri}); JPEG at `jpegQuality` (0..1) when the
@@ -95,18 +107,23 @@ export function rasterizeSvgToPngDataUri(
  * one photo on a mat encodes to a fraction of the size, and nothing is
  * flattened that was not already flat. The frame is probed after the draw
  * (canvasAlpha.ts), never guessed from the document. Read the mime off the
- * result.
+ * result. `paint`, given, draws over the frame after the SVG and before
+ * the probe ({@link RasterPaint}), so what it lays down is in the
+ * picture and counts toward its opacity.
  */
 export function rasterizeSvgToImageDataUri(
   svg: string,
   width: number,
   height: number,
   jpegQuality: number,
+  paint?: RasterPaint,
 ): Promise<string | null> {
-  const job = _queue.then(() => _rasterizeInner(svg, width, height, false, (canvas, ctx) =>
-    canvasHasTransparency(ctx, width, height)
+  const job = _queue.then(() => _rasterizeInner(svg, width, height, false, (canvas, ctx) => {
+    if (paint) paint(ctx, width, height);
+    return canvasHasTransparency(ctx, width, height)
       ? canvas.toDataURL('image/png')
-      : canvas.toDataURL('image/jpeg', jpegQuality)));
+      : canvas.toDataURL('image/jpeg', jpegQuality);
+  }));
   _queue = job.catch(() => {});
   return job;
 }

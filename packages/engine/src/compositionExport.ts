@@ -3,7 +3,10 @@ import type { PaintInk } from './imagePaintOverlay';
 import { loadCompositionState, loadFileStateLite, loadClipBox } from './persistence';
 import { loadImageAssets, purgeImageAssets } from './imageAssetStore';
 import { loadBakedFigurePng } from './bake';
-import { rasterizeSvgToImageDataUri, rasterizeSvgToJpegDataUri, rasterizeSvgToPngDataUri } from './svgRasterize';
+import {
+  type RasterPaint, rasterizeSvgToImageDataUri, rasterizeSvgToJpegDataUri, rasterizeSvgToPngDataUri,
+} from './svgRasterize';
+export type { RasterPaint };
 import {
   generateCompositionSVGCore,
   type CompositionFigureLoadResult,
@@ -299,6 +302,36 @@ function svgAtRasterSize(svg: string, width: number, height: number): string {
  *
  * The SVG comes back sized to those dimensions — see {@link svgAtRasterSize}.
  */
+/** The rectangle of the page a document shows: its root `<svg>`'s viewBox,
+ *  in the document's own units. */
+export interface SvgViewBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The root `<svg>`'s viewBox of an exported document, or null when it has
+ * none that can be read as one (a box with no width or height is none). A
+ * raster of the document is that rectangle scaled to its pixel box, so this
+ * is the one mapping from a point of the page onto a {@link PreparedRaster}
+ * — what a host painting over one ({@link RasterPaint}) reads.
+ */
+export function rootSvgViewBox(svg: string): SvgViewBox | null {
+  const open = svg.indexOf('<svg');
+  if (open < 0) return null;
+  const close = svg.indexOf('>', open);
+  if (close < 0) return null;
+  const m = /\sviewBox="([^"]*)"/.exec(svg.slice(open, close));
+  if (!m) return null;
+  const parts = m[1].trim().split(/[\s,]+/).map(Number);
+  if (parts.length !== 4 || parts.some((v) => !Number.isFinite(v))) return null;
+  const [x, y, width, height] = parts;
+  if (!(width > 0) || !(height > 0)) return null;
+  return { x, y, width, height };
+}
+
 /**
  * A composition FRAMED AND READY TO ENCODE: the SVG document, already
  * re-headed to the pixel box it is about to be drawn into, and that box.
@@ -386,9 +419,13 @@ export function resizePreparedRaster(prepared: PreparedRaster, maxDimension: num
 /** Encode a prepared raster as the image its pixels call for — PNG where the
  *  frame has any transparency, JPEG at `jpegQuality` where it is opaque. The
  *  encode half of {@link exportCompositionImageSized}, for a caller driving
- *  the two halves itself. */
-export function encodePreparedImage(prepared: PreparedRaster, jpegQuality: number): Promise<string | null> {
-  return rasterizeSvgToImageDataUri(prepared.svg, prepared.width, prepared.height, jpegQuality);
+ *  the two halves itself. `paint`, given, draws over the frame after the
+ *  document and before the encode ({@link RasterPaint}): the host's own
+ *  layer over the page, in the picture at every size the caller encodes. */
+export function encodePreparedImage(
+  prepared: PreparedRaster, jpegQuality: number, paint?: RasterPaint,
+): Promise<string | null> {
+  return rasterizeSvgToImageDataUri(prepared.svg, prepared.width, prepared.height, jpegQuality, paint);
 }
 
 /** Encode a prepared raster as a PNG, alpha intact — the encode half of
