@@ -1,8 +1,10 @@
 import {
   generateCompositionSVGCore,
   getDefaultSVGFontResolver,
+  rootSvgViewBox,
   storageFigureLoader,
   storageFigurePngLoader,
+  type SvgViewBox,
 } from '@/engine/compositionExport';
 import { sampleColorFromScene } from '@/engine/eyedropperSampler';
 import { sampleSnapshot, type EyedropperSnapshot } from '@/engine/eyedropperSnapshot';
@@ -36,23 +38,9 @@ export const SNAPSHOT_MAX_PX = 1024;
 
 /** A rasterized composition plus the world→pixel mapping to sample it by. */
 export interface CanvasSnapshot extends EyedropperSnapshot {
-  /** The SVG viewBox the pixels cover, in SVG units (cell × SVG_UNITS_PER_L0_CELL). */
-  viewBox: { x: number; y: number; width: number; height: number };
-}
-
-/** Parse the `viewBox` of an SVG document string. Null when it has none (or an
- *  unparseable one), which is the caller's cue that the snapshot is unusable —
- *  without the box there is no way to place a world cell in the pixels. */
-export function parseSvgViewBox(
-  svg: string,
-): { x: number; y: number; width: number; height: number } | null {
-  const m = svg.match(/\bviewBox="([-\d.eE+\s]+)"/);
-  if (!m) return null;
-  const parts = m[1].trim().split(/\s+/).map(Number);
-  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null;
-  const [x, y, width, height] = parts;
-  if (width <= 0 || height <= 0) return null;
-  return { x, y, width, height };
+  /** The SVG viewBox the pixels cover, in SVG units (cell × SVG_UNITS_PER_L0_CELL):
+   *  the root `<svg>`'s, read by the engine's `rootSvgViewBox`. */
+  viewBox: SvgViewBox;
 }
 
 /** Where a world cell lands in the snapshot's pixel grid. Fractional; the
@@ -107,7 +95,9 @@ export async function captureCanvasSnapshot(
   });
   if (!svg) return null;
 
-  const viewBox = parseSvgViewBox(svg);
+  // The root's viewBox is the one mapping from a cell on to the pixels;
+  // without it the snapshot is unusable.
+  const viewBox = rootSvgViewBox(svg);
   if (!viewBox) return null;
 
   // Fit the long edge to the cap, preserving the viewBox aspect so a cell maps

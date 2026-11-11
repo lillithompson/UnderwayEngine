@@ -124,6 +124,9 @@ describe('rootSvgViewBox: the page rectangle a document shows', () => {
       + 'viewBox="-3.5 2 120 80" fill="none"><svg x="0" viewBox="0 0 4 4"/></svg>';
     expect(rootSvgViewBox(svg)).toEqual({ x: -3.5, y: 2, width: 120, height: 80 });
     expect(rootSvgViewBox('<svg viewBox="0,0,10,5"/>')).toEqual({ x: 0, y: 0, width: 10, height: 5 });
+    // Fractional and exponent-form numbers, as the eyedropper's snapshot
+    // read them before it read the root's box through this.
+    expect(rootSvgViewBox('<svg viewBox="0.5 -1.25 1e2 40">')).toEqual({ x: 0.5, y: -1.25, width: 100, height: 40 });
   });
 
   it('is null for no svg, no viewBox, or a box with nothing in it', () => {

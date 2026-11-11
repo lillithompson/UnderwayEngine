@@ -11,7 +11,6 @@
 
 import {
   cellToSnapshotPx,
-  parseSvgViewBox,
   sampleEditorColor,
   type CanvasSnapshot,
 } from '../eyedropperSample';
@@ -59,23 +58,8 @@ function stateWith(svgObjects: SVGObject[] = []): CompositionState {
   };
 }
 
-describe('parseSvgViewBox', () => {
-  it('reads the four numbers off an SVG root', () => {
-    expect(parseSvgViewBox('<svg width="10" viewBox="-8 4 256 512" fill="none">'))
-      .toEqual({ x: -8, y: 4, width: 256, height: 512 });
-  });
-
-  it('accepts fractional and exponent-form numbers', () => {
-    expect(parseSvgViewBox('<svg viewBox="0.5 -1.25 1e2 40">'))
-      .toEqual({ x: 0.5, y: -1.25, width: 100, height: 40 });
-  });
-
-  it('rejects a missing, malformed, or degenerate box', () => {
-    expect(parseSvgViewBox('<svg width="10">')).toBeNull();
-    expect(parseSvgViewBox('<svg viewBox="0 0 100">')).toBeNull();
-    expect(parseSvgViewBox('<svg viewBox="0 0 0 100">')).toBeNull();
-  });
-});
+// The snapshot's viewBox is read by the engine's `rootSvgViewBox`, which
+// `compositionExportImage.test.ts` covers.
 
 describe('cellToSnapshotPx', () => {
   it('maps world cells onto the pixel grid through the viewBox', () => {
