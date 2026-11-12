@@ -1191,7 +1191,9 @@ first, then the pointer bump in each app).
    hull) can follow the finger; every teardown of the gesture ends it. An
    underlay shape a host writes on by ref is found by name:
    `UnderlayShape.id`, rendered as `data-underlay-id`, and
-   `underlayShapeSelector` (`pageUnderlay.ts`).
+   `underlayShapeSelector` (`pageUnderlay.ts`). A shape marked
+   `UnderlayShape.over` is drawn over the scene's objects, in a second
+   static `<svg>` (`data-page-overlay`) the same selector finds it in.
 
    `HostNodeLayerInput` gains `liveIds` and `hiddenGroups`, the seventh.
    Its own doc already said what belongs on it — "everything the three

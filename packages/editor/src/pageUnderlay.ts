@@ -11,7 +11,8 @@
  * `regionChromeScreen.ts`). Its shapes are SVG path data in world cells —
  * the page is `WORLD_CELLS` across — with a fill, a stroke of a width in
  * cells, and a dash in cells, so it scales with the page as the objects
- * do.
+ * do. A shape marked `over` is drawn the same way in a second `<svg>`
+ * AFTER the scene, over every object and under the selection chrome.
  *
  * DrawBot's bot look page is the one page that carries one (its
  * docs/drawBot.md §5.1: the Inkling's generated figure under the user's
@@ -44,6 +45,11 @@ export interface UnderlayShape {
    *  stroke is a hole with one edge, and the eraser's own stroke is
    *  drawn by nothing. */
   readonly mask?: readonly UnderlayShape[];
+  /** Drawn OVER the page's objects, not under them: a guide that has to
+   *  stay in sight whatever is drawn — DrawBot's gear page lays the hull
+   *  of the drawing over the drawing. Still no object: never selected,
+   *  hit, saved or baked. Such a shape takes no `mask`. */
+  readonly over?: boolean;
 }
 
 /** The id a masked underlay shape's `<mask>` is defined and referenced
@@ -56,13 +62,14 @@ export function underlayMaskId(k: number): string {
 export const UNDERLAY_ID_ATTR = 'data-underlay-id';
 
 /** The selector that finds the `<path>` of the underlay shape named `id`,
- *  under the surface's one underlay `<svg>` (`data-page-underlay`): what
+ *  under the surface's underlay `<svg>` (`data-page-underlay`) or, for a
+ *  shape drawn `over` the objects, its twin (`data-page-overlay`): what
  *  a host's live preview writes on — a transform for a shape that stands
  *  in for a scene node (`CanvasLayers.previewStandIn`), new path data for
  *  a guide redrawn per move. The element is inside the `<svg>`, so a CSS
  *  transform on it is in the svg's own units, which are CELLS. */
 export function underlayShapeSelector(id: string): string {
-  return `[data-page-underlay] [${UNDERLAY_ID_ATTR}="${id.replace(/["\\]/g, '\\$&')}"]`;
+  return `:is([data-page-underlay], [data-page-overlay]) [${UNDERLAY_ID_ATTR}="${id.replace(/["\\]/g, '\\$&')}"]`;
 }
 
 /** The attributes of the `<path>` that draws `shape`: what is given, and

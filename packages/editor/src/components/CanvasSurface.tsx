@@ -428,7 +428,8 @@ interface CanvasSurfaceProps {
   forwardArrow?: ForwardArrow;
   /** The page's underlay (`EditorConfig.underlay`, pageUnderlay.ts): a
    *  drawing under every object, in world cells, that no tool can touch.
-   *  Drawn once into the world layer, so the camera carries it. */
+   *  Drawn once into the world layer, so the camera carries it. A shape
+   *  marked `over` is drawn over the objects instead. */
   underlay?: readonly UnderlayShape[];
   /**
    * A world rect the camera should GLIDE to frame, and the `key` of the
@@ -7168,12 +7169,27 @@ export function CanvasSurface({
                 ) : null))}
               </defs>
             ) : null}
-            {underlay.map((shape, k) => (
+            {underlay.map((shape, k) => (shape.over ? null : (
               <path key={k} {...underlayPathAttrs(shape)} {...(shape.mask ? { mask: `url(#${underlayMaskId(k)})` } : {})} />
-            ))}
+            )))}
           </svg>
         ) : null}
         {renderScene()}
+        {/* The underlay's shapes marked OVER (UnderlayShape.over): the same
+            static <svg> in world cells, after the scene — over every
+            object, under the ghosts and the selection chrome. */}
+        {underlay && underlay.some((shape) => shape.over) ? (
+          <svg
+            data-page-overlay=""
+            aria-hidden
+            width={WORLD_CELLS * BASE_CELL_PX}
+            height={pageCellsH * BASE_CELL_PX}
+            viewBox={`0 0 ${WORLD_CELLS} ${pageCellsH}`}
+            style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none', display: 'block' }}
+          >
+            {underlay.map((shape, k) => (shape.over ? <path key={k} {...underlayPathAttrs(shape)} /> : null))}
+          </svg>
+        ) : null}
         {/* Ghost previews (the Transform bar's copies-to-be): the same node
             layer the real object draws with, in one half-opacity wrapper that
             takes no pointer events. Over the scene — a ghost is a proposal

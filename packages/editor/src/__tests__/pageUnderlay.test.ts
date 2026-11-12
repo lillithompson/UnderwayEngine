@@ -56,9 +56,9 @@ describe('a shape a host finds by name (UnderlayShape.id)', () => {
     expect(underlayPathAttrs({ d: 'M0 0' })).not.toHaveProperty('data-underlay-id');
   });
 
-  it('is found under the surface’s one underlay <svg>, the name quoted', () => {
-    expect(underlayShapeSelector('svg_3')).toBe('[data-page-underlay] [data-underlay-id="svg_3"]');
-    expect(underlayShapeSelector('a"b\\c')).toBe('[data-page-underlay] [data-underlay-id="a\\"b\\\\c"]');
+  it('is found under the surface’s underlay <svg> or the one drawn over the scene, the name quoted', () => {
+    expect(underlayShapeSelector('svg_3')).toBe(':is([data-page-underlay], [data-page-overlay]) [data-underlay-id="svg_3"]');
+    expect(underlayShapeSelector('a"b\\c')).toBe(':is([data-page-underlay], [data-page-overlay]) [data-underlay-id="a\\"b\\\\c"]');
   });
 });
 
@@ -77,5 +77,23 @@ describe('a shape seen only where other shapes paint (UnderlayShape.mask)', () =
     expect(svg).toContain('{shape.mask.map((m, j) => <path key={j} {...underlayPathAttrs(m)} />)}');
     // The mask's shapes are drawn with the same attributes: the host paints them white.
     expect(underlayPathAttrs({ d: 'M0 0', fill: '#fff' })).toEqual({ d: 'M0 0', fill: '#fff', stroke: 'none' });
+  });
+});
+
+describe('a shape drawn OVER the page\'s objects (UnderlayShape.over)', () => {
+  const SRC = fs.readFileSync(path.join(__dirname, '..', 'components', 'CanvasSurface.tsx'), 'utf8');
+
+  test('is left out of the underlay and drawn in a second static <svg> after the scene, under the ghosts, touching nothing', () => {
+    const under = SRC.indexOf('data-page-underlay=""');
+    expect(SRC.slice(under, SRC.indexOf('</svg>', under))).toContain('{underlay.map((shape, k) => (shape.over ? null : (');
+    const at = SRC.indexOf('data-page-overlay=""');
+    expect(at).toBeGreaterThan(SRC.indexOf('{renderScene()}'));
+    expect(at).toBeLessThan(SRC.indexOf('data-ghost-layer'));
+    const svg = SRC.slice(at, SRC.indexOf('</svg>', at));
+    expect(svg).toContain('viewBox={`0 0 ${WORLD_CELLS} ${pageCellsH}`}');
+    expect(svg).toContain("pointerEvents: 'none'");
+    expect(svg).toContain('{underlay.map((shape, k) => (shape.over ? <path key={k} {...underlayPathAttrs(shape)} /> : null))}');
+    // Only where a shape asks for it: a page with none has no second <svg>.
+    expect(SRC).toContain('{underlay && underlay.some((shape) => shape.over) ? (');
   });
 });
