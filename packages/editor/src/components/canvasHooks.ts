@@ -150,11 +150,13 @@ export interface GestureHooks {
    *  cover most of its body, and a bot is all of itself. */
   holdOpensMenu?: () => boolean;
   /**
-   * A multi-selection gesture in flight — a drag, a twist, a corner resize
-   * — and the entry its release would commit, so a host layer can draw the
+   * A gesture in flight — a multi-selection's drag, twist or corner
+   * resize, or the drag of ONE node (DrawBot's report 7e12c860) — and the
+   * entry its release would commit, so a host layer can draw the
    * selection's own things where it would put them (DrawBot's bots and
    * instruction tiles ride a mixed group under the finger with the
-   * shapes). `entry` is null when the gesture ends.
+   * shapes; its gear page redraws the hull round a dragged stroke).
+   * `entry` is null when the gesture ends.
    *
    * Per pointer move, so the entry comes as a THUNK and the ids beside it:
    * whether this gesture moves anything of the host's is the host's own

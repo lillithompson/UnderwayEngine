@@ -4429,19 +4429,21 @@ export function CanvasSurface({
   };
 
   /**
-   * Hand a host layer the entry a multi gesture in flight WOULD commit, so
-   * it can draw its own things where the release will put them
+   * Hand a host layer the entry a gesture in flight WOULD commit, so it
+   * can draw its own things where the release will put them
    * (`GestureHooks.previewSelectionEntry`): DrawBot's bots and instruction
    * tiles ride a mixed group's drag, twist and corner resize under the
-   * finger with the shapes. A null `entry` ends the preview.
+   * finger with the shapes, and its gear page redraws the hull round one
+   * dragged stroke. A null `entry` ends the preview.
    *
    * The entry rides as a THUNK and the ids go with it, because this runs
    * per pointer move and building one is a reducer pass over every member:
    * whether this gesture moves anything of the host's is the host's own
    * question, so it gates on the ids and calls the thunk only if it has
-   * something to draw. Two of the three gestures have built the entry for
-   * their own preview by then and the thunk hands that one over; the drag
-   * previews with a plain translate and would otherwise pay for an entry
+   * something to draw. Four paths offer one: the multi twist and the multi
+   * resize have built the entry for their own preview by then and the
+   * thunk hands that one over; the multi drag and the single-node drag
+   * preview with a plain translate and would otherwise pay for an entry
    * nobody reads.
    */
   const previewSelectionEntry = (
@@ -5632,7 +5634,8 @@ export function CanvasSurface({
         // once per gesture, and the host is handed the entry the release
         // would commit, as the multi drag hands it, so a guide it draws
         // round the node can follow the finger too.
-        const standIn = (g.standIn ??= standInFor(g.nodeId) ?? null);
+        if (g.standIn === undefined) g.standIn = standInFor(g.nodeId) ?? null;
+        const standIn = g.standIn;
         if (standIn) {
           const el = standIn.el();
           const css = el ? standIn.css(g.nodeId, matTranslate(d.dxCells, d.dyCells)) : null;

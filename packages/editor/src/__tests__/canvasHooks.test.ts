@@ -740,7 +740,9 @@ describe('the surface’s half of the layers seam', () => {
     const at = SRC.indexOf("      case 'drag': {\n        g.dx = pt.x - g.startX;");
     expect(at).toBeGreaterThan(0);
     const body = SRC.slice(at, SRC.indexOf("      case 'multiDrag': {", at));
-    expect(body).toContain('const standIn = (g.standIn ??= standInFor(g.nodeId) ?? null);');
+    // Once: a null answer (a node with an element of its own) is kept too,
+    // so the host is not asked again on every move.
+    expect(body).toContain('if (g.standIn === undefined) g.standIn = standInFor(g.nodeId) ?? null;');
     expect(body).toContain('standIn.css(g.nodeId, matTranslate(d.dxCells, d.dyCells))');
     expect(body).toContain('previewSelectionEntry(g.ids ??= [g.nodeId], () => buildMoveNodeWithDragScale(');
     expect(body).toContain('const el = standIn ? null : nodeEl(g.nodeId);');
