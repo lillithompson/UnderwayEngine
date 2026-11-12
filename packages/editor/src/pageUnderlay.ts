@@ -21,6 +21,11 @@
 export interface UnderlayShape {
   /** SVG path data, in world cells. */
   readonly d: string;
+  /** A name the host finds this shape's `<path>` by (`underlayShapeSelector`),
+   *  for a shape a live gesture moves or redraws by ref — the scene node
+   *  it draws in the scene's place, or a guide drawn round the page's
+   *  objects. None: the shape stands as drawn until the next render. */
+  readonly id?: string;
   /** CSS colour; none: unfilled. */
   readonly fill?: string;
   /** CSS colour; none: unstroked. */
@@ -47,17 +52,32 @@ export function underlayMaskId(k: number): string {
   return `page-underlay-mask-${k}`;
 }
 
+/** The attribute a named shape's `<path>` carries its `id` in. */
+export const UNDERLAY_ID_ATTR = 'data-underlay-id';
+
+/** The selector that finds the `<path>` of the underlay shape named `id`,
+ *  under the surface's one underlay `<svg>` (`data-page-underlay`): what
+ *  a host's live preview writes on — a transform for a shape that stands
+ *  in for a scene node (`CanvasLayers.previewStandIn`), new path data for
+ *  a guide redrawn per move. The element is inside the `<svg>`, so a CSS
+ *  transform on it is in the svg's own units, which are CELLS. */
+export function underlayShapeSelector(id: string): string {
+  return `[data-page-underlay] [${UNDERLAY_ID_ATTR}="${id.replace(/["\\]/g, '\\$&')}"]`;
+}
+
 /** The attributes of the `<path>` that draws `shape`: what is given, and
  *  `none` for a fill or a stroke left out, so an SVG default (black fill)
  *  never shows through. */
 export function underlayPathAttrs(shape: UnderlayShape): {
   d: string; fill: string; stroke: string; strokeWidth?: number; strokeDasharray?: string;
   strokeLinecap?: 'butt' | 'round' | 'square'; strokeLinejoin?: 'miter' | 'round' | 'bevel';
+  [UNDERLAY_ID_ATTR]?: string;
 } {
   return {
     d: shape.d,
     fill: shape.fill ?? 'none',
     stroke: shape.stroke ?? 'none',
+    ...(shape.id !== undefined ? { [UNDERLAY_ID_ATTR]: shape.id } : {}),
     ...(shape.strokeWidth !== undefined ? { strokeWidth: shape.strokeWidth } : {}),
     ...(shape.dash && shape.dash.length > 0 ? { strokeDasharray: shape.dash.join(' ') } : {}),
     ...(shape.cap ? { strokeLinecap: shape.cap } : {}),

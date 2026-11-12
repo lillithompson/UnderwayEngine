@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { underlayMaskId, underlayPathAttrs } from '../pageUnderlay';
+import { UNDERLAY_ID_ATTR, underlayMaskId, underlayPathAttrs, underlayShapeSelector } from '../pageUnderlay';
 
 // The page's underlay (`EditorConfig.underlay`): a drawing under every
 // object, in world cells, that no tool can touch, drawn once into the
@@ -41,6 +41,24 @@ describe('the surface draws it', () => {
     expect(svg).toContain("<path key={k} {...underlayPathAttrs(shape)} {...(shape.mask ? { mask: `url(#${underlayMaskId(k)})` } : {})} />");
     // Nothing per camera frame: no writer, no ref.
     expect(SRC).not.toMatch(/underlayRef|writeUnderlay/);
+  });
+});
+
+describe('a shape a host finds by name (UnderlayShape.id)', () => {
+  // For a shape a live gesture moves or redraws BY REF: DrawBot's look
+  // page draws every stroke by its underlay, so a drag of one writes its
+  // transform on that path (the gesture side's `previewStandIn`), and
+  // its gear page redraws the hull round the page's strokes per move.
+  it('carries the name as a data attribute on its <path>, and none without one', () => {
+    expect(UNDERLAY_ID_ATTR).toBe('data-underlay-id');
+    expect(underlayPathAttrs({ d: 'M0 0', stroke: 'red', id: 'svg_3' }))
+      .toEqual({ d: 'M0 0', fill: 'none', stroke: 'red', 'data-underlay-id': 'svg_3' });
+    expect(underlayPathAttrs({ d: 'M0 0' })).not.toHaveProperty('data-underlay-id');
+  });
+
+  it('is found under the surface’s one underlay <svg>, the name quoted', () => {
+    expect(underlayShapeSelector('svg_3')).toBe('[data-page-underlay] [data-underlay-id="svg_3"]');
+    expect(underlayShapeSelector('a"b\\c')).toBe('[data-page-underlay] [data-underlay-id="a\\"b\\\\c"]');
   });
 });
 

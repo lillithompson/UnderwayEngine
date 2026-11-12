@@ -1178,7 +1178,20 @@ first, then the pointer bump in each app).
    `css(nodeId, world)` the HOST maps, because only the host knows its
    element's space. Three paths route through it — the gesture preview and
    both teardowns — and an absorbed node also stops going through React for
-   an off-square stretch.
+   an off-square stretch. The SINGLE-NODE drag was a fourth path that did
+   not, found by DrawBot's look page (its report 7e12c860, 2026-11-12):
+   every stroke there is veiled and drawn by the page's underlay, so the
+   drag's translate went on the node's own element, which is nothing, and
+   the stroke stood still until the release. It now resolves the stand-in
+   once per gesture and writes its translate through `css` — the underlay's
+   `<svg>` is in cells, so the host divides the world translate by the px
+   per cell the surface multiplies back — and hands the host the entry the
+   release would commit per move (`previewSelectionEntry`), as the multi
+   drag does, so a guide the host draws round the node (DrawBot's gear
+   hull) can follow the finger; every teardown of the gesture ends it. An
+   underlay shape a host writes on by ref is found by name:
+   `UnderlayShape.id`, rendered as `data-underlay-id`, and
+   `underlayShapeSelector` (`pageUnderlay.ts`).
 
    `HostNodeLayerInput` gains `liveIds` and `hiddenGroups`, the seventh.
    Its own doc already said what belongs on it — "everything the three

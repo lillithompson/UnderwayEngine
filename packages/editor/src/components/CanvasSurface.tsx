@@ -8,7 +8,7 @@ import {
   applyCompOps, computeSVGBbox, findItem, findSceneObjectAtCell,
   getItemGroupId, hiddenGroupIds, isItemHidden, isItemLocked,
 } from '@/engine/compositionOps';
-import { Mat2D, matIsSimilarity } from '@/engine/sceneTransform';
+import { Mat2D, matIsSimilarity, matTranslate } from '@/engine/sceneTransform';
 import { buildFrameRectMap, frameGroupIdForNode } from '@/engine/compositionFrame';
 import type { LegacyLeaf } from '@/engine/sceneGraph';
 import { findSelectableAtCell } from '../groupHit';
@@ -792,6 +792,15 @@ type Gesture =
       /** The node's standing symmetry partners, moved live with the drag
        *  (resolved lazily on the first move — see symmetryDragPeers). */
       peers?: SymmetryDragPeer[];
+      /** The gesture's own one-node id list, made on the first move past
+       *  the slop and kept for its length: what the host's entry preview
+       *  (`previewSelectionEntry`) is handed per move and ended with. Its
+       *  presence is the record that a preview began. */
+      ids?: readonly string[];
+      /** The host element that stands in for the node in the preview
+       *  (`CanvasLayers.previewStandIn`), resolved once, on the first move
+       *  — null for a node with an element of its own. */
+      standIn?: HostPreviewStandIn | null;
       prevSelection?: PriorSelection }
   // Marquee (arrange tool, press on empty canvas): drag out a rect, release
   // selects everything it touches. Same deferred commitment as 'shape' — the
@@ -4441,6 +4450,13 @@ export function CanvasSurface({
     propsRef.current.gestures?.previewSelectionEntry?.(ids, entry);
   };
 
+  /** End a single-node drag's host preview, if one began: the drag hands
+   *  the host its entry per move once past the slop (`ids` is the record
+   *  of it), and every teardown of the gesture ends it here. */
+  const endDragPreview = (g: { ids?: readonly string[] }) => {
+    if (g.ids) previewSelectionEntry(g.ids, null);
+  };
+
   /** Tear down a multi-drag's live preview: clear every member's transform
    *  and re-anchor the combined outline on the committed geometry — React's
    *  reconciler skips DOM writes for props unchanged since the last render,
@@ -4489,7 +4505,7 @@ export function CanvasSurface({
       if (at) propsRef.current.gestures?.onPointerUp?.(at.x, at.y, 'takeover');
     }
     // Abort any in-flight single-pointer interaction cleanly.
-    if (g.mode === 'drag') { resetDragEl(g.nodeId); resetSymmetryPeerEls(g.peers); }
+    if (g.mode === 'drag') { resetDragEl(g.nodeId); resetSymmetryPeerEls(g.peers); endDragPreview(g); }
     // A second finger abandons a marquee / combined-box drag the same way.
     if (g.mode === 'marquee') clearMarqueePreview();
     if (g.mode === 'multiDrag') { resetMultiDragEls(g.ids); resetSymmetryPeerEls(g.peers); }
@@ -5602,13 +5618,29 @@ export function CanvasSurface({
           if (Math.hypot(g.dx, g.dy) <= TAP_SLOP_PX) return;
           g.moved = true;
         }
-        const el = nodeEl(g.nodeId);
         // The outer node div lives in container units (1 cell = BASE_CELL_PX
         // before the container's CSS scale), so preview the SNAPPED cell
         // delta directly — the same delta the release commits, which is what
         // makes the object appear to step gridline-to-gridline under the
         // finger instead of jumping on release.
         const d = dragDeltaCells(g.nodeId, g.dx, g.dy);
+        // A node a HOST stands in for (`CanvasLayers.previewStandIn`, as
+        // the multi drag and the twist honour it): it has no element of
+        // its own, so the translate goes on the host's element, mapped by
+        // the host into that element's space (DrawBot's look page draws
+        // every stroke by its underlay, whose svg is in cells). Resolved
+        // once per gesture, and the host is handed the entry the release
+        // would commit, as the multi drag hands it, so a guide it draws
+        // round the node can follow the finger too.
+        const standIn = (g.standIn ??= standInFor(g.nodeId) ?? null);
+        if (standIn) {
+          const el = standIn.el();
+          const css = el ? standIn.css(g.nodeId, matTranslate(d.dxCells, d.dyCells)) : null;
+          if (el) el.style.transform = css ? cssMatrix(css, BASE_CELL_PX) : '';
+        }
+        previewSelectionEntry(g.ids ??= [g.nodeId], () => buildMoveNodeWithDragScale(
+          stateRef.current, g.nodeId, d.dxCells, d.dyCells));
+        const el = standIn ? null : nodeEl(g.nodeId);
         // Adrift: a word sticker grows as it floats into the bottle and
         // shrinks back on its way out (maskWordScale). The scale is the
         // one the release commits, read at the SNAPPED delta, so the word
@@ -5988,7 +6020,7 @@ export function CanvasSurface({
     if (g.mode === 'resize') dropAnyResizePreview(g);
     else if (g.mode === 'drag' || g.mode === 'manipulate') {
       resetDragEl(g.nodeId);
-      if (g.mode === 'drag') resetSymmetryPeerEls(g.peers);
+      if (g.mode === 'drag') { resetSymmetryPeerEls(g.peers); endDragPreview(g); }
       else g.hostTwist?.reset();
     } else if (g.mode === 'marquee') clearMarqueePreview();
     else if (g.mode === 'multiDrag' || g.mode === 'multiManipulate'
@@ -6234,6 +6266,7 @@ export function CanvasSurface({
         gestureRef.current = { mode: 'idle' };
         resetDragEl(g.nodeId);
         resetSymmetryPeerEls(g.peers);
+        endDragPreview(g);
         if (cancelled) return;
         if (g.moved) {
           // Move + (when the drop lands on / leaves a frame) the Figma-style

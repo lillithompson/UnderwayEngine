@@ -581,15 +581,17 @@ describe('the surface’s wiring of the seam', () => {
   });
 
   test('every multi gesture offers its proposed entry, and the teardown ends it', () => {
-    // Three gestures in flight — the drag, the twist, the corner resize —
-    // plus the teardown that clears the preview. Fewer than four and a
-    // host layer draws its things in the wrong place for one of them, or
-    // leaves them there after the finger lifts. Counted over the code
-    // alone: a comment naming the hook would otherwise count as a call.
+    // Three multi gestures in flight — the drag, the twist, the corner
+    // resize — plus the teardown that clears the preview; then the
+    // single-node drag and ITS teardown (`endDragPreview`, below). Fewer
+    // than six and a host layer draws its things in the wrong place for
+    // one of them, or leaves them there after the finger lifts. Counted
+    // over the code alone: a comment naming the hook would otherwise
+    // count as a call.
     const code = SRC
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^[ 	]*\/\/.*$/gm, '');
-    expect(code.match(/previewSelectionEntry\(/g)).toHaveLength(4);
+    expect(code.match(/previewSelectionEntry\(/g)).toHaveLength(6);
     expect(SRC).toContain('previewSelectionEntry(ids, null);');
     expect(SRC).toContain('previewSelectionEntry(g.ids, () => twisted);');
     expect(SRC).toContain('previewSelectionEntry(g.ids, () => resized);');
@@ -725,6 +727,25 @@ describe('the surface’s half of the layers seam', () => {
     // which is the whole thing a composite exists to avoid.
     expect(SRC).toContain('if (hit && hit.ids === ids) return hit;');
     expect(SRC).toContain('if (seen.has(standIn.key)) continue;');
+  });
+
+  test('a single-node drag honours the stand-in too, and hands the host its entry per move', () => {
+    // DrawBot's look page (its report 7e12c860): every stroke there is
+    // veiled and drawn by the page's underlay, so the drag's transform on
+    // the node's own element wrote on nothing and the stroke stood still
+    // until the release. The stand-in is resolved once per gesture, its
+    // translate mapped by the host, and the entry the release would commit
+    // goes to the host per move — as the multi drag does both — so a guide
+    // drawn round the node can follow the finger. Every teardown ends it.
+    const at = SRC.indexOf("      case 'drag': {\n        g.dx = pt.x - g.startX;");
+    expect(at).toBeGreaterThan(0);
+    const body = SRC.slice(at, SRC.indexOf("      case 'multiDrag': {", at));
+    expect(body).toContain('const standIn = (g.standIn ??= standInFor(g.nodeId) ?? null);');
+    expect(body).toContain('standIn.css(g.nodeId, matTranslate(d.dxCells, d.dyCells))');
+    expect(body).toContain('previewSelectionEntry(g.ids ??= [g.nodeId], () => buildMoveNodeWithDragScale(');
+    expect(body).toContain('const el = standIn ? null : nodeEl(g.nodeId);');
+    expect(SRC).toContain('if (g.ids) previewSelectionEntry(g.ids, null);');
+    expect(SRC.match(/endDragPreview\(g\);/g)).toHaveLength(3);
   });
 
   test('writes the stand-in once per move, and the node’s own element never', () => {
