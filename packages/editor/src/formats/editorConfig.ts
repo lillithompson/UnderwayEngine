@@ -125,6 +125,16 @@ export interface CommonEditorConfig {
      */
     initialFitRect?: { cellX: number; cellY: number; cellWidth: number; cellHeight: number };
     /**
+     * The `initialFitRect` open WIDENED to hold what is drawn past it, as
+     * a page open is (cameraMath.computeOpeningCamera): for a rect that
+     * frames the page and its chrome rather than a part of the board —
+     * DrawBots' look page, where a drawing may run off the page and is
+     * kept whole, so it reopens with all of it in view. Left out, the
+     * rect is framed alone: a Creature turn's band, the board beyond it
+     * being somebody else's, veiled, not something to frame.
+     */
+    initialFitRectHoldsContent?: boolean;
+    /**
      * The canvas draws NO GRID LINES — just the flat grey the GL pass
      * clears to (engine colors CANVAS_BASE_GREY), which is the ground a
      * finished picture is shown on anyway (ArtViewer's default

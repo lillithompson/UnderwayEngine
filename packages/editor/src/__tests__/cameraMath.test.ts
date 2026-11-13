@@ -521,6 +521,31 @@ describe('computeOpeningCamera — what a format frames when it opens', () => {
     expect(shows(camera, page, inset)).toBe(true);
   });
 
+  test("a format's rect that holds its content is widened as the page fit is: DrawBots' look page reopens a drawing that ran off the page whole", () => {
+    // The page and the forward arrow over it, a little room round them.
+    const fitRect = { cellX: -1, cellY: -6, cellWidth: 34, cellHeight: 41 };
+    const inset = { top: 94, bottom: 120, left: 0, right: 0 };
+    const framed = computeFrameCellBboxCamera(viewport, fitRect, FRAME_OBJECT_FIT, inset);
+    // Drawn inside the rect, or nothing drawn: the rect's own open.
+    expect(computeOpeningCamera(viewport, {
+      aspect: 1, inset, fitRect, fitRectHoldsContent: true, scene: scene([path(4, 4, 4, 4)]),
+    })).toEqual(framed);
+    expect(computeOpeningCamera(viewport, { aspect: 1, inset, fitRect, fitRectHoldsContent: true })).toEqual(framed);
+    // Drawn half a page past each side: the view grows to hold it, the
+    // rect still in it, inside the chrome.
+    const off = { cellX: -16, cellY: 10, cellWidth: 64, cellHeight: 4 };
+    const wide = computeOpeningCamera(viewport, {
+      aspect: 1, inset, fitRect, fitRectHoldsContent: true, scene: scene([path(off.cellX, off.cellY, off.cellWidth, off.cellHeight)]),
+    });
+    expect(wide.zoom).toBeLessThan(framed.zoom);
+    expect(shows(wide, off, inset)).toBe(true);
+    expect(shows(wide, fitRect, inset)).toBe(true);
+    // Not asked, the same drawing leaves the rect framed alone (Creature's band).
+    expect(computeOpeningCamera(viewport, {
+      aspect: 1, inset, fitRect, scene: scene([path(off.cellX, off.cellY, off.cellWidth, off.cellHeight)]),
+    })).toEqual(framed);
+  });
+
   test("the other fits are the view on purpose — a 'frame' or cells-wide open never widens", () => {
     // Adrift's word bank sits OUTSIDE its board by design, and a cells-wide
     // open is a chosen working scale: content beyond either is expected there,

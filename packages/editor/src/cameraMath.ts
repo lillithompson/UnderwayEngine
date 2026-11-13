@@ -483,7 +483,10 @@ export function sceneFrameGroupBbox(scene?: FramableScene): CellBbox | undefined
  *
  * `fitRect` is a rect the FORMAT names (canvas.initialFitRect — the band
  * a Creature turn may draw in): framed like the focus below, under it and
- * over everything else.
+ * over everything else; widened to hold what is drawn past it as a page
+ * open is (below) only when the format asks, `fitRectHoldsContent`
+ * (canvas.initialFitRectHoldsContent — DrawBots' look page, a rect round
+ * the page and its arrow, where a drawing may run off the page).
  *
  * `focus` overrides everything: a page whose template drew a "Focus"
  * rectangle (pageTemplate's takeTemplateFocus) opens framed on it exactly
@@ -501,7 +504,8 @@ export function sceneFrameGroupBbox(scene?: FramableScene): CellBbox | undefined
  * whose content spills past the page — the user zoomed out and drew off it —
  * opens on the page view widened to hold that content too (see
  * {@link widenToContent}). Content on the page changes nothing, so a fresh
- * page opens exactly as its format asks. The other fits are left alone on
+ * page opens exactly as its format asks. A format's rect that holds its
+ * content widens the same way. The other fits are left alone on
  * purpose: a `'frame'` or named-node open IS the thing to look at (Adrift's
  * word bank sits outside its Mask by design), a cells-wide open is a chosen
  * scale for working a band a few cells at a time, and a `'content'` open
@@ -519,6 +523,7 @@ export function computeOpeningCamera(
     gridLevel?: number;
     focus?: CellBbox;
     fitRect?: CellBbox;
+    fitRectHoldsContent?: boolean;
     fitNode?: CellBbox;
   },
 ): Camera {
@@ -530,7 +535,8 @@ export function computeOpeningCamera(
   // Framed exactly as a focus is, and ahead of the fits below for the same
   // reason — it IS the thing to look at.
   if (open.fitRect) {
-    return computeFrameCellBboxCamera(viewport, open.fitRect, FRAME_OBJECT_FIT, open.inset);
+    const framed = computeFrameCellBboxCamera(viewport, open.fitRect, FRAME_OBJECT_FIT, open.inset);
+    return open.fitRectHoldsContent ? widenToContent(framed, viewport, open.scene, open.inset) : framed;
   }
   if (open.cellsWide && open.cellsWide > 0) {
     return computeCellsWideCamera(viewport, open.aspect, open.cellsWide, open.gridLevel ?? 0);
