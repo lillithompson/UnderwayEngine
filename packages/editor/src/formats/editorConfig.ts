@@ -113,6 +113,18 @@ export interface CommonEditorConfig {
      */
     initialCellsWide?: number;
     /**
+     * The `initialCellsWide` open HOLDS what is drawn: a page whose content
+     * is not all inside the cells-wide view opens framed on that content
+     * instead (cameraMath.computeOpeningCamera), at the Frame Page fit and
+     * never closer than the cell scale, so a small drawing away from the
+     * page is centred at the format's cell size and a large one is fitted.
+     * For a canvas that is unbounded rather than a band — DrawBots', where
+     * a board built off to one side reopened on an empty stretch of grid.
+     * Left out, the open is the cell scale centred on the page whatever is
+     * drawn: Greeting's band, worked a few cells at a time.
+     */
+    initialCellsWideHoldsContent?: boolean;
+    /**
      * The page opens FRAMED ON THIS RECT, in world cells — the way a
      * template's Focus rect frames the page, but named by the format
      * rather than drawn into the page.

@@ -267,13 +267,16 @@ export interface ViewInset {
  *
  * `fit` is the share of each USABLE axis the bbox fills. `inset` is the chrome
  * over the canvas ({@link ViewInset}); without it the whole viewport is
- * usable, which is what the formulas reduce to.
+ * usable, which is what the formulas reduce to. `maxZoom` is the closest the
+ * camera may come: the bbox is still centred, with more of the canvas round
+ * it than the fit asks (a cells-wide open that frames its content).
  */
 export function computeFrameCellBboxCamera(
   viewport: Viewport,
   bbox: { cellX: number; cellY: number; cellWidth: number; cellHeight: number },
   fit: number = FRAME_OBJECT_FIT,
   inset?: ViewInset,
+  maxZoom: number = Infinity,
 ): Camera {
   const vw = viewport.width;
   const vh = viewport.height;
@@ -295,7 +298,9 @@ export function computeFrameCellBboxCamera(
   const uvCy = (bbox.cellY + bbox.cellHeight / 2) / WORLD_CELLS;
   // Fit the bbox to fit*usable on each axis (screen px of the bbox is
   // zoom*vw*uv on both), then clamp to the editor zoom range.
-  const zoom = clampZoom(Math.min((fit * usableW) / vw / uvW, (fit * usableH) / vw / uvH));
+  const zoom = Math.min(
+    clampZoom(Math.min((fit * usableW) / vw / uvW, (fit * usableH) / vw / uvH)), maxZoom,
+  );
   // Pin the bbox center to the usable center: the plain viewport-centered
   // offset, plus the shift from viewport center to usable center in world px.
   return {
@@ -480,6 +485,10 @@ export function sceneFrameGroupBbox(scene?: FramableScene): CellBbox | undefined
  * `cellsWide` (canvas.initialCellsWide) short-circuits all three: a format
  * that opens at CELL scale is not fitting a rect at all, it is choosing how
  * big a grid cell reads on the screen.
+ * With `cellsWideHoldsContent` (canvas.initialCellsWideHoldsContent —
+ * DrawBots' canvas, unbounded, where the work may sit anywhere) a page whose
+ * drawn content is not all in that view opens framed on the content instead,
+ * no closer than the cell scale ({@link frameContentPast}).
  *
  * `fitRect` is a rect the FORMAT names (canvas.initialFitRect — the band
  * a Creature turn may draw in): framed like the focus below, under it and
@@ -508,8 +517,9 @@ export function sceneFrameGroupBbox(scene?: FramableScene): CellBbox | undefined
  * content widens the same way. The other fits are left alone on
  * purpose: a `'frame'` or named-node open IS the thing to look at (Adrift's
  * word bank sits outside its Mask by design), a cells-wide open is a chosen
- * scale for working a band a few cells at a time, and a `'content'` open
- * already frames every mark.
+ * scale for working a band a few cells at a time (unless the format says
+ * its content is to be held, above), and a `'content'` open already frames
+ * every mark.
  */
 export function computeOpeningCamera(
   viewport: Viewport,
@@ -520,6 +530,7 @@ export function computeOpeningCamera(
     scene?: FramableScene;
     inset?: ViewInset;
     cellsWide?: number;
+    cellsWideHoldsContent?: boolean;
     gridLevel?: number;
     focus?: CellBbox;
     fitRect?: CellBbox;
@@ -539,7 +550,8 @@ export function computeOpeningCamera(
     return open.fitRectHoldsContent ? widenToContent(framed, viewport, open.scene, open.inset) : framed;
   }
   if (open.cellsWide && open.cellsWide > 0) {
-    return computeCellsWideCamera(viewport, open.aspect, open.cellsWide, open.gridLevel ?? 0);
+    const scaled = computeCellsWideCamera(viewport, open.aspect, open.cellsWide, open.gridLevel ?? 0);
+    return open.cellsWideHoldsContent ? frameContentPast(scaled, viewport, open.scene, open.inset) : scaled;
   }
   if (open.fitNode) {
     return computeFrameCellBboxCamera(viewport, open.fitNode, FRAME_OBJECT_FIT, open.inset);
@@ -584,20 +596,61 @@ function widenToContent(
   scene: FramableScene | undefined,
   inset?: ViewInset,
 ): Camera {
-  if (!scene || viewport.width <= 0 || viewport.height <= 0) return camera;
+  const spill = contentPastView(camera, viewport, scene, inset);
+  if (!spill) return camera;
+  return computeFrameCellBboxCamera(viewport, unionCellBbox(spill.shown, spill.content), FRAME_CONTENT_FIT, inset);
+}
+
+/**
+ * What is drawn and the view `camera` shows, when the view does not hold
+ * all of it; null when it does, or when nothing is drawn. The one test both
+ * the widening above and {@link frameContentPast} act on.
+ */
+function contentPastView(
+  camera: Camera,
+  viewport: Viewport,
+  scene: FramableScene | undefined,
+  inset?: ViewInset,
+): { shown: CellBbox; content: CellBbox } | null {
+  if (!scene || viewport.width <= 0 || viewport.height <= 0) return null;
   const bb = computeContentBBox(
     scene.figures, scene.svgObjects, scene.images, scene.texts, scene.groups,
     scene.paintObjects, scene.patternObjects,
   );
-  if (!bb) return camera;
+  if (!bb) return null;
   const shown = usableWorldRect(camera, viewport, inset);
   const inside = bb.minX >= shown.cellX - SPILL_EPS
     && bb.minY >= shown.cellY - SPILL_EPS
     && bb.maxX <= shown.cellX + shown.cellWidth + SPILL_EPS
     && bb.maxY <= shown.cellY + shown.cellHeight + SPILL_EPS;
-  if (inside) return camera;
-  const content = { cellX: bb.minX, cellY: bb.minY, cellWidth: bb.maxX - bb.minX, cellHeight: bb.maxY - bb.minY };
-  return computeFrameCellBboxCamera(viewport, unionCellBbox(shown, content), FRAME_CONTENT_FIT, inset);
+  if (inside) return null;
+  return {
+    shown,
+    content: { cellX: bb.minX, cellY: bb.minY, cellWidth: bb.maxX - bb.minX, cellHeight: bb.maxY - bb.minY },
+  };
+}
+
+/**
+ * `camera` as it stands when everything drawn is already in view; otherwise
+ * the drawn content framed, at the Frame Page fit and never closer than
+ * `camera` is — a cells-wide open that holds its content
+ * (canvas.initialCellsWideHoldsContent). Where {@link widenToContent} keeps
+ * the page in the picture, this lets it go: a cells-wide open is a few cells
+ * of an unbounded canvas, the page under it is nothing the eye is looking
+ * for, and work drawn well away from it would be a speck at the edge of a
+ * view stretched back to the page. The closeness cap keeps the format's
+ * chosen cell size for a drawing smaller than the view — it is centred, not
+ * blown up.
+ */
+function frameContentPast(
+  camera: Camera,
+  viewport: Viewport,
+  scene: FramableScene | undefined,
+  inset?: ViewInset,
+): Camera {
+  const spill = contentPastView(camera, viewport, scene, inset);
+  if (!spill) return camera;
+  return computeFrameCellBboxCamera(viewport, spill.content, FRAME_CONTENT_FIT, inset, camera.zoom);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { buildShapeSVGObject } from '@/engine/shapePresets';
-import { Camera, ImageObject, makeViewport, PaintObject, SVGObject, TextObject } from '@/engine/types';
+import { Camera, GroupNode, ImageObject, makeViewport, PaintObject, SVGObject, TextObject } from '@/engine/types';
 import {
   BASE_CELL_PX,
   cameraMatrixInto,
@@ -556,6 +556,58 @@ describe('computeOpeningCamera — what a format frames when it opens', () => {
       .toEqual(computeFrameCellBboxCamera(viewport, frame, FRAME_OBJECT_FIT));
     expect(computeOpeningCamera(viewport, { aspect: 1, cellsWide: 12, scene: drawn }))
       .toEqual(computeCellsWideCamera(viewport, 1, 12, 0));
+  });
+
+  describe('a cells-wide open that holds its content (canvas.initialCellsWideHoldsContent)', () => {
+    // 12 cells across a 390 × 720 view, centred on the page: cells 10..22
+    // across and about 5..27 down.
+    const scaled = computeCellsWideCamera(viewport, 1, 12, 0);
+    const inset = { top: 60, bottom: 120, left: 0, right: 0 };
+    const open = (drawn?: Parameters<typeof computeOpeningCamera>[1]['scene']) => computeOpeningCamera(viewport, {
+      aspect: 1, cellsWide: 12, cellsWideHoldsContent: true, scene: drawn,
+    });
+
+    test('nothing drawn, or everything drawn already in view, opens as the format asks', () => {
+      expect(open()).toEqual(scaled);
+      expect(open(scene([]))).toEqual(scaled);
+      expect(open(scene([path(12, 8, 4, 4)]))).toEqual(scaled);
+    });
+
+    test('a small drawing off the view is centred, at the cell scale — not blown up', () => {
+      const off = { cellX: 40, cellY: 2, cellWidth: 4, cellHeight: 4 };
+      const camera = open(scene([path(off.cellX, off.cellY, off.cellWidth, off.cellHeight)]));
+      expect(camera.zoom).toBe(scaled.zoom);
+      expect(camera).toEqual(computeFrameCellBboxCamera(viewport, off, FRAME_CONTENT_FIT, undefined, scaled.zoom));
+      const centre = worldToScreen(42, 4, camera, viewport);
+      expect(centre.x).toBeCloseTo(viewport.width / 2, 6);
+      expect(centre.y).toBeCloseTo(viewport.height / 2, 6);
+    });
+
+    test('a drawing wider than the view is fitted whole, as Frame Page fits it', () => {
+      const drawn = scene([path(46, -8, 24, 24)]);
+      const camera = open(drawn);
+      expect(camera.zoom).toBeLessThan(scaled.zoom);
+      expect(camera).toEqual(computeFrameContentCamera(drawn, viewport));
+    });
+
+    test('what a hidden group holds is not content: the one visible square is what is framed', () => {
+      // The file this answers: a board built off the page, hidden and locked
+      // as a group, under a visible square the same size.
+      const board = { id: 'g_board', name: 'Board', hidden: true, locked: true } as unknown as GroupNode;
+      const member = { ...path(100, 100, 2, 2), id: 'svg_member', groupId: 'g_board' };
+      const square = path(46, -8, 24, 24);
+      const drawn = { ...scene([square, member]), groups: [board] };
+      expect(open(drawn)).toEqual(open(scene([square])));
+    });
+
+    test('the chrome inset is honoured — the framed content is not under the toolbar', () => {
+      const off = { cellX: 40, cellY: 2, cellWidth: 4, cellHeight: 4 };
+      const camera = computeOpeningCamera(viewport, {
+        aspect: 1, cellsWide: 12, cellsWideHoldsContent: true, inset,
+        scene: scene([path(off.cellX, off.cellY, off.cellWidth, off.cellHeight)]),
+      });
+      expect(camera).toEqual(computeFrameCellBboxCamera(viewport, off, FRAME_CONTENT_FIT, inset, scaled.zoom));
+    });
   });
 
   test("'content' opens on the marks, exactly as Frame Page does", () => {
