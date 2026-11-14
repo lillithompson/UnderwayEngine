@@ -105,6 +105,7 @@ export function buildOutlineObjects(
       chrome: chromeBoundaryIds.has(item.id)
         || hostNodes?.chrome?.(kind, item)
         || undefined,
+      overRank: hostNodes?.overRank?.(kind, item),
     });
   };
   for (const f of state.figures) add('figure', f);

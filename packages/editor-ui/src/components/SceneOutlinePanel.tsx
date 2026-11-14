@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { SceneOutlineModel } from '../adapter';
-import { collapsedGroups, computeOutlineTree, flattenTree, reparentToSceneOrder, FlatOutlineRow } from '../logic/outlineTree';
+import { collapsedGroups, computeOutlineTree, flattenTree, liftedIds, reparentToSceneOrder, FlatOutlineRow } from '../logic/outlineTree';
 import { computeDropTarget } from '../logic/dragReorder';
 import { secondTapWithin } from '../logic/secondTap';
 import {
@@ -154,6 +154,7 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
   // the chevrons want (outlineTree.collapsedGroups).
   const collapsed = useMemo(() => collapsedGroups(tree, expanded), [tree, expanded]);
   const rows = useMemo(() => flattenTree(tree, collapsed), [tree, collapsed]);
+  const lifted = useMemo(() => liftedIds(tree), [tree]);
 
   // ── Drag-to-reparent ───────────────────────────────────────────────
   const [dragRowIndex, setDragRowIndex] = useState<number | null>(null);
@@ -340,6 +341,10 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                 // row selects, frames, renames and LOCKS — the lock is how
                 // an overlay the canvas cannot pick is reached again.
                 const overlay = obj?.overlayRank !== undefined;
+                // A scene row the host lists among its overlays
+                // (OutlineObject.overRank) keeps its eye and its lock, but
+                // where it is listed is the host's: no drag.
+                const undraggable = overlay || lifted.has(row.id);
                 const glyph = row.isGroup
                   ? iconFor('group')
                   : obj?.icon ?? iconFor(obj?.kind ?? 'svg');
@@ -396,7 +401,7 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                           to scroll the list instead. */}
                       <View
                         style={styles.rowGrab}
-                        {...(overlay ? null : getResponder(index, 'hold').panHandlers)}
+                        {...(undraggable ? null : getResponder(index, 'hold').panHandlers)}
                       >
                         {/* Indent + chevron: groups toggle collapse; leaves get
                             a chevron-width spacer so names align. */}
@@ -424,7 +429,7 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                         <View
                           style={styles.dragHandle}
                           hitSlop={DRAG_HANDLE_HIT_SLOP}
-                          {...(overlay ? null : getResponder(index, 'touch').panHandlers)}
+                          {...(undraggable ? null : getResponder(index, 'touch').panHandlers)}
                         >
                           <MaterialCommunityIcons name={icon(glyph)} size={18} color={OUTLINE_ICON} />
                         </View>

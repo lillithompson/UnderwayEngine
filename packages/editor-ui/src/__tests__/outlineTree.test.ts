@@ -2,6 +2,7 @@ import {
   collapsedGroups,
   computeOutlineTree,
   flattenTree,
+  liftedIds,
   treeToSceneOrder,
   reparentToSceneOrder,
 } from '../logic/outlineTree';
@@ -134,5 +135,75 @@ describe('reparentToSceneOrder', () => {
   it('moves a leaf out to top level (no crash, permutation preserved)', () => {
     const out = reparentToSceneOrder(tree, 'a', null, null);
     expect(out.sort()).toEqual(['a', 'boundary', 'top']);
+  });
+});
+
+describe('a scene row the host lists among its overlays (OutlineObject.overRank)', () => {
+  // Paint order back→front: a, trail, b. Overlays: two markers (rank 0, 1)
+  // and a walker (rank 10). The trail is listed under the walker, over
+  // the markers.
+  const objects = mapOf(
+    leaf('a'), leaf('trail', undefined, { overRank: 9.5 }), leaf('b'),
+    leaf('m0', undefined, { overlayRank: 0 }), leaf('m1', undefined, { overlayRank: 1 }),
+    leaf('walker', undefined, { overlayRank: 10 }),
+  );
+  const order = ['a', 'trail', 'b'];
+  const tree = computeOutlineTree(objects, order);
+
+  it('is shown at its rank among them, and the rest of the scene below', () => {
+    expect(flattenTree(tree, new Set()).map((r) => r.id)).toEqual(['walker', 'trail', 'm1', 'm0', 'b', 'a']);
+    expect([...liftedIds(tree)]).toEqual(['trail']);
+  });
+
+  it('stands in the tree where the paint order has it, so a reorder leaves it there', () => {
+    expect(tree.map((n) => n.id)).toEqual(['walker', 'm1', 'm0', 'b', 'trail', 'a']);
+    expect(treeToSceneOrder(tree)).toEqual(order);
+    // Another row dragged to the top level's end goes to the back, and
+    // the lifted one keeps its place between the other two.
+    expect(reparentToSceneOrder(tree, 'b', null, null)).toEqual(['b', 'a', 'trail']);
+  });
+
+  it('keeps the paint order among lifted rows of one rank, under an overlay of that rank', () => {
+    const many = mapOf(
+      leaf('t1', undefined, { overRank: 1 }), leaf('x'), leaf('t2', undefined, { overRank: 1 }),
+      leaf('m1', undefined, { overlayRank: 1 }),
+    );
+    const t = computeOutlineTree(many, ['t1', 'x', 't2']);
+    expect(flattenTree(t, new Set()).map((r) => r.id)).toEqual(['m1', 't2', 't1', 'x']);
+  });
+
+  it('is not lifted out of a group that holds anything else: there the paint order places it', () => {
+    const grouped = mapOf(
+      group('G'), leaf('trail', 'G', { overRank: 9.5 }), leaf('a', 'G'), leaf('top'),
+      leaf('m0', undefined, { overlayRank: 0 }),
+    );
+    const t = computeOutlineTree(grouped, ['trail', 'a', 'top']);
+    expect(flattenTree(t, new Set()).map((r) => r.id)).toEqual(['m0', 'top', 'G', 'a', 'trail']);
+    expect(liftedIds(t).size).toBe(0);
+  });
+
+  it('a group of nothing but such rows is lifted whole, to the highest of them, an overlay riding it aside', () => {
+    const folded = mapOf(
+      leaf('a'), group('G'), leaf('t1', 'G', { overRank: 9.5 }), group('H', 'G'), leaf('t2', 'H', { overRank: 9.5 }),
+      leaf('rider', 'G', { overlayRank: 3 }), leaf('b'),
+      leaf('m0', undefined, { overlayRank: 0 }), leaf('walker', undefined, { overlayRank: 10 }),
+    );
+    const order = ['a', 't1', 't2', 'b'];
+    const t = computeOutlineTree(folded, order);
+    expect(flattenTree(t, new Set()).map((r) => r.id)).toEqual(['walker', 'G', 'rider', 'H', 't2', 't1', 'm0', 'b', 'a']);
+    // Closed, as a group starts: one row.
+    expect(flattenTree(t, new Set(['G'])).map((r) => r.id)).toEqual(['walker', 'G', 'm0', 'b', 'a']);
+    expect([...liftedIds(t)].sort()).toEqual(['G', 'H', 'rider', 't1', 't2']);
+    expect(treeToSceneOrder(t)).toEqual(order);
+  });
+
+  it('an empty group, and a group of overlays alone, are not lifted', () => {
+    const t = computeOutlineTree(mapOf(group('E'), group('O'), leaf('rider', 'O', { overlayRank: 3 }), leaf('a')), ['a']);
+    expect(liftedIds(t).size).toBe(0);
+  });
+
+  it('with none lifted, the rows are the tree’s own', () => {
+    const plain = computeOutlineTree(mapOf(leaf('a'), leaf('b')), ['a', 'b']);
+    expect(flattenTree(plain, new Set()).map((r) => r.id)).toEqual(['b', 'a']);
   });
 });

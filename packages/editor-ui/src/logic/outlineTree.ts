@@ -21,6 +21,14 @@ export interface OutlineTreeNode {
   /** Drawn over the scene, not in `sceneOrder` (OutlineObject.overlayRank):
    *  part of the tree, never part of a serialized order. */
   overlay: boolean;
+  /** An overlay's `overlayRank`: what a lifted row is shown against
+   *  (`displayRoots`). */
+  rank?: number;
+  /** A ROOT shown among the overlays (OutlineObject.overRank) — a scene
+   *  leaf, or a group of nothing but such leaves: its rank there. In the
+   *  TREE it stands where the paint order has it, so a serialized order
+   *  is unchanged by it; only the rows (`flattenTree`) lift it. */
+  lift?: number;
   /** Children in display order (top→bottom). Empty for leaves. */
   children: OutlineTreeNode[];
 }
@@ -99,18 +107,78 @@ export function computeOutlineTree(
     const isGroup = obj?.kind === 'group';
     const childIds = isGroup ? (childrenOf.get(id) ?? []).slice() : [];
     childIds.sort((a, b) => computeFrontPos(b) - computeFrontPos(a));
-    return {
+    const node: OutlineTreeNode = {
       id, isGroup, chrome: !!obj?.chrome, overlay: obj?.overlayRank !== undefined, children: childIds.map(buildNode),
     };
+    if (obj?.overlayRank !== undefined) node.rank = obj.overlayRank;
+    return node;
+  };
+
+  // The rank a ROOT is lifted to among the overlays (OutlineObject.overRank),
+  // or undefined: a scene leaf's own; a group's when every scene leaf under
+  // it has one (the highest of them — a trail folded into a group of its
+  // colours is one row, lifted whole), overlays riding it aside. A group
+  // holding anything else stays where the paint order has it, and so does
+  // everything in it.
+  const liftOf = (id: string): number | undefined => {
+    const obj = objects.get(id);
+    if (!obj || obj.overlayRank !== undefined) return undefined;
+    if (obj.kind !== 'group') return obj.overRank;
+    let rank: number | undefined;
+    for (const childId of childrenOf.get(id) ?? []) {
+      if (objects.get(childId)?.overlayRank !== undefined) continue;
+      const r = liftOf(childId);
+      if (r === undefined) return undefined;
+      rank = rank === undefined ? r : Math.max(rank, r);
+    }
+    return rank;
   };
 
   roots.sort((a, b) => computeFrontPos(b) - computeFrontPos(a));
-  return roots.map(buildNode);
+  return roots.map((id) => {
+    const node = buildNode(id);
+    const lift = liftOf(id);
+    if (lift !== undefined) node.lift = lift;
+    return node;
+  });
+}
+
+/** The ids of every lifted root and of everything under one: the rows
+ *  whose place in the outline is the host's, and so do not drag. */
+export function liftedIds(roots: readonly OutlineTreeNode[]): Set<string> {
+  const ids = new Set<string>();
+  const walk = (node: OutlineTreeNode) => { ids.add(node.id); node.children.forEach(walk); };
+  for (const root of roots) if (root.lift !== undefined) walk(root);
+  return ids;
+}
+
+/**
+ * The roots in the order their ROWS are shown: the tree's own, with each
+ * lifted root (`OutlineTreeNode.lift`) taken out of the scene rows and set
+ * among the overlay rows at its rank — below every overlay ranked at or
+ * above it, above the rest — lifted roots of one rank in the paint
+ * order's own order. The same array when nothing is lifted.
+ */
+export function displayRoots(roots: readonly OutlineTreeNode[]): readonly OutlineTreeNode[] {
+  if (!roots.some((r) => r.lift !== undefined)) return roots;
+  // Stable, so equal ranks keep the tree's (front-first) order.
+  const lifted = roots.filter((r) => r.lift !== undefined).sort((a, b) => b.lift! - a.lift!);
+  const out: OutlineTreeNode[] = [];
+  let k = 0;
+  for (const root of roots) {
+    if (root.lift !== undefined) continue;
+    const above = root.overlay ? root.rank ?? 0 : -Infinity;
+    while (k < lifted.length && lifted[k].lift! > above) out.push(lifted[k++]);
+    out.push(root);
+  }
+  while (k < lifted.length) out.push(lifted[k++]);
+  return out;
 }
 
 /**
  * Flatten the tree to visible rows in display order, omitting the descendants
- * of any group whose id is in `collapsed`.
+ * of any group whose id is in `collapsed`. A lifted leaf's row stands among
+ * the overlays' (`displayRoots`).
  */
 export function flattenTree(
   roots: readonly OutlineTreeNode[],
@@ -127,7 +195,7 @@ export function flattenTree(
       for (const child of visibleChildren) walk(child, depth + 1);
     }
   };
-  for (const root of roots) walk(root, 0);
+  for (const root of displayRoots(roots)) walk(root, 0);
   return rows;
 }
 

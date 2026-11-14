@@ -205,6 +205,18 @@ export interface OutlineObject {
    *  (there is no paint order to change) and has no lock / hide toggles.
    *  Never written into a reorder's `sceneOrder`. */
   overlayRank?: number;
+  /** A SCENE node the host draws over its overlays (a simulation's
+   *  finished trails, which it inks over its instruction tiles): in
+   *  `sceneOrder` and a scene row in every other way — it keeps its eye
+   *  and its lock, and a reorder writes it where the paint order has it —
+   *  but its row is SHOWN among the overlay rows, by this rank on
+   *  `overlayRank`'s scale (larger = higher; an overlay of the same rank
+   *  stands above it). A top-level row is lifted by itself, and a
+   *  top-level group whose every scene leaf has a rank is lifted whole,
+   *  to the highest of them; in any other group a node stands where the
+   *  paint order puts it. A lifted row does not drag — where it is listed
+   *  is the host's, not the paint order's (`outlineTree.liftedIds`). */
+  overRank?: number;
 }
 
 /** Everything the Scene Outline needs, and nothing app-specific. */

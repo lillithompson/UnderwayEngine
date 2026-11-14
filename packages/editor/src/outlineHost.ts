@@ -12,7 +12,9 @@ import type { OutlineObject } from '@/editor-ui/adapter';
 //    outline than its engine kind says: CozyJournal's rig figure is an svg
 //    object but a MANNEQUIN in the outline (it wears the Rig tool's glyph,
 //    not a closed path's), and the rig's hidden pose record is rendering
-//    internals, a row a tap could rename or delete. A reader is resolved
+//    internals, a row a tap could rename or delete; and DrawBot's finished
+//    trail is a line of the page that it inks over its instruction tiles,
+//    so its row is shown among the overlays (`overRank`). A reader is resolved
 //    ONCE per build, so a host that has to walk the page for its own kinds
 //    (findRigs) walks it once rather than per row.
 //  · `overlays` — rows for things the host's DOCUMENT holds that draw over
@@ -55,6 +57,13 @@ export interface OutlineNodeReader {
   icon?(kind: string, item: OutlineNodeItem): string | undefined;
   /** Is `item`'s row the host's rendering internals? */
   chrome?(kind: string, item: OutlineNodeItem): boolean;
+  /** The rank `item`'s row is shown at among the host's overlay rows
+   *  (`OutlineObject.overRank`), for a scene node the host draws over
+   *  them — DrawBot's finished trails, inked over its instruction tiles —
+   *  or undefined for a row that stands where the paint order has it. A
+   *  top-level node is lifted by it, and a top-level group of nothing
+   *  but such nodes. */
+  overRank?(kind: string, item: OutlineNodeItem): number | undefined;
 }
 
 /** What an app adds to the shared scene outline. */

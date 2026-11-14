@@ -354,6 +354,22 @@ describe('the outline host', () => {
     expect(nodes.mock.results[0].value).toBeNull();
   });
 
+  test('a node the host draws over its overlays carries the rank it is listed at', () => {
+    const state = badged();
+    const grouped = {
+      ...state,
+      groups: [{ id: 'grp_1', name: 'g' }] as never[],
+      svgObjects: state.svgObjects.map((s) => ((s as { id: string }).id === 'svg_record' ? { ...(s as object), groupId: 'grp_1' } : s)) as never[],
+    };
+    installOutlineHost({ nodes: () => ({ overRank: (_kind, item) => (item.name?.startsWith('badge_') ? 4.5 : undefined) }) });
+    const objects = buildOutlineObjects(grouped);
+    expect(objects.get('svg_badge')?.overRank).toBe(4.5);
+    // In a group too: whether the row is lifted is the tree's to say
+    // (outlineTree: a group of nothing but such nodes is lifted whole).
+    expect(objects.get('svg_record')?.overRank).toBe(4.5);
+    expect(objects.get('grp_1')?.overRank).toBeUndefined();
+  });
+
   test("the host's overlay rows come with their rank, and only with a document", () => {
     const { session } = populated();
     installOutlineHost(HOST);
