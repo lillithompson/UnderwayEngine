@@ -21,7 +21,8 @@ import type { SVGSubtypeKind } from '../adapter';
  *    stroke.
  *  - `shape` opens the Shape page — the Radius slider that rounds the
  *    path's own corners, on the subtypes whose corners are LINE→LINE joins
- *    (the rectangle and the polygon; see {@link svgHasShape}).
+ *    (the rectangle, the polygon and the free closed shape Merge makes;
+ *    see {@link svgHasShape}).
  *  - `fill` opens the Fill bar — the image Tint bar's rows (Type / Stops /
  *    Angle / Opacity / Blend) plus its gradient swatch, pointed at the closed
  *    path's interior.
@@ -174,17 +175,18 @@ export function svgPatternSectionRemovable(section: SvgPatternSection): boolean 
 /**
  * Whether a subtype offers the Shape page — the Radius slider that rounds the
  * path's own corners. A control for the subtypes whose corners are LINE→LINE
- * joins (`roundPathCorners` only rounds those): the rectangle and the
- * polygon. A circle has no corners, and the other subtypes either have none
- * or aren't offered the control.
+ * joins (`roundPathCorners` only rounds those): the rectangle, the polygon,
+ * and the free closed `shape` — what Merge makes of the shapes it unites,
+ * which rounds as a shape from the shape menu does, every loop of it. A
+ * circle has no corners, and an open path isn't offered the control.
  */
 export function svgHasShape(subtype: SVGSubtypeKind): boolean {
-  return subtype === 'rectangle' || subtype === 'polygon';
+  return subtype === 'rectangle' || subtype === 'polygon' || subtype === 'shape';
 }
 
 /** The option menu for one vector subtype, in display order. Stroke leads —
- *  it is the one action every subtype has — then Shape on the polygonal
- *  ones, then the subtype's own next action: Fill — and the Pattern that
+ *  it is the one action every subtype has — then Shape on the cornered
+ *  closed ones, then the subtype's own next action: Fill — and the Pattern that
  *  goes over it — on the shapes that enclose an area, Endpoints on the
  *  paths that don't.
  *

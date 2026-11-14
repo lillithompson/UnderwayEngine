@@ -1,5 +1,5 @@
 import type { PathSegment, SVGObject, SVGStroke } from './types';
-import { isClosedPath } from './compositionArcMath';
+import { isClosedPath, segmentChains } from './compositionArcMath';
 import { SVG_STROKE_WIDTH } from './svgExport';
 
 // Everything the per-object SVG stroke needs: how to classify a vector object
@@ -167,12 +167,44 @@ const norm = (v: Pt): [number, number] => {
  * Per-corner the radius is clamped so neither adjacent edge is trimmed past
  * its midpoint; two tight corners on a short edge therefore both shrink
  * rather than crossing over each other.
+ *
+ * A path stored as ONE chain in order — everything a tool draws — is
+ * rounded as it stands. Anything else is a bag (a merged shape: several
+ * loops one after another, an outline and its holes, segments in any
+ * order and either direction), whose corners lie between segments that
+ * are not neighbours in the array: it is rounded a chain at a time
+ * (`segmentChains`), every loop all the way round, and comes back as
+ * those chains one after another.
  */
 export function roundPathCorners(
   segments: readonly PathSegment[],
   radius: number,
 ): PathSegment[] {
   if (radius <= EPS || segments.length < 2) return segments.slice();
+  if (isOneChain(segments)) return roundChainCorners(segments, radius);
+  const out: PathSegment[] = [];
+  for (const chain of segmentChains(segments)) {
+    for (const seg of roundChainCorners(chain, radius)) out.push(seg);
+  }
+  return out;
+}
+
+/** Whether every segment starts where the one before it ended: one chain,
+ *  in order (closed or not). */
+function isOneChain(segments: readonly PathSegment[]): boolean {
+  for (let i = 1; i < segments.length; i++) {
+    const a = segments[i - 1].end, b = segments[i].start;
+    if (Math.abs(a[0] - b[0]) > EPS || Math.abs(a[1] - b[1]) > EPS) return false;
+  }
+  return true;
+}
+
+/** {@link roundPathCorners} for one chain in order. */
+function roundChainCorners(
+  segments: readonly PathSegment[],
+  radius: number,
+): PathSegment[] {
+  if (segments.length < 2) return segments.slice();
   const closed = isClosedPath(segments);
   const out: PathSegment[] = segments.map((s) => ({ ...s } as PathSegment));
   const n = out.length;

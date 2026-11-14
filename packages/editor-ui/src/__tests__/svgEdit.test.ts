@@ -121,17 +121,18 @@ describe('svgEditOptions', () => {
     }
   });
 
-  it('gives the closed freeform `shape` the same interior options as a drawn one', () => {
+  it('gives the closed freeform `shape` the same options as a drawn one, the Shape page among them', () => {
     // However the outline came to be — merged, joined, unioned, drawn — a
-    // closed path has an inside to paint. (No Shape page: a freeform has
-    // no line→line corners to round.)
-    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke', 'fill', 'pattern', 'effects', 'opacity', 'transform']);
+    // closed path has an inside to paint, and corners to round: a shape
+    // made by Merge takes a Radius as one from the shape menu does.
+    expect(svgEditOptions('shape').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'pattern', 'effects', 'opacity', 'transform']);
+    expect(svgHasShape('shape')).toBe(true);
   });
 
-  it('adds Shape — the corner Radius page — right after Stroke on the polygonal shapes only', () => {
+  it('adds Shape — the corner Radius page — right after Stroke on the cornered closed shapes only', () => {
     expect(svgEditOptions('rectangle').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'pattern', 'effects', 'opacity', 'transform']);
     expect(svgEditOptions('polygon').map((o) => o.action)).toEqual(['stroke', 'shape', 'fill', 'pattern', 'effects', 'opacity', 'transform']);
-    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'polygon')) {
+    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'polygon' && s !== 'shape')) {
       expect(svgEditOptions(subtype).map((o) => o.action)).not.toContain('shape');
       expect(svgHasShape(subtype)).toBe(false);
     }
@@ -255,7 +256,9 @@ describe('svgStrokeRows', () => {
   it('offers the Shape page (Radius) only for the subtypes with line→line corners to round', () => {
     expect(svgHasShape('rectangle')).toBe(true);
     expect(svgHasShape('polygon')).toBe(true);
-    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'polygon')) {
+    // …and the free closed shape Merge makes (DrawBots report eae1ebc6).
+    expect(svgHasShape('shape')).toBe(true);
+    for (const subtype of SUBTYPES.filter((s) => s !== 'rectangle' && s !== 'polygon' && s !== 'shape')) {
       expect(svgHasShape(subtype)).toBe(false);
     }
     // Radius is no Stroke row any more.

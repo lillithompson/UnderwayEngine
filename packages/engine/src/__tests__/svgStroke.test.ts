@@ -222,6 +222,91 @@ describe('roundPathCorners', () => {
     expect(first.end[0]).toBeCloseTo(3.5);
   });
 
+  // A merged shape is a BAG: its corners lie between segments that are not
+  // neighbours in the array. Each chain in it is rounded all the way round.
+  describe('a merged shape', () => {
+    /** Every chain of `out` closes on itself and is continuous. */
+    const loopsOf = (out: PathSegment[]): PathSegment[][] => {
+      const loops: PathSegment[][] = [];
+      let cur: PathSegment[] = [];
+      for (const seg of out) {
+        const last = cur[cur.length - 1];
+        if (last && (Math.abs(last.end[0] - seg.start[0]) > 1e-9 || Math.abs(last.end[1] - seg.start[1]) > 1e-9)) {
+          loops.push(cur);
+          cur = [];
+        }
+        cur.push(seg);
+      }
+      if (cur.length > 0) loops.push(cur);
+      return loops;
+    };
+    const closes = (loop: PathSegment[]): boolean => (
+      Math.abs(loop[0].start[0] - loop[loop.length - 1].end[0]) < 1e-9
+      && Math.abs(loop[0].start[1] - loop[loop.length - 1].end[1]) < 1e-9
+    );
+    const moved = (segs: PathSegment[], dx: number, dy: number): PathSegment[] => segs.map((seg) => ({
+      ...seg, start: [seg.start[0] + dx, seg.start[1] + dy], end: [seg.end[0] + dx, seg.end[1] + dy],
+    } as PathSegment));
+
+    it('rounds every corner of two loops stored one after the other, the seam of each included', () => {
+      const out = roundPathCorners([...rect(4, 3), ...moved(rect(4, 3), 10, 0)], 0.5);
+      expect(out.filter((s) => s.kind === 'arc')).toHaveLength(8);
+      expect(out.filter((s) => s.kind === 'line')).toHaveLength(8);
+      const loops = loopsOf(out);
+      expect(loops).toHaveLength(2);
+      for (const loop of loops) {
+        expect(loop).toHaveLength(8);
+        expect(closes(loop)).toBe(true);
+      }
+      for (const seg of out) if (seg.kind === 'arc') expect(arcRadius(seg)).toBeCloseTo(0.5);
+    });
+
+    it('rounds an outline and the hole inside it', () => {
+      const out = roundPathCorners([...rect(6, 6), ...moved(rect(2, 2), 2, 2)], 0.25);
+      expect(out.filter((s) => s.kind === 'arc')).toHaveLength(8);
+      expect(loopsOf(out).every(closes)).toBe(true);
+    });
+
+    it('rounds a loop whose segments are stored out of order and backwards', () => {
+      const [a, b, c, d] = rect(4, 3);
+      const backwards = { ...c, start: c.end, end: c.start } as PathSegment;
+      const out = roundPathCorners([a, backwards, d, b], 0.5);
+      expect(out.filter((s) => s.kind === 'arc')).toHaveLength(4);
+      const loops = loopsOf(out);
+      expect(loops).toHaveLength(1);
+      expect(closes(loops[0])).toBe(true);
+      for (const seg of out) if (seg.kind === 'arc') expect(arcRadius(seg)).toBeCloseTo(0.5);
+    });
+
+    it('rounds an L made of two rectangles united: six corners, one of them turning the other way', () => {
+      const l: PathSegment[] = [
+        line([0, 0], [4, 0]), line([4, 0], [4, 2]), line([4, 2], [2, 2]),
+        line([2, 2], [2, 4]), line([2, 4], [0, 4]), line([0, 4], [0, 0]),
+      ];
+      const out = roundPathCorners(l, 0.5);
+      expect(out.filter((s) => s.kind === 'arc')).toHaveLength(6);
+      expect(closes(out)).toBe(true);
+      expect(loopsOf(out)).toHaveLength(1);
+    });
+
+    it('keeps a loose line merged in beside a loop, and rounds the loop', () => {
+      const out = roundPathCorners([...rect(4, 3), line([10, 0], [12, 0])], 0.5);
+      expect(out.filter((s) => s.kind === 'arc')).toHaveLength(4);
+      const loops = loopsOf(out);
+      expect(loops).toHaveLength(2);
+      expect(closes(loops[0])).toBe(true);
+      expect(loops[1]).toEqual([line([10, 0], [12, 0])]);
+    });
+
+    it('a path stored as one chain in order comes back as it always did', () => {
+      // The chain a tool draws is not re-chained: same segments, same start.
+      const out = roundPathCorners(rect(4, 3), 0.5);
+      expect(out[0].kind).toBe('line');
+      expect(out[0].start[1]).toBeCloseTo(0);
+      expect(out[0].start[0]).toBeCloseTo(0.5);
+    });
+  });
+
   it('does not round the loose ends of an open path', () => {
     const polyline = [line([0, 0], [2, 0]), line([2, 0], [2, 2])];
     const out = roundPathCorners(polyline, 0.5);

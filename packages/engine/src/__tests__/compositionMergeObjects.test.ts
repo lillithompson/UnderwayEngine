@@ -19,6 +19,7 @@ import {
 import { canMergeObjects, canMergeSelection, buildMergeEntry, mergedSVGObject } from '../compositionMergeObjects';
 import { buildSVGObjectContent, svgIsFilled, svgIsStroked } from '../svgPathBuilder';
 import { closedSegmentLoops, computeSignedArea } from '../compositionArcMath';
+import { roundPathCorners, svgSubtype } from '../svgStroke';
 
 const WHITE: RGBColor = { r: 255, g: 255, b: 255 };
 const RED: RGBColor = { r: 200, g: 0, b: 0 };
@@ -474,3 +475,55 @@ describe('merging a pattern with a vector', () => {
     expect(canMergeSelection(withText, new Set(['pat_1', 'txt_1']))).toBe(false);
   });
 });
+
+// A shape made by Merge takes a corner Radius as one from the shape menu
+// does (DrawBots report eae1ebc6): it reads as the free closed `shape`,
+// which the Shape page is offered on (editor-ui `svgHasShape`), and the
+// rounding goes round every loop of the bag it is stored as.
+describe('a merged closed shape rounds its corners', () => {
+  const arcsIn = (markup: string): number => (markup.match(/ A /g) ?? []).length;
+
+  it('two squares merged are one closed `shape`, and a radius rounds all eight corners, fill and stroke alike', () => {
+    const merged = mergedSVGObject([
+      makeSVG('a', square(0, 0, 4), { fillColor: BLUE }),
+      makeSVG('b', square(10, 0, 4), { fillColor: BLUE }),
+    ], 'm');
+    expect(svgSubtype(merged)).toBe('shape');
+    expect(roundPathCorners(merged.segments, 1).filter((seg) => seg.kind === 'arc')).toHaveLength(8);
+    // Square corners, drawn sharp…
+    expect(arcsIn(buildSVGObjectContent(merged, 8, 16))).toBe(0);
+    // …and round with a radius: the fill's outline and the stroke's each
+    // carry the eight arcs.
+    const rounded = buildSVGObjectContent({ ...merged, stroke: { radius: 0.25 } }, 8, 16);
+    expect(arcsIn(rounded)).toBe(16);
+  });
+
+  it('four loose lines merged into a closed outline round at every join, whatever order they were drawn in', () => {
+    // A square's sides as four objects, the third drawn the other way.
+    const merged = mergedSVGObject([
+      makeSVG('top', [line([0, 0], [4, 0])]),
+      makeSVG('left', [line([0, 4], [0, 0])]),
+      makeSVG('bottom', [line([0, 4], [4, 4])]),
+      makeSVG('right', [line([4, 0], [4, 4])]),
+    ], 'm');
+    // Four axis-aligned sides that close read as a rectangle, which had
+    // the page already — and whose corners, stored as a bag, it missed.
+    expect(svgSubtype(merged)).toBe('rectangle');
+    const out = roundPathCorners(merged.segments, 1);
+    expect(out.filter((seg) => seg.kind === 'arc')).toHaveLength(4);
+    expect(closedSegmentLoops(out)).toHaveLength(1);
+  });
+
+  it('three loose lines merged into a triangle are a `shape`, rounded at all three corners', () => {
+    const merged = mergedSVGObject([
+      makeSVG('base', [line([0, 0], [6, 0])]),
+      makeSVG('up', [line([3, 5], [0, 0])]),
+      makeSVG('down', [line([6, 0], [3, 5])]),
+    ], 'm');
+    expect(svgSubtype(merged)).toBe('shape');
+    const out = roundPathCorners(merged.segments, 0.5);
+    expect(out.filter((seg) => seg.kind === 'arc')).toHaveLength(3);
+    expect(closedSegmentLoops(out)).toHaveLength(1);
+  });
+});
+

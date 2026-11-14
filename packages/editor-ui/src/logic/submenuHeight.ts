@@ -311,7 +311,7 @@ export type SubmenuKey =
   // line the TILES are drawn in, which is not the outline the shape
   // wears).
   | 'svgPattern'
-  // The Shape page: a polygonal shape's corner Radius (see svgHasShape).
+  // The Shape page: a cornered closed shape's corner Radius (see svgHasShape).
   | 'shape'
   // A frame's Background page: the one hue row its boundary rect's fill reads
   // on. The frame's own colour, so it leads the frame's tabs.

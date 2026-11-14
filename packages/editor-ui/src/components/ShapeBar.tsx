@@ -2,8 +2,8 @@ import React from 'react';
 import { BarBody } from './effectBar';
 import { RadiusRow } from './BorderBar';
 
-// The Shape page, on a polygonal shape (a rectangle, a polygon — see
-// svgHasShape): the Radius slider that rounds the path's own corners. It
+// The Shape page, on a cornered closed shape (a rectangle, a polygon, the
+// free closed shape Merge makes — see svgHasShape): the Radius slider that rounds the path's own corners. It
 // came off the Stroke page, where it sat between Width and Position as
 // though it were a property of the outline: the corners are the shape's,
 // whatever is drawn along them. One row, no colour, nothing to remove.

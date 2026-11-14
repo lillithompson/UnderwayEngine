@@ -621,6 +621,19 @@ export function closedSegmentLoops(segments: readonly PathSegment[]): PathSegmen
 }
 
 /**
+ * A bag of segments as the CHAINS it holds, each in order end to start:
+ * its closed loops first, then the open chains left over. What a walk
+ * along the drawn outline needs when the stored order is not that walk —
+ * a merged shape's bag (several loops one after another, or segments in
+ * no order and either direction), whose corners lie between segments that
+ * are not neighbours in the array (`svgStroke.roundPathCorners`).
+ */
+export function segmentChains(segments: readonly PathSegment[]): PathSegment[][] {
+  const { loops, open } = chainSegmentBag(segments);
+  return [...loops, ...open];
+}
+
+/**
  * Returns true when the segments form a single closed loop.  Handles both
  * sequentially-ordered paths (end-to-start) and unordered segment bags
  * produced by join (greedy chaining with reversal).  Tolerance: 1e-6.
