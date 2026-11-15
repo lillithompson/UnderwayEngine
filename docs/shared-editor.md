@@ -877,7 +877,15 @@ first, then the pointer bump in each app).
    ON the object needs: the canvas's own preview is an overlay laid over the
    object, and a rig's silhouette is a bake its live sketch draws over, so
    it is told what colour it is now the way a joint drag tells it what pose
-   it is in. `canvasTwist.ts`'s
+   it is in. It grew again for DrawBot's Inklings (DrawBot report
+   e5fcf851), which the Color brush recolours and which are no scene node
+   at all: `HostItems.paintTargets(doc, scope)` is the same pass over the
+   host's own document, `HostPaintTargets.commitHost` its write — the host
+   op `buildPaintStroke` puts on the stroke's step (`SessionEntry.hostOps`),
+   so a stroke that changed nothing in the scene still commits — and
+   `paintBrush.hostPaintPass` asks the nodes' pass and the items' as one.
+   `hasPaintableObjects` takes the host document for the same reason: a
+   page of nothing but Inklings is paintable. `canvasTwist.ts`'s
    `resolveTwistUnit` is the one reading of what a finger pair would turn:
    the multi unit, the host's lone unit, its grown grip, and the box the
    turn still pivots about — both apps had written that gate out by hand

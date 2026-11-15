@@ -5299,7 +5299,7 @@ export function CanvasSurface({
         // push state resolves its own: a figure's colour is not on the object
         // the dab lands on (the silhouette is a bake the live sketch draws
         // over), so the stroke needs the record beside the geometry.
-        objectColor: createObjectColorState(propsRef.current.colorScope, s),
+        objectColor: createObjectColorState(propsRef.current.colorScope, s, propsRef.current.session.hostDoc),
         patternPreviewRev: new Map(),
         paint: paintState,
         lastCell: null,

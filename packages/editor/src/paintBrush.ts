@@ -421,6 +421,32 @@ export function hostPaintReach(state: CompositionState): HostPaintReach | null {
   return sessionHost().nodes?.paintTargets?.(state, 'any') ?? null;
 }
 
+/** The host's whole Color pass for a stroke: its nodes' (over the scene)
+ *  and its items' (over its own document, when the stroke has one), as one.
+ *  Either alone is itself; both, each is asked in turn. Null with neither. */
+export function hostPaintPass(
+  state: CompositionState, scope: ColorScope, hostDoc?: unknown,
+): HostPaintTargets | null {
+  const host = sessionHost();
+  const nodes = host.nodes?.paintTargets?.(state, scope) ?? null;
+  const items = hostDoc === undefined ? null : host.items?.paintTargets?.(hostDoc, scope) ?? null;
+  if (!nodes || !items) return nodes ?? items;
+  return {
+    ids: new Set([...nodes.ids, ...items.ids]),
+    reaches: (id, s) => nodes.reaches(id, s) || items.reaches(id, s),
+    stamp: (...dab) => {
+      // Both, always: `||` would skip the second pass's dab.
+      const a = nodes.stamp(...dab);
+      const b = items.stamp(...dab);
+      return a || b;
+    },
+    commit: (s) => [...nodes.commit(s), ...items.commit(s)],
+    commitHost: () => items.commitHost?.() ?? nodes.commitHost?.() ?? null,
+    preview: () => { nodes.preview?.(); items.preview?.(); },
+    restore: () => { nodes.restore?.(); items.restore?.(); },
+  };
+}
+
 /**
  * The scope the recolour brush should be aimed at with `targets` in hand:
  * the aim it already has whenever that reaches any of them, and otherwise
@@ -1360,9 +1386,12 @@ export function paintLockedIds(state: CompositionState): Set<string> {
  * answers no for both, and their arrays can be skipped outright. A node the
  * HOST answers for is asked about through the host's reach (a rig is an svg
  * on that array, and the brush writes its record's two colours), resolved
- * once here.
+ * once here. The host's ITEMS (`HostItems.paintTargets`: things of its own
+ * document, DrawBot's Inklings) count too, where the caller has the host
+ * document to ask about: a page of nothing but those is paintable.
  */
-export function hasPaintableObjects(state: CompositionState): boolean {
+export function hasPaintableObjects(state: CompositionState, hostDoc?: unknown): boolean {
+  if (hostDoc !== undefined && sessionHost().items?.paintTargets?.(hostDoc, 'any')) return true;
   const hidden = paintHiddenIds(state);
   const host = hostPaintReach(state);
   const boundaries = new Set<string>();
@@ -2070,7 +2099,8 @@ export interface ObjectColorState {
    *  other brush setting. */
   scope: ColorScope;
   /** The host's pass over the nodes whose colour it keeps off the object
-   *  (sessionHost.ts `HostPaintTargets` — CozyJournal's rig), resolved at
+   *  (sessionHost.ts `HostPaintTargets` — CozyJournal's rig) and over the
+   *  items of its own document (DrawBot's Inklings; `hostPaintPass`), resolved at
    *  the press (the scene cannot change mid-stroke). The svg pass skips its
    *  `ids` under every aim — recolouring a rig's baked silhouette changed a
    *  picture nobody sees — and the pass answers for them. Null with no host,
@@ -2098,8 +2128,9 @@ function anyAimOfSvg(objectColor: ObjectColorState | null, svg: SVGObject): Colo
 export function createObjectColorState(
   scope: ColorScope = DEFAULT_COLOR_SCOPE,
   state?: CompositionState,
+  hostDoc?: unknown,
 ): ObjectColorState {
-  const host = state ? sessionHost().nodes?.paintTargets?.(state, scope) ?? null : null;
+  const host = state ? hostPaintPass(state, scope, hostDoc) : null;
   return { imageTints: new Map(), shapeFills: new Map(), scope, host, anyAims: new Map() };
 }
 

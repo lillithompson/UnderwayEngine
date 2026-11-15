@@ -7660,6 +7660,10 @@ export function buildPaintStroke(
     const mid = ops.length > 0 ? applyCompOps(state, ops) : state;
     ops.push(...hostPass.commit(mid));
   }
+  // …and what the pass changed in the host's OWN document (its items:
+  // DrawBot's Inklings, whose pen is in no scene op) rides the same step
+  // as its host op, so one Undo takes the whole stroke back.
+  const hostOps = hostPass?.commitHost?.() ?? null;
   if (imageOverlays && imageOverlays.size > 0) {
     // Built against the mid state: replaceScene snapshots texts too, and a
     // swap built from the original state would quietly revert the same
@@ -7791,5 +7795,6 @@ export function buildPaintStroke(
       }
     }
   }
-  return ops.length > 0 ? { entry: ops, ...(paintSessionId ? { paintSessionId } : {}) } : null;
+  if (ops.length === 0 && hostOps == null) return null;
+  return { entry: ops, ...(paintSessionId ? { paintSessionId } : {}), ...(hostOps != null ? { hostOps } : {}) };
 }

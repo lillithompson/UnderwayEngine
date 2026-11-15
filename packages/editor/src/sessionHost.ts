@@ -102,6 +102,13 @@ export interface HostItems<TDoc, TOps> {
   ): { doc: TDoc; ids: string[] };
   /** The host op recording a document change, for `SessionEntry.hostOps`. */
   change(before: TDoc, after: TDoc): TOps;
+  /** The Color brush's pass over the host's ITEMS — things of its own
+   *  document, which no scene node stands for (DrawBot's Inklings, whose
+   *  pen the brush recolours) — or null when the document has none to
+   *  paint. Resolved at the press, as the nodes' pass is
+   *  (`HostNodeRules.paintTargets`); what it changes is committed on the
+   *  stroke's step through `HostPaintTargets.commitHost`. */
+  paintTargets?(doc: TDoc, scope: ColorScope): HostPaintTargets | null;
 }
 
 /** A node whose colour the host keeps off the object (CozyJournal's rig:
@@ -141,6 +148,12 @@ export interface HostPaintTargets {
    *  its own ops in turn when one builds on another). Empty when nothing
    *  changed. */
   commit(state: CompositionState): CompUndoEntry;
+  /** The HOST op committing what the stroke changed in the host's own
+   *  document (`SessionEntry.hostOps`), for a pass over its items
+   *  (`HostItems.paintTargets`): their colour is in no scene op. Null
+   *  when nothing changed; absent for a pass whose writes are all scene
+   *  ops. */
+  commitHost?(): unknown;
   /** Show the host's nodes as the release would leave them, after a dab.
    *  The canvas's own preview is an overlay laid over the object, which a
    *  node whose colour is not ON the object has nothing to lay it over: a

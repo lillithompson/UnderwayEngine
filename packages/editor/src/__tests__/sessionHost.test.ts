@@ -10,7 +10,7 @@ import {
   clearSessionHost, installSessionHost, sessionHost,
 } from '../sessionHost';
 import {
-  buildAlignSelectedMulti, buildApplyColor, buildDuplicateSelected, buildDuplicateSelectedMulti,
+  buildAlignSelectedMulti, buildApplyColor, buildDuplicateSelected, buildPaintStroke, buildDuplicateSelectedMulti,
   buildGroupSelectedMulti, buildMoveNodes, buildPlaceShape, buildRemoveSelectedMulti,
   buildResizeNodes, buildRotateSelectedMulti, buildToggleHostItemLock, buildToggleLockMulti,
   buildUngroupSelectedMulti, canMergeSelectedMulti, commit, commitEntry, copyRunName,
@@ -20,7 +20,10 @@ import {
   selectionColorAlpha, selectionTakesAlpha, selectionUnitIds, toggleSelect, undo, withHostChange,
   withHostDoc, wholeUnitOfSelection,
 } from '../editorSession';
-import { colorScopeReaches, createObjectColorState, hostPaintReach, reaimedColorScope } from '../paintBrush';
+import {
+  colorScopeReaches, createObjectColorState, createPaintStrokeDraft, hasPaintableObjects, hostPaintPass, hostPaintReach,
+  reaimedColorScope,
+} from '../paintBrush';
 
 // The SESSION seam (sessionHost.ts; docs/shared-editor.md §4.1): a made-up
 // app with a parallel document of counters, a kind of selectable item of its
@@ -672,6 +675,75 @@ describe('the host’s rules about nodes of its own', () => {
     expect(createObjectColorState('fills', s.state).host).toBeNull();
     expect(hostPaintReach(s.state)).toBeNull();
     expect(selectionTakesAlpha(s.state, b)).toBe(true);
+  });
+
+  // The host's ITEMS under the Color brush (`HostItems.paintTargets`):
+  // things of its own document, which no scene node stands for. What the
+  // stroke changes there rides the stroke's step as its host op.
+  test('the Color brush reaches the host’s items, and commits what it changed as the stroke’s host op', () => {
+    const marker: Marker = { id: 'mk_a', x: 2, y: 2 };
+    const seen: string[] = [];
+    const items: HostItems<Doc, Op> = {
+      ...ITEMS,
+      paintTargets: (doc) => {
+        if (doc.markers.length === 0) return null;
+        let hits = 0;
+        return {
+          ids: new Set<string>(), reaches: () => false, commit: () => [],
+          stamp: (_draft, cellX, cellY, r) => {
+            const hit = doc.markers.some((m) => Math.hypot(m.x - cellX, m.y - cellY) <= r);
+            if (hit) hits++;
+            return hit;
+          },
+          commitHost: () => (hits > 0 ? { kind: 'add', n: hits } : null),
+          preview: () => { seen.push('preview'); },
+          restore: () => { seen.push('restore'); },
+        };
+      },
+    };
+    installSessionHost({ ops: OPS, items, nodes: RULES });
+    let s = newSession({ count: 0, markers: [marker] });
+    // A page of nothing but the host's items is paintable — where the
+    // caller has the document to ask about.
+    expect(hasPaintableObjects(s.state)).toBe(false);
+    expect(hasPaintableObjects(s.state, s.hostDoc)).toBe(true);
+    expect(hasPaintableObjects(s.state, EMPTY)).toBe(false);
+    // Without the document the stroke has only the nodes' pass (none here).
+    expect(createObjectColorState('fills', s.state).host).toBeNull();
+    const draft = createPaintStrokeDraft({ r: 255, g: 0, b: 0 }, 'normal', 1);
+    const objectColor = createObjectColorState('fills', s.state, s.hostDoc);
+    expect(objectColor.host!.stamp(draft, 20, 20, 1, null, new Set(), null)).toBe(false);
+    expect(buildPaintStroke(s.state, draft, undefined, undefined, undefined, undefined, undefined, objectColor)).toBeNull();
+    expect(objectColor.host!.stamp(draft, 2, 2, 1, null, new Set(), null)).toBe(true);
+    objectColor.host!.preview!();
+    expect(seen).toEqual(['preview']);
+    const se = buildPaintStroke(s.state, draft, undefined, undefined, undefined, undefined, undefined, objectColor)!;
+    expect(se.entry).toEqual([]);
+    expect(se.hostOps).toEqual({ kind: 'add', n: 1 });
+    // One step: the stroke's, undone as one.
+    s = commitEntry(s, se);
+    expect(s.hostDoc.count).toBe(1);
+    expect(undo(s).hostDoc.count).toBe(0);
+  });
+
+  test('a host with rules of both kinds has both passes asked, a dab at a time', () => {
+    const stamped: string[] = [];
+    const pass = (name: string) => ({
+      ids: new Set([name]), reaches: (id: string) => id === name, commit: () => [],
+      stamp: () => { stamped.push(name); return true; },
+    });
+    installSessionHost({
+      ops: OPS,
+      items: { ...ITEMS, paintTargets: () => ({ ...pass('items'), commitHost: () => ({ kind: 'add', n: 3 }) }) },
+      nodes: { paintTargets: () => pass('nodes') },
+    });
+    const s = newSession();
+    const host = hostPaintPass(s.state, 'fills', s.hostDoc)!;
+    expect([...host.ids].sort()).toEqual(['items', 'nodes']);
+    expect(host.reaches('items', 'fills') && host.reaches('nodes', 'fills')).toBe(true);
+    expect(host.stamp(createPaintStrokeDraft({ r: 0, g: 0, b: 0 }, 'normal', 1), 0, 0, 1, null, new Set(), null)).toBe(true);
+    expect(stamped).toEqual(['nodes', 'items']);
+    expect(host.commitHost!()).toEqual({ kind: 'add', n: 3 });
   });
 
   test('a run of copies is numbered from the standard label, whatever the host', () => {
