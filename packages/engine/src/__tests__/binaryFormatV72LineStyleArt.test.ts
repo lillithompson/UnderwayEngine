@@ -154,18 +154,19 @@ describe('v72: a line style’s art', () => {
 });
 
 describe('v72: a v71 file reads exactly as before', () => {
-  // A v71 line-style block ends at its strokes. The v72 writer's block for
-  // a style with no art is that block and one zero byte (the art count),
-  // so taking the byte out and turning the version back is the v71 file.
+  // A v71 line-style block ends at its strokes. Today's writer's block for
+  // a style with no art is that block, one zero byte (the art count, v72)
+  // and the tint's byte (255, v73), so taking the two out and turning the
+  // version back is the v71 file.
   const custom: [number, number][][] = [[[0.1, 0.1], [0.9, 0.9]]];
   const asV71 = (): Uint8Array => {
     const v72 = write(drawn({ custom }), [makeSVG('b')]);
-    // strokeCount 1, pointCount 2 (u16), the two points, then the art count.
-    const at = indexOfBytes(v72, [1, 2, 0, 26, 26, 230, 230, 0]);
+    // strokeCount 1, pointCount 2 (u16), the two points, then the art count and the tint.
+    const at = indexOfBytes(v72, [1, 2, 0, 26, 26, 230, 230, 0, 255]);
     expect(at).toBeGreaterThan(0);
-    const v71 = new Uint8Array(v72.length - 1);
+    const v71 = new Uint8Array(v72.length - 2);
     v71.set(v72.subarray(0, at + 7));
-    v71.set(v72.subarray(at + 8), at + 7);
+    v71.set(v72.subarray(at + 9), at + 7);
     new DataView(v71.buffer).setUint16(4, 71, true);
     return v71;
   };

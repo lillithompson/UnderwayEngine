@@ -423,6 +423,9 @@ export interface LineStyleModel {
    *  it is dropped there (`logic/lineStyle.ts`), not remembered as
    *  `custom` is. */
   art?: LineStyleArtPathModel[];
+  /** How far the path's ink shifts the art's colours, 0–1; absent is the
+   *  whole shift. */
+  tint?: number;
   /** How closely the glyphs stand, 0–1 (0 sparse, 1 touching). */
   density: number;
   /** A glyph's size in cells — the side of the box it is drawn into. */

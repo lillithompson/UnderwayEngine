@@ -53,12 +53,15 @@ export const DEFAULT_LINE_STYLE_EFFECT: LineStyleEffect = {
  *  path would vanish), a rotation brought round into 0–360. A drawing
  *  rides through as it is, when there is one — the pad's strokes and the
  *  art alike, each absent from the record when the model holds none, so a
- *  style that never had art is the record it always was. */
+ *  style that never had art is the record it always was — and its `tint`
+ *  the same way, absent while it is the whole shift. */
 export function lineStyleModelToEffect(m: LineStyleModel): LineStyleEffect {
   return {
     glyph: m.glyph,
     ...(m.custom && m.custom.length > 0 ? { custom: m.custom } : {}),
     ...(m.art && m.art.length > 0 ? { art: m.art } : {}),
+    // The whole shift is the absent field (`lineStyleTintAmount`).
+    ...(m.tint !== undefined && Number.isFinite(m.tint) && m.tint < 1 ? { tint: Math.max(0, m.tint) } : {}),
     density: Math.max(0, Math.min(1, m.density)),
     size: clampGlyphSize(m.size),
     rotation: ((m.rotation % 360) + 360) % 360,
@@ -73,6 +76,7 @@ export function lineStyleEffectToModel(e: LineStyleEffect): LineStyleModel {
     glyph: e.glyph,
     ...(e.custom ? { custom: e.custom } : {}),
     ...(e.art ? { art: e.art } : {}),
+    ...(e.tint !== undefined ? { tint: e.tint } : {}),
     density: e.density,
     size: e.size,
     rotation: e.rotation ?? 0,

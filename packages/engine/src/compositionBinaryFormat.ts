@@ -10,7 +10,7 @@ import { foldLegacyGroupNames } from './legacyGroupNames';
 import { dropLocalCaches } from './legacyLocalCaches';
 import { compSnapStep } from './compositionCellMath';
 import { signedDeg } from './sceneTransform';
-import { clampGlyphSize, lineStyleArtPathOutlined } from './lineStyle';
+import { clampGlyphSize, lineStyleArtPathOutlined, lineStyleTintAmount } from './lineStyle';
 
 // â”€â”€ FCOMP Binary Format v29 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
@@ -189,6 +189,7 @@ import { clampGlyphSize, lineStyleArtPathOutlined } from './lineStyle';
 //                   + r u8 + g u8 + b u8 + width f32 if hasColor (the
 //                     outline; the width in the unit square's units)
 //                   + r u8 + g u8 + b u8 if hasFill
+//                 (v73, after the last art path: + tint u8, /255)
 //                   + opacity u8 if hasOpacity, fillOpacity u8 if
 //                     hasFillOpacity (each quantized /255)
 //                   + pointCount u16 and that many x u16 + y u16 (unit
@@ -671,7 +672,13 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      the mask's last), so it is read by version: a v71 line-style block
 //      ends at its strokes and reads exactly as before, and a v72 block
 //      with no art costs the one zero byte.
-const FORMAT_VERSION = 72;
+// v73: HOW FAR THE INK SHIFTS THE ART. `LineStyleEffect.tint` — 0…1, how
+//      much of the path's colour the art's own colours take (lineStyle.ts
+//      `lineStyleArtTint`) — one u8 (/255) at the end of the line-style
+//      block, after the art. 255 is the whole shift, which is what a style
+//      without the field means and what every v72 block reads as; read by
+//      version, as the art's count is.
+const FORMAT_VERSION = 73;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 /** v70+: the file ends in a host-data chunk section. */
@@ -1829,6 +1836,7 @@ function lineStyleBinarySize(ls: LineStyleEffect): number {
   size += 1; // strokeCount
   for (const stroke of lineStyleStrokes(ls)) size += 2 + stroke.length * 2;
   size += 1; // artCount (v72)
+  size += 1; // tint (v73)
   for (const path of lineStyleArtPaths(ls)) {
     size += 1;                                        // flags
     if (path.color) size += 3 + 4;                    // rgb + width f32
@@ -1975,6 +1983,8 @@ function writeEffects(view: DataView, out: Uint8Array, pos: number, fx: NodeEffe
         view.setUint16(pos, quantize65535(y), true); pos += 2;
       }
     }
+    // v73: how far the ink shifts the art; the whole way when unsaid.
+    out[pos++] = quantize255(lineStyleTintAmount(ls));
   }
   return pos;
 }
@@ -2128,10 +2138,19 @@ function readEffects(
         if (path.color || path.fill) art.push(path);
       }
     }
+    // v73: the tint, by version too. 255 is the whole shift: the absent field.
+    let tint = 255;
+    if (version >= 73) {
+      if (pos + 1 > data.byteLength) {
+        throw new Error('Corrupt .tile: line style tint runs past file end.');
+      }
+      tint = data[pos++];
+    }
     effects.lineStyle = {
       glyph, density, size, rotation, randomPlacement, randomRotation, randomSize,
       ...(custom.length > 0 ? { custom } : {}),
       ...(art.length > 0 ? { art } : {}),
+      ...(tint < 255 ? { tint: tint / 255 } : {}),
     };
   }
   return { effects, pos };

@@ -8,7 +8,7 @@
 import {
   glyphCommandsPathD, lineStyleArt, lineStyleArtPathOutlined, lineStyleGlyphCommands, lineStyleMarkup, lineStyleOf,
   clampGlyphSize, lineStylePathD, lineStylePlacements, lineStyleReachCells, lineStyleSeed, lineStyleSpacing,
-  lineStyleArtTint, lineStyleStampJitter, lineStyleWithInk,
+  lineStyleArtTint, lineStyleStampJitter, lineStyleTintAmount, lineStyleWithInk,
   MAX_ART_GLYPH_POINTS, MAX_ART_PATHS, MAX_DRAWN_GLYPH_POINTS, MAX_GLYPH_SIZE, MAX_LINE_STYLE_COMMANDS, MAX_LINE_STYLE_STAMPS, MIN_GLYPH_SIZE,
 } from '../lineStyle';
 import { buildSVGObjectContent, svgStrokePresentation, svgStrokesMarkup, withSVGObjectStrokeColor } from '../svgPathBuilder';
@@ -595,6 +595,29 @@ describe('the art’s markup', () => {
     // A recoloured object's stamps follow it, and a subpath's its own colour.
     const styled = obj({ color: ink, effects: { lineStyle: artStyle(twoPaths(), { size: 1 }) } });
     expect(buildSVGObjectContent(styled, 1, SVG_UNITS_PER_L0_CELL)).toContain('stroke="rgb(200,0,0)"');
+  });
+
+  it('a style’s TINT is how far the ink shifts the art: none at 0, the whole shift at 1 and unsaid, between them in proportion', () => {
+    const art = { r: 200, g: 100, b: 50 }, ink = { r: 255, g: 0, b: 0 };
+    expect(lineStyleArtTint(art, ink, 0)).toEqual(art);
+    expect(lineStyleArtTint(art, ink, 1)).toEqual(lineStyleArtTint(art, ink));
+    expect(lineStyleArtTint(art, ink, 0.5)).toEqual({ r: 200, g: 50, b: 25 });
+    // The amount a style says: clamped, and the whole shift for none or nonsense.
+    expect(lineStyleTintAmount(artStyle(twoPaths()))).toBe(1);
+    expect(lineStyleTintAmount(artStyle(twoPaths(), { tint: 0.25 }))).toBe(0.25);
+    expect(lineStyleTintAmount(artStyle(twoPaths(), { tint: -1 }))).toBe(0);
+    expect(lineStyleTintAmount(artStyle(twoPaths(), { tint: 7 }))).toBe(1);
+    expect(lineStyleTintAmount(artStyle(twoPaths(), { tint: Number.NaN }))).toBe(1);
+    // In the markup: at 0 the art is as a white path draws it, whatever the ink.
+    const exact = lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1 }), 1, '', WHITE);
+    expect(lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1, tint: 0 }), 1, '', ink)).toBe(exact);
+    expect(lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1, tint: 1 }), 1, '', ink))
+      .toBe(lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1 }), 1, '', ink));
+    expect(lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1, tint: 0.5 }), 1, '', ink)).toContain('stroke="rgb(200,5,10)"');
+    // One ink is one ink: a silhouette is the whole shift whatever the style says.
+    const cast = lineStyleWithInk(artStyle(twoPaths(), { tint: 0 }), ink, { floodFills: true });
+    expect('tint' in cast).toBe(false);
+    expect(lineStyleMarkup(short(), cast, 1, '', ink)).not.toMatch(/rgb\((?!255,0,0\))/);
   });
 
   it('an outline’s width scales with the glyph’s size', () => {

@@ -118,12 +118,12 @@ describe('v71: the line style block', () => {
     expect(plain.effects!.shadow).toMatchObject({ dx: 0.5 });
   });
 
-  test('an unstyled file is written at the current version (72 since the art) and reads back with no line style', () => {
+  test('an unstyled file is written at the current version (73 since the art’s tint) and reads back with no line style', () => {
     const bytes = serializeComposition(makeBundle([makeSVG('a', {
       effects: { shadow: { dx: 0.5, dy: 0.25, blur: 1, color: { r: 0, g: 0, b: 0 }, alpha: 0.5 } },
     })]), []);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    expect(view.getUint16(4, true)).toBe(72);
+    expect(view.getUint16(4, true)).toBe(73);
     const parsed = deserializeComposition(bytes);
     expect(parsed.meta.svgObjects![0].effects!.lineStyle).toBeUndefined();
   });
