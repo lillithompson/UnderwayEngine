@@ -119,8 +119,10 @@ export const MAX_DRAWN_GLYPH_POINTS = 64;
 /** The most paths a drawn glyph's ART stamps with, and the most points
  *  they come to between them (each path's ends apart): art is several
  *  `<path>`s per styled chain where a drawn glyph is one, so it is bounded
- *  by both. */
-export const MAX_ART_PATHS = 32;
+ *  by both. The two are one number: a line drawn in a colour that changes
+ *  along it is a path per segment, and a budget of paths under the budget
+ *  of points stamped the first part of such a mark and none of the rest. */
+export const MAX_ART_PATHS = 96;
 export const MAX_ART_GLYPH_POINTS = 96;
 
 type Polyline = readonly (readonly [number, number])[];

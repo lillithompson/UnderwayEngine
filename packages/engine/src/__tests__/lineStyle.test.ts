@@ -495,12 +495,14 @@ describe('a drawn glyph’s art', () => {
   });
 
   it('is bounded: the first paths of the budget, and a bounded number of points, each path’s ends kept', () => {
-    const many: LineStyleArtPath[] = Array.from({ length: 100 }, (_, k) => ({
-      points: Array.from({ length: 50 }, (_, i): [number, number] => [i / 49, k / 99]),
+    const many: LineStyleArtPath[] = Array.from({ length: 200 }, (_, k) => ({
+      points: Array.from({ length: 50 }, (_, i): [number, number] => [i / 49, k / 199]),
       color: RED, width: 0.01,
     }));
     const art = lineStyleArt(artStyle(many))!;
-    expect(MAX_ART_PATHS).toBe(32);
+    expect(MAX_ART_PATHS).toBe(96);
+    // A path a segment fits the budget of points: neither cuts the other short.
+    expect(MAX_ART_PATHS).toBe(MAX_ART_GLYPH_POINTS);
     expect(MAX_ART_GLYPH_POINTS).toBe(96);
     expect(art).toHaveLength(MAX_ART_PATHS);
     const points = art.reduce((n, path) => n + path.commands.length, 0);
@@ -510,7 +512,7 @@ describe('a drawn glyph’s art', () => {
       expect(path.commands[0][1]).toBeCloseTo(-0.5, 9);
       expect(path.commands[path.commands.length - 1][1]).toBeCloseTo(0.5, 9);
     }
-    // The bounds are the kept paths' own: the 32nd sits on the box's far side.
+    // The bounds are the kept paths' own: the last sits on the box's far side.
     expect(art[MAX_ART_PATHS - 1].commands[0][2] as number).toBeGreaterThan(art[0].commands[0][2] as number);
   });
 
