@@ -8,7 +8,7 @@
 import {
   glyphCommandsPathD, lineStyleArt, lineStyleArtPathOutlined, lineStyleGlyphCommands, lineStyleMarkup, lineStyleOf,
   clampGlyphSize, lineStylePathD, lineStylePlacements, lineStyleReachCells, lineStyleSeed, lineStyleSpacing,
-  lineStyleStampJitter, lineStyleWithInk,
+  lineStyleArtTint, lineStyleStampJitter, lineStyleWithInk,
   MAX_ART_GLYPH_POINTS, MAX_ART_PATHS, MAX_DRAWN_GLYPH_POINTS, MAX_GLYPH_SIZE, MAX_LINE_STYLE_COMMANDS, MAX_LINE_STYLE_STAMPS, MIN_GLYPH_SIZE,
 } from '../lineStyle';
 import { buildSVGObjectContent, svgStrokePresentation, svgStrokesMarkup, withSVGObjectStrokeColor } from '../svgPathBuilder';
@@ -566,18 +566,33 @@ describe('the art’s markup', () => {
     }
   });
 
-  it('paints in the art’s own colours, not the path’s ink, and never wears the path’s stroke attrs', () => {
-    const m = lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1 }), 1, 'stroke-width="7" stroke-dasharray="2 1"', { r: 1, g: 2, b: 3 });
+  it('paints in the art’s own colours — exactly, along a WHITE path — and never wears the path’s stroke attrs', () => {
+    const m = lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1 }), 1, 'stroke-width="7" stroke-dasharray="2 1"', WHITE);
     const [square, tick] = m.match(/<path [^>]*\/>/g)!;
     expect(square).toContain(' fill="rgb(5,60,220)" fill-opacity="0.5" stroke="rgb(200,10,20)" stroke-width="12.8" stroke-linecap="round" stroke-linejoin="round" />');
     expect(tick).toContain(' fill="none" stroke="rgb(5,60,220)" stroke-width="25.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.25" />');
-    expect(m).not.toContain('rgb(1,2,3)');
+    expect(m).not.toContain('rgb(255,255,255)');
     expect(m).not.toContain('stroke-width="7"');
     expect(m).not.toContain('stroke-dasharray');
     // A fill with no outline says so, and an opaque fill carries no opacity.
-    const filled = lineStyleMarkup(short(), artStyle([{ points: [[0, 0], [1, 0], [1, 1]], fill: RED }]), 1, 'stroke-width="7"', BLUE);
+    const filled = lineStyleMarkup(short(), artStyle([{ points: [[0, 0], [1, 0], [1, 1]], fill: RED }]), 1, 'stroke-width="7"', WHITE);
     expect(filled).toContain(' fill="rgb(200,10,20)" stroke="none" />');
     expect(filled).not.toContain('opacity');
+  });
+
+  it('a COLOURED path shifts the art’s colours toward its own: each multiplied by the ink, so white art is the ink and black stays black', () => {
+    expect(lineStyleArtTint({ r: 200, g: 10, b: 20 }, WHITE)).toEqual({ r: 200, g: 10, b: 20 });
+    expect(lineStyleArtTint(WHITE, { r: 12, g: 34, b: 56 })).toEqual({ r: 12, g: 34, b: 56 });
+    expect(lineStyleArtTint({ r: 0, g: 0, b: 0 }, { r: 12, g: 34, b: 56 })).toEqual({ r: 0, g: 0, b: 0 });
+    expect(lineStyleArtTint({ r: 200, g: 100, b: 50 }, { r: 255, g: 128, b: 0 })).toEqual({ r: 200, g: 50, b: 0 });
+    // …in the markup: the path's ink is what the art is shifted by.
+    const ink = { r: 255, g: 0, b: 0 };
+    const [square, tick] = lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1 }), 1, '', ink).match(/<path [^>]*\/>/g)!;
+    expect(square).toContain(' fill="rgb(5,0,0)" fill-opacity="0.5" stroke="rgb(200,0,0)" ');
+    expect(tick).toContain(' stroke="rgb(5,0,0)" ');
+    // A recoloured object's stamps follow it, and a subpath's its own colour.
+    const styled = obj({ color: ink, effects: { lineStyle: artStyle(twoPaths(), { size: 1 }) } });
+    expect(buildSVGObjectContent(styled, 1, SVG_UNITS_PER_L0_CELL)).toContain('stroke="rgb(200,0,0)"');
   });
 
   it('an outline’s width scales with the glyph’s size', () => {
@@ -601,23 +616,22 @@ describe('the art’s markup', () => {
   });
 
   it('reaches the canvas and the export through the one strokes builder, the object’s fill subpaths drawn as ever', () => {
-    const styled = obj({ effects: { lineStyle: artStyle(twoPaths(), { size: 1 }) } });
+    const styled = obj({ color: WHITE, effects: { lineStyle: artStyle(twoPaths(), { size: 1 }) } });
     const { attrs, segments } = svgStrokePresentation(styled, 1, SVG_UNITS_PER_L0_CELL);
     const m = svgStrokesMarkup(styled, segments, attrs, 0.25);
     expect(m).toContain('fill="rgb(5,60,220)"');
-    expect(m).not.toContain('rgb(10,20,30)');
     expect(buildSVGObjectContent(styled, 1, SVG_UNITS_PER_L0_CELL)).toContain('stroke="rgb(200,10,20)"');
   });
 });
 
 describe('art in one ink', () => {
-  it('a recolour takes the art’s outlines, and its fills only under a flood — the subpaths’ rule', () => {
+  it('a recolour makes the art’s outlines NEUTRAL (white), which the ink of the object they are stamped along then colours, and its fills only under a flood — the subpaths’ rule', () => {
     const s = artStyle();
-    const inked = lineStyleWithInk(s, WHITE);
+    const inked = lineStyleWithInk(s, RED);
     expect(inked.art![0]).toMatchObject({ color: WHITE, width: 0.02, fill: BLUE, fillOpacity: 0.5 });
     expect(inked.art![1]).toMatchObject({ color: WHITE, width: 0.04, opacity: 0.25 });
     expect(inked.art![0].points).toBe(s.art![0].points);
-    const flooded = lineStyleWithInk(s, WHITE, { floodFills: true });
+    const flooded = lineStyleWithInk(s, RED, { floodFills: true });
     expect(flooded.art![0]).toMatchObject({ color: WHITE, fill: WHITE });
     // The style it was given is not written to.
     expect(s.art![0].color).toBe(RED);
@@ -646,7 +660,10 @@ describe('art in one ink', () => {
     const white = withSVGObjectStrokeColor(styled, WHITE);
     expect(white.effects!.lineStyle!.art![0]).toMatchObject({ color: WHITE, fill: BLUE });
     expect(white.effects!.shadow).toBe(styled.effects!.shadow);
-    expect(withSVGObjectStrokeColor(styled, WHITE, { floodFills: true }).effects!.lineStyle!.art![0].fill).toBe(WHITE);
+    expect(withSVGObjectStrokeColor(styled, WHITE, { floodFills: true }).effects!.lineStyle!.art![0].fill).toEqual(WHITE);
+    // The object is given the ink, so its neutral art is stamped in it.
+    const red = withSVGObjectStrokeColor(styled, RED, { floodFills: true });
+    expect(buildSVGObjectContent(red, 1, SVG_UNITS_PER_L0_CELL)).toContain('fill="rgb(200,10,20)"');
     // An object whose style has no art keeps the very effects it had.
     const plain = obj({ effects: { lineStyle: style({ glyph: 'heart' }) } });
     expect(withSVGObjectStrokeColor(plain, WHITE).effects).toBe(plain.effects);

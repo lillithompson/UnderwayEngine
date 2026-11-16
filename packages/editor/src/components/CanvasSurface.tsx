@@ -224,6 +224,7 @@ import {
 } from '../pushBrush';
 import { drawOverlayToCanvas, overlayImageData } from '@/engine/overlayCanvas';
 import { createPaintPreviewCanvas } from '../paintOverlayPreview';
+import { lineStyleOf } from '@/engine/lineStyle';
 import { type ShapeStrokePreviewFrame, shapeStrokePreviewFrame, sideD } from '../shapeStrokePreview';
 import { SHAPE_STROKES_SVG_ATTR, type ShapeSplit, mountShapeMarkup, splitShapeDom, unsplitShapeDom } from '../shapePaintDom';
 import { shapePaintClipId } from '@/engine/imagePaintOverlay';
@@ -2936,6 +2937,12 @@ export function CanvasSurface({
 
     for (const [svgId, painted] of g.draft.paintedSegments) {
       if (painted.size === 0) continue;
+      // A STYLED line draws no line: its stroke is a run of glyphs, and a
+      // brushed side previewed as the plain stroke it replaces showed a
+      // straight line through the glyphs until the release. Its glyphs
+      // take the colour at the commit, as the object is re-rendered.
+      const brushed = s.svgObjects.find((o) => o.id === svgId);
+      if (brushed && lineStyleOf(brushed)) continue;
       const frame = paintPreviewFrame(svgId);
       if (!frame) continue;
       const { flat } = frame;

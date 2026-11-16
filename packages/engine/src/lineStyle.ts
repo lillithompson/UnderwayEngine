@@ -277,16 +277,40 @@ const artOutline = (art: readonly FittedArtPath[]): GlyphCommand[] =>
   joined(art.map((path) => path.commands));
 
 /**
+ * An art colour as a path in `ink` draws it: the two MULTIPLIED, channel
+ * by channel. A white path (255) leaves the art exactly as it was drawn;
+ * a coloured one shifts every colour of it toward its own — white art
+ * becomes the ink, black stays black. The one colour shift for art,
+ * shared by the markup here and by a host that stamps a path still being
+ * drawn (DrawBot's trail canvas).
+ */
+export function lineStyleArtTint(art: RGBColor, ink: RGBColor): RGBColor {
+  return {
+    r: Math.round((art.r * ink.r) / 255),
+    g: Math.round((art.g * ink.g) / 255),
+    b: Math.round((art.b * ink.b) / 255),
+  };
+}
+
+/** The art colour the ink alone decides: white, which the shift
+ *  ({@link lineStyleArtTint}) turns into the path's own colour. */
+const ART_NEUTRAL: RGBColor = Object.freeze({ r: 255, g: 255, b: 255 });
+
+/**
  * A style as ONE ink draws it: its art's outlines in `color`, and its
  * fills too when `floodFills` — the rule `withSVGObjectStrokeColor` keeps
  * for a shape's subpaths, here for the paint a style carries itself, so a
  * silhouette (a cutout, a pattern's ink, a shadow's cast) is not left in
- * the art's own colours. `widenCells` grows every outline by that many
+ * the art's own colours. The art is made NEUTRAL (white) there, which the
+ * ink of the object it is stamped along then colours
+ * ({@link lineStyleArtTint}): the caller gives that object `color` as its
+ * own, as both do (`withSVGObjectStrokeColor`, the node layer's cast).
+ * `widenCells` grows every outline by that many
  * world cells, for a cast that has to be as wide as it is soft. A style
  * with no drawable art comes back as it is, the same object.
  */
 export function lineStyleWithInk(
-  style: LineStyleEffect, color: RGBColor,
+  style: LineStyleEffect, _color: RGBColor,
   opts?: { floodFills?: boolean; widenCells?: number },
 ): LineStyleEffect {
   const fit = fitArt(style);
@@ -302,8 +326,8 @@ export function lineStyleWithInk(
       if (!outlined && !flood) return path;
       return {
         ...path,
-        ...(outlined ? { color, width: (path.width as number) + widen } : {}),
-        ...(flood ? { fill: color } : {}),
+        ...(outlined ? { color: ART_NEUTRAL, width: (path.width as number) + widen } : {}),
+        ...(flood ? { fill: ART_NEUTRAL } : {}),
       };
     }),
   };
@@ -588,14 +612,15 @@ const rgb = ({ r, g, b }: RGBColor): string => `rgb(${r},${g},${b})`;
  * stamp's copy of it, in the art's order (the first is the bottom) — so a
  * stamp's paths are layered path by path across the whole run, not stamp
  * by stamp, and the markup stays a path per colour however many stamps
- * there are. Each is painted in its OWN fill, outline and opacity; the
+ * there are. Each is painted in its OWN fill, outline and opacity, each
+ * colour shifted by the path's `ink` ({@link lineStyleArtTint}); the
  * outline's width is the fitted one at the style's `size` (one width per
  * path, so the Size slider scales it and the random size does not), with
  * round caps and joins, as a drawing's strokes are.
  */
 function lineStyleArtMarkup(
   segments: readonly PathSegment[], style: LineStyleEffect, seed: number,
-  art: readonly FittedArtPath[], unitsPerCell: number,
+  art: readonly FittedArtPath[], unitsPerCell: number, ink: RGBColor,
 ): string {
   const commandCount = art.reduce((n, path) => n + path.commands.length, 0);
   const stamps = placementsFor(segments, style, seed, commandCount);
@@ -603,10 +628,10 @@ function lineStyleArtMarkup(
   let out = '';
   for (const path of art) {
     const fill = path.fill
-      ? `fill="${rgb(path.fill)}"${path.fillOpacity !== undefined ? ` fill-opacity="${fmt(path.fillOpacity)}"` : ''}`
+      ? `fill="${rgb(lineStyleArtTint(path.fill, ink))}"${path.fillOpacity !== undefined ? ` fill-opacity="${fmt(path.fillOpacity)}"` : ''}`
       : 'fill="none"';
     const stroke = path.color && path.width !== undefined
-      ? `stroke="${rgb(path.color)}" stroke-width="${fmt(path.width * style.size * unitsPerCell)}" stroke-linecap="round" stroke-linejoin="round"`
+      ? `stroke="${rgb(lineStyleArtTint(path.color, ink))}" stroke-width="${fmt(path.width * style.size * unitsPerCell)}" stroke-linecap="round" stroke-linejoin="round"`
       : 'stroke="none"';
     const opacity = path.opacity !== undefined ? ` opacity="${fmt(path.opacity)}"` : '';
     out += `<path d="${stampsPathD(path.commands, stamps, unitsPerCell)}" ${fill} ${stroke}${opacity} />`;
@@ -619,15 +644,18 @@ function lineStyleArtMarkup(
  * outlined path in the given ink, wearing the stroke attrs the caller
  * would have put on the line (`svgStrokePresentation`'s — width, dash,
  * caps). A style with ART draws that instead, in the art's own paint
- * ({@link lineStyleArtMarkup}): neither the ink nor the stroke attrs dress
- * it. '' when there is nothing to stamp.
+ * SHIFTED by the ink ({@link lineStyleArtTint}: a white path draws the art
+ * exactly as drawn, a coloured one tints it), so a styled path is
+ * recoloured as any path is — by its own `color`, a subpath's, the Color
+ * brush's; the stroke attrs do not dress it. '' when there is nothing to
+ * stamp.
  */
 export function lineStyleMarkup(
   segments: readonly PathSegment[], style: LineStyleEffect, seed: number,
   strokeAttrs: string, color: RGBColor,
 ): string {
   const art = lineStyleArt(style);
-  if (art) return lineStyleArtMarkup(segments, style, seed, art, SVG_UNITS_PER_L0_CELL);
+  if (art) return lineStyleArtMarkup(segments, style, seed, art, SVG_UNITS_PER_L0_CELL, color);
   const d = lineStylePathD(segments, style, seed);
   if (!d) return '';
   return `<path d="${d}" ${strokeAttrs} stroke="${rgb(color)}" />`;
