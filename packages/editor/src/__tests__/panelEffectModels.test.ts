@@ -169,4 +169,15 @@ describe('line style', () => {
     expect('custom' in lineStyleModelToEffect({ ...m, custom: [] })).toBe(false);
     expect('custom' in lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT)).toBe(false);
   });
+
+  test('art rides through both ways too, and a style that never had any has no `art` key', () => {
+    const art = [{ points: [[0, 0], [1, 1]] as [number, number][], fill: { r: 1, g: 2, b: 3 } }];
+    const m = { ...lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT), glyph: 'custom' as const, art };
+    expect(lineStyleModelToEffect(m).art).toBe(art);
+    expect(lineStyleEffectToModel(lineStyleModelToEffect(m)).art).toBe(art);
+    expect('art' in lineStyleModelToEffect({ ...m, art: [] })).toBe(false);
+    expect('art' in lineStyleModelToEffect({ ...m, art: undefined })).toBe(false);
+    expect('art' in lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT)).toBe(false);
+    expect('art' in lineStyleModelToEffect(lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT))).toBe(false);
+  });
 });

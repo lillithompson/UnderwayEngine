@@ -388,6 +388,20 @@ export type EffectKind = 'shadow' | GlowKind | 'lineStyle';
  *  on the Style page's pad. */
 export type LineStyleGlyphKind = 'line' | 'circle' | 'sparkle' | 'heart' | 'custom';
 
+/** One path of a drawn glyph's ART: mirrors the engine's
+ *  `LineStyleArtPath` without importing it — a polyline in the unit square
+ *  with its own outline (`color` and `width` together), solid `fill` and
+ *  opacity. The Style page never edits one; it carries the list through
+ *  and drops it when the pad is drawn on (see {@link LineStyleModel.art}). */
+export interface LineStyleArtPathModel {
+  points: [number, number][];
+  color?: RGBLike;
+  width?: number;
+  fill?: RGBLike;
+  opacity?: number;
+  fillOpacity?: number;
+}
+
 /** Editable LINE STYLE — a vector's stroke replaced by a run of glyphs laid
  *  along the path (the panel maps these to slider positions; the app maps
  *  them to the engine's LineStyleEffect, which has the same fields). The
@@ -401,6 +415,14 @@ export interface LineStyleModel {
    *  is chosen over it, so Draw brings the sketch back; a saved file holds
    *  it only while `glyph` is 'custom'. */
   custom?: [number, number][][];
+  /** The drawn glyph as ART — a drawing that stamps in its own colours and
+   *  fills, which a host makes (the page has no tool for one) and which
+   *  outranks `custom` while `glyph` is 'custom'. The page shows it as the
+   *  Draw glyph, its outline in the pad, and carries it through every
+   *  slider; a stroke on the pad, Clear, or another glyph replaces it, so
+   *  it is dropped there (`logic/lineStyle.ts`), not remembered as
+   *  `custom` is. */
+  art?: LineStyleArtPathModel[];
   /** How closely the glyphs stand, 0–1 (0 sparse, 1 touching). */
   density: number;
   /** A glyph's size in cells — the side of the box it is drawn into. */

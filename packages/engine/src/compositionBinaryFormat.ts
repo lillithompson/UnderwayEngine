@@ -1,4 +1,4 @@
-﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CellState, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, PatternObject, PatternSymmetry, ShapePatternFill, RGBColor, TextObject, TextStyle, TextAlign, TextVAlign, FontWeight, Paint, GradientStop, NodeEffects, LineStyleEffect, LineStyleGlyph, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
+﻿import { BlendMode, BorderPosition, CanvasPaintIsland, CellState, CompositionFigure, GridLevel, Camera, GroupNode, SVGObject, SVGStroke, SVGEndpoints, SVGEndMarker, SVGSubpath, PathSegment, ImageObject, ImagePaintOverlay, PaintObject, PatternObject, PatternSymmetry, ShapePatternFill, RGBColor, TextObject, TextStyle, TextAlign, TextVAlign, FontWeight, Paint, GradientStop, NodeEffects, LineStyleArtPath, LineStyleEffect, LineStyleGlyph, ImageTintMode, ImageTintFill, ImageTintBlend, ImageFraming } from './types';
 import { normalizeCanvasPaintIslands } from './canvasPaint';
 import { FADE_DEFAULT_COLOR, hasFade, type FadeSpec } from './fade';
 import { bakeStoredFades } from './fadeBake';
@@ -10,7 +10,7 @@ import { foldLegacyGroupNames } from './legacyGroupNames';
 import { dropLocalCaches } from './legacyLocalCaches';
 import { compSnapStep } from './compositionCellMath';
 import { signedDeg } from './sceneTransform';
-import { clampGlyphSize } from './lineStyle';
+import { clampGlyphSize, lineStyleArtPathOutlined } from './lineStyle';
 
 // â”€â”€ FCOMP Binary Format v29 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
@@ -182,6 +182,18 @@ import { clampGlyphSize } from './lineStyle';
 //                 + strokeCount u8, then per stroke pointCount u16 and
 //                   that many x u8 + y u8 (unit square, quantized /255) —
 //                   zero strokes unless the glyph is custom
+//   v72 follows the strokes, inside the same block:
+//                 + artCount u8, then per art path
+//                   flags u8 (0x01 hasColor, 0x02 hasFill, 0x04 hasOpacity,
+//                             0x08 hasFillOpacity)
+//                   + r u8 + g u8 + b u8 + width f32 if hasColor (the
+//                     outline; the width in the unit square's units)
+//                   + r u8 + g u8 + b u8 if hasFill
+//                   + opacity u8 if hasOpacity, fillOpacity u8 if
+//                     hasFillOpacity (each quantized /255)
+//                   + pointCount u16 and that many x u16 + y u16 (unit
+//                     square, quantized /65535) —
+//                   zero paths unless the glyph is custom
 //
 // EMBEDDED FILES
 //   fileCount:   u16 LE
@@ -645,7 +657,21 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //
 //      The bit was always written 0 before, so every v70 file reads back
 //      byte for byte.
-const FORMAT_VERSION = 71;
+// v72: A DRAWN GLYPH CAN KEEP ITS OWN PAINT. `LineStyleEffect.art` — the
+//      drawn glyph as paths that each carry their own outline colour and
+//      width, solid fill and opacity, so a drawing stamps along the path
+//      exactly as it was drawn (engine/lineStyle.ts). It sits INSIDE the
+//      v71 line-style block, right after the pad's strokes: a path count,
+//      then per path a flags byte, the paint the flags name, and its
+//      points as u16s in the unit square — finer than the pad strokes' u8s,
+//      because art is fitted from a finished drawing and a 1/255 step shows
+//      in a small one.
+//
+//      There is no spare presence bit to say the count is there (v71 took
+//      the mask's last), so it is read by version: a v71 line-style block
+//      ends at its strokes and reads exactly as before, and a v72 block
+//      with no art costs the one zero byte.
+const FORMAT_VERSION = 72;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
 /** v70+: the file ends in a host-data chunk section. */
@@ -1417,6 +1443,11 @@ const EFFECT_HAS_GLOW_SPREAD = 0x20;
 const EFFECT_HAS_INNER_GLOW = 0x40;
 // v71: the line style block — the mask's last bit.
 const EFFECT_HAS_LINE_STYLE = 0x80;
+// v72: an art path's own flags, inside the line style block.
+const ART_HAS_COLOR = 0x01;
+const ART_HAS_FILL = 0x02;
+const ART_HAS_OPACITY = 0x04;
+const ART_HAS_FILL_OPACITY = 0x08;
 
 const LINE_STYLE_GLYPH_TO_BYTE: Record<LineStyleGlyph, number> = {
   line: 0, circle: 1, sparkle: 2, heart: 3, custom: 4,
@@ -1755,10 +1786,57 @@ function lineStyleStrokes(ls: LineStyleEffect): [number, number][][] {
   return ls.custom.slice(0, 255).map((stroke) => stroke.slice(0, 0xffff));
 }
 
+/** Quantize a [0,1] float to a u16 — an art point's coordinate. */
+function quantize65535(v: number): number {
+  return Math.round(Math.max(0, Math.min(1, v)) * 65535) & 0xffff;
+}
+
+/** An opacity the file has a byte for: one under 1. Opaque is the absent
+ *  flag, so an opaque path costs nothing. */
+function artOpacityWritten(v: number | undefined): v is number {
+  return v !== undefined && Number.isFinite(v) && v < 1;
+}
+
+/** The drawn glyph's ART as the file holds it (v72): at most 255 paths of
+ *  at most 65535 points each, every point finite and inside the unit
+ *  square. Only a path with paint is kept — an outline (a colour AND a
+ *  width, lineStyle.ts's one reading of it) or a fill; one with neither
+ *  can never draw — and each carries only the fields its flags will name.
+ *  A built-in glyph has none. */
+function lineStyleArtPaths(ls: LineStyleEffect): LineStyleArtPath[] {
+  if (ls.glyph !== 'custom' || !Array.isArray(ls.art)) return [];
+  const out: LineStyleArtPath[] = [];
+  for (const path of ls.art) {
+    if (out.length >= 255) break;
+    if (!path || !Array.isArray(path.points)) continue;
+    const outlined = lineStyleArtPathOutlined(path);
+    if (!outlined && !path.fill) continue;
+    out.push({
+      points: path.points
+        .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
+        .slice(0, 0xffff),
+      ...(outlined ? { color: path.color, width: path.width } : {}),
+      ...(path.fill ? { fill: path.fill } : {}),
+      ...(artOpacityWritten(path.opacity) ? { opacity: path.opacity } : {}),
+      ...(path.fill && artOpacityWritten(path.fillOpacity) ? { fillOpacity: path.fillOpacity } : {}),
+    });
+  }
+  return out;
+}
+
 function lineStyleBinarySize(ls: LineStyleEffect): number {
   let size = 1 + 1 + 4 + 4 + 3; // glyph, density, size f32, rotation f32, the three random u8s
   size += 1; // strokeCount
   for (const stroke of lineStyleStrokes(ls)) size += 2 + stroke.length * 2;
+  size += 1; // artCount (v72)
+  for (const path of lineStyleArtPaths(ls)) {
+    size += 1;                                        // flags
+    if (path.color) size += 3 + 4;                    // rgb + width f32
+    if (path.fill) size += 3;                         // rgb
+    if (path.opacity !== undefined) size += 1;
+    if (path.fillOpacity !== undefined) size += 1;
+    size += 2 + path.points.length * 4;               // pointCount + x u16, y u16 each
+  }
   return size;
 }
 
@@ -1874,6 +1952,29 @@ function writeEffects(view: DataView, out: Uint8Array, pos: number, fx: NodeEffe
         out[pos++] = quantize255(y);
       }
     }
+    // v72: the art, after the strokes it outranks.
+    const art = lineStyleArtPaths(ls);
+    out[pos++] = art.length;
+    for (const path of art) {
+      out[pos++] = (path.color ? ART_HAS_COLOR : 0)
+        | (path.fill ? ART_HAS_FILL : 0)
+        | (path.opacity !== undefined ? ART_HAS_OPACITY : 0)
+        | (path.fillOpacity !== undefined ? ART_HAS_FILL_OPACITY : 0);
+      if (path.color) {
+        out[pos++] = path.color.r; out[pos++] = path.color.g; out[pos++] = path.color.b;
+        view.setFloat32(pos, path.width!, true); pos += 4;
+      }
+      if (path.fill) {
+        out[pos++] = path.fill.r; out[pos++] = path.fill.g; out[pos++] = path.fill.b;
+      }
+      if (path.opacity !== undefined) out[pos++] = quantize255(path.opacity);
+      if (path.fillOpacity !== undefined) out[pos++] = quantize255(path.fillOpacity);
+      view.setUint16(pos, path.points.length, true); pos += 2;
+      for (const [x, y] of path.points) {
+        view.setUint16(pos, quantize65535(x), true); pos += 2;
+        view.setUint16(pos, quantize65535(y), true); pos += 2;
+      }
+    }
   }
   return pos;
 }
@@ -1975,9 +2076,62 @@ function readEffects(
       }
       custom.push(stroke);
     }
+    // v72: the art. Read by version, not by a bit (the mask has none left):
+    // a v71 block ends at its strokes.
+    const art: LineStyleArtPath[] = [];
+    if (version >= 72) {
+      // The count is one more thing from outside: with no byte left for it,
+      // `data[pos]` would read undefined and the block would end quietly.
+      if (pos + 1 > data.byteLength) {
+        throw new Error('Corrupt .tile: line style art count runs past file end.');
+      }
+      const artCount = data[pos++];
+      for (let i = 0; i < artCount; i++) {
+        // The same untrusted-count guards the strokes above keep: first the
+        // flags, then everything the flags say stands before the points,
+        // then the points themselves.
+        if (pos + 1 > data.byteLength) {
+          throw new Error(`Corrupt .tile: line style art path ${i}/${artCount} header runs past file end.`);
+        }
+        const flags = data[pos++];
+        const paint = (flags & ART_HAS_COLOR ? 3 + 4 : 0) + (flags & ART_HAS_FILL ? 3 : 0)
+          + (flags & ART_HAS_OPACITY ? 1 : 0) + (flags & ART_HAS_FILL_OPACITY ? 1 : 0);
+        if (pos + paint + 2 > data.byteLength) {
+          throw new Error(`Corrupt .tile: line style art path ${i}/${artCount} header runs past file end.`);
+        }
+        const path: LineStyleArtPath = { points: [] };
+        if (flags & ART_HAS_COLOR) {
+          const color = { r: data[pos], g: data[pos + 1], b: data[pos + 2] }; pos += 3;
+          // A raw f32 from outside: a width that is not a positive number
+          // is no outline at all, so the outline is dropped with it.
+          const width = view.getFloat32(pos, true); pos += 4;
+          if (Number.isFinite(width) && width > 0) { path.color = color; path.width = width; }
+        }
+        if (flags & ART_HAS_FILL) {
+          path.fill = { r: data[pos], g: data[pos + 1], b: data[pos + 2] }; pos += 3;
+        }
+        if (flags & ART_HAS_OPACITY) path.opacity = data[pos++] / 255;
+        if (flags & ART_HAS_FILL_OPACITY) {
+          const fillOpacity = data[pos++] / 255;
+          if (path.fill) path.fillOpacity = fillOpacity;
+        }
+        const pointCount = view.getUint16(pos, true); pos += 2;
+        if (pointCount * 4 > data.byteLength - pos) {
+          throw new Error(`Corrupt .tile: line style art path ${i}/${artCount} claims ${pointCount} points but only ${data.byteLength - pos} bytes remain.`);
+        }
+        for (let j = 0; j < pointCount; j++) {
+          path.points.push([view.getUint16(pos, true) / 65535, view.getUint16(pos + 2, true) / 65535]);
+          pos += 4;
+        }
+        // A path left with no paint (its outline dropped above, and no
+        // fill) can never draw; its bytes are read, and it is not kept.
+        if (path.color || path.fill) art.push(path);
+      }
+    }
     effects.lineStyle = {
       glyph, density, size, rotation, randomPlacement, randomRotation, randomSize,
       ...(custom.length > 0 ? { custom } : {}),
+      ...(art.length > 0 ? { art } : {}),
     };
   }
   return { effects, pos };

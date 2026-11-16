@@ -1435,11 +1435,39 @@ export interface NodeEffects {
 export type LineStyleGlyph = 'line' | 'circle' | 'sparkle' | 'heart' | 'custom';
 
 /**
+ * One path of a drawn glyph's ART (v72+): a drawing stamped along the path
+ * exactly as it was drawn, each of its paths in its OWN outline colour and
+ * width, with its own solid fill and opacity — where `custom` is outlines
+ * only, in the path's ink. See {@link LineStyleEffect.art}.
+ */
+export interface LineStyleArtPath {
+  /** The path as a polyline, in the unit square the glyph is drawn in
+   *  ((0,0) top-left → (1,1) bottom-right), fitted with the rest of the art
+   *  to its own bounds at render, as `custom` is. */
+  points: [number, number][];
+  /** Its outline's colour; absent: no outline. */
+  color?: RGBColor;
+  /** Its outline's width, in the same units as `points` (so it scales with
+   *  the glyph's Size). Read only with `color`, and an outline is the two
+   *  together: a colour with no width above nothing draws no outline. */
+  width?: number;
+  /** Its fill: the polyline closed and filled (nonzero), under its
+   *  outline; absent: unfilled. */
+  fill?: RGBColor;
+  /** The whole path's opacity, and its fill's own under that, each in
+   *  (0,1); absent: opaque. */
+  opacity?: number;
+  fillOpacity?: number;
+}
+
+/**
  * A line style: the path is not stroked; instead a glyph is stamped along
  * it, each stamp aligned with the path's direction where it stands. The
  * glyph is OUTLINED, never filled, in the path's own ink and with the
  * path's own stroke width and dash — the Stroke page's settings dress the
  * glyphs exactly as they dressed the line they replace.
+ * (A drawn glyph's ART is the exception, and carries its own paint:
+ * {@link LineStyleEffect.art}.)
  *
  * Placement is deterministic: the random sliders draw from a PRNG seeded
  * by the object's id (engine/lineStyle.ts), so a page reopens with every
@@ -1452,6 +1480,16 @@ export interface LineStyleEffect {
    *  right). Fitted to its own bounds at render, so a small sketch in one
    *  corner of the pad stamps as large as one across the whole of it. */
   custom?: [number, number][][];
+  /** The drawn glyph as ART (v72+), read only when `glyph` is 'custom':
+   *  paths that each keep their own colours, widths, fills and opacity, so
+   *  a drawing stamps exactly as it was drawn — the one case in which the
+   *  stamps are NOT in the path's ink, width and dash. When it holds at
+   *  least one drawable path (two finite points, and an outline or a fill)
+   *  it OUTRANKS `custom`; a reader that draws in one ink
+   *  (`lineStyleGlyphCommands`) draws its outline. Absent on every style
+   *  that never had art, so a style without it is the record it always
+   *  was. Paths in drawing order: the first is the bottom. */
+  art?: LineStyleArtPath[];
   /** How closely the glyphs stand, 0…1: 0 is sparse (a gap of three
    *  glyph-widths between stamps), 1 has them touching. */
   density: number;

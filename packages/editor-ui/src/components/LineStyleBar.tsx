@@ -7,7 +7,8 @@ import type { LineStyleGlyphKind, LineStyleModel } from '../adapter';
 import { GLYPH_BUTTON, GLYPH_GRID_GAP, GROUP_PAD, SHADOW_PAD_SIZE } from '../logic/submenuHeight';
 import {
   LINE_STYLE_GLYPH_OPTIONS, LINE_STYLE_SECTIONS, MAX_GLYPH_ROTATION, MAX_GLYPH_SIZE, MIN_GLYPH_SIZE,
-  type LineStyleSection, padGlyphPathD, padPointFromTouch, padPolylinePathD, strokesAfterDraw,
+  type LineStyleSection, lineStyleAfterClear, lineStyleAfterDraw, lineStyleAfterGlyph, lineStyleDrawn,
+  padGlyphPathD, padPointFromTouch, padPolylinePathD,
 } from '../logic/lineStyle';
 import {
   BarBody, CONTROL_ACCENT, GroupedBody, RowGroup, SECTION_TABS_GROUP_RADIUS, SectionTabs, SliderRow,
@@ -261,7 +262,7 @@ export function LineStyleBar({ style, section, onSection, onChange, onCommit }: 
   const set = (patch: Partial<LineStyleModel>, committed: boolean) =>
     (committed ? onCommit : onChange)({ ...style, ...patch });
   const sizeT = (style.size - MIN_GLYPH_SIZE) / (MAX_GLYPH_SIZE - MIN_GLYPH_SIZE);
-  const drawn = style.glyph === 'custom' && !!style.custom && style.custom.length > 0;
+  const drawn = lineStyleDrawn(style);
   return (
     <GroupedBody>
       <RowGroup>
@@ -281,15 +282,18 @@ export function LineStyleBar({ style, section, onSection, onChange, onCommit }: 
               aside={(
                 <GlyphPad
                   style={style}
+                  // A stroke, Clear and a glyph pick each drop the style's
+                  // art with what they change (logic/lineStyle.ts), which a
+                  // patch through `set` could not: it only adds keys.
                   onDraw={(stroke) => {
-                    const custom = strokesAfterDraw(style, stroke);
-                    if (custom) set({ glyph: 'custom', custom }, true);
+                    const next = lineStyleAfterDraw(style, stroke);
+                    if (next) onCommit(next);
                   }}
-                  onClear={drawn ? () => set({ glyph: 'circle', custom: undefined }, true) : undefined}
+                  onClear={drawn ? () => onCommit(lineStyleAfterClear(style)) : undefined}
                 />
               )}
             >
-              <GlyphGrid value={style.glyph} onChange={(glyph) => set({ glyph }, true)} />
+              <GlyphGrid value={style.glyph} onChange={(glyph) => onCommit(lineStyleAfterGlyph(style, glyph))} />
             </BarBody>
           ) : section === 'placement' ? (
             <BarBody spread>

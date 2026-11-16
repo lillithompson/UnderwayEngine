@@ -2,6 +2,7 @@ import React, { CSSProperties } from 'react';
 import { BorderEffect, GlowEffect, ImageObject, NodeEffects, PaintObject, PatternObject, RGBColor, ShadowEffect, SVGObject, TextObject } from '@/engine/types';
 import { paintContentTexels } from '@/engine/canvasPaint';
 import { buildSVGObjectContent } from '@/engine/svgPathBuilder';
+import { lineStyleWithInk } from '@/engine/lineStyle';
 import { strokeScaleForUnits, svgStrokeWidthCells } from '@/engine/svgStroke';
 import { borderDashIsDotted, borderDashPattern, borderRectGeometry, castSoftness, outlineCastSourceCells } from '@/engine/paintSvg';
 import { coverImageRect, effectiveFraming, straightenCoverScale, tileGeometry } from '@/engine/imageFraming';
@@ -394,9 +395,19 @@ function outlineCastObject(
   // The cast keeps nothing of the effects but the LINE STYLE: a styled
   // line's silhouette is its glyphs, and a shadow under a run of hearts has
   // to be a run of hearts (the same seed — the object's id — so it lands
-  // under the very stamps it shadows).
+  // under the very stamps it shadows). A style's ART paints itself, in
+  // colours the object's `color` never reaches, so it is put into the
+  // effect's ink here — outlines and fills both, a cast being one colour —
+  // and its outlines widened by what the stroke above was widened by.
   delete out.effects;
-  if (object.effects?.lineStyle) out.effects = { lineStyle: object.effects.lineStyle };
+  const style = object.effects?.lineStyle;
+  if (style) {
+    out.effects = {
+      lineStyle: lineStyleWithInk(style, effect.color, {
+        floodFills: true, widenCells: outlineCastSourceCells(width, effect) - width,
+      }),
+    };
+  }
   delete out.paintOverlay;
   delete out.fill;
   delete out.fillPaint;

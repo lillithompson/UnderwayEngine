@@ -10,7 +10,7 @@ import { shapePatternFillIsEmpty } from './shapePatternFill';
 import { inkedPatternCell } from './patternObject';
 import { PaintOverlaySlot, shapePaintClipId, shapePaintClipMarkup, shapePaintOverlaySVG } from './imagePaintOverlay';
 import { svgEndpointsMarkup } from './svgEndpoints';
-import { lineStyleMarkup, lineStyleOf, lineStyleSeed } from './lineStyle';
+import { lineStyleMarkup, lineStyleOf, lineStyleSeed, lineStyleWithInk } from './lineStyle';
 import {
   roundPathCorners,
   svgDefIdSafe,
@@ -966,7 +966,8 @@ export function svgStrokePresentation(
 /**
  * The same object with every STROKE it paints in `color`: its own `color`, each
  * stroked subpath's, and every per-copy tile override. Geometry, effects and
- * FILLS are untouched.
+ * FILLS are untouched — but for the paint a line style's ART carries, whose
+ * outlines are strokes like any other (`lineStyleWithInk`).
  *
  * For a cutout export landing on a backdrop the page never had — see
  * {@link CompositionSVGInputs.strokeColorOverride}. Recoloring the node up
@@ -1016,6 +1017,14 @@ export function withSVGObjectStrokeColor(
     const overrides = new Map<number, RGBColor>();
     for (const key of obj.segmentOverrides.keys()) overrides.set(key, color);
     out.segmentOverrides = overrides;
+  }
+  // A line style's ART carries paint of its own (v72), which neither the
+  // object's `color` nor its subpaths say: its outlines are strokes and
+  // take the colour, its fills only under a flood — the subpaths' rule.
+  const style = obj.effects?.lineStyle;
+  if (style) {
+    const inked = lineStyleWithInk(style, color, { floodFills: opts?.floodFills });
+    if (inked !== style) out.effects = { ...obj.effects, lineStyle: inked };
   }
   return out;
 }

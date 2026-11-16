@@ -1,4 +1,4 @@
-import type { LineStyleEffect, LineStyleGlyph, PathSegment, RGBColor, SVGObject } from './types';
+import type { LineStyleArtPath, LineStyleEffect, LineStyleGlyph, PathSegment, RGBColor, SVGObject } from './types';
 import { arcMotionAt, piecePointAt, segLength } from './compositionArcMath';
 import { fnv1a32, mulberry32At } from './seededRandom';
 import { SVG_UNITS_PER_L0_CELL } from './svgExport';
@@ -9,6 +9,12 @@ import { SVG_UNITS_PER_L0_CELL } from './svgExport';
 // dash, so the Stroke page dresses the glyphs exactly as it dressed the line
 // they replace (`svgStrokesMarkup` in svgPathBuilder.ts hands the same
 // stroke attrs to both).
+//
+// The one exception is a drawn glyph's ART (v72, `LineStyleEffect.art`): a
+// drawing stamped exactly as it was drawn, each of its paths in its own
+// colours, width, fill and opacity, which the Stroke page does not dress.
+// A reader that draws in one ink still reads one outline for it
+// (`lineStyleGlyphCommands`), so nothing that stamps had to learn of it.
 //
 // Everything here is pure geometry over the engine's own segment chain:
 // `segLength` measures each piece, `piecePointAt` and `arcMotionAt` give the
@@ -110,18 +116,37 @@ export const MAX_LINE_STYLE_COMMANDS = 8192;
  *  The pad records a point per finger move; the file keeps them all. */
 export const MAX_DRAWN_GLYPH_POINTS = 64;
 
+/** The most paths a drawn glyph's ART stamps with, and the most points
+ *  they come to between them (each path's ends apart): art is several
+ *  `<path>`s per styled chain where a drawn glyph is one, so it is bounded
+ *  by both. */
+export const MAX_ART_PATHS = 32;
+export const MAX_ART_GLYPH_POINTS = 96;
+
+type Polyline = readonly (readonly [number, number])[];
+
+const finitePoint = ([x, y]: readonly [number, number]): boolean =>
+  Number.isFinite(x) && Number.isFinite(y);
+
 /**
- * A drawn glyph fitted to its own bounds: the polylines' box is centred on
- * the origin and its longer side scaled to 1, so a sketch in one corner of
- * the pad stamps as large as one across the whole of it. Null when there is
- * nothing to fit — no strokes, or a single point (a tap) — and the caller
- * falls back to a built-in glyph rather than stamping nothing.
+ * Polylines fitted to their own bounds: the box of all of them is centred
+ * on the origin and its longer side scaled to 1, so a sketch in one corner
+ * of the pad stamps as large as one across the whole of it. Each polyline
+ * comes back as its own run of commands (M, then Ls), and `span` is the
+ * side that was scaled to 1 — what a length drawn in the polylines' units
+ * is divided by to be in the glyph's. Past `maxPoints` in all, the lines
+ * lose points by stride, each keeping its ends. Null when there is nothing
+ * to fit — no lines, or a single point (a tap).
+ *
+ * The ONE fit for both drawn forms, the pad's strokes and the art's paths,
+ * so the two cannot come to stand differently in the unit box.
  */
-function fittedCustomGlyph(custom: LineStyleEffect['custom']): readonly GlyphCommand[] | null {
-  if (!custom) return null;
+function fitPolylines(
+  lines: readonly Polyline[], maxPoints: number,
+): { paths: GlyphCommand[][]; span: number } | null {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   let points = 0;
-  for (const stroke of custom) {
+  for (const stroke of lines) {
     for (const [x, y] of stroke) {
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       points++;
@@ -136,23 +161,164 @@ function fittedCustomGlyph(custom: LineStyleEffect['custom']): readonly GlyphCom
   if (span <= EPS) return null;
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
-  const stride = Math.ceil(points / MAX_DRAWN_GLYPH_POINTS);
-  const out: GlyphCommand[] = [];
-  for (const stroke of custom) {
-    const finite = stroke.filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+  const stride = Math.ceil(points / maxPoints);
+  const paths = lines.map((stroke) => {
+    const out: GlyphCommand[] = [];
+    const finite = stroke.filter(finitePoint);
     finite.forEach(([x, y], i) => {
       if (i % stride !== 0 && i !== finite.length - 1) return;
       out.push([i === 0 ? 'M' : 'L', (x - cx) / span, (y - cy) / span]);
     });
+    return out;
+  });
+  return { paths, span };
+}
+
+const joined = (paths: readonly (readonly GlyphCommand[])[]): GlyphCommand[] =>
+  ([] as GlyphCommand[]).concat(...paths);
+
+/**
+ * A drawn glyph fitted to its own bounds ({@link fitPolylines}). Null when
+ * there is nothing to fit — no strokes, or a single point (a tap) — and the
+ * caller falls back to a built-in glyph rather than stamping nothing.
+ */
+function fittedCustomGlyph(custom: LineStyleEffect['custom']): readonly GlyphCommand[] | null {
+  if (!custom) return null;
+  const fit = fitPolylines(custom, MAX_DRAWN_GLYPH_POINTS);
+  return fit ? joined(fit.paths) : null;
+}
+
+// ── Art: a drawn glyph that keeps its own paint ──────────────────────
+/** One path of a style's art as it stamps: its commands in the glyph's unit
+ *  box (closed with `Z` when it is filled), and its own paint. `color` and
+ *  `width` come together or not at all, the width in the unit box's own
+ *  units — times the style's `size` it is world cells. */
+export interface FittedArtPath {
+  commands: readonly GlyphCommand[];
+  color?: RGBColor;
+  width?: number;
+  fill?: RGBColor;
+  /** Under 1 when present; an opaque path carries none. */
+  opacity?: number;
+  fillOpacity?: number;
+}
+
+/** Whether an art path draws an outline: a colour AND a width above
+ *  nothing. The one reading of "outlined" for the fit, the file and a
+ *  recolour, so a path cannot be outlined to one and bare to another. */
+export function lineStyleArtPathOutlined(path: LineStyleArtPath): boolean {
+  return !!path.color && Number.isFinite(path.width) && (path.width as number) > 0;
+}
+
+/** An opacity as art carries it: under 1 or absent. */
+function artOpacity(v: number | undefined): number | undefined {
+  if (v === undefined || !Number.isFinite(v) || v >= 1) return undefined;
+  return Math.max(0, v);
+}
+
+/** The art's paths that draw something — two finite points at the least,
+ *  and an outline or a fill — in their own order, the budget's first
+ *  {@link MAX_ART_PATHS} of them. Empty unless the glyph is the drawn one. */
+function drawableArt(style: LineStyleEffect): LineStyleArtPath[] {
+  if (style.glyph !== 'custom' || !Array.isArray(style.art)) return [];
+  const out: LineStyleArtPath[] = [];
+  for (const path of style.art) {
+    if (out.length >= MAX_ART_PATHS) break;
+    if (!path || !Array.isArray(path.points)) continue;
+    if (!lineStyleArtPathOutlined(path) && !path.fill) continue;
+    let finite = 0;
+    for (const p of path.points) if (finitePoint(p)) finite++;
+    if (finite >= 2) out.push(path);
   }
   return out;
 }
 
-/** The outline a style stamps: its glyph in the unit box. A custom glyph
- *  that cannot be fitted (never drawn, or a single tap) stamps a circle, so
- *  choosing Draw never makes the path vanish. */
+/** The art fitted, with the side its box was scaled by (see
+ *  {@link fitPolylines}), or null when the style has none to draw. */
+function fitArt(style: LineStyleEffect): { paths: FittedArtPath[]; span: number } | null {
+  const drawable = drawableArt(style);
+  if (drawable.length === 0) return null;
+  const fit = fitPolylines(drawable.map((path) => path.points), MAX_ART_GLYPH_POINTS);
+  if (!fit) return null;
+  const paths = drawable.map((path, i): FittedArtPath => {
+    const out: FittedArtPath = { commands: path.fill ? [...fit.paths[i], ['Z']] : fit.paths[i] };
+    if (lineStyleArtPathOutlined(path)) {
+      out.color = path.color;
+      out.width = (path.width as number) / fit.span;
+    }
+    const opacity = artOpacity(path.opacity);
+    if (opacity !== undefined) out.opacity = opacity;
+    if (path.fill) {
+      out.fill = path.fill;
+      const fillOpacity = artOpacity(path.fillOpacity);
+      if (fillOpacity !== undefined) out.fillOpacity = fillOpacity;
+    }
+    return out;
+  });
+  return { paths, span: fit.span };
+}
+
+/**
+ * A style's ART as it stamps: every drawable path fitted, as ONE drawing,
+ * to the glyph's unit box — the box of all their points centred on the
+ * origin, its longer side scaled to 1, the outline widths by the same
+ * factor — in the art's own order (the first is the bottom). Null when the
+ * style has no drawable art, and its `custom` strokes (or a circle) are
+ * what it stamps. Fitted afresh on every call: nothing is kept between
+ * them, so a caller on a per-frame path holds the result itself.
+ */
+export function lineStyleArt(style: LineStyleEffect): readonly FittedArtPath[] | null {
+  return fitArt(style)?.paths ?? null;
+}
+
+/** The art's whole outline, every path's commands end to end: what a
+ *  reader that draws a glyph in one ink stamps for it. */
+const artOutline = (art: readonly FittedArtPath[]): GlyphCommand[] =>
+  joined(art.map((path) => path.commands));
+
+/**
+ * A style as ONE ink draws it: its art's outlines in `color`, and its
+ * fills too when `floodFills` — the rule `withSVGObjectStrokeColor` keeps
+ * for a shape's subpaths, here for the paint a style carries itself, so a
+ * silhouette (a cutout, a pattern's ink, a shadow's cast) is not left in
+ * the art's own colours. `widenCells` grows every outline by that many
+ * world cells, for a cast that has to be as wide as it is soft. A style
+ * with no drawable art comes back as it is, the same object.
+ */
+export function lineStyleWithInk(
+  style: LineStyleEffect, color: RGBColor,
+  opts?: { floodFills?: boolean; widenCells?: number },
+): LineStyleEffect {
+  const fit = fitArt(style);
+  if (!fit || !style.art) return style;
+  // An art width is in the drawing's own units: world cells ÷ the glyph's
+  // size, × the side the fit scales to 1.
+  const widen = opts?.widenCells && style.size > 0 ? (opts.widenCells * fit.span) / style.size : 0;
+  return {
+    ...style,
+    art: style.art.map((path) => {
+      const outlined = lineStyleArtPathOutlined(path);
+      const flood = !!path.fill && !!opts?.floodFills;
+      if (!outlined && !flood) return path;
+      return {
+        ...path,
+        ...(outlined ? { color, width: (path.width as number) + widen } : {}),
+        ...(flood ? { fill: color } : {}),
+      };
+    }),
+  };
+}
+
+/** The outline a style stamps: its glyph in the unit box. A drawn glyph is
+ *  its art's whole outline when it has art to draw, its pad strokes when it
+ *  has not; one that cannot be fitted either way (never drawn, or a single
+ *  tap) stamps a circle, so choosing Draw never makes the path vanish. */
 export function lineStyleGlyphCommands(style: LineStyleEffect): readonly GlyphCommand[] {
-  if (style.glyph === 'custom') return fittedCustomGlyph(style.custom) ?? GLYPHS.circle;
+  if (style.glyph === 'custom') {
+    const art = lineStyleArt(style);
+    if (art) return artOutline(art);
+    return fittedCustomGlyph(style.custom) ?? GLYPHS.circle;
+  }
   return GLYPHS[style.glyph] ?? GLYPHS.circle;
 }
 
@@ -174,11 +340,15 @@ export function lineStyleSpacing(style: LineStyleEffect): number {
 
 /** How far past the path a stamp can reach, in world cells — the biggest
  *  stamp's half-diagonal plus the furthest the placement slider can push one
- *  across the path. What a caller grows a clip or a filter region by. */
+ *  across the path. What a caller grows a clip or a filter region by. Art
+ *  reaches half its widest outline further: its outlines are its own, so
+ *  the stroke width a caller adds for the path's does not cover them. */
 export function lineStyleReachCells(style: LineStyleEffect): number {
   const size = Math.max(0, style.size);
   const biggest = size * (1 + 0.75 * clamp01(style.randomSize));
-  return biggest * Math.SQRT1_2 + 0.75 * size * clamp01(style.randomPlacement);
+  let widest = 0;
+  for (const path of lineStyleArt(style) ?? []) widest = Math.max(widest, path.width ?? 0);
+  return biggest * (Math.SQRT1_2 + widest / 2) + 0.75 * size * clamp01(style.randomPlacement);
 }
 
 /** The PRNG seed a given object's stamps are drawn from. The outline casts
@@ -293,6 +463,15 @@ function sampleWalk(
 export function lineStylePlacements(
   segments: readonly PathSegment[], style: LineStyleEffect, seed: number,
 ): GlyphPlacement[] {
+  return placementsFor(segments, style, seed, lineStyleGlyphCommands(style).length);
+}
+
+/** {@link lineStylePlacements} for a glyph of `commandCount` commands —
+ *  what one stamp costs, and so how many the command budget allows. Art's
+ *  count is all its paths' together, the same number its outline has. */
+function placementsFor(
+  segments: readonly PathSegment[], style: LineStyleEffect, seed: number, commandCount: number,
+): GlyphPlacement[] {
   const walk = measurePath(segments);
   const spacing = lineStyleSpacing(style);
   if (walk.total <= EPS || !(spacing > EPS) || !(style.size > 0)) return [];
@@ -301,7 +480,7 @@ export function lineStylePlacements(
   // Two stamps at the least, so an open path keeps a glyph at each end.
   const limit = Math.max(2, Math.min(
     MAX_LINE_STYLE_STAMPS,
-    Math.floor(MAX_LINE_STYLE_COMMANDS / Math.max(1, lineStyleGlyphCommands(style).length)),
+    Math.floor(MAX_LINE_STYLE_COMMANDS / Math.max(1, commandCount)),
   ));
   let count: number;
   let step: number;
@@ -368,22 +547,19 @@ export function glyphCommandsPathD(
 }
 
 /**
- * Every stamp of a style along a chain as ONE path's `d`, in the SVG-unit
- * space the engine's path markup is emitted in (`buildPathD`'s projection):
- * each glyph's commands placed, turned and scaled into world cells, then
- * projected. '' when there is nothing to stamp.
+ * Glyph commands stamped at every placement as ONE path's `d`, in the
+ * SVG-unit space the engine's path markup is emitted in (`buildPathD`'s
+ * projection): each stamp's copy placed, turned and scaled into world
+ * cells, then projected. The one transform for a style's single outline
+ * and for each path of its art.
  */
-export function lineStylePathD(
-  segments: readonly PathSegment[], style: LineStyleEffect, seed: number,
-  unitsPerCell = SVG_UNITS_PER_L0_CELL,
+function stampsPathD(
+  commands: readonly GlyphCommand[], stamps: readonly GlyphPlacement[], unitsPerCell: number,
 ): string {
-  const glyph = lineStyleGlyphCommands(style);
-  const stamps = lineStylePlacements(segments, style, seed);
-  if (stamps.length === 0 || glyph.length === 0) return '';
   return stamps.map((s) => {
     const cos = Math.cos(s.angle) * s.scale;
     const sin = Math.sin(s.angle) * s.scale;
-    return glyphCommandsPathD(glyph, (gx, gy) => [
+    return glyphCommandsPathD(commands, (gx, gy) => [
       (s.x + gx * cos - gy * sin) * unitsPerCell,
       (s.y + gx * sin + gy * cos) * unitsPerCell,
     ]);
@@ -391,17 +567,68 @@ export function lineStylePathD(
 }
 
 /**
+ * Every stamp of a style along a chain as ONE path's `d` ({@link
+ * stampsPathD}) — for a style with art, its outline. '' when there is
+ * nothing to stamp.
+ */
+export function lineStylePathD(
+  segments: readonly PathSegment[], style: LineStyleEffect, seed: number,
+  unitsPerCell = SVG_UNITS_PER_L0_CELL,
+): string {
+  const glyph = lineStyleGlyphCommands(style);
+  const stamps = placementsFor(segments, style, seed, glyph.length);
+  if (stamps.length === 0 || glyph.length === 0) return '';
+  return stampsPathD(glyph, stamps, unitsPerCell);
+}
+
+const rgb = ({ r, g, b }: RGBColor): string => `rgb(${r},${g},${b})`;
+
+/**
+ * A style's art along a chain: ONE `<path>` per art path, holding every
+ * stamp's copy of it, in the art's order (the first is the bottom) — so a
+ * stamp's paths are layered path by path across the whole run, not stamp
+ * by stamp, and the markup stays a path per colour however many stamps
+ * there are. Each is painted in its OWN fill, outline and opacity; the
+ * outline's width is the fitted one at the style's `size` (one width per
+ * path, so the Size slider scales it and the random size does not), with
+ * round caps and joins, as a drawing's strokes are.
+ */
+function lineStyleArtMarkup(
+  segments: readonly PathSegment[], style: LineStyleEffect, seed: number,
+  art: readonly FittedArtPath[], unitsPerCell: number,
+): string {
+  const commandCount = art.reduce((n, path) => n + path.commands.length, 0);
+  const stamps = placementsFor(segments, style, seed, commandCount);
+  if (stamps.length === 0) return '';
+  let out = '';
+  for (const path of art) {
+    const fill = path.fill
+      ? `fill="${rgb(path.fill)}"${path.fillOpacity !== undefined ? ` fill-opacity="${fmt(path.fillOpacity)}"` : ''}`
+      : 'fill="none"';
+    const stroke = path.color && path.width !== undefined
+      ? `stroke="${rgb(path.color)}" stroke-width="${fmt(path.width * style.size * unitsPerCell)}" stroke-linecap="round" stroke-linejoin="round"`
+      : 'stroke="none"';
+    const opacity = path.opacity !== undefined ? ` opacity="${fmt(path.opacity)}"` : '';
+    out += `<path d="${stampsPathD(path.commands, stamps, unitsPerCell)}" ${fill} ${stroke}${opacity} />`;
+  }
+  return out;
+}
+
+/**
  * The markup a styled chain draws in place of its stroke: the stamps as one
  * outlined path in the given ink, wearing the stroke attrs the caller
  * would have put on the line (`svgStrokePresentation`'s — width, dash,
- * caps). '' when there is nothing to stamp.
+ * caps). A style with ART draws that instead, in the art's own paint
+ * ({@link lineStyleArtMarkup}): neither the ink nor the stroke attrs dress
+ * it. '' when there is nothing to stamp.
  */
 export function lineStyleMarkup(
   segments: readonly PathSegment[], style: LineStyleEffect, seed: number,
   strokeAttrs: string, color: RGBColor,
 ): string {
+  const art = lineStyleArt(style);
+  if (art) return lineStyleArtMarkup(segments, style, seed, art, SVG_UNITS_PER_L0_CELL);
   const d = lineStylePathD(segments, style, seed);
   if (!d) return '';
-  const { r, g, b } = color;
-  return `<path d="${d}" ${strokeAttrs} stroke="rgb(${r},${g},${b})" />`;
+  return `<path d="${d}" ${strokeAttrs} stroke="${rgb(color)}" />`;
 }

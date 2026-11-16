@@ -9,10 +9,11 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import type { LineStyleModel } from '../adapter';
+import type { LineStyleArtPathModel, LineStyleModel } from '../adapter';
 import {
   LINE_STYLE_GLYPH_OPTIONS, LINE_STYLE_SECTIONS, MAX_GLYPH_ROTATION, MAX_GLYPH_SIZE, MIN_DRAW_EXTENT,
-  MIN_GLYPH_SIZE, padGlyphPathD, padPointFromTouch, padPolylinePathD, strokesAfterDraw,
+  MIN_GLYPH_SIZE, lineStyleAfterClear, lineStyleAfterDraw, lineStyleAfterGlyph, lineStyleDrawn, lineStyleHasArt,
+  padGlyphPathD, padPointFromTouch, padPolylinePathD, strokesAfterDraw,
 } from '../logic/lineStyle';
 import {
   ASIDE_GAP, BAR_CUSHION, GLYPH_BUTTON, GLYPH_GRID_GAP, GLYPH_GRID_LINES_MAX, GROUP_PAD, PATTERN_TILE_GRID_GAP, ROW_GAP,
@@ -81,7 +82,7 @@ describe('the page', () => {
     const rotation = BAR.slice(BAR.indexOf("section === 'rotation' ?"), BAR.indexOf('label="Size"'));
     const scale = BAR.slice(BAR.indexOf('label="Size"'));
     expect(glyph).toContain('<GlyphPad');
-    expect(glyph).toContain('<GlyphGrid value={style.glyph} onChange={(glyph) => set({ glyph }, true)} />');
+    expect(glyph).toContain('<GlyphGrid value={style.glyph} onChange={(glyph) => onCommit(lineStyleAfterGlyph(style, glyph))} />');
     // Which glyph alone: Density and Scatter are the Placement face's
     // (DrawBots report 99b5fb2e), and the row the glyphs stood in is gone.
     expect(glyph).not.toContain('<SliderRow');
@@ -114,7 +115,7 @@ describe('the page', () => {
     expect(LINE_STYLE_GLYPH_OPTIONS.map((o) => o.value)).toEqual(['line', 'circle', 'sparkle', 'heart', 'custom']);
     expect(LINE_STYLE_GLYPH_OPTIONS.map((o) => o.label)).toEqual(['Dash', 'Circle', 'Sparkle', 'Heart', 'Draw']);
     // A choice commits at once.
-    expect(BAR).toContain("onChange={(glyph) => set({ glyph }, true)}");
+    expect(BAR).toContain('onChange={(glyph) => onCommit(lineStyleAfterGlyph(style, glyph))}');
   });
 
   it('lays the glyphs as a grid of square buttons beside the pad, which wraps and never outgrows the pad (DrawBots report 99b5fb2e)', () => {
@@ -168,7 +169,8 @@ describe('the pad', () => {
     expect(strokesAfterDraw(model({ glyph: 'custom', custom: first }), stroke)).toEqual([...first, stroke]);
     // …and the strokes are copies, not the pad's own buffer.
     expect(strokesAfterDraw(model(), stroke)![0]).not.toBe(stroke);
-    expect(BAR).toContain("if (custom) set({ glyph: 'custom', custom }, true);");
+    expect(BAR).toContain('const next = lineStyleAfterDraw(style, stroke);');
+    expect(BAR).toContain('if (next) onCommit(next);');
   });
 
   it('a tap or a tremor draws nothing: the guard is the stroke’s extent, not its point count', () => {
@@ -251,6 +253,80 @@ describe('the pad', () => {
   });
 
   it('Clear takes the drawing away and the glyph goes back to the circle', () => {
-    expect(BAR).toContain("onClear={drawn ? () => set({ glyph: 'circle', custom: undefined }, true) : undefined}");
+    expect(BAR).toContain('onClear={drawn ? () => onCommit(lineStyleAfterClear(style)) : undefined}');
+    const cleared = lineStyleAfterClear(model({ glyph: 'custom', custom: [[[0, 0], [1, 1]]], size: 2 }));
+    expect(cleared).toEqual(model({ glyph: 'circle', size: 2 }));
+    expect(cleared.custom).toBeUndefined();
+  });
+});
+
+describe('a style with art', () => {
+  // Art is a drawing in its own colours and fills that a host makes; the
+  // page shows it as the Draw glyph and has no tool for it, so anything
+  // that changes WHICH glyph the style stamps drops it.
+  const art: LineStyleArtPathModel[] = [
+    { points: [[0.1, 0.1], [0.3, 0.1], [0.3, 0.3]], fill: { r: 1, g: 2, b: 3 } },
+    { points: [[0.1, 0.2], [0.5, 0.2]], color: { r: 9, g: 9, b: 9 }, width: 0.02 },
+  ];
+  const sketch: [number, number][][] = [[[0, 0], [1, 0]]];
+  const stroke: [number, number][] = [[0.1, 0.1], [0.9, 0.9]];
+  const withArt = (extras: Partial<LineStyleModel> = {}) => model({ glyph: 'custom', art, density: 0.25, ...extras });
+
+  it('shows as Draw with a drawing on the pad: the art’s outline, fitted, in the pad’s one ink', () => {
+    expect(lineStyleHasArt(withArt())).toBe(true);
+    expect(lineStyleDrawn(withArt())).toBe(true);
+    // The art's box is 0.4 × 0.2, centred: 70% of a 100px pad across.
+    expect(padGlyphPathD(withArt(), 100)).toBe('M 15,32.5 L 50,32.5 L 50,67.5 Z M 15,50 L 85,50');
+    // …and it outranks strokes remembered under it.
+    expect(padGlyphPathD(withArt({ custom: sketch }), 100)).toBe(padGlyphPathD(withArt(), 100));
+    // Art that cannot draw, or beside a built-in glyph, is not art to the page.
+    expect(lineStyleHasArt(model({ glyph: 'custom', art: [{ points: [[0, 0], [1, 1]] }] }))).toBe(false);
+    expect(lineStyleHasArt(model({ glyph: 'heart', art }))).toBe(false);
+    expect(lineStyleDrawn(model({ glyph: 'heart', art, custom: sketch }))).toBe(false);
+    expect(lineStyleDrawn(model({ glyph: 'custom', custom: sketch }))).toBe(true);
+    expect(lineStyleDrawn(model({ glyph: 'custom' }))).toBe(false);
+    expect(BAR).toContain('const drawn = lineStyleDrawn(style);');
+  });
+
+  it('a stroke on the pad replaces it: the new stroke alone, and no art', () => {
+    const next = lineStyleAfterDraw(withArt({ custom: sketch }), stroke)!;
+    expect(next.glyph).toBe('custom');
+    // Not added to the strokes under the art, which the pad was not showing.
+    expect(next.custom).toEqual([stroke]);
+    expect('art' in next).toBe(false);
+    expect(next.density).toBe(0.25);
+    // A tap draws nothing, so it replaces nothing.
+    expect(lineStyleAfterDraw(withArt(), [[0.5, 0.5]])).toBeNull();
+    // Without art the rule is the one it was: over a built-in glyph, onto a drawn one.
+    expect(lineStyleAfterDraw(model({ glyph: 'heart' }), stroke)).toEqual(model({ glyph: 'custom', custom: [stroke] }));
+    expect(lineStyleAfterDraw(model({ glyph: 'custom', custom: sketch }), stroke)!.custom).toEqual([...sketch, stroke]);
+  });
+
+  it('Clear drops it with the strokes, and leaves the circle chosen', () => {
+    const next = lineStyleAfterClear(withArt({ custom: sketch }));
+    expect(next.glyph).toBe('circle');
+    expect(next.custom).toBeUndefined();
+    expect('art' in next).toBe(false);
+    expect(next.density).toBe(0.25);
+    expect(BAR).toContain('onClear={drawn ? () => onCommit(lineStyleAfterClear(style)) : undefined}');
+  });
+
+  it('another glyph drops it; Draw picked while Draw shows keeps it; the strokes are remembered either way', () => {
+    const next = lineStyleAfterGlyph(withArt({ custom: sketch }), 'heart');
+    expect(next.glyph).toBe('heart');
+    expect('art' in next).toBe(false);
+    expect(next.custom).toBe(sketch);
+    const same = withArt();
+    expect(lineStyleAfterGlyph(same, 'custom')).toBe(same);
+    // Draw picked over a built-in glyph beside stale art drops it too.
+    expect('art' in lineStyleAfterGlyph(model({ glyph: 'heart', art }), 'custom')).toBe(false);
+    expect(lineStyleAfterGlyph(model({ glyph: 'heart', custom: sketch }), 'custom'))
+      .toEqual(model({ glyph: 'custom', custom: sketch }));
+  });
+
+  it('every slider carries it through', () => {
+    // The rows patch the style they were given, so the art rides along.
+    expect(BAR).toContain('(committed ? onCommit : onChange)({ ...style, ...patch });');
+    expect(ADAPTER).toContain('art?: LineStyleArtPathModel[];');
   });
 });

@@ -6,16 +6,16 @@
  */
 
 import {
-  glyphCommandsPathD, lineStyleGlyphCommands, lineStyleMarkup, lineStyleOf,
+  glyphCommandsPathD, lineStyleArt, lineStyleArtPathOutlined, lineStyleGlyphCommands, lineStyleMarkup, lineStyleOf,
   clampGlyphSize, lineStylePathD, lineStylePlacements, lineStyleReachCells, lineStyleSeed, lineStyleSpacing,
-  lineStyleStampJitter,
-  MAX_DRAWN_GLYPH_POINTS, MAX_GLYPH_SIZE, MAX_LINE_STYLE_COMMANDS, MAX_LINE_STYLE_STAMPS, MIN_GLYPH_SIZE,
+  lineStyleStampJitter, lineStyleWithInk,
+  MAX_ART_GLYPH_POINTS, MAX_ART_PATHS, MAX_DRAWN_GLYPH_POINTS, MAX_GLYPH_SIZE, MAX_LINE_STYLE_COMMANDS, MAX_LINE_STYLE_STAMPS, MIN_GLYPH_SIZE,
 } from '../lineStyle';
-import { buildSVGObjectContent, svgStrokePresentation, svgStrokesMarkup } from '../svgPathBuilder';
+import { buildSVGObjectContent, svgStrokePresentation, svgStrokesMarkup, withSVGObjectStrokeColor } from '../svgPathBuilder';
 import { computeCircleSegments } from '../compositionArcMath';
 import { mulberry32 } from '../seededRandom';
 import { SVG_UNITS_PER_L0_CELL } from '../svgExport';
-import { LineStyleEffect, LineStyleGlyph, PathSegment, SVGObject } from '../types';
+import { LineStyleArtPath, LineStyleEffect, LineStyleGlyph, PathSegment, SVGObject } from '../types';
 
 /** Every glyph a style can name — the union, spelled out so the loop below
  *  cannot silently skip one. */
@@ -391,5 +391,264 @@ describe('what one styled path may cost', () => {
     expect(clampGlyphSize(1e9)).toBe(MAX_GLYPH_SIZE);
     expect(clampGlyphSize(1)).toBe(1);
     expect(clampGlyphSize(NaN)).toBe(MIN_GLYPH_SIZE);
+  });
+});
+
+// ── Art (v72): a drawn glyph that keeps its own paint ────────────────
+const RED = { r: 200, g: 10, b: 20 };
+const BLUE = { r: 5, g: 60, b: 220 };
+const WHITE = { r: 255, g: 255, b: 255 };
+
+/** A filled, outlined square in the pad's top-left quarter, and a bare
+ *  outlined tick over it. */
+const twoPaths = (): LineStyleArtPath[] => [
+  { points: [[0.1, 0.1], [0.3, 0.1], [0.3, 0.3], [0.1, 0.3]], color: RED, width: 0.02, fill: BLUE, fillOpacity: 0.5 },
+  { points: [[0.1, 0.2], [0.5, 0.2]], color: BLUE, width: 0.04, opacity: 0.25 },
+];
+
+const artStyle = (art: LineStyleArtPath[] = twoPaths(), extras: Partial<LineStyleEffect> = {}): LineStyleEffect =>
+  style({ glyph: 'custom', art, ...extras });
+
+describe('a drawn glyph’s art', () => {
+  it('is fitted as ONE drawing to its own bounds, as a drawn glyph is: centred, its longer side one unit, its widths with it', () => {
+    const art = lineStyleArt(artStyle())!;
+    expect(art).toHaveLength(2);
+    // The box is x 0.1…0.5 (the longer side, 0.4), y 0.1…0.3: centre (0.3, 0.2).
+    const [square, tick] = art;
+    const expected = [['M', -0.5, -0.25], ['L', 0, -0.25], ['L', 0, 0.25], ['L', -0.5, 0.25]] as const;
+    expect(square.commands).toHaveLength(5);
+    expected.forEach((e, i) => {
+      expect(square.commands[i][0]).toBe(e[0]);
+      expect(square.commands[i][1]).toBeCloseTo(e[1], 9);
+      expect(square.commands[i][2]).toBeCloseTo(e[2], 9);
+    });
+    // A filled path closes; an unfilled one is left open.
+    expect(square.commands[4]).toEqual(['Z']);
+    expect(tick.commands.map((c) => c[0])).toEqual(['M', 'L']);
+    expect(tick.commands[1][1]).toBeCloseTo(0.5, 9);
+    // The paint rides through, the widths scaled by the fit (÷ 0.4).
+    expect(square.color).toBe(RED);
+    expect(square.width).toBeCloseTo(0.05, 9);
+    expect(square.fill).toBe(BLUE);
+    expect(square.fillOpacity).toBe(0.5);
+    expect('opacity' in square).toBe(false);
+    expect(tick.width).toBeCloseTo(0.1, 9);
+    expect(tick.opacity).toBe(0.25);
+    expect('fill' in tick).toBe(false);
+  });
+
+  it('is read only on the drawn glyph, and only when a path of it can draw', () => {
+    expect(lineStyleArt(style({ glyph: 'heart', art: twoPaths() }))).toBeNull();
+    expect(lineStyleArt(style({ glyph: 'custom' }))).toBeNull();
+    expect(lineStyleArt(artStyle([]))).toBeNull();
+    // No paint, one point, no finite points, nothing to span.
+    expect(lineStyleArt(artStyle([{ points: [[0, 0], [1, 1]] }]))).toBeNull();
+    expect(lineStyleArt(artStyle([{ points: [[0.5, 0.5]], fill: RED }]))).toBeNull();
+    expect(lineStyleArt(artStyle([{ points: [[NaN, 0], [0, Infinity]], fill: RED }]))).toBeNull();
+    expect(lineStyleArt(artStyle([{ points: [[0.5, 0.5], [0.5, 0.5]], fill: RED }]))).toBeNull();
+    // An undrawable path among drawable ones is left out, and not fitted to.
+    const mixed = lineStyleArt(artStyle([
+      { points: [[0, 0], [9, 9]] },
+      { points: [[0.2, 0.2], [0.4, 0.2]], fill: RED },
+    ]))!;
+    expect(mixed).toHaveLength(1);
+    expect(mixed[0].commands[0][1]).toBeCloseTo(-0.5, 9);
+  });
+
+  it('an outline is a colour AND a width: either alone draws none', () => {
+    expect(lineStyleArtPathOutlined({ points: [], color: RED, width: 0.1 })).toBe(true);
+    expect(lineStyleArtPathOutlined({ points: [], color: RED })).toBe(false);
+    expect(lineStyleArtPathOutlined({ points: [], width: 0.1 })).toBe(false);
+    expect(lineStyleArtPathOutlined({ points: [], color: RED, width: 0 })).toBe(false);
+    expect(lineStyleArtPathOutlined({ points: [], color: RED, width: NaN })).toBe(false);
+    // A filled path whose outline has no width keeps its fill and loses the outline.
+    const [only] = lineStyleArt(artStyle([{ points: [[0, 0], [1, 0], [1, 1]], color: RED, fill: BLUE }]))!;
+    expect(only.fill).toBe(BLUE);
+    expect('color' in only).toBe(false);
+    expect('width' in only).toBe(false);
+  });
+
+  it('an opacity is carried only under 1, and a fill’s only with a fill', () => {
+    const [a, b] = lineStyleArt(artStyle([
+      { points: [[0, 0], [1, 0]], color: RED, width: 0.1, opacity: 1, fillOpacity: 0.5 },
+      { points: [[0, 1], [1, 1]], fill: RED, opacity: -3, fillOpacity: NaN },
+    ]))!;
+    expect('opacity' in a).toBe(false);
+    expect('fillOpacity' in a).toBe(false);
+    expect(b.opacity).toBe(0);
+    expect('fillOpacity' in b).toBe(false);
+  });
+
+  it('outranks the pad’s strokes, and falls back in order: art, strokes, a circle', () => {
+    const custom: [number, number][][] = [[[0, 0], [1, 0]]];
+    const circle = lineStyleGlyphCommands(style({ glyph: 'circle' }));
+    const art = artStyle(twoPaths(), { custom });
+    // One ink reads the art's whole outline: every path's commands, end to end.
+    expect(lineStyleGlyphCommands(art)).toEqual(lineStyleArt(art)!.flatMap((path) => [...path.commands]));
+    expect(lineStyleGlyphCommands(art)).toHaveLength(7);
+    // Art that cannot draw leaves the strokes, and neither leaves the circle.
+    expect(lineStyleGlyphCommands(artStyle([{ points: [[0, 0], [1, 1]] }], { custom })))
+      .toEqual([['M', -0.5, 0], ['L', 0.5, 0]]);
+    expect(lineStyleGlyphCommands(artStyle([{ points: [[0, 0], [1, 1]] }]))).toBe(circle);
+    // …and a style that never had art is read exactly as it was.
+    expect(lineStyleGlyphCommands(style({ glyph: 'custom', custom }))).toEqual([['M', -0.5, 0], ['L', 0.5, 0]]);
+  });
+
+  it('is bounded: the first paths of the budget, and a bounded number of points, each path’s ends kept', () => {
+    const many: LineStyleArtPath[] = Array.from({ length: 100 }, (_, k) => ({
+      points: Array.from({ length: 50 }, (_, i): [number, number] => [i / 49, k / 99]),
+      color: RED, width: 0.01,
+    }));
+    const art = lineStyleArt(artStyle(many))!;
+    expect(MAX_ART_PATHS).toBe(32);
+    expect(MAX_ART_GLYPH_POINTS).toBe(96);
+    expect(art).toHaveLength(MAX_ART_PATHS);
+    const points = art.reduce((n, path) => n + path.commands.length, 0);
+    // The stride keeps each path's two ends over the cap, and nothing more.
+    expect(points).toBeLessThanOrEqual(MAX_ART_GLYPH_POINTS + 2 * MAX_ART_PATHS);
+    for (const path of art) {
+      expect(path.commands[0][1]).toBeCloseTo(-0.5, 9);
+      expect(path.commands[path.commands.length - 1][1]).toBeCloseTo(0.5, 9);
+    }
+    // The bounds are the kept paths' own: the 32nd sits on the box's far side.
+    expect(art[MAX_ART_PATHS - 1].commands[0][2] as number).toBeGreaterThan(art[0].commands[0][2] as number);
+  });
+
+  it('stamps inside the command budget, counted over all its paths', () => {
+    const many: LineStyleArtPath[] = Array.from({ length: 40 }, (_, k) => ({
+      points: Array.from({ length: 40 }, (_, i): [number, number] => [i / 39, k / 39]),
+      fill: RED,
+    }));
+    const s = artStyle(many, { size: MIN_GLYPH_SIZE, density: 1 });
+    const total = lineStyleArt(s)!.reduce((n, path) => n + path.commands.length, 0);
+    expect(lineStyleGlyphCommands(s)).toHaveLength(total);
+    const chain = [line([0, 0], [1000, 0])];
+    const stamps = lineStylePlacements(chain, s, 1).length;
+    expect(stamps).toBeGreaterThanOrEqual(2);
+    expect(stamps).toBe(Math.floor(MAX_LINE_STYLE_COMMANDS / total));
+    // The markup stamps the very same number: every path holds one M per stamp.
+    const m = lineStyleMarkup(chain, s, 1, '', RED);
+    expect(m.match(/<path /g)).toHaveLength(lineStyleArt(s)!.length);
+    expect(m.match(/M /g)).toHaveLength(stamps * lineStyleArt(s)!.length);
+  });
+
+  it('reaches half its widest outline further than a glyph in the path’s ink', () => {
+    const bare = style({ glyph: 'custom', custom: [[[0, 0], [1, 0]]], size: 2, randomSize: 1 });
+    // Fitted widths 0.05 and 0.1: the wider one's half, at the biggest stamp (2 × 1.75).
+    expect(lineStyleReachCells(artStyle(twoPaths(), { size: 2, randomSize: 1 })))
+      .toBeCloseTo(lineStyleReachCells(bare) + 3.5 * 0.05, 9);
+    // Fills alone widen nothing.
+    expect(lineStyleReachCells(artStyle([{ points: [[0, 0], [1, 1]], fill: RED }], { size: 2 })))
+      .toBeCloseTo(lineStyleReachCells(style({ size: 2 })), 9);
+  });
+});
+
+describe('the art’s markup', () => {
+  // One stamp at the middle of a short line, a cell across: x = 0.2 cells.
+  const short = (): PathSegment[] => [line([0, 0], [0.4, 0])];
+
+  it('is one path per art path, bottom first, each holding every stamp’s copy in the stamps’ own places', () => {
+    const s = artStyle(twoPaths(), { size: 1 });
+    const m = lineStyleMarkup(short(), s, 1, 'stroke-width="7" stroke-dasharray="2 1"', { r: 1, g: 2, b: 3 });
+    const paths = m.match(/<path [^>]*\/>/g)!;
+    expect(paths).toHaveLength(2);
+    // The square, placed as lineStylePathD places a glyph: (0.2 + x) × 256.
+    expect(paths[0]).toContain(`d="M ${-0.3 * 256},-64 L ${0.2 * 256},-64 L ${0.2 * 256},64 L ${-0.3 * 256},64 Z"`);
+    expect(paths[1]).toContain(`d="M ${-0.3 * 256},0 L ${0.7 * 256},0"`);
+    // The two together are the outline one ink draws.
+    const ds = paths.map((p) => /d="([^"]*)"/.exec(p)![1]);
+    expect(ds.join(' ')).toBe(lineStylePathD(short(), s, 1));
+    // Along a longer chain every path holds every stamp.
+    const stamps = lineStylePlacements(straight(), s, 1).length;
+    expect(stamps).toBeGreaterThan(2);
+    for (const p of lineStyleMarkup(straight(), s, 1, '', RED).match(/<path [^>]*\/>/g)!) {
+      expect(p.match(/M /g)).toHaveLength(stamps);
+    }
+  });
+
+  it('paints in the art’s own colours, not the path’s ink, and never wears the path’s stroke attrs', () => {
+    const m = lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1 }), 1, 'stroke-width="7" stroke-dasharray="2 1"', { r: 1, g: 2, b: 3 });
+    const [square, tick] = m.match(/<path [^>]*\/>/g)!;
+    expect(square).toContain(' fill="rgb(5,60,220)" fill-opacity="0.5" stroke="rgb(200,10,20)" stroke-width="12.8" stroke-linecap="round" stroke-linejoin="round" />');
+    expect(tick).toContain(' fill="none" stroke="rgb(5,60,220)" stroke-width="25.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.25" />');
+    expect(m).not.toContain('rgb(1,2,3)');
+    expect(m).not.toContain('stroke-width="7"');
+    expect(m).not.toContain('stroke-dasharray');
+    // A fill with no outline says so, and an opaque fill carries no opacity.
+    const filled = lineStyleMarkup(short(), artStyle([{ points: [[0, 0], [1, 0], [1, 1]], fill: RED }]), 1, 'stroke-width="7"', BLUE);
+    expect(filled).toContain(' fill="rgb(200,10,20)" stroke="none" />');
+    expect(filled).not.toContain('opacity');
+  });
+
+  it('an outline’s width scales with the glyph’s size', () => {
+    const at = (size: number) => /stroke-width="([^"]*)"/.exec(
+      lineStyleMarkup(straight(), artStyle(twoPaths(), { size }), 1, '', RED),
+    )![1];
+    // Fitted 0.05 × size × 256 units a cell.
+    expect(at(1)).toBe('12.8');
+    expect(at(2)).toBe('25.6');
+    expect(at(0.5)).toBe('6.4');
+  });
+
+  it('nothing to stamp is no markup, and a style without drawable art is the one path it always was', () => {
+    expect(lineStyleMarkup([], artStyle(), 1, '', RED)).toBe('');
+    const custom: [number, number][][] = [[[0, 0], [1, 0]]];
+    const plain = style({ glyph: 'custom', custom });
+    const undrawable = style({ glyph: 'custom', custom, art: [{ points: [[0, 0], [1, 1]] }] });
+    const attrs = 'fill="none" stroke-width="7"';
+    expect(lineStyleMarkup(straight(), undrawable, 1, attrs, RED)).toBe(lineStyleMarkup(straight(), plain, 1, attrs, RED));
+    expect(lineStyleMarkup(straight(), plain, 1, attrs, RED).match(/<path /g)).toHaveLength(1);
+  });
+
+  it('reaches the canvas and the export through the one strokes builder, the object’s fill subpaths drawn as ever', () => {
+    const styled = obj({ effects: { lineStyle: artStyle(twoPaths(), { size: 1 }) } });
+    const { attrs, segments } = svgStrokePresentation(styled, 1, SVG_UNITS_PER_L0_CELL);
+    const m = svgStrokesMarkup(styled, segments, attrs, 0.25);
+    expect(m).toContain('fill="rgb(5,60,220)"');
+    expect(m).not.toContain('rgb(10,20,30)');
+    expect(buildSVGObjectContent(styled, 1, SVG_UNITS_PER_L0_CELL)).toContain('stroke="rgb(200,10,20)"');
+  });
+});
+
+describe('art in one ink', () => {
+  it('a recolour takes the art’s outlines, and its fills only under a flood — the subpaths’ rule', () => {
+    const s = artStyle();
+    const inked = lineStyleWithInk(s, WHITE);
+    expect(inked.art![0]).toMatchObject({ color: WHITE, width: 0.02, fill: BLUE, fillOpacity: 0.5 });
+    expect(inked.art![1]).toMatchObject({ color: WHITE, width: 0.04, opacity: 0.25 });
+    expect(inked.art![0].points).toBe(s.art![0].points);
+    const flooded = lineStyleWithInk(s, WHITE, { floodFills: true });
+    expect(flooded.art![0]).toMatchObject({ color: WHITE, fill: WHITE });
+    // The style it was given is not written to.
+    expect(s.art![0].color).toBe(RED);
+  });
+
+  it('widens every outline by world cells, whatever the glyph’s size and the art’s own', () => {
+    // A cell wider on a glyph two cells across, fitted from a 0.4 box:
+    // 1 × 0.4 ÷ 2 in the art's own units — a cell again once it is drawn.
+    const s = artStyle(twoPaths(), { size: 2 });
+    const wide = lineStyleWithInk(s, WHITE, { widenCells: 1 });
+    expect(wide.art![0].width).toBeCloseTo(0.02 + 0.2, 9);
+    const before = lineStyleArt(s)!;
+    const after = lineStyleArt(wide)!;
+    after.forEach((path, i) => expect((path.width! - before[i].width!) * s.size).toBeCloseTo(1, 9));
+  });
+
+  it('a style with no drawable art comes back as it is', () => {
+    const plain = style({ glyph: 'heart' });
+    expect(lineStyleWithInk(plain, WHITE, { floodFills: true, widenCells: 1 })).toBe(plain);
+    const undrawable = artStyle([{ points: [[0, 0], [1, 1]] }]);
+    expect(lineStyleWithInk(undrawable, WHITE)).toBe(undrawable);
+  });
+
+  it('an object recoloured for a cutout has its art recoloured with it', () => {
+    const styled = obj({ effects: { shadow: { dx: 0, dy: 0, blur: 1, color: RED, alpha: 1 }, lineStyle: artStyle() } });
+    const white = withSVGObjectStrokeColor(styled, WHITE);
+    expect(white.effects!.lineStyle!.art![0]).toMatchObject({ color: WHITE, fill: BLUE });
+    expect(white.effects!.shadow).toBe(styled.effects!.shadow);
+    expect(withSVGObjectStrokeColor(styled, WHITE, { floodFills: true }).effects!.lineStyle!.art![0].fill).toBe(WHITE);
+    // An object whose style has no art keeps the very effects it had.
+    const plain = obj({ effects: { lineStyle: style({ glyph: 'heart' }) } });
+    expect(withSVGObjectStrokeColor(plain, WHITE).effects).toBe(plain.effects);
   });
 });

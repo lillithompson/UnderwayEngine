@@ -64,7 +64,19 @@ describe('an outline cast keeps the line style', () => {
     expect(from).toBeGreaterThanOrEqual(0);
     const fn = NODE_LAYER.slice(from, NODE_LAYER.indexOf('\n}\n', from));
     expect(fn).toContain('delete out.effects;');
-    expect(fn).toContain('if (object.effects?.lineStyle) out.effects = { lineStyle: object.effects.lineStyle };');
-    expect(fn.indexOf('delete out.effects;')).toBeLessThan(fn.indexOf('out.effects = { lineStyle:'));
+    expect(fn).toContain('const style = object.effects?.lineStyle;');
+    expect(fn).toContain('if (style) {');
+    expect(fn.indexOf('delete out.effects;')).toBeLessThan(fn.indexOf('out.effects = {'));
+  });
+
+  it('with its art in the effect’s ink: a cast is one colour, and art paints itself', () => {
+    // The object's `color` never reaches a style's art (v72), so the cast
+    // recolours it through the engine's one rule — outlines and fills both,
+    // the outlines widened by exactly what the cast widened the stroke by.
+    const from = NODE_LAYER.indexOf('function outlineCastObject');
+    const fn = NODE_LAYER.slice(from, NODE_LAYER.indexOf('\n}\n', from));
+    expect(fn).toContain('lineStyle: lineStyleWithInk(style, effect.color, {');
+    expect(fn).toContain('floodFills: true, widenCells: outlineCastSourceCells(width, effect) - width,');
+    expect(NODE_LAYER).toContain("import { lineStyleWithInk } from '@/engine/lineStyle';");
   });
 });

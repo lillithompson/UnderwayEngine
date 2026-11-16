@@ -1,5 +1,5 @@
 import type { LineStyleGlyphKind, LineStyleModel } from '../adapter';
-import { type GlyphCommand, glyphCommandsPathD, lineStyleGlyphCommands } from '@/engine/lineStyle';
+import { type GlyphCommand, glyphCommandsPathD, lineStyleArt, lineStyleGlyphCommands } from '@/engine/lineStyle';
 import { clamp01 } from '../appTheme';
 
 // The Style page's pure parts: its three faces, what its glyph row offers,
@@ -64,10 +64,33 @@ function strokeExtent(stroke: readonly (readonly [number, number])[]): number {
   return stroke.length ? Math.max(maxX - minX, maxY - minY) : 0;
 }
 
+/** Whether the style stamps ART: a drawing in its own colours and fills,
+ *  which the page shows as the Draw glyph but has no tool to edit. The
+ *  engine's own reading (`lineStyleArt`), so the page and the path agree
+ *  on which drawing is showing. */
+export function lineStyleHasArt(style: LineStyleModel): boolean {
+  return lineStyleArt(style) !== null;
+}
+
+/** Whether the pad holds a drawing — strokes or art — and so offers Clear. */
+export function lineStyleDrawn(style: LineStyleModel): boolean {
+  return style.glyph === 'custom'
+    && ((!!style.custom && style.custom.length > 0) || lineStyleHasArt(style));
+}
+
+/** The style with its art gone — the key itself, not an `undefined` under
+ *  it, so the record a style commits is the one it had before art. */
+function withoutArt(style: LineStyleModel): LineStyleModel {
+  const { art: _art, ...rest } = style;
+  return rest;
+}
+
 /** The strokes a lifted finger commits: the new stroke after the ones a
  *  drawn glyph already holds, or on its own when the glyph was a built-in
  *  one — a first stroke starts a new drawing rather than adding to the
- *  sketch Draw remembered. A stroke that spans less than
+ *  sketch Draw remembered — or was ART, which a pad stroke replaces: the
+ *  strokes under it were not what the pad showed, so the new one does not
+ *  join them. A stroke that spans less than
  *  {@link MIN_DRAW_EXTENT} — a tap, a tremor — draws nothing: the pad
  *  always holds a point where the finger landed, so a point count cannot
  *  tell a tap from a line. */
@@ -76,7 +99,38 @@ export function strokesAfterDraw(
 ): [number, number][][] | null {
   if (stroke.length < 2 || strokeExtent(stroke) < MIN_DRAW_EXTENT) return null;
   const copy = stroke.map(([x, y]): [number, number] => [x, y]);
-  return style.glyph === 'custom' && style.custom ? [...style.custom, copy] : [copy];
+  return style.glyph === 'custom' && style.custom && !lineStyleHasArt(style)
+    ? [...style.custom, copy]
+    : [copy];
+}
+
+// The three ways the page changes WHICH glyph a style stamps. Each drops
+// the style's art: the pad draws strokes in the path's ink, so a stroke on
+// it replaces a drawing in its own colours rather than joining it, and
+// Clear or another glyph is the user choosing something else. One place,
+// so a host with a pad of its own (the pad is exported) keeps the rule by
+// calling these rather than by remembering it.
+
+/** The style after a lifted stroke: Draw, with {@link strokesAfterDraw}'s
+ *  strokes and no art. Null when the stroke draws nothing (a tap). */
+export function lineStyleAfterDraw(
+  style: LineStyleModel, stroke: readonly [number, number][],
+): LineStyleModel | null {
+  const custom = strokesAfterDraw(style, stroke);
+  return custom ? { ...withoutArt(style), glyph: 'custom', custom } : null;
+}
+
+/** The style after Clear: the pad empty — no strokes, no art — and the
+ *  circle a path stamps in the meantime chosen outright. */
+export function lineStyleAfterClear(style: LineStyleModel): LineStyleModel {
+  return { ...withoutArt(style), glyph: 'circle', custom: undefined };
+}
+
+/** The style after a glyph is picked. Another glyph drops the art (it is
+ *  not remembered beside a built-in one, as the pad's strokes are); Draw
+ *  picked while Draw is showing changes nothing, so it keeps it. */
+export function lineStyleAfterGlyph(style: LineStyleModel, glyph: LineStyleGlyphKind): LineStyleModel {
+  return glyph === 'custom' && style.glyph === 'custom' ? style : { ...withoutArt(style), glyph };
 }
 
 /** A run of pad-unit points as a path's `d`, in pad pixels — the live
@@ -88,8 +142,9 @@ export function padPolylinePathD(points: readonly (readonly [number, number])[],
 }
 
 /** What the pad draws, as one path's `d` in pad pixels: a drawn glyph as
- *  it was drawn; a built-in one from its unit box, spanning PREVIEW_SPAN of
- *  the pad — its CURVES kept as curves (the engine's own commands, which is
+ *  it was drawn; a built-in one — and a drawn glyph's ART, as its outline:
+ *  the pad draws in one ink, and art was not drawn on it — from its unit
+ *  box, spanning PREVIEW_SPAN of the pad — its CURVES kept as curves (the engine's own commands, which is
  *  what the path will stamp), so a circle previews as the circle it is and
  *  not as a chain of pieces. Draw with nothing drawn yet is a BLANK pad
  *  (DrawBots report 99b5fb2e; it showed the circle the path stamps in the
@@ -98,13 +153,15 @@ export function padPolylinePathD(points: readonly (readonly [number, number])[],
  *  rule for a drawn glyph with nothing to fit (`lineStyleGlyphCommands`),
  *  so a line never vanishes under a tap on Draw. */
 export function padGlyphPathD(style: LineStyleModel, padSize: number): string {
-  if (style.glyph === 'custom') {
+  const art = style.glyph === 'custom' && lineStyleHasArt(style);
+  if (style.glyph === 'custom' && !art) {
     return style.custom && style.custom.length > 0
       ? style.custom.map((stroke) => padPolylinePathD(stroke, padSize)).join(' ')
       : '';
   }
   const commands = lineStyleGlyphCommands({
     glyph: style.glyph,
+    ...(art ? { art: style.art } : {}),
     density: style.density, size: style.size, rotation: 0,
     randomPlacement: 0, randomRotation: 0, randomSize: 0,
   });
