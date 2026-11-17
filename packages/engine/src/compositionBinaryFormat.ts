@@ -672,12 +672,17 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 //      the mask's last), so it is read by version: a v71 line-style block
 //      ends at its strokes and reads exactly as before, and a v72 block
 //      with no art costs the one zero byte.
-// v73: HOW FAR THE INK SHIFTS THE ART. `LineStyleEffect.tint` — 0…1, how
-//      much of the path's colour the art's own colours take (lineStyle.ts
-//      `lineStyleArtTint`) — one u8 (/255) at the end of the line-style
-//      block, after the art. 255 is the whole shift, which is what a style
-//      without the field means and what every v72 block reads as; read by
-//      version, as the art's count is.
+// v73: HOW MUCH OF ITS OWN COLOURS THE ART KEEPS. `LineStyleEffect.tint`
+//      — 0…1, the share of the way from the path's colour to the art's
+//      own (lineStyle.ts `lineStyleArtTint`) — one u8 (/255) at the end of
+//      the line-style block, after the art. 255 is the art as drawn, which
+//      is what a style without the field means and what every v72 block
+//      reads as; read by version, as the art's count is. (The byte is the
+//      slider's place, and what the place MEANS is lineStyle.ts's: for its
+//      first day it was how far the ink was multiplied into the art, 0
+//      none of it — so a block written then at 0 now reads as the ink
+//      alone. No version of its own: nothing maps the one rule onto the
+//      other.)
 const FORMAT_VERSION = 73;
 /** v60+ metadata flags. */
 const FILE_FLAG_IMAGE_BYTES_OMITTED = 0x01;
@@ -1983,7 +1988,7 @@ function writeEffects(view: DataView, out: Uint8Array, pos: number, fx: NodeEffe
         view.setUint16(pos, quantize65535(y), true); pos += 2;
       }
     }
-    // v73: how far the ink shifts the art; the whole way when unsaid.
+    // v73: how much of its own colours the art keeps; all of it when unsaid.
     out[pos++] = quantize255(lineStyleTintAmount(ls));
   }
   return pos;
@@ -2138,7 +2143,7 @@ function readEffects(
         if (path.color || path.fill) art.push(path);
       }
     }
-    // v73: the tint, by version too. 255 is the whole shift: the absent field.
+    // v73: the tint, by version too. 255 is the art as drawn: the absent field.
     let tint = 255;
     if (version >= 73) {
       if (pos + 1 > data.byteLength) {

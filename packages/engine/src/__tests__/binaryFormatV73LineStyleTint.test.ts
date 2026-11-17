@@ -1,7 +1,7 @@
 /**
  * The v73 binary format extension: a line style's TINT
- * (`LineStyleEffect.tint`) — how far the path's ink shifts the art's own
- * colours — one byte at the end of the line-style block, after the art,
+ * (`LineStyleEffect.tint`) — how much of its own colours the art keeps,
+ * the path's ink the rest — one byte at the end of the line-style block, after the art,
  * read by version. Mirrors binaryFormatV72LineStyleArt.test.ts for the
  * block it extends.
  */
@@ -43,7 +43,7 @@ describe('v73: a line style’s tint', () => {
     expect(roundTrip(drawn({ tint: 0.25 })).tint).toBeCloseTo(0.25, 2);
   });
 
-  test('the whole shift is the absent field: unsaid, 1, or past it reads back with no tint', () => {
+  test('the art as drawn is the absent field: unsaid, 1, or past it reads back with no tint', () => {
     for (const style of [drawn(), drawn({ tint: 1 }), drawn({ tint: 3 }), drawn({ tint: Number.NaN })]) {
       expect('tint' in roundTrip(style)).toBe(false);
     }
@@ -56,7 +56,7 @@ describe('v73: a line style’s tint', () => {
     expect(got.art![0].color).toEqual(art[0].color);
   });
 
-  test('a v72 file — the block with no tint byte — reads as the whole shift, and everything after it stands where it did', () => {
+  test('a v72 file — the block with no tint byte — reads as the art as drawn, and everything after it stands where it did', () => {
     const custom: [number, number][][] = [[[0.1, 0.1], [0.9, 0.9]]];
     const { art: _none, ...padded } = drawn({ custom, tint: 0.5 });
     const now = write(padded);

@@ -568,8 +568,9 @@ describe('the art’s markup', () => {
     }
   });
 
-  it('paints in the art’s own colours — exactly, along a WHITE path — and never wears the path’s stroke attrs', () => {
+  it('paints in the art’s own colours — exactly, whatever the path’s — and never wears the path’s stroke attrs', () => {
     const m = lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1 }), 1, 'stroke-width="7" stroke-dasharray="2 1"', WHITE);
+    expect(lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1 }), 1, 'stroke-width="7" stroke-dasharray="2 1"', { r: 12, g: 34, b: 56 })).toBe(m);
     const [square, tick] = m.match(/<path [^>]*\/>/g)!;
     expect(square).toContain(' fill="rgb(5,60,220)" fill-opacity="0.5" stroke="rgb(200,10,20)" stroke-width="12.8" stroke-linecap="round" stroke-linejoin="round" />');
     expect(tick).toContain(' fill="none" stroke="rgb(5,60,220)" stroke-width="25.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.25" />');
@@ -582,42 +583,54 @@ describe('the art’s markup', () => {
     expect(filled).not.toContain('opacity');
   });
 
-  it('a COLOURED path shifts the art’s colours toward its own: each multiplied by the ink, so white art is the ink and black stays black', () => {
-    expect(lineStyleArtTint({ r: 200, g: 10, b: 20 }, WHITE)).toEqual({ r: 200, g: 10, b: 20 });
-    expect(lineStyleArtTint(WHITE, { r: 12, g: 34, b: 56 })).toEqual({ r: 12, g: 34, b: 56 });
-    expect(lineStyleArtTint({ r: 0, g: 0, b: 0 }, { r: 12, g: 34, b: 56 })).toEqual({ r: 0, g: 0, b: 0 });
-    expect(lineStyleArtTint({ r: 200, g: 100, b: 50 }, { r: 255, g: 128, b: 0 })).toEqual({ r: 200, g: 50, b: 0 });
-    // …in the markup: the path's ink is what the art is shifted by.
-    const ink = { r: 255, g: 0, b: 0 };
-    const [square, tick] = lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1 }), 1, '', ink).match(/<path [^>]*\/>/g)!;
-    expect(square).toContain(' fill="rgb(5,0,0)" fill-opacity="0.5" stroke="rgb(200,0,0)" ');
-    expect(tick).toContain(' stroke="rgb(5,0,0)" ');
-    // A recoloured object's stamps follow it, and a subpath's its own colour.
-    const styled = obj({ color: ink, effects: { lineStyle: artStyle(twoPaths(), { size: 1 }) } });
-    expect(buildSVGObjectContent(styled, 1, SVG_UNITS_PER_L0_CELL)).toContain('stroke="rgb(200,0,0)"');
+  it('the path’s ink is MIXED with the art’s colours, never multiplied into them: the amount is the share of the way from the ink to the art’s own', () => {
+    const art = { r: 200, g: 100, b: 50 }, ink = { r: 0, g: 50, b: 250 };
+    // All the way, and unsaid: the art's own colour, whatever the ink.
+    expect(lineStyleArtTint(art, ink)).toEqual(art);
+    expect(lineStyleArtTint(art, ink, 1)).toEqual(art);
+    // None of it: the ink, whatever the art — black art and white art alike.
+    expect(lineStyleArtTint(art, ink, 0)).toEqual(ink);
+    expect(lineStyleArtTint({ r: 0, g: 0, b: 0 }, ink, 0)).toEqual(ink);
+    expect(lineStyleArtTint(WHITE, ink, 0)).toEqual(ink);
+    // Between them in proportion, each channel by itself.
+    expect(lineStyleArtTint(art, ink, 0.5)).toEqual({ r: 100, g: 75, b: 150 });
+    expect(lineStyleArtTint(art, ink, 0.25)).toEqual({ r: 50, g: 63, b: 200 });
+    // Art drawn in the ink's own colour is that colour at any amount (a multiply darkened it).
+    expect(lineStyleArtTint(ink, ink, 0.3)).toEqual(ink);
+    // A white path is an ink like any other: it does not leave the art as drawn.
+    expect(lineStyleArtTint(art, WHITE, 0)).toEqual(WHITE);
   });
 
-  it('a style’s TINT is how far the ink shifts the art: none at 0, the whole shift at 1 and unsaid, between them in proportion', () => {
-    const art = { r: 200, g: 100, b: 50 }, ink = { r: 255, g: 0, b: 0 };
-    expect(lineStyleArtTint(art, ink, 0)).toEqual(art);
-    expect(lineStyleArtTint(art, ink, 1)).toEqual(lineStyleArtTint(art, ink));
-    expect(lineStyleArtTint(art, ink, 0.5)).toEqual({ r: 200, g: 50, b: 25 });
-    // The amount a style says: clamped, and the whole shift for none or nonsense.
+  it('a style’s TINT is that amount: the art as drawn at 1 and unsaid, the path’s ink alone at 0, between them in proportion', () => {
+    // The amount a style says: clamped, and the whole of the art's own for none or nonsense.
     expect(lineStyleTintAmount(artStyle(twoPaths()))).toBe(1);
     expect(lineStyleTintAmount(artStyle(twoPaths(), { tint: 0.25 }))).toBe(0.25);
     expect(lineStyleTintAmount(artStyle(twoPaths(), { tint: -1 }))).toBe(0);
     expect(lineStyleTintAmount(artStyle(twoPaths(), { tint: 7 }))).toBe(1);
     expect(lineStyleTintAmount(artStyle(twoPaths(), { tint: Number.NaN }))).toBe(1);
-    // In the markup: at 0 the art is as a white path draws it, whatever the ink.
+    // In the markup: at 1 and unsaid the art is as drawn, whatever the ink.
+    const ink = { r: 255, g: 0, b: 0 };
+    const at = (tint?: number) => lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1, ...(tint === undefined ? {} : { tint }) }), 1, '', ink);
     const exact = lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1 }), 1, '', WHITE);
-    expect(lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1, tint: 0 }), 1, '', ink)).toBe(exact);
-    expect(lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1, tint: 1 }), 1, '', ink))
-      .toBe(lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1 }), 1, '', ink));
-    expect(lineStyleMarkup(short(), artStyle(twoPaths(), { size: 1, tint: 0.5 }), 1, '', ink)).toContain('stroke="rgb(200,5,10)"');
-    // One ink is one ink: a silhouette is the whole shift whatever the style says.
-    const cast = lineStyleWithInk(artStyle(twoPaths(), { tint: 0 }), ink, { floodFills: true });
-    expect('tint' in cast).toBe(false);
-    expect(lineStyleMarkup(short(), cast, 1, '', ink)).not.toMatch(/rgb\((?!255,0,0\))/);
+    expect(at()).toBe(exact);
+    expect(at(1)).toBe(exact);
+    // At 0 every colour of it is the ink: the square's fill and outline, the tick's.
+    expect(at(0).match(/rgb\([^)]*\)/g)).toEqual(['rgb(255,0,0)', 'rgb(255,0,0)', 'rgb(255,0,0)']);
+    // Half way: the red outline and the blue fill each half the ink's.
+    const [square, tick] = at(0.5).match(/<path [^>]*\/>/g)!;
+    expect(square).toContain(' fill="rgb(130,30,110)" fill-opacity="0.5" stroke="rgb(228,5,10)" ');
+    expect(tick).toContain(' stroke="rgb(130,30,110)" ');
+    // A recoloured object's stamps follow it as far as its style's tint lets them.
+    const styled = (tint: number) => obj({ color: ink, effects: { lineStyle: artStyle(twoPaths(), { size: 1, tint }) } });
+    expect(buildSVGObjectContent(styled(0), 1, SVG_UNITS_PER_L0_CELL)).toContain('stroke="rgb(255,0,0)"');
+    expect(buildSVGObjectContent(styled(1), 1, SVG_UNITS_PER_L0_CELL)).toContain('stroke="rgb(200,10,20)"');
+    // One ink is one ink: a silhouette is its ink whatever the style says, and whatever it is stamped along.
+    for (const tint of [0, 0.5, 1]) {
+      const cast = lineStyleWithInk(artStyle(twoPaths(), { tint }), ink, { floodFills: true });
+      expect('tint' in cast).toBe(false);
+      expect(lineStyleMarkup(short(), cast, 1, '', ink)).not.toMatch(/rgb\((?!255,0,0\))/);
+      expect(lineStyleMarkup(short(), cast, 1, '', BLUE)).not.toMatch(/rgb\((?!255,0,0\))/);
+    }
   });
 
   it('an outline’s width scales with the glyph’s size', () => {
@@ -650,16 +663,25 @@ describe('the art’s markup', () => {
 });
 
 describe('art in one ink', () => {
-  it('a recolour makes the art’s outlines NEUTRAL (white), which the ink of the object they are stamped along then colours, and its fills only under a flood — the subpaths’ rule', () => {
-    const s = artStyle();
-    const inked = lineStyleWithInk(s, RED);
-    expect(inked.art![0]).toMatchObject({ color: WHITE, width: 0.02, fill: BLUE, fillOpacity: 0.5 });
-    expect(inked.art![1]).toMatchObject({ color: WHITE, width: 0.04, opacity: 0.25 });
+  it('a recolour WRITES the ink into the art’s outlines, and into its fills only under a flood — the subpaths’ rule — and takes the style’s tint off, so what is written is what is drawn', () => {
+    const GREEN = { r: 0, g: 128, b: 0 };
+    const s = artStyle(twoPaths(), { size: 1, tint: 0.5 });
+    const inked = lineStyleWithInk(s, GREEN);
+    expect(inked.art![0]).toMatchObject({ color: GREEN, width: 0.02, fill: BLUE, fillOpacity: 0.5 });
+    expect(inked.art![1]).toMatchObject({ color: GREEN, width: 0.04, opacity: 0.25 });
     expect(inked.art![0].points).toBe(s.art![0].points);
-    const flooded = lineStyleWithInk(s, RED, { floodFills: true });
-    expect(flooded.art![0]).toMatchObject({ color: WHITE, fill: WHITE });
+    expect('tint' in inked).toBe(false);
+    const flooded = lineStyleWithInk(s, GREEN, { floodFills: true });
+    expect(flooded.art![0]).toMatchObject({ color: GREEN, fill: GREEN });
     // The style it was given is not written to.
     expect(s.art![0].color).toBe(RED);
+    expect(s.tint).toBe(0.5);
+    // Drawn: the outlines in the ink and the kept fill exactly as drawn, whatever the object is coloured.
+    for (const along of [GREEN, WHITE, RED]) {
+      const [square, tick] = lineStyleMarkup(straight(), inked, 1, '', along).match(/<path [^>]*\/>/g)!;
+      expect(square).toContain(' fill="rgb(5,60,220)" fill-opacity="0.5" stroke="rgb(0,128,0)" ');
+      expect(tick).toContain(' stroke="rgb(0,128,0)" ');
+    }
   });
 
   it('widens every outline by world cells, whatever the glyph’s size and the art’s own', () => {
@@ -686,7 +708,7 @@ describe('art in one ink', () => {
     expect(white.effects!.lineStyle!.art![0]).toMatchObject({ color: WHITE, fill: BLUE });
     expect(white.effects!.shadow).toBe(styled.effects!.shadow);
     expect(withSVGObjectStrokeColor(styled, WHITE, { floodFills: true }).effects!.lineStyle!.art![0].fill).toEqual(WHITE);
-    // The object is given the ink, so its neutral art is stamped in it.
+    // The ink is written into the art, so its stamps are in it.
     const red = withSVGObjectStrokeColor(styled, RED, { floodFills: true });
     expect(buildSVGObjectContent(red, 1, SVG_UNITS_PER_L0_CELL)).toContain('fill="rgb(200,10,20)"');
     // An object whose style has no art keeps the very effects it had.

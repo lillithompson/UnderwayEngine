@@ -1490,11 +1490,13 @@ export interface LineStyleEffect {
    *  that never had art, so a style without it is the record it always
    *  was. Paths in drawing order: the first is the bottom. */
   art?: LineStyleArtPath[];
-  /** How far the path's ink shifts the ART's colours (v73+), 0…1: 1 — and
-   *  absent, which is what every style before it reads as — is the whole
-   *  shift (`lineStyleArtTint`), 0 leaves the art exactly as it was drawn
-   *  whatever the path's colour. Read only where there is art to shift: a
-   *  glyph in the path's one ink has no colours of its own. */
+  /** How much of its OWN colours the ART keeps along the path (v73+),
+   *  0…1: the share of the way from the path's ink to each of them
+   *  (`lineStyleArtTint`). 1 — and absent, which is what a style that
+   *  never said reads as — is the art exactly as it was drawn, whatever
+   *  the path's colour; 0 is the path's ink alone, every path of the art
+   *  in it. Read only where there is art: a glyph in the path's one ink
+   *  has no colours of its own. */
   tint?: number;
   /** How closely the glyphs stand, 0…1: 0 is sparse (a gap of three
    *  glyph-widths between stamps), 1 has them touching. */
