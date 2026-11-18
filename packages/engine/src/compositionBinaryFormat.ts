@@ -10,7 +10,7 @@ import { foldLegacyGroupNames } from './legacyGroupNames';
 import { dropLocalCaches } from './legacyLocalCaches';
 import { compSnapStep } from './compositionCellMath';
 import { signedDeg } from './sceneTransform';
-import { clampGlyphSize, lineStyleArtPathOutlined, lineStyleTintAmount } from './lineStyle';
+import { clampStoredGlyphSize, lineStyleArtPathOutlined, lineStyleTintAmount } from './lineStyle';
 
 // â”€â”€ FCOMP Binary Format v29 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
@@ -2063,8 +2063,10 @@ function readEffects(
     const glyph = BYTE_TO_LINE_STYLE_GLYPH[data[pos++]] ?? 'circle';
     const density = data[pos++] / 255;
     // Both raw f32s from outside: a tiny size asks for millions of stamps,
-    // and a non-finite turn writes NaN into every one.
-    const size = clampGlyphSize(view.getFloat32(pos, true)); pos += 4;
+    // and a non-finite turn writes NaN into every one. The ceiling is the
+    // file's, not the Size row's: a host may have stamped the style larger
+    // than its page set it (`MAX_STORED_GLYPH_SIZE`).
+    const size = clampStoredGlyphSize(view.getFloat32(pos, true)); pos += 4;
     const rawRotation = view.getFloat32(pos, true); pos += 4;
     const rotation = Number.isFinite(rawRotation) ? rawRotation : 0;
     const randomPlacement = data[pos++] / 255;

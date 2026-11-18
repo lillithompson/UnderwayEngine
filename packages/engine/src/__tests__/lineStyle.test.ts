@@ -7,9 +7,9 @@
 
 import {
   glyphCommandsPathD, lineStyleArt, lineStyleArtPathOutlined, lineStyleGlyphCommands, lineStyleMarkup, lineStyleOf,
-  clampGlyphSize, lineStylePathD, lineStylePlacements, lineStyleReachCells, lineStyleSeed, lineStyleSpacing,
+  clampGlyphSize, clampStoredGlyphSize, lineStylePathD, lineStylePlacements, lineStyleReachCells, lineStyleSeed, lineStyleSpacing,
   lineStyleArtTint, lineStyleStampJitter, lineStyleTintAmount, lineStyleWithInk,
-  MAX_ART_GLYPH_POINTS, MAX_ART_PATHS, MAX_DRAWN_GLYPH_POINTS, MAX_GLYPH_SIZE, MAX_LINE_STYLE_COMMANDS, MAX_LINE_STYLE_STAMPS, MIN_GLYPH_SIZE,
+  MAX_ART_GLYPH_POINTS, MAX_ART_PATHS, MAX_DRAWN_GLYPH_POINTS, MAX_GLYPH_SIZE, MAX_LINE_STYLE_COMMANDS, MAX_LINE_STYLE_STAMPS, MAX_STORED_GLYPH_SIZE, MIN_GLYPH_SIZE,
 } from '../lineStyle';
 import { buildSVGObjectContent, svgStrokePresentation, svgStrokesMarkup, withSVGObjectStrokeColor } from '../svgPathBuilder';
 import { computeCircleSegments } from '../compositionArcMath';
@@ -391,6 +391,15 @@ describe('what one styled path may cost', () => {
     expect(clampGlyphSize(1e9)).toBe(MAX_GLYPH_SIZE);
     expect(clampGlyphSize(1)).toBe(1);
     expect(clampGlyphSize(NaN)).toBe(MIN_GLYPH_SIZE);
+  });
+
+  test('clampStoredGlyphSize keeps the floor and lets a size past the Size row’s ceiling, up to the file’s', () => {
+    expect(MAX_STORED_GLYPH_SIZE).toBe(3 * MAX_GLYPH_SIZE);
+    expect(clampStoredGlyphSize(1e-6)).toBe(MIN_GLYPH_SIZE);
+    expect(clampStoredGlyphSize(NaN)).toBe(MIN_GLYPH_SIZE);
+    expect(clampStoredGlyphSize(1)).toBe(1);
+    expect(clampStoredGlyphSize(MAX_GLYPH_SIZE + 1)).toBe(MAX_GLYPH_SIZE + 1);
+    expect(clampStoredGlyphSize(1e9)).toBe(MAX_STORED_GLYPH_SIZE);
   });
 });
 

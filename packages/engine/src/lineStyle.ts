@@ -96,12 +96,27 @@ const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 export const MIN_GLYPH_SIZE = 0.125;
 /** …and the largest: 64pt. */
 export const MAX_GLYPH_SIZE = 4;
+/** The largest a FILE may hold, which is past the Size row's ceiling: three
+ *  times it. A host may stamp a style larger than its page set it — a
+ *  DrawBot pen sizes its glyphs by its width, up to three times — and the
+ *  object written from that holds the size it was stamped at, which a file
+ *  has to give back as it was written. */
+export const MAX_STORED_GLYPH_SIZE = 3 * MAX_GLYPH_SIZE;
 
-/** A glyph size held to the range: the Size row's floor and ceiling, and
- *  the reader's, because a `.tile` comes from outside and carries a raw f32. */
-export function clampGlyphSize(size: number): number {
+/** A glyph size held to the range: the Size row's floor and ceiling (`max`
+ *  is the ceiling; the row's own unless said). */
+export function clampGlyphSize(size: number, max = MAX_GLYPH_SIZE): number {
   if (!Number.isFinite(size)) return MIN_GLYPH_SIZE;
-  return Math.min(MAX_GLYPH_SIZE, Math.max(MIN_GLYPH_SIZE, size));
+  return Math.min(max, Math.max(MIN_GLYPH_SIZE, size));
+}
+
+/** A glyph size as a file may hold it: the reader's clamp, because a
+ *  `.tile` comes from outside and carries a raw f32 — the Size row's floor
+ *  (a tiny size asks for millions of stamps) and the stored ceiling
+ *  ({@link MAX_STORED_GLYPH_SIZE}), so a size a host stamped past the row's
+ *  own is read back as it was. */
+export function clampStoredGlyphSize(size: number): number {
+  return clampGlyphSize(size, MAX_STORED_GLYPH_SIZE);
 }
 
 // A styled path is one `d` string, rebuilt whenever the object changes (a

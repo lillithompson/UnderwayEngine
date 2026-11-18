@@ -9,6 +9,7 @@
 import {
   CompositionBundle, deserializeComposition, serializeComposition,
 } from '../compositionBinaryFormat';
+import { MAX_GLYPH_SIZE, MAX_STORED_GLYPH_SIZE } from '../lineStyle';
 import { LineStyleEffect, PathSegment, SVGObject } from '../types';
 
 function line(start: [number, number], end: [number, number]): PathSegment {
@@ -140,6 +141,19 @@ describe('v71: a corrupt file is refused, not misread', () => {
     )).meta.svgObjects![0].effects!.lineStyle!;
     expect(read.size).toBe(0.125);
     expect(read.rotation).toBe(0);
+  });
+
+  test('a size a host stamped past the Size row’s ceiling is read back as it was, and held to the file’s own', () => {
+    const sized = (size: number) => deserializeComposition(serializeComposition(
+      makeBundle([makeSVG('a', { effects: { lineStyle: {
+        glyph: 'circle' as const, density: 1, size, rotation: 0, randomPlacement: 0, randomRotation: 0, randomSize: 0,
+      } } })]), [],
+    )).meta.svgObjects![0].effects!.lineStyle!.size;
+    expect(MAX_STORED_GLYPH_SIZE).toBeGreaterThan(MAX_GLYPH_SIZE);
+    expect(sized(MAX_GLYPH_SIZE)).toBe(MAX_GLYPH_SIZE);
+    expect(sized(7.5)).toBe(7.5);
+    expect(sized(MAX_STORED_GLYPH_SIZE)).toBe(MAX_STORED_GLYPH_SIZE);
+    expect(sized(1e9)).toBe(MAX_STORED_GLYPH_SIZE);
   });
 
   test('a stroke whose point count claims more bytes than remain throws a clear error', () => {

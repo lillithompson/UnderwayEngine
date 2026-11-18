@@ -1,3 +1,4 @@
+import { MAX_STORED_GLYPH_SIZE } from '@/engine/lineStyle';
 import type { BorderEffect, GlowEffect, ImageFraming, ImageTintFill, ShadowEffect, SVGObject } from '@/engine/types';
 import {
   DEFAULT_GLOW_EFFECT,
@@ -153,6 +154,12 @@ describe('line style', () => {
     const m = lineStyleEffectToModel(DEFAULT_LINE_STYLE_EFFECT);
     expect(lineStyleModelToEffect({ ...m, density: 2, size: -1, rotation: -90, randomPlacement: -1, randomRotation: 7, randomSize: 0.5 }))
       .toMatchObject({ density: 1, size: 0.125, rotation: 270, randomPlacement: 0, randomRotation: 1, randomSize: 0.5 });
+  });
+
+  test('a size a host stamped past the Size row’s ceiling is kept while another row is edited, up to the file’s', () => {
+    const m = lineStyleEffectToModel({ ...DEFAULT_LINE_STYLE_EFFECT, size: 9 });
+    expect(lineStyleModelToEffect({ ...m, density: 0.25 })).toMatchObject({ density: 0.25, size: 9 });
+    expect(lineStyleModelToEffect({ ...m, size: 1e9 }).size).toBe(MAX_STORED_GLYPH_SIZE);
   });
 
   test('the default is a visible run of circles with nothing random', () => {

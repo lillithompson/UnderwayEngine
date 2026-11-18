@@ -5,7 +5,7 @@ import type {
   BorderModel, EndpointsModel, FramingModel, GlowKind, GlowModel, LineStyleModel, ShadowModel,
   TintModel,
 } from '@/editor-ui';
-import { clampGlyphSize } from '@/engine/lineStyle';
+import { clampStoredGlyphSize } from '@/engine/lineStyle';
 
 // The property panel's models ↔ the engine's records, and the defaults an
 // Add button materializes. The halves of each pair live together because
@@ -50,7 +50,10 @@ export const DEFAULT_LINE_STYLE_EFFECT: LineStyleEffect = {
  *  same fields — the model mirrors the record rather than translating it —
  *  so the pair is a clamp each way: the sliders' 0–1, a size no smaller
  *  than the Size row's own floor (a size of nothing stamps nothing, and the
- *  path would vanish), a rotation brought round into 0–360. A drawing
+ *  path would vanish) and no larger than a file may hold (the engine's
+ *  `MAX_STORED_GLYPH_SIZE` — the Size row sets none past its own ceiling,
+ *  and an object a host stamped larger keeps its size while another row is
+ *  edited), a rotation brought round into 0–360. A drawing
  *  rides through as it is, when there is one — the pad's strokes and the
  *  art alike, each absent from the record when the model holds none, so a
  *  style that never had art is the record it always was — and its `tint`
@@ -63,7 +66,7 @@ export function lineStyleModelToEffect(m: LineStyleModel): LineStyleEffect {
     // The art as drawn (1) is the absent field (`lineStyleTintAmount`).
     ...(m.tint !== undefined && Number.isFinite(m.tint) && m.tint < 1 ? { tint: Math.max(0, m.tint) } : {}),
     density: Math.max(0, Math.min(1, m.density)),
-    size: clampGlyphSize(m.size),
+    size: clampStoredGlyphSize(m.size),
     rotation: ((m.rotation % 360) + 360) % 360,
     randomPlacement: Math.max(0, Math.min(1, m.randomPlacement)),
     randomRotation: Math.max(0, Math.min(1, m.randomRotation)),
