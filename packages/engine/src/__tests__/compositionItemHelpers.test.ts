@@ -1,4 +1,5 @@
 import { findItem, isItemLocked, isGroupChainLocked, lockedGroupIds, isItemHidden, isGroupChainHidden, hiddenGroupIds, getItemGroupId, applyCompOps, revertCompOps, clonePathSegment, assertSceneOrderInvariant } from '../compositionOps';
+import { inheritedGroupIds } from '../compositionNodeLookup';
 import { SVGObject, PathSegment, CompositionState, CompositionFigure, makeViewport } from '../types';
 
 function makeState(over: Partial<CompositionState> = {}): CompositionState {
@@ -164,6 +165,34 @@ describe('isItemHidden / isGroupChainHidden / hiddenGroupIds', () => {
   it("does not clear a member's own hide when the group is visible", () => {
     const state = nested({ svgObjects: [{ ...SVG_ARC, groupId: 'child', hidden: true }] });
     expect(isItemHidden(state, 'svg_b')).toBe(true);
+  });
+});
+
+describe('inheritedGroupIds', () => {
+  // A mark a host keeps outside the group records (DrawBot's ignored
+  // objects, report 8cba3aeb) carries down the chain as a lock does.
+  const groups = [
+    { id: 'root' },
+    { id: 'child', parentGroupId: 'root' },
+    { id: 'grandchild', parentGroupId: 'child' },
+    { id: 'other' },
+  ] as never[];
+
+  it('marks a group the host names and every group inside it', () => {
+    expect(inheritedGroupIds(groups, (g) => g.id === 'child')).toEqual(new Set(['child', 'grandchild']));
+    expect(inheritedGroupIds(groups, (g) => g.id === 'root')).toEqual(new Set(['root', 'child', 'grandchild']));
+    expect(inheritedGroupIds(groups, () => false).size).toBe(0);
+  });
+
+  it('is the walk the hidden and locked sets are', () => {
+    const flagged = [{ id: 'a', hidden: true }, { id: 'b', parentGroupId: 'a' }, { id: 'c', locked: true }] as never[];
+    expect(inheritedGroupIds(flagged, (g) => !!g.hidden)).toEqual(hiddenGroupIds(flagged));
+    expect(inheritedGroupIds(flagged, (g) => !!g.locked)).toEqual(lockedGroupIds(flagged));
+  });
+
+  it('survives a malformed parent cycle', () => {
+    const cyclic = [{ id: 'a', parentGroupId: 'b' }, { id: 'b', parentGroupId: 'a' }] as never[];
+    expect(inheritedGroupIds(cyclic, (g) => g.id === 'a')).toEqual(new Set(['a', 'b']));
   });
 });
 

@@ -16,7 +16,10 @@ import type { OutlineObject } from '@/editor-ui/adapter';
 //    trail is a line of the page that it inks over its instruction tiles,
 //    so its row is shown among the overlays (`overRank`). A reader is resolved
 //    ONCE per build, so a host that has to walk the page for its own kinds
-//    (findRigs) walks it once rather than per row.
+//    (findRigs) walks it once rather than per row. It also says how a row
+//    stands on the host's OWN row toggle (`toggled`) — DrawBot's Ignore, a
+//    mark its document keeps of scene nodes and groups — read from the
+//    host's document, which is why the reader is handed it.
 //  · `overlays` — rows for things the host's DOCUMENT holds that draw over
 //    the scene rather than in it: DrawBot's bots and its instruction tiles,
 //    ranked by `OutlineObject.overlayRank` (above every scene row, nested
@@ -64,13 +67,21 @@ export interface OutlineNodeReader {
    *  top-level node is lifted by it, and a top-level group of nothing
    *  but such nodes. */
   overRank?(kind: string, item: OutlineNodeItem): number | undefined;
+  /** How `item`'s row stands on the host's own row toggle
+   *  (`SceneOutlineModel.rowToggle`, `OutlineObject.toggled`): true on,
+   *  false off, undefined for a row that has none. Asked of every leaf and
+   *  of every group row (`kind` 'group'). DrawBot's Ignore: a line, a
+   *  shape or a group its Inklings leave alone. */
+  toggled?(kind: string, item: OutlineNodeItem): boolean | undefined;
 }
 
 /** What an app adds to the shared scene outline. */
 export interface OutlineHost<TDoc = unknown> {
   /** The host's reading of this page's nodes, or null when it has none of
-   *  its own kinds on it. Called once per `buildOutlineObjects`. */
-  nodes?(state: CompositionState): OutlineNodeReader | null;
+   *  its own kinds on it. Called once per `buildOutlineObjects`, with the
+   *  host's document when the caller has one (what a `toggled` mark is
+   *  read from). */
+  nodes?(state: CompositionState, doc?: TDoc): OutlineNodeReader | null;
   /** The host's own rows — what its document holds that draws OVER the
    *  scene. Each carries its own `overlayRank`, and `parentGroupId` where
    *  it rides a scene group. */
@@ -83,7 +94,7 @@ let installed: OutlineHost = NONE;
 /** Install the app's outline host (or, with null, none). Called once at
  *  module scope by the app's extension module; a test installs its own and
  *  clears it after. */
-export function installOutlineHost(host: OutlineHost<never> | OutlineHost | null): void {
+export function installOutlineHost<TDoc = unknown>(host: OutlineHost<TDoc> | null): void {
   installed = (host as OutlineHost | null) ?? NONE;
 }
 

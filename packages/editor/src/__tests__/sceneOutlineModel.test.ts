@@ -403,6 +403,54 @@ describe('the outline host', () => {
     expect(model.sceneOrder).not.toContain('mk_a');
   });
 
+  // DrawBot's Ignore (report 8cba3aeb): a toggle of the host's own, whose
+  // mark lives in the host's DOCUMENT — so the reader is handed it, and
+  // reads groups as well as leaves.
+  test("the host's own row toggle is read from its document, for leaves and groups", () => {
+    const state = badged();
+    const grouped = {
+      ...state,
+      groups: [{ id: 'grp_1', name: 'g' }] as never[],
+      svgObjects: state.svgObjects.map((s) => ((s as { id: string }).id === 'svg_record' ? { ...(s as object), groupId: 'grp_1' } : s)) as never[],
+    };
+    type MarkDoc = { marked: string[] };
+    const nodes = jest.fn((_state: unknown, doc?: MarkDoc) => ({
+      toggled: (kind: string, item: { id: string }) => (kind === 'svg' || kind === 'group'
+        ? (doc?.marked ?? []).includes(item.id) : undefined),
+    }));
+    installOutlineHost({ nodes } as OutlineHost<MarkDoc>);
+    const doc: MarkDoc = { marked: ['svg_badge', 'grp_1'] };
+    const objects = buildOutlineObjects(grouped, undefined, doc);
+    expect(nodes).toHaveBeenCalledWith(grouped, doc);
+    expect(objects.get('svg_badge')?.toggled).toBe(true);
+    // A member keeps its own state: the group's mark is the group row's.
+    expect(objects.get('svg_record')?.toggled).toBe(false);
+    expect(objects.get('grp_1')?.toggled).toBe(true);
+  });
+
+  test('without a toggle reader no row carries a toggle state', () => {
+    const state = badged();
+    const grouped = { ...state, groups: [{ id: 'grp_1', name: 'g' }] as never[],
+      svgObjects: state.svgObjects.map((s) => ({ ...(s as object), groupId: 'grp_1' })) as never[] };
+    installOutlineHost(HOST);
+    const objects = buildOutlineObjects(grouped);
+    for (const row of objects.values()) expect(row.toggled).toBeUndefined();
+    // …and no row gains the key at all (an app without the toggle builds
+    // the rows it always built).
+    expect('toggled' in objects.get('grp_1')!).toBe(false);
+    expect('toggled' in objects.get('svg_badge')!).toBe(false);
+  });
+
+  test("the callbacks' row toggle reaches the model; without one the model has none", () => {
+    const { session } = populated();
+    expect(buildSceneOutlineModel(session.state, null, true, NOOP_CALLBACKS).rowToggle).toBeUndefined();
+    const pressed: string[] = [];
+    const rowToggle = { icon: 'a', iconOn: 'b', label: 'Ignore', labelOn: 'Stop ignoring', onToggle: (id: string) => { pressed.push(id); } };
+    const model = buildSceneOutlineModel(session.state, null, true, { ...NOOP_CALLBACKS, rowToggle });
+    model.rowToggle?.onToggle('svg_x');
+    expect(pressed).toEqual(['svg_x']);
+  });
+
   test('installing null goes back to no host', () => {
     const state = badged();
     installOutlineHost(HOST);

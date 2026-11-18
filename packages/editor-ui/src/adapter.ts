@@ -217,6 +217,33 @@ export interface OutlineObject {
    *  paint order puts it. A lifted row does not drag — where it is listed
    *  is the host's, not the paint order's (`outlineTree.liftedIds`). */
   overRank?: number;
+  /** This row's state of the HOST'S OWN row toggle
+   *  ({@link SceneOutlineModel.rowToggle}; DrawBot's Ignore): true on,
+   *  false off. Absent: the row has no such toggle — an overlay, a kind
+   *  the host's toggle means nothing to — and its place beside the lock is
+   *  left blank, so the rows' icons stay in line. Read only while the
+   *  model carries a `rowToggle`. */
+  toggled?: boolean;
+}
+
+/** A third per-row toggle the HOST owns, beside the eye and the lock —
+ *  DrawBot's Ignore, whose mark lives in its own document rather than on
+ *  the node. Drawn only when the model carries one, so an app without it
+ *  has the two toggles it always had. Each row says whether it has it
+ *  and how it stands ({@link OutlineObject.toggled}); the press is the
+ *  host's to commit. */
+export interface OutlineRowToggle {
+  /** The MCI glyph a row shows while its toggle is off, and while on.
+   *  Off is drawn in `OUTLINE_ICON` and on in `OUTLINE_ICON_ACTIVE`, as
+   *  the eye and the lock are. */
+  icon: string;
+  iconOn: string;
+  /** The button's accessibility label while off, and while on — what a
+   *  press does ("Ignore", "Stop ignoring"), as the lock's reads "Lock"
+   *  and "Unlock". */
+  label: string;
+  labelOn: string;
+  onToggle(id: string): void;
 }
 
 /** Everything the Scene Outline needs, and nothing app-specific. */
@@ -241,6 +268,10 @@ export interface SceneOutlineModel {
   onRename(id: string, newName: string): void;
   onToggleLock(id: string): void;
   onToggleHidden(id: string): void;
+  /** The host's own third toggle, drawn after the lock on every row that
+   *  has it ({@link OutlineObject.toggled}). Optional — unset, a row shows
+   *  the eye and the lock alone, as it always has. */
+  rowToggle?: OutlineRowToggle;
   /** Double-tap / double-click a row. The app frames the object (camera
    *  math stays app-side). */
   onFrame(id: string): void;

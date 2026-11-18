@@ -5,7 +5,7 @@ import { buildFrameRectMap } from '@/engine/compositionFrame';
 import { defaultOutlineName } from './editorSession';
 import { outlineHost } from './outlineHost';
 import { TOOL_META } from './components/toolbarMeta';
-import type { OutlineObject, SceneOutlineModel } from '@/editor-ui/adapter';
+import type { OutlineObject, OutlineRowToggle, SceneOutlineModel } from '@/editor-ui/adapter';
 
 // Builds the project-agnostic SceneOutlineModel (from @/editor-ui) out of a
 // composition. The shared panel never sees engine types — it only reads
@@ -63,6 +63,11 @@ export function outlineNameFor(
  *  (CozyJournal's hidden rig pose record) are chrome for the same reason,
  *  through `OutlineHost.nodes`.
  *
+ *  Each leaf and group row carries the host's reading of it on the host's
+ *  own row toggle (`OutlineNodeReader.toggled`, read with `hostDoc`;
+ *  DrawBot's Ignore), and none where the host says nothing — every row of
+ *  an app without one.
+ *
  *  The host's OVERLAY rows come last (`OutlineHost.overlays`): things its
  *  document holds that draw over the page rather than in it — DrawBot's bots
  *  and instruction tiles — each ranked by `overlayRank`, above every scene
@@ -80,7 +85,7 @@ export function buildOutlineObjects(
   // The host's reading of this page's nodes, resolved ONCE: a host that has
   // to walk the page for its own kinds (findRigs) walks it here, not per row.
   const host = outlineHost();
-  const hostNodes = host.nodes?.(state) ?? null;
+  const hostNodes = host.nodes?.(state, hostDoc) ?? null;
 
   const add = (
     kind: string,
@@ -94,6 +99,7 @@ export function buildOutlineObjects(
     },
     icon?: string,
   ) => {
+    const toggled = hostNodes?.toggled?.(kind, item);
     map.set(item.id, {
       id: item.id,
       kind,
@@ -106,6 +112,9 @@ export function buildOutlineObjects(
         || hostNodes?.chrome?.(kind, item)
         || undefined,
       overRank: hostNodes?.overRank?.(kind, item),
+      // Only where the host says (an app without the toggle builds the
+      // rows it always built).
+      ...(toggled !== undefined ? { toggled } : null),
     });
   };
   for (const f of state.figures) add('figure', f);
@@ -133,6 +142,9 @@ export function buildOutlineObjects(
   );
   for (const g of groups) {
     if (!alive.has(g.id)) continue;
+    // The host's own toggle reads a group as it reads a leaf (DrawBot's
+    // Ignore carries down to a group's members, as the lock does).
+    const toggled = hostNodes?.toggled?.('group', g);
     map.set(g.id, {
       id: g.id,
       kind: 'group',
@@ -140,6 +152,7 @@ export function buildOutlineObjects(
       parentGroupId: g.parentGroupId,
       locked: g.locked ?? false,
       hidden: g.hidden ?? false,
+      ...(toggled !== undefined ? { toggled } : null),
     });
   }
 
@@ -155,6 +168,10 @@ export interface OutlineCallbacks {
   onRename(id: string, newName: string): void;
   onToggleLock(id: string): void;
   onToggleHidden(id: string): void;
+  /** The host's own third row toggle (DrawBot's Ignore), or unset for
+   *  none: each row's state of it is the outline host's to say
+   *  (`OutlineNodeReader.toggled`). */
+  rowToggle?: OutlineRowToggle;
   onFrame(id: string): void;
   /** Press the panel's "Outline" header: frame the whole page. */
   onFrameAll(): void;

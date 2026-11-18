@@ -91,6 +91,21 @@ function flaggedGroupIds(
   groups: readonly GroupNode[],
   flag: 'hidden' | 'locked',
 ): Set<string> {
+  return inheritedGroupIds(groups, (g) => !!g[flag]);
+}
+
+/**
+ * The same walk over a mark a HOST keeps of its own, outside the group
+ * records (DrawBot's ignored objects, a list in its own document): every
+ * group id that `own` says is marked, or that sits inside a group that is
+ * — so a group's mark carries down to everything in it, as a lock and a
+ * hide do. {@link hiddenGroupIds} and {@link lockedGroupIds} are this
+ * over the groups' own flags. Once per pass, O(groups).
+ */
+export function inheritedGroupIds(
+  groups: readonly GroupNode[],
+  own: (group: GroupNode) => boolean,
+): Set<string> {
   const marked = new Set<string>();
   const byId = new Map(groups.map((g) => [g.id, g]));
   for (const g of groups) {
@@ -104,7 +119,7 @@ function flaggedGroupIds(
       if (marked.has(cur.id)) { inherited = true; break; }
       path.push(cur);
       onPath.add(cur.id);
-      if (cur[flag]) { inherited = true; break; }
+      if (own(cur)) { inherited = true; break; }
       cur = cur.parentGroupId ? byId.get(cur.parentGroupId) : undefined;
     }
     if (inherited) for (const p of path) marked.add(p.id);

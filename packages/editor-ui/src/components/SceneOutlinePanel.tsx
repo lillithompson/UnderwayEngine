@@ -45,7 +45,8 @@ import { RenameModal } from './RenameModal';
 // container (expanded by default). Rows drag to reorder AND reparent (drag
 // right to nest into the group above, left to outdent); the change commits only
 // on release (90 fps drag contract). Long-press renames, double-tap frames,
-// with per-row lock/hide toggles. Everything is wired through the
+// with per-row lock/hide toggles (and the host's own third, where the model
+// carries one: `rowToggle`). Everything is wired through the
 // SceneOutlineModel adapter (no engine dependency).
 
 type MCIName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -79,7 +80,8 @@ const DRAG_HANDLE_HIT_SLOP = { top: 0, bottom: 0, left: 10, right: 10 } as const
 //   REORDER — the left of the line, through the end of the name: the indent,
 //     the chevron, the kind icon (still on touch-down), and the text itself.
 //     That is the half you point at when you mean THIS OBJECT.
-//   SCROLL — the gap past the name and the eye and lock beyond it. Nothing
+//   SCROLL — the gap past the name and the eye and lock beyond it (and the
+//     host's own toggle after the lock, where the model has one). Nothing
 //     there arms a drag at all, so a finger put down on it always pushes the
 //     list. The gap keeps {@link OUTLINE_SCROLL_GAP} open on every row, so a
 //     long name can never close it.
@@ -126,6 +128,8 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
   }, [open, slide]);
 
   const iconFor = model.iconForKind ?? defaultIconForKind;
+  // The host's own third toggle (DrawBot's Ignore), or none.
+  const rowToggle = model.rowToggle;
 
   // Expand/collapse: the set of OPENED group ids, and every other group is
   // closed. Held this way round so a group STARTS closed — a group is made
@@ -440,7 +444,7 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                           {displayName}
                         </Text>
                       </View>
-                      {/* THE SCROLL HALF — the gap past the name, and the two
+                      {/* THE SCROLL HALF — the gap past the name, and the
                           icons after it. Nothing here arms a reorder, so a
                           drag started on it is always the list's to scroll.
                           The gap holds a thumb's width open whatever the name
@@ -472,6 +476,29 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                           color={locked ? OUTLINE_ICON_ACTIVE : OUTLINE_ICON}
                         />
                       </Pressable>
+                      {/* The HOST'S OWN toggle (model.rowToggle; DrawBot's
+                          Ignore), after the lock — only on a model that
+                          carries one, so an app without it keeps two
+                          icons. A row without it (obj.toggled unset: an
+                          overlay, a kind it means nothing to) keeps the
+                          slot blank, as an overlay does the eye's. */}
+                      {rowToggle ? (
+                        obj?.toggled === undefined ? (
+                          <View style={styles.iconButton} />
+                        ) : (
+                          <Pressable
+                            style={styles.iconButton}
+                            onPress={() => rowToggle.onToggle(row.id)}
+                            accessibilityLabel={obj.toggled ? rowToggle.labelOn : rowToggle.label}
+                          >
+                            <MaterialCommunityIcons
+                              name={icon(obj.toggled ? rowToggle.iconOn : rowToggle.icon)}
+                              size={14}
+                              color={obj.toggled ? OUTLINE_ICON_ACTIVE : OUTLINE_ICON}
+                            />
+                          </Pressable>
+                        )
+                      ) : null}
                     </Pressable>
                   </Animated.View>
                 );
