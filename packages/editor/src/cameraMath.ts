@@ -156,6 +156,33 @@ export function panBy(camera: Camera, dxPx: number, dyPx: number): Camera {
 }
 
 /**
+ * `camera` as it stands when the viewport it was framed in changes size
+ * under it — a tablet turned, a browser's window dragged: the same world
+ * point at the middle of the view and the same px per cell, so the drawing
+ * neither jumps nor changes size and the new shape simply shows more to
+ * one side and less to the other.
+ *
+ * Both of those ride the viewport's WIDTH in this convention (see
+ * {@link screenToWorld}): the middle of the view is uv `0.5 - offset / vw`
+ * and a cell is `zoom * vw / 32` px, so a camera left as it was scales the
+ * drawing by the widths' ratio — a tablet turned on its side zooms in by
+ * nearly half again — and slides it toward the page's middle. Holding both
+ * gives `offset' = offset * vw'/vw` and `zoom' = zoom * vw/vw'`. A change
+ * of HEIGHT alone moves neither, so the camera is returned as it is.
+ *
+ * The zoom is clamped like every other camera's: at a limit the cell size
+ * gives way and the middle still holds. A viewport with no width yet (the
+ * state before the first measurement) changes nothing.
+ */
+export function cameraForResizedViewport(camera: Camera, from: Viewport, to: Viewport): Camera {
+  const fromW = from.width;
+  const toW = to.width;
+  if (!(fromW > 0) || !(toW > 0) || fromW === toW) return camera;
+  const k = toW / fromW;
+  return { offsetX: camera.offsetX * k, offsetY: camera.offsetY * k, zoom: clampZoom(camera.zoom / k) };
+}
+
+/**
  * Multiply zoom by `factor` (clamped) while keeping the world point under
  * `(screenX, screenY)` fixed on screen — wheel zoom and pinch both anchor
  * this way. Derivation: `screenX = vw/2 + zoom*(offsetX + k)` for constant

@@ -2,6 +2,7 @@ import { buildShapeSVGObject } from '@/engine/shapePresets';
 import { Camera, GroupNode, ImageObject, makeViewport, PaintObject, SVGObject, TextObject } from '@/engine/types';
 import {
   BASE_CELL_PX,
+  cameraForResizedViewport,
   cameraMatrixInto,
   cellBboxAroundPoints,
   EDITOR_MAX_ZOOM,
@@ -105,6 +106,78 @@ describe('panBy', () => {
     expect(after.x - before.x).toBeCloseTo(25, 9);
     expect(after.y - before.y).toBeCloseTo(-40, 9);
     expect(panned.zoom).toBe(camera.zoom);
+  });
+});
+
+describe('cameraForResizedViewport — a tablet turned, a window dragged', () => {
+  const upright = makeViewport(820, 1180);
+  const onItsSide = makeViewport(1180, 820);
+  const cameras: Camera[] = [
+    { offsetX: 0, offsetY: 0, zoom: 1 },
+    { offsetX: 42.5, offsetY: -117, zoom: 0.8 },
+    { offsetX: -300, offsetY: 260, zoom: 5.25 },
+  ];
+  const middle = (v: { width: number; height: number }) => ({ x: v.width / 2, y: v.height / 2 });
+
+  test('the world point at the middle of the view stays at the middle', () => {
+    for (const camera of cameras) {
+      const was = screenToWorld(middle(upright).x, middle(upright).y, camera, upright);
+      const turned = cameraForResizedViewport(camera, upright, onItsSide);
+      const now = screenToWorld(middle(onItsSide).x, middle(onItsSide).y, turned, onItsSide);
+      expect(now.cellX).toBeCloseTo(was.cellX, 9);
+      expect(now.cellY).toBeCloseTo(was.cellY, 9);
+    }
+  });
+
+  test('a cell stays the size it was on screen', () => {
+    for (const camera of cameras) {
+      const turned = cameraForResizedViewport(camera, upright, onItsSide);
+      expect(pxPerCell(turned, onItsSide)).toBeCloseTo(pxPerCell(camera, upright), 9);
+    }
+  });
+
+  test('left as it was, the same camera would zoom the drawing by the widths\' ratio', () => {
+    // The reason the function exists: the convention ties a cell's size to
+    // the viewport's width.
+    const camera = cameras[1];
+    expect(pxPerCell(camera, onItsSide) / pxPerCell(camera, upright)).toBeCloseTo(1180 / 820, 9);
+  });
+
+  test('turned and turned back is the camera it was', () => {
+    for (const camera of cameras) {
+      const back = cameraForResizedViewport(cameraForResizedViewport(camera, upright, onItsSide), onItsSide, upright);
+      expect(back.offsetX).toBeCloseTo(camera.offsetX, 9);
+      expect(back.offsetY).toBeCloseTo(camera.offsetY, 9);
+      expect(back.zoom).toBeCloseTo(camera.zoom, 9);
+    }
+  });
+
+  test('a change of height alone is the same camera, by identity', () => {
+    const camera = cameras[1];
+    expect(cameraForResizedViewport(camera, upright, makeViewport(820, 900))).toBe(camera);
+    // …which already holds the middle and the cell size.
+    const was = screenToWorld(410, 590, camera, upright);
+    const now = screenToWorld(410, 450, camera, makeViewport(820, 900));
+    expect(now.cellX).toBeCloseTo(was.cellX, 9);
+    expect(now.cellY).toBeCloseTo(was.cellY, 9);
+  });
+
+  test('at a zoom limit the cell size gives way and the middle still holds', () => {
+    const far: Camera = { offsetX: 90, offsetY: -40, zoom: EDITOR_MIN_ZOOM };
+    const turned = cameraForResizedViewport(far, upright, onItsSide);
+    expect(turned.zoom).toBe(EDITOR_MIN_ZOOM);
+    const was = screenToWorld(410, 590, far, upright);
+    const now = screenToWorld(590, 410, turned, onItsSide);
+    expect(now.cellX).toBeCloseTo(was.cellX, 9);
+    expect(now.cellY).toBeCloseTo(was.cellY, 9);
+    const near: Camera = { offsetX: 90, offsetY: -40, zoom: EDITOR_MAX_ZOOM };
+    expect(cameraForResizedViewport(near, onItsSide, upright).zoom).toBe(EDITOR_MAX_ZOOM);
+  });
+
+  test('a viewport not measured yet changes nothing', () => {
+    const camera = cameras[2];
+    expect(cameraForResizedViewport(camera, makeViewport(0, 0), upright)).toBe(camera);
+    expect(cameraForResizedViewport(camera, upright, makeViewport(0, 0))).toBe(camera);
   });
 });
 
