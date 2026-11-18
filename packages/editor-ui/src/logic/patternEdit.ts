@@ -5,6 +5,7 @@
 // bar's action set. Kept pure (no react-native) so all of it is
 // unit-tested in node, mirroring imageEdit.ts / svgEdit.ts.
 
+import { pushRecent, usedFirst } from './recentList';
 import { secondTapWithin, type TapRecord } from './secondTap';
 
 /** The ten symmetry flags a pattern's painting can mirror by. Structurally
@@ -165,12 +166,13 @@ export const PATTERN_RECENT_TILES = 9;
 export const PATTERN_TILE_GRID_COLUMNS = 6;
 
 /** Move `id` to the head of the most-recently-used list, dropping any
- *  earlier appearance and trimming to PATTERN_RECENT_TILES. */
+ *  earlier appearance and trimming to PATTERN_RECENT_TILES
+ *  (`recentList.pushRecent`). */
 export function pushRecentPatternTile(
   recent: readonly string[],
   id: string,
 ): string[] {
-  return [id, ...recent.filter((r) => r !== id)].slice(0, PATTERN_RECENT_TILES);
+  return pushRecent(recent, id, PATTERN_RECENT_TILES);
 }
 
 /** The tiles the grid shows: the remembered ones the menu still offers —
@@ -178,28 +180,12 @@ export function pushRecentPatternTile(
  *  Random can't reach — padded from the head of `offered` so a user who
  *  has picked nothing yet still finds a full grid of tiles under their
  *  thumb. Returns fewer than PATTERN_RECENT_TILES only when the menu
- *  itself holds fewer. */
+ *  itself holds fewer. The order is `recentList.usedFirst`'s. */
 export function recentPatternTiles(
   recent: readonly string[],
   offered: readonly PatternTileRow[],
 ): PatternTileRow[] {
-  const byId = new Map(offered.map((t) => [t.id, t]));
-  const rows: PatternTileRow[] = [];
-  const seen = new Set<string>();
-  const take = (row: PatternTileRow | undefined) => {
-    if (!row || seen.has(row.id)) return;
-    seen.add(row.id);
-    rows.push(row);
-  };
-  for (const id of recent) {
-    if (rows.length === PATTERN_RECENT_TILES) return rows;
-    take(byId.get(id));
-  }
-  for (const row of offered) {
-    if (rows.length === PATTERN_RECENT_TILES) break;
-    take(row);
-  }
-  return rows;
+  return usedFirst(offered, recent, (t) => t.id).slice(0, PATTERN_RECENT_TILES);
 }
 
 // ── Tile transforms (the Facet tile-editor's pose UX) ───────────────
