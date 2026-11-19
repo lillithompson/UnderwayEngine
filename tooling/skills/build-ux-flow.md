@@ -98,6 +98,12 @@ node scripts/case_studies/flow-<slug>.js [stopAfterFrame]
   ultrawide monitor, and `h.resize({ width, height, scale: 1 })` to any
   window, such as one snapped to part of a monitor (`harness.js`,
   `DEVICES`).
+- A flow on a tablet opens `open({ outDir, device: 'ipad' })`, an 11-inch
+  iPad held upright (820×1180 at 2×), touched like the phone. `h.rotate()`
+  turns it on its side and back, as a person holding one does: the page
+  sees its orientation change, so film a step both ways up, and turn it
+  with a sheet open or a run going. `h.resize('ipadPro')` carries it to a
+  13-inch iPad Pro (1032×1376), where the layouts change again.
 - Iterate with the stop-after-frame argument, which prints the screen's text and
   buttons. Restart any backend between runs.
 - **Look at every frame**

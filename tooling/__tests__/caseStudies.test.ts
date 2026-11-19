@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 // writeup refuses. Nothing here opens a browser.
 
 /* eslint-disable @typescript-eslint/no-var-requires */
-const { clearFrames, createHarness, DEVICES, fileFor, filmstrip, labelled, resized, SHOWN, TAPPABLE } = require('../case_studies/harness.js');
+const { clearFrames, createHarness, DEVICES, fileFor, filmstrip, labelled, resized, rotated, SHOWN, TAPPABLE } = require('../case_studies/harness.js');
 const { caseStudyPaths } = require('../case_studies/paths.js');
 const { embedWidth, fillTemplate, pngSize, scriptJson, validate } = require('../case_studies/build-writeup.js');
 /* eslint-enable @typescript-eslint/no-var-requires */
@@ -96,6 +96,30 @@ describe('case study capture', () => {
       expect(DEVICES.desktop).toMatchObject({ width: 1440, height: 900, scale: 2, touch: false });
       expect(DEVICES.wide).toMatchObject({ width: 3440, height: 1440, scale: 1, touch: false });
       expect(DEVICES.desktop.ua).not.toMatch(/iPhone|Mobile/);
+    });
+
+    it('an 11-inch iPad and a 13-inch iPad Pro are touched at 2×, held upright, and say they are an iPad', () => {
+      expect(DEVICES.ipad).toMatchObject({ width: 820, height: 1180, scale: 2, touch: true });
+      expect(DEVICES.ipadPro).toMatchObject({ width: 1032, height: 1376, scale: 2, touch: true });
+      for (const d of [DEVICES.ipad, DEVICES.ipadPro]) {
+        expect(d.height).toBeGreaterThan(d.width);
+        expect(d.ua).toMatch(/iPad/);
+        expect(d.ua).not.toMatch(/iPhone|Macintosh/);
+      }
+    });
+
+    it('turns a screen a quarter: upright to its side and back', () => {
+      const upright = { width: DEVICES.ipad.width, height: DEVICES.ipad.height };
+      expect(rotated(upright)).toEqual({ width: 1180, height: 820 });
+      expect(rotated(rotated(upright))).toEqual(upright);
+    });
+
+    it('resizes an iPad to its turned size or the larger iPad, at its own density; never to a moused screen', () => {
+      const ipad = DEVICES.ipad;
+      expect(resized(ipad, { ...rotated(ipad), scale: 2 })).toEqual({ width: 1180, height: 820, shot: 'device' });
+      expect(resized(ipad, 'ipadPro')).toEqual({ width: 1032, height: 1376, shot: 'device' });
+      expect(() => resized(ipad, 'desktop')).toThrow(/touched screen/);
+      expect(() => resized(DEVICES.phone, 'ipad')).toThrow(/3× or 1× in this browser, not 2×/);
     });
 
     it('resizes a window to a screen, or to a size, snapping at 1× where the screen is not as dense', () => {

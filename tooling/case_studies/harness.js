@@ -29,19 +29,33 @@ const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const ORIGIN = 'http://localhost:8790';
 const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
 const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+/** An iPad's agent in MOBILE content mode, which names the iPad (the
+ *  default, desktop mode, says "Macintosh"; an app's WebView may choose
+ *  either, and the shell's chooses mobile). */
+const IPAD_UA = 'Mozilla/5.0 (iPad; CPU OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
 
 /**
  * The screens a flow is filmed on, in CSS px; `scale` is a frame's pixels
- * per CSS px, so a phone's frames are 1170×2532, a laptop's 2880×1800 and
- * an ultrawide monitor's 3440×1440 (one of those is not a Retina screen).
- * A phone is touched (`draw` and `hold` are fingers); the others are a
- * browser window, moused (they are the mouse, and `hover` rests it).
+ * per CSS px, so a phone's frames are 1170×2532, an 11-inch iPad's
+ * 1640×2360 held upright, a laptop's 2880×1800 and an ultrawide
+ * monitor's 3440×1440 (one of those is not a Retina screen). A phone and
+ * an iPad are touched (`draw` and `hold` are fingers) and open held
+ * upright (`rotate` turns them); the others are a browser window, moused
+ * (they are the mouse, and `hover` rests it).
  */
 const DEVICES = {
   phone: { width: 390, height: 844, scale: 3, touch: true, ua: IPHONE_UA },
+  ipad: { width: 820, height: 1180, scale: 2, touch: true, ua: IPAD_UA },
+  ipadPro: { width: 1032, height: 1376, scale: 2, touch: true, ua: IPAD_UA },
   desktop: { width: 1440, height: 900, scale: 2, touch: false, ua: DESKTOP_UA },
   wide: { width: 3440, height: 1440, scale: 1, touch: false, ua: DESKTOP_UA },
 };
+
+/** A screen of `size` turned a quarter: held on its side if it stood
+ *  upright, upright if it lay on its side. */
+function rotated({ width, height }) {
+  return { width: height, height: width };
+}
 
 /**
  * The screen `resize(to)` makes of a browser opened on `from`: `to` a
@@ -157,6 +171,8 @@ function createHarness({ rewrites = [], handle = null, signIn = null, web = null
     page.on('pageerror', (e) => errors.push(e.message));
     let n = startAt - 1;
     let shot = 'device';
+    /** The screen's size now, which `resize` and `rotate` change. */
+    let size = { width: screen.width, height: screen.height };
     /** The middle of the visible element `tap` would press for `label`. */
     async function middleOf(label) {
       const found = await page.evaluateHandle(labelled, { wanted: label, selector: TAPPABLE });
@@ -231,6 +247,14 @@ function createHarness({ rewrites = [], handle = null, signIn = null, web = null
         const s = resized(screen, to);
         await page.setViewportSize({ width: s.width, height: s.height });
         shot = s.shot;
+        size = { width: s.width, height: s.height };
+      },
+      /** A phone or an iPad turned a quarter (`rotated`): on a touched
+       *  screen the browser's orientation turns with it, so the page sees
+       *  `screen.orientation` change and an `orientationchange`, as on a
+       *  device. Frames after it are snapped at the turned size. */
+      async rotate() {
+        await this.resize({ ...rotated(size), scale: shot === 'css' ? 1 : screen.scale });
       },
       /** The mouse rested on the element `tap` would press: its hover state. */
       async hover(label) {
@@ -256,4 +280,4 @@ function createHarness({ rewrites = [], handle = null, signIn = null, web = null
   return { open, filmstrip, clearFrames, ORIGIN };
 }
 
-module.exports = { CHROME, DEVICES, ORIGIN, SHOWN, TAPPABLE, clearFrames, createHarness, fileFor, filmstrip, labelled, resized };
+module.exports = { CHROME, DEVICES, ORIGIN, SHOWN, TAPPABLE, clearFrames, createHarness, fileFor, filmstrip, labelled, resized, rotated };
