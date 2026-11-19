@@ -25,7 +25,25 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { caseStudyPaths } = require('./paths.js');
 
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+/**
+ * The Chrome a capture drives: CAPTURE_CHROME where it is set, else where
+ * Google installs it on this platform — a Mac's one place, or on Windows
+ * the first of the machine's and the user's installs that is there (the
+ * machine's when none is, so the error names a real place to look).
+ */
+function chromePath(platform = process.platform, env = process.env, exists = fs.existsSync) {
+  if (env.CAPTURE_CHROME) return env.CAPTURE_CHROME;
+  if (platform === 'win32') {
+    const installs = [env.PROGRAMFILES, env['PROGRAMFILES(X86)'], env.LOCALAPPDATA]
+      .filter(Boolean)
+      .map((dir) => path.win32.join(dir, 'Google', 'Chrome', 'Application', 'chrome.exe'));
+    return installs.find((p) => exists(p)) ?? installs[0];
+  }
+  if (platform === 'linux') return '/usr/bin/google-chrome';
+  return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+}
+
+const CHROME = chromePath();
 const ORIGIN = 'http://localhost:8790';
 const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1';
 const DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -280,4 +298,4 @@ function createHarness({ rewrites = [], handle = null, signIn = null, web = null
   return { open, filmstrip, clearFrames, ORIGIN };
 }
 
-module.exports = { CHROME, DEVICES, ORIGIN, SHOWN, TAPPABLE, clearFrames, createHarness, fileFor, filmstrip, labelled, resized, rotated };
+module.exports = { CHROME, chromePath, DEVICES, ORIGIN, SHOWN, TAPPABLE, clearFrames, createHarness, fileFor, filmstrip, labelled, resized, rotated };

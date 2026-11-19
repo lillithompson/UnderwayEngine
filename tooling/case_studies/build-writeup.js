@@ -29,11 +29,11 @@
 //   setup    ["paragraph", …] for "How this was captured"
 //   artifact the published page's URL, once it has one
 // Every text field is inline HTML (<b>, <span class="mono">).
-const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { CHROME } = require('./harness.js');
+const { toJpegs } = require('./jpegs.js');
 const { caseStudyPaths } = require('./paths.js');
 
 const TAGS = ['bug', 'friction', 'polish', 'check', 'works', 'fixed'];
@@ -80,19 +80,10 @@ function validate(spec, frameCount) {
 
 /** Each frame as { src, w, h }: a JPEG data URL and the PNG's own size,
  *  which the page draws it at the shape of. */
-function embedFrames(dir, pngs) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'writeup-'));
-  try {
-    return pngs.map((name) => {
-      const size = pngSize(fs.readFileSync(path.join(dir, name)));
-      const out = path.join(tmp, name.replace(/\.png$/, '.jpg'));
-      execFileSync('sips', ['-s', 'format', 'jpeg', '-s', 'formatOptions', '72',
-        '--resampleWidth', String(embedWidth(size)), path.join(dir, name), '--out', out], { stdio: 'ignore' });
-      return { src: `data:image/jpeg;base64,${fs.readFileSync(out).toString('base64')}`, w: size.width, h: size.height };
-    });
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
+async function embedFrames(dir, pngs) {
+  const sizes = pngs.map((name) => pngSize(fs.readFileSync(path.join(dir, name))));
+  const srcs = await toJpegs(pngs.map((name) => path.join(dir, name)), sizes.map(embedWidth));
+  return sizes.map((size, k) => ({ src: srcs[k], w: size.width, h: size.height }));
 }
 
 // JSON inside a <script>: keep "</script>" and U+2028/9 from ending or breaking it.
@@ -117,7 +108,7 @@ async function check(out) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       const errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
-      await page.goto(`file://${out}`);
+      await page.goto(pathToFileURL(out).href);
       await page.waitForTimeout(800);
       const info = await page.evaluate(() => ({
         frames: document.images.length,
@@ -147,7 +138,7 @@ async function main(args) {
   validate(spec, pngs.length);
 
   const template = fs.readFileSync(path.join(__dirname, 'writeup.template.html'), 'utf8');
-  const html = fillTemplate(template, spec, `${path.relative(paths.root, dir)}/`, embedFrames(dir, pngs));
+  const html = fillTemplate(template, spec, `${path.relative(paths.root, dir).split(path.sep).join('/')}/`, await embedFrames(dir, pngs));
   const out = path.resolve(outArg || path.join(paths.captureDir, `${flow}-flow.html`));
   fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, html);

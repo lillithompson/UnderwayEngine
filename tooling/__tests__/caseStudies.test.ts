@@ -7,7 +7,8 @@ import { join, resolve } from 'node:path';
 // writeup refuses. Nothing here opens a browser.
 
 /* eslint-disable @typescript-eslint/no-var-requires */
-const { clearFrames, createHarness, DEVICES, fileFor, filmstrip, labelled, resized, rotated, SHOWN, TAPPABLE } = require('../case_studies/harness.js');
+const { chromePath, clearFrames, createHarness, DEVICES, fileFor, filmstrip, labelled, resized, rotated, SHOWN, TAPPABLE } = require('../case_studies/harness.js');
+const { compareRows, comparePage, rowLayout, MIN_CELL, MAX_FRAME_HEIGHT } = require('../case_studies/compare-pdf.js');
 const { caseStudyPaths } = require('../case_studies/paths.js');
 const { embedWidth, fillTemplate, pngSize, scriptJson, validate } = require('../case_studies/build-writeup.js');
 /* eslint-enable @typescript-eslint/no-var-requires */
@@ -144,6 +145,93 @@ describe('case study capture', () => {
     expect(typeof h.filmstrip).toBe('function');
     expect(typeof h.clearFrames).toBe('function');
     expect(h.ORIGIN).toMatch(/^http:\/\/localhost:/);
+  });
+
+  describe('the Chrome a capture drives', () => {
+    const MAC = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    const WIN_ENV = { PROGRAMFILES: 'C:\\Program Files', 'PROGRAMFILES(X86)': 'C:\\Program Files (x86)', LOCALAPPDATA: 'C:\\Users\\sam\\AppData\\Local' };
+    const machine = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+    const users = 'C:\\Users\\sam\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe';
+
+    it('is CAPTURE_CHROME wherever that is set', () => {
+      expect(chromePath('win32', { ...WIN_ENV, CAPTURE_CHROME: 'D:\\chrome.exe' }, () => true)).toBe('D:\\chrome.exe');
+      expect(chromePath('darwin', { CAPTURE_CHROME: '/opt/chrome' })).toBe('/opt/chrome');
+    });
+
+    it('on Windows is the first install that is there, the machine\'s before the user\'s', () => {
+      expect(chromePath('win32', WIN_ENV, () => true)).toBe(machine);
+      expect(chromePath('win32', WIN_ENV, (p: string) => p === users)).toBe(users);
+      expect(chromePath('win32', WIN_ENV, () => false)).toBe(machine);
+    });
+
+    it('is the Mac\'s one place on a Mac, and google-chrome on Linux', () => {
+      expect(chromePath('darwin', {})).toBe(MAC);
+      expect(chromePath('linux', {})).toBe('/usr/bin/google-chrome');
+    });
+
+    it('opens pages and frames by file URL, never by a file:// string a Windows path breaks', () => {
+      for (const f of ['build-writeup.js', 'sheet.js', 'compare-pdf.js']) {
+        const src = readFileSync(join(__dirname, '../case_studies', f), 'utf8');
+        expect(src).not.toContain('file://');
+      }
+      const writeup = readFileSync(join(__dirname, '../case_studies/build-writeup.js'), 'utf8');
+      expect(writeup).not.toContain("'sips'");
+      expect(writeup).toContain('await toJpegs(');
+    });
+  });
+
+  describe('the side-by-side PDF', () => {
+    const KEYS = ['iphone', 'ipad', 'desktop'];
+
+    it('makes a row of each state, a cell of each device, null where a device has none', () => {
+      const rows = compareRows(['01-iphone-home.png', '02-ipad-home.png', '03-desktop-home.png', '04-iphone-canvas.png', '05-desktop-canvas.png'], KEYS);
+      expect(rows.map((r: any) => r.state)).toEqual(['home', 'canvas']);
+      expect(rows[0].cells).toEqual({ iphone: 0, ipad: 1, desktop: 2 });
+      expect(rows[1].cells).toEqual({ iphone: 3, ipad: null, desktop: 4 });
+      expect(rows[1].first).toBe(3);
+    });
+
+    it('keeps each device\'s own order: a state one device has comes before what follows it there', () => {
+      // The iPad's preview is filmed after the iPhone has taken the template.
+      const rows = compareRows(['01-iphone-taken.png', '02-ipad-previewed.png', '03-ipad-taken.png', '04-desktop-taken.png', '05-iphone-named.png'], KEYS);
+      expect(rows.map((r: any) => r.state)).toEqual(['previewed', 'taken', 'named']);
+    });
+
+    it.each([
+      ['a name with no device', ['01-home.png'], /is not NN-<device>-<state>/],
+      ['a device not in people', ['01-android-home.png'], /is not NN-<device>-<state>/],
+      ['a state filmed twice on one device', ['01-ipad-home.png', '02-ipad-home.png'], /"home" is filmed twice on ipad/],
+      ['devices that disagree on the order', ['01-iphone-a.png', '02-iphone-b.png', '03-ipad-b.png', '04-ipad-a.png'], /orders that contradict/],
+    ])('refuses %s', (_name, pngs, message) => {
+      expect(() => compareRows(pngs, KEYS)).toThrow(message);
+    });
+
+    it('draws a row as tall as fits the page, no cell narrower than its caption needs', () => {
+      const wide = rowLayout([390 / 844, 820 / 1180, 1440 / 900]);
+      expect(wide.height).toBeLessThan(MAX_FRAME_HEIGHT);
+      expect(wide.widths[0]).toBe(MIN_CELL);
+      expect(wide.widths.reduce((s: number, w: number) => s + w, 0)).toBeLessThanOrEqual(1280 - 72 - 48);
+      expect(rowLayout([390 / 844]).height).toBe(MAX_FRAME_HEIGHT);
+    });
+
+    it('lays out a page of each state under its phase, a badge per device, and says where one has no screen', () => {
+      const spec = {
+        title: 'Walk', lede: 'Captured.', people: { iphone: 'iPhone', ipad: 'iPad', desktop: 'Desktop web' },
+        phases: [['Open', 1, 3], ['Draw', 4, 5]],
+        steps: [['iphone', 'Home', 'a'], ['ipad', 'Home', 'b'], ['desktop', 'Home', 'c'], ['iphone', 'Canvas', 'd'], ['desktop', 'Canvas', 'e']],
+        findings: [{ tag: 'friction', title: 'Small.', body: 'Too small.' }],
+      };
+      const frames = [[1170, 2532], [1640, 2360], [2880, 1800], [1170, 2532], [2880, 1800]].map(([w, h], i) => ({ src: `data:image/jpeg;base64,F${i}`, w, h }));
+      const html = comparePage(spec, compareRows(['01-iphone-home.png', '02-ipad-home.png', '03-desktop-home.png', '04-iphone-canvas.png', '05-desktop-canvas.png'], KEYS), frames);
+      expect(html.match(/<section class="sheet">/g)).toHaveLength(2);
+      expect(html).toContain('<h2>Open</h2><span>1 of 2</span>');
+      expect(html).toContain('<h2>Draw</h2><span>2 of 2</span>');
+      for (let i = 0; i < 5; i += 1) expect(html).toContain(`data:image/jpeg;base64,F${i}`);
+      expect(html.match(/No separate screen here/g)).toHaveLength(1);
+      expect(html).toContain('<span class="who p2">Desktop web</span>');
+      expect(html).toContain('<b>Small.</b> Too small.');
+      expect(html).toContain('@page { size: 1280px 720px;');
+    });
   });
 
   describe('caseStudyPaths', () => {

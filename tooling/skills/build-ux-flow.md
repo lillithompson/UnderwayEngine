@@ -77,6 +77,9 @@ npm i --no-save playwright-core          # once
 node scripts/case_studies/flow-<slug>.js [stopAfterFrame]
 ```
 
+The harness drives the installed Google Chrome, found where Google puts it
+on a Mac, Windows or Linux; `CAPTURE_CHROME` names another.
+
 - Write `scripts/case_studies/flow-<slug>.js` in the style of its siblings. It
   needs a header comment saying what it films, `clearFrames(OUT)` first (it
   keeps `writeup.json`), `filmstrip()` for frame numbers, and frames named
@@ -104,6 +107,13 @@ node scripts/case_studies/flow-<slug>.js [stopAfterFrame]
   sees its orientation change, so film a step both ways up, and turn it
   with a sheet open or a run going. `h.resize('ipadPro')` carries it to a
   13-inch iPad Pro (1032×1376), where the layouts change again.
+- A flow that **compares screens** films them at once, a browser each, and
+  snaps each state on every screen in turn, the frames named
+  `NN-<device>-<state>` with the same `<state>` on each and the devices as
+  the writeup's `people` (their badges). Then, after the writeup is
+  written, `node <tooling>/case_studies/compare-pdf.js <slug>` prints them
+  side by side to `<flows>/<slug>/<slug>.pdf`, a page a state, a column a
+  device, and says if a page's captions run past its foot.
 - Iterate with the stop-after-frame argument, which prints the screen's text and
   buttons. Restart any backend between runs.
 - **Look at every frame**
