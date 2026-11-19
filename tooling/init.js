@@ -60,7 +60,7 @@ stub exists to point at (a skill has to live in the project's own
 
 const UX_FLOW_STUB = `---
 name: build-ux-flow
-description: Film a described user flow in the case-study harness (phone-sized screenshots), publish its writeup as an artifact, and fold what it turned up into docs/ux_suggestions.md (dropping emptied sections and renumbering). Only when the user asks, e.g. "/build-ux-flow start a new thing, change it, and share it".
+description: Film a described user flow in the case-study harness (phone-sized screenshots), publish its writeup as an artifact, and log what it turned up where the project keeps its findings (a report apiece in its bug database, or docs/ux_suggestions.md). Only when the user asks, e.g. "/build-ux-flow start a new thing, change it, and share it".
 argument-hint: <the flow to film, in plain words>
 disable-model-invocation: true
 ---

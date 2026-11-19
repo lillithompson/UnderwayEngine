@@ -10,19 +10,22 @@ Three deliverables, every time:
    `scripts/case_studies/flow-<flow>.js`.
 2. **The writeup**: `<flows>/<flow>/writeup.json`, built by `build-writeup.js`
    and published as an artifact.
-3. **UX suggestions**: what the frames turned up, added to
-   `docs/ux_suggestions.md`. Then sweep the whole doc: remove empty sections
-   and renumber.
+3. **The findings, logged**: what the frames turned up, each finding logged
+   where the project keeps them (its **Findings** value, below): a report of
+   its own in the project's bug database, or an entry in
+   `docs/ux_suggestions.md`.
 
 `<flows>` is `flows/` under the project's `caseStudies` folder
 (`underway.config.json`, `../Portfolio/case_studies` by default).
 `<tooling>` below is `vendor/UnderwayEngine/tooling`. Run every command from
 the project's root.
 
-Never write to production: the harness refuses every host the project has not
-routed. Commit each finished flow on `main`, staging only the files it touched,
-and never push; the ship pass does (`CLAUDE.shared.md`, "Github"). Never create
-a branch.
+A capture never writes to production: the harness refuses every host the
+project has not routed. The one thing this skill sends there is the findings,
+where the project logs them in its bug database (§5a), and it sends them with
+the project's own command, never from a flow. Commit each finished flow on
+`main`, staging only the files it touched, and never push; the ship pass does
+(`CLAUDE.shared.md`, "Github"). Never create a branch.
 
 ## The project's values
 
@@ -39,6 +42,11 @@ wired yet (`<tooling>/README.md`, "Wiring a project"). The README says:
   project with no accounts says so, and its flows film one browser.
 - **Seeding**: how a flow sets up its preconditions.
 - **Not filmable**: what only exists in the native app.
+- **Findings**: where a flow's findings are logged. A project with a bug
+  database gives two commands, the one that files ONE finding as a report of
+  its own and the one that lists what is already there, and the longest text
+  a report takes (§5a). A project that gives none keeps its findings in
+  `docs/ux_suggestions.md` (§5b).
 - **Flows**: what each filmed flow does, its frame count and its gotchas.
 
 ## 0. Before starting
@@ -127,9 +135,11 @@ screen in a frame**, not inferred from code. Cite frame numbers.
 - Tags: `bug` (plainly wrong), `friction` (works, but costs the user something),
   `polish` (wording or detail), `check` (seen in the harness, confirm on a
   device), and `works` (what goes well; one or two at most).
-- Before writing one up, check `docs/ux_suggestions.md` for the same issue. If
-  it's already there, cite its number in the writeup ("still open, UX 2.1")
-  instead of filing it twice.
+- Before writing one up, look for the same issue where the project logs its
+  findings: what the README's listing command prints, or
+  `docs/ux_suggestions.md`. If it's already there and still open, cite it in
+  the writeup ("still open, report 35b55419", or "still open, UX 2.1")
+  instead of logging it twice.
 - Write plainly. Quote the on-screen text exactly. Say what the user sees, then
   why it matters.
 
@@ -154,12 +164,40 @@ screen in a frame**, not inferred from code. Cite frame numbers.
    so the link stays the same.
 4. Put the artifact URL into `writeup.json` as `"artifact"`.
 
-## 5. docs/ux_suggestions.md
+## 5. Log the findings
 
-The doc lists only what is **still open**. Leave out `works` and `fixed` items.
-If the project has no such doc yet, start one: a title, a line saying it lists
-what is still open, a sentence counting the flows above a flows table, and an
-unnumbered "Not yet covered" section.
+Where they go is the project's **Findings** value. Only what is **still open**
+is logged: leave out `works` items, and anything a report or an entry already
+says (§3).
+
+### 5a. A project with a bug database
+
+One report per finding, never two findings in one. For each, in the writeup's
+order:
+
+1. Write its text to a file of its own in your scratchpad, no longer than the
+   README says a report may be:
+   - first line: `<Finding> — <Bug|Friction|Polish|Check>`;
+   - then what is on screen (flow `<slug>`, frames N–M), why it matters, and
+     `Suggest:` a direction. Name the code only when you checked it;
+   - last line: `Seen in the <slug> capture (<D Month YYYY>), by
+     /build-ux-flow.`
+2. File it with the README's command, exactly as given: it files the finding
+   under the type that says Claude logged it. Keep the id it prints.
+
+A finding filed this way is untriaged. Never mark one ready to fix, and never
+start work on one: that is the owner's read. Never edit or remove a report
+that is already there.
+
+If the README keeps a list of what no flow covers yet, trim what this flow now
+covers.
+
+### 5b. A project that keeps `docs/ux_suggestions.md`
+
+The doc lists only what is still open; `fixed` items are left out as `works`
+are. If the project has no such doc yet, start one: a title, a line saying it
+lists what is still open, a sentence counting the flows above a flows table,
+and an unnumbered "Not yet covered" section.
 
 1. **Add the flow** to the flows table (slug, frame count, one line of what
    happens) and fix the flow count in the sentence above the table.
@@ -202,8 +240,10 @@ unnumbered "Not yet covered" section.
 - Report to the user:
   - the artifact link
   - the frames directory and count
-  - each finding with its new UX number
-  - the old→new renumbering, if any, and the comments you reworded
+  - each finding with where it was logged: its report's id, or its new UX
+    number
+  - in a project that keeps the doc: the old→new renumbering, if any, and the
+    comments you reworded
   - harness changes
   - what you decided that the description left open
   - the files changed
