@@ -136,6 +136,20 @@ describe('a row that would not fit tightens, then wraps', () => {
     const gap = Number(/const ARROW_GAP = (\d+);/.exec(CAPSULE)![1]);
     expect(hit + gap).toBe(TOOL_MODE_ARROW_SPAN);
   });
+
+  test('tells its host how many rows it drew, before the frame is painted and only on a change', () => {
+    // DrawBot report 72ebf56e: a host seating chrome one line under the
+    // capsule drew it across a wrapped capsule's second row.
+    expect(CAPSULE).toContain('onRows?: (rows: number) => void;');
+    expect(CAPSULE).toContain('const rows = rowCounts.length;');
+    expect(CAPSULE).toContain('useLayoutEffect(() => { onRows?.(rows); }, [rows, onRows]);');
+  });
+
+  test('its rows are the height toolModeCapsuleRowsHeightPx reckons: a capsule-high row each, a 1 pt hairline between', () => {
+    expect(CAPSULE).toContain('height: FLOATING_CAPSULE_HEIGHT,');
+    expect(CAPSULE).toContain('{r > 0 ? <View style={{ height: 1, backgroundColor: FLOATING_CAPSULE_DIVIDER }} /> : null}');
+    expect(CAPSULE).toContain('borderWidth: 2,');
+  });
 });
 
 describe('a companion control beside the capsule', () => {

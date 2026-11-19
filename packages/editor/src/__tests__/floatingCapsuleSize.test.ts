@@ -9,9 +9,12 @@ import {
   FLOATING_SEGMENT_GLYPH_WIDTH, FLOATING_SEGMENT_WIDTH, MIN_TOUCH_TARGET, NARROWEST_PHONE_PX,
   TOOL_MODE_ARROW_SPAN, TOOL_MODE_SCREEN_MARGIN, TOOL_MODE_SEGMENT_ART_SIZE, TOOL_MODE_SEGMENT_PAD_H,
   TOOL_MODE_SEGMENT_PAD_H_MIN, capsuleRowCounts, floatingCapsuleWidthPx, toolModeCapsuleAvailablePx,
-  toolModeCapsuleLayout, toolModeSegmentWidthPx,
+  toolModeCapsuleLayout, toolModeCapsuleRowsHeightPx, toolModeSegmentWidthPx,
 } from '../floatingCapsuleSize';
-import { FLOATING_CAPSULE_FONT_SIZE, FLOATING_CAPSULE_GLYPH_SIZE } from '../components/floatingCapsuleStyle';
+import {
+  FLOATING_CAPSULE_FONT_SIZE, FLOATING_CAPSULE_GLYPH_SIZE, FLOATING_CAPSULE_HEIGHT,
+} from '../components/floatingCapsuleStyle';
+import { COLOR_SCOPES, colorScopeLabel } from '../paintBrush';
 
 /** A row's width as the split measures it: segments, hairlines, border. */
 const rowPx = (widths: number[]) => widths.reduce((s, w) => s + w, 0) + widths.length - 1 + 4;
@@ -157,5 +160,32 @@ describe('toolModeCapsuleLayout: one row at full padding, else tightened, else w
     const { padH, rowCounts } = toolModeCapsuleLayout(swatches, 11, 200);
     expect(padH).toBe(TOOL_MODE_SEGMENT_PAD_H);
     expect(rowCounts.length).toBeGreaterThan(1);
+  });
+});
+
+describe('toolModeCapsuleRowsHeightPx: how far down a wrapped capsule’s foot is', () => {
+  test('one row is the pill’s own height; each row after it a row and a hairline more', () => {
+    expect(toolModeCapsuleRowsHeightPx(1)).toBe(FLOATING_CAPSULE_HEIGHT);
+    expect(toolModeCapsuleRowsHeightPx(2)).toBe(2 * FLOATING_CAPSULE_HEIGHT + 1);
+    expect(toolModeCapsuleRowsHeightPx(3)).toBe(3 * FLOATING_CAPSULE_HEIGHT + 2);
+  });
+
+  test('never less than one row: an empty capsule is still a pill', () => {
+    expect(toolModeCapsuleRowsHeightPx(0)).toBe(FLOATING_CAPSULE_HEIGHT);
+  });
+
+  test('the recolour brush’s scope pill wraps on the narrowest phone, and its foot drops a row', () => {
+    // DrawBot report 72ebf56e: Any | Strokes | Fills | Patterns between the
+    // cycle arrows (the brush's Blend grid and the selection modes share
+    // its slot) is two rows at 320 pt, one from 375; whatever a host seats
+    // under it must clear the second.
+    const scope = COLOR_SCOPES.map((s) => ({ label: colorScopeLabel(s) }));
+    const rowsAt = (windowPx: number) => toolModeCapsuleLayout(
+      scope, FLOATING_CAPSULE_FONT_SIZE, toolModeCapsuleAvailablePx(windowPx, true),
+    ).rowCounts.length;
+    expect(rowsAt(NARROWEST_PHONE_PX)).toBe(2);
+    expect(rowsAt(375)).toBe(1);
+    expect(toolModeCapsuleRowsHeightPx(rowsAt(NARROWEST_PHONE_PX)))
+      .toBe(toolModeCapsuleRowsHeightPx(rowsAt(375)) + FLOATING_CAPSULE_HEIGHT + 1);
   });
 });
