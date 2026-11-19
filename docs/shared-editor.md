@@ -212,7 +212,12 @@ line of actions, a program of cards, a row of swatches with states) or as
 the host's own element at a declared height (and, since stage 7, an element
 that is its own box stands with no well — `element.bare` — and the host can
 hear which of its pages is up — `onPageChange`); `hiddenCommonActions` trims
-the common row; `OutlineObject.overlayRank` draws a host's own kind of thing
+the common row, and the panel's own `finePointer` and `commonShortcuts`
+props gather it under a mouse or trackpad — 48 px squares in the middle,
+the one under the pointer naming itself and the key the host binds to it
+in a label over the panel (`logic/panelLayout.ts`'s `commonTipBox`; off by
+default, so a host that says nothing keeps the row a phone has);
+`OutlineObject.overlayRank` draws a host's own kind of thing
 in the scene outline over the scene, and `OutlineObject.overRank` lists a
 scene node the host draws over those among them (DrawBot's finished trails,
 over its tiles). This is the mechanism by which "the

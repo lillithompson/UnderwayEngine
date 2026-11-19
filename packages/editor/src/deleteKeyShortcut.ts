@@ -49,6 +49,13 @@ export function isDeleteKey(e: DeleteKeyEvent): boolean {
   return !e.metaKey && !e.ctrlKey && !e.altKey;
 }
 
+/** The two keys isDeleteKey takes, as a label says them: Backspace by its
+ *  glyph (a Mac's "delete" key), Delete by its keycap. A host that binds
+ *  this shortcut shows it after the common row's Delete in that button's
+ *  hover label (the panel's `commonShortcuts`), so the key is named where
+ *  the press is offered. */
+export const DELETE_KEY_HINT = '⌫ / Del';
+
 /** True when the keypress landed in a field the user is typing into — the
  *  text-edit overlay's textarea, a color picker's hex input, and so on.
  *  There, Delete deletes a character, never the object. */

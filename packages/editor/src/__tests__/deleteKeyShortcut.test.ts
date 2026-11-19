@@ -1,4 +1,5 @@
 import {
+  DELETE_KEY_HINT,
   DESKTOP_POINTER_QUERY,
   isDeleteKey,
   isDesktopWeb,
@@ -47,6 +48,15 @@ describe('isDeleteKey', () => {
     for (const k of ['a', 'Enter', 'Escape', 'ArrowLeft', 'd']) {
       expect(isDeleteKey(key(k))).toBe(false);
     }
+  });
+
+  it('is named, as a hover label shows it, by both keys it takes', () => {
+    // The common row's Delete names its shortcut on a desktop (DrawBot's
+    // report f651fb58): Backspace's glyph and Delete's keycap — the two
+    // keys this accepts, and no other.
+    expect(DELETE_KEY_HINT).toBe('⌫ / Del');
+    expect(isDeleteKey(key('Backspace'))).toBe(true);
+    expect(isDeleteKey(key('Delete'))).toBe(true);
   });
 
   it('ignores modified presses (⌘⌫ and friends belong to the browser)', () => {

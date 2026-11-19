@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { AlignEdge, BorderModel, CommonAction, EffectKind, EndpointsModel, FramingModel, GlowKind, GlowModel, LineStyleModel, ObjectPropertiesModel, OpacityModel, RGBLike, ShadowModel, TextStyleModel, TintModel } from '../adapter';
 import { IMAGE_EDIT_OPTIONS, isSingleImageAction, swipeDismissDirection } from '../logic/imageEdit';
@@ -18,6 +18,9 @@ import { svgEditOptions, svgHasEndpoints, svgHasFill, svgHasOpacity, svgHasShape
 import type { SVGEditAction, SvgPatternSection } from '../logic/svgEdit';
 import { DEFAULT_TINT_MODEL, addStop } from '../logic/tint';
 import {
+  FINE_POINTER_BUTTON_PX,
+  PANEL_ROW_INSET_PX,
+  commonTipBox,
   landingSubmenu,
   objectPanelLayout,
   objectPanelPages,
@@ -61,8 +64,10 @@ import {
   PANEL_ANIM_MS,
   PANEL_BG,
   PANEL_BORDER,
+  PANEL_CONTROL,
   PANEL_ICON,
   PANEL_INK,
+  PANEL_TRACK,
   PATTERN_ACTIVE,
 } from '../theme';
 
@@ -214,24 +219,62 @@ const SVG_PATTERN_SECTIONS = [
 // SubmenuKey itself lives in logic/submenuHeight.ts, which needs it to say how
 // tall each of these pages stands.
 
+/** A hovered common-row button's label: what it says, the key the host
+ *  binds to it, and the button's middle in the row. */
+interface CommonTip { label: string; shortcut?: string; centerX: number }
+/** The fine pointer's half of the common row (the panel's `finePointer`),
+ *  null on a touch screen: the button under the pointer shows its label
+ *  through `show`, and takes it down through `hide` — which leaves a label
+ *  another button has since put up. */
+interface CommonTips { show(tip: CommonTip): void; hide(tip: CommonTip): void }
+const CommonTipsContext = createContext<CommonTips | null>(null);
+
 // One grid cell: a bare icon, weighted (flex) so every button shares the same
 // column width. The common actions these draw — rotate, flip, copy, lock,
-// delete — are the universal ones, and their glyphs name them without help;
-// `label` survives as the accessibility name.
-function GridButton({ label, icon, iconColor, onPress, compact }: {
+// delete — are the universal ones, and their glyphs name them without help
+// on a phone; `label` survives as the accessibility name. Under a mouse or
+// trackpad (CommonTipsContext, the panel's `finePointer`) each is a square
+// at most (FINE_POINTER_BUTTON_PX), so the row gathers in the panel's middle
+// rather than spreading a window apart, and the one under the pointer is lit
+// and names itself — `label`, and `shortcut` where the host binds a key —
+// in a label over the panel (logic/panelLayout.ts, report f651fb58).
+function GridButton({ label, icon, iconColor, onPress, compact, shortcut }: {
   label: string;
   icon: string;
   iconColor?: string;
   onPress?: () => void;
   compact: boolean;
+  /** The key the host binds to this action (the panel's commonShortcuts),
+   *  said after the label in the hover label. */
+  shortcut?: string;
 }) {
+  const tips = useContext(CommonTipsContext);
+  const [hovered, setHovered] = useState(false);
+  // Where the cell stands in the row, kept as the row lays out (a
+  // selection's buttons change, the window is resized) — never per frame.
+  const [box, setBox] = useState<{ x: number; width: number } | null>(null);
+  // The label is put up while the pointer is on the cell and taken down as
+  // it leaves, as the cell unmounts (Delete pressed, the panel gone) and
+  // as anything it says changes (Lock pressed: it says Locked).
+  useEffect(() => {
+    if (!tips || !hovered || !box) return undefined;
+    const tip: CommonTip = { label, shortcut, centerX: box.x + box.width / 2 };
+    tips.show(tip);
+    return () => tips.hide(tip);
+  }, [tips, hovered, box, label, shortcut]);
   const glyphSize = compact ? 24 : 28;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      style={styles.gridButton}
+      onHoverIn={tips ? () => setHovered(true) : undefined}
+      onHoverOut={tips ? () => setHovered(false) : undefined}
+      onLayout={tips ? (e) => {
+        const { x, width } = e.nativeEvent.layout;
+        setBox((b) => (b && b.x === x && b.width === width ? b : { x, width }));
+      } : undefined}
+      style={tips ? [styles.gridButton, styles.gridButtonFine, hovered && styles.gridButtonHovered] : styles.gridButton}
     >
       <MaterialCommunityIcons name={icon as MCIName} size={glyphSize} color={iconColor ?? ICON_COLOR} />
     </Pressable>
@@ -289,7 +332,9 @@ function svgActionSubmenu(action: string): SubmenuKey {
     : 'stroke';
 }
 
-export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0, onOccludedHeight }: {
+export function ObjectPropertiesPanel({
+  model, safeBottom = 0, keyboardInset = 0, onOccludedHeight, finePointer = false, commonShortcuts,
+}: {
   model: ObjectPropertiesModel;
   /** Bottom safe-area inset (home indicator). Padded under the panel's row
    *  and the Edit sheet's last line so they clear it; 0 on non-notched / web. */
@@ -308,9 +353,34 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
    *  the slide), so a camera animation can run alongside the panel's own.
    *  0 when hidden. */
   onOccludedHeight?: (px: number) => void;
+  /** A mouse or trackpad is the pointer (the host's reading — the shared
+   *  editor's isDesktopWeb). The common row's buttons are then squares at
+   *  most, gathered in the panel's middle, and the one under the pointer
+   *  is lit and names itself in a label over the panel. Off (the default:
+   *  a phone, the native WebView, every host that does not say) the row's
+   *  buttons share its width, bare icons, exactly as they always have. */
+  finePointer?: boolean;
+  /** The keys the host binds to the common row's actions, by action —
+   *  said after the action's name in its hover label (finePointer only).
+   *  The panel binds no key itself: naming one here is the host saying it
+   *  handles that key (Delete's: DELETE_KEY_HINT, beside the engine's
+   *  shouldDeleteSelection). */
+  commonShortcuts?: Partial<Record<CommonAction, string>>;
 }) {
   const { width } = useWindowDimensions();
   const compact = width < COMPACT_MAX_WIDTH;
+  // The hovered button's label (finePointer only) — the button puts it up
+  // and takes it down; the panel draws it, over its own top edge, which a
+  // label inside the clip below could not cross. One label at a time: a
+  // button's `hide` leaves one a neighbour has since put up.
+  const [tip, setTip] = useState<CommonTip | null>(null);
+  const tips = useMemo<CommonTips | null>(() => (finePointer ? {
+    show: (t) => setTip(t),
+    hide: (t) => setTip((cur) => (cur === t ? null : cur)),
+  } : null), [finePointer]);
+  // The panel's width, which a label is kept inside (commonTipBox) — read
+  // as the panel lays out, finePointer only.
+  const [panelWidth, setPanelWidth] = useState(0);
   const [mounted, setMounted] = useState(model.visible);
   // The panel rests against the bottom edge. Where a device reports a bottom
   // inset (iOS home indicator / curved corners) the carousel dots sit *in* that
@@ -1970,10 +2040,10 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // Common actions (rotate / flip / copy / lock / properties / delete, plus
   // the optional group actions).
   const row1: React.ReactNode[] = [
-    <GridButton key="rotate" label="Rotate" icon="rotate-right" onPress={model.onRotate} compact={compact} />,
-    <GridButton key="flipH" label="Mirror H" icon="arrow-left-right" onPress={model.onMirrorH} compact={compact} />,
-    <GridButton key="flipV" label="Mirror V" icon="arrow-up-down" onPress={model.onMirrorV} compact={compact} />,
-    <GridButton key="copy" label="Duplicate" icon="content-copy" onPress={model.onDuplicate} compact={compact} />,
+    <GridButton key="rotate" label="Rotate" icon="rotate-right" onPress={model.onRotate} compact={compact} shortcut={commonShortcuts?.rotate} />,
+    <GridButton key="flipH" label="Mirror H" icon="arrow-left-right" onPress={model.onMirrorH} compact={compact} shortcut={commonShortcuts?.mirrorH} />,
+    <GridButton key="flipV" label="Mirror V" icon="arrow-up-down" onPress={model.onMirrorV} compact={compact} shortcut={commonShortcuts?.mirrorV} />,
+    <GridButton key="copy" label="Duplicate" icon="content-copy" onPress={model.onDuplicate} compact={compact} shortcut={commonShortcuts?.duplicate} />,
     // Lock acts per object, so a multi-selection gets it too: it locks each
     // member individually. `locked` then means EVERY member is locked (the
     // host's own reading, so the button's state and what a press does can't
@@ -1986,6 +2056,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
       iconColor={model.locked ? ICON_COLOR_STRONG : ICON_COLOR}
       onPress={model.onToggleLock}
       compact={compact}
+      shortcut={commonShortcuts?.lock}
     />,
     // …then the way into the type pages: the sheet the row's sideways swipe
     // also raises (openSheet — one opener, so the button and the gesture
@@ -2022,7 +2093,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   // object on it to take off the page.)
   if (!hiddenCommon.has(COMMON_ACTION_KEY.delete)) {
     row1.push(
-      <GridButton key="delete" label="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} />,
+      <GridButton key="delete" label="Delete" icon="delete-outline" onPress={model.onDelete} compact={compact} shortcut={commonShortcuts?.delete} />,
     );
   }
 
@@ -2246,9 +2317,19 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
   const canSwap = pages.length > 1;
   canSwapRef.current = canSwap;
 
+  // The hovered button's label stands only over the row it names: not while
+  // the panel slides away, nor under the sheet that covers the row.
+  const tipBox = tip && model.visible && !sheetOpen
+    ? commonTipBox(tip.centerX, panelBox.height, panelWidth)
+    : null;
+
   return (
-    <>
-      <View style={styles.clip} pointerEvents="box-none">
+    <CommonTipsContext.Provider value={tips}>
+      <View
+        style={styles.clip}
+        pointerEvents="box-none"
+        onLayout={tips ? (e) => setPanelWidth(e.nativeEvent.layout.width) : undefined}
+      >
         <Animated.View style={[styles.panel, { height: panelBox.height, paddingBottom: panelBox.paddingBottom, transform: [{ translateY }] }]}>
         {/* The common-actions row. A sideways swipe anywhere over it pops the
             Edit sheet — the row itself holds still — and the dots below say
@@ -2260,6 +2341,17 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
         </View>
         </Animated.View>
       </View>
+      {tip && tipBox ? (
+        // Over the panel's top edge, centred on its button, outside the clip
+        // (which would cut it off) and under the sheet; the pointer passes
+        // through it.
+        <View pointerEvents="none" style={[styles.tipWrap, tipBox]}>
+          <View style={styles.tip}>
+            <Text style={styles.tipText} numberOfLines={1}>{tip.label}</Text>
+            {tip.shortcut ? <Text style={[styles.tipText, styles.tipKey]} numberOfLines={1}>{tip.shortcut}</Text> : null}
+          </View>
+        </View>
+      ) : null}
       {sheetMounted ? (
         // Anchored to the screen's bottom edge OVER the panel (its z sits
         // above the panel's clip), rounded at the top, sized to the showing
@@ -2283,7 +2375,7 @@ export function ObjectPropertiesPanel({ model, safeBottom = 0, keyboardInset = 0
           />
         </Animated.View>
       ) : null}
-    </>
+    </CommonTipsContext.Provider>
   );
 }
 
@@ -2300,9 +2392,9 @@ const styles = StyleSheet.create({
     backgroundColor: PANEL_BG,
     borderTopWidth: 1,
     borderTopColor: PANEL_BORDER,
-    // 16 to match the sheet's content inset, so the row's ends land where
-    // the sheet's do.
-    paddingHorizontal: 16,
+    // The sheet's content inset, so the row's ends land where the sheet's
+    // do (and where a hover label reckons the row from).
+    paddingHorizontal: PANEL_ROW_INSET_PX,
   },
   // Fills the panel so a horizontal swipe anywhere over it (not just on the
   // buttons) pops the sheet.
@@ -2318,6 +2410,24 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   gridButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
+  // Under a fine pointer: a square at most, so the row gathers in the
+  // middle (gridRow's justifyContent) — and still shares a narrow window's
+  // width as the row does on a phone — lit while the pointer is on it.
+  gridButtonFine: { maxWidth: FINE_POINTER_BUTTON_PX, borderRadius: 8 },
+  gridButtonHovered: { backgroundColor: PANEL_TRACK },
+  // The hover label's box (commonTipBox places it): over the panel's clip
+  // (200) and the floating capsules (100), under the sheet (210).
+  tipWrap: { position: 'absolute', zIndex: 205, alignItems: 'center' },
+  tip: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: PANEL_INK,
+  },
+  tipText: { fontSize: 13, color: PANEL_CONTROL },
+  tipKey: { opacity: 0.7 },
   // The Edit sheet's box: bottom-anchored over the panel (zIndex above the
   // panel's clip at 200, and the floating capsules at 100), the panel's
   // surface with rounded top corners and a soft lift off the canvas. Its

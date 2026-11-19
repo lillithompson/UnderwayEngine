@@ -1,6 +1,11 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
+  COMMON_TIP_BOX_PX,
+  COMMON_TIP_GAP_PX,
+  FINE_POINTER_BUTTON_PX,
+  PANEL_ROW_INSET_PX,
+  commonTipBox,
   landingSubmenu,
   objectPanelLayout,
   objectPanelPages,
@@ -132,5 +137,122 @@ describe('the panel’s two pages', () => {
     expect(PANEL).not.toContain('animateSwap');
     // …and the row renders as a plain View, not an Animated one.
     expect(PANEL).toContain('<View style={styles.swapArea} {...(canSwap ? swapPan.panHandlers : {})}>\n          <View style={styles.gridRow}>');
+  });
+});
+
+// DrawBot's report f651fb58: on a 1440 laptop the common row's seven bare
+// icons stood ~200 px apart along the window's foot, each a seventh of its
+// width (flex: 1), with nothing to say what each was. Under a fine pointer
+// the row gathers and each button names itself; a touch screen's row is
+// exactly as it was.
+describe('the common row under a mouse or trackpad', () => {
+  const PANEL = readFileSync(
+    resolve(__dirname, '..', 'components', 'ObjectPropertiesPanel.tsx'), 'utf8',
+  );
+  const between = (a: string, b: string) => {
+    const i = PANEL.indexOf(a);
+    expect(i).toBeGreaterThan(-1);
+    const j = PANEL.indexOf(b, i);
+    expect(j).toBeGreaterThan(i);
+    return PANEL.slice(i, j);
+  };
+
+  test('is off unless the host says so: every other host keeps the row it had', () => {
+    expect(PANEL).toContain('model, safeBottom = 0, keyboardInset = 0, onOccludedHeight, finePointer = false, commonShortcuts,');
+    // No fine pointer, no tips: a button is the one flex cell it always was,
+    // with no hover handlers and no layout reads.
+    expect(PANEL).toContain('const tips = useMemo<CommonTips | null>(() => (finePointer ? {');
+    const button = between('function GridButton(', '\n}\n');
+    expect(button).toContain('style={tips ? [styles.gridButton, styles.gridButtonFine, hovered && styles.gridButtonHovered] : styles.gridButton}');
+    expect(button).toContain('onHoverIn={tips ? () => setHovered(true) : undefined}');
+    expect(button).toContain('onHoverOut={tips ? () => setHovered(false) : undefined}');
+    expect(button).toContain('onLayout={tips ? (e) => {');
+    expect(PANEL).toContain("gridButton: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },");
+  });
+
+  test('gathers: each button a square at most, the row centred', () => {
+    // flex: 1 still shares a narrow window's width; the cap is what keeps a
+    // wide one from spreading the buttons apart, and the row's centring
+    // gathers them in the middle.
+    expect(FINE_POINTER_BUTTON_PX).toBe(48);
+    expect(PANEL).toContain('gridButtonFine: { maxWidth: FINE_POINTER_BUTTON_PX, borderRadius: 8 },');
+    const row = between('  gridRow: {', '},');
+    expect(row).toContain("justifyContent: 'center',");
+    expect(row).toContain('gap: 8,');
+    // Seven buttons on a 1440 laptop: some 400 px together, where they
+    // spanned the window's width.
+    expect(7 * FINE_POINTER_BUTTON_PX + 6 * 8).toBeLessThan(420);
+  });
+
+  test('the hovered button puts its label up, and takes it down as it leaves, unmounts or changes', () => {
+    const button = between('function GridButton(', '\n}\n');
+    expect(button).toContain('if (!tips || !hovered || !box) return undefined;');
+    expect(button).toContain('const tip: CommonTip = { label, shortcut, centerX: box.x + box.width / 2 };');
+    expect(button).toContain('return () => tips.hide(tip);');
+    expect(button).toContain('}, [tips, hovered, box, label, shortcut]);');
+    // A button's leaving never takes down a label a neighbour put up after.
+    expect(PANEL).toContain('hide: (t) => setTip((cur) => (cur === t ? null : cur)),');
+  });
+
+  test('the label stands outside the clip, over the panel and under the sheet, only over a row in sight', () => {
+    expect(PANEL).toContain('const tipBox = tip && model.visible && !sheetOpen');
+    expect(PANEL).toContain('? commonTipBox(tip.centerX, panelBox.height, panelWidth)');
+    const render = between('    <CommonTipsContext.Provider value={tips}>', '    </CommonTipsContext.Provider>');
+    const clipEnd = render.indexOf('        </Animated.View>\n      </View>\n');
+    const label = render.indexOf('{tip && tipBox ? (');
+    const sheet = render.indexOf('{sheetMounted ? (');
+    expect(clipEnd).toBeGreaterThan(-1);
+    expect(label).toBeGreaterThan(clipEnd);
+    expect(sheet).toBeGreaterThan(label);
+    expect(render).toContain('<View pointerEvents="none" style={[styles.tipWrap, tipBox]}>');
+    // z: the clip 200 < the label 205 < the sheet 210.
+    expect(PANEL).toContain("tipWrap: { position: 'absolute', zIndex: 205, alignItems: 'center' },");
+    expect(between('  clip: {', '},')).toContain('zIndex: 200,');
+    expect(between('  sheetWrap: {', '},')).toContain('zIndex: 210,');
+    // The panel's width is read as it lays out, and only for the label.
+    expect(render).toContain('onLayout={tips ? (e) => setPanelWidth(e.nativeEvent.layout.width) : undefined}');
+  });
+
+  test('says the key the host binds, and binds none itself', () => {
+    const row = between('const row1: React.ReactNode[] = [', "// The sheet's type tabs");
+    for (const action of ['rotate', 'mirrorH', 'mirrorV', 'duplicate', 'lock', 'delete']) {
+      expect(row).toContain(`shortcut={commonShortcuts?.${action}}`);
+    }
+    expect(PANEL).toContain('{tip.shortcut ? <Text style={[styles.tipText, styles.tipKey]} numberOfLines={1}>{tip.shortcut}</Text> : null}');
+    expect(PANEL).not.toMatch(/addEventListener\(\s*'keydown'/);
+  });
+
+  test('the row is inset as the label reckons it', () => {
+    expect(PANEL).toContain('paddingHorizontal: PANEL_ROW_INSET_PX,');
+  });
+});
+
+describe('commonTipBox (where a hovered button’s label stands)', () => {
+  const H = 61;
+
+  test('centred on its button, over the panel’s top edge', () => {
+    // A button whose middle is 400 px into the row stands 416 px into the
+    // panel (the row's inset).
+    const box = commonTipBox(400, H, 1440);
+    expect(box.left + box.width / 2).toBe(PANEL_ROW_INSET_PX + 400);
+    expect(box.width).toBe(COMMON_TIP_BOX_PX);
+    expect(box.bottom).toBe(H + COMMON_TIP_GAP_PX);
+  });
+
+  test('rides the panel’s height, the device inset included', () => {
+    expect(commonTipBox(400, H + 34, 1440).bottom).toBe(H + 34 + COMMON_TIP_GAP_PX);
+  });
+
+  test('narrows toward an edge rather than leave its button or the screen', () => {
+    const left = commonTipBox(24, H, 400);
+    expect(left.left).toBe(0);
+    expect(left.left + left.width / 2).toBe(PANEL_ROW_INSET_PX + 24);
+    const right = commonTipBox(400 - 2 * PANEL_ROW_INSET_PX - 24, H, 400);
+    expect(right.left + right.width).toBe(400);
+    expect(right.left + right.width / 2).toBe(400 - PANEL_ROW_INSET_PX - 24);
+  });
+
+  test('before the panel has a width, no box at all', () => {
+    expect(commonTipBox(24, H, 0).width).toBe(0);
   });
 });
