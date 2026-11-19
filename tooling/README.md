@@ -18,7 +18,7 @@ none. That is what this replaces.
 | `gates.md` | What the gates are and why |
 | `skills/ship.md` | The `/ship` skill's text; the project's `.claude/skills/ship/SKILL.md` points here |
 | `skills/build-ux-flow.md` | The `/build-ux-flow` skill's text; the project's `.claude/skills/build-ux-flow/SKILL.md` points here |
-| `case_studies/` | What that skill films and builds with: `harness.js` (`createHarness`, phone-sized headless Chrome over a web build), `sheet.js` (contact sheet), `build-writeup.js` and `writeup.template.html` (the published page), `paths.js` (where the output goes) |
+| `case_studies/` | What that skill films and builds with: `harness.js` (`createHarness`, headless Chrome over a web build: a phone, touched, or a laptop's or an ultrawide monitor's window, moused, and resizable mid-flow — `DEVICES`), `sheet.js` (contact sheet), `build-writeup.js` and `writeup.template.html` (the published page), `paths.js` (where the output goes) |
 | `CLAUDE.shared.md` | The rules every project's `CLAUDE.md` imports |
 | `pre-push` | The hook `init.js` writes to a project's `.githooks/pre-push`: the gate's path once, a sentence when the engine submodule is not checked out, else the gate |
 | `workflows/submodule-pointer-check.yml` | The CI backstop for an unpushed submodule pointer |

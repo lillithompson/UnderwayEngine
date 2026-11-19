@@ -5,7 +5,9 @@
 // flow's folder (paths.js):
 //   <caseStudies>/flows/<flow>/*.png   (in filename order: 01-…, 02-…)
 //   <caseStudies>/flows/<flow>/writeup.json
-// into one self-contained HTML file (frames embedded as 693px JPEGs), ready
+// into one self-contained HTML file (frames embedded as JPEGs, `embedWidth`
+// wide, each drawn at its own shape: a phone's in a grid, and a flow with
+// any frame wider than tall — a desktop's — one frame to a row), ready
 // to publish as an artifact. Run it from inside the project:
 //
 //   node vendor/UnderwayEngine/tooling/case_studies/build-writeup.js <flow> [out.html] [--check]
@@ -35,8 +37,24 @@ const { CHROME } = require('./harness.js');
 const { caseStudyPaths } = require('./paths.js');
 
 const TAGS = ['bug', 'friction', 'polish', 'check', 'works', 'fixed'];
+/** An embedded frame's width in pixels: a phone's (or any taller-than-wide
+ *  frame's) drawn a grid cell wide, a desktop's drawn the page's width. */
 const FRAME_WIDTH = 693;
+const WIDE_FRAME_WIDTH = 1600;
 const MAX_BYTES = 15 * 1024 * 1024;
+
+/** A PNG's size in pixels, read from its IHDR chunk. The app's twin is
+ *  packages/engine/src/imageHeaderSize.ts, which this plain-node script
+ *  cannot require (it is TypeScript). */
+function pngSize(buf) {
+  if (buf.length < 24 || buf.toString('latin1', 12, 16) !== 'IHDR') throw new Error('not a PNG');
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+/** The width a frame of `size` is embedded at: never wider than it is. */
+function embedWidth({ width, height }) {
+  return Math.min(width, width > height ? WIDE_FRAME_WIDTH : FRAME_WIDTH);
+}
 
 /** Throws on a spec whose steps, phases, people or tags don't fit the frames. */
 function validate(spec, frameCount) {
@@ -60,14 +78,17 @@ function validate(spec, frameCount) {
   });
 }
 
+/** Each frame as { src, w, h }: a JPEG data URL and the PNG's own size,
+ *  which the page draws it at the shape of. */
 function embedFrames(dir, pngs) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'writeup-'));
   try {
     return pngs.map((name) => {
+      const size = pngSize(fs.readFileSync(path.join(dir, name)));
       const out = path.join(tmp, name.replace(/\.png$/, '.jpg'));
       execFileSync('sips', ['-s', 'format', 'jpeg', '-s', 'formatOptions', '72',
-        '--resampleWidth', String(FRAME_WIDTH), path.join(dir, name), '--out', out], { stdio: 'ignore' });
-      return `data:image/jpeg;base64,${fs.readFileSync(out).toString('base64')}`;
+        '--resampleWidth', String(embedWidth(size)), path.join(dir, name), '--out', out], { stdio: 'ignore' });
+      return { src: `data:image/jpeg;base64,${fs.readFileSync(out).toString('base64')}`, w: size.width, h: size.height };
     });
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -143,4 +164,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { fillTemplate, scriptJson, validate };
+module.exports = { embedWidth, fillTemplate, pngSize, scriptJson, validate };

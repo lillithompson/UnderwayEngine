@@ -7,9 +7,9 @@ import { join, resolve } from 'node:path';
 // writeup refuses. Nothing here opens a browser.
 
 /* eslint-disable @typescript-eslint/no-var-requires */
-const { clearFrames, createHarness, fileFor, filmstrip, labelled, SHOWN, TAPPABLE } = require('../case_studies/harness.js');
+const { clearFrames, createHarness, DEVICES, fileFor, filmstrip, labelled, resized, SHOWN, TAPPABLE } = require('../case_studies/harness.js');
 const { caseStudyPaths } = require('../case_studies/paths.js');
-const { fillTemplate, scriptJson, validate } = require('../case_studies/build-writeup.js');
+const { embedWidth, fillTemplate, pngSize, scriptJson, validate } = require('../case_studies/build-writeup.js');
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 describe('case study capture', () => {
@@ -90,6 +90,30 @@ describe('case study capture', () => {
     });
   });
 
+  describe('the screens a flow is filmed on', () => {
+    it('a phone is touched at 3×; a laptop and an ultrawide monitor are moused, at 2× and 1×', () => {
+      expect(DEVICES.phone).toMatchObject({ width: 390, height: 844, scale: 3, touch: true });
+      expect(DEVICES.desktop).toMatchObject({ width: 1440, height: 900, scale: 2, touch: false });
+      expect(DEVICES.wide).toMatchObject({ width: 3440, height: 1440, scale: 1, touch: false });
+      expect(DEVICES.desktop.ua).not.toMatch(/iPhone|Mobile/);
+    });
+
+    it('resizes a window to a screen, or to a size, snapping at 1× where the screen is not as dense', () => {
+      const laptop = DEVICES.desktop;
+      expect(resized(laptop, 'wide')).toEqual({ width: 3440, height: 1440, shot: 'css' });
+      expect(resized(laptop, { width: 1147, height: 1440, scale: 1 })).toEqual({ width: 1147, height: 1440, shot: 'css' });
+      expect(resized(laptop, { width: 1200, height: 800 })).toEqual({ width: 1200, height: 800, shot: 'device' });
+      expect(resized(laptop, 'desktop')).toEqual({ width: 1440, height: 900, shot: 'device' });
+    });
+
+    it('refuses a screen the browser cannot become', () => {
+      expect(() => resized(DEVICES.desktop, 'phone')).toThrow(/touched screen/);
+      expect(() => resized(DEVICES.phone, 'desktop')).toThrow(/touched screen/);
+      expect(() => resized(DEVICES.wide, { width: 1440, height: 900, scale: 2 })).toThrow(/1× in this browser, not 2×/);
+      expect(() => resized(DEVICES.desktop, 'tv')).toThrow(/no device "tv"/);
+    });
+  });
+
   it('createHarness opens nothing until asked, so a project can load it without playwright', () => {
     const h = createHarness({ web: dir });
     expect(typeof h.open).toBe('function');
@@ -146,15 +170,42 @@ describe('case study capture', () => {
       expect(scriptJson('</script>\u2028')).toBe('"<\\/script>\\u2028"');
     });
 
+    it('reads a frame\'s size from its PNG header, and refuses what is not one', () => {
+      const png = Buffer.alloc(33);
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png);
+      png.writeUInt32BE(13, 8);
+      png.write('IHDR', 12, 'latin1');
+      png.writeUInt32BE(2880, 16);
+      png.writeUInt32BE(1800, 20);
+      expect(pngSize(png)).toEqual({ width: 2880, height: 1800 });
+      expect(() => pngSize(Buffer.from('not a png at all, not at all'))).toThrow(/not a PNG/);
+    });
+
+    it('embeds a phone\'s frame a grid cell wide and a desktop\'s the page\'s width, never upscaled', () => {
+      expect(embedWidth({ width: 1170, height: 2532 })).toBe(693);
+      expect(embedWidth({ width: 1147, height: 1440 })).toBe(693);
+      expect(embedWidth({ width: 2880, height: 1800 })).toBe(1600);
+      expect(embedWidth({ width: 3440, height: 1440 })).toBe(1600);
+      expect(embedWidth({ width: 600, height: 400 })).toBe(600);
+    });
+
     it('fills the shipped template into a page the artifact server accepts, naming the given folder', () => {
       const template = readFileSync(join(__dirname, '../case_studies/writeup.template.html'), 'utf8');
-      const html = fillTemplate(template, spec(), '../Out/flows/walk/', ['data:image/jpeg;base64,AA']);
+      const html = fillTemplate(template, spec(), '../Out/flows/walk/', [{ src: 'data:image/jpeg;base64,AA', w: 1170, h: 2532 }]);
       expect(html.startsWith('<!DOCTYPE html>')).toBe(true);
       expect(html).toContain('<title>Walk &lt;/script> Flow</title>');
       expect(html).toContain('"framesDir":"../Out/flows/walk/"');
-      expect(html).toContain('["data:image/jpeg;base64,AA"]');
+      expect(html).toContain('[{"src":"data:image/jpeg;base64,AA","w":1170,"h":2532}]');
       expect(html).not.toMatch(/__(TITLE|DATA|FRAMES)__/);
       expect(html).not.toContain('Portfolio');
+    });
+
+    it('draws each frame at its own shape, and a flow with a desktop\'s frame one to a row', () => {
+      const template = readFileSync(join(__dirname, '../case_studies/writeup.template.html'), 'utf8');
+      expect(template).toContain('aspect-ratio: ${FRAMES[i].w} / ${FRAMES[i].h}');
+      expect(template).toContain('if (FRAMES.some(f => f.w > f.h)) document.body.classList.add("wide");');
+      expect(template).toMatch(/\.wide \.grid \{ grid-template-columns: minmax\(0, 1fr\);/);
+      expect(template).not.toContain('390 / 844');
     });
   });
 });

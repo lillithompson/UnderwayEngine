@@ -90,6 +90,14 @@ node scripts/case_studies/flow-<slug>.js [stopAfterFrame]
   `h.draw(points)` real touch strokes. Wait for UI, not for fixed times, where
   you can: `h.until(label)` waits for the element `tap` would find (a field
   too), by the same check.
+- A flow on a desktop opens `open({ outDir, device: 'desktop' })`, a
+  laptop's 1440×900 window driven by the mouse (`draw` and `hold` are the
+  mouse, `h.hover(label)` rests it) and the keyboard (`h.page.keyboard`).
+  Look at the layout as well as the steps: how the width is used, what
+  hover and the keys do. `h.resize('wide')` carries the page to a 3440×1440
+  ultrawide monitor, and `h.resize({ width, height, scale: 1 })` to any
+  window, such as one snapped to part of a monitor (`harness.js`,
+  `DEVICES`).
 - Iterate with the stop-after-frame argument, which prints the screen's text and
   buttons. Restart any backend between runs.
 - **Look at every frame**
@@ -124,7 +132,8 @@ screen in a frame**, not inferred from code. Cite frame numbers.
 1. Write `<flows>/<slug>/writeup.json`. The field list is in the header of
    `<tooling>/case_studies/build-writeup.js`. `lede` ends "Captured from current
    main on <D Month YYYY>." `setup` says how many headless Chrome sessions at
-   390×844, what the app talked to and that nothing was written to production,
+   390×844 (or the desktop's sizes, and any resize), what the app talked to
+   and that nothing was written to production,
    what was seeded, what isn't covered, and "To re-run it, see
    `scripts/case_studies/README.md`."
 2. `node <tooling>/case_studies/build-writeup.js <slug> --check`. It refuses a
