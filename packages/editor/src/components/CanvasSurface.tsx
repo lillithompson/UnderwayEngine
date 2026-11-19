@@ -49,6 +49,7 @@ import {
 } from '@/engine/patternObject';
 import { signalReady } from '@/native-shell/bridge/webBridge';
 import { pageIsReady } from '../afterReady';
+import { redrawOnCanvasResize } from '../glCanvasResize';
 import { useSuppressIOSLoupe } from '../useSuppressIOSLoupe';
 import { tapTargetGrid } from './tapTargetGrid';
 import { BG_EDITOR_CANVAS, CANVAS_HAIRLINE } from '@/editor-ui/theme';
@@ -1198,6 +1199,8 @@ export function CanvasSurface({
   const marqueeRectRef = useRef<SVGRectElement | null>(null);
   const dimsHudRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<CompositionRenderer | null>(null);
+  /** Stops redrawing the GL layer on its canvas's resize (glCanvasResize.ts). */
+  const stopGlResizeRef = useRef<(() => void) | null>(null);
   const readySignaledRef = useRef(false);
 
   const stateRef = useRef(state);
@@ -1713,8 +1716,14 @@ export function CanvasSurface({
 
   // ── GL boot (Phase 0 wiring kept) ─────────────────────────────────
   const onContextCreate = useCallback((gl: ExpoWebGLRenderingContext) => {
+    const redrawGl = () => rendererRef.current?.render({ ...stateRef.current, camera: liveCameraRef.current });
     rendererRef.current = new CompositionRenderer(gl);
-    rendererRef.current.render({ ...stateRef.current, camera: liveCameraRef.current });
+    redrawGl();
+    // …and again whenever the GL canvas itself is resized: its new size
+    // clears its buffer AFTER the viewport change drew the grid, so a turned
+    // iPad was left gridless until the next change (glCanvasResize.ts).
+    stopGlResizeRef.current?.();
+    stopGlResizeRef.current = redrawOnCanvasResize(gl.canvas, redrawGl);
     if (!readySignaledRef.current) {
       readySignaledRef.current = true;
       // Dismisses the native splash overlay (WebViewShell waits for READY).
@@ -1728,6 +1737,7 @@ export function CanvasSurface({
       openTraceRef.current?.report();
     }
   }, []);
+  useEffect(() => () => { stopGlResizeRef.current?.(); stopGlResizeRef.current = null; }, []);
 
   // ── Gesture helpers ───────────────────────────────────────────────
   // The container's screen origin, read once per resize and per gesture
