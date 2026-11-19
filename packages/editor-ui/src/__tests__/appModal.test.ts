@@ -72,7 +72,14 @@ describe('the unified takeover chrome (AppModal)', () => {
     // they are made; a Done button sat there like a decision still to be
     // taken.
     expect(shell).toContain('name="chevron-left"');
-    expect(shell).toContain("accessibilityLabel={'Back from ' + title}");
+    expect(shell).toContain('accessibilityLabel={backFromLabel(title)}');
+    // The chevron's name is the one function a host reads too, where it
+    // draws a way back from the same page in another form; the wording
+    // is spelled there and nowhere else in the shell.
+    expect(shell).toContain(
+      "export function backFromLabel(title: string): string {\n  return 'Back from ' + title;\n}",
+    );
+    expect(shell.split('Back from').length).toBe(2);
     expect(shell).toContain('const headless = !page && (floatingClose || bare);');
     expect(shell).toContain('{page || headless ? null : (');
     expect(shell).toContain('{floatingClose && !page && !bare ? (');

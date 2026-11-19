@@ -55,6 +55,15 @@ const DEFAULT_SAFE_TOP = 48;
  *  screen's width of travel, and at 150ms it reads as a jump. */
 export const PAGE_SLIDE_MS = 240;
 
+/** What the pushed page's way back is called: the chevron's accessibility
+ *  label on the page titled `title`. Exported for a host that draws a way
+ *  back from the same page in another form (pushed within a column of its
+ *  own, a panel put away by a press off it), so that one action has one
+ *  name whichever form it takes. */
+export function backFromLabel(title: string): string {
+  return 'Back from ' + title;
+}
+
 export function AppModal({
   visible,
   title,
@@ -186,7 +195,7 @@ export function AppModal({
               style={styles.backIcon}
               onPress={onClose}
               accessibilityRole="button"
-              accessibilityLabel={'Back from ' + title}
+              accessibilityLabel={backFromLabel(title)}
             >
               <MaterialCommunityIcons name="chevron-left" size={32} color={headerForeground} />
             </Pressable>
