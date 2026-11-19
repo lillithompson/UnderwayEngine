@@ -149,6 +149,29 @@ describe('parsePathD', () => {
     const subs = parsePathD('M100 100l50 50');
     expect(subs[0].segments[1]).toEqual({ cmd: 'L', x: 150, y: 150 });
   });
+
+  test('an arc is kept as the straight line to its endpoint', () => {
+    expect(parsePathD('M0 0 A10 10 0 0 1 20 0')).toEqual([
+      { segments: [{ cmd: 'M', x: 0, y: 0 }, { cmd: 'L', x: 20, y: 0 }], closed: false },
+    ]);
+    expect(parsePathD('M5 5 a10 10 0 1 0 20 0')[0].segments[1]).toEqual({ cmd: 'L', x: 25, y: 5 });
+  });
+
+  test('S and T keep their reflected control point; Q and T stay quadratics', () => {
+    expect(parsePathD('M0 0C0 10 10 10 10 0S20 -10 20 0')[0].segments[2])
+      .toEqual({ cmd: 'C', x1: 10, y1: -10, x2: 20, y2: -10, x: 20, y: 0 });
+    expect(parsePathD('M0 0Q5 10 10 0T20 0')[0].segments[2])
+      .toEqual({ cmd: 'Q', x1: 15, y1: -10, x: 20, y: 0 });
+  });
+
+  test('drawing before the first M is dropped; after a Z with no M it goes on in the closed subpath', () => {
+    expect(parsePathD('L5 5 M1 1 L2 2')).toEqual([
+      { segments: [{ cmd: 'M', x: 1, y: 1 }, { cmd: 'L', x: 2, y: 2 }], closed: false },
+    ]);
+    expect(parsePathD('M0 0 L10 0 Z l0 5')).toEqual([
+      { segments: [{ cmd: 'M', x: 0, y: 0 }, { cmd: 'L', x: 10, y: 0 }, { cmd: 'Z' }, { cmd: 'L', x: 0, y: 5 }], closed: true },
+    ]);
+  });
 });
 
 // ─── Collinearity ───────────────────────────────────────────────────

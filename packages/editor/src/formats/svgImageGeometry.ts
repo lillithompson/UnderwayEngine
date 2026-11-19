@@ -1,5 +1,6 @@
 import type { ImageObject, PathSegment } from '@/engine/types';
 import { coverImageRect, effectiveFraming, straightenCoverScale } from '@/engine/imageFraming';
+import { readPathData } from '@/engine/svgPathData';
 
 // The GEOMETRY of an SVG picture placed on a page as an ImageObject — the
 // outlines its `<path>`s draw, in WORLD cells, laid where the picture is
@@ -125,148 +126,65 @@ export function svgPolylines(svg: string): SvgPolyline[] {
   return out;
 }
 
-/** Tokenize a path `d` string into command letters and numbers. */
-function tokenizePathData(d: string): (string | number)[] {
-  const tokens: (string | number)[] = [];
-  const re = /([MLHVCSQTAZmlhvcsqtaz])|([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(d)) !== null) {
-    if (m[1]) tokens.push(m[1]);
-    else tokens.push(parseFloat(m[2]));
-  }
-  return tokens;
-}
-
 /**
- * A path's `d` data as polylines, one per subpath. Every command the spec
- * defines, absolute and relative; curves are sampled into chords (see the
- * sample counts above). Implicit repeats (`M x y x y`, `L x y x y`) are
- * honoured, as is the rule that an `M`'s extra pairs are `L`s.
+ * A path's `d` data as polylines, one per subpath, read by the engine's one
+ * path-data reader (svgPathData.ts): every command the spec defines,
+ * absolute and relative, implicit repeats (`M x y x y`, `L x y x y`)
+ * honoured, an `M`'s extra pairs read as `L`s. Curves are sampled into
+ * chords (see the sample counts above). Drawing after a `Z` with no `M`
+ * starts a new polyline at the point the `Z` returned to.
  */
 export function pathPolylines(d: string): SvgPolyline[] {
   const out: SvgPolyline[] = [];
-  const tokens = tokenizePathData(d);
   let points: number[] = [];
   let closed = false;
-  let cx = 0, cy = 0;       // current point
-  let sx = 0, sy = 0;       // subpath start
-  let lcx = 0, lcy = 0;     // last control point (for S / T reflection)
-  let lastCmd = '';
-  let i = 0;
 
   const flush = () => {
     if (points.length >= 4) out.push({ points, closed });
     points = [];
     closed = false;
   };
-  const moveTo = (x: number, y: number) => {
-    flush();
-    cx = sx = x;
-    cy = sy = y;
-    points.push(x, y);
+  /** A polyline not yet begun begins where its first drawing starts. */
+  const from = (x0: number, y0: number) => {
+    if (points.length === 0) points.push(x0, y0);
   };
-  const lineTo = (x: number, y: number) => {
-    if (points.length === 0) points.push(cx, cy);
-    points.push(x, y);
-    cx = x;
-    cy = y;
-  };
-  const cubicTo = (x1: number, y1: number, x2: number, y2: number, x: number, y: number) => {
-    const x0 = cx, y0 = cy;
-    for (let k = 1; k <= CUBIC_SAMPLES; k++) {
-      const t = k / CUBIC_SAMPLES, u = 1 - t;
-      lineTo(
-        u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x,
-        u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y,
-      );
-    }
-    lcx = x2;
-    lcy = y2;
-  };
-  const quadTo = (x1: number, y1: number, x: number, y: number) => {
-    const x0 = cx, y0 = cy;
-    for (let k = 1; k <= QUAD_SAMPLES; k++) {
-      const t = k / QUAD_SAMPLES, u = 1 - t;
-      lineTo(u * u * x0 + 2 * u * t * x1 + t * t * x, u * u * y0 + 2 * u * t * y1 + t * t * y);
-    }
-    lcx = x1;
-    lcy = y1;
-  };
-  const hasNum = () => i < tokens.length && typeof tokens[i] === 'number';
-  const next = () => tokens[i++] as number;
 
-  while (i < tokens.length) {
-    const tok = tokens[i];
-    if (typeof tok === 'number') { i++; continue; }
-    i++;
-    const cmd = tok.toUpperCase();
-    const rel = tok !== cmd;
-    const ox = () => (rel ? cx : 0);
-    const oy = () => (rel ? cy : 0);
-    switch (cmd) {
-      case 'M': {
-        if (!hasNum()) break;
-        moveTo(ox() + next(), oy() + next());
-        while (hasNum()) lineTo(ox() + next(), oy() + next());
-        break;
+  readPathData(d, {
+    moveTo(x, y) {
+      flush();
+      points.push(x, y);
+    },
+    lineTo(x0, y0, x, y) {
+      from(x0, y0);
+      points.push(x, y);
+    },
+    cubicTo(x0, y0, x1, y1, x2, y2, x, y) {
+      from(x0, y0);
+      for (let k = 1; k <= CUBIC_SAMPLES; k++) {
+        const t = k / CUBIC_SAMPLES, u = 1 - t;
+        points.push(
+          u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x,
+          u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y,
+        );
       }
-      case 'L':
-        while (hasNum()) lineTo(ox() + next(), oy() + next());
-        break;
-      case 'H':
-        while (hasNum()) lineTo(ox() + next(), cy);
-        break;
-      case 'V':
-        while (hasNum()) lineTo(cx, oy() + next());
-        break;
-      case 'C':
-        while (hasNum()) {
-          const x1 = ox() + next(), y1 = oy() + next();
-          const x2 = ox() + next(), y2 = oy() + next();
-          cubicTo(x1, y1, x2, y2, ox() + next(), oy() + next());
-        }
-        break;
-      case 'S':
-        while (hasNum()) {
-          const reflect = lastCmd === 'C' || lastCmd === 'S';
-          const x1 = reflect ? 2 * cx - lcx : cx, y1 = reflect ? 2 * cy - lcy : cy;
-          const x2 = ox() + next(), y2 = oy() + next();
-          cubicTo(x1, y1, x2, y2, ox() + next(), oy() + next());
-          lastCmd = 'S';
-        }
-        break;
-      case 'Q':
-        while (hasNum()) {
-          const x1 = ox() + next(), y1 = oy() + next();
-          quadTo(x1, y1, ox() + next(), oy() + next());
-        }
-        break;
-      case 'T':
-        while (hasNum()) {
-          const reflect = lastCmd === 'Q' || lastCmd === 'T';
-          const x1 = reflect ? 2 * cx - lcx : cx, y1 = reflect ? 2 * cy - lcy : cy;
-          quadTo(x1, y1, ox() + next(), oy() + next());
-          lastCmd = 'T';
-        }
-        break;
-      case 'A':
-        while (hasNum()) {
-          const rx = next(), ry = next(), rot = next();
-          const large = next() !== 0, sweep = next() !== 0;
-          const x = ox() + next(), y = oy() + next();
-          for (const [px, py] of arcPoints(cx, cy, rx, ry, rot, large, sweep, x, y)) lineTo(px, py);
-          lineTo(x, y);
-        }
-        break;
-      case 'Z':
-        closed = true;
-        flush();
-        cx = sx;
-        cy = sy;
-        break;
-    }
-    if (cmd !== 'S' && cmd !== 'T') lastCmd = cmd;
-  }
+    },
+    quadTo(x0, y0, x1, y1, x, y) {
+      from(x0, y0);
+      for (let k = 1; k <= QUAD_SAMPLES; k++) {
+        const t = k / QUAD_SAMPLES, u = 1 - t;
+        points.push(u * u * x0 + 2 * u * t * x1 + t * t * x, u * u * y0 + 2 * u * t * y1 + t * t * y);
+      }
+    },
+    arcTo(x0, y0, rx, ry, rotationDeg, largeArc, sweep, x, y) {
+      from(x0, y0);
+      for (const [px, py] of arcPoints(x0, y0, rx, ry, rotationDeg, largeArc, sweep, x, y)) points.push(px, py);
+      points.push(x, y);
+    },
+    close() {
+      closed = true;
+      flush();
+    },
+  });
   flush();
   return out;
 }

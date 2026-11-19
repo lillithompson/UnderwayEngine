@@ -83,6 +83,20 @@ describe('bakeFigureToSegments', () => {
     expect(segs![1]).toEqual({ kind: 'line', start: [1, 0], end: [1, 1] });
   });
 
+  test('reads relative commands as the absolute ones they stand for', () => {
+    // A figure's paths come from simplifySVG, which writes absolute commands
+    // only, and the bake's own reader skipped a relative one without moving
+    // the pen; it reads path data with the engine's one reader now
+    // (svgPathData.ts, report ed8ff7f1), which reads both.
+    const bake = (d: string) => {
+      mockGetSync.mockReturnValue({ elements: [`<path d="${d}"/>`], svgWidth: 256, svgHeight: 256 });
+      return bakeFigureToSegments(makeFig({ cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1 }));
+    };
+    const absolute = bake('M 0,0 L 256,0 V 256 Q 128,256 128,128 A 64,64 0 0 1 0,128 Z');
+    expect(absolute!.map((s) => s.kind)).toEqual(['line', 'line', 'arc', 'arc', 'line']);
+    expect(bake('m 0,0 l 256,0 v 256 q -128,0 -128,-128 a 64,64 0 0 1 -128,0 z')).toEqual(absolute);
+  });
+
   test('applies element transform attribute', () => {
     // A path at (0,0)→(256,0) translated by (0, 256) in SVG units
     mockGetSync.mockReturnValue({

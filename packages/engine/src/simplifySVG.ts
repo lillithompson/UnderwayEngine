@@ -1,6 +1,8 @@
 // SVG simplification: merge same-color paths at shared endpoints, remove
 // collinear interior points, merge adjacent rects, simplify degenerate curves.
 
+import { readPathData } from './svgPathData';
+
 // ─── Types ──────────────────────────────────────────────────────────
 
 export interface Point { x: number; y: number; }
@@ -106,126 +108,29 @@ export function parseTransform(str: string): AffineMatrix {
   return r;
 }
 
-// ─── Path d tokenizer & parser ──────────────────────────────────────
+// ─── Path d parser ──────────────────────────────────────────────────
 
-function tokenize(d: string): (string | number)[] {
-  const out: (string | number)[] = [];
-  const re = /([MmLlHhVvCcSsQqTtAaZz])|([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(d)) !== null) {
-    out.push(m[1] ? m[1] : Number(m[2]));
-  }
-  return out;
-}
-
+/** A path's `d` as subpaths, read by the engine's one path-data reader
+ *  (svgPathData.ts). Cubics and quadratics are kept as they are; an arc is
+ *  not simplified but kept as the straight line to its endpoint. Drawing
+ *  before the first `M` is dropped, and drawing after a `Z` with no `M`
+ *  goes on in the subpath the `Z` closed. */
 export function parsePathD(d: string): Subpath[] {
   const subs: Subpath[] = [];
   let cur: Subpath | null = null;
-  let cx = 0, cy = 0, sx = 0, sy = 0;
-  const tok = tokenize(d);
-  let i = 0;
-  const num = () => tok[i++] as number;
-  const hasNum = () => i < tok.length && typeof tok[i] === 'number';
-
-  while (i < tok.length) {
-    if (typeof tok[i] === 'number') { i++; continue; }
-    const c = tok[i++] as string;
-    const rel = c === c.toLowerCase() && c !== 'Z' && c !== 'z';
-    switch (c.toUpperCase()) {
-      case 'M': {
-        let first = true;
-        while (hasNum()) {
-          let x = num(), y = num();
-          if (rel) { x += cx; y += cy; }
-          if (first) {
-            cur = { segments: [{ cmd: 'M', x, y }], closed: false };
-            subs.push(cur);
-            sx = x; sy = y; first = false;
-          } else {
-            cur!.segments.push({ cmd: 'L', x, y });
-          }
-          cx = x; cy = y;
-        }
-        break;
-      }
-      case 'L':
-        while (hasNum()) {
-          let x = num(), y = num();
-          if (rel) { x += cx; y += cy; }
-          cur?.segments.push({ cmd: 'L', x, y });
-          cx = x; cy = y;
-        }
-        break;
-      case 'H':
-        while (hasNum()) {
-          let x = num();
-          if (rel) x += cx;
-          cur?.segments.push({ cmd: 'L', x, y: cy });
-          cx = x;
-        }
-        break;
-      case 'V':
-        while (hasNum()) {
-          let y = num();
-          if (rel) y += cy;
-          cur?.segments.push({ cmd: 'L', x: cx, y });
-          cy = y;
-        }
-        break;
-      case 'C':
-        while (hasNum()) {
-          let x1 = num(), y1 = num(), x2 = num(), y2 = num(), x = num(), y = num();
-          if (rel) { x1 += cx; y1 += cy; x2 += cx; y2 += cy; x += cx; y += cy; }
-          cur?.segments.push({ cmd: 'C', x1, y1, x2, y2, x, y });
-          cx = x; cy = y;
-        }
-        break;
-      case 'S':
-        while (hasNum()) {
-          let x2 = num(), y2 = num(), x = num(), y = num();
-          if (rel) { x2 += cx; y2 += cy; x += cx; y += cy; }
-          const ps = cur?.segments[cur.segments.length - 1];
-          let x1 = cx, y1 = cy;
-          if (ps?.cmd === 'C') { x1 = 2 * cx - ps.x2; y1 = 2 * cy - ps.y2; }
-          cur?.segments.push({ cmd: 'C', x1, y1, x2, y2, x, y });
-          cx = x; cy = y;
-        }
-        break;
-      case 'Q':
-        while (hasNum()) {
-          let qx = num(), qy = num(), x = num(), y = num();
-          if (rel) { qx += cx; qy += cy; x += cx; y += cy; }
-          cur?.segments.push({ cmd: 'Q', x1: qx, y1: qy, x, y });
-          cx = x; cy = y;
-        }
-        break;
-      case 'T':
-        while (hasNum()) {
-          let x = num(), y = num();
-          if (rel) { x += cx; y += cy; }
-          const pt = cur?.segments[cur.segments.length - 1];
-          let qx1 = cx, qy1 = cy;
-          if (pt?.cmd === 'Q') { qx1 = 2 * cx - pt.x1; qy1 = 2 * cy - pt.y1; }
-          cur?.segments.push({ cmd: 'Q', x1: qx1, y1: qy1, x, y });
-          cx = x; cy = y;
-        }
-        break;
-      case 'A':
-        // Arcs: consume parameters but don't optimize — pass as L to endpoint
-        while (hasNum()) {
-          num(); num(); num(); num(); num(); // rx ry rotation largeArc sweep
-          let x = num(), y = num();
-          if (rel) { x += cx; y += cy; }
-          cur?.segments.push({ cmd: 'L', x, y });
-          cx = x; cy = y;
-        }
-        break;
-      case 'Z':
-        if (cur) { cur.segments.push({ cmd: 'Z' }); cur.closed = true; }
-        cx = sx; cy = sy;
-        break;
-    }
-  }
+  readPathData(d, {
+    moveTo(x, y) {
+      cur = { segments: [{ cmd: 'M', x, y }], closed: false };
+      subs.push(cur);
+    },
+    lineTo(_x0, _y0, x, y) { cur?.segments.push({ cmd: 'L', x, y }); },
+    cubicTo(_x0, _y0, x1, y1, x2, y2, x, y) { cur?.segments.push({ cmd: 'C', x1, y1, x2, y2, x, y }); },
+    quadTo(_x0, _y0, x1, y1, x, y) { cur?.segments.push({ cmd: 'Q', x1, y1, x, y }); },
+    arcTo(_x0, _y0, _rx, _ry, _rotationDeg, _largeArc, _sweep, x, y) { cur?.segments.push({ cmd: 'L', x, y }); },
+    close() {
+      if (cur) { cur.segments.push({ cmd: 'Z' }); cur.closed = true; }
+    },
+  });
   return subs;
 }
 

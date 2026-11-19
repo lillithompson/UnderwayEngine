@@ -14,6 +14,7 @@ import { figureArtLayout, figureArtPoint, rotateMirrorAround } from './figureArt
 import { computeSVGBbox } from './sceneGraph';
 import { maxStrokeWidth, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { effectiveStrokeMultiplier } from './strokeScale';
+import { readPathData } from './svgPathData';
 
 export interface ColoredSegments {
   color: RGBColor;
@@ -606,156 +607,52 @@ interface RawArcSeg { kind: 'arc'; start: [number, number]; end: [number, number
 type RawSeg = RawLineSeg | RawArcSeg;
 
 /**
- * Parse an SVG path `d` attribute into PathSegments.
- * All curves in figure SVGs are quarter circles aligned to the grid.
- * Cubic beziers (C/S) are converted to exact arc segments by computing
+ * Parse an SVG path `d` attribute into PathSegments, read by the engine's
+ * one path-data reader (svgPathData.ts), relative commands as well as
+ * absolute. All curves in figure SVGs are quarter circles aligned to the
+ * grid. Cubic beziers (C/S) are converted to exact arc segments by computing
  * the center from the tangent directions at start and end.
  */
 function parseSVGPathD(d: string): RawSeg[] {
   const segments: RawSeg[] = [];
-  const tokens = tokenizePath(d);
-  let curX = 0, curY = 0;
-  let moveX = 0, moveY = 0;
-  let lastCpX = 0, lastCpY = 0;
-  let lastCmd = '';
-  let i = 0;
-
-  function lineTo(x: number, y: number) {
-    segments.push({ kind: 'line', start: [curX, curY], end: [x, y] });
-    curX = x; curY = y;
-  }
-
-  /** Convert a cubic bezier to a quarter-circle arc segment.
-   *  The center is the intersection of:
-   *  - line through start, perpendicular to tangent at start (cp1-start)
-   *  - line through end, perpendicular to tangent at end (end-cp2) */
-  function cubicTo(cp1x: number, cp1y: number, cp2x: number, cp2y: number, ex: number, ey: number) {
-    // Tangent direction at start: cp1 - start
-    const t1x = cp1x - curX, t1y = cp1y - curY;
-    // Tangent direction at end: end - cp2
-    const t2x = ex - cp2x, t2y = ey - cp2y;
-
-    // Find center as intersection of perpendicular lines from start and end
-    const center = lineLineIntersect(
-      curX, curY, -t1y, t1x,  // from start, perpendicular to tangent at start
-      ex, ey, -t2y, t2x,       // from end, perpendicular to tangent at end
-    );
-
-    if (center) {
-      segments.push({ kind: 'arc', start: [curX, curY], end: [ex, ey], center });
-    } else {
-      // Degenerate (collinear tangents) — treat as line
-      segments.push({ kind: 'line', start: [curX, curY], end: [ex, ey] });
-    }
-    curX = ex; curY = ey;
-    lastCpX = cp2x; lastCpY = cp2y;
-  }
-
-  /** Convert a quadratic bezier to a quarter-circle arc segment.
-   *  For a quarter circle, the single control point sits at the
-   *  tangent-intersection corner, diagonally opposite the arc center
-   *  across the chord: center = start + end − corner. */
-  function quadTo(cpx: number, cpy: number, ex: number, ey: number) {
-    segments.push({
-      kind: 'arc',
-      start: [curX, curY],
-      end: [ex, ey],
-      center: [curX + ex - cpx, curY + ey - cpy],
-    });
-    curX = ex; curY = ey;
-    lastCpX = cpx; lastCpY = cpy;
-  }
-
-  while (i < tokens.length) {
-    const cmd = tokens[i];
-    if (typeof cmd === 'number') { i++; continue; }
-    i++;
-    switch (cmd) {
-      case 'M':
-        curX = tokens[i++] as number;
-        curY = tokens[i++] as number;
-        moveX = curX; moveY = curY;
-        while (i < tokens.length && typeof tokens[i] === 'number') {
-          const x = tokens[i++] as number;
-          const y = tokens[i++] as number;
-          lineTo(x, y);
-        }
-        break;
-      case 'L':
-        while (i < tokens.length && typeof tokens[i] === 'number') {
-          lineTo(tokens[i++] as number, tokens[i++] as number);
-        }
-        break;
-      case 'H':
-        while (i < tokens.length && typeof tokens[i] === 'number') {
-          lineTo(tokens[i++] as number, curY);
-        }
-        break;
-      case 'V':
-        while (i < tokens.length && typeof tokens[i] === 'number') {
-          lineTo(curX, tokens[i++] as number);
-        }
-        break;
-      case 'C':
-        while (i < tokens.length && typeof tokens[i] === 'number') {
-          const cp1x = tokens[i++] as number, cp1y = tokens[i++] as number;
-          const cp2x = tokens[i++] as number, cp2y = tokens[i++] as number;
-          const ex = tokens[i++] as number, ey = tokens[i++] as number;
-          cubicTo(cp1x, cp1y, cp2x, cp2y, ex, ey);
-        }
-        break;
-      case 'S':
-        while (i < tokens.length && typeof tokens[i] === 'number') {
-          // Reflect last control point
-          const cp1x = (lastCmd === 'C' || lastCmd === 'S') ? 2 * curX - lastCpX : curX;
-          const cp1y = (lastCmd === 'C' || lastCmd === 'S') ? 2 * curY - lastCpY : curY;
-          const cp2x = tokens[i++] as number, cp2y = tokens[i++] as number;
-          const ex = tokens[i++] as number, ey = tokens[i++] as number;
-          cubicTo(cp1x, cp1y, cp2x, cp2y, ex, ey);
-          lastCmd = 'S';
-        }
-        break;
-      case 'Q':
-        while (i < tokens.length && typeof tokens[i] === 'number') {
-          const cpx = tokens[i++] as number, cpy = tokens[i++] as number;
-          const ex = tokens[i++] as number, ey = tokens[i++] as number;
-          quadTo(cpx, cpy, ex, ey);
-        }
-        break;
-      case 'T':
-        while (i < tokens.length && typeof tokens[i] === 'number') {
-          const cpx = (lastCmd === 'Q' || lastCmd === 'T') ? 2 * curX - lastCpX : curX;
-          const cpy = (lastCmd === 'Q' || lastCmd === 'T') ? 2 * curY - lastCpY : curY;
-          const ex = tokens[i++] as number, ey = tokens[i++] as number;
-          quadTo(cpx, cpy, ex, ey);
-          lastCmd = 'T';
-        }
-        break;
-      case 'A':
-        // SVG arc: rx ry x-rotation large-arc-flag sweep-flag x y
-        while (i < tokens.length && typeof tokens[i] === 'number') {
-          const rx = tokens[i++] as number, ry = tokens[i++] as number;
-          const xRot = tokens[i++] as number;
-          const largeArc = tokens[i++] as number;
-          const sweep = tokens[i++] as number;
-          const ex = tokens[i++] as number, ey = tokens[i++] as number;
-          convertSVGArc(curX, curY, rx, ry, xRot, largeArc, sweep, ex, ey, segments);
-          curX = ex; curY = ey;
-        }
-        break;
-      case 'Z':
-      case 'z':
-        if (curX !== moveX || curY !== moveY) {
-          lineTo(moveX, moveY);
-        }
-        curX = moveX; curY = moveY;
-        break;
-      default:
-        while (i < tokens.length && typeof tokens[i] === 'number') i++;
-        break;
-    }
-    if (cmd !== 'S' && cmd !== 'T') lastCmd = cmd as string;
-  }
+  const line = (x0: number, y0: number, x: number, y: number) => {
+    segments.push({ kind: 'line', start: [x0, y0], end: [x, y] });
+  };
+  readPathData(d, {
+    moveTo() {},
+    lineTo: line,
+    /** A cubic bezier as a quarter-circle arc segment. The center is the
+     *  intersection of:
+     *  - the line through start, perpendicular to the tangent at start (cp1 − start)
+     *  - the line through end, perpendicular to the tangent at end (end − cp2) */
+    cubicTo(x0, y0, cp1x, cp1y, cp2x, cp2y, ex, ey) {
+      const t1x = cp1x - x0, t1y = cp1y - y0;
+      const t2x = ex - cp2x, t2y = ey - cp2y;
+      const center = lineLineIntersect(
+        x0, y0, -t1y, t1x,  // from start, perpendicular to tangent at start
+        ex, ey, -t2y, t2x,  // from end, perpendicular to tangent at end
+      );
+      if (center) {
+        segments.push({ kind: 'arc', start: [x0, y0], end: [ex, ey], center });
+      } else {
+        // Degenerate (collinear tangents) — treat as line
+        line(x0, y0, ex, ey);
+      }
+    },
+    /** A quadratic bezier as a quarter-circle arc segment. For a quarter
+     *  circle, the single control point sits at the tangent-intersection
+     *  corner, diagonally opposite the arc center across the chord:
+     *  center = start + end − corner. */
+    quadTo(x0, y0, cpx, cpy, ex, ey) {
+      segments.push({ kind: 'arc', start: [x0, y0], end: [ex, ey], center: [x0 + ex - cpx, y0 + ey - cpy] });
+    },
+    arcTo(x0, y0, rx, ry, rotationDeg, largeArc, sweep, x, y) {
+      convertSVGArc(x0, y0, rx, ry, rotationDeg, largeArc, sweep, x, y, segments);
+    },
+    close(x0, y0, startX, startY) {
+      if (x0 !== startX || y0 !== startY) line(x0, y0, startX, startY);
+    },
+  });
   return segments;
 }
 
@@ -766,7 +663,7 @@ function parseSVGPathD(d: string): RawSeg[] {
  */
 function convertSVGArc(
   x1: number, y1: number, rx: number, ry: number,
-  xRot: number, largeArc: number, sweep: number,
+  xRot: number, largeArc: boolean, sweep: boolean,
   x2: number, y2: number, out: RawSeg[],
 ): void {
   const dx = x2 - x1, dy = y2 - y1;
@@ -807,16 +704,4 @@ function lineLineIntersect(
   if (Math.abs(denom) < 1e-10) return null;
   const t = ((qx - px) * ey - (qy - py) * ex) / denom;
   return [px + t * dx, py + t * dy];
-}
-
-/** Tokenize an SVG path d string into commands and numbers. */
-function tokenizePath(d: string): (string | number)[] {
-  const tokens: (string | number)[] = [];
-  const re = /([MLHVCSQTAZmlhvcsqtaz])|([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(d)) !== null) {
-    if (match[1]) tokens.push(match[1]);
-    else if (match[2]) tokens.push(parseFloat(match[2]));
-  }
-  return tokens;
 }
