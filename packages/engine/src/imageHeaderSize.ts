@@ -86,11 +86,6 @@ function jpegSize(bytes: Uint8Array): ImageHeaderSize | null {
 }
 
 /**
- * The pixel size these bytes declare, PNG or JPEG, or null when the header
- * cannot be read. Sniffs the format off the bytes rather than trusting a
- * caller-supplied mime, because a picker's mime is routinely absent or wrong.
- */
-/**
  * The EXIF orientation of a JPEG: 1-8, or null when there is an Exif block
  * this cannot read. Absent Exif is orientation 1, which is the common case
  * and needs no parsing.
