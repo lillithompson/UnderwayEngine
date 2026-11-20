@@ -1,5 +1,4 @@
 import {
-  parseTransform,
   parsePathD,
   areCollinear,
   removeCollinearPoints,
@@ -11,67 +10,6 @@ import { countSVGCVs } from '../svgExport';
 
 // No svg-sources mock — unit tests provide raw SVG elements directly,
 // and .facet integration tests need real sprite data.
-
-// ─── Transform parsing ─────────────────────────────────────────────
-
-describe('parseTransform', () => {
-  test('identity for empty string', () => {
-    expect(parseTransform('')).toEqual([1, 0, 0, 1, 0, 0]);
-  });
-
-  test('translate', () => {
-    const m = parseTransform('translate(100,200)');
-    expect(m[4]).toBeCloseTo(100);
-    expect(m[5]).toBeCloseTo(200);
-    expect(m[0]).toBeCloseTo(1);
-  });
-
-  test('translate single arg', () => {
-    const m = parseTransform('translate(50)');
-    expect(m[4]).toBeCloseTo(50);
-    expect(m[5]).toBeCloseTo(0);
-  });
-
-  test('scale uniform', () => {
-    const m = parseTransform('scale(2)');
-    expect(m[0]).toBeCloseTo(2);
-    expect(m[3]).toBeCloseTo(2);
-  });
-
-  test('scale non-uniform', () => {
-    const m = parseTransform('scale(-1,1)');
-    expect(m[0]).toBeCloseTo(-1);
-    expect(m[3]).toBeCloseTo(1);
-  });
-
-  test('rotate 90', () => {
-    const m = parseTransform('rotate(90)');
-    expect(m[0]).toBeCloseTo(0);
-    expect(m[1]).toBeCloseTo(1);
-    expect(m[2]).toBeCloseTo(-1);
-    expect(m[3]).toBeCloseTo(0);
-  });
-
-  test('rotate with center', () => {
-    const m = parseTransform('rotate(-45 128 128)');
-    // After rotation, the center (128,128) should map to itself
-    const x = m[0] * 128 + m[2] * 128 + m[4];
-    const y = m[1] * 128 + m[3] * 128 + m[5];
-    expect(x).toBeCloseTo(128);
-    expect(y).toBeCloseTo(128);
-  });
-
-  test('composed transform from tile pipeline', () => {
-    const m = parseTransform('translate(256,0) scale(1) translate(128,128) rotate(90) scale(-1,1) translate(-128,-128)');
-    // This represents a tile at position (256,0) with 90° rotation and horizontal mirror
-    // Point (128,128) in local space should map to (256+128, 0+128) = (384, 128) since
-    // the rotation center is (128,128) and the tile is translated to (256,0)
-    const x = m[0] * 128 + m[2] * 128 + m[4];
-    const y = m[1] * 128 + m[3] * 128 + m[5];
-    expect(x).toBeCloseTo(384);
-    expect(y).toBeCloseTo(128);
-  });
-});
 
 // ─── Path d parsing ─────────────────────────────────────────────────
 

@@ -3,13 +3,11 @@
 
 import { readPathData } from './svgPathData';
 import { svgArcToCubics } from './svgArc';
+import { AffineMatrix, applyMatrix, parseTransform } from './svgTransform';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
 export interface Point { x: number; y: number; }
-
-/** 2D affine matrix [a,b,c,d,e,f]: x'=ax+cy+e, y'=bx+dy+f */
-export type AffineMatrix = [number, number, number, number, number, number];
 
 export type PathSegment =
   | { cmd: 'M'; x: number; y: number }
@@ -25,7 +23,6 @@ export interface Subpath {
 
 // ─── Constants ──────────────────────────────────────────────────────
 
-const IDENTITY: AffineMatrix = [1, 0, 0, 1, 0, 0];
 // Tile SVGs overshoot cell boundaries by ~0.25 units for stroke overlap.
 // After grid-level scaling (up to 16×), shared endpoints can differ by up
 // to ~8 SVG units. Snap to nearest 16 for endpoint matching and use 10 for
@@ -51,62 +48,6 @@ function ptKey(x: number, y: number): string {
 
 function near(a: number, b: number): boolean {
   return Math.abs(a - b) < MATCH_EPS;
-}
-
-// ─── Transform parsing ─────────────────────────────────────────────
-
-export function multiplyMatrices(a: AffineMatrix, b: AffineMatrix): AffineMatrix {
-  return [
-    a[0] * b[0] + a[2] * b[1],
-    a[1] * b[0] + a[3] * b[1],
-    a[0] * b[2] + a[2] * b[3],
-    a[1] * b[2] + a[3] * b[3],
-    a[0] * b[4] + a[2] * b[5] + a[4],
-    a[1] * b[4] + a[3] * b[5] + a[5],
-  ];
-}
-
-function txPoint(m: AffineMatrix, x: number, y: number): Point {
-  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
-}
-
-export function parseTransform(str: string): AffineMatrix {
-  if (!str) return IDENTITY;
-  let r: AffineMatrix = [1, 0, 0, 1, 0, 0];
-  const re = /(\w+)\(([^)]*)\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(str)) !== null) {
-    const args = m[2].split(/[\s,]+/).map(Number);
-    let t: AffineMatrix;
-    switch (m[1]) {
-      case 'translate':
-        t = [1, 0, 0, 1, args[0] || 0, args.length > 1 ? args[1] : 0];
-        break;
-      case 'scale': {
-        const sx = args[0] ?? 1, sy = args.length > 1 ? args[1] : sx;
-        t = [sx, 0, 0, sy, 0, 0];
-        break;
-      }
-      case 'rotate': {
-        const rad = (args[0] || 0) * Math.PI / 180;
-        const c = Math.cos(rad), s = Math.sin(rad);
-        if (args.length >= 3) {
-          const cx = args[1], cy = args[2];
-          t = multiplyMatrices([1, 0, 0, 1, cx, cy],
-            multiplyMatrices([c, s, -s, c, 0, 0], [1, 0, 0, 1, -cx, -cy]));
-        } else {
-          t = [c, s, -s, c, 0, 0];
-        }
-        break;
-      }
-      case 'matrix':
-        t = [args[0], args[1], args[2], args[3], args[4], args[5]];
-        break;
-      default: continue;
-    }
-    r = multiplyMatrices(r, t);
-  }
-  return r;
 }
 
 // ─── Path d parser ──────────────────────────────────────────────────
@@ -146,18 +87,20 @@ export function parsePathD(d: string): Subpath[] {
 
 // ─── Transform application ──────────────────────────────────────────
 
+/** A subpath under a path's `transform` (read by the engine's one reader
+ *  of one, svgTransform.ts). */
 function txSubpath(m: AffineMatrix, sp: Subpath): Subpath {
   const segs: PathSegment[] = sp.segments.map(s => {
     switch (s.cmd) {
-      case 'M': { const p = txPoint(m, s.x, s.y); return { cmd: 'M', x: p.x, y: p.y }; }
-      case 'L': { const p = txPoint(m, s.x, s.y); return { cmd: 'L', x: p.x, y: p.y }; }
+      case 'M': { const [x, y] = applyMatrix(m, s.x, s.y); return { cmd: 'M', x, y }; }
+      case 'L': { const [x, y] = applyMatrix(m, s.x, s.y); return { cmd: 'L', x, y }; }
       case 'C': {
-        const p1 = txPoint(m, s.x1, s.y1), p2 = txPoint(m, s.x2, s.y2), p = txPoint(m, s.x, s.y);
-        return { cmd: 'C', x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, x: p.x, y: p.y };
+        const [x1, y1] = applyMatrix(m, s.x1, s.y1), [x2, y2] = applyMatrix(m, s.x2, s.y2), [x, y] = applyMatrix(m, s.x, s.y);
+        return { cmd: 'C', x1, y1, x2, y2, x, y };
       }
       case 'Q': {
-        const p1 = txPoint(m, s.x1, s.y1), p = txPoint(m, s.x, s.y);
-        return { cmd: 'Q', x1: p1.x, y1: p1.y, x: p.x, y: p.y };
+        const [x1, y1] = applyMatrix(m, s.x1, s.y1), [x, y] = applyMatrix(m, s.x, s.y);
+        return { cmd: 'Q', x1, y1, x, y };
       }
       case 'Z': return { cmd: 'Z' };
     }

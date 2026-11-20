@@ -17,6 +17,7 @@ import { effectiveStrokeMultiplier } from './strokeScale';
 import { readPathData } from './svgPathData';
 import { svgArcCentre, svgArcPieces, svgArcPoint } from './svgArc';
 import { ELLIPSE_POLYLINE_SEGMENTS } from './compositionArcMath';
+import { AffineMatrix, applyMatrix, parseTransform } from './svgTransform';
 
 export interface ColoredSegments {
   color: RGBColor;
@@ -285,7 +286,7 @@ export function convertCachedSVGToColoredSegments(
 
   for (const el of cached.elements) {
     // Parse the element's transform attribute (translate, scale, rotate)
-    const xform = parseTransform(el);
+    const xform = elementTransform(el);
 
     // Apply element transform then figure placement transform
     const mapPt = (x: number, y: number): [number, number] => {
@@ -530,71 +531,11 @@ function parseElementPaint(el: string): { color: RGBColor; isFill: boolean } {
 
 // ── SVG transform parsing ───────────────────────────────────────────
 
-/** 2D affine matrix [a, b, c, d, e, f] where:
- *  x' = a*x + c*y + e
- *  y' = b*x + d*y + f */
-type Matrix = [number, number, number, number, number, number];
-
-const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
-
-function applyMatrix(m: Matrix, x: number, y: number): [number, number] {
-  return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
-}
-
-function multiplyMatrices(a: Matrix, b: Matrix): Matrix {
-  return [
-    a[0] * b[0] + a[2] * b[1],
-    a[1] * b[0] + a[3] * b[1],
-    a[0] * b[2] + a[2] * b[3],
-    a[1] * b[2] + a[3] * b[3],
-    a[0] * b[4] + a[2] * b[5] + a[4],
-    a[1] * b[4] + a[3] * b[5] + a[5],
-  ];
-}
-
-/** Parse a CSS/SVG transform string into a combined affine matrix. */
-function parseTransform(el: string): Matrix {
+/** An element's `transform` attribute as its matrix, by the engine's one
+ *  reader of one (svgTransform.ts); the identity when it has none. */
+function elementTransform(el: string): AffineMatrix {
   const match = el.match(/\btransform="([^"]*)"/);
-  if (!match) return IDENTITY;
-  const transformStr = match[1];
-
-  let result: Matrix = IDENTITY;
-  const fnRe = /(translate|scale|rotate|matrix)\(([^)]*)\)/g;
-  let m: RegExpExecArray | null;
-
-  while ((m = fnRe.exec(transformStr)) !== null) {
-    const fn = m[1];
-    const args = m[2].split(/[\s,]+/).map(Number);
-    let mat: Matrix;
-    switch (fn) {
-      case 'translate':
-        mat = [1, 0, 0, 1, args[0] ?? 0, args[1] ?? 0];
-        break;
-      case 'scale': {
-        const sx = args[0] ?? 1;
-        const sy = args[1] ?? sx;
-        mat = [sx, 0, 0, sy, 0, 0];
-        break;
-      }
-      case 'rotate': {
-        const deg = args[0] ?? 0;
-        const cx = args[1] ?? 0;
-        const cy = args[2] ?? 0;
-        const rad = deg * Math.PI / 180;
-        const cos = Math.cos(rad), sin = Math.sin(rad);
-        // rotate(θ, cx, cy) = translate(cx,cy) · rotate(θ) · translate(-cx,-cy)
-        mat = [cos, sin, -sin, cos, cx - cos * cx + sin * cy, cy - sin * cx - cos * cy];
-        break;
-      }
-      case 'matrix':
-        mat = [args[0], args[1], args[2], args[3], args[4], args[5]];
-        break;
-      default:
-        mat = IDENTITY;
-    }
-    result = multiplyMatrices(result, mat);
-  }
-  return result;
+  return parseTransform(match ? match[1] : '');
 }
 
 function parseAttr(el: string, name: string): number | undefined {
