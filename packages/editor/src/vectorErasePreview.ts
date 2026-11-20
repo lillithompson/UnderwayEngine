@@ -9,6 +9,12 @@
 // with the same target (`vectorEraseTarget`, `cutVectorTarget`), so the
 // preview and the commit cannot disagree about the geometry.
 //
+// A host's live cuts have a sibling, live RECOLOURS
+// (`CanvasSurfaceHandle.liveRecolors`, `recolor`; DrawBots' Paint effect):
+// the same discs, laid on the same target as paint (`paintVectorTarget`),
+// so a node both cut and recoloured is one picture — its pieces each in
+// the colour they now have, a filled shape's fill repainted with them.
+//
 // Three things a long-lived preview needs that the gesture's did not:
 //
 //  1. CHUNKS. A merged trail from an earlier run is one node of thousands
@@ -32,13 +38,14 @@
 // node-testable with fakes, like shapePaintDom.ts.
 
 import type { CompositionState, PathSegment, SVGObject } from '@/engine/types';
-import { buildPathD, svgIsFilled, svgObjectStrokesOnly } from '@/engine/svgPathBuilder';
+import { buildPathD, svgIsFilled, svgObjectFillFlooded, svgObjectStrokesOnly } from '@/engine/svgPathBuilder';
 import { rgbCss } from './colorUtils';
 import { type DrawnLeaf, drawnLocalBox } from './drawnPose';
 import { mountShapeMarkup, type ShapeHostLike } from './shapePaintDom';
 import type { ShapeStrokePreviewFrame } from './shapeStrokePreview';
 import {
-  cutVectorTarget, keptPiecesOfSegment, type VectorEraseState, type VectorEraseTarget, vectorEraseTarget,
+  cutVectorTarget, keptPiecesOfSegment, paintedGeometry, paintedPiecesOfSegment, type PaintInk, paintVectorTarget,
+  targetIsCut, type VectorEraseState, type VectorEraseTarget, vectorEraseTarget,
 } from './vectorEraser';
 
 /** Flat segments per preview `<path>`. Small, because a cut's `d` rewrite
@@ -90,6 +97,12 @@ export interface VectorErasePreview {
    *  outline) or is not mounted; true otherwise, whether or not the disc
    *  reached the path. */
   cut(state: CompositionState, id: string, x: number, y: number, r: number): boolean;
+  /** A live recolour: the stretch of node `id` under a disc of `r` cells
+   *  at world (x, y) shown in `ink` now (`paintVectorTarget`: a colour, or
+   *  a rule that makes it from the one each stretch had), a filled shape's
+   *  fill with it. On the node `cut` shows cut, the one picture. False as
+   *  `cut` is. */
+  recolor(state: CompositionState, id: string, x: number, y: number, r: number, ink: PaintInk): boolean;
   /** Show node `id` — every node — as the document has it again. */
   reset(id?: string): void;
   /** After a render: a live-cut node whose record `state` now holds anew
@@ -107,13 +120,17 @@ interface Entry {
   frame: ShapeStrokePreviewFrame;
   /** `colour|chunk` → its path. Empty for a fallback entry. */
   paths: Map<string, PreviewPathLike>;
+  /** Per chunk, the colours it has a path for: one a recolour has since
+   *  emptied is drawn empty, not left as it was. */
+  colors: Map<number, Set<string>>;
   /** The target's revision the paths were last drawn from. */
   rev: number;
   /** Drawn from the node's own markup (2. above) rather than as paths. */
   fallback: boolean;
   /** A live cut's own target and the discs it has taken (x, y, r
-   *  triples), for `refresh`; null for the gesture's. */
-  live: { target: VectorEraseTarget; svg: SVGObject; discs: number[] } | null;
+   *  triples; `inks` what each laid, null for one that cut), for
+   *  `refresh`; null for the gesture's. */
+  live: { target: VectorEraseTarget; svg: SVGObject; discs: number[]; inks: (PaintInk | null)[] } | null;
 }
 
 /** A node whose look is more than its stroked path: an effect of any kind
@@ -125,13 +142,37 @@ export function needsMarkupFallback(svg: SVGObject): boolean {
   return false;
 }
 
+/** A filled shape's record as the marks leave its fill: taken off where
+ *  a cut has opened the outline (what the flush writes,
+ *  `svgObjectStrokesOnly`), repainted flat where it was only painted
+ *  (`svgObjectFillFlooded`). */
+function withMarkedFill(t: VectorEraseTarget, out: SVGObject): SVGObject {
+  if (!svgIsFilled(t.svg)) return out;
+  const paintedOnly = (t.painted !== undefined || t.fill !== undefined) && !targetIsCut(t);
+  if (!paintedOnly) return svgObjectStrokesOnly(out);
+  return t.fill ? svgObjectFillFlooded(out, t.fill) : out;
+}
+
+/** Whether a live entry of `svg` is drawn from the node's own markup
+ *  (the fallback) rather than as chunked paths: a node with an effect —
+ *  and, when it is opened by a RECOLOUR (`painted`), a filled shape, whose
+ *  fill the stroked paths cannot draw and a cut would have taken off. */
+function drawnFromMarkup(svg: SVGObject, painted: boolean): boolean {
+  return needsMarkupFallback(svg) || (painted && svgIsFilled(svg));
+}
+
 /** The record as the cuts leave it, in its own box: the kept pieces of
  *  every flat segment, subpaths kept as subpaths, a filled shape's fill
- *  taken off (what the flush writes, `svgObjectStrokesOnly`). The box is
+ *  taken off (what the flush writes, `svgObjectStrokesOnly`). A PAINTED
+ *  target's is its pieces regrouped by colour (`paintedGeometry`), its
+ *  fill repainted while no cut has opened it. The box is
  *  the ORIGINAL's, so the element React positioned draws it in place;
  *  `erasedSvg` shrinks the box for the committed record instead. */
 export function cutRecord(t: VectorEraseTarget): SVGObject {
   const svg = t.svg;
+  if (t.painted) {
+    return withMarkedFill(t, { ...svg, ...paintedGeometry(t, svg.color, svg.segments, svg.subpaths) });
+  }
   let segments: PathSegment[];
   let subpaths = svg.subpaths;
   if (Array.isArray(subpaths) && subpaths.length > 0) {
@@ -146,8 +187,7 @@ export function cutRecord(t: VectorEraseTarget): SVGObject {
     segments = [];
     for (let i = 0; i < svg.segments.length; i++) segments.push(...keptPiecesOfSegment(t, i, svg.segments[i]));
   }
-  const out: SVGObject = { ...svg, segments, ...(subpaths ? { subpaths } : {}) };
-  return svgIsFilled(svg) ? svgObjectStrokesOnly(out) : out;
+  return withMarkedFill(t, { ...svg, segments, ...(subpaths ? { subpaths } : {}) });
 }
 
 /**
@@ -163,6 +203,18 @@ export function cutLeaf(t: VectorEraseTarget, d: DrawnLeaf): DrawnLeaf {
   const node = d.node;
   let localSegments: PathSegment[];
   let localSubpaths = node.localSubpaths;
+  if (t.painted) {
+    // The same regroup as the record's, on the local geometry, so the two
+    // stay piece for piece and colour for colour.
+    const local = paintedGeometry(t, t.svg.color, node.localSegments ?? [], node.localSubpaths);
+    return {
+      node: {
+        ...node, content: cutRecord(t), localSegments: local.segments, localSubpaths: local.subpaths,
+        localBox: drawnLocalBox(node),
+      } as DrawnLeaf['node'],
+      world: d.world,
+    };
+  }
   if (localSubpaths && localSubpaths.length > 0) {
     let idx = 0;
     localSubpaths = localSubpaths.map((sub) => ({
@@ -191,7 +243,9 @@ export function createVectorErasePreview(dom: ErasePreviewDom): VectorErasePrevi
     const node = dom.nodeEl(id);
     if (!frame || !node) return null;
     if (!fallback && !dom.park(id, frame)) return null;
-    const entry: Entry = { node, prevVisibility: node.style.visibility, frame, paths: new Map(), rev: 0, fallback, live };
+    const entry: Entry = {
+      node, prevVisibility: node.style.visibility, frame, paths: new Map(), colors: new Map(), rev: 0, fallback, live,
+    };
     if (!fallback) node.style.visibility = 'hidden';
     entries.set(id, entry);
     return entry;
@@ -213,12 +267,22 @@ export function createVectorErasePreview(dom: ErasePreviewDom): VectorErasePrevi
       const byColor = new Map<string, PathSegment[]>();
       const end = Math.min(n, (c + 1) * CHUNK_SEGMENTS);
       for (let i = c * CHUNK_SEGMENTS; i < end; i++) {
-        const css = rgbCss(flat[i].color);
-        let list = byColor.get(css);
-        if (!list) { list = []; byColor.set(css, list); }
-        list.push(...keptPiecesOfSegment(t, i, flat[i].segment));
+        // Each piece in the colour it now has: the segment's own, or a
+        // paint's.
+        for (const piece of paintedPiecesOfSegment(t, i, flat[i].segment)) {
+          const css = rgbCss(piece.paint ?? flat[i].color);
+          let list = byColor.get(css);
+          if (!list) { list = []; byColor.set(css, list); }
+          list.push(piece.segment);
+        }
       }
+      // A colour the chunk drew in and no longer has (every piece of it
+      // painted over) is drawn empty.
+      let had = entry.colors.get(c);
+      if (!had) { had = new Set(); entry.colors.set(c, had); }
+      for (const css of had) if (!byColor.has(css)) entry.paths.get(`${css}|${c}`)?.setAttribute('d', '');
       for (const [css, segs] of byColor) {
+        had.add(css);
         const key = `${css}|${c}`;
         let path = entry.paths.get(key);
         if (!path) {
@@ -263,6 +327,19 @@ export function createVectorErasePreview(dom: ErasePreviewDom): VectorErasePrevi
     entries.delete(id);
   };
 
+  /** The live entry of node `id`, opened on its first cut or recolour
+   *  (`painted`: which); null when the node is not in `state`, may not be
+   *  cut, or is not mounted. */
+  const liveEntry = (state: CompositionState, id: string, painted: boolean): Entry | null => {
+    const entry = entries.get(id);
+    if (entry && entry.live) return entry;
+    const svg = state.svgObjects.find((o) => o.id === id);
+    if (!svg) return null;
+    const target = vectorEraseTarget(state, svg, true);
+    if (!target) return null;
+    return open(id, drawnFromMarkup(svg, painted), { target, svg, discs: [], inks: [] });
+  };
+
   const api: VectorErasePreview = {
     update(es) {
       for (const [id, t] of es.targets) {
@@ -275,18 +352,21 @@ export function createVectorErasePreview(dom: ErasePreviewDom): VectorErasePrevi
       }
     },
     cut(state, id, x, y, r) {
-      let entry = entries.get(id);
-      if (!entry || !entry.live) {
-        const svg = state.svgObjects.find((o) => o.id === id);
-        if (!svg) return false;
-        const target = vectorEraseTarget(state, svg, true);
-        if (!target) return false;
-        entry = open(id, needsMarkupFallback(svg), { target, svg, discs: [] }) ?? undefined;
-        if (!entry) return false;
-      }
+      const entry = liveEntry(state, id, false);
+      if (!entry) return false;
       const live = entry.live!;
       live.discs.push(x, y, r);
+      live.inks.push(null);
       if (cutVectorTarget(live.target, x, y, r) || entry.rev === 0) draw(id, entry, live.target);
+      return true;
+    },
+    recolor(state, id, x, y, r, ink) {
+      const entry = liveEntry(state, id, true);
+      if (!entry) return false;
+      const live = entry.live!;
+      live.discs.push(x, y, r);
+      live.inks.push(ink);
+      if (paintVectorTarget(live.target, x, y, r, ink) || entry.rev === 0) draw(id, entry, live.target);
       return true;
     },
     reset(id) {
@@ -302,13 +382,17 @@ export function createVectorErasePreview(dom: ErasePreviewDom): VectorErasePrevi
         if (!entry.live) continue;
         const svg = state.svgObjects.find((o) => o.id === id);
         if (svg === entry.live.svg) continue;
-        const discs = entry.live.discs;
+        const { discs, inks } = entry.live;
         close(id, entry);
         if (!svg) continue;
         const target = vectorEraseTarget(state, svg, true);
         if (!target) continue;
-        for (let k = 0; k + 2 < discs.length; k += 3) cutVectorTarget(target, discs[k], discs[k + 1], discs[k + 2]);
-        const next = open(id, needsMarkupFallback(svg), { target, svg, discs });
+        for (let k = 0; k + 2 < discs.length; k += 3) {
+          const ink = inks[k / 3];
+          if (ink) paintVectorTarget(target, discs[k], discs[k + 1], discs[k + 2], ink);
+          else cutVectorTarget(target, discs[k], discs[k + 1], discs[k + 2]);
+        }
+        const next = open(id, drawnFromMarkup(svg, inks.some((ink) => ink !== null)), { target, svg, discs, inks });
         if (next) draw(id, next, target);
       }
     },

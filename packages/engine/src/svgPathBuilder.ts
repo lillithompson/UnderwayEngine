@@ -1287,7 +1287,10 @@ export function svgStrokesMarkup(
     let out = buildSubpathsMarkup(obj.subpaths.filter((sub) => sub.fill), attrs, (segs) => buildPathD(segs), round);
     obj.subpaths.forEach((sub, i) => {
       if (sub.fill) return;
-      out += lineStyleMarkup(round ? round(sub.segments) : sub.segments, style, lineStyleSeed(obj.id, i + 1), attrs, sub.color);
+      // A subpath painted over (`SVGSubpath.ink`) stamps in its one colour:
+      // the style at Tint 0, where art keeps none of its own.
+      const worn = sub.ink ? { ...style, tint: 0 } : style;
+      out += lineStyleMarkup(round ? round(sub.segments) : sub.segments, worn, lineStyleSeed(obj.id, i + 1), attrs, sub.color);
     });
     return out;
   }

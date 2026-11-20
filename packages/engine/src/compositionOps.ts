@@ -237,7 +237,7 @@ export function flattenSVGSegmentsWithColor(svg: SVGObject): Array<{ segment: Pa
  * accumulator back into the SVGObject's two-tier color shape.
  */
 export function regroupSegmentsByColor(
-  entries: ReadonlyArray<{ segment: PathSegment; color: RGBColor; fill?: boolean; atom?: number }>,
+  entries: ReadonlyArray<{ segment: PathSegment; color: RGBColor; fill?: boolean; atom?: number; ink?: boolean }>,
 ): { color: RGBColor; segments: PathSegment[]; subpaths?: SVGSubpath[] } {
   if (entries.length === 0) {
     return { color: { r: 0, g: 0, b: 0 }, segments: [], subpaths: undefined };
@@ -251,21 +251,26 @@ export function regroupSegmentsByColor(
   // which keeps every atom whole and every stroke run grouped as before.
   // (Before this, the regroup dropped `fill` entirely — one brush stroke on
   // a baked figure hollowed all its painted cells into outlines.)
-  const groups: Array<{ color: RGBColor; segments: PathSegment[]; fill?: boolean; atom?: number }> = [];
-  let cur: { color: RGBColor; segments: PathSegment[]; fill?: boolean; atom?: number } | null = null;
-  for (const { segment, color, fill, atom } of entries) {
+  // An INK entry (`SVGSubpath.ink`: a styled stretch stamped in its one
+  // colour) is a boundary too, and its flag survives: a run that is ink
+  // never merges with a same-coloured one that is not.
+  type Group = { color: RGBColor; segments: PathSegment[]; fill?: boolean; atom?: number; ink?: boolean };
+  const groups: Group[] = [];
+  let cur: Group | null = null;
+  for (const { segment, color, fill, atom, ink } of entries) {
     if (cur
       && cur.color.r === color.r && cur.color.g === color.g && cur.color.b === color.b
       && (cur.fill ?? false) === (fill ?? false)
+      && (cur.ink ?? false) === (ink ?? false)
       && cur.atom === atom) {
       cur.segments.push(segment);
     } else {
-      cur = { color, segments: [segment], fill, atom };
+      cur = { color, segments: [segment], fill, atom, ink };
       groups.push(cur);
     }
   }
   const primary = groups[0];
-  if (groups.length === 1 && !primary.fill) {
+  if (groups.length === 1 && !primary.fill && !primary.ink) {
     return { color: primary.color, segments: primary.segments, subpaths: undefined };
   }
   return {
@@ -274,6 +279,7 @@ export function regroupSegmentsByColor(
     subpaths: groups.map(g => {
       const sub: SVGSubpath = { color: g.color, segments: g.segments };
       if (g.fill) sub.fill = true;
+      if (g.ink) sub.ink = true;
       return sub;
     }),
   };
@@ -299,15 +305,18 @@ export function regroupSegmentsByColor(
  * {@link regroupSegmentsByColor} preserves the subpath whole. A fill renders
  * as one closed drawing in one color, so per-segment paint variation inside
  * it has nothing to attach to. Shared by the world and group-local halves of
- * the commit, which must stay structurally parallel.
+ * the commit, which must stay structurally parallel. A stroke subpath's
+ * `ink` (a stretch stamped in its one colour) stays on the segments the
+ * brush did not reach; a segment it recoloured is the brush's, and is
+ * stamped as the style's tint says again.
  */
 function paintedFlatEntries(
   color: RGBColor,
   segments: readonly PathSegment[],
   subpaths: readonly SVGSubpath[] | undefined,
   painted: ReadonlyMap<number, RGBColor>,
-): Array<{ segment: PathSegment; color: RGBColor; fill?: boolean; atom?: number }> {
-  const out: Array<{ segment: PathSegment; color: RGBColor; fill?: boolean; atom?: number }> = [];
+): Array<{ segment: PathSegment; color: RGBColor; fill?: boolean; atom?: number; ink?: boolean }> {
+  const out: Array<{ segment: PathSegment; color: RGBColor; fill?: boolean; atom?: number; ink?: boolean }> = [];
   if (Array.isArray(subpaths) && subpaths.length > 0) {
     let idx = 0;
     subpaths.forEach((sub, subIdx) => {
@@ -323,7 +332,8 @@ function paintedFlatEntries(
         }
       } else {
         for (const seg of sub.segments) {
-          out.push({ segment: seg, color: painted.get(idx) ?? sub.color });
+          const p = painted.get(idx);
+          out.push(p || !sub.ink ? { segment: seg, color: p ?? sub.color } : { segment: seg, color: sub.color, ink: true });
           idx++;
         }
       }
@@ -469,6 +479,8 @@ function sameShape(
     // A fill flag flipping IS a shape change — without this a repaint that
     // only restored a fill would read as a no-op and never commit.
     if ((aSubs[i].fill ?? false) !== (bSubs[i].fill ?? false)) return false;
+    // …and so is an ink flag going: the brush took a painted stretch back.
+    if ((aSubs[i].ink ?? false) !== (bSubs[i].ink ?? false)) return false;
   }
   return true;
 }

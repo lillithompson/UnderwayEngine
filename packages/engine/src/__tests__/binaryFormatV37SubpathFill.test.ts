@@ -62,6 +62,24 @@ describe('v37 subpath fill persistence', () => {
     expect(out.subpaths![1].segments).toHaveLength(2);
   });
 
+  it('round-trips a subpath\'s ink flag in the same byte, beside fill and alone', () => {
+    const strokes = [line([0, 0], [2, 0]), line([2, 0], [4, 0])];
+    const svg: SVGObject = {
+      id: 'svg_1',
+      segments: strokes,
+      color: { r: 1, g: 2, b: 3 },
+      cellX: 0, cellY: 0, cellWidth: 4, cellHeight: 0,
+      subpaths: [
+        { color: { r: 1, g: 2, b: 3 }, segments: [strokes[0]] },
+        { color: { r: 200, g: 40, b: 40 }, segments: [strokes[1]], ink: true },
+      ],
+    };
+    const out = deserializeComposition(serializeComposition(makeBundle([svg]), [])).meta.svgObjects![0];
+    expect(out.subpaths![0].ink).toBeUndefined();
+    expect(out.subpaths![1].ink).toBe(true);
+    expect(out.subpaths![1].fill).toBeUndefined();
+  });
+
   it('round-trips localSubpaths fill flags for grouped objects', () => {
     const loop = rectLoop(0, 0, 1, 1);
     const svg: SVGObject = {

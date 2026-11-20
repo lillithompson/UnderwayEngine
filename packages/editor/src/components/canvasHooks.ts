@@ -5,6 +5,7 @@ import type { SessionEntry } from '../editorSession';
 import type { DrawnLeaf } from '../drawnPose';
 import type { Mat2D } from '@/engine/sceneTransform';
 import type { CellBbox } from '../resizeMath';
+import type { PaintInk } from '../vectorEraser';
 
 // The CANVAS seam of the shared editor (docs/shared-editor.md §4.1,
 // "Layers drawn over the canvas, and the gestures a host claims"): what an
@@ -232,6 +233,20 @@ export interface CanvasSurfaceHandle {
     /** Show node `id` (every node) as the document has it again — after
      *  the commit that carries the cuts. */
     reset(id?: string): void;
+  };
+  /** A node RECOLOURED live, with no commit: the stretch of it under a
+   *  disc shown in another colour, a filled shape's fill with it — the
+   *  live cuts' sibling, for a host whose machinery paints the document
+   *  while something runs (DrawBots' Paint effect). They share the one
+   *  overlay (`vectorErasePreview.ts`), so a node both cut and recoloured
+   *  is one picture, and `liveCuts.reset` takes the recolours back with
+   *  the cuts. */
+  liveRecolors: {
+    /** Show the stretch of node `id` under a disc of `r` world cells at
+     *  world (x, y) in `ink`, now: a colour, or a rule that makes the new
+     *  colour from the one each stretch had. False when the node is not
+     *  in the scene, may not be cut, or is not mounted. */
+    recolor(id: string, x: number, y: number, r: number, ink: PaintInk): boolean;
   };
 }
 

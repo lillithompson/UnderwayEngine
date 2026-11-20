@@ -1121,7 +1121,8 @@ export function CanvasSurface({
   // what the cuts leave drawn in its own world-layer <svg>. Two instances
   // of the one implementation — the Color brush's Eraser, whose parked svgs
   // ride `paintSvgLayersRef` and go with the stroke's other previews, and
-  // the host's live cuts (`CanvasSurfaceHandle.liveCuts`), whose parked svgs
+  // the host's live cuts and recolours (`CanvasSurfaceHandle.liveCuts`,
+  // `liveRecolors`), whose parked svgs
   // are their own (`liveCutLayersRef`) and outlive any gesture. Made on
   // first use: they read helpers declared further down.
   const erasePreviewsRef = useRef<{ gesture: VectorErasePreview; live: VectorErasePreview } | null>(null);
@@ -1814,6 +1815,10 @@ export function CanvasSurface({
       liveCuts: {
         cut: (id, x, y, r) => erasePreviews().live.cut(stateRef.current, id, x, y, r),
         reset: (id) => erasePreviews().live.reset(id),
+      },
+      // …and its live recolours, laid on the same overlay.
+      liveRecolors: {
+        recolor: (id, x, y, r, ink) => erasePreviews().live.recolor(stateRef.current, id, x, y, r, ink),
       },
     };
     return () => { handle.current = null; };

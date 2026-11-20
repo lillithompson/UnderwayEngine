@@ -85,6 +85,7 @@ function subpathsForSource(svg: SVGObject): SVGSubpath[] {
         segments: drawnSegments(svg, sub.segments),
         color: { ...sub.color },
         ...(sub.fill ? { fill: true as const } : null),
+        ...(sub.ink ? { ink: true as const } : null),
       });
     }
     return out;
@@ -101,7 +102,7 @@ function subpathsForSource(svg: SVGObject): SVGSubpath[] {
  *  holds a color, not a paint): the Fill bar's solid, or a gradient's first
  *  stop; a flattened solid `fillPaint`; the legacy `fillColor`. Null when the
  *  source paints no interior. */
-function svgSolidFillColor(svg: SVGObject): SVGSubpath['color'] | null {
+export function svgSolidFillColor(svg: SVGObject): SVGSubpath['color'] | null {
   if (!svgIsFilled(svg)) return null;
   const paint = svg.fill ? tintFillToPaint(svg.fill) : svg.fillPaint;
   const c = paint

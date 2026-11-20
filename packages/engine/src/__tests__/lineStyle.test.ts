@@ -633,6 +633,17 @@ describe('the art’s markup', () => {
     const styled = (tint: number) => obj({ color: ink, effects: { lineStyle: artStyle(twoPaths(), { size: 1, tint }) } });
     expect(buildSVGObjectContent(styled(0), 1, SVG_UNITS_PER_L0_CELL)).toContain('stroke="rgb(255,0,0)"');
     expect(buildSVGObjectContent(styled(1), 1, SVG_UNITS_PER_L0_CELL)).toContain('stroke="rgb(200,10,20)"');
+    // A subpath that is INK stamps in its one colour whatever the tint says; its neighbour as the tint says.
+    const half: PathSegment[] = [line([0, 0], [5, 0])];
+    const rest: PathSegment[] = [line([5, 0], [10, 0])];
+    const painted = obj({
+      effects: { lineStyle: artStyle(twoPaths(), { size: 1 }) },
+      subpaths: [{ color: WHITE, segments: half }, { color: ink, segments: rest, ink: true }],
+    });
+    const inked = svgStrokesMarkup(painted, painted.segments, '', 0.25).match(/<path [^>]*\/>/g)!;
+    expect(inked).toHaveLength(4);
+    expect(inked.slice(0, 2).join('')).toContain('stroke="rgb(200,10,20)"');             // as drawn
+    expect(inked.slice(2).join('').match(/rgb\([^)]*\)/g)).toEqual(['rgb(255,0,0)', 'rgb(255,0,0)', 'rgb(255,0,0)']);
     // One ink is one ink: a silhouette is its ink whatever the style says, and whatever it is stamped along.
     for (const tint of [0, 0.5, 1]) {
       const cast = lineStyleWithInk(artStyle(twoPaths(), { tint }), ink, { floodFills: true });

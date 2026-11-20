@@ -99,6 +99,22 @@ describe('regroupSegmentsByColor', () => {
     expect(result.subpaths![2].color).toEqual(b);
   });
 
+  it('an INK entry keeps its flag and its own group: it never merges with a same-coloured run that is not ink', () => {
+    const r = rgb(255, 0, 0);
+    const entries = [
+      { segment: line([0, 0], [1, 0]), color: r },
+      { segment: line([1, 0], [2, 0]), color: r, ink: true },
+      { segment: line([2, 0], [3, 0]), color: r, ink: true },
+      { segment: line([3, 0], [4, 0]), color: r },
+    ];
+    const result = regroupSegmentsByColor(entries);
+    expect(result.subpaths!.map((s) => [s.segments.length, !!s.ink])).toEqual([[1, false], [2, true], [1, false]]);
+    // One colour, all of it ink: still subpaths, since the flag lives on one.
+    const all = regroupSegmentsByColor(entries.slice(1, 3));
+    expect(all.subpaths).toHaveLength(1);
+    expect(all.subpaths![0].ink).toBe(true);
+  });
+
   it('groups contiguous runs of same color', () => {
     const r = rgb(255, 0, 0), b = rgb(0, 0, 255);
     const entries = [

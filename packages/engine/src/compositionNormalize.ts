@@ -213,6 +213,7 @@ function applyTransformSubpaths(tr: AffineTransform, subpaths: SVGSubpath[]): SV
     color: sp.color,
     segments: applyTransformSegments(tr, sp.segments),
     ...(sp.fill ? { fill: true as const } : null),
+    ...(sp.ink ? { ink: true as const } : null),
   }));
 }
 

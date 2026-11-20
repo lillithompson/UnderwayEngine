@@ -6,8 +6,9 @@
  */
 
 import {
-  buildVectorEraseEntry, createVectorEraseState, cutVectorTarget, eraseVectorDab, keptPieces, keptPiecesOfSegment,
-  segmentCircleCover, subtractIntervals, vectorErasable, vectorEraseTarget,
+  buildVectorEraseEntry, createVectorEraseState, cutVectorTarget, erasedSvg, eraseVectorDab, keptPieces, keptPiecesOfSegment,
+  paintedPiecesOfSegment, paintVectorTarget, segmentCircleCover, subtractIntervals, targetIsCut, vectorErasable,
+  vectorEraseTarget,
 } from '../vectorEraser';
 import { type LineCover, lineCircleCover } from '@/engine/segmentCircleCut';
 import { makeBlankComposition } from '@/editor/blankComposition';
@@ -265,5 +266,141 @@ describe('eraseVectorDab + buildVectorEraseEntry', () => {
     expect(pieces).toHaveLength(2);
     close(pieces[0].end[0], 4);
     close(pieces[1].start[0], 6);
+  });
+});
+
+// A target takes PAINT by the same discs (DrawBots' Paint effect): the
+// stretch a disc covers is recoloured, not cut, and the record it leaves
+// is its pieces regrouped by colour.
+describe('paintVectorTarget', () => {
+  const RED = { r: 220, g: 30, b: 30 };
+  const BLUE = { r: 30, g: 60, b: 220 };
+  const xs = (segs: readonly PathSegment[]) => segs.map((s) => [+s.start[0].toFixed(6), +s.end[0].toFixed(6)]);
+
+  it('recolours the stretch under the disc and cuts nothing: the record is the line in three pieces, the middle the paint\'s', () => {
+    const svg = hline('svg_a');
+    const t = vectorEraseTarget(stateWith([svg]), svg, true)!;
+    expect(paintVectorTarget(t, 5, 3, 1, RED)).toBe(false);          // the disc misses
+    expect(t.rev).toBe(0);
+    expect(paintVectorTarget(t, 5, 0, 1, RED)).toBe(true);
+    expect(t.rev).toBe(1);
+    expect(targetIsCut(t)).toBe(false);
+    const pieces = paintedPiecesOfSegment(t, 0, svg.segments[0]);
+    expect(xs(pieces.map((p) => p.segment))).toEqual([[0, 4], [4, 6], [6, 10]]);
+    expect(pieces.map((p) => p.paint)).toEqual([undefined, RED, undefined]);
+    const next = erasedSvg(t)!;
+    expect(xs(next.segments)).toEqual([[0, 4], [4, 6], [6, 10]]);
+    expect(next.subpaths!.map((s) => s.color)).toEqual([BLACK, RED, BLACK]);
+    expect(next.subpaths!.map((s) => xs(s.segments))).toEqual([[[0, 4]], [[4, 6]], [[6, 10]]]);
+    // Nothing moved: the box is the record's own.
+    expect([next.cellX, next.cellY, next.cellWidth, next.cellHeight]).toEqual([0, 0, 10, 0]);
+  });
+
+  it('the colour already there changes nothing, and the base colour laid back takes the run away', () => {
+    const svg = hline('svg_a');
+    const t = vectorEraseTarget(stateWith([svg]), svg, true)!;
+    expect(paintVectorTarget(t, 5, 0, 1, BLACK)).toBe(false);        // the line's own colour
+    expect(t.painted).toBeUndefined();
+    paintVectorTarget(t, 5, 0, 1, RED);
+    expect(paintVectorTarget(t, 5, 0, 1, RED)).toBe(false);          // again: nothing new
+    expect(t.rev).toBe(1);
+    expect(paintVectorTarget(t, 5, 0, 1, BLACK)).toBe(true);
+    expect(t.painted![0]).toEqual([]);
+    expect(erasedSvg(t)!.subpaths).toBeUndefined();
+  });
+
+  it('the latest paint lies over the ones before it, and neighbours of one colour are one run', () => {
+    const svg = hline('svg_a');
+    const t = vectorEraseTarget(stateWith([svg]), svg, true)!;
+    paintVectorTarget(t, 3, 0, 1, RED);
+    paintVectorTarget(t, 4, 0, 1, BLUE);                              // over half of the red
+    expect(t.painted![0].map(([f0, f1, c]) => [+f0.toFixed(6), +f1.toFixed(6), c])).toEqual([[0.2, 0.3, RED], [0.3, 0.5, BLUE]]);
+    paintVectorTarget(t, 2.5, 0, 0.5, BLUE);                          // 2..3 in blue: red squeezed out
+    expect(t.painted![0].map(([f0, f1]) => [+f0.toFixed(6), +f1.toFixed(6)])).toEqual([[0.2, 0.5]]);
+  });
+
+  it('an ink that is a rule makes each stretch\'s colour from the one it had', () => {
+    const svg: SVGObject = {
+      ...hline('svg_two'),
+      segments: [line([0, 0], [5, 0]), line([5, 0], [10, 0])],
+      subpaths: [{ color: RED, segments: [line([0, 0], [5, 0])] }, { color: BLUE, segments: [line([5, 0], [10, 0])] }],
+    };
+    const t = vectorEraseTarget(stateWith([svg]), svg, true)!;
+    const swap = (from: { r: number; g: number; b: number }) => ({ r: from.b, g: from.g, b: from.r });
+    expect(paintVectorTarget(t, 5, 0, 1, swap)).toBe(true);
+    const next = erasedSvg(t)!;
+    expect(next.subpaths!.map((s) => [s.color, xs(s.segments)])).toEqual([
+      [RED, [[0, 4]]], [swap(RED), [[4, 5]]], [swap(BLUE), [[5, 6]]], [BLUE, [[6, 10]]],
+    ]);
+    // …and a second pass turns what the first left, back to where it began.
+    expect(paintVectorTarget(t, 5, 0, 1, swap)).toBe(true);
+    expect(erasedSvg(t)!.subpaths!.map((s) => s.color)).toEqual([RED, BLUE]);
+  });
+
+  it('a cut and a paint commute: what is left is cut and coloured whichever came first', () => {
+    const svg = hline('svg_a');
+    const state = stateWith([svg]);
+    const a = vectorEraseTarget(state, svg, true)!;
+    paintVectorTarget(a, 5, 0, 2, RED);
+    cutVectorTarget(a, 5, 0, 1);
+    const b = vectorEraseTarget(state, svg, true)!;
+    cutVectorTarget(b, 5, 0, 1);
+    paintVectorTarget(b, 5, 0, 2, RED);
+    for (const t of [a, b]) {
+      expect(targetIsCut(t)).toBe(true);
+      const next = erasedSvg(t)!;
+      expect(xs(next.segments)).toEqual([[0, 3], [3, 4], [6, 7], [7, 10]]);
+      expect(next.subpaths!.map((s) => s.color)).toEqual([BLACK, RED, BLACK]);
+      expect(next.subpaths![1].segments).toHaveLength(2);            // 3..4 and 6..7, one red run
+    }
+  });
+
+  it('a sliver beside a painted piece joins it, so a painted outline keeps every bit of its line', () => {
+    const svg = hline('svg_a');
+    const t = vectorEraseTarget(stateWith([svg]), svg, true)!;
+    // The disc's edge falls 0.0005 cells short of the line's end.
+    paintVectorTarget(t, 9, 0, 0.9995, RED);
+    const pieces = paintedPiecesOfSegment(t, 0, svg.segments[0]);
+    expect(pieces).toHaveLength(2);
+    close(pieces[1].segment.end[0], 10);
+    expect(pieces[1].paint).toEqual(RED);
+  });
+
+  it('a filled shape\'s fill takes the paint whole, flat, while no cut has opened it', () => {
+    const filled = hline('svg_f', { fillColor: BLUE, fillOpacity: 0.5 });
+    const state = stateWith([filled]);
+    const t = vectorEraseTarget(state, filled, true)!;
+    expect(paintVectorTarget(t, 5, 0, 1, RED)).toBe(true);
+    expect(t.fill).toEqual(RED);
+    const next = erasedSvg(t)!;
+    expect(next.fillColor).toEqual(RED);
+    expect(next.fillOpacity).toBeUndefined();
+    expect(next.subpaths!.map((s) => s.color)).toEqual([BLACK, RED, BLACK]);
+    // A fill the outline's paint leaves alone but its own rule changes.
+    const turned = vectorEraseTarget(state, filled, true)!;
+    const onlyBlue = (from: { r: number; g: number; b: number }) => (from.b > 200 ? RED : from);
+    expect(paintVectorTarget(turned, 5, 0, 1, onlyBlue)).toBe(true);
+    expect(turned.painted).toBeUndefined();
+    const flooded = erasedSvg(turned)!;
+    expect(flooded.fillColor).toEqual(RED);
+    expect(flooded.subpaths).toBeUndefined();
+    // Cut as well: the record keeps the fill it had, for its caller to take off.
+    cutVectorTarget(t, 8, 0, 0.5);
+    expect(erasedSvg(t)!.fillColor).toEqual(BLUE);
+  });
+
+  it('a painted piece of a path whose line style stamps art is marked ink; a plain glyph\'s is not', () => {
+    const style = {
+      glyph: 'custom' as const, density: 0.5, size: 1, rotation: 0, randomPlacement: 0, randomRotation: 0, randomSize: 0,
+      art: [{ points: [[0, 0], [1, 0], [1, 1]] as [number, number][], color: BLUE, width: 0.1 }],
+    };
+    const art = hline('svg_art', { effects: { lineStyle: style } as SVGObject['effects'] });
+    const t = vectorEraseTarget(stateWith([art]), art, true)!;
+    paintVectorTarget(t, 5, 0, 1, RED);
+    expect(erasedSvg(t)!.subpaths!.map((s) => !!s.ink)).toEqual([false, true, false]);
+    const plain = hline('svg_dots', { effects: { lineStyle: { ...style, glyph: 'circle', art: undefined } } as SVGObject['effects'] });
+    const u = vectorEraseTarget(stateWith([plain]), plain, true)!;
+    paintVectorTarget(u, 5, 0, 1, RED);
+    expect(erasedSvg(u)!.subpaths!.some((s) => s.ink)).toBe(false);
   });
 });

@@ -337,7 +337,10 @@ const MAGIC = [0x46, 0x43, 0x4D, 0x50]; // "FCMP"
 // closed loops instead of a stroked path — figure→SVG pattern baking). The
 // byte sits between the subpath's RGB and its segment count, so the read is
 // gated on version>=37; v36-and-earlier subpaths load with `fill` unset and
-// render as strokes exactly as they did.
+// render as strokes exactly as they did. The byte's 0x02 is `ink` (a styled
+// subpath stamped in its one colour, types.ts `SVGSubpath.ink`): no version
+// of its own, since every writer since v37 left the bit 0 and a reader
+// before it ignores it, drawing that subpath's art as the style's tint says.
 // v38: SVG records gain a flags4 byte (after flags3, which is fully spent).
 // flags4 bit 0x01 = hasPatternFileId; payload = u16 string-table ref written
 // with the other conditional string refs (after preGroupName). Read is gated
@@ -2399,9 +2402,10 @@ function readSegments(view: DataView, data: Uint8Array, pos: number, count: numb
 }
 
 // v20+: per-color subpath splits from drag-paint / join ops. Each
-// subpath = 3 bytes RGB + flags u8 (v37+, 0x01 fill) + u16 segment count
-// + segments.
+// subpath = 3 bytes RGB + flags u8 (v37+, 0x01 fill, 0x02 ink) + u16
+// segment count + segments.
 const SUBPATH_FLAG_FILL = 0x01;
+const SUBPATH_FLAG_INK = 0x02;
 
 function writeSubpaths(view: DataView, out: Uint8Array, pos: number, subs: ReadonlyArray<SVGSubpath>): number {
   pos = writeCount16(view, pos, subs.length, 'subpaths');
@@ -2409,7 +2413,7 @@ function writeSubpaths(view: DataView, out: Uint8Array, pos: number, subs: Reado
     out[pos++] = sub.color.r & 0xff;
     out[pos++] = sub.color.g & 0xff;
     out[pos++] = sub.color.b & 0xff;
-    out[pos++] = sub.fill ? SUBPATH_FLAG_FILL : 0;
+    out[pos++] = (sub.fill ? SUBPATH_FLAG_FILL : 0) | (sub.ink ? SUBPATH_FLAG_INK : 0);
     pos = writeCount16(view, pos, sub.segments.length, 'subpath.segments');
     pos = writeSegments(view, out, pos, sub.segments);
   }
@@ -2441,6 +2445,7 @@ function readSubpaths(view: DataView, data: Uint8Array, pos: number, version: nu
     pos = s.pos;
     const sub: SVGSubpath = { color: { r, g, b }, segments: s.segs };
     if (subFlags & SUBPATH_FLAG_FILL) sub.fill = true;
+    if (subFlags & SUBPATH_FLAG_INK) sub.ink = true;
     subs.push(sub);
   }
   return { subs, pos };

@@ -605,6 +605,14 @@ export interface SVGSubpath {
    *  where color-painted cells are filled rects while sprite art is strokes.
    *  Persisted from binary format v37 (per-subpath flags byte). */
   fill?: boolean;
+  /** When true, a LINE STYLE's art along this subpath is stamped in the
+   *  subpath's `color` ALONE — as at the style's Tint 0, whatever the style
+   *  says ({@link LineStyleEffect.tint}) — so the mark's own colours do not
+   *  show through a stretch that was PAINTED over (a host's recolour of a
+   *  section of a styled line: DrawBots' Paint effect). Reads as nothing on
+   *  an object with no styled art, whose stamps are in the subpath's colour
+   *  anyway. Persisted in the v37 per-subpath flags byte (0x02). */
+  ink?: boolean;
 }
 
 /**

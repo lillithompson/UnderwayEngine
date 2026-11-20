@@ -15,7 +15,9 @@ import { drawnLeaf, svgLayerMarkup } from '../drawnPose';
 import { SHAPE_FILL_SVG_ATTR, type ShapeHostLike, type ShapeSvgLike } from '../shapePaintDom';
 import { type ShapeStrokePreviewFrame, shapeStrokePreviewFrame } from '../shapeStrokePreview';
 import { graphOf } from '../transformGestures';
-import { createVectorEraseState, cutVectorTarget, eraseVectorDab, keptPieces, vectorEraseTarget } from '../vectorEraser';
+import {
+  createVectorEraseState, cutVectorTarget, eraseVectorDab, keptPieces, paintedPiecesOfSegment, paintVectorTarget, vectorEraseTarget,
+} from '../vectorEraser';
 import {
   CHUNK_SEGMENTS, createVectorErasePreview, cutLeaf, cutRecord, type ErasePreviewDom, needsMarkupFallback, type PreviewPathLike,
 } from '../vectorErasePreview';
@@ -324,5 +326,130 @@ describe('the gesture and the live cut are one implementation', () => {
     // An unchanged revision costs nothing more.
     preview.update(es);
     expect(gesture.parked.get('svg_a')!.paths[0].writes).toBe(1);
+  });
+});
+
+// A host's live RECOLOURS (`CanvasSurfaceHandle.liveRecolors`; DrawBots'
+// Paint effect) ride the live cuts' overlay: the same entry, the same
+// target, each piece drawn in the colour it now has.
+describe('createVectorErasePreview: a live recolour', () => {
+  const BLUE = { r: 20, g: 40, b: 220 };
+
+  /** The `d` of the pieces of `svg` that draw in `css` once `marks` are laid. */
+  function colouredD(state: CompositionState, svg: SVGObject, marks: [number, number, number, typeof RED | null][], css: string): string {
+    const t = vectorEraseTarget(state, svg, true)!;
+    for (const [x, y, r, ink] of marks) {
+      if (ink) paintVectorTarget(t, x, y, r, ink); else cutVectorTarget(t, x, y, r);
+    }
+    const frame = shapeStrokePreviewFrame(drawnLeaf(graphOf(state), svg.id)!, state.strokeScale, BASE_CELL_PX);
+    const segs: PathSegment[] = [];
+    frame.flat.forEach((f, i) => {
+      for (const piece of paintedPiecesOfSegment(t, i, f.segment)) {
+        const c = piece.paint ?? f.color;
+        if (`rgb(${c.r}, ${c.g}, ${c.b})` === css) segs.push(piece.segment);
+      }
+    });
+    return buildPathD(segs);
+  }
+
+  it('hides the node and draws its pieces each in its colour: the stretch under the disc in the ink, nothing cut', () => {
+    const svg = polyline('svg_a', 10);
+    const state = stateWith([svg]);
+    const { dom, mounted, parked, log } = fakeDom(() => state);
+    const node = mounted('svg_a');
+    const preview = createVectorErasePreview(dom);
+    expect(preview.recolor(state, 'svg_a', 5, 0, 1, RED)).toBe(true);
+    expect(node.style.visibility).toBe('hidden');
+    expect(log).toEqual(['park svg_a']);
+    const paths = parked.get('svg_a')!.paths;
+    expect(paths.map((p) => p.attrs.stroke).sort()).toEqual(['rgb(0, 0, 0)', 'rgb(200, 20, 20)']);
+    const by = (css: string) => paths.find((p) => p.attrs.stroke === css)!;
+    expect(by('rgb(200, 20, 20)').attrs.d).toBe(colouredD(state, svg, [[5, 0, 1, RED]], 'rgb(200, 20, 20)'));
+    expect(by('rgb(0, 0, 0)').attrs.d).toBe(colouredD(state, svg, [[5, 0, 1, RED]], 'rgb(0, 0, 0)'));
+    // The colour already there costs no rewrite.
+    preview.recolor(state, 'svg_a', 5, 0, 1, RED);
+    expect(paths.map((p) => p.writes)).toEqual([1, 1]);
+  });
+
+  it('a colour a chunk no longer has is drawn empty, not left as it was', () => {
+    const svg = polyline('svg_a', 2);
+    const state = stateWith([svg]);
+    const { dom, mounted, parked } = fakeDom(() => state);
+    mounted('svg_a');
+    const preview = createVectorErasePreview(dom);
+    preview.recolor(state, 'svg_a', 0.5, 0, 0.25, RED);
+    const paths = parked.get('svg_a')!.paths;
+    const black = paths.find((p) => p.attrs.stroke === 'rgb(0, 0, 0)')!;
+    expect(black.attrs.d).not.toBe('');
+    preview.recolor(state, 'svg_a', 1, 0, 5, RED);                    // the whole of it
+    expect(black.attrs.d).toBe('');
+    expect(paths.find((p) => p.attrs.stroke === 'rgb(200, 20, 20)')!.attrs.d).toBe(buildPathD(
+      shapeStrokePreviewFrame(drawnLeaf(graphOf(state), 'svg_a')!, state.strokeScale, BASE_CELL_PX).flat.map((f) => f.segment),
+    ));
+  });
+
+  it('a node cut and recoloured is one picture: one parked svg, the cut gone and the rest in its colours', () => {
+    const svg = polyline('svg_a', 10);
+    const state = stateWith([svg]);
+    const { dom, mounted, parked, log } = fakeDom(() => state);
+    mounted('svg_a');
+    const preview = createVectorErasePreview(dom);
+    preview.cut(state, 'svg_a', 2, 0, 0.5);
+    preview.recolor(state, 'svg_a', 7, 0, 1, BLUE);
+    expect(log).toEqual(['park svg_a']);
+    const marks: [number, number, number, typeof RED | null][] = [[2, 0, 0.5, null], [7, 0, 1, BLUE]];
+    const paths = parked.get('svg_a')!.paths;
+    expect(paths.find((p) => p.attrs.stroke === 'rgb(20, 40, 220)')!.attrs.d).toBe(colouredD(state, svg, marks, 'rgb(20, 40, 220)'));
+    expect(paths.find((p) => p.attrs.stroke === 'rgb(0, 0, 0)')!.attrs.d).toBe(colouredD(state, svg, marks, 'rgb(0, 0, 0)'));
+    // One reset shows the node as the document has it: both are taken back.
+    preview.reset();
+    expect(preview.shown()).toEqual([]);
+  });
+
+  it('a filled shape opened by a recolour is drawn from its own markup, its fill repainted and not taken off', () => {
+    const svg: SVGObject = { ...polyline('svg_f', 4), fillColor: BLUE };
+    const state = stateWith([svg]);
+    const { dom, mounted, parked } = fakeDom(() => state);
+    const node = mounted('svg_f');
+    const preview = createVectorErasePreview(dom);
+    expect(preview.recolor(state, 'svg_f', 2, 0, 0.5, RED)).toBe(true);
+    expect(node.style.visibility).toBe('');
+    expect(parked.size).toBe(0);
+    const t = vectorEraseTarget(state, svg, true)!;
+    paintVectorTarget(t, 2, 0, 0.5, RED);
+    const record = cutRecord(t);
+    expect(record.fillColor).toEqual(RED);
+    expect(record.subpaths!.map((s) => s.color)).toEqual([BLACK, RED, BLACK]);
+    const d = drawnLeaf(graphOf(state), 'svg_f')!;
+    const leaf = cutLeaf(t, d);
+    // The local geometry regrouped as the record's: piece for piece, colour for colour.
+    expect(leaf.node.localSubpaths!.map((s) => [s.color, s.segments.length]))
+      .toEqual(record.subpaths!.map((s) => [s.color, s.segments.length]));
+    expect(node.host.fill.innerHTML).toBe(svgLayerMarkup(leaf, state.strokeScale).html);
+    expect(node.host.fill.innerHTML).not.toBe(svgLayerMarkup(d, state.strokeScale).html);
+    // A cut of it after takes the fill off, as a cut always does.
+    cutVectorTarget(t, 3.5, 0, 0.2);
+    expect(cutRecord(t).fillColor).toBeUndefined();
+  });
+
+  it('survives a render: the cuts and the recolours are laid again on the new record, in the order they were made', () => {
+    const a = polyline('svg_a', 10);
+    let state = stateWith([a]);
+    const { dom, mounted, parked } = fakeDom(() => state);
+    const node = mounted('svg_a');
+    const preview = createVectorErasePreview(dom);
+    preview.recolor(state, 'svg_a', 3, 0, 1, RED);
+    preview.cut(state, 'svg_a', 8, 0, 0.5);
+    preview.recolor(state, 'svg_a', 3.5, 0, 0.5, BLUE);
+    const moved: SVGObject = { ...a, stroke: { width: 0.5 } };
+    state = { ...state, svgObjects: [moved], graph: undefined };
+    node.style.visibility = '';
+    preview.refresh(state);
+    expect(node.style.visibility).toBe('hidden');
+    const marks: [number, number, number, typeof RED | null][] = [[3, 0, 1, RED], [8, 0, 0.5, null], [3.5, 0, 0.5, BLUE]];
+    const paths = parked.get('svg_a')!.paths;
+    for (const css of ['rgb(0, 0, 0)', 'rgb(200, 20, 20)', 'rgb(20, 40, 220)']) {
+      expect(paths.find((p) => p.attrs.stroke === css)!.attrs.d).toBe(colouredD(state, moved, marks, css));
+    }
   });
 });

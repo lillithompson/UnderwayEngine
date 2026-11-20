@@ -411,6 +411,9 @@ describe('the seam’s declarations', () => {
   const SRC = fs.readFileSync(
     path.join(__dirname, '..', 'components', 'canvasHooks.ts'), 'utf8',
   );
+  const SURFACE = fs.readFileSync(
+    path.join(__dirname, '..', 'components', 'CanvasSurface.tsx'), 'utf8',
+  );
 
   // A types-only declaration cannot be run, and the package's components
   // are typechecked only in the apps (the engine has no renderer), so the
@@ -476,6 +479,15 @@ describe('the seam’s declarations', () => {
     expect(SRC).toContain('reset(id?: string): void;');
   });
 
+  test('the handle offers live recolours beside them, on the one overlay', () => {
+    expect(SRC).toContain('liveRecolors: {');
+    expect(SRC).toContain('recolor(id: string, x: number, y: number, r: number, ink: PaintInk): boolean;');
+    // The surface gives both to the one live preview, so a node cut and
+    // recoloured is one picture and `liveCuts.reset` takes back both.
+    expect(SURFACE).toContain('cut: (id, x, y, r) => erasePreviews().live.cut(stateRef.current, id, x, y, r),');
+    expect(SURFACE).toContain('recolor: (id, x, y, r, ink) => erasePreviews().live.recolor(stateRef.current, id, x, y, r, ink),');
+  });
+
   // Every member of an interface adopted whole from a non-canonical copy
   // (§4.2 item 5's rule, which 5a learnt the hard way) is used here, so
   // deleting one fails this file's compile rather than passing silently.
@@ -504,6 +516,7 @@ describe('the seam’s declarations', () => {
       pixelHitAt: () => null,
       layerSlot: null,
       liveCuts: { cut: () => false, reset() {} },
+      liveRecolors: { recolor: () => false },
     };
     expect(hooks.claimAt).toBe('grab');
     expect(hooks.onPointerDown!(1, 2, {} as never)).toBe(claim);
@@ -533,6 +546,7 @@ describe('the seam’s declarations', () => {
     expect(handle.layerSlot).toBeNull();
     expect(handle.liveCuts.cut('sq_1', 0, 0, 1)).toBe(false);
     handle.liveCuts.reset();
+    expect(handle.liveRecolors.recolor('sq_1', 0, 0, 1, { r: 1, g: 2, b: 3 })).toBe(false);
     expect(handle.getLiveCamera().zoom).toBe(makeBlankComposition('x').camera.zoom);
     expect(handle.getViewport().width).toBe(100);
     expect(prior.selectedIds).toEqual([]);
