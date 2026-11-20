@@ -7,31 +7,12 @@
 // grammar written three times, and a path one of them read differently from
 // the others drew a different shape by where it was imported. Here the
 // grammar is read once: the commands, absolute and relative, their implicit
-// repeats, the S / T reflections and the current point after a Z. What a
-// curve or an arc BECOMES stays each reader's own choice, made in the sink
-// it passes.
+// repeats, the S / T reflections, an arc's flags and the current point after
+// a Z. What a curve or an arc BECOMES stays each reader's own choice, made
+// in the sink it passes.
 //
 // Imports nothing, so a script can compile it from its TypeScript alone
 // (scripts that read the simplifier that way serve it this module too).
-
-/** A token of path data: a command letter, or a number. */
-export type PathDataToken = string | number;
-
-/**
- * Path data as its command letters and numbers, in order. Anything else
- * (whitespace, commas, any other character) only separates them and is
- * dropped. A number ends where the next character cannot continue it, so
- * `1-2` and `.5.5` are two numbers each — and so are an arc's flags written
- * without a separator (`0110` is the one number 110, not two flags and a
- * coordinate).
- */
-export function tokenizePathData(d: string): PathDataToken[] {
-  const tokens: PathDataToken[] = [];
-  const re = /([MLHVCSQTAZmlhvcsqtaz])|([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(d)) !== null) tokens.push(m[1] ? m[1] : Number(m[2]));
-  return tokens;
-}
 
 /**
  * What a reader of path data is told, every point in absolute coordinates.
@@ -66,36 +47,67 @@ export interface PathDataSink {
  * number no command takes (before the first command, or after a `Z`) is
  * skipped. Drawing before any `M` starts from (0, 0).
  *
+ * An arc's two flags are read as the grammar has them, one character each
+ * (a flag is `0` or `1`), so a flag may run into what follows it with no
+ * separator, as minifiers write it: `a5 5 0 0110 10` is the flags 0 and 1
+ * and then 10, 10. A flag written as anything else (`2`, `-1`) is read as
+ * a number, true unless it is zero.
+ *
  * Path data that breaks the grammar is read as far as it goes and not
  * repaired: a command short of numbers takes what follows it anyway, a
  * later command letter included, and reads it (or the end of the data) as
  * NaN — so a sink is only ever given numbers.
  */
 export function readPathData(d: string, sink: PathDataSink): void {
-  const tokens = tokenizePathData(d);
-  let i = 0;
+  // A token at a time, the next one looked ahead, so that a flag can take
+  // one character of a number and leave the rest to be read on. A token is
+  // a command letter (group 1) or a number (group 2); anything else
+  // (whitespace, commas, any other character) only separates them and is
+  // skipped. A number ends where the next character cannot continue it, so
+  // `1-2` and `.5.5` are two numbers each.
+  const re = /([MLHVCSQTAZmlhvcsqtaz])|([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/g;
+  let tok = re.exec(d);   // the next token, not yet taken; null at the end
   let cx = 0, cy = 0;     // current point
   let sx = 0, sy = 0;     // current subpath's start
   let lcx = 0, lcy = 0;   // the last curve's last control point, for S / T
   let last = '';          // the previous command, upper case
   let rel = false;        // the command being read is relative
 
-  const hasNum = () => i < tokens.length && typeof tokens[i] === 'number';
+  /** Take the next token (a null at the end stays null: exec would start
+   *  the string over). */
+  const take = () => {
+    const t = tok;
+    if (t) tok = re.exec(d);
+    return t;
+  };
+  const hasNum = () => tok !== null && tok[2] !== undefined;
   /** The next token as a number: NaN when a command is short of numbers
    *  and takes a command letter, or runs past the end. */
   const next = () => {
-    const t = tokens[i++];
-    return typeof t === 'number' ? t : NaN;
+    const t = take();
+    return t && t[2] !== undefined ? Number(t[2]) : NaN;
+  };
+  /** An arc flag: the first character of a number that starts with 0 or 1
+   *  and runs on, the rest read from the character after it; any other
+   *  token, as the number it is (true unless zero). */
+  const nextFlag = () => {
+    const t = tok;
+    if (t && t[2] !== undefined && t[2].length > 1 && (t[2][0] === '0' || t[2][0] === '1')) {
+      re.lastIndex = t.index + 1;
+      tok = re.exec(d);
+      return t[2][0] === '1';
+    }
+    return next() !== 0;
   };
   /** The next number as an x (or y): as written, or from the current point. */
   const nextX = () => { const v = next(); return rel ? cx + v : v; };
   const nextY = () => { const v = next(); return rel ? cy + v : v; };
 
-  while (i < tokens.length) {
-    const tok = tokens[i++];
-    if (typeof tok === 'number') continue;
-    const cmd = tok.toUpperCase();
-    rel = tok !== cmd;
+  while (tok !== null) {
+    const t = take()!;
+    if (t[1] === undefined) continue;
+    const cmd = t[1].toUpperCase();
+    rel = t[1] !== cmd;
     switch (cmd) {
       case 'M': {
         if (!hasNum()) break;
@@ -168,7 +180,7 @@ export function readPathData(d: string, sink: PathDataSink): void {
       case 'A':
         while (hasNum()) {
           const rx = next(), ry = next(), rotationDeg = next();
-          const largeArc = next() !== 0, sweep = next() !== 0;
+          const largeArc = nextFlag(), sweep = nextFlag();
           const x = nextX(), y = nextY();
           sink.arcTo(cx, cy, rx, ry, rotationDeg, largeArc, sweep, x, y);
           cx = x; cy = y;

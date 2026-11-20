@@ -97,6 +97,15 @@ describe('bakeFigureToSegments', () => {
     expect(bake('m 0,0 l 256,0 v 256 q -128,0 -128,-128 a 64,64 0 0 1 -128,0 z')).toEqual(absolute);
   });
 
+  test("reads an arc's flags run on into its end point, as a minifier writes them", () => {
+    // Report 1f5ff91e: `01-128 0` is the flags 0 and 1 and then -128 0.
+    const bake = (d: string) => {
+      mockGetSync.mockReturnValue({ elements: [`<path d="${d}"/>`], svgWidth: 256, svgHeight: 256 });
+      return bakeFigureToSegments(makeFig({ cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1 }));
+    };
+    expect(bake('M128 128a64 64 0 01-128 0')).toEqual(bake('M128 128 a64 64 0 0 1 -128 0'));
+  });
+
   test('applies element transform attribute', () => {
     // A path at (0,0)→(256,0) translated by (0, 256) in SVG units
     mockGetSync.mockReturnValue({

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { PathDataSink, readPathData, tokenizePathData } from '../svgPathData';
+import { PathDataSink, readPathData } from '../svgPathData';
 
 // The engine's one reader of SVG path data. Each test reads a `d` into a
 // sink that records every call, in absolute coordinates, so what is pinned
@@ -24,26 +24,20 @@ function calls(d: string): Call[] {
   return out;
 }
 
-describe('tokenizePathData', () => {
-  test.each<[string, (string | number)[]]>([
-    ['M10 20L30 40', ['M', 10, 20, 'L', 30, 40]],
-    ['M10,20 l-5-5', ['M', 10, 20, 'l', -5, -5]],
-    ['M.5.5', ['M', 0.5, 0.5]],
-    ['M1e2 1E-2 2.5e+1', ['M', 100, 0.01, 25]],
-    ['M+1 -.25', ['M', 1, -0.25]],
-    ['M1. 2', ['M', 1, 2]],
-    ['  \n\tz Z ', ['z', 'Z']],
-    ['M0 0 x 5 # 6', ['M', 0, 0, 5, 6]],
-    // Flags written without a separator are one number: the misread every
-    // reader of this grammar has made, kept here as it was.
-    ['A10 10 0 0110 0', ['A', 10, 10, 0, 110, 0]],
-    ['', []],
-  ])('%j', (d, tokens) => {
-    expect(tokenizePathData(d)).toEqual(tokens);
-  });
-});
-
 describe('readPathData', () => {
+  test.each<[string, Call[]]>([
+    ['M10 20L30 40', [['M', 10, 20], ['L', 10, 20, 30, 40]]],
+    ['M10,20 l-5-5', [['M', 10, 20], ['L', 10, 20, 5, 15]]],
+    ['M.5.5', [['M', 0.5, 0.5]]],
+    ['M1e2 1E-2 L2.5e+1 0', [['M', 100, 0.01], ['L', 100, 0.01, 25, 0]]],
+    ['M+1 -.25', [['M', 1, -0.25]]],
+    ['M1. 2', [['M', 1, 2]]],
+    ['  \n\tz Z ', [['Z', 0, 0, 0, 0], ['Z', 0, 0, 0, 0]]],
+    ['M0 0 x 5 # 6', [['M', 0, 0], ['L', 0, 0, 5, 6]]],
+  ])('a number ends where the next character cannot continue it, and anything else only separates: %j', (d, expected) => {
+    expect(calls(d)).toEqual(expected);
+  });
+
   test('M then L, absolute and relative', () => {
     expect(calls('M10 10 L20 10 l5 5')).toEqual([
       ['M', 10, 10],
@@ -156,6 +150,34 @@ describe('readPathData', () => {
       ['A', 0, 0, 10, 5, 30, false, true, 20, 0],
       ['A', 20, 0, -10, 5, 0, true, false, 40, 0],
     ]);
+  });
+
+  test("an arc's flags are one character each, so they may run on into what follows them", () => {
+    // Report 1f5ff91e: a minifier writes `0 1 10` as `0110`, which a reader
+    // that took it for one number read as the flag 110 and went on wrong.
+    expect(calls('M0 0 a5 5 0 0110 10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, false, true, 10, 10]]);
+    expect(calls('M0 0 A5 5 0 1110 10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, true, true, 10, 10]]);
+    expect(calls('M0 0 a5 5 0 01-10 10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, false, true, -10, 10]]);
+    expect(calls('M0 0 A5 5 0 1 1.5.5')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, true, true, 0.5, 0.5]]);
+    // Each repeat of the arc reads its own flags the same way.
+    expect(calls('M0 0 a5 5 0 0110 10 5 5 0 1010 0')).toEqual([
+      ['M', 0, 0],
+      ['A', 0, 0, 5, 5, 0, false, true, 10, 10],
+      ['A', 10, 10, 5, 5, 0, true, false, 20, 10],
+    ]);
+    // Written apart, they read as they always did.
+    expect(calls('M0 0 A5 5 0 0 1 10 10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, false, true, 10, 10]]);
+    expect(calls('M0 0 A5 5 0,1,0,10,10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, true, false, 10, 10]]);
+  });
+
+  test('a flag written as some other number is read as that number, true unless it is zero', () => {
+    expect(calls('M0 0 A5 5 0 2 -0 10 10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, true, false, 10, 10]]);
+    expect(calls('M0 0 A5 5 0 -1 .5 10 10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, true, true, 10, 10]]);
+  });
+
+  test('only an arc reads flags: a number that starts with 0 or 1 is one number anywhere else', () => {
+    expect(calls('M0110 10')).toEqual([['M', 110, 10]]);
+    expect(calls('M0 0 A0110 10 0 0 1 5 5')).toEqual([['M', 0, 0], ['A', 0, 0, 110, 10, 0, false, true, 5, 5]]);
   });
 
   test('a number no command takes is skipped; drawing before any M starts from (0, 0)', () => {

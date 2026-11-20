@@ -93,6 +93,11 @@ describe('pathPolylines', () => {
     }
     expect(poly.points.length / 2).toBeGreaterThan(8);
   });
+
+  test("an arc's flags may run on into its end point, as a minifier writes them", () => {
+    // Report 1f5ff91e: `0120 0` is the flags 0 and 1 and then 20 0.
+    expect(pathPolylines('M0 0A10 10 0 0120 0')).toEqual(pathPolylines('M0 0 A10 10 0 0 1 20 0'));
+  });
 });
 
 describe('svgPolylines', () => {

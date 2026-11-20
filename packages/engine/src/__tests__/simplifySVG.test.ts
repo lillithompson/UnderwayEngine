@@ -157,6 +157,11 @@ describe('parsePathD', () => {
     expect(parsePathD('M5 5 a10 10 0 1 0 20 0')[0].segments[1]).toEqual({ cmd: 'L', x: 25, y: 5 });
   });
 
+  test("an arc's flags may run on into its end point, as a minifier writes them", () => {
+    // Report 1f5ff91e: `0120 0` is the flags 0 and 1 and then 20 0.
+    expect(parsePathD('M0 0A10 10 0 0120 0')).toEqual(parsePathD('M0 0 A10 10 0 0 1 20 0'));
+  });
+
   test('S and T keep their reflected control point; Q and T stay quadratics', () => {
     expect(parsePathD('M0 0C0 10 10 10 10 0S20 -10 20 0')[0].segments[2])
       .toEqual({ cmd: 'C', x1: 10, y1: -10, x2: 20, y2: -10, x: 20, y: 0 });
