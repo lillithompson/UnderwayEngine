@@ -701,8 +701,9 @@ function applyNodeEffects(
    *  outline rather than a solid — see {@link outlineCastWidth}. */
   outlineWidth?: number,
   /** The box the FILTER REGION is sized from, when that is not the box the
-   *  border is stroked around — the one caller whose markup paints outside
-   *  its own box (see {@link drawnTextWorldRect}). */
+   *  border is stroked around — the two callers whose markup paints outside
+   *  its own box: a text (see {@link drawnTextWorldRect}) and a styled
+   *  line, whose glyphs stand past its path. */
   paintBox?: BorderBox,
 ): string {
   if (!effects) return markup;
@@ -2180,8 +2181,10 @@ export async function generateCompositionSVGCore(
       // its own; the node filter must not light it a second time.
       if (svgDrawsOwnInnerGlow(svg)) effects = { ...effects, innerGlow: undefined };
       // A styled line's glyphs reach past the path — and so past the box
-      // the filter region is sized from, which CLIPS what it misses. The
-      // region is grown by the furthest a stamp can stand from the path.
+      // the filter region is sized from, which CLIPS what it misses. That
+      // box is grown by the furthest a stamp can stand from the path, and
+      // the region pads it as it pads any box, its floor a tenth of the
+      // grown box (paintSvg.effectsFilterRegion).
       const style = lineStyleOf(svg);
       const reach = style ? lineStyleReachCells(style) : 0;
       const paintBox = reach > 0 ? {

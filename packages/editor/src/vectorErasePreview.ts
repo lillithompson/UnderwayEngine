@@ -237,7 +237,7 @@ export function createVectorErasePreview(dom: ErasePreviewDom): VectorErasePrevi
   };
 
   /** Re-mount the node from its own markup, cut (the fallback). */
-  const drawMarkup = (id: string, entry: Entry, t: VectorEraseTarget): void => {
+  const drawMarkup = (id: string, t: VectorEraseTarget): void => {
     const host = dom.hostOf(id);
     const d = dom.drawnOf(id);
     if (!host || !d) return;
@@ -245,7 +245,7 @@ export function createVectorErasePreview(dom: ErasePreviewDom): VectorErasePrevi
   };
 
   const draw = (id: string, entry: Entry, t: VectorEraseTarget): void => {
-    if (entry.fallback) drawMarkup(id, entry, t);
+    if (entry.fallback) drawMarkup(id, t);
     else drawChunks(id, entry, t);
     entry.rev = t.rev;
     t.changed.length = 0;

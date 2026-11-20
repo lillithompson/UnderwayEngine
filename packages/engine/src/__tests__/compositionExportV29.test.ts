@@ -371,29 +371,49 @@ describe('generateCompositionSVGCore — node effects', () => {
     expect(svg).toContain(`dx="${0.5 * U}"`);
   });
 
-  it('a styled line’s filter region is grown by its glyphs’ reach', async () => {
+  describe('a styled line’s filter region', () => {
     // A filter region CLIPS what it misses, and a line style's glyphs stand
-    // past the path — so past the box the region is sized from. The region
-    // of a styled line reaches further than the same line's does bare.
-    const shadow = { dx: 0.5, dy: 0.5, blur: 1, color: { r: 0, g: 0, b: 0 }, alpha: 0.5 };
+    // past the path — so past the box the region is sized from. That box is
+    // grown by the furthest a stamp can stand from the path, and the region
+    // pads it as it pads any box: each side by what the effect reaches or a
+    // tenth of the box, whichever is more (paintSvg.effectsFilterRegion).
     const lineStyle = { glyph: 'heart' as const, density: 0.5, size: 2, rotation: 0, randomPlacement: 1, randomRotation: 0, randomSize: 1 };
+    // lineStyleReachCells: 2 × 1.75 × √½ + 0.75 × 2 ≈ 3.975 cells, × 256.
+    const reach = (2 * 1.75 * Math.SQRT1_2 + 0.75 * 2) * U;
     const region = (markup: string) => {
       const m = /<filter id="fx_svg_a"[^>]*\sx="(-?[\d.]+)"[^>]*\sy="(-?[\d.]+)"[^>]*\swidth="([\d.]+)"[^>]*\sheight="([\d.]+)"/.exec(markup);
       expect(m).not.toBeNull();
       return m!.slice(1, 5).map(Number);
     };
-    const bare = region((await generateCompositionSVGCore(makeInputs({
-      svgObjects: [makeSquareSvg({ effects: { shadow } })],
-    })))!);
-    const styled = region((await generateCompositionSVGCore(makeInputs({
-      svgObjects: [makeSquareSvg({ effects: { shadow, lineStyle } })],
-    })))!);
-    // lineStyleReachCells: 2 × 1.75 × √½ + 0.75 × 2 ≈ 3.975 cells, × 256.
-    const reach = (2 * 1.75 * Math.SQRT1_2 + 0.75 * 2) * U;
-    expect(styled[0]).toBeCloseTo(bare[0] - reach, 0);
-    expect(styled[1]).toBeCloseTo(bare[1] - reach, 0);
-    expect(styled[2]).toBeCloseTo(bare[2] + reach * 2, 0);
-    expect(styled[3]).toBeCloseTo(bare[3] + reach * 2, 0);
+    const regionOf = async (effects: SVGObject['effects']) =>
+      region((await generateCompositionSVGCore(makeInputs({ svgObjects: [makeSquareSvg({ effects })] })))!);
+
+    it('is grown by its glyphs’ reach', async () => {
+      // A blur of 4 cells reaches at least 6 (3σ, σ half the radius), past a
+      // tenth of either box (3.2 cells bare, 4.0 styled), so the floor sets
+      // no side and what the two regions differ by is the reach alone.
+      const shadow = { dx: 0.5, dy: 0.5, blur: 4, color: { r: 0, g: 0, b: 0 }, alpha: 0.5 };
+      const bare = await regionOf({ shadow });
+      const styled = await regionOf({ shadow, lineStyle });
+      expect(styled[0]).toBeCloseTo(bare[0] - reach, 0);
+      expect(styled[1]).toBeCloseTo(bare[1] - reach, 0);
+      expect(styled[2]).toBeCloseTo(bare[2] + reach * 2, 0);
+      expect(styled[3]).toBeCloseTo(bare[3] + reach * 2, 0);
+    });
+
+    it('…and its floor is a tenth of the box the glyphs paint, not of the path’s', async () => {
+      // A hard shadow with no offset reaches nothing past its source, so the
+      // floor sets every side, and it is read off the grown box, as a text's
+      // is off the box its glyphs land in: the region has to hold the SOURCE,
+      // and here the source is the glyphs.
+      const shadow = { dx: 0, dy: 0, blur: 0, color: { r: 0, g: 0, b: 0 }, alpha: 0.5 };
+      const side = 32 * U + reach * 2;
+      const styled = await regionOf({ shadow, lineStyle });
+      expect(styled[0]).toBeCloseTo(-reach - side * 0.1, 0);
+      expect(styled[1]).toBeCloseTo(-reach - side * 0.1, 0);
+      expect(styled[2]).toBeCloseTo(side * 1.2, 0);
+      expect(styled[3]).toBeCloseTo(side * 1.2, 0);
+    });
   });
 
   it('an UNFILLED shape dilates its outline before blurring it', async () => {
