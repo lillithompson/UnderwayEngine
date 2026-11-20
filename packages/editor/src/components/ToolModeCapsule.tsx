@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Animated, Image, PanResponder, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { RGBColor } from '@/engine/types';
@@ -215,7 +215,7 @@ export interface ToolModeCapsuleOption<K extends string> {
 
 export function ToolModeCapsule<K extends string>({
   top, bottom, options, current, onPick, onDoubleTap, onLongPress, mutedKey, bounce, leading, leadingInline,
-  onSwipe, canCycle,
+  onSwipe, canCycle, onRows,
 }: {
   /** Screen px the capsule's top edge sits at — under the toolbar. */
   top: number;
@@ -260,6 +260,12 @@ export function ToolModeCapsule<K extends string>({
    *  with the direction they point. False draws neither: the swipe would
    *  spring back, and an arrow that does nothing is worse than none. */
   canCycle?: boolean;
+  /** Told how many rows the capsule is laid out in — when it mounts and
+   *  whenever the count changes (the window turned, the options changed) —
+   *  before that frame is painted. For a host that seats chrome UNDER the
+   *  capsule: it stands below the last row (toolModeCapsuleRowsHeightPx),
+   *  not one line down, which a wrapped capsule's second row covers. */
+  onRows?: (rows: number) => void;
 }) {
   const scale = useRef(new Animated.Value(
     bounce === 'subtle' ? SUBTLE_BOUNCE_FROM : bounce ? 0.5 : 1,
@@ -334,6 +340,12 @@ export function ToolModeCapsule<K extends string>({
     toolModeCapsuleAvailablePx(windowW, withArrows),
   ), [options, windowW, withArrows]);
   const wrapped = rowCounts.length > 1;
+  // The host hears the count before the frame is painted, so what it seats
+  // under the capsule never shows a frame across a wrapped row: on mount,
+  // then again only when the count changes (never per render — the shell
+  // re-renders on every session change).
+  const rows = rowCounts.length;
+  useLayoutEffect(() => { onRows?.(rows); }, [rows, onRows]);
   useEffect(() => {
     if (!bounce) return undefined;
     const anim = Animated.spring(scale, {

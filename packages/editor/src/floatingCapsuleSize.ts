@@ -12,6 +12,8 @@
 // every word added makes it wider by a whole segment, and past a point it
 // runs off a small screen.
 
+import { FLOATING_CAPSULE_HEIGHT } from './components/floatingCapsuleStyle';
+
 /** A fixed segment's width, in pt (ActionSegment's `segmentFixed`). The
  *  multi-word capsules share it so their words line up; a `hugLabels`
  *  capsule sizes to its text instead and is not measured here. */
@@ -175,4 +177,20 @@ export function toolModeCapsuleLayout(
     if (padH >= TOOL_MODE_SEGMENT_PAD_H_MIN) return { padH, rowCounts: [segments.length] };
   }
   return { padH: TOOL_MODE_SEGMENT_PAD_H, rowCounts: capsuleRowCounts(full, availablePx) };
+}
+
+/**
+ * How tall a mode capsule's rows stand inside its 2 pt border: a
+ * FLOATING_CAPSULE_HEIGHT row each, and the hairline between each pair —
+ * FLOATING_CAPSULE_HEIGHT for the one row a capsule usually is, never less.
+ * What a host seats the chrome UNDER the capsule by (ToolModeCapsule's
+ * `onRows` says how many rows it drew): a capsule that wrapped on a narrow
+ * screen stands a row lower at its foot, and chrome seated a single line
+ * down was drawn across its second row (DrawBot report 72ebf56e — the
+ * recolour brush's Any | Strokes | Fills | Patterns on a 320 pt phone, and
+ * "No paintable objects" over Fills | Patterns).
+ */
+export function toolModeCapsuleRowsHeightPx(rows: number): number {
+  const n = Math.max(1, rows);
+  return n * FLOATING_CAPSULE_HEIGHT + (n - 1);
 }

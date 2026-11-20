@@ -25,9 +25,12 @@ import { NO_PAINTABLES_HINT } from '../paintBrush';
 // wear, at their size, so it belongs to the same family of chrome without
 // pretending to be a control.
 //
-// It stands in the row BELOW the capsule slot, where the help mark stands
-// — the recolour brush's own scope pill (Fills | Strokes | Patterns) holds
-// the slot above whenever this can be up, so the two cannot collide.
+// It stands in the row BELOW the capsule slot — a menu holds the slot
+// above whenever this can be up (the recolour brush's own scope pill,
+// Any | Strokes | Fills | Patterns, or one swiped in), and the host
+// seats this under that capsule's LAST row: on a narrow
+// phone the pill wraps to two (ToolModeCapsule's `onRows`), and a hint one
+// line down was drawn across the second (DrawBot report 72ebf56e).
 //
 // Inert: it takes no pointer events, so the canvas under it stays live and
 // the very stroke that would do nothing is still free to be tried.
