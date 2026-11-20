@@ -11,7 +11,9 @@
 // reflections, an arc's flags and the current point after a Z. What a curve
 // or an arc BECOMES stays each reader's own choice, made in the sink it
 // passes (an arc's centre and angles are the engine's one conversion,
-// svgArc.ts).
+// svgArc.ts). The export's count of control vertices (svgExport.countSVGCVs)
+// reads here too, so it counts every segment the readers draw, however
+// written, where its own match of command letters missed implicit repeats.
 //
 // Imports nothing, so a script can compile it from its TypeScript alone
 // (scripts that read the simplifier that way serve it this module too).

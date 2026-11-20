@@ -205,7 +205,8 @@ describe('readPathData', () => {
 
 describe('one reader of path data', () => {
   // The three readers that had a tokenizer and a command reader of their
-  // own (report ed8ff7f1) read path data here, and nothing in the engine's
+  // own (report ed8ff7f1) and the export's count of control vertices
+  // (report 564cc996) read path data here, and nothing in the engine's
   // packages tokenizes it again.
   const PACKAGES = path.resolve(__dirname, '..', '..', '..');
   const READERS = [
@@ -222,15 +223,15 @@ describe('one reader of path data', () => {
     expect(src).not.toMatch(/function tokenize\w*\(/);
   });
 
-  test('no other source in the packages carries the path-data number pattern', () => {
-    const NUMBER_PATTERN = '(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?';
+  /** Every source in the packages (tests aside) whose text passes `has`. */
+  const sourcesWhere = (has: (src: string) => boolean): string[] => {
     const hits: string[] = [];
     const walk = (dir: string) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           if (entry.name !== '__tests__' && entry.name !== 'node_modules') walk(full);
-        } else if (/\.tsx?$/.test(entry.name) && fs.readFileSync(full, 'utf8').includes(NUMBER_PATTERN)) {
+        } else if (/\.tsx?$/.test(entry.name) && has(fs.readFileSync(full, 'utf8'))) {
           hits.push(path.relative(PACKAGES, full).split(path.sep).join('/'));
         }
       }
@@ -239,6 +240,28 @@ describe('one reader of path data', () => {
       const src = path.join(PACKAGES, pkg, 'src');
       if (fs.existsSync(src)) walk(src);
     }
-    expect(hits).toEqual(['engine/src/svgPathData.ts']);
+    return hits;
+  };
+
+  test('no other source in the packages carries the path-data number pattern', () => {
+    const NUMBER_PATTERN = '(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?';
+    expect(sourcesWhere((src) => src.includes(NUMBER_PATTERN))).toEqual(['engine/src/svgPathData.ts']);
+  });
+
+  test("the export's count of control vertices reads path data with readPathData", () => {
+    // Report 564cc996: countSVGCVs matched command letters with a regex of
+    // its own, the one reader of path grammar left outside this module.
+    const src = read('engine/src/svgExport.ts');
+    expect(src).toMatch(/^import \{ readPathData \} from '\.\/svgPathData';$/m);
+    expect(src).toMatch(/\breadPathData\(d, counter\)/);
+  });
+
+  test('no other source in the packages holds a class of the path commands\' letters', () => {
+    // A character class with all ten command letters (either case) is a
+    // reader of path grammar: the tokenizer here, or another one.
+    const LETTERS = [...'MLHVCSQTAZ'];
+    const holdsLetterClass = (src: string) => [...src.matchAll(/\[((?:[^\]\\\n]|\\.)+)\]/g)]
+      .some((m) => { const set = new Set(m[1].toUpperCase()); return LETTERS.every((c) => set.has(c)); });
+    expect(sourcesWhere(holdsLetterClass)).toEqual(['engine/src/svgPathData.ts']);
   });
 });
