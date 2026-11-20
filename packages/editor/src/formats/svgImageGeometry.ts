@@ -133,7 +133,9 @@ export function svgPolylines(svg: string): SvgPolyline[] {
  * absolute and relative, implicit repeats (`M x y x y`, `L x y x y`)
  * honoured, an `M`'s extra pairs read as `L`s. Curves are sampled into
  * chords (see the sample counts above). Drawing after a `Z` with no `M`
- * starts a new polyline at the point the `Z` returned to.
+ * starts a new polyline at the point the `Z` returned to. Path data that
+ * breaks the grammar yields what it draws up to its first error, which is
+ * where the WebView's own renderer stops drawing the picture too.
  */
 export function pathPolylines(d: string): SvgPolyline[] {
   const out: SvgPolyline[] = [];

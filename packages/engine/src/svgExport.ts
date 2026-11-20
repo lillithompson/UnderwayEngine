@@ -330,7 +330,8 @@ export function exportToSVG(
  * one each (the point they reach), a quadratic two and a cubic three (its
  * control points and its end); an `S` or a `T` is the cubic or quadratic it
  * draws, its reflected control point counted with the rest, and a `Z`
- * lays down none. An element with no `d` counts nothing.
+ * lays down none. An element with no `d` counts nothing, and path data that
+ * breaks the grammar counts what it draws, up to its first error.
  */
 export function countSVGCVs(elements: string[]): number {
   let total = 0;

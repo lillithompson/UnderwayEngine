@@ -133,13 +133,28 @@ describe('parsePathD', () => {
       .toEqual({ cmd: 'Q', x1: 15, y1: -10, x: 20, y: 0 });
   });
 
-  test('drawing before the first M is dropped; after a Z with no M it goes on in the closed subpath', () => {
-    expect(parsePathD('L5 5 M1 1 L2 2')).toEqual([
-      { segments: [{ cmd: 'M', x: 1, y: 1 }, { cmd: 'L', x: 2, y: 2 }], closed: false },
-    ]);
+  test('data that does not start with an M yields nothing; after a Z with no M drawing goes on in the closed subpath', () => {
+    expect(parsePathD('L5 5 M1 1 L2 2')).toEqual([]);
     expect(parsePathD('M0 0 L10 0 Z l0 5')).toEqual([
       { segments: [{ cmd: 'M', x: 0, y: 0 }, { cmd: 'L', x: 10, y: 0 }, { cmd: 'Z' }, { cmd: 'L', x: 0, y: 5 }], closed: true },
     ]);
+  });
+
+  test('path data that breaks the grammar is read up to its first error', () => {
+    // Report 44c95c77: a command short of numbers took the next command
+    // letter as a number and read on; SVG draws the path up to the error.
+    const good = parsePathD('M0 0 L10 0 L10 10');
+    expect(parsePathD('M0 0 L10 0 L10 10 L5')).toEqual(good);
+    expect(parsePathD('M0 0 L10 0 L10 10 L5 Z M20 20 L30 30')).toEqual(good);
+    expect(parsePathD('M0 0 L10 0 L10 10 x L0 10')).toEqual(good);
+    expect(parsePathD('M0 0 L10 0 L10 10 A5 5 0 2 1 0 0')).toEqual(good);
+    // A Z before the error is drawn; a number after it is the error.
+    expect(parsePathD('M0 0 L10 0 Z 7 8 L1 1')).toEqual([
+      { segments: [{ cmd: 'M', x: 0, y: 0 }, { cmd: 'L', x: 10, y: 0 }, { cmd: 'Z' }], closed: true },
+    ]);
+    // simplifySVG writes out what was drawn.
+    const el = (d: string) => `<path d="${d}" stroke="white" stroke-width="2"/>`;
+    expect(simplifySVG([el('M0 0 L100 0 L100 100 L50')])).toEqual(simplifySVG([el('M0 0 L100 0 L100 100')]));
   });
 });
 

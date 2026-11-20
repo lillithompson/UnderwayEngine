@@ -57,8 +57,10 @@ function near(a: number, b: number): boolean {
  *  becomes the cubics that draw it, one to each quarter turn or less (the
  *  engine's one arc conversion, svgArc.ts), and one with no curve to it (a
  *  zero radius, coincident ends) the straight line to its end. Drawing
- *  before the first `M` is dropped, and drawing after a `Z` with no `M`
- *  goes on in the subpath the `Z` closed. */
+ *  after a `Z` with no `M` goes on in the subpath the `Z` closed. Path
+ *  data that breaks the grammar is read up to its first error, as SVG
+ *  draws it (the reader's rule), so data that does not start with an `M`
+ *  yields no subpath at all. */
 export function parsePathD(d: string): Subpath[] {
   const subs: Subpath[] = [];
   let cur: Subpath | null = null;

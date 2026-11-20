@@ -98,6 +98,22 @@ describe('pathPolylines', () => {
     // Report 1f5ff91e: `0120 0` is the flags 0 and 1 and then 20 0.
     expect(pathPolylines('M0 0A10 10 0 0120 0')).toEqual(pathPolylines('M0 0 A10 10 0 0 1 20 0'));
   });
+
+  test('path data that breaks the grammar yields what it draws up to its first error', () => {
+    // Report 44c95c77: as the picture itself is drawn, by the WebView's SVG
+    // renderer — not the rest of the path read on past the error.
+    const open = [{ points: [0, 0, 10, 0, 10, 10], closed: false }];
+    expect(pathPolylines('M0 0 L10 0 L10 10 L5')).toEqual(open);
+    expect(pathPolylines('M0 0 L10 0 L10 10 L5 Z M20 20 L30 20')).toEqual(open);
+    expect(pathPolylines('M0 0 L10 0 L10 10 x M20 20 L30 20')).toEqual(open);
+    // The close is drawn; the number after it is the error.
+    expect(pathPolylines('M0 0 L10 0 L10 10 Z 7 8 L5 5')).toEqual([{ points: [0, 0, 10, 0, 10, 10], closed: true }]);
+    expect(pathPolylines('L10 0 L10 10')).toEqual([]);
+    expect(svgPolylines(doc('<path d="M0 0 L10 0 L10 10 L5"/><path d="M0 0 H5 V5"/>'))).toEqual([
+      { points: [0, 0, 10, 0, 10, 10], closed: false },
+      { points: [0, 0, 5, 0, 5, 5], closed: false },
+    ]);
+  });
 });
 
 describe('svgPolylines', () => {

@@ -31,10 +31,22 @@ describe('readPathData', () => {
     ['M.5.5', [['M', 0.5, 0.5]]],
     ['M1e2 1E-2 L2.5e+1 0', [['M', 100, 0.01], ['L', 100, 0.01, 25, 0]]],
     ['M+1 -.25', [['M', 1, -0.25]]],
+    // A number may end in a dot, as SVG 1.1's grammar has it.
     ['M1. 2', [['M', 1, 2]]],
-    ['  \n\tz Z ', [['Z', 0, 0, 0, 0], ['Z', 0, 0, 0, 0]]],
-    ['M0 0 x 5 # 6', [['M', 0, 0], ['L', 0, 0, 5, 6]]],
-  ])('a number ends where the next character cannot continue it, and anything else only separates: %j', (d, expected) => {
+    ['M0 0 L1-2', [['M', 0, 0], ['L', 0, 0, 1, -2]]],
+  ])('a number ends where the next character cannot continue it: %j', (d, expected) => {
+    expect(calls(d)).toEqual(expected);
+  });
+
+  test.each<[string, Call[]]>([
+    ['  \n\tM0\t0\nL1\r1\fL2 2  ', [['M', 0, 0], ['L', 0, 0, 1, 1], ['L', 1, 1, 2, 2]]],
+    ['M0,0 1,1', [['M', 0, 0], ['L', 0, 0, 1, 1]]],
+    ['M0 , 0 ,1 ,1', [['M', 0, 0], ['L', 0, 0, 1, 1]]],
+    // A comma between a command's last number and the next letter, which
+    // SVG 1.1's grammar refuses and every browser reads.
+    ['M0 0, L1 1', [['M', 0, 0], ['L', 0, 0, 1, 1]]],
+    ['M0 0L1 1Z', [['M', 0, 0], ['L', 0, 0, 1, 1], ['Z', 1, 1, 0, 0]]],
+  ])('whitespace, and at most one comma after a number, separate: %j', (d, expected) => {
     expect(calls(d)).toEqual(expected);
   });
 
@@ -170,36 +182,91 @@ describe('readPathData', () => {
     expect(calls('M0 0 A5 5 0,1,0,10,10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, true, false, 10, 10]]);
   });
 
-  test('a flag written as some other number is read as that number, true unless it is zero', () => {
-    expect(calls('M0 0 A5 5 0 2 -0 10 10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, true, false, 10, 10]]);
-    expect(calls('M0 0 A5 5 0 -1 .5 10 10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, true, true, 10, 10]]);
-  });
-
   test('only an arc reads flags: a number that starts with 0 or 1 is one number anywhere else', () => {
     expect(calls('M0110 10')).toEqual([['M', 110, 10]]);
     expect(calls('M0 0 A0110 10 0 0 1 5 5')).toEqual([['M', 0, 0], ['A', 0, 0, 110, 10, 0, false, true, 5, 5]]);
   });
 
-  test('a number no command takes is skipped; drawing before any M starts from (0, 0)', () => {
-    expect(calls('5 5 L10 10')).toEqual([['L', 0, 0, 10, 10]]);
-    expect(calls('M0 0 L1 1 Z 7 8 L2 2')).toEqual([
-      ['M', 0, 0], ['L', 0, 0, 1, 1], ['Z', 1, 1, 0, 0], ['L', 0, 0, 2, 2],
-    ]);
-  });
-
-  test('an M with no numbers draws nothing', () => {
-    expect(calls('M L5 5')).toEqual([['L', 0, 0, 5, 5]]);
-  });
-
-  test('a command short of numbers reads what is missing as NaN, a command letter it takes included', () => {
-    expect(calls('M0 0 L5')).toEqual([['M', 0, 0], ['L', 0, 0, 5, NaN]]);
-    // The L takes the Z as its y, so there is no close.
-    expect(calls('M0 0 L5 Z')).toEqual([['M', 0, 0], ['L', 0, 0, 5, NaN]]);
-  });
-
   test('the empty path reads as nothing', () => {
     expect(calls('')).toEqual([]);
     expect(calls('   ')).toEqual([]);
+  });
+});
+
+describe('path data that breaks the grammar is drawn up to its first error', () => {
+  // Report 44c95c77: a command short of numbers took the next command letter
+  // as a number and read on, so one bad command scrambled the rest of the
+  // path. SVG draws a path "up to (but not including) the path command
+  // containing the first error" (SVG 1.1, F.2), and so does the reader now:
+  // each case below is the good part with an error after it, which reads as
+  // the good part alone.
+  const GOOD = 'M0 0 L10 0 C10 5 5 10 0 10 Z';
+  const good = calls(GOOD);
+
+  test.each<[string, string]>([
+    ['a command short of numbers', ' L5'],
+    ['a command short of numbers, before another command', ' L5 Z L1 1'],
+    ['a command with no numbers', ' L Z L1 1'],
+    ['a curve short of numbers', ' C1 1 2 2 3'],
+    ['an arc short of numbers', ' A5 5 0 0 1 10'],
+    ['an H with no numbers', ' H'],
+    ['a number after a Z', ' 7 8 L1 1'],
+    ['a character the grammar has no place for', ' x L2 2'],
+    ['a # amid the numbers', ' L1 # 1'],
+    ['a non-breaking space', ' L1\u00a01'],
+    ['an e with no digits after it', ' L1e 2 L3 3'],
+    ['a lone dot', ' L. 2'],
+    ['NaN written out', ' LNaN 0'],
+    ['a number too large to be finite', ' L1e999 0 L2 2'],
+    ['two commas', ' L1,,1'],
+    ['a comma after a command letter', ' L,1 1'],
+    ['a comma after a Z', ', L1 1'],
+    ['an arc flag of 2', ' A5 5 0 2 1 10 10 L0 0'],
+    ['an arc flag of -1', ' A5 5 0 -1 0 10 10'],
+    ['an arc flag of +1', ' A5 5 0 +1 0 10 10'],
+    ['an arc flag of .5', ' A5 5 0 1 .5 10 10'],
+    ['an arc flag run into an exponent', ' A5 5 0 1e1 0 10 10'],
+  ])('%s', (_what, error) => {
+    expect(calls(GOOD + error)).toEqual(good);
+  });
+
+  test("an implicit repeat is a command of its own: the repeats before the error are drawn", () => {
+    expect(calls('M0 0 L1 1 2 2 3')).toEqual([['M', 0, 0], ['L', 0, 0, 1, 1], ['L', 1, 1, 2, 2]]);
+    expect(calls('M0 0 1 1 2')).toEqual([['M', 0, 0], ['L', 0, 0, 1, 1]]);
+  });
+
+  test('path data that does not start with an M draws nothing', () => {
+    expect(calls('L10 10 M0 0 L1 1')).toEqual([]);
+    expect(calls('5 5 M0 0 L1 1')).toEqual([]);
+    expect(calls('z Z')).toEqual([]);
+    expect(calls(',M0 0 L1 1')).toEqual([]);
+    expect(calls('M L5 5')).toEqual([]);
+    expect(calls('M5 L5 5')).toEqual([]);
+  });
+
+  test('a sink is only ever given finite numbers, and what follows a stretch of data never changes how it reads', () => {
+    // Seeded noise of letters, numbers, separators and junk after an M.
+    let seed = 7;
+    const rnd = () => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed / 4294967296; };
+    const pieces = [...'MLHVCSQTAZmlhvcsqtaz'.split(''), '0', '1', '-5', '.5', '1e2', '1e999', '2.5', ' ', ',', ', ', 'x', '#'];
+    let drew = 0;
+    for (let n = 0; n < 2000; n++) {
+      let d = 'M0 0';
+      const len = 1 + Math.floor(rnd() * 30);
+      for (let i = 0; i < len; i++) d += pieces[Math.floor(rnd() * pieces.length)];
+      const out = calls(d);
+      for (const call of out) for (const v of call) if (typeof v === 'number') expect(Number.isFinite(v)).toBe(true);
+      // Cut at a space (between two tokens), the data reads as the start of
+      // what it reads as whole: drawing never depends on what comes after.
+      const cut = d.lastIndexOf(' ');
+      if (cut > 4) {
+        const shorter = calls(d.slice(0, cut));
+        expect(out.slice(0, shorter.length)).toEqual(shorter);
+      }
+      if (out.length > 1) drew++;
+    }
+    // The noise draws past its first M often enough for that to mean something.
+    expect(drew).toBeGreaterThan(200);
   });
 });
 

@@ -98,6 +98,24 @@ describe('bakeFigureToSegments', () => {
     expect(bake('m 0,0 l 256,0 v 256 q -128,0 -128,-128 a 64,64 0 0 1 -128,0 z')).toEqual(absolute);
   });
 
+  test('bakes path data that breaks the grammar up to its first error', () => {
+    // Report 44c95c77: a command short of numbers took the next command
+    // letter as a number and read on; SVG draws the path up to the error,
+    // and so does the bake (svgPathData.ts).
+    const bake = (d: string) => {
+      mockGetSync.mockReturnValue({ elements: [`<path d="${d}"/>`], svgWidth: 256, svgHeight: 256 });
+      return bakeFigureToSegments(makeFig({ cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1 }));
+    };
+    const good = bake('M 0,0 L 256,0 L 256,256');
+    expect(good).toHaveLength(2);
+    expect(bake('M 0,0 L 256,0 L 256,256 L 5')).toEqual(good);
+    expect(bake('M 0,0 L 256,0 L 256,256 L 5 Z')).toEqual(good);
+    expect(bake('M 0,0 L 256,0 L 256,256 Q 1,1 # 2,2')).toEqual(good);
+    // The close is drawn; the number after it is the error.
+    expect(bake('M 0,0 L 256,0 L 256,256 Z 7 8 L 0,256')).toEqual(bake('M 0,0 L 256,0 L 256,256 Z'));
+    expect(bake('L 256,0 L 256,256')).toEqual([]);
+  });
+
   describe('an arc (A)', () => {
     // Report bed5d6cd: an A was one start/end/centre segment, which the
     // engine draws as the minor arc about the circle through its ends, and a

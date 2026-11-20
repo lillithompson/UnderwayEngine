@@ -556,7 +556,8 @@ type RawSeg = RawLineSeg | RawArcSeg;
  * grid: cubic beziers (C/S) are converted to exact arc segments by computing
  * the center from the tangent directions at start and end, and a quadratic's
  * center is start + end − its control point. An arc (A) is the circle or
- * ellipse it draws ({@link convertSVGArc}).
+ * ellipse it draws ({@link convertSVGArc}). Path data that breaks the
+ * grammar is baked up to its first error, as SVG draws it.
  */
 function parseSVGPathD(d: string): RawSeg[] {
   const segments: RawSeg[] = [];

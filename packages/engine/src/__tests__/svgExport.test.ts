@@ -215,6 +215,15 @@ describe('countSVGCVs', () => {
       .toBe(cvs('M0 0 L10 0 H20 V10 C21 11 22 12 23 13 S24 14 25 15 Q26 16 27 17 T29 19 A5 5 0 0 1 39 19 Z'));
   });
 
+  test('path data that breaks the grammar counts up to its first error, as it draws', () => {
+    // Report 44c95c77: the reader stops at the first error (svgPathData.ts).
+    expect(cvs('M0 0 L10 0 L5')).toBe(2);
+    expect(cvs('M0 0 L10 0 L5 Z C1 1 2 2 3 3')).toBe(2);
+    expect(cvs('M0 0 L1 1 Z 7 8 L2 2')).toBe(2);
+    expect(cvs('M0 0 A5 5 0 2 1 10 10 L0 0')).toBe(1);
+    expect(cvs('L5 5 L6 6')).toBe(0);
+  });
+
   test('sums over the elements, counting nothing for one with no d', () => {
     expect(countSVGCVs([
       '<path d="M0 0L10 0" stroke="white"/>',
