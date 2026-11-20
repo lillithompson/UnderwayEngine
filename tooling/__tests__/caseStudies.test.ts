@@ -328,5 +328,12 @@ describe('case study capture', () => {
       expect(template).toMatch(/\.wide \.grid \{ grid-template-columns: minmax\(0, 1fr\);/);
       expect(template).not.toContain('390 / 844');
     });
+
+    it('breaks a long path in mono text anywhere, so a phone-wide page never scrolls sideways', () => {
+      // The hint names the frames folder, ../Portfolio/case_studies/<app>/flows/<flow>/,
+      // whose slashes are no break: a long enough flow name ran it past 390 px.
+      const template = readFileSync(join(__dirname, '../case_studies/writeup.template.html'), 'utf8');
+      expect(template).toMatch(/^\.mono \{[^}]*overflow-wrap: anywhere;/m);
+    });
   });
 });
