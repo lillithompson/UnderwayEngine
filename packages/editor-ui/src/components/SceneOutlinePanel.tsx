@@ -44,7 +44,8 @@ import { RenameModal } from './RenameModal';
 // with their contents shown indented below; a chevron expands/collapses each
 // container (expanded by default). Rows drag to reorder AND reparent (drag
 // right to nest into the group above, left to outdent); the change commits only
-// on release (90 fps drag contract). Long-press renames, double-tap frames,
+// on release (90 fps drag contract). A host's overlay rows (a simulation's
+// bots, and its groups of them) drag to reparent only: they have no order. Long-press renames, double-tap frames,
 // with per-row lock/hide toggles (and the host's own third, where the model
 // carries one: `rowToggle`). Everything is wired through the
 // SceneOutlineModel adapter (no engine dependency).
@@ -340,15 +341,19 @@ export function SceneOutlinePanel({ model, safeTop = 0 }: SceneOutlinePanelProps
                 const locked = !!obj?.locked;
                 const hidden = !!obj?.hidden;
                 // An overlay (a thing of the host's own kind, drawn over the
-                // scene — a simulation's bot) is not in the paint order:
-                // nothing for a drag to reorder, and no hide of its own. Its
+                // scene — a simulation's bot — or a group of those alone)
+                // is not in the paint order and has no hide of its own. Its
                 // row selects, frames, renames and LOCKS — the lock is how
-                // an overlay the canvas cannot pick is reached again.
+                // an overlay the canvas cannot pick is reached again — and
+                // it DRAGS as a scene row does, into a group and out of
+                // one: the release reparents it, and a drop that leaves its
+                // group as it was changes nothing (its order is never
+                // serialized, so there is none to commit).
                 const overlay = obj?.overlayRank !== undefined;
                 // A scene row the host lists among its overlays
                 // (OutlineObject.overRank) keeps its eye and its lock, but
                 // where it is listed is the host's: no drag.
-                const undraggable = overlay || lifted.has(row.id);
+                const undraggable = lifted.has(row.id);
                 const glyph = row.isGroup
                   ? iconFor('group')
                   : obj?.icon ?? iconFor(obj?.kind ?? 'svg');

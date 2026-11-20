@@ -102,14 +102,14 @@ import {
   buildMergeEntry, buildMergePaintEntry, canMergePaintSelection, canMergeSelection,
 } from '@/engine/compositionMergeObjects';
 import { nextGroupName } from '@/engine/sceneOutlineHelpers';
-import { isTagName } from '@/engine/compositionOps';
+import { duplicateName, isTagName, pruneEmptyGroups } from '@/engine/compositionOps';
 import { PATTERN_SYMMETRY_OFF } from '@/engine/types';
 import { worldSnapshot } from '@/engine/worldSnapshot';
 // The host's seam: a parallel document moved by the same undo step, the
 // host's own selectable items, and its rules about nodes of its own kind
 // (sessionHost.ts; docs/shared-editor.md §4.1).
 import {
-  type HostItems, type HostPaintTargets, sessionHost,
+  type HostGroup, type HostItems, type HostPaintTargets, sessionHost,
 } from './sessionHost';
 // What a ghost is DRAWN as: the Copies preview poses its copies through the
 // same reading the node layers use, so a copy inside a group is ghosted
@@ -548,8 +548,10 @@ export function redo<S extends EditorSession>(session: S): S {
 // scene never mints, and it stands in a multi-selection beside the shapes:
 // the marquee catches it, shift-click toggles it, and it sits in a group —
 // a scene group it rides with shapes, or a group of host items alone (its
-// `groupId` is read the same way). A UNIT is what one tap selects: every
-// scene leaf and every host item of the outermost plain group. The
+// `groupId` is read the same way; sessionHost.ts `HostGroup`), which nests
+// as a scene group does: in another of its kind, or in a scene group. A
+// UNIT is what one tap selects: every scene leaf and every host item of
+// the outermost plain group. The
 // reconciliation above keeps such a selection alive across commits exactly
 // as it keeps a frame's (neither resolves through findItem).
 
@@ -601,43 +603,121 @@ export function isSelectableId(session: SelectionSession, id: string): boolean {
   return !!findItem(session.state, id);
 }
 
-/** Is the host item `id` names locked: by its own flag, or by the lock of
- *  a scene group it rides — the inheritance a shape's lock has
- *  (`isItemLocked`). A locked one is never picked on the canvas and an
- *  edit leaves it where it is. False for anything else. */
+/** The records of the host's own groups (sessionHost.ts `HostGroup`), or
+ *  none for a session with no host items or a host that keeps none. */
+function hostGroupRecords(session: SelectionSession): readonly HostGroup[] {
+  return itemsOf(session)?.groups?.(session.hostDoc) ?? [];
+}
+
+/** Where a group chain leads, walked outward from one group. */
+export interface HostGroupChain {
+  /** The groups of the host's own it passes, innermost first: `groupId`
+   *  itself when no scene group has that id, then each parent its record
+   *  names. Empty when `groupId` IS a scene group (or there is none). */
+  readonly hostIds: readonly string[];
+  /** The scene group the chain reaches — the one that CARRIES whatever
+   *  hangs on it, through its transform — or null when none does. */
+  readonly sceneId: string | null;
+  /** True when one of `hostIds` is locked. */
+  readonly locked: boolean;
+}
+
+/**
+ * The chain of groups `groupId` (a host item's, or a host group's parent)
+ * hangs on: the host's own groups outward, to the scene group that
+ * carries them, when one does. A scene group ends the walk — from there
+ * up the chain is the scene's (`groupAncestorChain`). An id no scene
+ * group has is a group of the host's own whether or not it has a record.
+ * A chain that loops (a damaged document) ends where it would repeat.
+ *
+ * Exported for the host: DrawBot's group follow carries what hangs on a
+ * scene group through that group's transform, and its outline nests each
+ * row by this chain.
+ */
+export function hostGroupChain(session: SelectionSession, groupId: string | undefined): HostGroupChain {
+  const { state } = session;
+  const records = hostGroupRecords(session);
+  const hostIds: string[] = [];
+  let locked = false;
+  for (let cur = groupId; cur !== undefined && !hostIds.includes(cur);) {
+    const gid: string = cur;
+    if (state.groups.some((g) => g.id === gid)) return { hostIds, sceneId: gid, locked };
+    hostIds.push(gid);
+    const record = records.find((r) => r.id === gid);
+    if (record?.locked) locked = true;
+    cur = record?.parentGroupId;
+  }
+  return { hostIds, sceneId: null, locked };
+}
+
+/** The ids of the host's own groups that HOLD something: every group, on
+ *  no scene node, with a host item in it or in a group nested in it. A
+ *  record nothing is left in names no group (an undo may bring its items
+ *  back, so it is kept; the host drops it when it writes its document). */
+export function hostGroupIds(session: SelectionSession): Set<string> {
+  const out = new Set<string>();
+  const items = itemsOf(session);
+  if (!items) return out;
+  for (const m of items.items(session.hostDoc)) {
+    if (!m.groupId || out.has(m.groupId)) continue;
+    for (const id of hostGroupChain(session, m.groupId).hostIds) out.add(id);
+  }
+  return out;
+}
+
+/** Is `id` a group of the host's own that holds something
+ *  ({@link hostGroupIds})? Never true of a scene group's id. */
+export function isHostGroupId(session: SelectionSession, id: string): boolean {
+  const items = itemsOf(session);
+  if (!items || items.isHostId(id) || session.state.groups.some((g) => g.id === id)) return false;
+  return hostGroupIds(session).has(id);
+}
+
+/** Is the host item `id` names locked: by its own flag, by the lock of a
+ *  group of the host's own it is in, or by the lock of a scene group it
+ *  rides — the inheritance a shape's lock has (`isItemLocked`). A locked
+ *  one is never picked on the canvas and an edit leaves it where it is.
+ *  False for anything else. */
 export function isHostItemLocked(session: SelectionSession, id: string): boolean {
   const items = itemsOf(session);
   const member = items && items.isHostId(id) ? items.itemById(session.hostDoc, id) : null;
   if (!member) return false;
-  return !!member.locked || (!!member.groupId && isGroupChainLocked(session.state, member.groupId));
+  if (member.locked) return true;
+  const chain = hostGroupChain(session, member.groupId);
+  return chain.locked || (!!chain.sceneId && isGroupChainLocked(session.state, chain.sceneId));
 }
 
-/** What selecting the outline row of scene group `groupId` takes: its
- *  scene leaves, and every host item riding it or a group nested in it
- *  (they are not scene members, so `allDescendantMemberIds` never names
- *  one). */
+/** Is `groupId` — a scene group's id or one of the host's own — `target`,
+ *  or inside it at any depth? */
+function groupIsWithin(session: SelectionSession, groupId: string | undefined, target: string): boolean {
+  const chain = hostGroupChain(session, groupId);
+  if (chain.hostIds.includes(target)) return true;
+  return !!chain.sceneId && groupAncestorChain(session.state.groups, chain.sceneId).some((g) => g.id === target);
+}
+
+/** What selecting the outline row of group `groupId` takes — a scene
+ *  group's row, or the row of a group of the host's own: its scene
+ *  leaves, and every host item in it or in a group nested in it (they are
+ *  not scene members, so `allDescendantMemberIds` never names one). */
 export function groupSelectionMemberIds(session: SelectionSession, groupId: string): string[] {
   const { state } = session;
   const leaves = allDescendantMemberIds(state, groupId).filter((id) => findItem(state, id));
   const items = itemsOf(session);
   if (!items) return leaves;
-  const parentOf = new Map(state.groups.map((g) => [g.id, g.parentGroupId]));
-  const within = (m: { groupId?: string }): boolean => {
-    for (let gid = m.groupId; gid; gid = parentOf.get(gid)) if (gid === groupId) return true;
-    return false;
-  };
-  const riders = items.items(session.hostDoc).filter(within).map((m) => m.id);
+  const riders = items.items(session.hostDoc)
+    .filter((m) => groupIsWithin(session, m.groupId, groupId))
+    .map((m) => m.id);
   return riders.length === 0 ? leaves : [...leaves, ...riders];
 }
 
 /** The unit a host item belongs to: the outermost plain scene group it
- *  rides, or its own group id when no scene group has it (a group of host
- *  items alone). */
-function hostUnitId(state: CompositionState, member: { groupId?: string }): string | null {
-  const gid = member.groupId;
-  if (!gid) return null;
-  if (state.groups.some((g) => g.id === gid)) return outermostPlainGroupOf(state, gid);
-  return gid;
+ *  rides, or, when no scene group carries it (or only a frame does, whose
+ *  members stay their own), the outermost group of the host's own it is
+ *  in. Null for a loose one. */
+function hostUnitId(session: SelectionSession, member: { groupId?: string }): string | null {
+  const chain = hostGroupChain(session, member.groupId);
+  const own = chain.hostIds.length > 0 ? chain.hostIds[chain.hostIds.length - 1] : null;
+  return (chain.sceneId ? outermostPlainGroupOf(session.state, chain.sceneId) : null) ?? own;
 }
 
 /** The unit `id` (a leaf or a host item) belongs to, or null when it is
@@ -646,7 +726,7 @@ export function selectionUnitId(session: SelectionSession, id: string): string |
   const items = itemsOf(session);
   if (items && items.isHostId(id)) {
     const member = items.itemById(session.hostDoc, id);
-    return member ? hostUnitId(session.state, member) : null;
+    return member ? hostUnitId(session, member) : null;
   }
   return outermostPlainGroupId(session.state, id);
 }
@@ -660,7 +740,7 @@ function selectionUnitMembers(session: SelectionSession, unitId: string): string
     : [];
   const items = itemsOf(session);
   if (!items) return leaves;
-  const inUnit = (m: { groupId?: string }) => !!m.groupId && hostUnitId(state, m) === unitId;
+  const inUnit = (m: { groupId?: string }) => !!m.groupId && hostUnitId(session, m) === unitId;
   const riders = items.items(session.hostDoc).filter(inUnit).map((m) => m.id);
   return riders.length === 0 ? leaves : [...leaves, ...riders];
 }
@@ -695,19 +775,22 @@ export function expandSelectionUnits(session: SelectionSession, ids: readonly st
 }
 
 /** The host items among `ids` that no scene group carries: the ones a
- *  multi edit moves itself. One riding a scene group moves with the group's
+ *  multi edit moves itself. One riding a scene group — in it, or in a
+ *  group of the host's own nested in it — moves with the group's
  *  transform (the host's own follow — DrawBot's groupFollow), so moving it
  *  here too would move it twice. A locked one sits out, as a locked shape
- *  does. */
+ *  does: by its own flag, or by the lock of a group of the host's own. */
 function freeHostIds<TDoc, TOps>(
   state: CompositionState, items: HostItems<TDoc, TOps>, doc: TDoc, ids: readonly string[],
 ): Set<string> {
   const out = new Set<string>();
+  const session = { state, hostDoc: doc };
   for (const id of ids) {
     if (!items.isHostId(id)) continue;
     const member = items.itemById(doc, id);
     if (!member || member.locked) continue;
-    if (member.groupId && state.groups.some((g) => g.id === member.groupId)) continue;
+    const chain = hostGroupChain(session, member.groupId);
+    if (chain.sceneId || chain.locked) continue;
     out.add(id);
   }
   return out;
@@ -3503,18 +3586,55 @@ export function buildReorderTo(
   return { entry: [{ op: 'reorderObjects', oldOrder: cur, newOrder: finalOrder }] };
 }
 
-/** Rename a GroupNode (a scene-outline group/frame row). */
-export function buildRenameGroup(
+/** Rename a GroupNode (a scene-outline group/frame row) — or, handed the
+ *  host's document, a group of the host's own (sessionHost.ts
+ *  `HostGroup`), whose name is its record's. */
+export function buildRenameGroup<TDoc = undefined>(
   state: CompositionState,
   groupId: string,
   newName: string,
+  hostDoc?: TDoc,
 ): SessionEntry | null {
   const g = state.groups.find((x) => x.id === groupId);
-  if (!g) return null;
   const trimmed = newName.trim();
+  if (!g) {
+    // Empty reverts, as below: the name the group has stays.
+    if (hostDoc === undefined || trimmed.length === 0) return null;
+    return buildHostGroupPatch(state, hostDoc, groupId, { name: trimmed });
+  }
   const name = trimmed.length > 0 ? trimmed : g.name; // empty reverts
   if (name === g.name) return null;
   return { entry: [{ op: 'renameGroup', groupId, oldName: g.name, newName: name }] };
+}
+
+/** `patch` written onto the record of `groupId`, a group of the host's own
+ *  that holds something ({@link isHostGroupId}; one with no record yet
+ *  gets one). A field patched to undefined is removed. Null when it is no
+ *  such group, the host keeps no records, or nothing changes. */
+function buildHostGroupPatch<TDoc>(
+  state: CompositionState, hostDoc: TDoc, groupId: string, patch: Partial<Omit<HostGroup, 'id'>>,
+): SessionEntry | null {
+  const items = hostItems<TDoc, unknown>();
+  const session = { state, hostDoc };
+  if (!items?.groups || !items.setGroups || !isHostGroupId(session, groupId)) return null;
+  const records = items.groups(hostDoc);
+  const current = records.find((r) => r.id === groupId) ?? { id: groupId };
+  const next = withoutUndefined({ ...current, ...patch });
+  const keys = ['name', 'parentGroupId', 'locked'] as const;
+  if (keys.every((k) => current[k] === next[k])) return null;
+  const rest = records.filter((r) => r.id !== groupId);
+  return withHostChange(null, hostDoc, items.setGroups(hostDoc, [...rest, next]));
+}
+
+/** `record` with its undefined fields dropped: a record says only what it
+ *  has to. */
+function withoutUndefined(record: HostGroup): HostGroup {
+  return {
+    id: record.id,
+    ...(record.name !== undefined ? { name: record.name } : null),
+    ...(record.parentGroupId !== undefined ? { parentGroupId: record.parentGroupId } : null),
+    ...(record.locked ? { locked: true } : null),
+  };
 }
 
 // ── Frames ──────────────────────────────────────────────────────────
@@ -4110,10 +4230,18 @@ export function copyRunName(
 
 /** Toggle a GROUP's own lock (frame or plain group). Emits a single
  *  `lockGroup` op that flips the group's `locked` flag; members are untouched
- *  and inherit the lock. Returns null for a missing group id. */
-export function buildToggleLockGroup(state: CompositionState, groupId: string): SessionEntry | null {
+ *  and inherit the lock. Handed the host's document, a group of the host's
+ *  own (sessionHost.ts `HostGroup`) flips its record's the same way.
+ *  Returns null for a missing group id. */
+export function buildToggleLockGroup<TDoc = undefined>(
+  state: CompositionState, groupId: string, hostDoc?: TDoc,
+): SessionEntry | null {
   const g = state.groups.find((x) => x.id === groupId);
-  if (!g) return null;
+  if (!g) {
+    if (hostDoc === undefined) return null;
+    const locked = hostGroupRecords({ state, hostDoc }).find((r) => r.id === groupId)?.locked ?? false;
+    return buildHostGroupPatch(state, hostDoc, groupId, { locked: locked ? undefined : true });
+  }
   const oldValue = g.locked ?? false;
   return { entry: [{ op: 'lockGroup', id: groupId, oldValue, newValue: !oldValue }] };
 }
@@ -4234,8 +4362,158 @@ export function buildMaterializeFrameEffect(
  * Snapshots every record the forward pass may touch (the moved node, and for a
  * group its whole subtree) so undo restores them exactly. No-op when neither
  * the parent nor the order changes.
+ *
+ * Handed the host's document, the host's own rows reparent the same way
+ * (their outline rows drag as a shape's do): a host item's group is its
+ * own field, and a group of the host's own (sessionHost.ts `HostGroup`)
+ * moves by its record's parent — into a scene group, into another of its
+ * kind, or out to the top level. Neither is in the paint order, so the
+ * order handed in is not read for them. A SCENE node dropped into a group
+ * of the host's own makes a scene group of it first
+ * ({@link buildReparentIntoHostGroup}).
  */
-export function buildReparent(
+export function buildReparent<TDoc = undefined>(
+  state: CompositionState,
+  nodeId: string,
+  newParentGroupId: string | null,
+  newSceneOrder: readonly string[],
+  hostDoc?: TDoc,
+): SessionEntry | null {
+  const items = hostItems<TDoc, unknown>();
+  if (hostDoc === undefined || !items) return buildReparentScene(state, nodeId, newParentGroupId, newSceneOrder);
+  const session = { state, hostDoc };
+  const parent = newParentGroupId ?? undefined;
+  if (items.isHostId(nodeId)) {
+    // A locked item stays where it is, as a locked shape does.
+    const member = items.itemById(hostDoc, nodeId);
+    if (!member || member.groupId === parent || isHostItemLocked(session, nodeId)) return null;
+    return withHostChange(null, hostDoc, items.setGroup(hostDoc, new Set([nodeId]), parent));
+  }
+  if (isHostGroupId(session, nodeId)) {
+    // Never into itself or a group inside it; a locked one stays put.
+    if (parent !== undefined && groupIsWithin(session, parent, nodeId)) return null;
+    const chain = hostGroupChain(session, nodeId);
+    if (chain.locked || (chain.sceneId && isGroupChainLocked(state, chain.sceneId))) return null;
+    return buildHostGroupPatch(state, hostDoc, nodeId, { parentGroupId: parent });
+  }
+  if (parent !== undefined && isHostGroupId(session, parent)) {
+    return buildReparentIntoHostGroup(state, hostDoc, items, nodeId, parent, newSceneOrder);
+  }
+  return buildReparentScene(state, nodeId, newParentGroupId, newSceneOrder);
+}
+
+/**
+ * A scene node dropped into `parent`, a group of the host's own. Such a
+ * group has no scene node, and a scene node's group has to be one: so the
+ * group BECOMES a scene group — a GroupNode of the same id, named and
+ * locked as its record was — and so does each group of the host's own it
+ * sits in (a scene group cannot sit in one), the outermost going onto the
+ * scene group the chain hangs on. Their records are dropped in the same
+ * step: a group is one or the other, never both. The host's items in
+ * those groups keep their `groupId`, and from here ride a scene group.
+ */
+function buildReparentIntoHostGroup<TDoc>(
+  state: CompositionState, hostDoc: TDoc, items: HostItems<TDoc, unknown>,
+  nodeId: string, parent: string, newSceneOrder: readonly string[],
+): SessionEntry | null {
+  const session = { state, hostDoc };
+  const chain = hostGroupChain(session, parent);
+  const records = hostGroupRecords(session);
+  const entry: CompUndoOp[] = [];
+  // Each op is built over the state the ones before it leave, since a
+  // reparent snapshots the records it is about to change.
+  let cur = state;
+  const push = (ops: readonly CompUndoOp[]) => { entry.push(...ops); cur = applyCompOps(cur, [...ops]); };
+  chain.hostIds.forEach((id, i) => {
+    const record = records.find((r) => r.id === id);
+    push([{
+      op: 'groupFigures',
+      figureIds: [],
+      groupId: id,
+      groupName: record?.name ?? nextGroupName(cur.figures, [...cur.groups, ...records]),
+      ...(i > 0 ? { childGroupIds: [chain.hostIds[i - 1]] } : null),
+      // The pose is SAID, though it is the identity's: that is what has a
+      // group with nothing in it yet made at all (sceneGraphOps
+      // `buildGroup` makes an empty group only when told where it stands).
+      savedTranslateX: 0, savedTranslateY: 0, savedScaleX: 1, savedScaleY: 1,
+      savedRotation: 0, savedMirrorH: false, savedMirrorV: false,
+    }]);
+    if (record?.locked) push([{ op: 'lockGroup', id, oldValue: false, newValue: true }]);
+  });
+  if (chain.sceneId) {
+    const top = chain.hostIds[chain.hostIds.length - 1];
+    push(buildReparentScene(cur, top, chain.sceneId, cur.sceneOrder)?.entry ?? []);
+  }
+  const moved = buildReparentScene(cur, nodeId, parent, newSceneOrder);
+  if (!moved) return null;
+  entry.push(...moved.entry);
+  const promoted = new Set(chain.hostIds);
+  const after = items.setGroups && records.some((r) => promoted.has(r.id))
+    ? items.setGroups(hostDoc, records.filter((r) => !promoted.has(r.id)))
+    : hostDoc;
+  return withHostChange({ entry }, hostDoc, after);
+}
+
+/**
+ * The other way round: what becomes of the scene groups an edit EMPTIES
+ * of scene nodes while the host's items still hang on them. The engine
+ * keeps no scene group without a scene node in it (a delete prunes it,
+ * and so does every save and load), so such a group lives on as a group
+ * of the host's own (sessionHost.ts `HostGroup`): its name, its parent
+ * and its lock go into a record, and the GroupNode — where the edit left
+ * it behind, as a reparent of its last member does — is removed, so the
+ * group is never both. A frame is not kept: its members were never a
+ * unit.
+ *
+ * `before` and `after` are the composition either side of the edit and
+ * `hostDoc` the host's document after it. Returns the document with the
+ * records written and the ops to add to the edit's entry, or null when
+ * nothing of the host's hangs on a group the edit emptied. The host
+ * calls it where every edit of its page passes (DrawBot's commit
+ * wrapper), with the state it has already applied the entry to.
+ */
+export function hostGroupsKept<TDoc>(
+  before: CompositionState, after: CompositionState, hostDoc: TDoc,
+): { hostDoc: TDoc; ops: CompUndoOp[] } | null {
+  const items = hostItems<TDoc, unknown>();
+  if (!items?.groups || !items.setGroups || before.groups.length === 0) return null;
+  const records = items.groups(hostDoc);
+  // What the host hangs on a group: its items, and its own groups.
+  const wanted: string[] = [];
+  for (const m of items.items(hostDoc)) if (m.groupId) wanted.push(m.groupId);
+  for (const r of records) if (r.parentGroupId) wanted.push(r.parentGroupId);
+  if (wanted.length === 0) return null;
+  // The groups the engine itself would keep: those with a scene node left.
+  const alive = new Set(pruneEmptyGroups(after).groups.map((g) => g.id));
+  const emptied = new Map<string, GroupNode>();
+  for (const g of before.groups) if (!alive.has(g.id) && !g.isFrame) emptied.set(g.id, g);
+  if (emptied.size === 0) return null;
+  // …and each emptied group one of those sits in, on up.
+  const kept = new Map<string, GroupNode>();
+  while (wanted.length > 0) {
+    const id = wanted.pop()!;
+    const group = emptied.get(id);
+    if (!group || kept.has(id)) continue;
+    // As the edit left it, where it left it at all.
+    const node = after.groups.find((g) => g.id === id) ?? group;
+    kept.set(id, node);
+    if (node.parentGroupId) wanted.push(node.parentGroupId);
+  }
+  if (kept.size === 0) return null;
+  const ops: CompUndoOp[] = [];
+  for (const g of after.groups) if (kept.has(g.id)) ops.push({ op: 'removeGroup', group: g });
+  const next = [
+    ...records.filter((r) => !kept.has(r.id)),
+    ...[...kept.values()].map((g) => withoutUndefined({
+      id: g.id, name: g.name || undefined, parentGroupId: g.parentGroupId, locked: g.locked,
+    })),
+  ];
+  return { hostDoc: items.setGroups(hostDoc, next), ops };
+}
+
+/** {@link buildReparent} for a scene node into a scene group (or out to
+ *  the top level): the whole of it for an app with no host items. */
+function buildReparentScene(
   state: CompositionState,
   nodeId: string,
   newParentGroupId: string | null,
@@ -6557,20 +6835,50 @@ export function buildDuplicateSelectedMulti<TDoc = undefined>(
   if (hostIds.length === 0) return ops.length === 0 ? null : { entry: ops, ids: newIds };
   // The host's copies take the same offset as the scene's (the host may
   // round it up to its own grid), each joining its group's copy — the
-  // scene's duplicate of a group it rides, or a fresh id for a group of
-  // host items alone.
+  // scene's duplicate of a group it rides, or a fresh group for a group of
+  // the host's own, as the scene mints one for a copied leaf's group. That
+  // copy takes the original's name as a copy's, and sits in the copy of
+  // the group the original sits in when that one is copied WHOLE (the
+  // scene's rule for an ancestor: `duplicateOpsAboveOriginals`), else at
+  // the top level.
+  const session = { state, hostDoc: hostDoc as TDoc };
+  const picked = new Set(hostIds);
+  const all = items!.items(hostDoc as TDoc);
+  const records = hostGroupRecords(session);
+  const copiedWhole = (gid: string): boolean => !state.groups.some((g) => g.id === gid)
+    && all.every((m) => picked.has(m.id) || !hostGroupChain(session, m.groupId).hostIds.includes(gid));
   const minted = new Map<string, string>();
+  const copies: HostGroup[] = [];
   const groupCopyOf = (gid: string | undefined): string | undefined => {
     if (!gid) return undefined;
     const mapped = groupIdMap.get(gid) ?? minted.get(gid);
     if (mapped) return mapped;
     const fresh = mintNodeId('group');
     minted.set(gid, fresh);
+    const original = state.groups.find((g) => g.id === gid) ?? records.find((r) => r.id === gid);
+    const name = original && duplicateName(original);
+    const parentId = original?.parentGroupId;
+    const parent = parentId === undefined ? undefined
+      : groupIdMap.get(parentId) ?? minted.get(parentId)
+        ?? (copiedWhole(parentId) ? groupCopyOf(parentId) : undefined);
+    copies.push({
+      id: fresh,
+      ...(name ? { name } : null),
+      ...(parent ? { parentGroupId: parent } : null),
+    });
     return fresh;
   };
   const dup = items!.duplicate(hostDoc as TDoc, hostIds, offset, groupCopyOf);
   if (ops.length === 0 && dup.ids.length === 0) return null;
-  return withHostChange({ entry: ops, ids: [...newIds, ...dup.ids] }, hostDoc as TDoc, dup.doc);
+  // A record only where there is something to say (a name, a parent) and
+  // a copy went into the group, or into one nested in it.
+  const used = new Set(items!.items(dup.doc).map((m) => m.groupId));
+  const kept = copies.filter((c) => (c.name || c.parentGroupId)
+    && (used.has(c.id) || copies.some((o) => o.parentGroupId === c.id)));
+  const after = kept.length > 0 && items!.setGroups
+    ? items!.setGroups(dup.doc, [...hostGroupRecords({ state, hostDoc: dup.doc }), ...kept])
+    : dup.doc;
+  return withHostChange({ entry: ops, ids: [...newIds, ...dup.ids] }, hostDoc as TDoc, after);
 }
 
 /** Delete every selected node as one undo entry (group-safe: strands prune
@@ -6639,12 +6947,11 @@ export function buildToggleLockMulti<TDoc = undefined>(
   const items = hostItems<TDoc, unknown>();
   const scene = selectedSceneIds(ids);
   const hostIds = hostDoc !== undefined && items ? selectedHostIds(ids) : [];
-  // A whole scene group locks as the group, and its host items with it
-  // (they inherit its lock, as its leaves do).
-  const groupId = wholeGroupIdOfSelection(state, scene);
-  const riders = groupId && hostDoc !== undefined
-    ? new Set(groupSelectionMemberIds({ state, hostDoc }, groupId)) : null;
-  if (groupId && hostIds.every((id) => riders?.has(id))) return buildToggleLockGroup(state, groupId);
+  // A whole group locks as the group — a scene group, and the host items
+  // in it with it (they inherit its lock, as its leaves do), or a group of
+  // the host's own, whose lock is its record's.
+  const unitId = wholeUnitOfSelection({ state, hostDoc }, ids);
+  if (unitId) return buildToggleLockGroup(state, unitId, hostDoc);
   // Otherwise one press drives every member — shapes and host items — to
   // the same value.
   const next = !isMultiSelectionLocked(state, ids, hostDoc);
@@ -6785,15 +7092,24 @@ export function buildUngroupSelectedMulti<TDoc = undefined>(
   }
   // With the host's items: the unit may be a scene group with items on it,
   // or a group of items alone. Its own go loose; one on a child group stays
-  // on it, as a member of a child group does.
-  const unitId = wholeUnitOfSelection({ state, hostDoc }, ids);
+  // on it, as a member of a child group does — and a child group of the
+  // host's own stands loose, whole, as a scene child group does. A group
+  // of the host's own gives up its record with its members.
+  const session = { state, hostDoc };
+  const unitId = wholeUnitOfSelection(session, ids);
   if (!unitId) return null;
   const scene = state.groups.some((g) => g.id === unitId);
-  if (scene && isGroupChainLocked(state, unitId)) return null;
+  const records = hostGroupRecords(session);
+  if (scene ? isGroupChainLocked(state, unitId) : records.some((r) => r.id === unitId && r.locked)) return null;
   const se = scene ? buildUngroupGroup(state, unitId) : null;
   const own = new Set(items.items(hostDoc).filter((m) => m.groupId === unitId).map((m) => m.id));
-  if (own.size === 0) return se;
-  return withHostChange(se, hostDoc, items.setGroup(hostDoc, own, undefined));
+  let after = own.size === 0 ? hostDoc : items.setGroup(hostDoc, own, undefined);
+  if (items.setGroups && records.some((r) => r.id === unitId || r.parentGroupId === unitId)) {
+    after = items.setGroups(after, records
+      .filter((r) => r.id !== unitId)
+      .map((r) => (r.parentGroupId === unitId ? withoutUndefined({ ...r, parentGroupId: undefined }) : r)));
+  }
+  return withHostChange(se, hostDoc, after);
 }
 
 /** Bind a multi-selection into one fresh (non-frame) group.
@@ -6818,10 +7134,15 @@ export function buildUngroupSelectedMulti<TDoc = undefined>(
  *  nothing loose, one child — returns null rather than minting a wrapper
  *  around it.
  *
- *  The host's items group as shapes do: the ones no scene group carries join
- *  the new group — a group of them selected whole is taken apart into it, as
- *  there is no scene node to nest — and one riding a scene group that nests
- *  below stays on it.
+ *  The host's items group as shapes do. A loose one joins the new group. A
+ *  group of the host's own (sessionHost.ts `HostGroup`) the selection
+ *  covers WHOLE nests in it as a child, its members left on it, exactly as
+ *  a scene root does; one it covers in part gives up the members picked.
+ *  One riding a scene group stays on it, and goes where that group goes.
+ *  The new group is a scene group when anything of the scene is in it, and
+ *  one of the host's own — a record in its document, named as a scene
+ *  group is — when there is not: the engine keeps no scene group without a
+ *  scene node in it.
  */
 export function buildGroupSelectedMulti<TDoc = undefined>(
   state: CompositionState,
@@ -6830,8 +7151,39 @@ export function buildGroupSelectedMulti<TDoc = undefined>(
 ): SessionEntry | null {
   const members = selectedSceneIds(ids).filter((id) => findItem(state, id));
   const items = hostItems<TDoc, unknown>();
-  const joining = hostDoc !== undefined && items ? [...freeHostIds(state, items, hostDoc, ids)] : [];
-  if (members.length + joining.length < 2) return null;
+  const session = { state, hostDoc: hostDoc as TDoc };
+  const records = hostDoc !== undefined && items ? hostGroupRecords(session) : [];
+
+  // The host's half: the loose items joining, and the groups of its own
+  // that nest whole.
+  const joining: string[] = [];
+  const hostChildIds: string[] = [];
+  if (hostDoc !== undefined && items) {
+    const picked = new Set(ids);
+    const all = items.items(hostDoc);
+    const whole = new Map<string, boolean>();
+    for (const id of selectedHostIds(ids)) {
+      const member = items.itemById(hostDoc, id);
+      if (!member) continue;
+      const chain = hostGroupChain(session, member.groupId);
+      if (chain.sceneId) continue;
+      const top = chain.hostIds[chain.hostIds.length - 1];
+      if (top !== undefined) {
+        let covered = whole.get(top);
+        if (covered === undefined) {
+          covered = all.every((m) => picked.has(m.id) || !hostGroupChain(session, m.groupId).hostIds.includes(top));
+          whole.set(top, covered);
+          // A locked group sits out whole, as a locked scene root does.
+          if (covered && !records.some((r) => r.id === top && r.locked)) hostChildIds.push(top);
+        }
+        if (covered) continue;
+      }
+      // A loose item, or one picked out of a group: its lock, or its
+      // group's, refuses the new parent.
+      if (!member.locked && !chain.locked) joining.push(id);
+    }
+  }
+  if (members.length + joining.length + hostChildIds.length < 2) return null;
 
   // Root groups the selection covers in full become child groups, their
   // locked members counted with the rest.
@@ -6852,20 +7204,33 @@ export function buildGroupSelectedMulti<TDoc = undefined>(
   }
 
   const figureIds = members.filter((id) => !nested.has(id) && !isItemLocked(state, id));
-  if (figureIds.length + childGroupIds.length + joining.length < 2) return null;
+  if (figureIds.length + childGroupIds.length + joining.length + hostChildIds.length < 2) return null;
 
   const groupId = mintNodeId('group');
+  // Numbered past every group there is, the scene's and the host's own.
+  const groupName = nextGroupName(state.figures, [...state.groups, ...records]);
   // No scene participant: a group of host items alone, their shared id and
   // no scene node (the engine prunes a group with no scene members).
-  const entry: CompUndoOp[] = figureIds.length + childGroupIds.length === 0 ? [] : [{
+  const sceneGroup = figureIds.length + childGroupIds.length > 0;
+  const entry: CompUndoOp[] = !sceneGroup ? [] : [{
     op: 'groupFigures',
     figureIds,
     groupId,
-    groupName: nextGroupName(state.figures, state.groups),
+    groupName,
     ...(childGroupIds.length > 0 ? { childGroupIds } : null),
   }];
-  if (joining.length === 0) return { entry };
-  return withHostChange({ entry }, hostDoc as TDoc, items!.setGroup(hostDoc as TDoc, new Set(joining), groupId));
+  if (joining.length + hostChildIds.length === 0) return { entry };
+  let after = joining.length === 0
+    ? hostDoc as TDoc : items!.setGroup(hostDoc as TDoc, new Set(joining), groupId);
+  if (items!.setGroups && (!sceneGroup || hostChildIds.length > 0)) {
+    const nesting = new Set(hostChildIds);
+    after = items!.setGroups(after, [
+      ...records.filter((r) => !nesting.has(r.id)),
+      ...hostChildIds.map((id) => ({ ...(records.find((r) => r.id === id) ?? { id }), parentGroupId: groupId })),
+      ...(sceneGroup ? [] : [{ id: groupId, name: groupName }]),
+    ]);
+  }
+  return withHostChange({ entry }, hostDoc as TDoc, after);
 }
 
 // ── Boolean shape operations ────────────────────────────────────────
