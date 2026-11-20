@@ -78,6 +78,15 @@ export interface WebViewShellProps {
    */
   logo?: ImageSourcePropType;
   /**
+   * The app's name as the person holding it knows it, for the one place
+   * the shell's own words name the app: the recovery-failed panel's
+   * "<appName> ran out of memory and couldn't recover."
+   *
+   * A host that passes none reads the sentence the shell has always had,
+   * which names Facet, the app the shell came out of.
+   */
+  appName?: string;
+  /**
    * Handed the WebView's own ref once it is mounted, and null when it goes
    * away — so the host can photograph exactly what the page is showing
    * (react-native-view-shot's captureRef takes a ref object).
@@ -118,6 +127,7 @@ export default function WebViewShell({
   onLoadStart,
   splash,
   logo = SHELL_LOGO,
+  appName,
   onWebViewRef,
   onRecoveryEvent,
   debuggable = DIAGNOSTICS,
@@ -391,7 +401,12 @@ export default function WebViewShell({
           ) : recoveryFailed ? (
             <View style={styles.failurePanel}>
               <Text style={styles.failureText}>
-                Facet ran out of memory and couldn't recover.
+                {appName === undefined
+                  // A host that names nothing reads the words it always
+                  // did, spelled out whole as they were (CozyJournal's
+                  // editorCover test pins this sentence).
+                  ? "Facet ran out of memory and couldn't recover."
+                  : `${appName} ran out of memory and couldn't recover.`}
               </Text>
               <Text style={styles.failureText}>
                 Force-quit the app and reopen to continue.
