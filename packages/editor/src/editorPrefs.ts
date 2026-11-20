@@ -15,8 +15,10 @@ import {
 // store the journal lives in, on the web and inside the native WebView
 // alike) through the app-pref shape the grid settings use
 // (engine/appPrefStore): one value, one listener set, read lazily on the
-// first subscribe. None of these has a Settings row, so there is no host
-// that owns them and nothing to seed; the local copy IS the setting.
+// first subscribe — or earlier, at `load()`, for a preference a screen
+// about to open reads on its first render, so it does not open at the
+// initial value and jump. None of these has a Settings row, so there is no
+// host that owns them and nothing to seed; the local copy IS the setting.
 //
 // Each preference validates what it reads back (`parse`): a stored value
 // from an older build, or junk, reads as "nothing stored" and the initial
@@ -36,6 +38,10 @@ export interface EditorPref<T> {
   /** A user change: every reader told, and the value stored. */
   set(next: T): void;
   subscribe(listener: () => void): () => void;
+  /** Starts reading the stored copy now, with no reader yet (once, the
+   *  first subscribe's read if that came first); a set before it lands
+   *  still wins. */
+  load(): void;
   __resetForTest(initial?: T): void;
 }
 
@@ -67,6 +73,7 @@ export function createEditorPref<T>(
     get: () => store.getSnapshot(),
     set: (next) => store.set(next),
     subscribe: (listener) => store.subscribe(listener),
+    load: () => store.load(),
     __resetForTest: (reset) => store.__resetForTest(reset),
   };
 }

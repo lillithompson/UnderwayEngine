@@ -104,6 +104,81 @@ describe('createAppPrefStore', () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 
+  // load(): the read a screen's first subscribe would start, started ahead of
+  // the screen, so its first render reads the stored value rather than the
+  // initial one a frame before the read lands (report 8628758e).
+  it('load() reads the stored value with no reader yet, ready for the first', async () => {
+    const { load, resolve, promise } = deferredLoad<number>();
+    const store = createAppPrefStore<number>({ initial: 0.5, load });
+
+    store.load();
+    resolve(0.2);
+    await promise;
+
+    expect(store.getSnapshot()).toBe(0.2);
+  });
+
+  it('reads locally at most once between load() and the subscribes, whichever comes first', () => {
+    const first = jest.fn(() => Promise.resolve(null));
+    const ahead = createAppPrefStore<boolean>({ initial: false, load: first });
+    ahead.load();
+    ahead.load();
+    ahead.subscribe(() => {});
+    expect(first).toHaveBeenCalledTimes(1);
+
+    const second = jest.fn(() => Promise.resolve(null));
+    const behind = createAppPrefStore<boolean>({ initial: false, load: second });
+    behind.subscribe(() => {});
+    behind.load();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a subscriber that arrives while load()’s read is out hear it land', async () => {
+    const { load, resolve, promise } = deferredLoad<number>();
+    const store = createAppPrefStore<number>({ initial: 0.5, load });
+    store.load();
+    const listener = jest.fn();
+    store.subscribe(listener);
+
+    resolve(0.2);
+    await promise;
+    expect(store.getSnapshot()).toBe(0.2);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let load()’s read stomp a host seed or a user change made before it lands', async () => {
+    const seeded = deferredLoad<number>();
+    const host = createAppPrefStore<number>({ initial: 0.5, load: seeded.load });
+    host.load();
+    host.seedFromHost(0.9);
+    seeded.resolve(0.2);
+    await seeded.promise;
+    expect(host.getSnapshot()).toBe(0.9);
+
+    const changed = deferredLoad<boolean>();
+    const user = createAppPrefStore<boolean>({ initial: false, load: changed.load });
+    user.load();
+    user.set(true);
+    changed.resolve(false);
+    await changed.promise;
+    expect(user.getSnapshot()).toBe(true);
+  });
+
+  it('load() is a no-op for a store with no local read', () => {
+    const store = createAppPrefStore<number>({ initial: 0.5 });
+    expect(() => store.load()).not.toThrow();
+    expect(store.getSnapshot()).toBe(0.5);
+  });
+
+  it('starts the read again after a test reset', () => {
+    const load = jest.fn(() => Promise.resolve(null));
+    const store = createAppPrefStore<boolean>({ initial: false, load });
+    store.load();
+    store.__resetForTest();
+    store.load();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
   it('stops notifying an unsubscribed listener', () => {
     const store = createAppPrefStore<boolean>({ initial: false });
     const listener = jest.fn();

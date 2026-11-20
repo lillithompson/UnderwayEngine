@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { PathDataSink, readPathData, tokenizePathData } from '../svgPathData';
+import { PathDataSink, readPathData } from '../svgPathData';
 
 // The engine's one reader of SVG path data. Each test reads a `d` into a
 // sink that records every call, in absolute coordinates, so what is pinned
@@ -24,26 +24,32 @@ function calls(d: string): Call[] {
   return out;
 }
 
-describe('tokenizePathData', () => {
-  test.each<[string, (string | number)[]]>([
-    ['M10 20L30 40', ['M', 10, 20, 'L', 30, 40]],
-    ['M10,20 l-5-5', ['M', 10, 20, 'l', -5, -5]],
-    ['M.5.5', ['M', 0.5, 0.5]],
-    ['M1e2 1E-2 2.5e+1', ['M', 100, 0.01, 25]],
-    ['M+1 -.25', ['M', 1, -0.25]],
-    ['M1. 2', ['M', 1, 2]],
-    ['  \n\tz Z ', ['z', 'Z']],
-    ['M0 0 x 5 # 6', ['M', 0, 0, 5, 6]],
-    // Flags written without a separator are one number: the misread every
-    // reader of this grammar has made, kept here as it was.
-    ['A10 10 0 0110 0', ['A', 10, 10, 0, 110, 0]],
-    ['', []],
-  ])('%j', (d, tokens) => {
-    expect(tokenizePathData(d)).toEqual(tokens);
-  });
-});
-
 describe('readPathData', () => {
+  test.each<[string, Call[]]>([
+    ['M10 20L30 40', [['M', 10, 20], ['L', 10, 20, 30, 40]]],
+    ['M10,20 l-5-5', [['M', 10, 20], ['L', 10, 20, 5, 15]]],
+    ['M.5.5', [['M', 0.5, 0.5]]],
+    ['M1e2 1E-2 L2.5e+1 0', [['M', 100, 0.01], ['L', 100, 0.01, 25, 0]]],
+    ['M+1 -.25', [['M', 1, -0.25]]],
+    // A number may end in a dot, as SVG 1.1's grammar has it.
+    ['M1. 2', [['M', 1, 2]]],
+    ['M0 0 L1-2', [['M', 0, 0], ['L', 0, 0, 1, -2]]],
+  ])('a number ends where the next character cannot continue it: %j', (d, expected) => {
+    expect(calls(d)).toEqual(expected);
+  });
+
+  test.each<[string, Call[]]>([
+    ['  \n\tM0\t0\nL1\r1\fL2 2  ', [['M', 0, 0], ['L', 0, 0, 1, 1], ['L', 1, 1, 2, 2]]],
+    ['M0,0 1,1', [['M', 0, 0], ['L', 0, 0, 1, 1]]],
+    ['M0 , 0 ,1 ,1', [['M', 0, 0], ['L', 0, 0, 1, 1]]],
+    // A comma between a command's last number and the next letter, which
+    // SVG 1.1's grammar refuses and every browser reads.
+    ['M0 0, L1 1', [['M', 0, 0], ['L', 0, 0, 1, 1]]],
+    ['M0 0L1 1Z', [['M', 0, 0], ['L', 0, 0, 1, 1], ['Z', 1, 1, 0, 0]]],
+  ])('whitespace, and at most one comma after a number, separate: %j', (d, expected) => {
+    expect(calls(d)).toEqual(expected);
+  });
+
   test('M then L, absolute and relative', () => {
     expect(calls('M10 10 L20 10 l5 5')).toEqual([
       ['M', 10, 10],
@@ -158,21 +164,27 @@ describe('readPathData', () => {
     ]);
   });
 
-  test('a number no command takes is skipped; drawing before any M starts from (0, 0)', () => {
-    expect(calls('5 5 L10 10')).toEqual([['L', 0, 0, 10, 10]]);
-    expect(calls('M0 0 L1 1 Z 7 8 L2 2')).toEqual([
-      ['M', 0, 0], ['L', 0, 0, 1, 1], ['Z', 1, 1, 0, 0], ['L', 0, 0, 2, 2],
+  test("an arc's flags are one character each, so they may run on into what follows them", () => {
+    // Report 1f5ff91e: a minifier writes `0 1 10` as `0110`, which a reader
+    // that took it for one number read as the flag 110 and went on wrong.
+    expect(calls('M0 0 a5 5 0 0110 10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, false, true, 10, 10]]);
+    expect(calls('M0 0 A5 5 0 1110 10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, true, true, 10, 10]]);
+    expect(calls('M0 0 a5 5 0 01-10 10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, false, true, -10, 10]]);
+    expect(calls('M0 0 A5 5 0 1 1.5.5')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, true, true, 0.5, 0.5]]);
+    // Each repeat of the arc reads its own flags the same way.
+    expect(calls('M0 0 a5 5 0 0110 10 5 5 0 1010 0')).toEqual([
+      ['M', 0, 0],
+      ['A', 0, 0, 5, 5, 0, false, true, 10, 10],
+      ['A', 10, 10, 5, 5, 0, true, false, 20, 10],
     ]);
+    // Written apart, they read as they always did.
+    expect(calls('M0 0 A5 5 0 0 1 10 10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, false, true, 10, 10]]);
+    expect(calls('M0 0 A5 5 0,1,0,10,10')).toEqual([['M', 0, 0], ['A', 0, 0, 5, 5, 0, true, false, 10, 10]]);
   });
 
-  test('an M with no numbers draws nothing', () => {
-    expect(calls('M L5 5')).toEqual([['L', 0, 0, 5, 5]]);
-  });
-
-  test('a command short of numbers reads what is missing as NaN, a command letter it takes included', () => {
-    expect(calls('M0 0 L5')).toEqual([['M', 0, 0], ['L', 0, 0, 5, NaN]]);
-    // The L takes the Z as its y, so there is no close.
-    expect(calls('M0 0 L5 Z')).toEqual([['M', 0, 0], ['L', 0, 0, 5, NaN]]);
+  test('only an arc reads flags: a number that starts with 0 or 1 is one number anywhere else', () => {
+    expect(calls('M0110 10')).toEqual([['M', 110, 10]]);
+    expect(calls('M0 0 A0110 10 0 0 1 5 5')).toEqual([['M', 0, 0], ['A', 0, 0, 110, 10, 0, false, true, 5, 5]]);
   });
 
   test('the empty path reads as nothing', () => {
@@ -181,9 +193,87 @@ describe('readPathData', () => {
   });
 });
 
+describe('path data that breaks the grammar is drawn up to its first error', () => {
+  // Report 44c95c77: a command short of numbers took the next command letter
+  // as a number and read on, so one bad command scrambled the rest of the
+  // path. SVG draws a path "up to (but not including) the path command
+  // containing the first error" (SVG 1.1, F.2), and so does the reader now:
+  // each case below is the good part with an error after it, which reads as
+  // the good part alone.
+  const GOOD = 'M0 0 L10 0 C10 5 5 10 0 10 Z';
+  const good = calls(GOOD);
+
+  test.each<[string, string]>([
+    ['a command short of numbers', ' L5'],
+    ['a command short of numbers, before another command', ' L5 Z L1 1'],
+    ['a command with no numbers', ' L Z L1 1'],
+    ['a curve short of numbers', ' C1 1 2 2 3'],
+    ['an arc short of numbers', ' A5 5 0 0 1 10'],
+    ['an H with no numbers', ' H'],
+    ['a number after a Z', ' 7 8 L1 1'],
+    ['a character the grammar has no place for', ' x L2 2'],
+    ['a # amid the numbers', ' L1 # 1'],
+    ['a non-breaking space', ' L1\u00a01'],
+    ['an e with no digits after it', ' L1e 2 L3 3'],
+    ['a lone dot', ' L. 2'],
+    ['NaN written out', ' LNaN 0'],
+    ['a number too large to be finite', ' L1e999 0 L2 2'],
+    ['two commas', ' L1,,1'],
+    ['a comma after a command letter', ' L,1 1'],
+    ['a comma after a Z', ', L1 1'],
+    ['an arc flag of 2', ' A5 5 0 2 1 10 10 L0 0'],
+    ['an arc flag of -1', ' A5 5 0 -1 0 10 10'],
+    ['an arc flag of +1', ' A5 5 0 +1 0 10 10'],
+    ['an arc flag of .5', ' A5 5 0 1 .5 10 10'],
+    ['an arc flag run into an exponent', ' A5 5 0 1e1 0 10 10'],
+  ])('%s', (_what, error) => {
+    expect(calls(GOOD + error)).toEqual(good);
+  });
+
+  test("an implicit repeat is a command of its own: the repeats before the error are drawn", () => {
+    expect(calls('M0 0 L1 1 2 2 3')).toEqual([['M', 0, 0], ['L', 0, 0, 1, 1], ['L', 1, 1, 2, 2]]);
+    expect(calls('M0 0 1 1 2')).toEqual([['M', 0, 0], ['L', 0, 0, 1, 1]]);
+  });
+
+  test('path data that does not start with an M draws nothing', () => {
+    expect(calls('L10 10 M0 0 L1 1')).toEqual([]);
+    expect(calls('5 5 M0 0 L1 1')).toEqual([]);
+    expect(calls('z Z')).toEqual([]);
+    expect(calls(',M0 0 L1 1')).toEqual([]);
+    expect(calls('M L5 5')).toEqual([]);
+    expect(calls('M5 L5 5')).toEqual([]);
+  });
+
+  test('a sink is only ever given finite numbers, and what follows a stretch of data never changes how it reads', () => {
+    // Seeded noise of letters, numbers, separators and junk after an M.
+    let seed = 7;
+    const rnd = () => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed / 4294967296; };
+    const pieces = [...'MLHVCSQTAZmlhvcsqtaz'.split(''), '0', '1', '-5', '.5', '1e2', '1e999', '2.5', ' ', ',', ', ', 'x', '#'];
+    let drew = 0;
+    for (let n = 0; n < 2000; n++) {
+      let d = 'M0 0';
+      const len = 1 + Math.floor(rnd() * 30);
+      for (let i = 0; i < len; i++) d += pieces[Math.floor(rnd() * pieces.length)];
+      const out = calls(d);
+      for (const call of out) for (const v of call) if (typeof v === 'number') expect(Number.isFinite(v)).toBe(true);
+      // Cut at a space (between two tokens), the data reads as the start of
+      // what it reads as whole: drawing never depends on what comes after.
+      const cut = d.lastIndexOf(' ');
+      if (cut > 4) {
+        const shorter = calls(d.slice(0, cut));
+        expect(out.slice(0, shorter.length)).toEqual(shorter);
+      }
+      if (out.length > 1) drew++;
+    }
+    // The noise draws past its first M often enough for that to mean something.
+    expect(drew).toBeGreaterThan(200);
+  });
+});
+
 describe('one reader of path data', () => {
   // The three readers that had a tokenizer and a command reader of their
-  // own (report ed8ff7f1) read path data here, and nothing in the engine's
+  // own (report ed8ff7f1) and the export's count of control vertices
+  // (report 564cc996) read path data here, and nothing in the engine's
   // packages tokenizes it again.
   const PACKAGES = path.resolve(__dirname, '..', '..', '..');
   const READERS = [
@@ -200,15 +290,15 @@ describe('one reader of path data', () => {
     expect(src).not.toMatch(/function tokenize\w*\(/);
   });
 
-  test('no other source in the packages carries the path-data number pattern', () => {
-    const NUMBER_PATTERN = '(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?';
+  /** Every source in the packages (tests aside) whose text passes `has`. */
+  const sourcesWhere = (has: (src: string) => boolean): string[] => {
     const hits: string[] = [];
     const walk = (dir: string) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           if (entry.name !== '__tests__' && entry.name !== 'node_modules') walk(full);
-        } else if (/\.tsx?$/.test(entry.name) && fs.readFileSync(full, 'utf8').includes(NUMBER_PATTERN)) {
+        } else if (/\.tsx?$/.test(entry.name) && has(fs.readFileSync(full, 'utf8'))) {
           hits.push(path.relative(PACKAGES, full).split(path.sep).join('/'));
         }
       }
@@ -217,6 +307,28 @@ describe('one reader of path data', () => {
       const src = path.join(PACKAGES, pkg, 'src');
       if (fs.existsSync(src)) walk(src);
     }
-    expect(hits).toEqual(['engine/src/svgPathData.ts']);
+    return hits;
+  };
+
+  test('no other source in the packages carries the path-data number pattern', () => {
+    const NUMBER_PATTERN = '(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?';
+    expect(sourcesWhere((src) => src.includes(NUMBER_PATTERN))).toEqual(['engine/src/svgPathData.ts']);
+  });
+
+  test("the export's count of control vertices reads path data with readPathData", () => {
+    // Report 564cc996: countSVGCVs matched command letters with a regex of
+    // its own, the one reader of path grammar left outside this module.
+    const src = read('engine/src/svgExport.ts');
+    expect(src).toMatch(/^import \{ readPathData \} from '\.\/svgPathData';$/m);
+    expect(src).toMatch(/\breadPathData\(d, counter\)/);
+  });
+
+  test('no other source in the packages holds a class of the path commands\' letters', () => {
+    // A character class with all ten command letters (either case) is a
+    // reader of path grammar: the tokenizer here, or another one.
+    const LETTERS = [...'MLHVCSQTAZ'];
+    const holdsLetterClass = (src: string) => [...src.matchAll(/\[((?:[^\]\\\n]|\\.)+)\]/g)]
+      .some((m) => { const set = new Set(m[1].toUpperCase()); return LETTERS.every((c) => set.has(c)); });
+    expect(sourcesWhere(holdsLetterClass)).toEqual(['engine/src/svgPathData.ts']);
   });
 });

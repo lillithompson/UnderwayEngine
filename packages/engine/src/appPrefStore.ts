@@ -11,10 +11,20 @@
 // later and stomp the host's, which is the classic "my setting reverted a
 // second after the editor opened" bug. Local persistence stays as the fallback
 // for a standalone web build, where there is no host to ask.
+//
+// `load` starts that local read early, with no reader. A value first read by
+// a screen as it opens would otherwise stand at its initial value for the
+// screen's first frame and jump to the stored one when the read lands; an app
+// that knows the screen is coming starts the read ahead of it (DrawBots' making
+// flow's panes, report 8628758e), and the first render reads what was kept.
 
 export interface AppPrefStore<T> {
   subscribe(listener: () => void): () => void;
   getSnapshot(): T;
+  /** Starts the lazy local read now, with no reader yet — the read the first
+   *  subscribe would start, so between them it runs once. A host seed or a
+   *  user change before it lands still wins, as it does over a subscribe's. */
+  load(): void;
   /** A user change: notified AND persisted locally. */
   set(next: T): void;
   /** A value the host owns: notified, never persisted back, and it takes the
@@ -47,16 +57,19 @@ export function createAppPrefStore<T>({ initial, load, save }: {
     return true;
   };
 
+  const startRead = () => {
+    if (readStarted || !load) return;
+    readStarted = true;
+    void load().then((stored) => {
+      if (stored === null || overridden) return;
+      assign(stored);
+    });
+  };
+
   return {
     subscribe(listener) {
       listeners.add(listener);
-      if (!readStarted && load) {
-        readStarted = true;
-        void load().then((stored) => {
-          if (stored === null || overridden) return;
-          assign(stored);
-        });
-      }
+      startRead();
       return () => {
         listeners.delete(listener);
       };
@@ -64,6 +77,7 @@ export function createAppPrefStore<T>({ initial, load, save }: {
     getSnapshot() {
       return value;
     },
+    load: startRead,
     set(next) {
       overridden = true;
       if (!assign(next)) return;

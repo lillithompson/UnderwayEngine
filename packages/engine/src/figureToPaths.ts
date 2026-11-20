@@ -15,6 +15,9 @@ import { computeSVGBbox } from './sceneGraph';
 import { maxStrokeWidth, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { effectiveStrokeMultiplier } from './strokeScale';
 import { readPathData } from './svgPathData';
+import { svgArcCentre, svgArcPieces, svgArcPoint } from './svgArc';
+import { ELLIPSE_POLYLINE_SEGMENTS } from './compositionArcMath';
+import { AffineMatrix, applyMatrix, parseTransform } from './svgTransform';
 
 export interface ColoredSegments {
   color: RGBColor;
@@ -283,7 +286,7 @@ export function convertCachedSVGToColoredSegments(
 
   for (const el of cached.elements) {
     // Parse the element's transform attribute (translate, scale, rotate)
-    const xform = parseTransform(el);
+    const xform = elementTransform(el);
 
     // Apply element transform then figure placement transform
     const mapPt = (x: number, y: number): [number, number] => {
@@ -528,71 +531,11 @@ function parseElementPaint(el: string): { color: RGBColor; isFill: boolean } {
 
 // ── SVG transform parsing ───────────────────────────────────────────
 
-/** 2D affine matrix [a, b, c, d, e, f] where:
- *  x' = a*x + c*y + e
- *  y' = b*x + d*y + f */
-type Matrix = [number, number, number, number, number, number];
-
-const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
-
-function applyMatrix(m: Matrix, x: number, y: number): [number, number] {
-  return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
-}
-
-function multiplyMatrices(a: Matrix, b: Matrix): Matrix {
-  return [
-    a[0] * b[0] + a[2] * b[1],
-    a[1] * b[0] + a[3] * b[1],
-    a[0] * b[2] + a[2] * b[3],
-    a[1] * b[2] + a[3] * b[3],
-    a[0] * b[4] + a[2] * b[5] + a[4],
-    a[1] * b[4] + a[3] * b[5] + a[5],
-  ];
-}
-
-/** Parse a CSS/SVG transform string into a combined affine matrix. */
-function parseTransform(el: string): Matrix {
+/** An element's `transform` attribute as its matrix, by the engine's one
+ *  reader of one (svgTransform.ts); the identity when it has none. */
+function elementTransform(el: string): AffineMatrix {
   const match = el.match(/\btransform="([^"]*)"/);
-  if (!match) return IDENTITY;
-  const transformStr = match[1];
-
-  let result: Matrix = IDENTITY;
-  const fnRe = /(translate|scale|rotate|matrix)\(([^)]*)\)/g;
-  let m: RegExpExecArray | null;
-
-  while ((m = fnRe.exec(transformStr)) !== null) {
-    const fn = m[1];
-    const args = m[2].split(/[\s,]+/).map(Number);
-    let mat: Matrix;
-    switch (fn) {
-      case 'translate':
-        mat = [1, 0, 0, 1, args[0] ?? 0, args[1] ?? 0];
-        break;
-      case 'scale': {
-        const sx = args[0] ?? 1;
-        const sy = args[1] ?? sx;
-        mat = [sx, 0, 0, sy, 0, 0];
-        break;
-      }
-      case 'rotate': {
-        const deg = args[0] ?? 0;
-        const cx = args[1] ?? 0;
-        const cy = args[2] ?? 0;
-        const rad = deg * Math.PI / 180;
-        const cos = Math.cos(rad), sin = Math.sin(rad);
-        // rotate(θ, cx, cy) = translate(cx,cy) · rotate(θ) · translate(-cx,-cy)
-        mat = [cos, sin, -sin, cos, cx - cos * cx + sin * cy, cy - sin * cx - cos * cy];
-        break;
-      }
-      case 'matrix':
-        mat = [args[0], args[1], args[2], args[3], args[4], args[5]];
-        break;
-      default:
-        mat = IDENTITY;
-    }
-    result = multiplyMatrices(result, mat);
-  }
-  return result;
+  return parseTransform(match ? match[1] : '');
 }
 
 function parseAttr(el: string, name: string): number | undefined {
@@ -609,9 +552,12 @@ type RawSeg = RawLineSeg | RawArcSeg;
 /**
  * Parse an SVG path `d` attribute into PathSegments, read by the engine's
  * one path-data reader (svgPathData.ts), relative commands as well as
- * absolute. All curves in figure SVGs are quarter circles aligned to the
- * grid. Cubic beziers (C/S) are converted to exact arc segments by computing
- * the center from the tangent directions at start and end.
+ * absolute. The curves in figure SVGs are quarter circles aligned to the
+ * grid: cubic beziers (C/S) are converted to exact arc segments by computing
+ * the center from the tangent directions at start and end, and a quadratic's
+ * center is start + end − its control point. An arc (A) is the circle or
+ * ellipse it draws ({@link convertSVGArc}). Path data that breaks the
+ * grammar is baked up to its first error, as SVG draws it.
  */
 function parseSVGPathD(d: string): RawSeg[] {
   const segments: RawSeg[] = [];
@@ -657,42 +603,34 @@ function parseSVGPathD(d: string): RawSeg[] {
 }
 
 /**
- * Convert an SVG arc command to a PathSegment.
- * All arcs in figure SVGs are circular quarter circles — compute center
- * directly from the SVG spec endpoint-to-center algorithm.
+ * An SVG arc command as PathSegments, from the engine's one conversion of
+ * one (svgArc.ts). The engine's arc segment is circular and is drawn as the
+ * MINOR arc between its ends, so a circle's arc becomes arcs of a quarter
+ * turn or less about its centre — a large arc several of them, never one
+ * drawn the short way round. An ellipse's becomes lines, as every ellipse
+ * the engine draws is ({@link ELLIPSE_POLYLINE_SEGMENTS} to a full turn): its
+ * arc segment can hold no ellipse. An arc with no curve to it (a zero
+ * radius, coincident ends) is the line to its end. Pieces start and end
+ * exactly on the arc's own ends.
  */
 function convertSVGArc(
   x1: number, y1: number, rx: number, ry: number,
   xRot: number, largeArc: boolean, sweep: boolean,
   x2: number, y2: number, out: RawSeg[],
 ): void {
-  const dx = x2 - x1, dy = y2 - y1;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist < 1e-6 || rx < 1e-6 || ry < 1e-6) {
+  const arc = svgArcCentre(x1, y1, rx, ry, xRot, largeArc, sweep, x2, y2);
+  const circle = arc !== null && arc.rx === arc.ry;
+  const n = arc ? svgArcPieces(arc, circle ? Math.PI / 2 : (2 * Math.PI) / ELLIPSE_POLYLINE_SEGMENTS) : 0;
+  if (!arc || n === 0) {
     out.push({ kind: 'line', start: [x1, y1], end: [x2, y2] });
     return;
   }
-
-  // SVG spec endpoint-to-center conversion
-  rx = Math.abs(rx); ry = Math.abs(ry);
-  const phi = xRot * Math.PI / 180;
-  const cosPhi = Math.cos(phi), sinPhi = Math.sin(phi);
-  const x1p = cosPhi * (x1 - x2) / 2 + sinPhi * (y1 - y2) / 2;
-  const y1p = -sinPhi * (x1 - x2) / 2 + cosPhi * (y1 - y2) / 2;
-
-  let lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
-  if (lambda > 1) { const s = Math.sqrt(lambda); rx *= s; ry *= s; }
-
-  const num = Math.max(0, rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p);
-  const denom = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
-  const sq = denom > 0 ? Math.sqrt(num / denom) : 0;
-  const sign = (largeArc === sweep) ? -1 : 1;
-  const cxp = sign * sq * (rx * y1p / ry);
-  const cyp = sign * sq * -(ry * x1p / rx);
-  const cx = cosPhi * cxp - sinPhi * cyp + (x1 + x2) / 2;
-  const cy = sinPhi * cxp + cosPhi * cyp + (y1 + y2) / 2;
-
-  out.push({ kind: 'arc', start: [x1, y1], end: [x2, y2], center: [cx, cy] });
+  let start: [number, number] = [x1, y1];
+  for (let i = 1; i <= n; i++) {
+    const end: [number, number] = i === n ? [x2, y2] : svgArcPoint(arc, arc.theta1 + (arc.dTheta * i) / n);
+    out.push(circle ? { kind: 'arc', start, end, center: [arc.cx, arc.cy] } : { kind: 'line', start, end });
+    start = end;
+  }
 }
 
 /** Intersect two lines (point + direction). Returns null if parallel. */

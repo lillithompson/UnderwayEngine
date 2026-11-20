@@ -1,4 +1,4 @@
-import { exportToSVG, exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL, prependTransform, multiplyStrokeWidths, maxStrokeWidth } from '../svgExport';
+import { exportToSVG, exportLayersToSVGInner, SVG_UNITS_PER_L0_CELL, prependTransform, multiplyStrokeWidths, maxStrokeWidth, countSVGCVs } from '../svgExport';
 import { buildFigureSVGContent, CachedFigureSVG } from '../svgFigureCache';
 import { simplifySVG } from '../simplifySVG';
 import { makeLayer } from './test-utils';
@@ -181,6 +181,68 @@ describe('maxStrokeWidth', () => {
 
   test('returns 0 for empty array', () => {
     expect(maxStrokeWidth([])).toBe(0);
+  });
+});
+
+describe('countSVGCVs', () => {
+  // Counted through the engine's one path-data reader (svgPathData.ts):
+  // its own match of command letters counted one for each letter, so an
+  // implicit repeat went uncounted (report 564cc996).
+  const cvs = (d: string) => countSVGCVs([`<path d="${d}" stroke="white"/>`]);
+
+  test('an implicit repeat counts as the command written out', () => {
+    expect(cvs('M0 0 10 10 20 20')).toBe(3);
+    expect(cvs('M0 0 10 10 20 20')).toBe(cvs('M0 0 L10 10 L20 20'));
+    expect(cvs('M0 0 L1 1 2 2')).toBe(3);
+    expect(cvs('M0 0 C1 1 2 2 3 3 4 4 5 5 6 6')).toBe(7);
+    expect(cvs('M0 0 Q1 1 2 2 3 3 4 4')).toBe(5);
+    expect(cvs('M0 0 A5 5 0 0 1 10 0 5 5 0 0 1 20 0')).toBe(3);
+  });
+
+  test('a line, an arc and a subpath start are one; a quadratic two; a cubic three; a Z none', () => {
+    expect(cvs('M0 0 L10 0 H20 V10 A5 5 0 0 1 30 10 Z')).toBe(5);
+    expect(cvs('M0 0 Q5 5 10 0')).toBe(3);
+    expect(cvs('M0 0 C1 1 2 2 3 3')).toBe(4);
+  });
+
+  test('S and T count as the cubic and quadratic they draw, the reflected control included', () => {
+    expect(cvs('M0 0 C1 1 2 2 3 3 S5 5 6 6')).toBe(cvs('M0 0 C1 1 2 2 3 3 C4 4 5 5 6 6'));
+    expect(cvs('M0 0 Q1 1 2 2 T4 4')).toBe(cvs('M0 0 Q1 1 2 2 Q3 3 4 4'));
+  });
+
+  test('relative commands count as the absolute ones they stand for', () => {
+    expect(cvs('m0 0 l10 0 h10 v10 c1 1 2 2 3 3 s1 1 2 2 q1 1 2 2 t2 2 a5 5 0 0 1 10 0 z'))
+      .toBe(cvs('M0 0 L10 0 H20 V10 C21 11 22 12 23 13 S24 14 25 15 Q26 16 27 17 T29 19 A5 5 0 0 1 39 19 Z'));
+  });
+
+  test('path data that breaks the grammar counts up to its first error, as it draws', () => {
+    // Report 44c95c77: the reader stops at the first error (svgPathData.ts).
+    expect(cvs('M0 0 L10 0 L5')).toBe(2);
+    expect(cvs('M0 0 L10 0 L5 Z C1 1 2 2 3 3')).toBe(2);
+    expect(cvs('M0 0 L1 1 Z 7 8 L2 2')).toBe(2);
+    expect(cvs('M0 0 A5 5 0 2 1 10 10 L0 0')).toBe(1);
+    expect(cvs('L5 5 L6 6')).toBe(0);
+  });
+
+  test('sums over the elements, counting nothing for one with no d', () => {
+    expect(countSVGCVs([
+      '<path d="M0 0L10 0" stroke="white"/>',
+      '<rect x="0" y="0" width="10" height="10"/>',
+      '<path d="M0 0C1 1 2 2 3 3" stroke="white"/>',
+    ])).toBe(6);
+    expect(countSVGCVs([])).toBe(0);
+  });
+
+  test('simplifySVG writes one letter to a segment, so a count of its output is a count of letters', () => {
+    // M, L, C, Q and Z only, absolute, each segment with its own letter:
+    // the count the letter match gave.
+    const out = simplifySVG([
+      '<path d="M0 0 10 0 20 10 C25 15 25 25 20 30 Q10 40 0 30 Z" stroke="white" stroke-width="5"/>',
+    ]);
+    const d = out[0].match(/\bd="([^"]*)"/)![1];
+    expect(d).toMatch(/^[MLCQZ0-9 .-]+$/);
+    const byLetter = (d.match(/[MLCQ]/g) ?? []).reduce((n, c) => n + (c === 'C' ? 3 : c === 'Q' ? 2 : 1), 0);
+    expect(countSVGCVs(out)).toBe(byLetter);
   });
 });
 

@@ -2,6 +2,7 @@ import { Layer, CELL_COUNTS, cellPx, FileConfig } from './types';
 import { getCell } from './cellEdge';
 import svgSources from '../assets/images/atlases/svg-sources.json';
 import { simplifySVG } from './simplifySVG';
+import { readPathData } from './svgPathData';
 
 const SVG_SOURCES = svgSources as Record<string, string>;
 
@@ -320,27 +321,31 @@ export function exportToSVG(
   return result;
 }
 
-/** Count control vertices across an array of SVG element strings. */
+/**
+ * Count control vertices across an array of SVG element strings: the points
+ * each `<path>`'s `d` lays down, read by the engine's one path-data reader
+ * (svgPathData.ts), so a segment counts the same however it is written —
+ * absolute or relative, with its own letter or as an implicit repeat
+ * (`M0 0 10 10 20 20` is three). A subpath's start, a line and an arc are
+ * one each (the point they reach), a quadratic two and a cubic three (its
+ * control points and its end); an `S` or a `T` is the cubic or quadratic it
+ * draws, its reflected control point counted with the rest, and a `Z`
+ * lays down none. An element with no `d` counts nothing, and path data that
+ * breaks the grammar counts what it draws, up to its first error.
+ */
 export function countSVGCVs(elements: string[]): number {
   let total = 0;
+  const counter = {
+    moveTo() { total += 1; },
+    lineTo() { total += 1; },
+    cubicTo() { total += 3; },
+    quadTo() { total += 2; },
+    arcTo() { total += 1; },
+    close() {},
+  };
   for (const el of elements) {
-    const dMatch = el.match(/\bd="([^"]*)"/);
-    if (!dMatch) continue;
-    const d = dMatch[1];
-    const commands = d.match(/[MmLlHhVvCcSsQqTtAaZz]/g);
-    if (!commands) continue;
-    for (const cmd of commands) {
-      switch (cmd) {
-        case 'M': case 'm': case 'L': case 'l':
-        case 'H': case 'h': case 'V': case 'v':
-        case 'T': case 't': case 'A': case 'a':
-          total += 1; break;
-        case 'S': case 's': case 'Q': case 'q':
-          total += 2; break;
-        case 'C': case 'c':
-          total += 3; break;
-      }
-    }
+    const d = el.match(/\bd="([^"]*)"/)?.[1];
+    if (d !== undefined) readPathData(d, counter);
   }
   return total;
 }

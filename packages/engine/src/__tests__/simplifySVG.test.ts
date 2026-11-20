@@ -1,5 +1,4 @@
 import {
-  parseTransform,
   parsePathD,
   areCollinear,
   removeCollinearPoints,
@@ -11,67 +10,6 @@ import { countSVGCVs } from '../svgExport';
 
 // No svg-sources mock — unit tests provide raw SVG elements directly,
 // and .facet integration tests need real sprite data.
-
-// ─── Transform parsing ─────────────────────────────────────────────
-
-describe('parseTransform', () => {
-  test('identity for empty string', () => {
-    expect(parseTransform('')).toEqual([1, 0, 0, 1, 0, 0]);
-  });
-
-  test('translate', () => {
-    const m = parseTransform('translate(100,200)');
-    expect(m[4]).toBeCloseTo(100);
-    expect(m[5]).toBeCloseTo(200);
-    expect(m[0]).toBeCloseTo(1);
-  });
-
-  test('translate single arg', () => {
-    const m = parseTransform('translate(50)');
-    expect(m[4]).toBeCloseTo(50);
-    expect(m[5]).toBeCloseTo(0);
-  });
-
-  test('scale uniform', () => {
-    const m = parseTransform('scale(2)');
-    expect(m[0]).toBeCloseTo(2);
-    expect(m[3]).toBeCloseTo(2);
-  });
-
-  test('scale non-uniform', () => {
-    const m = parseTransform('scale(-1,1)');
-    expect(m[0]).toBeCloseTo(-1);
-    expect(m[3]).toBeCloseTo(1);
-  });
-
-  test('rotate 90', () => {
-    const m = parseTransform('rotate(90)');
-    expect(m[0]).toBeCloseTo(0);
-    expect(m[1]).toBeCloseTo(1);
-    expect(m[2]).toBeCloseTo(-1);
-    expect(m[3]).toBeCloseTo(0);
-  });
-
-  test('rotate with center', () => {
-    const m = parseTransform('rotate(-45 128 128)');
-    // After rotation, the center (128,128) should map to itself
-    const x = m[0] * 128 + m[2] * 128 + m[4];
-    const y = m[1] * 128 + m[3] * 128 + m[5];
-    expect(x).toBeCloseTo(128);
-    expect(y).toBeCloseTo(128);
-  });
-
-  test('composed transform from tile pipeline', () => {
-    const m = parseTransform('translate(256,0) scale(1) translate(128,128) rotate(90) scale(-1,1) translate(-128,-128)');
-    // This represents a tile at position (256,0) with 90° rotation and horizontal mirror
-    // Point (128,128) in local space should map to (256+128, 0+128) = (384, 128) since
-    // the rotation center is (128,128) and the tile is translated to (256,0)
-    const x = m[0] * 128 + m[2] * 128 + m[4];
-    const y = m[1] * 128 + m[3] * 128 + m[5];
-    expect(x).toBeCloseTo(384);
-    expect(y).toBeCloseTo(128);
-  });
-});
 
 // ─── Path d parsing ─────────────────────────────────────────────────
 
@@ -150,11 +88,42 @@ describe('parsePathD', () => {
     expect(subs[0].segments[1]).toEqual({ cmd: 'L', x: 150, y: 150 });
   });
 
-  test('an arc is kept as the straight line to its endpoint', () => {
-    expect(parsePathD('M0 0 A10 10 0 0 1 20 0')).toEqual([
-      { segments: [{ cmd: 'M', x: 0, y: 0 }, { cmd: 'L', x: 20, y: 0 }], closed: false },
-    ]);
-    expect(parsePathD('M5 5 a10 10 0 1 0 20 0')[0].segments[1]).toEqual({ cmd: 'L', x: 25, y: 5 });
+  test('an arc is the cubics that draw it, one to each quarter turn or less, ending on its end', () => {
+    // Report 7f84afc7: an arc was kept as the straight line to its end.
+    const semi = parsePathD('M0 0 A10 10 0 0 1 20 0')[0].segments as any[];
+    expect(semi.map((s) => s.cmd)).toEqual(['M', 'C', 'C']);
+    const k = 10 * (4 / 3) * Math.tan(Math.PI / 8);
+    expect(semi[1].x1).toBeCloseTo(0, 9);
+    expect(semi[1].y1).toBeCloseTo(-k, 9);
+    expect(semi[1].x).toBeCloseTo(10, 9);
+    expect(semi[1].y).toBeCloseTo(-10, 9);
+    expect([semi[2].x, semi[2].y]).toEqual([20, 0]);
+    // The large arc goes the long way round: three quarters of the circle
+    // about (10, 10), through (20, 10) and (10, 20), relative or not.
+    const big = parsePathD('M10 0 a10 10 0 1 1 -10 10')[0].segments as any[];
+    expect(big.map((s) => s.cmd)).toEqual(['M', 'C', 'C', 'C']);
+    expect(big[1].x).toBeCloseTo(20, 9);
+    expect(big[1].y).toBeCloseTo(10, 9);
+    expect(big[2].x).toBeCloseTo(10, 9);
+    expect(big[2].y).toBeCloseTo(20, 9);
+    expect([big[3].x, big[3].y]).toEqual([0, 10]);
+    expect(parsePathD('M10 0 A10 10 0 1 1 0 10')).toEqual(parsePathD('M10 0 a10 10 0 1 1 -10 10'));
+  });
+
+  test('an arc with no curve to it is the line to its end; a negative radius is its positive', () => {
+    expect(parsePathD('M0 0 A0 10 0 0 1 20 0')[0].segments[1]).toEqual({ cmd: 'L', x: 20, y: 0 });
+    expect(parsePathD('M5 5 A10 10 0 0 1 5 5')[0].segments[1]).toEqual({ cmd: 'L', x: 5, y: 5 });
+    expect(parsePathD('M0 0 A-10 10 0 0 1 20 0')).toEqual(parsePathD('M0 0 A10 10 0 0 1 20 0'));
+  });
+
+  test('simplifySVG writes an arc as its cubics', () => {
+    const [el] = simplifySVG(['<path d="M0 0 A100 100 0 0 1 200 0" stroke="white" stroke-width="1"/>']);
+    expect(el).toBe('<path d="M0 0C0 -55.23 44.77 -100 100 -100C155.23 -100 200 -55.23 200 0" stroke="white" stroke-width="1"/>');
+  });
+
+  test("an arc's flags may run on into its end point, as a minifier writes them", () => {
+    // Report 1f5ff91e: `0120 0` is the flags 0 and 1 and then 20 0.
+    expect(parsePathD('M0 0A10 10 0 0120 0')).toEqual(parsePathD('M0 0 A10 10 0 0 1 20 0'));
   });
 
   test('S and T keep their reflected control point; Q and T stay quadratics', () => {
@@ -164,13 +133,28 @@ describe('parsePathD', () => {
       .toEqual({ cmd: 'Q', x1: 15, y1: -10, x: 20, y: 0 });
   });
 
-  test('drawing before the first M is dropped; after a Z with no M it goes on in the closed subpath', () => {
-    expect(parsePathD('L5 5 M1 1 L2 2')).toEqual([
-      { segments: [{ cmd: 'M', x: 1, y: 1 }, { cmd: 'L', x: 2, y: 2 }], closed: false },
-    ]);
+  test('data that does not start with an M yields nothing; after a Z with no M drawing goes on in the closed subpath', () => {
+    expect(parsePathD('L5 5 M1 1 L2 2')).toEqual([]);
     expect(parsePathD('M0 0 L10 0 Z l0 5')).toEqual([
       { segments: [{ cmd: 'M', x: 0, y: 0 }, { cmd: 'L', x: 10, y: 0 }, { cmd: 'Z' }, { cmd: 'L', x: 0, y: 5 }], closed: true },
     ]);
+  });
+
+  test('path data that breaks the grammar is read up to its first error', () => {
+    // Report 44c95c77: a command short of numbers took the next command
+    // letter as a number and read on; SVG draws the path up to the error.
+    const good = parsePathD('M0 0 L10 0 L10 10');
+    expect(parsePathD('M0 0 L10 0 L10 10 L5')).toEqual(good);
+    expect(parsePathD('M0 0 L10 0 L10 10 L5 Z M20 20 L30 30')).toEqual(good);
+    expect(parsePathD('M0 0 L10 0 L10 10 x L0 10')).toEqual(good);
+    expect(parsePathD('M0 0 L10 0 L10 10 A5 5 0 2 1 0 0')).toEqual(good);
+    // A Z before the error is drawn; a number after it is the error.
+    expect(parsePathD('M0 0 L10 0 Z 7 8 L1 1')).toEqual([
+      { segments: [{ cmd: 'M', x: 0, y: 0 }, { cmd: 'L', x: 10, y: 0 }, { cmd: 'Z' }], closed: true },
+    ]);
+    // simplifySVG writes out what was drawn.
+    const el = (d: string) => `<path d="${d}" stroke="white" stroke-width="2"/>`;
+    expect(simplifySVG([el('M0 0 L100 0 L100 100 L50')])).toEqual(simplifySVG([el('M0 0 L100 0 L100 100')]));
   });
 });
 

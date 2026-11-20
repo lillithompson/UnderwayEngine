@@ -45,6 +45,35 @@ describe('createEditorPref', () => {
     setItem.mockRestore();
   });
 
+  it('load() reads the stored copy with no reader, once, so the first reader opens at it (report 8628758e)', async () => {
+    const parse = (raw: unknown) => (typeof raw === 'number' ? raw : null);
+    await storage.setItem('test_ahead', '9');
+    const getItem = jest.spyOn(storage, 'getItem');
+    const pref = createEditorPref('test_ahead', 1, parse);
+    pref.load();
+    pref.load();
+    await flush();
+    // What a screen opening now reads on its first render, before any
+    // subscribe of its own.
+    expect(pref.get()).toBe(9);
+    pref.subscribe(() => {});
+    await flush();
+    expect(getItem.mock.calls.filter(([k]) => k === 'test_ahead')).toHaveLength(1);
+    getItem.mockRestore();
+  });
+
+  it('a set before load()’s read lands still wins', async () => {
+    const parse = (raw: unknown) => (typeof raw === 'number' ? raw : null);
+    await storage.setItem('test_ahead_set', '9');
+    const pref = createEditorPref('test_ahead_set', 1, parse);
+    pref.load();
+    pref.set(4);
+    await flush();
+    expect(pref.get()).toBe(4);
+    await settle();
+    expect(await storage.getItem('test_ahead_set')).toBe('4');
+  });
+
   it('reads junk, or a shape it no longer knows, as nothing stored', async () => {
     await storage.setItem('test_junk', '{not json');
     await storage.setItem('test_shape', JSON.stringify('a string'));

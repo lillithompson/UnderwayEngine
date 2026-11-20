@@ -2,13 +2,12 @@
 // collinear interior points, merge adjacent rects, simplify degenerate curves.
 
 import { readPathData } from './svgPathData';
+import { svgArcToCubics } from './svgArc';
+import { AffineMatrix, applyMatrix, parseTransform } from './svgTransform';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
 export interface Point { x: number; y: number; }
-
-/** 2D affine matrix [a,b,c,d,e,f]: x'=ax+cy+e, y'=bx+dy+f */
-export type AffineMatrix = [number, number, number, number, number, number];
 
 export type PathSegment =
   | { cmd: 'M'; x: number; y: number }
@@ -24,7 +23,6 @@ export interface Subpath {
 
 // ─── Constants ──────────────────────────────────────────────────────
 
-const IDENTITY: AffineMatrix = [1, 0, 0, 1, 0, 0];
 // Tile SVGs overshoot cell boundaries by ~0.25 units for stroke overlap.
 // After grid-level scaling (up to 16×), shared endpoints can differ by up
 // to ~8 SVG units. Snap to nearest 16 for endpoint matching and use 10 for
@@ -52,69 +50,17 @@ function near(a: number, b: number): boolean {
   return Math.abs(a - b) < MATCH_EPS;
 }
 
-// ─── Transform parsing ─────────────────────────────────────────────
-
-export function multiplyMatrices(a: AffineMatrix, b: AffineMatrix): AffineMatrix {
-  return [
-    a[0] * b[0] + a[2] * b[1],
-    a[1] * b[0] + a[3] * b[1],
-    a[0] * b[2] + a[2] * b[3],
-    a[1] * b[2] + a[3] * b[3],
-    a[0] * b[4] + a[2] * b[5] + a[4],
-    a[1] * b[4] + a[3] * b[5] + a[5],
-  ];
-}
-
-function txPoint(m: AffineMatrix, x: number, y: number): Point {
-  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
-}
-
-export function parseTransform(str: string): AffineMatrix {
-  if (!str) return IDENTITY;
-  let r: AffineMatrix = [1, 0, 0, 1, 0, 0];
-  const re = /(\w+)\(([^)]*)\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(str)) !== null) {
-    const args = m[2].split(/[\s,]+/).map(Number);
-    let t: AffineMatrix;
-    switch (m[1]) {
-      case 'translate':
-        t = [1, 0, 0, 1, args[0] || 0, args.length > 1 ? args[1] : 0];
-        break;
-      case 'scale': {
-        const sx = args[0] ?? 1, sy = args.length > 1 ? args[1] : sx;
-        t = [sx, 0, 0, sy, 0, 0];
-        break;
-      }
-      case 'rotate': {
-        const rad = (args[0] || 0) * Math.PI / 180;
-        const c = Math.cos(rad), s = Math.sin(rad);
-        if (args.length >= 3) {
-          const cx = args[1], cy = args[2];
-          t = multiplyMatrices([1, 0, 0, 1, cx, cy],
-            multiplyMatrices([c, s, -s, c, 0, 0], [1, 0, 0, 1, -cx, -cy]));
-        } else {
-          t = [c, s, -s, c, 0, 0];
-        }
-        break;
-      }
-      case 'matrix':
-        t = [args[0], args[1], args[2], args[3], args[4], args[5]];
-        break;
-      default: continue;
-    }
-    r = multiplyMatrices(r, t);
-  }
-  return r;
-}
-
 // ─── Path d parser ──────────────────────────────────────────────────
 
 /** A path's `d` as subpaths, read by the engine's one path-data reader
- *  (svgPathData.ts). Cubics and quadratics are kept as they are; an arc is
- *  not simplified but kept as the straight line to its endpoint. Drawing
- *  before the first `M` is dropped, and drawing after a `Z` with no `M`
- *  goes on in the subpath the `Z` closed. */
+ *  (svgPathData.ts). Cubics and quadratics are kept as they are; an arc
+ *  becomes the cubics that draw it, one to each quarter turn or less (the
+ *  engine's one arc conversion, svgArc.ts), and one with no curve to it (a
+ *  zero radius, coincident ends) the straight line to its end. Drawing
+ *  after a `Z` with no `M` goes on in the subpath the `Z` closed. Path
+ *  data that breaks the grammar is read up to its first error, as SVG
+ *  draws it (the reader's rule), so data that does not start with an `M`
+ *  yields no subpath at all. */
 export function parsePathD(d: string): Subpath[] {
   const subs: Subpath[] = [];
   let cur: Subpath | null = null;
@@ -126,7 +72,14 @@ export function parsePathD(d: string): Subpath[] {
     lineTo(_x0, _y0, x, y) { cur?.segments.push({ cmd: 'L', x, y }); },
     cubicTo(_x0, _y0, x1, y1, x2, y2, x, y) { cur?.segments.push({ cmd: 'C', x1, y1, x2, y2, x, y }); },
     quadTo(_x0, _y0, x1, y1, x, y) { cur?.segments.push({ cmd: 'Q', x1, y1, x, y }); },
-    arcTo(_x0, _y0, _rx, _ry, _rotationDeg, _largeArc, _sweep, x, y) { cur?.segments.push({ cmd: 'L', x, y }); },
+    arcTo(x0, y0, rx, ry, rotationDeg, largeArc, sweep, x, y) {
+      if (!cur) return;
+      const c = svgArcToCubics(x0, y0, rx, ry, rotationDeg, largeArc, sweep, x, y);
+      if (!c) { cur.segments.push({ cmd: 'L', x, y }); return; }
+      for (let i = 0; i < c.length; i += 6) {
+        cur.segments.push({ cmd: 'C', x1: c[i], y1: c[i + 1], x2: c[i + 2], y2: c[i + 3], x: c[i + 4], y: c[i + 5] });
+      }
+    },
     close() {
       if (cur) { cur.segments.push({ cmd: 'Z' }); cur.closed = true; }
     },
@@ -136,18 +89,20 @@ export function parsePathD(d: string): Subpath[] {
 
 // ─── Transform application ──────────────────────────────────────────
 
+/** A subpath under a path's `transform` (read by the engine's one reader
+ *  of one, svgTransform.ts). */
 function txSubpath(m: AffineMatrix, sp: Subpath): Subpath {
   const segs: PathSegment[] = sp.segments.map(s => {
     switch (s.cmd) {
-      case 'M': { const p = txPoint(m, s.x, s.y); return { cmd: 'M', x: p.x, y: p.y }; }
-      case 'L': { const p = txPoint(m, s.x, s.y); return { cmd: 'L', x: p.x, y: p.y }; }
+      case 'M': { const [x, y] = applyMatrix(m, s.x, s.y); return { cmd: 'M', x, y }; }
+      case 'L': { const [x, y] = applyMatrix(m, s.x, s.y); return { cmd: 'L', x, y }; }
       case 'C': {
-        const p1 = txPoint(m, s.x1, s.y1), p2 = txPoint(m, s.x2, s.y2), p = txPoint(m, s.x, s.y);
-        return { cmd: 'C', x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, x: p.x, y: p.y };
+        const [x1, y1] = applyMatrix(m, s.x1, s.y1), [x2, y2] = applyMatrix(m, s.x2, s.y2), [x, y] = applyMatrix(m, s.x, s.y);
+        return { cmd: 'C', x1, y1, x2, y2, x, y };
       }
       case 'Q': {
-        const p1 = txPoint(m, s.x1, s.y1), p = txPoint(m, s.x, s.y);
-        return { cmd: 'Q', x1: p1.x, y1: p1.y, x: p.x, y: p.y };
+        const [x1, y1] = applyMatrix(m, s.x1, s.y1), [x, y] = applyMatrix(m, s.x, s.y);
+        return { cmd: 'Q', x1, y1, x, y };
       }
       case 'Z': return { cmd: 'Z' };
     }

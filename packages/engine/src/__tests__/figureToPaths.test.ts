@@ -93,8 +93,100 @@ describe('bakeFigureToSegments', () => {
       return bakeFigureToSegments(makeFig({ cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1 }));
     };
     const absolute = bake('M 0,0 L 256,0 V 256 Q 128,256 128,128 A 64,64 0 0 1 0,128 Z');
-    expect(absolute!.map((s) => s.kind)).toEqual(['line', 'line', 'arc', 'arc', 'line']);
+    // The A is a half circle: two quarter arcs.
+    expect(absolute!.map((s) => s.kind)).toEqual(['line', 'line', 'arc', 'arc', 'arc', 'line']);
     expect(bake('m 0,0 l 256,0 v 256 q -128,0 -128,-128 a 64,64 0 0 1 -128,0 z')).toEqual(absolute);
+  });
+
+  test('bakes path data that breaks the grammar up to its first error', () => {
+    // Report 44c95c77: a command short of numbers took the next command
+    // letter as a number and read on; SVG draws the path up to the error,
+    // and so does the bake (svgPathData.ts).
+    const bake = (d: string) => {
+      mockGetSync.mockReturnValue({ elements: [`<path d="${d}"/>`], svgWidth: 256, svgHeight: 256 });
+      return bakeFigureToSegments(makeFig({ cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1 }));
+    };
+    const good = bake('M 0,0 L 256,0 L 256,256');
+    expect(good).toHaveLength(2);
+    expect(bake('M 0,0 L 256,0 L 256,256 L 5')).toEqual(good);
+    expect(bake('M 0,0 L 256,0 L 256,256 L 5 Z')).toEqual(good);
+    expect(bake('M 0,0 L 256,0 L 256,256 Q 1,1 # 2,2')).toEqual(good);
+    // The close is drawn; the number after it is the error.
+    expect(bake('M 0,0 L 256,0 L 256,256 Z 7 8 L 0,256')).toEqual(bake('M 0,0 L 256,0 L 256,256 Z'));
+    expect(bake('L 256,0 L 256,256')).toEqual([]);
+  });
+
+  describe('an arc (A)', () => {
+    // Report bed5d6cd: an A was one start/end/centre segment, which the
+    // engine draws as the minor arc about the circle through its ends, and a
+    // negative radius made it a line. It is drawn from the engine's one arc
+    // conversion now (svgArc.ts).
+    const bake = (d: string) => {
+      mockGetSync.mockReturnValue({ elements: [`<path d="${d}"/>`], svgWidth: 256, svgHeight: 256 });
+      return bakeFigureToSegments(makeFig({ cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1 }))!;
+    };
+    const near = (p: readonly number[], q: readonly number[]) => {
+      expect(p[0]).toBeCloseTo(q[0], 9);
+      expect(p[1]).toBeCloseTo(q[1], 9);
+    };
+
+    test('a large arc goes the long way round, in quarter arcs about its centre', () => {
+      // Three quarters of the circle of radius 64 about (128, 128).
+      const segs = bake('M 192,128 A 64,64 0 1 1 128,64');
+      expect(segs.map((s) => s.kind)).toEqual(['arc', 'arc', 'arc']);
+      const ends = [[0.75, 0.5], [0.5, 0.75], [0.25, 0.5], [0.5, 0.25]];
+      segs.forEach((s, i) => {
+        if (s.kind !== 'arc') throw new Error('expected arc');
+        near(s.start, ends[i]);
+        near(s.end, ends[i + 1]);
+        near(s.center, [0.5, 0.5]);
+      });
+    });
+
+    test('a small arc is one quarter arc, the way its sweep flag says', () => {
+      const cw = bake('M 192,128 A 64,64 0 0 1 128,192');
+      expect(cw).toHaveLength(1);
+      if (cw[0].kind !== 'arc') throw new Error('expected arc');
+      near(cw[0].center, [0.5, 0.5]);
+      // The other sweep is the other circle through the same two points.
+      const ccw = bake('M 192,128 A 64,64 0 0 0 128,192');
+      if (ccw[0].kind !== 'arc') throw new Error('expected arc');
+      near(ccw[0].center, [0.75, 0.75]);
+    });
+
+    test('an elliptical arc is lines on its ellipse, as the engine draws every ellipse', () => {
+      // Half the ellipse of radii 64 and 32 about (128, 128), over its top.
+      const segs = bake('M 64,128 A 64,32 0 0 1 192,128');
+      expect(segs).toHaveLength(16); // 32 to a whole turn
+      expect(segs.every((s) => s.kind === 'line')).toBe(true);
+      near(segs[0].start, [0.25, 0.5]);
+      near(segs[15].end, [0.75, 0.5]);
+      near(segs[7].end, [0.5, 0.375]);
+      for (let i = 0; i < segs.length; i++) {
+        const [x, y] = segs[i].end;
+        expect(((x - 0.5) / 0.25) ** 2 + ((y - 0.5) / 0.125) ** 2).toBeCloseTo(1, 9);
+        if (i > 0) expect(segs[i].start).toEqual(segs[i - 1].end);
+      }
+    });
+
+    test('a negative radius is read as its positive, as the spec has it, not as a line', () => {
+      const positive = bake('M 192,128 A 64,64 0 0 1 128,192');
+      expect(positive.map((s) => s.kind)).toEqual(['arc']);
+      expect(bake('M 192,128 A -64,-64 0 0 1 128,192')).toEqual(positive);
+    });
+
+    test('an arc with no curve to it is the line to its end', () => {
+      expect(bake('M 0,0 A 0,64 0 0 1 128,128')).toEqual([{ kind: 'line', start: [0, 0], end: [0.5, 0.5] }]);
+    });
+  });
+
+  test("reads an arc's flags run on into its end point, as a minifier writes them", () => {
+    // Report 1f5ff91e: `01-128 0` is the flags 0 and 1 and then -128 0.
+    const bake = (d: string) => {
+      mockGetSync.mockReturnValue({ elements: [`<path d="${d}"/>`], svgWidth: 256, svgHeight: 256 });
+      return bakeFigureToSegments(makeFig({ cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1 }));
+    };
+    expect(bake('M128 128a64 64 0 01-128 0')).toEqual(bake('M128 128 a64 64 0 0 1 -128 0'));
   });
 
   test('applies element transform attribute', () => {
