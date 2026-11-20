@@ -39,6 +39,7 @@ export function BrushControlsGroup({
   brushChromeUp, brushSize, colorBrushOpacity, paintOpacityMode,
   setBrushSize, setColorBrushOpacity, session, insets,
   paintMenuOptions, brushBlendBadge, paintMenuLitKeys, onPaintRadialPick, openRadialCapsule,
+  targetBottom,
 }: {
   brushChromeUp: boolean;
   brushSize: number;
@@ -53,6 +54,11 @@ export function BrushControlsGroup({
   paintMenuLitKeys?: readonly string[];
   onPaintRadialPick: (key: string) => void;
   openRadialCapsule: (fan: 'paint-blend' | 'paint-color') => void;
+  /** The mode target's seat, px off the screen's bottom, where a host has
+   *  its own chrome standing in the corner the target would take (DrawBots'
+   *  sticker book button): the target stands there instead. Omitted, it is
+   *  level with the slider row, as in every app without such chrome. */
+  targetBottom?: number;
 }) {
   return (
     <>
@@ -93,9 +99,10 @@ export function BrushControlsGroup({
           (push: Size) plus the paintbrush that calls their capsule up. The strip
           mirrors BrushControlsPanel's own seat (bottom margin + one row
           height) so the circle and the slider handle stand on one line. Rig
-          pages grow the same target inside RigControlsPanel. */}
+          pages grow the same target inside RigControlsPanel. A host whose
+          own chrome holds that corner seats it higher (targetBottom). */}
       {brushChromeUp ? (
-        <FloatingTargetStrip bottom={insets.bottom + FLOATING_SLIDER_BOTTOM}>
+        <FloatingTargetStrip bottom={targetBottom ?? insets.bottom + FLOATING_SLIDER_BOTTOM}>
           <SliderModeTarget
             options={paintMenuOptions}
             // Clamped through paintOpacityMode: a stale Opacity pick from
