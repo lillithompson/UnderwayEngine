@@ -14,7 +14,7 @@ import { figureArtLayout, figureArtPoint, rotateMirrorAround } from './figureArt
 import { computeSVGBbox } from './sceneGraph';
 import { maxStrokeWidth, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { effectiveStrokeMultiplier } from './strokeScale';
-import { readPathData } from './svgPathData';
+import { cubicPointAt, readPathData } from './svgPathData';
 import { svgArcCentre, svgArcPieces, svgArcPoint } from './svgArc';
 import { ELLIPSE_POLYLINE_SEGMENTS } from './compositionArcMath';
 import { AffineMatrix, applyMatrix, parseTransform } from './svgTransform';
@@ -545,6 +545,13 @@ function parseAttr(el: string, name: string): number | undefined {
 
 // ── SVG path `d` attribute parser ───────────────────────────────────
 
+/** How far a cubic's two ends may differ in their distance from the center
+ *  its end normals meet at, as a share of the larger, and still be a
+ *  circle's arc. simplifySVG writes a circle's arc to two decimals, which
+ *  moves its ends' distances a hair apart; an ellipse's are apart by its
+ *  axes' difference. */
+const CIRCULAR_CUBIC_TOLERANCE = 0.01;
+
 interface RawLineSeg { kind: 'line'; start: [number, number]; end: [number, number] }
 interface RawArcSeg { kind: 'arc'; start: [number, number]; end: [number, number]; center: [number, number] }
 type RawSeg = RawLineSeg | RawArcSeg;
@@ -554,7 +561,8 @@ type RawSeg = RawLineSeg | RawArcSeg;
  * one path-data reader (svgPathData.ts), relative commands as well as
  * absolute. The curves in figure SVGs are quarter circles aligned to the
  * grid: cubic beziers (C/S) are converted to exact arc segments by computing
- * the center from the tangent directions at start and end, and a quadratic's
+ * the center from the tangent directions at start and end (one that is no
+ * circle's arc, an ellipse's, is chords instead), and a quadratic's
  * center is start + end − its control point. An arc (A) is the circle or
  * ellipse it draws ({@link convertSVGArc}). Path data that breaks the
  * grammar is baked up to its first error, as SVG draws it.
@@ -570,7 +578,12 @@ function parseSVGPathD(d: string): RawSeg[] {
     /** A cubic bezier as a quarter-circle arc segment. The center is the
      *  intersection of:
      *  - the line through start, perpendicular to the tangent at start (cp1 − start)
-     *  - the line through end, perpendicular to the tangent at end (end − cp2) */
+     *  - the line through end, perpendicular to the tangent at end (end − cp2)
+     *  A cubic whose two ends are not the same distance from that center is
+     *  no circle's arc (an elliptical arc, which simplifySVG writes as cubics
+     *  since report 7f84afc7): it is chords along the cubic, as many to its
+     *  turn as an elliptical A has ({@link convertSVGArc}), where an arc
+     *  segment would draw it broken (report b452acb8). */
     cubicTo(x0, y0, cp1x, cp1y, cp2x, cp2y, ex, ey) {
       const t1x = cp1x - x0, t1y = cp1y - y0;
       const t2x = ex - cp2x, t2y = ey - cp2y;
@@ -578,11 +591,24 @@ function parseSVGPathD(d: string): RawSeg[] {
         x0, y0, -t1y, t1x,  // from start, perpendicular to tangent at start
         ex, ey, -t2y, t2x,  // from end, perpendicular to tangent at end
       );
-      if (center) {
-        segments.push({ kind: 'arc', start: [x0, y0], end: [ex, ey], center });
-      } else {
+      if (!center) {
         // Degenerate (collinear tangents) — treat as line
         line(x0, y0, ex, ey);
+        return;
+      }
+      const r0 = Math.hypot(x0 - center[0], y0 - center[1]);
+      const r1 = Math.hypot(ex - center[0], ey - center[1]);
+      if (Math.abs(r0 - r1) <= CIRCULAR_CUBIC_TOLERANCE * Math.max(r0, r1)) {
+        segments.push({ kind: 'arc', start: [x0, y0], end: [ex, ey], center });
+        return;
+      }
+      const turn = Math.abs(Math.atan2(t1x * t2y - t1y * t2x, t1x * t2x + t1y * t2y));
+      const n = Math.max(1, Math.ceil(turn / ((2 * Math.PI) / ELLIPSE_POLYLINE_SEGMENTS) - 1e-9));
+      let px = x0, py = y0;
+      for (let i = 1; i <= n; i++) {
+        const [x, y] = i === n ? [ex, ey] : cubicPointAt(x0, y0, cp1x, cp1y, cp2x, cp2y, ex, ey, i / n);
+        line(px, py, x, y);
+        px = x; py = y;
       }
     },
     /** A quadratic bezier as a quarter-circle arc segment. For a quarter
