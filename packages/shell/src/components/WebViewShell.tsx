@@ -1,5 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, ActivityIndicator, Image, AppState, AppStateStatus, Text, TouchableOpacity } from 'react-native';
+import {
+  StyleSheet, View, ActivityIndicator, Image, ImageSourcePropType, AppState, AppStateStatus, Text, TouchableOpacity,
+} from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalServer } from '../server/useLocalServer';
@@ -52,7 +54,7 @@ export interface WebViewShellProps {
   onLoadStart?: () => void;
   /**
    * What covers the WebView until the page says READY, in place of the
-   * app's logo on black.
+   * logo (`logo`, below) on black.
    *
    * The dark splash is right for a cold launch and wrong for a
    * transition: mid-gesture it reads as the app restarting. A host that
@@ -64,6 +66,17 @@ export interface WebViewShellProps {
    * one IS the app in trouble, and must look like it.
    */
   splash?: React.ReactNode;
+  /**
+   * The picture the shell draws over the WebView itself: wherever the
+   * host passes no `splash`, and on both failure panels whatever it
+   * passes (a content process that could not be recovered; a local server
+   * that could not open the saved work). The one Image those three share.
+   *
+   * Defaults to the shell's own file, `assets/images/splash-icon.png` —
+   * the mark it has always drawn, which is one app's: a host whose mark
+   * is not that one passes its own here (a bundled image's `require()`).
+   */
+  logo?: ImageSourcePropType;
   /**
    * Handed the WebView's own ref once it is mounted, and null when it goes
    * away — so the host can photograph exactly what the page is showing
@@ -92,6 +105,9 @@ export interface WebViewShellProps {
 
 export type RecoveryEventKind = 'terminated' | 'gaveUp' | 'watchdog' | 'loadError' | 'httpError';
 
+/** What a host that passes no `logo` gets: the shell's own file. */
+const SHELL_LOGO: ImageSourcePropType = require('../../assets/images/splash-icon.png');
+
 // The native splash overlay (logo + spinner on dark) covers the WebView until
 // the web side posts READY. READY is sent from the first screen
 // (compositions.tsx) after its first paint with real data, not on a timer, so
@@ -101,6 +117,7 @@ export default function WebViewShell({
   urlSuffix,
   onLoadStart,
   splash,
+  logo = SHELL_LOGO,
   onWebViewRef,
   onRecoveryEvent,
   debuggable = DIAGNOSTICS,
@@ -348,7 +365,7 @@ export default function WebViewShell({
       {!webReady && (splash === undefined || recoveryFailed || serverFailed) && (
         <View style={styles.splashOverlay} pointerEvents={recoveryFailed || serverFailed ? 'auto' : 'none'}>
           <Image
-            source={require('../../assets/images/splash-icon.png')}
+            source={logo}
             style={styles.splashLogo}
             resizeMode="contain"
             fadeDuration={0}
