@@ -291,6 +291,15 @@ describe('case study capture', () => {
       png.writeUInt32BE(1800, 20);
       expect(pngSize(png)).toEqual({ width: 2880, height: 1800 });
       expect(() => pngSize(Buffer.from('not a png at all, not at all'))).toThrow(/not a PNG/);
+      // The engine's reader refuses what the old copy let through: an IHDR
+      // without the signature, a size of zero, a header cut short.
+      const unsigned = Buffer.from(png);
+      unsigned[0] = 0;
+      expect(() => pngSize(unsigned)).toThrow(/not a PNG/);
+      const zero = Buffer.from(png);
+      zero.writeUInt32BE(0, 16);
+      expect(() => pngSize(zero)).toThrow(/not a PNG/);
+      expect(() => pngSize(png.subarray(0, 20))).toThrow(/not a PNG/);
     });
 
     it('embeds a phone\'s frame a grid cell wide and a desktop\'s the page\'s width, never upscaled', () => {

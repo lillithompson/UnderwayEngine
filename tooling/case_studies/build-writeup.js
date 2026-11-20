@@ -34,6 +34,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { CHROME } = require('./harness.js');
 const { toJpegs } = require('./jpegs.js');
+const { engineModule } = require('../engine-module.js');
 const { caseStudyPaths } = require('./paths.js');
 
 const TAGS = ['bug', 'friction', 'polish', 'check', 'works', 'fixed'];
@@ -43,12 +44,15 @@ const FRAME_WIDTH = 693;
 const WIDE_FRAME_WIDTH = 1600;
 const MAX_BYTES = 15 * 1024 * 1024;
 
-/** A PNG's size in pixels, read from its IHDR chunk. The app's twin is
- *  packages/engine/src/imageHeaderSize.ts, which this plain-node script
- *  cannot require (it is TypeScript). */
+/** A PNG's size in pixels, read from its IHDR chunk by the app's own reader,
+ *  packages/engine/src/imageHeaderSize.ts' pngHeaderSize (compiled for node
+ *  by ../engine-module.js), not a copy of it. Throws on anything that reader
+ *  refuses: no PNG signature, no leading IHDR, a header cut short, a size of
+ *  zero. */
 function pngSize(buf) {
-  if (buf.length < 24 || buf.toString('latin1', 12, 16) !== 'IHDR') throw new Error('not a PNG');
-  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  const size = engineModule('imageHeaderSize').pngHeaderSize(buf);
+  if (!size) throw new Error('not a PNG (or its IHDR does not lead, is cut short, or is of size zero)');
+  return size;
 }
 
 /** The width a frame of `size` is embedded at: never wider than it is. */

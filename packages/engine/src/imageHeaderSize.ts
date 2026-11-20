@@ -28,8 +28,14 @@ const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 /** PNG: the IHDR chunk is mandated to be first, at a fixed offset — 8 bytes
  *  of signature, a 4-byte length, the 4-byte type, then width and height as
- *  big-endian u32. */
-function pngSize(bytes: Uint8Array): ImageHeaderSize | null {
+ *  big-endian u32. Null for anything else: no PNG signature, no leading
+ *  IHDR, a header cut short, or a size of zero.
+ *
+ *  Exported for readers that want a PNG and nothing else (imageHeaderSize
+ *  takes a JPEG too): the engine tooling's case studies and DrawBots' asset
+ *  scripts read their PNGs' sizes with this, through
+ *  tooling/engine-module.js, rather than with copies of it. */
+export function pngHeaderSize(bytes: Uint8Array): ImageHeaderSize | null {
   if (bytes.length < 24) return null;
   for (let i = 0; i < PNG_MAGIC.length; i++) if (bytes[i] !== PNG_MAGIC[i]) return null;
   if (String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]) !== 'IHDR') return null;
@@ -85,11 +91,6 @@ function jpegSize(bytes: Uint8Array): ImageHeaderSize | null {
   return null;
 }
 
-/**
- * The pixel size these bytes declare, PNG or JPEG, or null when the header
- * cannot be read. Sniffs the format off the bytes rather than trusting a
- * caller-supplied mime, because a picker's mime is routinely absent or wrong.
- */
 /**
  * The EXIF orientation of a JPEG: 1-8, or null when there is an Exif block
  * this cannot read. Absent Exif is orientation 1, which is the common case
@@ -162,7 +163,7 @@ function jpegOrientation(bytes: Uint8Array): number | null {
  * right.
  */
 export function imageHeaderSize(bytes: Uint8Array): ImageHeaderSize | null {
-  const png = pngSize(bytes);
+  const png = pngHeaderSize(bytes);
   if (png) return png; // PNG carries no orientation
   const jpeg = jpegSize(bytes);
   if (!jpeg) return null;

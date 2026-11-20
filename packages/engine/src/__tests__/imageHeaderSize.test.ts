@@ -1,4 +1,4 @@
-import { imageHeaderSize } from '../imageHeaderSize';
+import { imageHeaderSize, pngHeaderSize } from '../imageHeaderSize';
 
 // The size a PNG or JPEG declares, read from the header — the decode the
 // import pipeline used to do for two numbers (compositionImageImport).
@@ -180,5 +180,22 @@ describe('imageHeaderSize reports DISPLAY size, not stored size', () => {
     new DataView(png.buffer).setUint32(16, 1206, false);
     new DataView(png.buffer).setUint32(20, 2622, false);
     expect(imageHeaderSize(png)).toEqual({ width: 1206, height: 2622 });
+  });
+});
+
+describe('pngHeaderSize', () => {
+  it('reads a PNG as imageHeaderSize does, and refuses a JPEG, which imageHeaderSize takes', () => {
+    expect(pngHeaderSize(png(4032, 3024))).toEqual({ width: 4032, height: 3024 });
+    expect(pngHeaderSize(jpeg(640, 480))).toBeNull();
+    expect(imageHeaderSize(jpeg(640, 480))).toEqual({ width: 640, height: 480 });
+  });
+
+  it('refuses what imageHeaderSize refuses of a PNG', () => {
+    expect(pngHeaderSize(png(10, 10, { type: 'sRGB' }))).toBeNull();
+    expect(pngHeaderSize(png(10, 10, { short: true }))).toBeNull();
+    expect(pngHeaderSize(png(0, 10))).toBeNull();
+    const unsigned = png(10, 10);
+    unsigned[0] = 0;
+    expect(pngHeaderSize(unsigned)).toBeNull();
   });
 });
