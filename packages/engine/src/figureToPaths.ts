@@ -15,6 +15,8 @@ import { computeSVGBbox } from './sceneGraph';
 import { maxStrokeWidth, SVG_UNITS_PER_L0_CELL } from './svgExport';
 import { effectiveStrokeMultiplier } from './strokeScale';
 import { readPathData } from './svgPathData';
+import { svgArcCentre, svgArcPieces, svgArcPoint } from './svgArc';
+import { ELLIPSE_POLYLINE_SEGMENTS } from './compositionArcMath';
 
 export interface ColoredSegments {
   color: RGBColor;
@@ -609,9 +611,11 @@ type RawSeg = RawLineSeg | RawArcSeg;
 /**
  * Parse an SVG path `d` attribute into PathSegments, read by the engine's
  * one path-data reader (svgPathData.ts), relative commands as well as
- * absolute. All curves in figure SVGs are quarter circles aligned to the
- * grid. Cubic beziers (C/S) are converted to exact arc segments by computing
- * the center from the tangent directions at start and end.
+ * absolute. The curves in figure SVGs are quarter circles aligned to the
+ * grid: cubic beziers (C/S) are converted to exact arc segments by computing
+ * the center from the tangent directions at start and end, and a quadratic's
+ * center is start + end − its control point. An arc (A) is the circle or
+ * ellipse it draws ({@link convertSVGArc}).
  */
 function parseSVGPathD(d: string): RawSeg[] {
   const segments: RawSeg[] = [];
@@ -657,42 +661,34 @@ function parseSVGPathD(d: string): RawSeg[] {
 }
 
 /**
- * Convert an SVG arc command to a PathSegment.
- * All arcs in figure SVGs are circular quarter circles — compute center
- * directly from the SVG spec endpoint-to-center algorithm.
+ * An SVG arc command as PathSegments, from the engine's one conversion of
+ * one (svgArc.ts). The engine's arc segment is circular and is drawn as the
+ * MINOR arc between its ends, so a circle's arc becomes arcs of a quarter
+ * turn or less about its centre — a large arc several of them, never one
+ * drawn the short way round. An ellipse's becomes lines, as every ellipse
+ * the engine draws is ({@link ELLIPSE_POLYLINE_SEGMENTS} to a full turn): its
+ * arc segment can hold no ellipse. An arc with no curve to it (a zero
+ * radius, coincident ends) is the line to its end. Pieces start and end
+ * exactly on the arc's own ends.
  */
 function convertSVGArc(
   x1: number, y1: number, rx: number, ry: number,
   xRot: number, largeArc: boolean, sweep: boolean,
   x2: number, y2: number, out: RawSeg[],
 ): void {
-  const dx = x2 - x1, dy = y2 - y1;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist < 1e-6 || rx < 1e-6 || ry < 1e-6) {
+  const arc = svgArcCentre(x1, y1, rx, ry, xRot, largeArc, sweep, x2, y2);
+  const circle = arc !== null && arc.rx === arc.ry;
+  const n = arc ? svgArcPieces(arc, circle ? Math.PI / 2 : (2 * Math.PI) / ELLIPSE_POLYLINE_SEGMENTS) : 0;
+  if (!arc || n === 0) {
     out.push({ kind: 'line', start: [x1, y1], end: [x2, y2] });
     return;
   }
-
-  // SVG spec endpoint-to-center conversion
-  rx = Math.abs(rx); ry = Math.abs(ry);
-  const phi = xRot * Math.PI / 180;
-  const cosPhi = Math.cos(phi), sinPhi = Math.sin(phi);
-  const x1p = cosPhi * (x1 - x2) / 2 + sinPhi * (y1 - y2) / 2;
-  const y1p = -sinPhi * (x1 - x2) / 2 + cosPhi * (y1 - y2) / 2;
-
-  let lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
-  if (lambda > 1) { const s = Math.sqrt(lambda); rx *= s; ry *= s; }
-
-  const num = Math.max(0, rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p);
-  const denom = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
-  const sq = denom > 0 ? Math.sqrt(num / denom) : 0;
-  const sign = (largeArc === sweep) ? -1 : 1;
-  const cxp = sign * sq * (rx * y1p / ry);
-  const cyp = sign * sq * -(ry * x1p / rx);
-  const cx = cosPhi * cxp - sinPhi * cyp + (x1 + x2) / 2;
-  const cy = sinPhi * cxp + cosPhi * cyp + (y1 + y2) / 2;
-
-  out.push({ kind: 'arc', start: [x1, y1], end: [x2, y2], center: [cx, cy] });
+  let start: [number, number] = [x1, y1];
+  for (let i = 1; i <= n; i++) {
+    const end: [number, number] = i === n ? [x2, y2] : svgArcPoint(arc, arc.theta1 + (arc.dTheta * i) / n);
+    out.push(circle ? { kind: 'arc', start, end, center: [arc.cx, arc.cy] } : { kind: 'line', start, end });
+    start = end;
+  }
 }
 
 /** Intersect two lines (point + direction). Returns null if parallel. */

@@ -1,6 +1,7 @@
 import type { ImageObject, PathSegment } from '@/engine/types';
 import { coverImageRect, effectiveFraming, straightenCoverScale } from '@/engine/imageFraming';
 import { readPathData } from '@/engine/svgPathData';
+import { svgArcCentre, svgArcPoint } from '@/engine/svgArc';
 
 // The GEOMETRY of an SVG picture placed on a page as an ImageObject — the
 // outlines its `<path>`s draw, in WORLD cells, laid where the picture is
@@ -175,9 +176,18 @@ export function pathPolylines(d: string): SvgPolyline[] {
         points.push(u * u * x0 + 2 * u * t * x1 + t * t * x, u * u * y0 + 2 * u * t * y1 + t * t * y);
       }
     },
+    /** An arc as the engine's one conversion has it (svgArc.ts), sampled
+     *  between its ends; one with no curve to it (a zero radius, coincident
+     *  ends) is the line to its end. */
     arcTo(x0, y0, rx, ry, rotationDeg, largeArc, sweep, x, y) {
       from(x0, y0);
-      for (const [px, py] of arcPoints(x0, y0, rx, ry, rotationDeg, largeArc, sweep, x, y)) points.push(px, py);
+      const arc = svgArcCentre(x0, y0, rx, ry, rotationDeg, largeArc, sweep, x, y);
+      if (arc) {
+        for (let k = 1; k < ARC_SAMPLES; k++) {
+          const [px, py] = svgArcPoint(arc, arc.theta1 + (arc.dTheta * k) / ARC_SAMPLES);
+          points.push(px, py);
+        }
+      }
       points.push(x, y);
     },
     close() {
@@ -187,57 +197,6 @@ export function pathPolylines(d: string): SvgPolyline[] {
   });
   flush();
   return out;
-}
-
-/**
- * Interior sample points of an SVG elliptical arc (the spec's endpoint →
- * centre conversion, F.6.5), excluding both endpoints. A degenerate arc
- * (zero radius, coincident ends) samples to nothing — the caller's line to
- * the endpoint is then the whole of it.
- */
-function arcPoints(
-  x1: number, y1: number, rx: number, ry: number, rotDeg: number,
-  large: boolean, sweep: boolean, x2: number, y2: number,
-): [number, number][] {
-  rx = Math.abs(rx);
-  ry = Math.abs(ry);
-  if (rx < 1e-9 || ry < 1e-9 || (x1 === x2 && y1 === y2)) return [];
-  const phi = (rotDeg * Math.PI) / 180;
-  const cosP = Math.cos(phi), sinP = Math.sin(phi);
-  const dx = (x1 - x2) / 2, dy = (y1 - y2) / 2;
-  const x1p = cosP * dx + sinP * dy;
-  const y1p = -sinP * dx + cosP * dy;
-  const lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
-  if (lambda > 1) {
-    const s = Math.sqrt(lambda);
-    rx *= s;
-    ry *= s;
-  }
-  const num = Math.max(0, rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p);
-  const den = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
-  const coef = (large === sweep ? -1 : 1) * (den > 0 ? Math.sqrt(num / den) : 0);
-  const cxp = coef * ((rx * y1p) / ry);
-  const cyp = coef * (-(ry * x1p) / rx);
-  const cx = cosP * cxp - sinP * cyp + (x1 + x2) / 2;
-  const cy = sinP * cxp + cosP * cyp + (y1 + y2) / 2;
-  const angle = (ux: number, uy: number, vx: number, vy: number) => {
-    const dot = ux * vx + uy * vy;
-    const len = Math.hypot(ux, uy) * Math.hypot(vx, vy);
-    let a = Math.acos(Math.max(-1, Math.min(1, dot / len)));
-    if (ux * vy - uy * vx < 0) a = -a;
-    return a;
-  };
-  const theta1 = angle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
-  let dTheta = angle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
-  if (!sweep && dTheta > 0) dTheta -= 2 * Math.PI;
-  else if (sweep && dTheta < 0) dTheta += 2 * Math.PI;
-  const pts: [number, number][] = [];
-  for (let k = 1; k < ARC_SAMPLES; k++) {
-    const t = theta1 + (dTheta * k) / ARC_SAMPLES;
-    const ex = rx * Math.cos(t), ey = ry * Math.sin(t);
-    pts.push([cosP * ex - sinP * ey + cx, sinP * ex + cosP * ey + cy]);
-  }
-  return pts;
 }
 
 /**

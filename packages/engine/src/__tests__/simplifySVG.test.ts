@@ -150,11 +150,37 @@ describe('parsePathD', () => {
     expect(subs[0].segments[1]).toEqual({ cmd: 'L', x: 150, y: 150 });
   });
 
-  test('an arc is kept as the straight line to its endpoint', () => {
-    expect(parsePathD('M0 0 A10 10 0 0 1 20 0')).toEqual([
-      { segments: [{ cmd: 'M', x: 0, y: 0 }, { cmd: 'L', x: 20, y: 0 }], closed: false },
-    ]);
-    expect(parsePathD('M5 5 a10 10 0 1 0 20 0')[0].segments[1]).toEqual({ cmd: 'L', x: 25, y: 5 });
+  test('an arc is the cubics that draw it, one to each quarter turn or less, ending on its end', () => {
+    // Report 7f84afc7: an arc was kept as the straight line to its end.
+    const semi = parsePathD('M0 0 A10 10 0 0 1 20 0')[0].segments as any[];
+    expect(semi.map((s) => s.cmd)).toEqual(['M', 'C', 'C']);
+    const k = 10 * (4 / 3) * Math.tan(Math.PI / 8);
+    expect(semi[1].x1).toBeCloseTo(0, 9);
+    expect(semi[1].y1).toBeCloseTo(-k, 9);
+    expect(semi[1].x).toBeCloseTo(10, 9);
+    expect(semi[1].y).toBeCloseTo(-10, 9);
+    expect([semi[2].x, semi[2].y]).toEqual([20, 0]);
+    // The large arc goes the long way round: three quarters of the circle
+    // about (10, 10), through (20, 10) and (10, 20), relative or not.
+    const big = parsePathD('M10 0 a10 10 0 1 1 -10 10')[0].segments as any[];
+    expect(big.map((s) => s.cmd)).toEqual(['M', 'C', 'C', 'C']);
+    expect(big[1].x).toBeCloseTo(20, 9);
+    expect(big[1].y).toBeCloseTo(10, 9);
+    expect(big[2].x).toBeCloseTo(10, 9);
+    expect(big[2].y).toBeCloseTo(20, 9);
+    expect([big[3].x, big[3].y]).toEqual([0, 10]);
+    expect(parsePathD('M10 0 A10 10 0 1 1 0 10')).toEqual(parsePathD('M10 0 a10 10 0 1 1 -10 10'));
+  });
+
+  test('an arc with no curve to it is the line to its end; a negative radius is its positive', () => {
+    expect(parsePathD('M0 0 A0 10 0 0 1 20 0')[0].segments[1]).toEqual({ cmd: 'L', x: 20, y: 0 });
+    expect(parsePathD('M5 5 A10 10 0 0 1 5 5')[0].segments[1]).toEqual({ cmd: 'L', x: 5, y: 5 });
+    expect(parsePathD('M0 0 A-10 10 0 0 1 20 0')).toEqual(parsePathD('M0 0 A10 10 0 0 1 20 0'));
+  });
+
+  test('simplifySVG writes an arc as its cubics', () => {
+    const [el] = simplifySVG(['<path d="M0 0 A100 100 0 0 1 200 0" stroke="white" stroke-width="1"/>']);
+    expect(el).toBe('<path d="M0 0C0 -55.23 44.77 -100 100 -100C155.23 -100 200 -55.23 200 0" stroke="white" stroke-width="1"/>');
   });
 
   test("an arc's flags may run on into its end point, as a minifier writes them", () => {

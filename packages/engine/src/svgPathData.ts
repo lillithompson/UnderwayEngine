@@ -1,15 +1,17 @@
 // SVG path data — a <path>'s `d` — read in ONE place. Three readers turn a
 // drawing's paths into their own geometry: the SVG simplifier
-// (simplifySVG.parsePathD keeps cubics and quadratics as they are), the
-// figure bake (figureToPaths turns every curve into a circular arc) and the
-// picture geometry (the editor's formats/svgImageGeometry samples curves to
-// chords). Each had its own tokenizer and its own command reader, the same
-// grammar written three times, and a path one of them read differently from
-// the others drew a different shape by where it was imported. Here the
-// grammar is read once: the commands, absolute and relative, their implicit
-// repeats, the S / T reflections, an arc's flags and the current point after
-// a Z. What a curve or an arc BECOMES stays each reader's own choice, made
-// in the sink it passes.
+// (simplifySVG.parsePathD keeps cubics and quadratics as they are and writes
+// an arc as cubics), the figure bake (figureToPaths turns every curve into
+// circular arcs, and an ellipse's arc into lines) and the picture geometry
+// (the editor's formats/svgImageGeometry samples curves to chords). Each
+// had its own tokenizer and its own command reader, the same grammar written
+// three times, and a path one of them read differently from the others drew
+// a different shape by where it was imported. Here the grammar is read once:
+// the commands, absolute and relative, their implicit repeats, the S / T
+// reflections, an arc's flags and the current point after a Z. What a curve
+// or an arc BECOMES stays each reader's own choice, made in the sink it
+// passes (an arc's centre and angles are the engine's one conversion,
+// svgArc.ts).
 //
 // Imports nothing, so a script can compile it from its TypeScript alone
 // (scripts that read the simplifier that way serve it this module too).
@@ -29,7 +31,8 @@ export interface PathDataSink {
   /** `Q`, and `T` with its control point already reflected. */
   quadTo(x0: number, y0: number, x1: number, y1: number, x: number, y: number): void;
   /** `A`, its radii and rotation (degrees) as written: neither made
-   *  positive nor scaled up to reach, which is the sink's to do. */
+   *  positive nor scaled up to reach, which the engine's one arc conversion
+   *  does (svgArc.svgArcCentre). */
   arcTo(
     x0: number, y0: number, rx: number, ry: number, rotationDeg: number,
     largeArc: boolean, sweep: boolean, x: number, y: number,

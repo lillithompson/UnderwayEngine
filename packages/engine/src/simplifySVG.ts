@@ -2,6 +2,7 @@
 // collinear interior points, merge adjacent rects, simplify degenerate curves.
 
 import { readPathData } from './svgPathData';
+import { svgArcToCubics } from './svgArc';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -111,8 +112,10 @@ export function parseTransform(str: string): AffineMatrix {
 // ─── Path d parser ──────────────────────────────────────────────────
 
 /** A path's `d` as subpaths, read by the engine's one path-data reader
- *  (svgPathData.ts). Cubics and quadratics are kept as they are; an arc is
- *  not simplified but kept as the straight line to its endpoint. Drawing
+ *  (svgPathData.ts). Cubics and quadratics are kept as they are; an arc
+ *  becomes the cubics that draw it, one to each quarter turn or less (the
+ *  engine's one arc conversion, svgArc.ts), and one with no curve to it (a
+ *  zero radius, coincident ends) the straight line to its end. Drawing
  *  before the first `M` is dropped, and drawing after a `Z` with no `M`
  *  goes on in the subpath the `Z` closed. */
 export function parsePathD(d: string): Subpath[] {
@@ -126,7 +129,14 @@ export function parsePathD(d: string): Subpath[] {
     lineTo(_x0, _y0, x, y) { cur?.segments.push({ cmd: 'L', x, y }); },
     cubicTo(_x0, _y0, x1, y1, x2, y2, x, y) { cur?.segments.push({ cmd: 'C', x1, y1, x2, y2, x, y }); },
     quadTo(_x0, _y0, x1, y1, x, y) { cur?.segments.push({ cmd: 'Q', x1, y1, x, y }); },
-    arcTo(_x0, _y0, _rx, _ry, _rotationDeg, _largeArc, _sweep, x, y) { cur?.segments.push({ cmd: 'L', x, y }); },
+    arcTo(x0, y0, rx, ry, rotationDeg, largeArc, sweep, x, y) {
+      if (!cur) return;
+      const c = svgArcToCubics(x0, y0, rx, ry, rotationDeg, largeArc, sweep, x, y);
+      if (!c) { cur.segments.push({ cmd: 'L', x, y }); return; }
+      for (let i = 0; i < c.length; i += 6) {
+        cur.segments.push({ cmd: 'C', x1: c[i], y1: c[i + 1], x2: c[i + 2], y2: c[i + 3], x: c[i + 4], y: c[i + 5] });
+      }
+    },
     close() {
       if (cur) { cur.segments.push({ cmd: 'Z' }); cur.closed = true; }
     },
