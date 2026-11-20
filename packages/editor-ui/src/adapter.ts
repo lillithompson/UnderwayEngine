@@ -198,12 +198,15 @@ export interface OutlineObject {
    *  NOT shown as its own outline row. */
   chrome?: boolean;
   /** An object drawn OVER the scene rather than in it (a host's own kind
-   *  of thing — a simulation's bots):
+   *  of thing — a simulation's bots), or a GROUP of such objects alone
+   *  (kind 'group'), which no scene node stands for:
    *  not in `sceneOrder`, so it sits above every scene row — inside its
    *  group, when it has one — in the order of this rank (larger = higher).
-   *  Its row selects, frames and renames like any other, but does not drag
-   *  (there is no paint order to change) and has no lock / hide toggles.
-   *  Never written into a reorder's `sceneOrder`. */
+   *  Its row selects, frames, renames and locks like any other and has no
+   *  hide toggle. It DRAGS into a group and out of one, as a scene row
+   *  does (`onReparent`); a drop that leaves its group as it was changes
+   *  nothing, there being no paint order to change. Never written into a
+   *  reorder's `sceneOrder`. */
   overlayRank?: number;
   /** A SCENE node the host draws over its overlays (a simulation's
    *  finished trails, which it inks over its instruction tiles): in

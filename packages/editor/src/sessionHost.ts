@@ -58,10 +58,32 @@ export interface HostOps<TDoc, TOps> {
 /** One selectable thing the host's document holds — what the session needs
  *  to know of a bot or a tile: its id (spelled so `isHostId` can tell it
  *  from a scene node's), the scene group it rides or the group of host
- *  items it forms, and its own lock. */
+ *  items it is in ({@link HostGroup}), and its own lock. */
 export interface HostItem {
   readonly id: string;
   readonly groupId?: string;
+  readonly locked?: boolean;
+}
+
+/**
+ * A GROUP of the host's items alone — one no scene node stands for, since
+ * the engine keeps a scene group only while a scene node is in it (it is
+ * pruned by the delete that empties it, and by every save and load). It
+ * lives in the host's document, and groups as a scene group does: it has
+ * a name, it locks, and it nests — in another of its kind, or in the
+ * scene group its `parentGroupId` names, which then carries everything in
+ * it. An item's `groupId` may name one that has no record (a document
+ * written before the records): it is a group all the same, unnamed and at
+ * the top level.
+ */
+export interface HostGroup {
+  readonly id: string;
+  /** What the outline calls it; absent, the host's default ("Group"). */
+  readonly name?: string;
+  /** The group it sits in — one of the host's own, or a scene group. */
+  readonly parentGroupId?: string;
+  /** Its own lock, which everything in it inherits, as a scene group's
+   *  members inherit its. */
   readonly locked?: boolean;
 }
 
@@ -91,6 +113,13 @@ export interface HostItems<TDoc, TOps> {
   through(doc: TDoc, ids: ReadonlySet<string>, m: Mat2D): TDoc;
   remove(doc: TDoc, ids: ReadonlySet<string>): TDoc;
   setGroup(doc: TDoc, ids: ReadonlySet<string>, groupId: string | undefined): TDoc;
+  /** The records of the host's own groups ({@link HostGroup}): what a
+   *  group of items alone is called, what it sits in and whether it is
+   *  locked. A host without them keeps its groups flat and unnamed. */
+  groups?(doc: TDoc): readonly HostGroup[];
+  /** `doc` with those records replaced by `groups` (the same document
+   *  back when nothing changed). */
+  setGroups?(doc: TDoc, groups: readonly HostGroup[]): TDoc;
   setLocked(doc: TDoc, ids: ReadonlySet<string>, locked: boolean): TDoc;
   /** Copies of `ids` offset by the scene's duplicate step (the host may
    *  round it up to its own grid), each joining the group `groupCopyOf`

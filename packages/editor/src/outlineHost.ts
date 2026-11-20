@@ -24,7 +24,12 @@ import type { OutlineObject } from '@/editor-ui/adapter';
 //    the scene rather than in it: DrawBot's bots and its instruction tiles,
 //    ranked by `OutlineObject.overlayRank` (above every scene row, nested
 //    under the scene group they ride). They stand in the selection like any
-//    other row, so a lit group swallows the ones riding it.
+//    other row, so a lit group swallows the ones riding it. A GROUP of
+//    them alone (sessionHost.ts `HostGroup`) has no scene node, so its row
+//    is the host's to give too: an overlay row of kind 'group', ranked
+//    with the front-most row in it, which the rows in it name as their
+//    `parentGroupId` — the tree nests them under it, the chevron folds it
+//    and a selection that covers it lights it, as it does a scene group.
 //
 // The tag LABELS are not here: they are per-format or per-document DATA,
 // not a rule, and ride as the `tagLabels` argument the shell already builds
@@ -83,8 +88,9 @@ export interface OutlineHost<TDoc = unknown> {
    *  read from). */
   nodes?(state: CompositionState, doc?: TDoc): OutlineNodeReader | null;
   /** The host's own rows — what its document holds that draws OVER the
-   *  scene. Each carries its own `overlayRank`, and `parentGroupId` where
-   *  it rides a scene group. */
+   *  scene, and each group of those alone (kind 'group'). Each carries its
+   *  own `overlayRank`, and `parentGroupId` where it is in a group: a
+   *  scene group it rides, or a group row of the host's own. */
   overlays?(state: CompositionState, doc: TDoc | undefined): readonly OutlineObject[];
 }
 

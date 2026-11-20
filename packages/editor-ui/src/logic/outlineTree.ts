@@ -75,9 +75,11 @@ export function computeOutlineTree(
 
   // Front-most position of a node (memoized): leaf → its index; group → max
   // over descendant leaves (−1 when it has none, so empty groups sink). An
-  // overlay leaf ranks above the whole scene, but does not lift its group:
-  // a group sits where its scene leaves put it, with its overlays on top of
-  // it, so it holds its place when a bot joins it.
+  // overlay ranks above the whole scene — a leaf, or a group of overlays
+  // alone, which is an overlay row itself and stands where its rank puts
+  // it — but does not lift the scene group it is in: that group sits where
+  // its scene leaves put it, with its overlays on top of it, so it holds
+  // its place when a bot joins it.
   const overlayPos = (obj: OutlineObject) => sceneOrder.length + (obj.overlayRank ?? 0);
   const frontPos = new Map<string, number>();
   const computeFrontPos = (id: string): number => {
@@ -86,15 +88,15 @@ export function computeOutlineTree(
     frontPos.set(id, -1); // cycle guard
     const obj = objects.get(id);
     let pos: number;
-    if (obj && obj.kind === 'group') {
+    if (obj && obj.overlayRank !== undefined) {
+      pos = overlayPos(obj);
+    } else if (obj && obj.kind === 'group') {
       let max = -1;
       for (const childId of childrenOf.get(id) ?? []) {
         if (objects.get(childId)?.overlayRank !== undefined) continue;
         max = Math.max(max, computeFrontPos(childId));
       }
       pos = max;
-    } else if (obj && obj.overlayRank !== undefined) {
-      pos = overlayPos(obj);
     } else {
       pos = leafIndex.get(id) ?? -1;
     }

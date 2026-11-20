@@ -71,7 +71,8 @@ export function outlineNameFor(
  *  The host's OVERLAY rows come last (`OutlineHost.overlays`): things its
  *  document holds that draw over the page rather than in it — DrawBot's bots
  *  and instruction tiles — each ranked by `overlayRank`, above every scene
- *  row and nested under the scene group it rides. */
+ *  row and nested under the group it is in: the scene group it rides, or a
+ *  group of the host's own, which is an overlay row itself (kind 'group'). */
 export function buildOutlineObjects(
   state: CompositionState,
   tagLabels?: ReadonlyMap<string, string>,
@@ -191,9 +192,16 @@ export interface OutlineCallbacks {
  *
  *  Only the OUTERMOST covered group lights, for the same reason. Anything
  *  selected outside a covered group keeps its own row (a group plus a loose
- *  object lights both). A host's OVERLAY row riding a lit group is part of
- *  that group's row too — neither a bot nor an instruction tile is a scene
- *  member, so `allDescendantMemberIds` never names one. */
+ *  object lights both).
+ *
+ *  A host's OVERLAY rows are members like any other — neither a bot nor an
+ *  instruction tile is a scene member, so `allDescendantMemberIds` never
+ *  names one, and they are counted here: a group is covered when every
+ *  scene leaf AND every overlay row under it is selected, whether it is a
+ *  scene group or a group of the host's own (an overlay row of kind
+ *  'group', which holds overlay rows alone). So a group of bots lights as
+ *  one row, as a group of shapes does, and a group of shapes with a bot
+ *  riding it is not lit by its shapes alone. */
 export function outlineSelectedIds(
   state: CompositionState,
   selectedId: string | null,
@@ -206,31 +214,55 @@ export function outlineSelectedIds(
   if (selected.size === 0) return selected;
 
   const groups = state.groups ?? [];
-  const covered = new Set<string>();
-  for (const g of groups) {
-    const members = allDescendantMemberIds(state, g.id);
-    if (members.length > 0 && members.every((id) => selected.has(id))) covered.add(g.id);
-  }
-  if (covered.size === 0) return selected;
-
-  const insideCovered = (groupId: string | undefined): boolean => {
-    let id = groupId;
-    while (id) {
-      if (covered.has(id)) return true;
-      id = groups.find((g) => g.id === id)?.parentGroupId;
+  const overlays = outlineHost().overlays?.(state, hostDoc) ?? [];
+  // Every group's parent: the scene's, and the host's own.
+  const parentOf = new Map<string, string | undefined>();
+  for (const g of groups) parentOf.set(g.id, g.parentGroupId);
+  for (const row of overlays) if (row.kind === 'group') parentOf.set(row.id, row.parentGroupId);
+  // `visit` each group `groupId` sits in, itself first. A chain that
+  // loops (a damaged document) ends where it would repeat.
+  const climb = (groupId: string | undefined, visit: (id: string) => boolean | void): boolean => {
+    const seen = new Set<string>();
+    for (let id = groupId; id !== undefined && parentOf.has(id) && !seen.has(id); id = parentOf.get(id)) {
+      if (visit(id)) return true;
+      seen.add(id);
     }
     return false;
   };
+
+  // The overlay rows under each group, and how many of them are selected.
+  const riders = new Map<string, { total: number; picked: number }>();
+  for (const row of overlays) {
+    if (row.kind === 'group') continue;
+    const picked = selected.has(row.id) ? 1 : 0;
+    climb(row.parentGroupId, (id) => {
+      const count = riders.get(id);
+      if (count) { count.total++; count.picked += picked; } else riders.set(id, { total: 1, picked });
+    });
+  }
+
+  const covered = new Set<string>();
+  const sceneGroupIds = new Set(groups.map((g) => g.id));
+  for (const id of parentOf.keys()) {
+    const members = sceneGroupIds.has(id) ? allDescendantMemberIds(state, id) : [];
+    const riding = riders.get(id);
+    if (members.length + (riding?.total ?? 0) === 0) continue;
+    if (riding && riding.picked < riding.total) continue;
+    if (members.every((member) => selected.has(member))) covered.add(id);
+  }
+  if (covered.size === 0) return selected;
+
+  const insideCovered = (groupId: string | undefined): boolean => climb(groupId, (id) => covered.has(id));
 
   const lit = new Set<string>();
   const swallowed = new Set<string>();
   for (const id of covered) {
     // A covered group nested in another covered one is part of that one's row.
-    if (insideCovered(groups.find((g) => g.id === id)?.parentGroupId)) continue;
+    if (insideCovered(parentOf.get(id))) continue;
     lit.add(id);
-    for (const member of allDescendantMemberIds(state, id)) swallowed.add(member);
+    if (sceneGroupIds.has(id)) for (const member of allDescendantMemberIds(state, id)) swallowed.add(member);
   }
-  for (const row of outlineHost().overlays?.(state, hostDoc) ?? []) {
+  for (const row of overlays) {
     if (insideCovered(row.parentGroupId)) swallowed.add(row.id);
   }
   for (const id of selected) if (!swallowed.has(id)) lit.add(id);
