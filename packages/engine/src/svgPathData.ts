@@ -2,7 +2,8 @@
 // drawing's paths into their own geometry: the SVG simplifier
 // (simplifySVG.parsePathD keeps cubics and quadratics as they are and writes
 // an arc as cubics), the figure bake (figureToPaths turns every curve into
-// circular arcs, and an ellipse's arc into lines) and the picture geometry
+// circular arcs, and an ellipse's arc, an A or a cubic, into lines) and the
+// picture geometry
 // (the editor's formats/svgImageGeometry samples curves to chords). Each
 // had its own tokenizer and its own command reader, the same grammar written
 // three times, and a path one of them read differently from the others drew
@@ -225,4 +226,17 @@ export function readPathData(d: string, sink: PathDataSink): void {
       first = false;
     } while (kind === NUMBER);
   }
+}
+
+/**
+ * The point at `t` (0 to 1) along the cubic from (x0, y0) through the
+ * control points (x1, y1) and (x2, y2) to (x, y), for a reader whose sink
+ * turns a cubic into chords (the figure bake's cubic that is no circle's arc).
+ */
+export function cubicPointAt(
+  x0: number, y0: number, x1: number, y1: number, x2: number, y2: number, x: number, y: number, t: number,
+): [number, number] {
+  const u = 1 - t;
+  const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, e = t * t * t;
+  return [a * x0 + b * x1 + c * x2 + e * x, a * y0 + b * y1 + c * y2 + e * y];
 }

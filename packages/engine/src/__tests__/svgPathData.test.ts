@@ -285,7 +285,9 @@ describe('one reader of path data', () => {
 
   test.each(READERS)('%s reads path data with readPathData', (rel) => {
     const src = read(rel);
-    expect(src).toMatch(/^import \{ readPathData \} from '(\.|@\/engine)\/svgPathData';$/m);
+    // readPathData beside whatever else of the module it uses (the figure
+    // bake's cubicPointAt, report b452acb8).
+    expect(src).toMatch(/^import \{[^}]*\breadPathData\b[^}]*\} from '(\.|@\/engine)\/svgPathData';$/m);
     expect(src).toMatch(/\breadPathData\(d, \{/);
     expect(src).not.toMatch(/function tokenize\w*\(/);
   });

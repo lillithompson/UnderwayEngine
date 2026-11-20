@@ -1,6 +1,7 @@
 import { bakeFigureToSegments, transformSegmentAroundCenter, figureToTiledSVGObject } from '../figureToPaths';
 import { CompositionFigure, PathSegment } from '../types';
 import * as cache from '../svgFigureCache';
+import { simplifySVG } from '../simplifySVG';
 
 // Mock the SVG figure cache
 jest.mock('../svgFigureCache', () => ({
@@ -177,6 +178,48 @@ describe('bakeFigureToSegments', () => {
 
     test('an arc with no curve to it is the line to its end', () => {
       expect(bake('M 0,0 A 0,64 0 0 1 128,128')).toEqual([{ kind: 'line', start: [0, 0], end: [0.5, 0.5] }]);
+    });
+  });
+
+  describe('a cubic (C)', () => {
+    // Report b452acb8: every cubic was baked as a circular arc about where
+    // its end normals meet. simplifySVG writes an arc as cubics (report
+    // 7f84afc7), so an elliptical arc reached the bake as cubics whose ends
+    // are not one distance from that centre, an arc segment drawn broken.
+    const bake = (d: string) => {
+      mockGetSync.mockReturnValue({ elements: [`<path d="${d}"/>`], svgWidth: 256, svgHeight: 256 });
+      return bakeFigureToSegments(makeFig({ cellX: 0, cellY: 0, cellWidth: 1, cellHeight: 1 }))!;
+    };
+    /** The path's d as simplifySVG writes it. */
+    const simplified = (d: string) => simplifySVG([`<path d="${d}"/>`])[0].match(/ d="([^"]*)"/)![1];
+
+    test("a circle's quarter, as simplifySVG writes it, is still one arc about its centre", () => {
+      const d = simplified('M 64,128 A 64,64 0 0 1 128,64');
+      expect(d).toContain('C');
+      const segs = bake(d);
+      expect(segs).toHaveLength(1);
+      if (segs[0].kind !== 'arc') throw new Error('expected arc');
+      expect(segs[0].center[0]).toBeCloseTo(0.5, 6);
+      expect(segs[0].center[1]).toBeCloseTo(0.5, 6);
+    });
+
+    test("an ellipse's quarter, as simplifySVG writes it, is lines on its ellipse, as its A is", () => {
+      // The quarter of the ellipse of radii 64 and 32 about (128, 128) from
+      // its left to its top.
+      const d = simplified('M 64,128 A 64,32 0 0 1 128,96');
+      expect(d).toContain('C');
+      const segs = bake(d);
+      expect(segs).toHaveLength(8); // 32 to a whole turn, as the A bakes
+      expect(segs.every((s) => s.kind === 'line')).toBe(true);
+      expect(segs[0].start).toEqual([0.25, 0.5]);
+      expect(segs[7].end).toEqual([0.5, 0.375]);
+      for (let i = 0; i < segs.length; i++) {
+        const [x, y] = segs[i].end;
+        // On the ellipse to within the cubic's own approximation of it.
+        expect(Math.abs(((x - 0.5) / 0.25) ** 2 + ((y - 0.5) / 0.125) ** 2 - 1)).toBeLessThan(2e-3);
+        if (i > 0) expect(segs[i].start).toEqual(segs[i - 1].end);
+      }
+      expect(bake('M 64,128 A 64,32 0 0 1 128,96')).toHaveLength(8);
     });
   });
 
